@@ -1,0 +1,27 @@
+# 复制为 config/deploy.local.toml 并填入真实地址。
+# deploy.local.toml 已被 gitignore —— 部署地址绝不进入代码库。
+#
+# Redis 若跨公网通信，必须同时满足：
+#   1. tls = true
+#   2. password 为强密码
+#   3. 安全组只放行对方公网 IP
+# Redis 默认无认证且明文传输，裸露在公网上通常几小时内就会被扫到。
+
+[redis]
+host = "127.0.0.1"
+port = 6379
+password = ""
+tls = false
+db = 0
+
+[streams]
+orders = "cmd:orders"       # 核心 -> Windows：下单指令
+control = "cmd:control"     # 核心 -> Windows：启停 / 撤单 / 查询
+fills = "evt:fills"         # Windows -> 核心：成交回报
+rejects = "evt:rejects"     # Windows -> 核心：拒单回报
+account = "state:account"   # Windows -> 核心：持仓资金快照
+heartbeat = "state:heartbeat"
+
+[agent]
+consumer_group = "core"
+consumer_name = "core-1"
