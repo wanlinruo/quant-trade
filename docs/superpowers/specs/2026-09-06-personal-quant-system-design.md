@@ -577,7 +577,7 @@ run_id = hash(git_commit + data_snapshot_version + params_hash)
 | 配置/类型 | pydantic | 配置校验 + 核心类型定义，早期抓错 |
 | 日志 | structlog | 结构化日志是可重放的前提 |
 | 测试 | pytest + hypothesis | hypothesis 属性测试特别适合验证约束系统 |
-| 依赖管理 | uv | 快；锁文件保证三侧环境一致 |
+| 依赖管理 | uv | 快；锁文件保证三侧环境一致。**Intel Mac 上须从 GitHub Releases 直取二进制**——Homebrew 已于 2026-09 停止支持 Intel x86_64，且会为 uv 拉取 rust/llvm 数 GB 依赖 |
 | Web 后端 | FastAPI | 异步、自带 OpenAPI、与 pydantic 原生集成 |
 | Web 前端 | HTMX + ECharts + Tailwind | 无构建链、无双套数据模型；ECharts 金融图表能力强 |
 | 任务队列 | RQ | 比 Celery 简单一个数量级，复用已有 Redis |
@@ -597,6 +597,9 @@ run_id = hash(git_commit + data_snapshot_version + params_hash)
 | Web 可操作真钱，存在安全风险 | 私有网络访问 + TOTP + 审计留痕 + 危险操作二次确认 + 独立 kill switch 路径 |
 | 一期工作量大，可能中途失去动力 | 纵切片保证一期结束即有可用系统；一期内部亦可按"数据→回测→影子→实盘"逐步见到成果 |
 | 自建引擎正确性 | 三条腿验证；未通过验收不得投入真金 |
+| **免费分红源不含配股** | `stock_fhps_detail_em` 只有分红送转。做过配股的标的复权因子会偏差，直接影响回测收益率。二期须补配股数据源；质量规则 5（复权自洽）可在除权日附近抓到这类跳变 |
+| **在市股票缺上市日期** | 免费源的在市列表不提供 `list_date`，二期「上市不满 N 日」过滤需先补此字段 |
+| **mootdx 单次回溯上限约 3.2 年** | `offset` 语义为「最近 N 根」。10 年回测需实现分页拉取；已加截断告警，不会静默丢数据 |
 
 ---
 

@@ -3525,10 +3525,50 @@ git commit -m "feat(data): 端到端冒烟与真实数据源初始化脚本"
 1. `uv run pytest` 全绿
 2. `uv run python scripts/bootstrap_warehouse.py` 能用真实免费源建出仓库并产出质量报告
 3. `HistoricalFeed.get(..., as_of=T)` 在真实数据上验证有效——请求未来数据取不到
-4. 数据层不存在任何无 `as_of` 的历史数据读取公开函数
+4. **策略层不得触达 `WarehouseQuery`** —— 策略只能通过 `ctx.data`（`DataFeed`）取数。
+   `WarehouseQuery` 保持公开，它是 `feed` 与 `pipeline` 的基础设施，不是策略接口。
+   Python 无真正的访问控制，靠命名约定是自欺欺人；有效隔离是「策略拿不到那个对象」，
+   该约束由**计划 1-2** 的 `ctx` 构造强制并在那里验收。
 5. `instruments` 含已退市标的，`alive_on()` 能还原任意历史日的在市股票集合
 6. `bars_daily` 存不复权价，`adj_factors` 可重算，后复权价在除权日连续
 
 ## 下一步
 
 进入 **计划 1-2：策略层与回测引擎** —— `Portfolio` 与五条交易约束、EventLoop、Strategy/ctx、SimBroker 保守撮合、合成数据断言套件、聚宽交叉验证。
+
+
+---
+
+# 执行记录（2026-09-07）
+
+**结果：15 个任务全部完成，146 个测试通过。** 分支 `feat/phase1-1-data-foundation`。
+
+## 完成标准核对
+
+| # | 标准 | 结果 |
+|---|---|---|
+| 1 | `uv run pytest` 全绿 | ✅ 146 passed |
+| 2 | bootstrap 建出仓库并产出质量报告 | ✅ 117 交易日 / 351 日线 / 63 除权事件 / clean 0 violations |
+| 3 | `as_of` 在真实数据上有效 | ✅ 全区间请求 + `as_of=2024-03-01` 只返回至 03-01；盘中 09:30 只到 02-29 |
+| 4 | 策略层不得触达 `WarehouseQuery` | ⏭ 顺延至计划 1-2 验收（见上文改写说明） |
+| 5 | `instruments` 含退市股，`alive_on` 可还原历史在市集合 | ✅ 5919 只（含 367 退市） |
+| 6 | 不复权存储 + 因子可重算 + 除权日后复权连续 | ✅ 平安银行 2024-06-14：不复权 −5.74% → 后复权 +0.98% |
+
+## 六处偏离及原因
+
+1. **uv 安装方式改变** —— 计划设想用包管理器。实际这台是 Intel Mac，Homebrew 已于 2026-09 停止支持 Intel x86_64，且 `brew install uv` 会拉取 `rust` + `llvm@22` 等五个依赖（数 GB）。改为从 GitHub Releases 直取预编译二进制（19MB）至 `~/.local/bin`。
+2. **`.gitignore` 从 Task 15 提前到 Task 1** —— 否则 `.venv/` 会在首次提交时被误收入。
+3. **akshare provider 四处修正**（由 Task 5 探针在真实数据上发现）：
+   - **NaN 归零**：pandas 的 NaN 进入 polars 后仍是 NaN，polars 严格区分 NaN 与 null，`fill_null` 填不掉它。原计划只写了 `fill_null`，会让 `stock_per_share` 变成 NaN 并一路污染复权因子——**不报错，只是让回测悄悄失真**。改用 `fill_nan(0.0).fill_null(0.0)`。
+   - **只取「实施分配」**：分红表混有「预披露」等未实施方案，不能产生复权因子。
+   - **补 B 股号段**：真实退市表含沪 B `900xxx`（7 只）与深 B `200xxx`（21 只），原 `normalize_symbol` 会抛异常中断整条采集。同时新增 `board="bshare"`，因其计价货币与交易规则均与 A 股不同。未知号段改为跳过并告警，避免交易所新开号段导致管线整体崩溃。
+   - **补 `list_date` 与 `name`**：退市表含 `上市日期` 与 `简称`，原计划漏用，会导致 `list_date` 全为 null。
+4. **mootdx 增加历史截断告警** —— `offset` 语义是「最近 N 根 bar」而非起始位置，单次上限约回溯 3.2 年。静默截断会让长周期回测在不知情的情况下少掉早期数据。新增 `MootdxProvider.truncated` 记录并告警。
+5. **三处 `unique()` 补 `maintain_order=True`** —— polars 默认不保证顺序，`keep="last"` 在无序前提下语义未定义，幂等性会退化为偶然行为。
+6. **新增 `build_corporate_actions`（计划缺陷）** —— 原计划的 `bootstrap_warehouse` 调用链是 `build_instruments → ingest_daily_bars → build_adj_factors`，**从未采集除权事件**。照原计划执行，`adj_factors` 会全部等于 1.0，复权功能完全失效且不报任何错。已补齐流水线并加入回归测试 `test_factors_are_all_one_when_corporate_actions_missing`。
+
+## 遗留缺口（转入二期）
+
+- **配股数据缺失** —— `stock_fhps_detail_em` 只含分红送转，不含配股。做过配股的标的复权因子会偏差。见 spec §12。
+- **在市股票的 `list_date` 为 null** —— 免费源的在市股票列表不提供上市日期，二期的「上市不满 N 日」过滤需先补此字段。
+- **mootdx 单次回溯上限约 3.2 年** —— 10 年回测需实现分页拉取。
