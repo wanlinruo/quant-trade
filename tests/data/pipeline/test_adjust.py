@@ -1,10 +1,15 @@
 from datetime import date
 
+import polars as pl
 import pyarrow as pa
 import pytest
 
 from qsys.data import schema
-from qsys.data.pipeline.adjust import build_adj_factors, daily_factor
+from qsys.data.pipeline.adjust import (
+    build_adj_factors,
+    build_corporate_actions,
+    daily_factor,
+)
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
 
@@ -115,3 +120,103 @@ def test_build_is_idempotent(warehouse: Warehouse):
 
 def test_build_on_empty_warehouse_returns_zero(warehouse: Warehouse):
     assert build_adj_factors(warehouse) == 0
+
+
+# --- build_corporate_actions：计划遗漏的一环，缺了它复权因子会静默全为 1.0 ---
+
+
+class _FakeReference:
+    name = "fake-ref"
+
+    def __init__(self, actions: dict[str, pl.DataFrame], failing: set[str] | None = None):
+        self._actions = actions
+        self._failing = failing or set()
+
+    def fetch_instruments(self):
+        raise NotImplementedError
+
+    def fetch_sessions(self, start, end):
+        raise NotImplementedError
+
+    def fetch_corporate_actions(self, symbol):
+        if symbol in self._failing:
+            raise RuntimeError("boom")
+        return self._actions.get(symbol, pl.DataFrame(schema=_ACTION_SCHEMA))
+
+
+_ACTION_SCHEMA = {
+    "ex_date": pl.Date,
+    "cash_per_share": pl.Float64,
+    "stock_per_share": pl.Float64,
+    "rights_per_share": pl.Float64,
+    "rights_price": pl.Float64,
+}
+
+
+def _actions(ex: date, cash: float, stock: float) -> pl.DataFrame:
+    return pl.DataFrame(
+        {
+            "ex_date": [ex],
+            "cash_per_share": [cash],
+            "stock_per_share": [stock],
+            "rights_per_share": [0.0],
+            "rights_price": [0.0],
+        },
+        schema=_ACTION_SCHEMA,
+    )
+
+
+def test_build_corporate_actions_writes_rows(warehouse: Warehouse):
+    provider = _FakeReference({"600036.SH": _actions(date(2024, 1, 4), 0.0, 1.0)})
+    assert build_corporate_actions(provider, warehouse, ["600036.SH"]) == 1
+    df = WarehouseQuery(warehouse).corporate_actions()
+    assert df["symbol"].to_list() == ["600036.SH"]
+    assert df["stock_per_share"].to_list() == [1.0]
+
+
+def test_build_corporate_actions_is_idempotent(warehouse: Warehouse):
+    provider = _FakeReference({"600036.SH": _actions(date(2024, 1, 4), 0.0, 1.0)})
+    build_corporate_actions(provider, warehouse, ["600036.SH"])
+    build_corporate_actions(provider, warehouse, ["600036.SH"])
+    assert WarehouseQuery(warehouse).corporate_actions().height == 1
+
+
+def test_build_corporate_actions_survives_single_symbol_failure(warehouse: Warehouse):
+    provider = _FakeReference(
+        {"000001.SZ": _actions(date(2024, 1, 4), 0.5, 0.0)}, failing={"600036.SH"}
+    )
+    written = build_corporate_actions(provider, warehouse, ["600036.SH", "000001.SZ"])
+    assert written == 1
+    assert WarehouseQuery(warehouse).corporate_actions()["symbol"].to_list() == ["000001.SZ"]
+
+
+def test_build_corporate_actions_with_no_events_writes_nothing(warehouse: Warehouse):
+    assert build_corporate_actions(_FakeReference({}), warehouse, ["600036.SH"]) == 0
+
+
+def test_factors_are_all_one_when_corporate_actions_missing(warehouse: Warehouse):
+    """回归防护：忘记灌 corporate_actions 时因子会全为 1.0 且不报错。"""
+    _seed_bars_only(warehouse)
+    build_adj_factors(warehouse)
+    factors = WarehouseQuery(warehouse).adj_factors()
+    assert set(factors["cum_factor"].to_list()) == {1.0}
+
+
+def _seed_bars_only(warehouse: Warehouse) -> None:
+    warehouse.write(
+        "bars_daily",
+        pa.table(
+            {
+                "symbol": ["600036.SH"] * 2,
+                "dt": [date(2024, 1, 2), date(2024, 1, 3)],
+                "open": [19.0, 19.5],
+                "high": [20.0, 20.5],
+                "low": [18.5, 19.0],
+                "close": [19.5, 20.0],
+                "volume": [1000, 1000],
+                "amount": [19500.0, 20000.0],
+            },
+            schema=schema.BARS_DAILY,
+        ),
+        year=2024,
+    )

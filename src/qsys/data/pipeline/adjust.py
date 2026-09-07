@@ -11,12 +11,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import date
 
 import polars as pl
 import structlog
 
 from qsys.data import schema
+from qsys.data.providers.base import ReferenceProvider
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
 
@@ -96,3 +98,52 @@ def build_adj_factors(warehouse: Warehouse) -> int:
     warehouse.write("adj_factors", result.to_arrow().cast(schema.ADJ_FACTORS))
     log.info("adj_factors.built", rows=result.height)
     return result.height
+
+
+ACTION_COLUMNS = [
+    "symbol",
+    "ex_date",
+    "cash_per_share",
+    "stock_per_share",
+    "rights_per_share",
+    "rights_price",
+]
+
+
+def build_corporate_actions(
+    provider: ReferenceProvider,
+    warehouse: Warehouse,
+    symbols: Sequence[str],
+) -> int:
+    """采集除权除息事件写入仓库。
+
+    必须在 build_adj_factors 之前调用——缺了这一步，复权因子会全部等于 1.0
+    且不会报任何错，复权静默失效。
+    """
+    collected: list[pl.DataFrame] = []
+    for symbol in symbols:
+        try:
+            frame = provider.fetch_corporate_actions(symbol)
+        except Exception as exc:  # 单个标的失败不影响其余
+            log.warning("corporate_actions.fetch_failed", symbol=symbol, error=str(exc))
+            continue
+        if frame.height == 0:
+            continue
+        collected.append(
+            frame.with_columns(pl.lit(symbol).alias("symbol")).select(ACTION_COLUMNS)
+        )
+
+    if not collected:
+        return 0
+
+    fresh = pl.concat(collected, how="vertical")
+    existing = WarehouseQuery(warehouse).corporate_actions()
+    merged = (
+        pl.concat([existing, fresh], how="vertical")
+        .unique(subset=["symbol", "ex_date"], keep="last", maintain_order=True)
+        .sort(["symbol", "ex_date"])
+        .select(ACTION_COLUMNS)
+    )
+    warehouse.write("corporate_actions", merged.to_arrow().cast(schema.CORPORATE_ACTIONS))
+    log.info("corporate_actions.built", provider=provider.name, rows=merged.height)
+    return merged.height
