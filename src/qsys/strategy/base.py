@@ -1,0 +1,27 @@
+"""策略基类。
+
+所有钩子默认空实现——策略只覆盖自己关心的那几个。
+ctx 显式传入，不使用全局变量。
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from typing import Any
+
+
+class Strategy:
+    def on_init(self, ctx: Any) -> None:
+        """一次性初始化：声明参数、注册因子、订阅数据。"""
+
+    def on_session_start(self, ctx: Any) -> None:
+        """每日盘前：选股、算目标仓位。此时当日 bar 尚不可见。"""
+
+    def on_bar(self, ctx: Any, bars: Mapping[Any, Any]) -> None:
+        """主逻辑。此时当日 bar 已可见，下单将在下一交易日开盘成交。"""
+
+    def on_fill(self, ctx: Any, fill: Any) -> None:
+        """成交回报。"""
+
+    def on_session_end(self, ctx: Any) -> None:
+        """收盘后：记录、复盘。"""
