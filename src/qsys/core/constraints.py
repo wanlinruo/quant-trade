@@ -178,3 +178,62 @@ class PriceLimitConstraint(Constraint):
         if intent.side is Side.SELL and price <= down:
             return Verdict(0, f"limit down at {down:.2f}: sell cannot fill")
         return Verdict(intent.qty)
+
+
+@dataclass(frozen=True, slots=True)
+class PipelineResult:
+    allowed_qty: int
+    checks: tuple[tuple[str, Verdict], ...] = ()
+
+    @property
+    def is_rejected(self) -> bool:
+        return self.allowed_qty == 0
+
+    @property
+    def binding_reason(self) -> str:
+        """最终把数量夹到最小的那条约束，格式为 '<name>: <reason>'。"""
+        for name, verdict in reversed(self.checks):
+            if verdict.reason:
+                return f"{name}: {verdict.reason}"
+        return ""
+
+    def as_log_fields(self) -> dict[str, object]:
+        """摊平成结构化日志字段。"""
+        return {
+            "allowed_qty": self.allowed_qty,
+            "binding_reason": self.binding_reason,
+            "checks": "; ".join(f"{n}={v.allowed_qty}" for n, v in self.checks),
+        }
+
+
+class ConstraintPipeline:
+    """按序施加约束，每条只能把数量夹得更小。
+
+    任一条判定为 0 即立即停止——后续约束的判定没有意义，
+    且能让 binding_reason 准确指向真正的拒绝原因。
+    """
+
+    def __init__(self, constraints: Sequence[Constraint]) -> None:
+        self._constraints = tuple(constraints)
+
+    @property
+    def names(self) -> tuple[str, ...]:
+        return tuple(c.name for c in self._constraints)
+
+    def apply(self, intent: OrderIntent, ctx: ConstraintContext) -> PipelineResult:
+        qty = intent.qty
+        checks: list[tuple[str, Verdict]] = []
+
+        for constraint in self._constraints:
+            verdict = constraint.apply(intent.with_qty(qty), ctx)
+            if verdict.allowed_qty > qty:
+                raise ValueError(
+                    f"constraint {constraint.name!r} cannot increase qty "
+                    f"{qty} -> {verdict.allowed_qty}"
+                )
+            checks.append((constraint.name, verdict))
+            qty = verdict.allowed_qty
+            if qty == 0:
+                break
+
+        return PipelineResult(allowed_qty=qty, checks=tuple(checks))
