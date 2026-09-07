@@ -1,0 +1,58 @@
+"""时钟：决定事件从哪来、时间怎么推进。
+
+策略代码对 BacktestClock 与（将来的）LiveClock 完全无感——实盘跑的是
+回测验证过的同一条代码路径。
+"""
+
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from collections.abc import Iterator
+from datetime import date, datetime, time
+from enum import StrEnum
+
+from qsys.core.calendar import TradingCalendar
+
+
+class Phase(StrEnum):
+    SESSION_START = "session_start"  # 盘前：当日 bar 尚不可见
+    BAR = "bar"  # 收盘：当日 bar 可见
+    SESSION_END = "session_end"  # 收盘后：记录与复盘
+
+
+class Clock(ABC):
+    @property
+    @abstractmethod
+    def now(self) -> datetime: ...
+
+
+class BacktestClock(Clock):
+    PRE_OPEN = time(9, 15)
+    POST_CLOSE = time(15, 30)
+
+    def __init__(self, calendar: TradingCalendar, start: date, end: date) -> None:
+        self._calendar = calendar
+        self._sessions = calendar.sessions_in_range(start, end)
+        self._now: datetime | None = None
+        self._session: date | None = None
+
+    @property
+    def now(self) -> datetime:
+        if self._now is None:
+            raise RuntimeError("clock has not started; iterate ticks() first")
+        return self._now
+
+    @property
+    def session(self) -> date | None:
+        return self._session
+
+    def ticks(self) -> Iterator[tuple[datetime, Phase]]:
+        for session in self._sessions:
+            self._session = session
+            for moment, phase in (
+                (datetime.combine(session, self.PRE_OPEN), Phase.SESSION_START),
+                (self._calendar.close_time(session), Phase.BAR),
+                (datetime.combine(session, self.POST_CLOSE), Phase.SESSION_END),
+            ):
+                self._now = moment
+                yield moment, phase
