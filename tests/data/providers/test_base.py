@@ -30,3 +30,18 @@ def test_normalize_symbol_strips_existing_suffix():
 def test_normalize_symbol_rejects_unknown_prefix():
     with pytest.raises(ValueError, match="cannot infer market"):
         normalize_symbol("123456")
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("900935", "900935.SH"),  # 沪 B 股
+        ("200011", "200011.SZ"),  # 深 B 股
+        ("689009", "689009.SH"),  # 科创板 CDR
+        ("302132", "302132.SZ"),  # 深主板新号段
+        ("920002", "920002.BJ"),  # 北交所新号段
+    ],
+)
+def test_normalize_symbol_covers_real_code_segments(raw, expected):
+    """号段依据 scripts/record_fixtures.py 对真实数据的实测结果。"""
+    assert normalize_symbol(raw) == expected

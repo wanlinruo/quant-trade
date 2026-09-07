@@ -11,8 +11,12 @@ from datetime import date
 
 import polars as pl
 
-_SH_PREFIXES = ("60", "68", "51", "58")
-_SZ_PREFIXES = ("00", "30", "15", "16")
+# 号段依据 scripts/record_fixtures.py 实测：
+#   沪 600/601/603/605 主板、688/689 科创、900 B股、51x/58x ETF
+#   深 000/001/002/003 主板、300/301/302 创业、200 B股、15x/16x ETF
+#   北 430/83x/87x/92x
+_SH_PREFIXES = ("60", "68", "90", "51", "58")
+_SZ_PREFIXES = ("00", "30", "20", "15", "16")
 _BJ_PREFIXES = ("43", "83", "87", "92")
 
 _CODE_RE = re.compile(r"(\d{6})")
