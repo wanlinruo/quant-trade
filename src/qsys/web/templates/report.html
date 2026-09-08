@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2>每日运行报告
+    <a href="/s/{{ session }}/report.txt" style="float:right;font-weight:400">纯文本</a>
+  </h2>
+  <pre>{{ report_text }}</pre>
+</div>
+{% endblock %}

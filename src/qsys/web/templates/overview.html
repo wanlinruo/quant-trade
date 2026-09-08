@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2>净值</h2>
+  <div class="kpis">
+    <div class="kpi"><div class="label">总值</div>
+      <div class="value">{{ "{:,.2f}".format(view.equity_line.total_value) }}</div></div>
+    <div class="kpi"><div class="label">当日变动</div>
+      <div class="value {{ 'up' if view.equity_line.change_pct >= 0 else 'down' }}">
+        {{ "{:+.2%}".format(view.equity_line.change_pct) }}</div></div>
+    <div class="kpi"><div class="label">现金</div>
+      <div class="value">{{ "{:,.2f}".format(view.cash) }}</div></div>
+    <div class="kpi"><div class="label">持仓市值</div>
+      <div class="value">{{ "{:,.2f}".format(view.equity_line.market_value) }}</div></div>
+  </div>
+  <div style="margin-top:14px">{{ chart | safe }}</div>
+</div>
+
+<div class="card">
+  <h2>持仓</h2>
+  {% if view.positions %}
+  <table>
+    <tr><th>标的</th><th class="num">总量</th><th class="num">可卖</th><th class="num">成本</th></tr>
+    {% for p in view.positions %}
+    <tr><td>{{ p.symbol }}</td><td class="num">{{ p.total_qty }}</td>
+        <td class="num">{{ p.available_qty }}</td>
+        <td class="num">{{ "{:.2f}".format(p.avg_cost) }}</td></tr>
+    {% endfor %}
+  </table>
+  {% else %}<div class="empty">暂无持仓快照</div>{% endif %}
+</div>
+
+<div class="card">
+  <h2>心跳</h2>
+  {% if view.heartbeats %}
+  <table>
+    <tr><th>来源</th><th>状态</th><th>最后心跳</th></tr>
+    {% for h in view.heartbeats %}
+    <tr><td>{{ h.source }}</td>
+        <td><span class="pill {{ 'ok' if h.alive else 'bad' }}">
+            {{ '正常' if h.alive else '失联' }}</span></td>
+        <td>{{ h.last_beat or '—' }}</td></tr>
+    {% endfor %}
+  </table>
+  {% else %}<div class="empty">未接入心跳</div>{% endif %}
+</div>
+{% endblock %}

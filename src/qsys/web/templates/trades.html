@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2>成交（{{ view.fills | length }} 笔）</h2>
+  {% if view.fills %}
+  <table>
+    <tr><th>时间</th><th>标的</th><th>方向</th><th class="num">数量</th>
+        <th class="num">价格</th><th class="num">费用</th><th>指令号</th></tr>
+    {% for f in view.fills %}
+    <tr><td>{{ f.filled_at }}</td><td>{{ f.symbol }}</td><td>{{ f.side }}</td>
+        <td class="num">{{ f.qty }}</td>
+        <td class="num">{{ "{:.2f}".format(f.price) }}</td>
+        <td class="num">{{ "{:.2f}".format(f.fee) }}</td>
+        <td>{{ f.client_order_id }}</td></tr>
+    {% endfor %}
+  </table>
+  {% else %}<div class="empty">当日无成交</div>{% endif %}
+</div>
+
+<div class="card">
+  <h2>拒单（{{ view.rejects | length }} 笔）</h2>
+  {% if view.rejects %}
+  <table>
+    <tr><th>时间</th><th>标的</th><th class="num">数量</th><th>原因</th><th>指令号</th></tr>
+    {% for r in view.rejects %}
+    <tr><td>{{ r.at }}</td><td>{{ r.symbol }}</td><td class="num">{{ r.qty }}</td>
+        <td>{{ r.reason }}</td><td>{{ r.client_order_id }}</td></tr>
+    {% endfor %}
+  </table>
+  {% else %}<div class="empty">当日无拒单</div>{% endif %}
+</div>
+{% endblock %}

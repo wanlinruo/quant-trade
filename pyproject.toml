@@ -12,6 +12,9 @@ dependencies = [
     "akshare>=1.13",
     "mootdx>=0.11",
     "redis>=5.0",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "jinja2>=3.1",
 ]
 
 [dependency-groups]
@@ -22,6 +25,8 @@ dev = [
     # 测试直接 import，不依赖 akshare/mootdx 的传递依赖
     "pandas>=2.0",
     "numpy>=1.26",
+    # mootdx 把 httpx 钉在 <0.26，此处只要下界，由解析器取交集
+    "httpx>=0.25",
 ]
 
 [build-system]

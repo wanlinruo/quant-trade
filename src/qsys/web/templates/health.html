@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2>对账（{{ view.reconciliations | length }} 次）</h2>
+  {% if view.reconciliations %}
+  <table>
+    <tr><th>时间</th><th>层</th><th>结果</th><th class="num">现金差</th>
+        <th class="num">持仓不符</th><th>明细</th></tr>
+    {% for r in view.reconciliations %}
+    <tr><td>{{ r.at }}</td><td>{{ r.layer }}</td>
+        <td><span class="pill {{ 'ok' if r.is_consistent else 'bad' }}">
+            {{ '一致' if r.is_consistent else '不一致' }}</span></td>
+        <td class="num">{{ "{:,.2f}".format(r.cash_diff) }}</td>
+        <td class="num">{{ r.n_mismatches }}</td>
+        <td>{{ r.detail }}</td></tr>
+    {% endfor %}
+  </table>
+  {% else %}<div class="empty">当日无对账记录</div>{% endif %}
+</div>
+
+<div class="card">
+  <h2>数据质量</h2>
+  <pre>{{ view.quality_summary or "（未运行）" }}</pre>
+</div>
+
+{% if view.dead_sources %}
+<div class="card">
+  <h2>失联</h2>
+  {% for s in view.dead_sources %}<span class="pill bad">{{ s }}</span> {% endfor %}
+</div>
+{% endif %}
+{% endblock %}
