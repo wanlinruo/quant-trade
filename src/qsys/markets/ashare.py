@@ -46,3 +46,22 @@ def ashare_pipeline(*, fee_buffer: float = 0.001) -> ConstraintPipeline:
             LotSizeConstraint(lot=LOT_SIZE),
         ]
     )
+
+
+def ashare_pre_trade_pipeline(*, fee_buffer: float = 0.001) -> ConstraintPipeline:
+    """实盘下单时刻可评估的约束子集。
+
+    排除 price_limit 与 suspension —— 它们依赖当时行情，核心侧下单时未必
+    持有实时报价。这两条留给券商，其拒单会经回报流回来。
+
+    保留的四条只依赖账户状态，核心侧必须自己检查：
+    依赖券商兜底意味着本地持仓推演与实际不符，而对账的前提正是本地推演可信。
+    """
+    return ConstraintPipeline(
+        [
+            NoShortConstraint(),
+            SettlementConstraint(),
+            CashConstraint(fee_buffer=fee_buffer),
+            LotSizeConstraint(lot=LOT_SIZE),
+        ]
+    )

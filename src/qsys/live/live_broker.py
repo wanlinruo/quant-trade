@@ -14,6 +14,7 @@ from datetime import datetime
 import structlog
 
 from qsys.backtest.broker import Broker
+from qsys.core.constraints import ConstraintContext, ConstraintPipeline
 from qsys.core.events import MarketSnapshot, Reject
 from qsys.core.trading import Fill, Order, OrderIntent, Side
 from qsys.core.types import Symbol
@@ -41,6 +42,8 @@ class LiveBroker(Broker):
         risk_context_factory: Callable[[], RiskContext],
         group: str = "core",
         consumer: str = "core-1",
+        constraints: ConstraintPipeline | None = None,
+        constraint_context_factory: Callable[[], ConstraintContext] | None = None,
     ) -> None:
         self._t = transport
         self._s = streams
@@ -48,6 +51,8 @@ class LiveBroker(Broker):
         self._risk_ctx = risk_context_factory
         self._group = group
         self._consumer = consumer
+        self._constraints = constraints
+        self._constraint_ctx = constraint_context_factory
         self._pending: dict[str, Order] = {}
         self._rejects: list[Reject] = []
         for stream in (streams.fills, streams.rejects):
@@ -66,13 +71,28 @@ class LiveBroker(Broker):
             )
             return
 
+        # 下单前约束检查：spec §5.3 要求约束在回测撮合与实盘风控两处共用。
+        # 依赖券商兜底会让本地持仓推演与实际不符，而对账的前提正是本地推演可信。
+        qty = order.qty
+        if self._constraints is not None and self._constraint_ctx is not None:
+            result = self._constraints.apply(intent, self._constraint_ctx())
+            if result.is_rejected:
+                log.warning("live_broker.constrained", client_order_id=order.order_id,
+                            symbol=str(order.symbol), **result.as_log_fields())
+                self._rejects.append(
+                    Reject(order.order_id, order.symbol, order.side, order.qty,
+                           result.binding_reason, order.created_at)
+                )
+                return
+            qty = result.allowed_qty
+
         self._t.append(
             self._s.orders,
             OrderCommand(
                 client_order_id=order.order_id,
                 symbol=str(order.symbol),
                 side=order.side.value,
-                qty=order.qty,
+                qty=qty,
                 order_type=order.order_type.value,
                 limit_price=order.limit_price,
                 created_at=order.created_at,
@@ -80,7 +100,7 @@ class LiveBroker(Broker):
         )
         self._pending[order.order_id] = order
         log.info("live_broker.submitted", client_order_id=order.order_id,
-                 symbol=str(order.symbol), side=order.side.value, qty=order.qty)
+                 symbol=str(order.symbol), side=order.side.value, qty=qty)
 
     def on_market_data(self, snapshot: MarketSnapshot | None) -> None:
         """实盘由真实市场撮合，忽略行情推送。"""

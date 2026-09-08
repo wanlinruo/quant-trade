@@ -173,3 +173,91 @@ def test_unknown_fill_is_ignored_not_fatal(tmp_path):
     ).to_payload())
     fills = b.poll_fills()
     assert len(fills) == 1
+
+
+# --- 下单前约束检查（Task 8 补上的缺口） ---
+
+from qsys.core.constraints import ConstraintContext
+from qsys.core.trading import Fill
+from qsys.markets.ashare import ashare_pre_trade_pipeline
+
+
+def make_with_constraints(tmp_path, *, held: int = 0, settled: bool = False,
+                          cash: float = 1_000_000.0):
+    transport = MemoryTransport()
+    ks = KillSwitch(transport, local_path=tmp_path / "K")
+    gate = default_ashare_gate(ks, CAL)
+
+    portfolio = Portfolio(cash)
+    if held:
+        portfolio.apply_fill(Fill("seed", CMB, Side.BUY, held, 10.0, 0.0, T))
+        if settled:
+            portfolio.unfreeze()
+
+    broker = LiveBroker(
+        transport, STREAMS, risk_gate=gate,
+        risk_context_factory=lambda: RiskContext(
+            portfolio=portfolio, now=T, reference_price=10.0, day_start_value=cash
+        ),
+        constraints=ashare_pre_trade_pipeline(),
+        constraint_context_factory=lambda: ConstraintContext(
+            portfolio=portfolio, reference_price=10.0
+        ),
+    )
+    return broker, transport
+
+
+def test_unsettled_sell_is_blocked_before_the_broker(tmp_path):
+    """T+1 违规必须在核心侧被拦下，不得发到券商。"""
+    b, t = make_with_constraints(tmp_path, held=500, settled=False)
+    b.submit(order(Side.SELL, 500))
+    assert t.all_messages(STREAMS.orders) == []
+    assert "settled" in b.poll_rejects()[0].reason
+
+
+def test_settled_sell_passes_through(tmp_path):
+    b, t = make_with_constraints(tmp_path, held=500, settled=True)
+    b.submit(order(Side.SELL, 500))
+    assert len(t.all_messages(STREAMS.orders)) == 1
+
+
+def test_odd_lot_buy_is_rounded_down_before_sending(tmp_path):
+    b, t = make_with_constraints(tmp_path)
+    b.submit(order(Side.BUY, 250))
+    cmd = OrderCommand.from_payload(t.all_messages(STREAMS.orders)[0].payload)
+    assert cmd.qty == 200
+
+
+def test_short_sell_is_blocked(tmp_path):
+    b, t = make_with_constraints(tmp_path, held=0)
+    b.submit(order(Side.SELL, 100))
+    assert t.all_messages(STREAMS.orders) == []
+    assert "no position" in b.poll_rejects()[0].reason
+
+
+def test_constraints_are_optional(tmp_path):
+    """不提供约束时行为与原先一致——不破坏既有调用方。"""
+    b, t, _ = make(tmp_path)
+    b.submit(order(Side.BUY, 250))
+    cmd = OrderCommand.from_payload(t.all_messages(STREAMS.orders)[0].payload)
+    assert cmd.qty == 250
+
+
+def test_risk_gate_runs_before_constraints(tmp_path):
+    """kill switch 按下时不该再去算约束。"""
+    transport = MemoryTransport()
+    ks = KillSwitch(transport, local_path=tmp_path / "K")
+    ks.engage("halt")
+    portfolio = Portfolio(1_000_000.0)
+    b = LiveBroker(
+        transport, STREAMS, risk_gate=default_ashare_gate(ks, CAL),
+        risk_context_factory=lambda: RiskContext(
+            portfolio=portfolio, now=T, reference_price=10.0, day_start_value=1e6
+        ),
+        constraints=ashare_pre_trade_pipeline(),
+        constraint_context_factory=lambda: ConstraintContext(
+            portfolio=portfolio, reference_price=10.0
+        ),
+    )
+    b.submit(order(Side.SELL, 100))
+    assert "kill_switch" in b.poll_rejects()[0].reason

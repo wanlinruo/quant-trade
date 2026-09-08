@@ -66,3 +66,37 @@ def test_fee_buffer_is_configurable():
         portfolio=Portfolio(1000.0), reference_price=10.0, prev_close=10.0
     )
     assert ashare_pipeline(fee_buffer=0.0).apply(OrderIntent(CMB, Side.BUY, 500), ctx).allowed_qty == 100
+
+
+# --- 下单时刻可评估的约束子集 ---
+
+from qsys.core.constraints import ConstraintContext
+from qsys.core.portfolio import Portfolio
+from qsys.core.trading import OrderIntent
+from qsys.markets.ashare import ashare_pre_trade_pipeline
+
+
+def test_pre_trade_pipeline_excludes_market_dependent_rules():
+    """涨跌停与停牌依赖当时行情，核心侧下单时未必持有，留给券商。"""
+    names = ashare_pre_trade_pipeline().names
+    assert "price_limit" not in names
+    assert "suspension" not in names
+
+
+def test_pre_trade_pipeline_keeps_account_dependent_rules():
+    assert ashare_pre_trade_pipeline().names == (
+        "no_short", "settlement", "cash", "lot_size",
+    )
+
+
+def test_pre_trade_pipeline_still_puts_lot_size_last():
+    assert ashare_pre_trade_pipeline().names[-1] == "lot_size"
+
+
+def test_pre_trade_pipeline_enforces_t_plus_one():
+    p = Portfolio(100_000.0)
+    p.apply_fill(Fill("o", CMB, Side.BUY, 500, 10.0, 0.0, NOW))
+    ctx = ConstraintContext(portfolio=p, reference_price=10.0)
+    assert ashare_pre_trade_pipeline().apply(
+        OrderIntent(CMB, Side.SELL, 500), ctx
+    ).is_rejected
