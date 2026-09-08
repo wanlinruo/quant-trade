@@ -62,9 +62,61 @@ INGEST_LOG = pa.schema(
     ]
 )
 
+# --- 实盘会话日志。监控台只读这四张表 ---
+
+LIVE_EQUITY = pa.schema(
+    [
+        ("dt", pa.date32()),
+        ("cash", pa.float64()),
+        ("market_value", pa.float64()),
+        ("total_value", pa.float64()),
+    ]
+)
+
+LIVE_FILLS = pa.schema(
+    [
+        ("dt", pa.date32()),
+        ("client_order_id", pa.string()),
+        ("symbol", pa.string()),
+        ("side", pa.string()),
+        ("qty", pa.int64()),
+        ("price", pa.float64()),
+        ("fee", pa.float64()),
+        ("filled_at", pa.timestamp("us")),
+    ]
+)
+
+LIVE_REJECTS = pa.schema(
+    [
+        ("dt", pa.date32()),
+        ("client_order_id", pa.string()),
+        ("symbol", pa.string()),
+        ("qty", pa.int64()),
+        ("reason", pa.string()),
+        ("at", pa.timestamp("us")),
+    ]
+)
+
+LIVE_RECON = pa.schema(
+    [
+        ("dt", pa.date32()),
+        ("at", pa.timestamp("us")),
+        ("layer", pa.string()),  # intraday / eod / sim_vs_live
+        ("is_consistent", pa.bool_()),
+        ("cash_diff", pa.float64()),
+        ("n_mismatches", pa.int64()),
+        ("detail", pa.string()),
+    ]
+)
+
+
 PARTITIONED: dict[str, pa.Schema] = {
     "bars_daily": BARS_DAILY,
     "ingest_log": INGEST_LOG,
+    "live_equity": LIVE_EQUITY,
+    "live_fills": LIVE_FILLS,
+    "live_rejects": LIVE_REJECTS,
+    "live_recon": LIVE_RECON,
 }
 
 UNPARTITIONED: dict[str, pa.Schema] = {
