@@ -18,6 +18,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from qsys.web.config import WebConfig
+from qsys.web.data_views import DataService
 from qsys.web.svg import line_chart
 from qsys.web.views import MonitorService
 
@@ -26,7 +27,11 @@ log = structlog.get_logger(__name__)
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 
-def create_app(service: MonitorService, config: WebConfig) -> FastAPI:
+def create_app(
+    service: MonitorService,
+    config: WebConfig,
+    data: DataService | None = None,
+) -> FastAPI:
     app = FastAPI(title=config.title, docs_url=None, redoc_url=None)
 
     def _require_session(session: date) -> None:
@@ -37,6 +42,53 @@ def create_app(service: MonitorService, config: WebConfig) -> FastAPI:
         return TEMPLATES.TemplateResponse(
             request=request, name=template,
             context={"title": config.title, "session": session, "page": page, **ctx},
+        )
+
+    @app.get("/data", response_class=HTMLResponse)
+    def data_overview(request: Request):
+        if data is None:
+            raise HTTPException(status_code=404, detail="data console not enabled")
+        rows, symbols = data.warehouse_totals()
+        return TEMPLATES.TemplateResponse(
+            request=request, name="data_overview.html",
+            context={
+                "title": config.title, "session": None, "page": "data",
+                "coverage": data.coverage(), "total_rows": rows,
+                "total_symbols": symbols, "latest": data.latest_session(),
+            },
+        )
+
+    @app.get("/data/selection", response_class=HTMLResponse)
+    def data_selection(request: Request, tag: str | None = None):
+        if data is None:
+            raise HTTPException(status_code=404, detail="data console not enabled")
+        summary = data.selection_summary()
+        rate = f"{summary.allowed / summary.total * 100:.0f}%" if summary.total else "—"
+        return TEMPLATES.TemplateResponse(
+            request=request, name="data_selection.html",
+            context={
+                "title": config.title, "session": None, "page": "data_selection",
+                "summary": summary, "pass_rate": rate, "tag": tag,
+                "tags": data.selection_tags(),
+                "rows": data.selections(tag=tag),
+            },
+        )
+
+    @app.get("/data/regime", response_class=HTMLResponse)
+    def data_regime(request: Request):
+        if data is None:
+            raise HTTPException(status_code=404, detail="data console not enabled")
+        limit_up = data.regime_series("limit_up_count")
+        slope = data.regime_series("index_ma20_slope_5d")
+        return TEMPLATES.TemplateResponse(
+            request=request, name="data_regime.html",
+            context={
+                "title": config.title, "session": None, "page": "data_regime",
+                "rows": data.regime().sort("dt", descending=True).to_dicts(),
+                "limit_up": limit_up,
+                "limit_up_chart": line_chart(limit_up, stroke="#dc2626"),
+                "slope_chart": line_chart(slope),
+            },
         )
 
     @app.get("/healthz")
@@ -52,7 +104,8 @@ def create_app(service: MonitorService, config: WebConfig) -> FastAPI:
                 f"<title>{config.title}</title>"
                 "<body style='font-family:sans-serif;padding:40px;color:#475569'>"
                 "<h1 style='font-size:18px'>暂无会话数据</h1>"
-                "<p>实盘或影子会话尚未写入任何记录。</p></body>"
+                "<p>实盘或影子会话尚未写入任何记录。</p>"
+                "<p><a href='/data'>查看数据台 →</a></p></body>"
             )
         return RedirectResponse(f"/s/{latest}")
 
