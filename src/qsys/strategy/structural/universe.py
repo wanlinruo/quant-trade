@@ -7,8 +7,13 @@
 炸板对应 `get_ever_hl_stock2`（`close != high_limit and high == high_limit`），
 即 `is_broken_board`。
 
-**ST 过滤不实现**：无历史 ST 数据。但涨跌停按 10% 判定，ST 股（5%）本就
-不会被判成涨停，进不了候选池，方向等效——见 docs/reference/README.md。
+**ST 过滤靠反推**：免费源没有历史 ST 名单，但 `daily_flags.limit_pct`
+记下了每个股-日实际生效的涨跌幅（0.05 即反推出的 ST）。首板候选按定义
+就是收在涨停价上的，若它是 ST 必然被检出——所以对候选池而言这个代理
+是**充分的**，对应原策略的 `filter_st_paused_stock`（原文 L1397）。
+
+注意生态因子池**不**排 ST（原文 `_s5_relevant_universe` 只排科创与北交），
+两处口径不同，别混用。
 """
 
 from __future__ import annotations
@@ -73,6 +78,11 @@ def candidate_pool(
         return listed is not None and listed < cutoff
 
     yesterday = flags.filter(pl.col("dt") == previous)
+    # filter_st_paused_stock：ST 由 limit_pct == 0.05 反推得到
+    if "limit_pct" in yesterday.columns:
+        yesterday = yesterday.filter(
+            pl.col("limit_pct").is_null() | (pl.col("limit_pct") > 0.05 + 1e-9)
+        )
     return PoolResult(
         sorted(
             s

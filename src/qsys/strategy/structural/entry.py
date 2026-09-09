@@ -41,19 +41,25 @@ LOT = 100  # 日线 volume 单位是手，换算成股要乘 100
 def check_low_open(history: pl.DataFrame, auction_price: float | None) -> bool:
     """低开入场（原文 L1201-L1221）。
 
-    `history` 为截至昨日的日线，需满 60 根。
+    `history` 为截至昨日的日线，需满 60 根。**只取最近 60 根**——
+    原策略是 `attribute_history(stock, 60, ...)`，调用方为了
+    `check_left_pressure` 会传 101 根，多出来的不能参与相对位置计算。
+
+    与聚宽对账时这个差别让 25 条本该选中的候选被漏掉：更早的低点会把
+    相对位置整个抬上去，实测有一例 60 根算 0.276、101 根算 0.603。
     """
     if auction_price is None or history.height < LOW_HISTORY_DAYS:
         return False
 
-    close = history["close"].to_list()[-1]
-    high = history["high"].max()
-    low = history["low"].min()
+    window = history.tail(LOW_HISTORY_DAYS)
+    close = window["close"].to_list()[-1]
+    high = window["high"].max()
+    low = window["low"].min()
     if high <= low:
         return False
 
     relative_position = (close - low) / (high - low)
-    money = history["amount"].to_list()[-1]
+    money = window["amount"].to_list()[-1]
     if relative_position > LOW_RELATIVE_POSITION_MAX or money < LOW_MIN_MONEY:
         return False
 

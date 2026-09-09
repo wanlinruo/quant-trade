@@ -169,3 +169,50 @@ def test_empty_flags_yield_nothing():
     )
     assert pool.first_boards == []
     assert pool.broken_boards == []
+
+
+def flags_with_limit(rows):
+    """rows: [(symbol, dt, is_first_board, limit_pct)]"""
+    n = len(rows)
+    return pl.DataFrame(
+        {
+            "dt": [r[1] for r in rows],
+            "symbol": [r[0] for r in rows],
+            "prev_close": [10.0] * n,
+            "limit_up": [11.0] * n,
+            "limit_down": [9.0] * n,
+            "is_limit_up": [r[2] for r in rows],
+            "is_limit_down": [False] * n,
+            "touched_limit_up": [r[2] for r in rows],
+            "is_broken_board": [False] * n,
+            "is_first_board": [r[2] for r in rows],
+            "limit_pct": [r[3] for r in rows],
+        }
+    )
+
+
+def test_st_stocks_are_excluded_from_the_pool():
+    """对应原策略 filter_st_paused_stock。ST 由 limit_pct == 0.05 反推。"""
+    pool = candidate_pool(
+        flags_with_limit(
+            [
+                ("600001.SH", D[1], True, 0.05),
+                ("600002.SH", D[1], True, 0.10),
+            ]
+        ),
+        listed_since=listed("600001.SH", "600002.SH"),
+        day=D[2],
+        previous=D[1],
+    )
+    assert pool.first_boards == ["600002.SH"]
+
+
+def test_a_null_limit_pct_is_not_treated_as_st():
+    """老分区没有这一列时不该把所有票当成 ST 排掉。"""
+    pool = candidate_pool(
+        flags_with_limit([("600001.SH", D[1], True, None)]),
+        listed_since=listed("600001.SH"),
+        day=D[2],
+        previous=D[1],
+    )
+    assert pool.first_boards == ["600001.SH"]

@@ -303,3 +303,28 @@ def test_a_present_auction_volume_is_still_checked_in_loose_mode():
         )
         is False
     )
+
+
+def test_low_open_uses_exactly_sixty_bars_for_the_range():
+    """相对位置只看最近 60 根，多给的历史不能参与计算。
+
+    原策略是 attribute_history(stock, 60, ...)。与聚宽对账时这个 bug 让
+    25 条本该选中的候选被漏掉——更早的低点会把相对位置整个抬上去，
+    实测有一例 60 根算 0.276、101 根算 0.603。
+    """
+    # 最近 60 根：低点 9.5、高点 14.0、收盘 10.0 -> rp = 0.111 通过
+    # 更早 41 根：低点 2.0 -> 若参与计算 rp = (10-2)/(14-2) = 0.667 拒绝
+    old = [10.0] * 41
+    recent = [12.0] * 59 + [10.0]
+    h = history(
+        old + recent,
+        highs=[14.0] * 101,
+        lows=[2.0] * 41 + [9.5] * 60,
+        moneys=[2e8] * 101,
+    )
+    assert check_low_open(h, auction_price=9.6) is True
+
+
+def test_low_open_still_needs_sixty_bars():
+    h = history([10.0] * 59, highs=[14.0] * 59, lows=[9.5] * 59)
+    assert check_low_open(h, auction_price=9.6) is False

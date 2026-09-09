@@ -15,6 +15,7 @@ high/low/close 可见时刻不同。策略判低开/高开正是用它。为此�
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import date, datetime, time
 
 import polars as pl
@@ -24,6 +25,12 @@ from qsys.data.query import WarehouseQuery
 
 # QMT 的开盘集合竞价 bar 以 09:30 标注（收盘时刻约定）
 AUCTION_AT = time(9, 30)
+
+
+@dataclass(frozen=True, slots=True)
+class IntradayQuote:
+    price: float  # 该时刻的最新价
+    volume: int  # 截至该时刻的累计成交量（手）
 
 
 class BoundMarket:
@@ -76,6 +83,53 @@ class BoundMarket:
         if bars.height == 0:
             return {}
         return dict(zip(bars["symbol"].to_list(), bars["open"].to_list()))
+
+    def intraday(
+        self, symbols: Sequence[str], day: date, at: time
+    ) -> dict[str, IntradayQuote]:
+        """某时刻的最新价与截至该时刻的累计成交量。
+
+        取不晚于 `at` 的最后一根分钟线。累计量用于成交量上限——拿全日量
+        会让盘中撮合放行超出当时实际可成交的数量，是回测乐观的常见来源。
+
+        **超过 as_of 的时刻一律拿不到**：在 11:25 问 14:50 的价是未来函数。
+        """
+        moment = datetime.combine(day, at)
+        if moment > self._as_of:
+            return {}
+        bars = self._query.minute_bars(
+            list(symbols), datetime.combine(day, time(0, 0)), moment
+        )
+        if bars.height == 0:
+            return {}
+        latest = (
+            bars.sort(["symbol", "dt"])
+            .group_by("symbol", maintain_order=True)
+            .agg(
+                pl.col("close").last().alias("price"),
+                pl.col("volume").sum().alias("volume"),
+            )
+        )
+        return {
+            row["symbol"]: IntradayQuote(float(row["price"]), int(row["volume"]))
+            for row in latest.iter_rows(named=True)
+        }
+
+    def limit_up_price(self, symbols: Sequence[str], day: date) -> dict[str, float]:
+        """当日涨停价，09:30 起可见。
+
+        涨停价由**昨收**算出，昨日收盘即已确定，因此不该像 high/low/close
+        那样锁到当日收盘。没有前收的日子（标的首个 bar）返回缺失，不编造。
+        """
+        if not self._open_is_visible(day):
+            return {}
+        flags = self._query.daily_flags(day, day)
+        if flags.height == 0:
+            return {}
+        hit = flags.filter(
+            pl.col("symbol").is_in(list(symbols)) & pl.col("limit_up").is_not_null()
+        )
+        return dict(zip(hit["symbol"].to_list(), hit["limit_up"].to_list()))
 
     def auction_volume(self, symbols: Sequence[str], day: date) -> dict[str, int]:
         """集合竞价成交量，取自分钟线 09:30 那根。取不到返回空。"""

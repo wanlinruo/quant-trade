@@ -11,6 +11,12 @@
 `prior_limitup_nextday_return` 要看昨日的涨停状态，跨年那一天没有回看
 就会算空。
 
+**股票池排除科创板与北交所**，与原策略 `_s5_relevant_universe`
+（`filter_kcbj_stock`：排除 4/8/68 开头）一致。科创板涨跌幅是 20%，
+收益分布与主板不同；`market_median_return_1d` 的判定阈值只有 0.00426，
+混进去足以翻转 Gate 判定——与聚宽对账时实测有 19 条因此分歧。
+B 股（900/200）不在排除之列，照抄原口径不多排。
+
 `index_ma20_slope_5d` 取自沪深 300 指数日线（`index_bars`）：
 MA20 相对 5 个交易日前的 MA20 的变化率。**没有指数数据时留空而不是填 0**——
 S6 Gate 对 None 走 UNKNOWN_ALLOW，填 0 会被当成真实的「趋势走平」。
@@ -31,6 +37,9 @@ from qsys.data.storage import Warehouse
 log = structlog.get_logger(__name__)
 
 _LOOKBACK_DAYS = 30
+
+# 与原策略 filter_kcbj_stock 一致：4/8 开头是北交所，68 开头是科创板
+EXCLUDED_CODE_PREFIXES = ("4", "8", "68")
 
 _REGIME_COLUMNS = [
     "dt",
@@ -63,8 +72,8 @@ def build_market_regime(warehouse: Warehouse, start: date, end: date) -> int:
             continue
 
         back = lo - timedelta(days=_LOOKBACK_DAYS)
-        bars = query.daily_bars(None, back, hi)
-        flags = query.daily_flags(back, hi)
+        bars = _in_breadth_universe(query.daily_bars(None, back, hi))
+        flags = _in_breadth_universe(query.daily_flags(back, hi))
         if bars.height == 0 or flags.height == 0:
             continue
 
@@ -88,6 +97,17 @@ def build_market_regime(warehouse: Warehouse, start: date, end: date) -> int:
 
     log.info("market_regime.built", rows=written, start=str(start), end=str(end))
     return written
+
+
+def _in_breadth_universe(frame: pl.DataFrame) -> pl.DataFrame:
+    """剔除科创板与北交所。"""
+    if frame.height == 0:
+        return frame
+    code = pl.col("symbol").str.split(".").list.first()
+    excluded = code.str.starts_with(EXCLUDED_CODE_PREFIXES[0])
+    for prefix in EXCLUDED_CODE_PREFIXES[1:]:
+        excluded = excluded | code.str.starts_with(prefix)
+    return frame.filter(~excluded)
 
 
 def _aggregate(bars: pl.DataFrame, flags: pl.DataFrame) -> pl.DataFrame:

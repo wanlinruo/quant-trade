@@ -102,6 +102,7 @@ DAILY_FLAGS = pa.schema(
         ("touched_limit_up", pa.bool_()),  # 盘中触及涨停（含封住）
         ("is_broken_board", pa.bool_()),  # 炸板：触及但未封住
         ("is_first_board", pa.bool_()),  # 首板：今日涨停且昨日未涨停
+        ("limit_pct", pa.float64()),  # 实际生效的涨跌幅：0.10 按板块，0.05 为反推出的 ST
     ]
 )
 

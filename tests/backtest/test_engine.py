@@ -188,3 +188,18 @@ def test_empty_strategy_keeps_initial_cash():
     result = engine(Strategy()).run(SESSIONS[0], SESSIONS[-1])
     assert result.final_value == 100_000.0
     assert result.fills == ()
+
+
+def test_run_id_and_equity_are_pinned():
+    """把可复现性钉成自动化断言，而不是每次手工核对。
+
+    spec §8.4 要求同一份输入在任何机器上给出同一个 run_id 与同一条净值。
+    此前这条只在部署时手工验过一次；引擎每被扩展一次，它就该在这里挡一次。
+
+    **这两个值不该因为引擎新增能力而变化。** 若确实需要变（例如撮合规则
+    修正），改动这里必须是有意为之，并在提交信息里写明为什么。
+    """
+    result = engine(BuyFirstBar()).run(SESSIONS[0], SESSIONS[-1])
+    assert result.run_id == "e08686634462e987"
+    assert result.final_value == pytest.approx(101_200.0)
+    assert len(result.fills) == 1
