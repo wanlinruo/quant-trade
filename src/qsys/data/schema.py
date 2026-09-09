@@ -31,6 +31,18 @@ BARS_DAILY = pa.schema(
     ]
 )
 
+SHARE_CAPITAL = pa.schema(
+    [
+        ("symbol", pa.string()),
+        # 股本生效日（QMT m_timetag）。股本是公开可即时观察的事实，交易所
+        # 每日据此发布总市值，故以生效日而非公告日为准。
+        ("dt", pa.date32()),
+        ("ann_date", pa.date32()),  # 公告日，留作更严格 PIT 口径的口子
+        ("total", pa.float64()),  # 总股本（股）
+        ("circulating", pa.float64()),  # 流通股本（股）
+    ]
+)
+
 MINUTE_BARS = pa.schema(
     [
         ("symbol", pa.string()),
@@ -187,6 +199,7 @@ UNPARTITIONED: dict[str, pa.Schema] = {
     "instruments": INSTRUMENTS,
     "corporate_actions": CORPORATE_ACTIONS,
     "adj_factors": ADJ_FACTORS,
+    "share_capital": SHARE_CAPITAL,
 }
 
 ALL: dict[str, pa.Schema] = {**PARTITIONED, **UNPARTITIONED}

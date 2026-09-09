@@ -26,10 +26,12 @@ import structlog
 
 from qsys.core.calendar import AShareCalendar, last_closed_session
 from qsys.data.pipeline.candidates import candidate_stock_days, write_manifest
+from qsys.data.pipeline.capital import import_share_capital
 from qsys.data.pipeline.flags import build_daily_flags
 from qsys.data.pipeline.minutes import import_minute_bars, missing_stock_days
 from qsys.data.pipeline.instruments import build_instruments
 from qsys.data.pipeline.regime import build_market_regime
+from qsys.data.pipeline.valuation import build_valuation
 from qsys.data.pipeline.universe import ingest_universe
 from qsys.data.providers.akshare_provider import AkshareProvider
 from qsys.data.providers.mootdx_provider import MootdxProvider
@@ -66,6 +68,8 @@ def main() -> int:
     parser.add_argument("--boards", default="main,gem,star")
     parser.add_argument("--batch-size", type=int, default=500)
     parser.add_argument("--skip-minutes", action="store_true")
+    parser.add_argument("--skip-capital", action="store_true")
+    parser.add_argument("--win-capital-script", default=r"C:\qsys\win_download_capital.py")
     parser.add_argument("--win-host", default="Administrator@118.25.42.149")
     parser.add_argument("--win-key", default="~/.ssh/id_ed25519_winnode")
     parser.add_argument("--win-python", default=r"C:\qsys\.venv\Scripts\python.exe")
@@ -113,6 +117,40 @@ def main() -> int:
     print(f"涨跌停标记 {build_daily_flags(warehouse, derived_from, complete_through)} 行")
     print(f"生态因子 {build_market_regime(warehouse, derived_from, complete_through)} 行")
 
+    # --- 3b. 股本与估值 ---
+    key = str(Path(args.win_key).expanduser())
+    ssh = ["ssh", "-i", key, "-o", "BatchMode=yes", "-o", "ConnectTimeout=20",
+           args.win_host]
+    stamp = complete_through.strftime("%Y%m%d")
+
+    if not args.skip_capital:
+        # 股本变动是事件驱动的，全市场重下只要约 5 分钟，比算增量更省事
+        cap_dir = f"{args.win_root}/capital_{stamp}"
+        cap_local = Path("var/capital-incoming")
+        cap_local.mkdir(parents=True, exist_ok=True)
+        symbols_csv = Path("var/symbols.csv")
+        instruments.select("symbol").write_csv(symbols_csv)
+
+        run(ssh + [f"New-Item -ItemType Directory -Force -Path {cap_dir} | Out-Null"],
+            what="建股本目录")
+        run(["scp", "-i", key, "-o", "BatchMode=yes", str(symbols_csv),
+             f"{args.win_host}:{cap_dir}/symbols.csv"], what="上传标的清单")
+        run(ssh + [
+            f'$env:PYTHONIOENCODING="utf-8"; {args.win_python} -u '
+            f'{args.win_capital_script} --symbols {cap_dir}\\symbols.csv '
+            f'--out {cap_dir}'
+        ], what="Windows 下载股本", timeout=3600)
+        run(["scp", "-i", key, "-o", "BatchMode=yes",
+             f"{args.win_host}:{cap_dir}/*.parquet", str(cap_local)],
+            what="回传股本")
+        cap_result = import_share_capital(
+            warehouse, cap_local, archive_dir=Path("var/capital-done")
+        )
+        print(f"股本 {cap_result.files} 文件 / {cap_result.rows:,} 行 / "
+              f"{cap_result.errors} 错误")
+
+    print(f"估值 {build_valuation(warehouse, derived_from, complete_through):,} 行")
+
     if args.skip_minutes:
         print("按要求跳过分钟线")
         return 0
@@ -126,15 +164,11 @@ def main() -> int:
         print(f"=== 完成，耗时 {(time.time()-started)/60:.1f} 分钟 ===")
         return 0
 
-    stamp = complete_through.strftime("%Y%m%d")
     local_dir = Path("var/minutes-incoming")
     local_dir.mkdir(parents=True, exist_ok=True)
     manifest = Path("var") / f"manifest_{stamp}.csv"
     write_manifest(missing, manifest)
 
-    key = str(Path(args.win_key).expanduser())
-    ssh = ["ssh", "-i", key, "-o", "BatchMode=yes", "-o", "ConnectTimeout=20",
-           args.win_host]
     win_dir = f"{args.win_root}/{stamp}"
     win_manifest = f"{win_dir}/manifest.csv"
 

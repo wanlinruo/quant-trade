@@ -161,3 +161,50 @@ def test_minute_bars_on_empty_warehouse(warehouse: Warehouse):
     )
     assert df.height == 0
     assert df.columns == list(schema.MINUTE_BARS.names)
+
+
+def test_share_capital_round_trips(warehouse: Warehouse):
+    import pyarrow as pa
+
+    warehouse.write(
+        "share_capital",
+        pa.table(
+            {
+                "symbol": ["600036.SH", "600036.SH"],
+                "dt": [date(2023, 3, 31), date(2023, 6, 30)],
+                "ann_date": [date(2023, 3, 31), date(2023, 6, 30)],
+                "total": [2.521985e10, 2.521985e10],
+                "circulating": [2.062894e10, 2.062894e10],
+            },
+            schema=schema.SHARE_CAPITAL,
+        ),
+    )
+    df = WarehouseQuery(warehouse).share_capital()
+    assert df.height == 2
+    assert df.columns == list(schema.SHARE_CAPITAL.names)
+
+
+def test_share_capital_filters_by_symbol(warehouse: Warehouse):
+    import pyarrow as pa
+
+    warehouse.write(
+        "share_capital",
+        pa.table(
+            {
+                "symbol": ["600036.SH", "000001.SZ"],
+                "dt": [date(2023, 3, 31)] * 2,
+                "ann_date": [date(2023, 3, 31)] * 2,
+                "total": [1.0, 2.0],
+                "circulating": [1.0, 2.0],
+            },
+            schema=schema.SHARE_CAPITAL,
+        ),
+    )
+    df = WarehouseQuery(warehouse).share_capital(["600036.SH"])
+    assert df["symbol"].to_list() == ["600036.SH"]
+
+
+def test_share_capital_on_empty_warehouse(warehouse: Warehouse):
+    df = WarehouseQuery(warehouse).share_capital()
+    assert df.height == 0
+    assert df.columns == list(schema.SHARE_CAPITAL.names)
