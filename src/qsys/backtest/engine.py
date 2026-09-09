@@ -21,7 +21,7 @@ import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, time
 
 import polars as pl
 import structlog
@@ -72,6 +72,9 @@ class BacktestEngine:
         corporate_actions: Mapping[date, Sequence[CorporateAction]] | None = None,
         params: Mapping[str, object] | None = None,
         boards: Mapping[Symbol, str] | None = None,
+        checkpoints: Sequence[time] = (),
+        intraday: object | None = None,
+        market: object | None = None,
     ) -> None:
         self._strategy = strategy
         self._feed = feed
@@ -85,6 +88,11 @@ class BacktestEngine:
         self._actions = dict(corporate_actions or {})
         self._params = dict(params or {})
         self._boards = dict(boards or {})
+        # 盘中检查点。不配则引擎行为与原来逐字节相同。
+        self._checkpoints = tuple(sorted(checkpoints))
+        # intraday(session, at, symbols) -> {symbol: (price, 截至该时刻的成交量)}
+        self._intraday = intraday
+        self._market = market
 
     def _run_id(self, start: date, end: date) -> str:
         payload = json.dumps(
@@ -96,6 +104,13 @@ class BacktestEngine:
                 "initial_cash": self._initial_cash,
                 "volume_cap": self._volume_cap,
                 "params": {k: str(v) for k, v in sorted(self._params.items())},
+                # 只在配了检查点时才进入 run_id：不配时哈希必须与扩展前一致，
+                # 否则既有回测的 run_id 全变，可复现性就断了。
+                **(
+                    {"checkpoints": [t.isoformat() for t in self._checkpoints]}
+                    if self._checkpoints
+                    else {}
+                ),
             },
             sort_keys=True,
         )
@@ -117,6 +132,33 @@ class BacktestEngine:
             )
         return by_session
 
+    def _quotes_at(self, session: date, at: time, portfolio) -> dict[Symbol, tuple]:
+        """检查点报价。只问持仓里的标的——检查点只做退出。"""
+        if self._intraday is None:
+            return {}
+        held = [s for s, p in portfolio.positions.items() if p.total_qty > 0]
+        if not held:
+            return {}
+        return dict(self._intraday(session, at, held) or {})
+
+    def _checkpoint_snapshot(self, session, quotes, prev_closes) -> MarketSnapshot:
+        """把检查点报价包成快照。
+
+        SimBroker 按 `bar.open` 撮合，故此处把该时刻的价格放进 open——
+        约束、滑点、费用、成交量上限全部复用既有那一条路径，不另写撮合。
+        """
+        bars = {
+            symbol: Bar(
+                symbol=symbol, dt=session, open=price, high=price, low=price,
+                close=price, volume=volume, amount=price * volume,
+            )
+            for symbol, (price, volume) in quotes.items()
+        }
+        return MarketSnapshot(
+            session=session, bars=bars, prev_closes=dict(prev_closes),
+            boards=self._boards,
+        )
+
     def run(self, start: date, end: date) -> BacktestResult:
         from qsys.strategy.context import Context, PortfolioView
         from qsys.strategy.orders import OrderApi
@@ -134,7 +176,7 @@ class BacktestEngine:
         portfolio = Portfolio(self._initial_cash)
         broker = SimBroker(portfolio, self._pipeline, self._fees, self._slippage,
                            volume_cap=self._volume_cap)
-        clock = BacktestClock(self._calendar, start, end)
+        clock = BacktestClock(self._calendar, start, end, self._checkpoints)
         state: dict[str, object] = {}
 
         all_fills: list[Fill] = []
@@ -148,7 +190,8 @@ class BacktestEngine:
             view = PortfolioView.of(portfolio, prices)
             api = OrderApi(view, prices)
             return Context(clock, self._feed, view, api,
-                           params=self._params, state=state), api
+                           params=self._params, state=state,
+                           market=self._market), api
 
         def flush(api, at: datetime) -> None:
             nonlocal order_seq
@@ -185,6 +228,24 @@ class BacktestEngine:
                     fill_ctx, fill_api = make_ctx(last_close)
                     self._strategy.on_fill(fill_ctx, fill)
                     flush(fill_api, moment)
+
+            elif phase is Phase.CHECKPOINT:
+                # 钩子总是触发：「没持仓」与「没分钟线」是两回事，不能混为一谈。
+                # 撮合只按实际拿到的报价来——没有报价的标的会被 SimBroker 以
+                # 「no bar for this session」拒单并留痕，绝不拿收盘价冒充。
+                quotes = self._quotes_at(session, moment.time(), portfolio)
+                prices = {s: q[0] for s, q in quotes.items()}
+                ctx, api = make_ctx({**last_close, **prices})
+                self._strategy.on_checkpoint(ctx, moment.time())
+                flush(api, moment)
+
+                broker.on_market_data(
+                    self._checkpoint_snapshot(session, quotes, prev_closes), moment
+                )
+                all_rejects.extend(broker.poll_rejects())
+                for fill in broker.poll_fills():
+                    portfolio.apply_fill(fill)
+                    all_fills.append(fill)
 
             elif phase is Phase.BAR:
                 for symbol, bar in bars.items():

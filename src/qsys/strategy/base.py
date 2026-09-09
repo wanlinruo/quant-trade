@@ -17,6 +17,13 @@ class Strategy:
     def on_session_start(self, ctx: Any) -> None:
         """每日盘前：选股、算目标仓位。此时当日 bar 尚不可见。"""
 
+    def on_checkpoint(self, ctx: Any, at: Any) -> None:
+        """盘中检查点。`at` 是该检查点的时刻（datetime.time）。
+
+        此时只有该时刻及更早的分钟线可见，当日 bar 尚不可见。
+        在此提交的订单**当场按该时刻价格成交**，不排到次日开盘。
+        """
+
     def on_bar(self, ctx: Any, bars: Mapping[Any, Any]) -> None:
         """主逻辑。此时当日 bar 已可见，下单将在下一交易日开盘成交。"""
 

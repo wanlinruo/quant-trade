@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from datetime import date, datetime, time
 from enum import StrEnum
 
@@ -16,6 +16,7 @@ from qsys.core.calendar import TradingCalendar
 
 class Phase(StrEnum):
     SESSION_START = "session_start"  # 盘前：当日 bar 尚不可见
+    CHECKPOINT = "checkpoint"  # 盘中某时刻：只有当时及更早的分钟线可见
     BAR = "bar"  # 收盘：当日 bar 可见
     SESSION_END = "session_end"  # 收盘后：记录与复盘
 
@@ -30,9 +31,17 @@ class BacktestClock(Clock):
     PRE_OPEN = time(9, 15)
     POST_CLOSE = time(15, 30)
 
-    def __init__(self, calendar: TradingCalendar, start: date, end: date) -> None:
+    def __init__(
+        self,
+        calendar: TradingCalendar,
+        start: date,
+        end: date,
+        checkpoints: Sequence[time] = (),
+    ) -> None:
         self._calendar = calendar
         self._sessions = calendar.sessions_in_range(start, end)
+        # 盘中检查点，按时间先后推进。不配则时钟行为与原来完全一致。
+        self._checkpoints = tuple(sorted(checkpoints))
         self._now: datetime | None = None
         self._session: date | None = None
 
@@ -49,10 +58,15 @@ class BacktestClock(Clock):
     def ticks(self) -> Iterator[tuple[datetime, Phase]]:
         for session in self._sessions:
             self._session = session
-            for moment, phase in (
-                (datetime.combine(session, self.PRE_OPEN), Phase.SESSION_START),
+            moments = [(datetime.combine(session, self.PRE_OPEN), Phase.SESSION_START)]
+            moments += [
+                (datetime.combine(session, at), Phase.CHECKPOINT)
+                for at in self._checkpoints
+            ]
+            moments += [
                 (self._calendar.close_time(session), Phase.BAR),
                 (datetime.combine(session, self.POST_CLOSE), Phase.SESSION_END),
-            ):
+            ]
+            for moment, phase in moments:
                 self._now = moment
                 yield moment, phase

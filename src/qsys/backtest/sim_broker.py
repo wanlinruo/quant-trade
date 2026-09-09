@@ -66,8 +66,15 @@ class SimBroker(Broker):
         self._rejects.clear()
         return drained
 
-    def on_market_data(self, snapshot: MarketSnapshot) -> None:
-        at = datetime.combine(snapshot.session, _OPEN_TIME)
+    def on_market_data(
+        self, snapshot: MarketSnapshot, at: datetime | None = None
+    ) -> None:
+        """撮合排队中的订单。
+
+        `at` 只影响回报与拒单的时间戳；不给则按当日开盘时刻，
+        与日频回测原来的行为一致。
+        """
+        at = at if at is not None else datetime.combine(snapshot.session, _OPEN_TIME)
         queued, self._pending = self._pending, []
         for order in queued:
             self._match(order, snapshot, at)
