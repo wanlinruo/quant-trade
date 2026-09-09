@@ -84,6 +84,17 @@ MARKET_REGIME = pa.schema(
     ]
 )
 
+VALUATION_SNAPSHOT = pa.schema(
+    [
+        ("dt", pa.date32()),
+        ("symbol", pa.string()),
+        ("close", pa.float64()),
+        ("market_cap", pa.float64()),  # 总市值（元）
+        ("circulating_market_cap", pa.float64()),  # 流通市值（元）
+        ("turnover_ratio", pa.float64()),  # 换手率（%）
+    ]
+)
+
 INGEST_LOG = pa.schema(
     [
         ("dataset", pa.string()),
@@ -148,6 +159,7 @@ PARTITIONED: dict[str, pa.Schema] = {
     "bars_daily": BARS_DAILY,
     "daily_flags": DAILY_FLAGS,
     "market_regime": MARKET_REGIME,
+    "valuation_snapshot": VALUATION_SNAPSHOT,
     "ingest_log": INGEST_LOG,
     "live_equity": LIVE_EQUITY,
     "live_fills": LIVE_FILLS,

@@ -69,3 +69,25 @@ def test_empty_symbol_list_returns_nothing(warehouse: Warehouse):
     _seed(warehouse)
     q = WarehouseQuery(warehouse)
     assert q.daily_bars([], date(2024, 1, 1), date(2024, 12, 31)).height == 0
+
+
+def test_partitioned_reads_do_not_leak_the_hive_partition_column(warehouse: Warehouse):
+    """分区目录名是 year=2024，duckdb 会据此自动多返回一列 year。
+
+    多出来的列会让「读出来 → 合并 → 写回去」在 concat 或 cast 处炸掉，
+    而空仓库路径又走不到这个分支，很容易漏。
+    """
+    import pyarrow as pa
+
+    cases = [
+        ("daily_flags", schema.DAILY_FLAGS, lambda q: q.daily_flags()),
+        ("market_regime", schema.MARKET_REGIME, lambda q: q.market_regime()),
+        ("valuation_snapshot", schema.VALUATION_SNAPSHOT, lambda q: q.valuation()),
+    ]
+    for dataset, arrow_schema, read in cases:
+        warehouse.write(dataset, pa.table(
+            {f.name: pa.array([], type=f.type) for f in arrow_schema},
+            schema=arrow_schema,
+        ), year=2024)
+        df = read(WarehouseQuery(warehouse))
+        assert df.columns == list(arrow_schema.names), dataset

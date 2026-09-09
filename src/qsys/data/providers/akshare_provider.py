@@ -75,6 +75,11 @@ class _AkshareApi:
 
         return ak.stock_info_sz_delist()
 
+    def spot(self):
+        import akshare as ak
+
+        return ak.stock_zh_a_spot_em()
+
     def dividends(self, code: str):
         import akshare as ak
 
@@ -100,6 +105,21 @@ def _to_date_series(values: pl.Series) -> pl.Series:
         .str.replace_all(r"[^0-9]", "")
         .str.strptime(pl.Date, format="%Y%m%d", strict=False)
     )
+
+
+def _as_float(value) -> float:
+    """空值一律归零。
+
+    停牌股的市值字段常缺，而 akshare 给的是 NaN 不是 None——NaN 是真值，
+    `value or 0.0` 会原样放行，float("nan") 再一路污染下游聚合。
+    """
+    if value is None:
+        return 0.0
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    return 0.0 if number != number else number
 
 
 def _zeroed(column: str) -> pl.Expr:
@@ -214,3 +234,40 @@ class AkshareProvider(ReferenceProvider):
             .sort("ex_date")
             .select(ACTION_COLUMNS)
         )
+
+    _VALUATION_SCHEMA = {
+        "symbol": pl.Utf8,
+        "close": pl.Float64,
+        "market_cap": pl.Float64,
+        "circulating_market_cap": pl.Float64,
+        "turnover_ratio": pl.Float64,
+    }
+
+    def fetch_valuation_snapshot(self) -> pl.DataFrame:
+        """全市场当日估值快照。一次调用拿全市场，不逐只查询。
+
+        **已知缺口**：本接口只有当日数据，历史估值从首次采集之日起累积。
+        更早的历史需另寻数据源。
+        """
+        empty = pl.DataFrame(schema=self._VALUATION_SCHEMA)
+        raw = pl.from_pandas(self._api.spot())
+        if raw.height == 0:
+            return empty
+
+        rows: list[dict] = []
+        for row in raw.iter_rows(named=True):
+            try:
+                symbol = normalize_symbol(str(row["代码"]))
+            except ValueError:
+                log.warning("valuation.unknown_code", code=row["代码"])
+                continue
+            rows.append(
+                {
+                    "symbol": symbol,
+                    "close": _as_float(row.get("最新价")),
+                    "market_cap": _as_float(row.get("总市值")),
+                    "circulating_market_cap": _as_float(row.get("流通市值")),
+                    "turnover_ratio": _as_float(row.get("换手率")),
+                }
+            )
+        return pl.DataFrame(rows, schema=self._VALUATION_SCHEMA) if rows else empty

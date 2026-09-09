@@ -59,7 +59,11 @@ class WarehouseQuery:
         glob = self._glob("daily_flags", partitioned=True)
         if glob is None:
             return _empty(schema.DAILY_FLAGS)
-        sql = f"SELECT * FROM read_parquet('{glob}')"
+        # 列名必须显式列出：分区目录名形如 year=2024，duckdb 会据此
+        # 自动推断 hive 分区并多返回一列 year，SELECT * 拿到的宽度与
+        # schema 不符，写回时 concat/cast 都会炸。
+        columns = ", ".join(schema.DAILY_FLAGS.names)
+        sql = f"SELECT {columns} FROM read_parquet('{glob}')"
         params: list[object] = []
         if start is not None and end is not None:
             sql += " WHERE dt BETWEEN ? AND ?"
@@ -72,12 +76,33 @@ class WarehouseQuery:
         glob = self._glob("market_regime", partitioned=True)
         if glob is None:
             return _empty(schema.MARKET_REGIME)
-        sql = f"SELECT * FROM read_parquet('{glob}')"
+        # 列名必须显式列出：分区目录名形如 year=2024，duckdb 会据此
+        # 自动推断 hive 分区并多返回一列 year，SELECT * 拿到的宽度与
+        # schema 不符，写回时 concat/cast 都会炸。
+        columns = ", ".join(schema.MARKET_REGIME.names)
+        sql = f"SELECT {columns} FROM read_parquet('{glob}')"
         params: list[object] = []
         if start is not None and end is not None:
             sql += " WHERE dt BETWEEN ? AND ?"
             params = [start, end]
         return self._con.execute(sql + " ORDER BY dt", params).pl()
+
+    def valuation(
+        self, start: date | None = None, end: date | None = None
+    ) -> pl.DataFrame:
+        glob = self._glob("valuation_snapshot", partitioned=True)
+        if glob is None:
+            return _empty(schema.VALUATION_SNAPSHOT)
+        # 列名必须显式列出：分区目录名形如 year=2024，duckdb 会据此
+        # 自动推断 hive 分区并多返回一列 year，SELECT * 拿到的宽度与
+        # schema 不符，写回时 concat/cast 都会炸。
+        columns = ", ".join(schema.VALUATION_SNAPSHOT.names)
+        sql = f"SELECT {columns} FROM read_parquet('{glob}')"
+        params: list[object] = []
+        if start is not None and end is not None:
+            sql += " WHERE dt BETWEEN ? AND ?"
+            params = [start, end]
+        return self._con.execute(sql + " ORDER BY dt, symbol", params).pl()
 
     def _read_unpartitioned(
         self,
