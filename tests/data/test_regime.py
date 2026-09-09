@@ -250,3 +250,33 @@ def test_index_slope_is_positive_on_a_rising_index(warehouse):
     row = regime_of(warehouse, days[-1])
     # 最近 20 根均值 = closes[10..29] = 3995；5 根之前的 20 根均值 = closes[5..24] = 3945
     assert row["index_ma20_slope_5d"] == pytest.approx(50.0 / 3945.0, rel=1e-9)
+
+
+def test_star_and_bse_are_excluded_from_market_breadth(warehouse):
+    """生态因子的股票池排除科创板与北交所（原策略 filter_kcbj_stock）。
+
+    科创板涨跌幅是 20%，收益分布与主板不同；market_median_return_1d 的
+    判定阈值只有 0.00426，混进去足以翻转 Gate 判定。
+    """
+    rows = []
+    for symbol in ("600001.SH", "300001.SZ", "688001.SH", "430001.BJ", "830001.BJ"):
+        rows.append((symbol, D[0], 10.0, 10.0, 10.0, 10.0, 1e8))
+        rows.append((symbol, D[1], 10.0, 10.0, 10.0, 10.0, 1e8))
+    seed(warehouse, rows)
+    build_market_regime(warehouse, D[0], D[1])
+    # 只剩主板 600001 与创业板 300001
+    assert regime_of(warehouse, D[1])["valid_stock_count"] == 2
+
+
+def test_b_shares_stay_in_the_breadth_universe(warehouse):
+    """filter_kcbj_stock 只排 4/8/68 开头，B 股（900/200）不在其列。
+
+    照抄原策略的口径，不自作主张多排。
+    """
+    rows = []
+    for symbol in ("600001.SH", "900001.SH"):
+        rows.append((symbol, D[0], 10.0, 10.0, 10.0, 10.0, 1e8))
+        rows.append((symbol, D[1], 10.0, 10.0, 10.0, 10.0, 1e8))
+    seed(warehouse, rows)
+    build_market_regime(warehouse, D[0], D[1])
+    assert regime_of(warehouse, D[1])["valid_stock_count"] == 2
