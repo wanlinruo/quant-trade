@@ -21,6 +21,7 @@ from qsys.core.portfolio import Portfolio, Position
 from qsys.core.trading import to_cents
 from qsys.core.types import Symbol
 from qsys.data.feed import Adjustment, DataFeed
+from qsys.data.market_feed import BoundMarket, MarketFeed
 
 
 class BoundFeed:
@@ -83,12 +84,14 @@ class Context:
         *,
         params: dict[str, Any],
         state: dict[str, Any],
+        market: MarketFeed | None = None,
         log=None,
     ) -> None:
         self._clock = clock
         self._feed = feed
         self._portfolio = portfolio
         self._order = order_api
+        self._market = market
         self.params = params
         self.state = state
         self.log = log if log is not None else structlog.get_logger("strategy")
@@ -108,3 +111,13 @@ class Context:
     @property
     def order(self):
         return self._order
+
+    @property
+    def market(self) -> BoundMarket:
+        """派生数据（涨跌停标记、生态因子、估值、竞价）的 PIT 视图。
+
+        与 `data` 一样，as_of 由框架绑定到 ctx.now——策略不能自己指定。
+        """
+        if self._market is None:
+            raise RuntimeError("此 Context 未接入 MarketFeed")
+        return self._market.bind(self.now)
