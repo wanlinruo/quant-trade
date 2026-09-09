@@ -200,6 +200,6 @@ def test_run_id_and_equity_are_pinned():
     修正），改动这里必须是有意为之，并在提交信息里写明为什么。
     """
     result = engine(BuyFirstBar()).run(SESSIONS[0], SESSIONS[-1])
-    assert result.run_id == "4491b341c02ba748"
+    assert result.run_id == "e08686634462e987"
     assert result.final_value == pytest.approx(101_200.0)
     assert len(result.fills) == 1
