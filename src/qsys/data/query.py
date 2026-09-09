@@ -144,6 +144,9 @@ class WarehouseQuery:
             params.extend(symbols)
         return self._con.execute(sql, params).pl()
 
+    def share_capital(self, symbols: Sequence[str] | None = None) -> pl.DataFrame:
+        return self._read_unpartitioned("share_capital", schema.SHARE_CAPITAL, symbols)
+
     def instruments(self) -> pl.DataFrame:
         return self._read_unpartitioned("instruments", schema.INSTRUMENTS)
 
