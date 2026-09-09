@@ -193,3 +193,60 @@ def test_partial_rebuild_keeps_the_rest_of_the_year(warehouse):
     build_market_regime(warehouse, D[-1], D[-1])
     after = WarehouseQuery(warehouse).market_regime()
     assert after.height == 3, "早先的生态因子被覆盖掉了"
+
+
+def seed_index(warehouse, closes, start=date(2024, 1, 2)):
+    """连续 len(closes) 个交易日的沪深300 收盘价。"""
+    from datetime import timedelta
+
+    days = [start + timedelta(days=i) for i in range(len(closes))]
+    n = len(closes)
+    warehouse.write(
+        "index_bars",
+        pa.table(
+            {
+                "symbol": ["000300.SH"] * n,
+                "dt": days,
+                "open": list(closes),
+                "high": list(closes),
+                "low": list(closes),
+                "close": list(closes),
+                "volume": [1000] * n,
+                "amount": [1e10] * n,
+            },
+            schema=schema.INDEX_BARS,
+        ),
+        year=2024,
+    )
+    return days
+
+
+def test_index_slope_is_null_without_index_data(warehouse):
+    """没有指数数据时留空，不能编——S6 Gate 会据此走 UNKNOWN_ALLOW。"""
+    seed(warehouse, [("600001.SH", D[0], 10.0, 10.0, 10.0, 10.0, 1e8)])
+    build_market_regime(warehouse, D[0], D[0])
+    assert regime_of(warehouse, D[0])["index_ma20_slope_5d"] is None
+
+
+def test_index_slope_needs_at_least_25_sessions(warehouse):
+    """MA20 与「5 日前的 MA20」合起来要 25 根，不足则留空。"""
+    days = seed_index(warehouse, [3800.0] * 24)
+    seed(warehouse, [("600001.SH", d, 10.0, 10.0, 10.0, 10.0, 1e8) for d in days])
+    build_market_regime(warehouse, days[0], days[-1])
+    assert regime_of(warehouse, days[-1])["index_ma20_slope_5d"] is None
+
+
+def test_index_slope_is_zero_on_a_flat_index(warehouse):
+    days = seed_index(warehouse, [3800.0] * 30)
+    seed(warehouse, [("600001.SH", d, 10.0, 10.0, 10.0, 10.0, 1e8) for d in days])
+    build_market_regime(warehouse, days[0], days[-1])
+    assert regime_of(warehouse, days[-1])["index_ma20_slope_5d"] == pytest.approx(0.0)
+
+
+def test_index_slope_is_positive_on_a_rising_index(warehouse):
+    days = seed_index(warehouse, [3800.0 + i * 10 for i in range(30)])
+    seed(warehouse, [("600001.SH", d, 10.0, 10.0, 10.0, 10.0, 1e8) for d in days])
+    build_market_regime(warehouse, days[0], days[-1])
+    row = regime_of(warehouse, days[-1])
+    # 最近 20 根均值 = closes[10..29] = 3995；5 根之前的 20 根均值 = closes[5..24] = 3945
+    assert row["index_ma20_slope_5d"] == pytest.approx(50.0 / 3945.0, rel=1e-9)

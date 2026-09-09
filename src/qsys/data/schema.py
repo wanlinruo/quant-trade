@@ -43,6 +43,19 @@ SHARE_CAPITAL = pa.schema(
     ]
 )
 
+INDEX_BARS = pa.schema(
+    [
+        ("symbol", pa.string()),
+        ("dt", pa.date32()),
+        ("open", pa.float64()),
+        ("high", pa.float64()),
+        ("low", pa.float64()),
+        ("close", pa.float64()),
+        ("volume", pa.int64()),
+        ("amount", pa.float64()),
+    ]
+)
+
 MINUTE_BARS = pa.schema(
     [
         ("symbol", pa.string()),
@@ -108,6 +121,7 @@ MARKET_REGIME = pa.schema(
         ("prior_limitup_nextday_return_mean", pa.float64()),
         ("prior_limitup_nextday_return_median", pa.float64()),
         ("valid_stock_count", pa.int64()),
+        ("index_ma20_slope_5d", pa.float64()),  # 无指数数据时为 null，不填 0
     ]
 )
 
@@ -184,6 +198,7 @@ LIVE_RECON = pa.schema(
 
 PARTITIONED: dict[str, pa.Schema] = {
     "bars_daily": BARS_DAILY,
+    "index_bars": INDEX_BARS,
     "minute_bars": MINUTE_BARS,
     "daily_flags": DAILY_FLAGS,
     "market_regime": MARKET_REGIME,

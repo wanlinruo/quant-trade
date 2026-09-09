@@ -60,14 +60,25 @@ class MootdxProvider(BarsProvider):
         # 翻满 max_pages 仍未覆盖请求起点时记录：(symbol, 请求起点, 实际最早)
         self.truncated: list[tuple[str, date, date]] = []
 
+    def fetch_index_bars(self, symbol: str, start: date, end: date) -> pl.DataFrame:
+        """指数日线。
+
+        指数必须走 `index()`——实测 `bars("000300")` 返回空，
+        `bars("399300")` 更糟：返回的日期是 "681-59-37" 这种垃圾值。
+        """
+        return self._paged(symbol, start, end, fetch=self._client.index)
+
     def fetch_daily_bars(self, symbol: str, start: date, end: date) -> pl.DataFrame:
         """按需翻页直到覆盖 start。"""
+        return self._paged(symbol, start, end, fetch=self._client.bars)
+
+    def _paged(self, symbol: str, start: date, end: date, *, fetch) -> pl.DataFrame:
         code = symbol.split(".")[0]
         pages: list[pl.DataFrame] = []
         earliest: date | None = None
 
         for page in range(self._max_pages):
-            raw = self._client.bars(
+            raw = fetch(
                 symbol=code,
                 frequency=_DAILY_FREQUENCY,
                 start=page * self._page_size,

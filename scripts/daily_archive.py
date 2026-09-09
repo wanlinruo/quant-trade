@@ -28,6 +28,7 @@ from qsys.core.calendar import AShareCalendar, last_closed_session
 from qsys.data.pipeline.candidates import candidate_stock_days, write_manifest
 from qsys.data.pipeline.capital import import_share_capital
 from qsys.data.pipeline.flags import build_daily_flags
+from qsys.data.pipeline.index_bars import CSI300, ingest_index_bars
 from qsys.data.pipeline.minutes import import_minute_bars, missing_stock_days
 from qsys.data.pipeline.instruments import build_instruments
 from qsys.data.pipeline.regime import build_market_regime
@@ -111,6 +112,14 @@ def main() -> int:
     print(f"日线 {progress.done} 成功 / {progress.failed} 失败")
     if progress.failed:
         log.warning("archive.some_symbols_failed", failed=progress.failed)
+
+    # --- 2b. 指数日线（S6 Gate 的 index_ma20_slope_5d 要用）---
+    # 指数走 mootdx 的 index()，个股接口取不到
+    index_rows = ingest_index_bars(
+        MootdxProvider(), warehouse, [CSI300], start, complete_through,
+        complete_through=complete_through,
+    )
+    print(f"指数日线 {index_rows} 行")
 
     # --- 3. 派生表重算（合并写，不会抹掉同年其余数据）---
     derived_from = complete_through - timedelta(days=_DERIVED_LOOKBACK)
