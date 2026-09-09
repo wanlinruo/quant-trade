@@ -66,6 +66,19 @@ class WarehouseQuery:
             params = [start, end]
         return self._con.execute(sql + " ORDER BY dt, symbol", params).pl()
 
+    def market_regime(
+        self, start: date | None = None, end: date | None = None
+    ) -> pl.DataFrame:
+        glob = self._glob("market_regime", partitioned=True)
+        if glob is None:
+            return _empty(schema.MARKET_REGIME)
+        sql = f"SELECT * FROM read_parquet('{glob}')"
+        params: list[object] = []
+        if start is not None and end is not None:
+            sql += " WHERE dt BETWEEN ? AND ?"
+            params = [start, end]
+        return self._con.execute(sql + " ORDER BY dt", params).pl()
+
     def _read_unpartitioned(
         self,
         dataset: str,

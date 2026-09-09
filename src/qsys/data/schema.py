@@ -65,6 +65,25 @@ DAILY_FLAGS = pa.schema(
     ]
 )
 
+MARKET_REGIME = pa.schema(
+    [
+        ("dt", pa.date32()),
+        ("limit_up_count", pa.int64()),
+        ("limit_down_count", pa.int64()),
+        ("limit_up_down_ratio", pa.float64()),
+        ("touched_limit_up_count", pa.int64()),
+        ("broken_board_count", pa.int64()),
+        ("broken_board_rate", pa.float64()),
+        ("first_board_count", pa.int64()),
+        ("market_advance_ratio", pa.float64()),
+        ("market_median_return_1d", pa.float64()),
+        ("market_total_money", pa.float64()),
+        ("prior_limitup_nextday_return_mean", pa.float64()),
+        ("prior_limitup_nextday_return_median", pa.float64()),
+        ("valid_stock_count", pa.int64()),
+    ]
+)
+
 INGEST_LOG = pa.schema(
     [
         ("dataset", pa.string()),
@@ -128,6 +147,7 @@ LIVE_RECON = pa.schema(
 PARTITIONED: dict[str, pa.Schema] = {
     "bars_daily": BARS_DAILY,
     "daily_flags": DAILY_FLAGS,
+    "market_regime": MARKET_REGIME,
     "ingest_log": INGEST_LOG,
     "live_equity": LIVE_EQUITY,
     "live_fills": LIVE_FILLS,
