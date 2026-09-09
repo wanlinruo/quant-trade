@@ -3,6 +3,7 @@
 from datetime import date
 
 import pyarrow as pa
+import pytest
 
 from qsys.core.constraints import PriceLimitConstraint
 from qsys.data import schema
@@ -229,8 +230,9 @@ def test_partial_rebuild_keeps_the_rest_of_the_year(warehouse):
 def test_partial_rebuild_refreshes_the_rows_it_covers(warehouse):
     """重算区间内的行要用新值覆盖，不是保留旧值。"""
     days = [date(2024, 1, d) for d in (2, 3)]
+    # 10.4 而非 10.5：后者恰好是 5% 涨停价，会被 ST 反推判成涨停
     seed(warehouse, [("600001.SH", days[0], 10.0, 10.0, 10.0, 10.0),
-                     ("600001.SH", days[1], 10.5, 10.5, 10.5, 10.5)])
+                     ("600001.SH", days[1], 10.4, 10.4, 10.4, 10.4)])
     build_daily_flags(warehouse, days[0], days[-1])
     assert flags_of(warehouse, "600001.SH", days[1])["is_limit_up"] is False
 
@@ -239,3 +241,82 @@ def test_partial_rebuild_refreshes_the_rows_it_covers(warehouse):
                      ("600001.SH", days[1], 11.0, 11.0, 11.0, 11.0)])
     build_daily_flags(warehouse, days[1], days[1])
     assert flags_of(warehouse, "600001.SH", days[1])["is_limit_up"] is True
+
+
+def test_a_five_percent_limit_touch_is_detected(warehouse):
+    """ST 股涨跌幅 5%。没有历史 ST 数据，但涨停价 round(前收x1.05, 2) 精确到分，
+    high 恰好等于它几乎不可能是巧合——据此反推。
+
+    与聚宽对账实测：不补这一条，touched_limit_up_count 中位低 28（约 25%），
+    直接导致 HIGH_CHINEXT 的 Gate 判定系统性偏严。
+    """
+    seed(
+        warehouse,
+        [
+            ("600036.SH", D[0], 10.0, 10.0, 10.0, 10.0),
+            # 前收 10.00 -> 5% 涨停价 10.50；触板但未封住
+            ("600036.SH", D[1], 10.2, 10.5, 10.1, 10.3),
+        ],
+    )
+    build_daily_flags(warehouse, D[0], D[1])
+    row = flags_of(warehouse, "600036.SH", D[1])
+    assert row["touched_limit_up"] is True
+    assert row["limit_pct"] == pytest.approx(0.05)
+
+
+def test_a_five_percent_close_at_limit_is_a_limit_up(warehouse):
+    seed(
+        warehouse,
+        [
+            ("600036.SH", D[0], 10.0, 10.0, 10.0, 10.0),
+            ("600036.SH", D[1], 10.5, 10.5, 10.5, 10.5),
+        ],
+    )
+    build_daily_flags(warehouse, D[0], D[1])
+    row = flags_of(warehouse, "600036.SH", D[1])
+    assert row["is_limit_up"] is True
+    assert row["limit_up"] == pytest.approx(10.50)
+
+
+def test_rising_above_five_percent_is_not_an_st_stock(warehouse):
+    """涨过 5% 就不可能是 ST——按板块的 10% 判。"""
+    seed(
+        warehouse,
+        [
+            ("600036.SH", D[0], 10.0, 10.0, 10.0, 10.0),
+            ("600036.SH", D[1], 10.5, 10.8, 10.4, 10.7),
+        ],
+    )
+    build_daily_flags(warehouse, D[0], D[1])
+    row = flags_of(warehouse, "600036.SH", D[1])
+    assert row["limit_pct"] == pytest.approx(0.10)
+    assert row["touched_limit_up"] is False
+
+
+def test_a_normal_stock_keeps_the_board_limit(warehouse):
+    seed(
+        warehouse,
+        [
+            ("600036.SH", D[0], 10.0, 10.0, 10.0, 10.0),
+            ("600036.SH", D[1], 11.0, 11.0, 11.0, 11.0),
+        ],
+    )
+    build_daily_flags(warehouse, D[0], D[1])
+    row = flags_of(warehouse, "600036.SH", D[1])
+    assert row["limit_pct"] == pytest.approx(0.10)
+    assert row["is_limit_up"] is True
+
+
+def test_a_five_percent_first_board_counts(warehouse):
+    """ST 股的首板同样是首板。"""
+    seed(
+        warehouse,
+        [
+            ("600036.SH", D[0], 10.0, 10.0, 10.0, 10.0),
+            ("600036.SH", D[1], 10.5, 10.5, 10.5, 10.5),
+            ("600036.SH", D[2], 11.03, 11.03, 11.03, 11.03),
+        ],
+    )
+    build_daily_flags(warehouse, D[0], D[2])
+    assert flags_of(warehouse, "600036.SH", D[1])["is_first_board"] is True
+    assert flags_of(warehouse, "600036.SH", D[2])["is_first_board"] is False

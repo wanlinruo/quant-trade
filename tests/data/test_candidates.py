@@ -28,6 +28,7 @@ def seed_flags(warehouse: Warehouse, rows) -> None:
                 "touched_limit_up": [r[2] for r in rows],
                 "is_broken_board": [False] * n,
                 "is_first_board": [r[2] for r in rows],
+            "limit_pct": [0.10] * n,
             },
             schema=schema.DAILY_FLAGS,
         ),

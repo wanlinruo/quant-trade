@@ -13,8 +13,16 @@
 **逐年处理**，并向前多读 `_LOOKBACK_DAYS` 天日历日只为给年初第一根 bar
 补上前收——否则每年 1 月的第一个交易日会因缺前收而被判成「无涨跌停」。
 
-**已知缺口**：ST 股涨跌幅为 5%，但一期无 ST 历史数据，此处一律按板块判定，
-ST 股的涨停会被漏判。补 ST 历史后需重算本表。
+**ST 由价格行为反推**：ST 股涨跌幅是 5%，而免费源没有历史 ST 名单。
+但 5% 涨停价 `round(前收 x 1.05, 2)` 精确到分，`high` 恰好等于它几乎不
+可能是巧合（实测每日约 28 只，占全市场 0.6%，与「约 300 只 ST 中一成
+触板」的量级吻合）。
+
+不做这件事的代价是实测出来的：与聚宽对账时 `touched_limit_up_count`
+中位低 28（约 25%），HIGH_CHINEXT 的 Gate 判定因此系统性偏严——
+9 个分歧日补上 ST 触板后 9 个全部翻转为与聚宽一致。
+
+`limit_pct` 列记下每个股-日实际生效的涨跌幅，0.10 或 0.05，可回溯。
 """
 
 from __future__ import annotations
@@ -33,6 +41,7 @@ from qsys.markets.ashare import PRICE_LIMITS
 log = structlog.get_logger(__name__)
 
 _DEFAULT_LIMIT = 0.10
+ST_LIMIT = 0.05
 # 跨年补前收的回看窗口。元旦假期远短于此；停牌超过这么久的标的
 # 复牌首日会缺前收，标记全 False。
 _LOOKBACK_DAYS = 30
@@ -48,6 +57,7 @@ _FLAG_COLUMNS = [
     "touched_limit_up",
     "is_broken_board",
     "is_first_board",
+    "limit_pct",
 ]
 
 
@@ -136,9 +146,26 @@ def _compute(bars: pl.DataFrame, boards: dict[str, str]) -> pl.DataFrame:
     up_milli = ((1.0 + pl.col("_ratio")) * 1000).round(0).cast(pl.Int64)
     down_milli = ((1.0 - pl.col("_ratio")) * 1000).round(0).cast(pl.Int64)
 
+    st_up_milli = pl.lit(int(round((1.0 + ST_LIMIT) * 1000)), dtype=pl.Int64)
+    st_down_milli = pl.lit(int(round((1.0 - ST_LIMIT) * 1000)), dtype=pl.Int64)
+
     frame = frame.with_columns(
-        _limit_expr(cents, up_milli).alias("limit_up"),
-        _limit_expr(cents, down_milli).alias("limit_down"),
+        _limit_expr(cents, up_milli).alias("_board_up"),
+        _limit_expr(cents, down_milli).alias("_board_down"),
+        _limit_expr(cents, st_up_milli).alias("_st_up"),
+        _limit_expr(cents, st_down_milli).alias("_st_down"),
+    )
+
+    # ST 反推：当日最高价恰好等于 5% 涨停价（精确到分）且没有更高，
+    # 就按 5% 判。涨过 5% 的必然不是 ST。
+    looks_st = (pl.col("high") == pl.col("_st_up")).fill_null(False)
+    frame = frame.with_columns(
+        pl.when(looks_st).then(pl.lit(ST_LIMIT)).otherwise(pl.lit(_DEFAULT_LIMIT))
+        .alias("limit_pct"),
+        pl.when(looks_st).then(pl.col("_st_up")).otherwise(pl.col("_board_up"))
+        .alias("limit_up"),
+        pl.when(looks_st).then(pl.col("_st_down")).otherwise(pl.col("_board_down"))
+        .alias("limit_down"),
     )
 
     # 价格与分位涨跌停价都已取整到分，直接比较即可，无需容差

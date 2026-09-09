@@ -48,6 +48,7 @@ def seed(warehouse: Warehouse) -> None:
                 "touched_limit_up": [False, False, True],
                 "is_broken_board": [False] * n,
                 "is_first_board": [False, False, True],
+                "limit_pct": [0.10] * n,
             },
             schema=schema.DAILY_FLAGS,
         ),

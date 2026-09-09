@@ -35,6 +35,7 @@ def build(warehouse: Warehouse, symbol, closes, highs, lows, amounts, volumes, o
         "touched_limit_up": [d in (first_board_on, broken_on) for d in DAYS],
         "is_broken_board": [d == broken_on for d in DAYS],
         "is_first_board": [d == first_board_on for d in DAYS],
+        "limit_pct": [0.10] * n,
     }, schema=schema.DAILY_FLAGS), year=2024)
 
 
