@@ -208,3 +208,30 @@ def test_share_capital_on_empty_warehouse(warehouse: Warehouse):
     df = WarehouseQuery(warehouse).share_capital()
     assert df.height == 0
     assert df.columns == list(schema.SHARE_CAPITAL.names)
+
+
+def test_a_partition_written_before_a_column_was_added_still_reads(warehouse: Warehouse):
+    """schema 加列后，旧分区仍要能读出来，缺的列为 null。
+
+    派生表可以整体重算，但重算本身要先读旧分区——读不了就成了死锁。
+    """
+    import pyarrow as pa
+
+    # 模拟旧版本写下的分区：少了 index_ma20_slope_5d 这一列
+    old_fields = [f for f in schema.MARKET_REGIME if f.name != "index_ma20_slope_5d"]
+    old_schema = pa.schema(old_fields)
+    warehouse.root.joinpath("market_regime", "year=2024").mkdir(parents=True)
+    import pyarrow.parquet as pq
+
+    pq.write_table(
+        pa.table(
+            {f.name: pa.array([None], type=f.type) for f in old_fields},
+            schema=old_schema,
+        ),
+        warehouse.root / "market_regime" / "year=2024" / "part.parquet",
+    )
+
+    df = WarehouseQuery(warehouse).market_regime()
+    assert df.columns == list(schema.MARKET_REGIME.names)
+    assert df.height == 1
+    assert df["index_ma20_slope_5d"].to_list() == [None]
