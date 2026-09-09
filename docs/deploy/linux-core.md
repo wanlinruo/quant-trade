@@ -228,6 +228,27 @@ sudo journalctl -u qsys-daily-archive.service -n 50 --no-pager
 
 退出码非 0 表示跨源校验发现问题，systemd 会记为失败。
 
+
+## 每日归档的实测节奏（2026-09-10 首次全链路）
+
+```
+竞价 tick        0.4 分钟   <- 最先做
+全市场日线增量   335 分钟   <- 5,217 只 × 约 3.8 s/只，瓶颈是 mootdx 的往返
+派生表重算       约 10 秒
+分钟线补齐       视缺口
+```
+
+**竞价 tick 必须排在最前**：它的窗口只有约 20 个交易日，而日线增量要跑
+5 个多小时。压在后面等于拿不可恢复的数据去赌可恢复的数据。此时
+`daily_flags` 还没有当天，故 `candidate_stock_days` 显式传入 akshare
+的交易日历。
+
+出问题要能单独重试：
+
+```bash
+uv run python scripts/daily_archive.py --only-auction
+```
+
 ## 待办
 
 - [ ] 关闭 SSH 密码认证（`PasswordAuthentication no`）——公网 22 端口每天被扫数千次

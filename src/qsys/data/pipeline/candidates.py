@@ -36,8 +36,18 @@ def candidate_stock_days(
     end: date,
     *,
     window: int = 1,
+    sessions: Sequence[date] | None = None,
 ) -> pl.DataFrame:
-    """首板之后 `window` 个交易日的（标的, 日期）组合。"""
+    """首板之后 `window` 个交易日的（标的, 日期）组合。
+
+    `sessions` 默认取自 `daily_flags` 里实际出现过的日期——那本就是从真实
+    日线派生的，比另配一份日历更不容易走样。
+
+    但**竞价 tick 要在当日日线入库之前就采**（tick 只有 20 个交易日的窗口，
+    而全市场日线增量要跑 5 个多小时，压在后面等于拿不可恢复的数据赌可恢复
+    的数据）。那时 T 日还不在 `daily_flags` 里，T-1 的首板就找不到下一个
+    交易日。此时显式传入交易日历即可。
+    """
     if window < 1:
         raise ValueError(f"window must be >= 1: {window}")
 
@@ -46,7 +56,10 @@ def candidate_stock_days(
     if flags.height == 0:
         return empty
 
-    sessions = sorted(flags["dt"].unique().to_list())
+    if sessions is None:
+        sessions = sorted(flags["dt"].unique().to_list())
+    else:
+        sessions = sorted(sessions)
     position = {d: i for i, d in enumerate(sessions)}
 
     boards = flags.filter(pl.col("is_first_board")).select(["symbol", "dt"])
@@ -55,7 +68,9 @@ def candidate_stock_days(
 
     pairs: set[tuple[str, date]] = set()
     for symbol, day in zip(boards["symbol"].to_list(), boards["dt"].to_list()):
-        origin = position[day]
+        origin = position.get(day)
+        if origin is None:  # 外部日历里没有这天，跳过而不是崩
+            continue
         for step in range(1, window + 1):
             following = origin + step
             if following < len(sessions):

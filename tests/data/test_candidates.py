@@ -221,3 +221,25 @@ def test_holding_days_reject_zero_window():
 
     with pytest.raises(ValueError, match="window must be >= 1"):
         holding_stock_days(_fills([("600001.SH", D[0], "buy")]), D, window=0)
+
+
+def test_candidates_can_use_an_external_calendar(warehouse):
+    """竞价 tick 要在当日日线入库前就采，那时 T 日还不在 daily_flags 里。
+
+    D[3] 首板，flags 只到 D[3]；显式传入含 D[4] 的日历，候选日才算得出来。
+    """
+    seed_flags(warehouse, [("600001.SH", D[3], True)])
+
+    without = candidate_stock_days(warehouse, D[0], D[3])
+    with_calendar = candidate_stock_days(warehouse, D[0], D[3], sessions=D)
+
+    assert without.height == 0
+    assert with_calendar.to_dicts() == [{"symbol": "600001.SH", "dt": D[4]}]
+
+
+def test_external_calendar_missing_a_flag_day_is_skipped_not_fatal(warehouse):
+    seed_flags(warehouse, [("600001.SH", D[1], True)])
+
+    got = candidate_stock_days(warehouse, D[0], D[4], sessions=[D[3], D[4]])
+
+    assert got.height == 0

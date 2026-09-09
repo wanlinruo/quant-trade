@@ -1,4 +1,4 @@
-"""每日归档：日线增量 -> 派生重算 -> 分钟线补齐 -> 竞价 tick -> 导入校验。
+"""每日归档：竞价 tick -> 日线增量 -> 派生重算 -> 分钟线补齐 -> 导入校验。
 
 **为什么必须每天跑**：两份数据都是滚动窗口，漏跑的日子事后补不回来。
   - 分钟线：约一年，实测最早 2025-09-09
@@ -117,6 +117,8 @@ def main() -> int:
     parser.add_argument("--batch-size", type=int, default=500)
     parser.add_argument("--skip-minutes", action="store_true")
     parser.add_argument("--skip-auction", action="store_true")
+    parser.add_argument("--only-auction", action="store_true",
+                        help="只做竞价 tick。窗口只有 20 天，出问题要能单独重试")
     parser.add_argument("--win-auction-script",
                         default=r"C:\qsys\win_download_auction_ticks.py")
     parser.add_argument("--skip-capital", action="store_true")
@@ -154,6 +156,24 @@ def main() -> int:
     )
     symbols = alive["symbol"].to_list()
 
+    # --- 1b. 竞价 tick：**最先做**。窗口只有约 20 个交易日，而全市场日线
+    # 增量要跑 5 个多小时——压在后面等于拿不可恢复的数据去赌可恢复的数据。
+    # 此时 daily_flags 还没有今天，故显式传入交易日历。
+    key = str(Path(args.win_key).expanduser())
+    ssh = ["ssh", "-i", key, "-o", "BatchMode=yes", "-o", "ConnectTimeout=20",
+           args.win_host]
+    stamp = complete_through.strftime("%Y%m%d")
+    if not args.skip_auction:
+        _archive_auction(
+            args, warehouse,
+            candidate_stock_days(warehouse, start, complete_through,
+                                 sessions=sessions),
+            ssh, key, stamp,
+        )
+    if args.only_auction:
+        print(f"=== 只做竞价 tick，完成，耗时 {(time.time()-started)/60:.1f} 分钟 ===")
+        return 0
+
     progress = ingest_universe(
         MootdxProvider(), warehouse, symbols, start, complete_through,
         complete_through=complete_through, batch_size=args.batch_size,
@@ -177,11 +197,6 @@ def main() -> int:
     print(f"生态因子 {build_market_regime(warehouse, derived_from, complete_through)} 行")
 
     # --- 3b. 股本与估值 ---
-    key = str(Path(args.win_key).expanduser())
-    ssh = ["ssh", "-i", key, "-o", "BatchMode=yes", "-o", "ConnectTimeout=20",
-           args.win_host]
-    stamp = complete_through.strftime("%Y%m%d")
-
     if not args.skip_capital:
         # 股本变动是事件驱动的，全市场重下只要约 5 分钟，比算增量更省事
         cap_dir = f"{args.win_root}/capital_{stamp}"
@@ -211,11 +226,6 @@ def main() -> int:
     print(f"估值 {build_valuation(warehouse, derived_from, complete_through):,} 行")
 
     wanted = candidate_stock_days(warehouse, start, complete_through)
-
-    # --- 4. 竞价 tick：窗口只有约 20 个交易日，**先于分钟线做** ---
-    # 分钟线滚动一年，晚几小时无所谓；tick 漏了就没了。
-    if not args.skip_auction:
-        _archive_auction(args, warehouse, wanted, ssh, key, stamp)
 
     if args.skip_minutes:
         print("按要求跳过分钟线")

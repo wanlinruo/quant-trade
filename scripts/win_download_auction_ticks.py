@@ -35,6 +35,30 @@ COLUMNS = [
 ]
 
 
+def _arrow_schema():
+    """必须与 qsys.data.schema.AUCTION_TICKS 一致。
+
+    **这台机器上只有 pyarrow，没有 polars**——与 win_download_minutes.py
+    同一条约束，别引入新依赖。
+    """
+    import pyarrow as pa
+
+    return pa.schema(
+        [
+            ("symbol", pa.string()),
+            ("dt", pa.date32()),
+            ("ts", pa.timestamp("us")),
+            ("bid1", pa.float64()),
+            ("ask1", pa.float64()),
+            ("bid_vol1", pa.int64()),
+            ("ask_vol1", pa.int64()),
+            ("last_price", pa.float64()),
+            ("volume", pa.int64()),
+            ("amount", pa.float64()),
+        ]
+    )
+
+
 def _level1(cell) -> float:
     try:
         return float(cell[0])
@@ -105,7 +129,7 @@ def main() -> int:
     parser.add_argument("--sleep", type=float, default=0.0)
     args = parser.parse_args()
 
-    import polars as pl
+    import pyarrow.parquet as pq
     from xtquant import xtdata
 
     out = Path(args.out)
@@ -133,8 +157,14 @@ def main() -> int:
         nonlocal buffer, written, files
         if not buffer:
             return
+        import pyarrow as pa
+
         path = out / f"auction_{files:05d}.parquet"
-        pl.DataFrame(buffer).select(COLUMNS).write_parquet(path)
+        table = pa.table(
+            {name: [row[name] for row in buffer] for name in COLUMNS},
+            schema=_arrow_schema(),
+        )
+        pq.write_table(table, str(path))
         print(f"  写出 {path.name}  {len(buffer):,} 笔")
         written += len(buffer)
         files += 1
