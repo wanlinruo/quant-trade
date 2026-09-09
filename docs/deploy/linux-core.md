@@ -176,6 +176,58 @@ ssh -N -L 8420:127.0.0.1:8420 -i ~/.ssh/qmt_bridge_ed25519 ubuntu@110.42.205.144
 ConnectionError（东财主动断连），与开发机的 ProxyError 是两种表现、
 同一结果。估值步骤已降级为可失败，不阻断日线。
 
+## 每日归档（systemd timer）
+
+**为什么必须每天跑**：QMT 分钟线只保留约一年且是滚动窗口，每过一天就
+永久丢一天，漏跑的日子事后补不回来。
+
+`scripts/daily_archive.py` 在 Linux 上编排整条链路，通过 SSH 驱动 Windows：
+
+```
+日线增量 -> 派生表重算 -> 算出缺哪些股-日 -> 驱动 Windows 下载
+-> 回传 parquet -> 导入 -> 跨源校验
+```
+
+**一个编排者、一份日志、一处看失败**——两边各自定时就是把「多系统拼接
+脆弱」这个老毛病请回来。
+
+### 前置：Linux 到 Windows 的免密登录
+
+```bash
+ssh-keygen -t ed25519 -N "" -C "qsys-linux-to-winnode" -f ~/.ssh/id_ed25519_winnode
+# 公钥追加到 Windows 的 C:\ProgramData\ssh\administrators_authorized_keys
+# （Administrators 组成员用的是这个文件，不是 ~/.ssh/authorized_keys）
+ssh -i ~/.ssh/id_ed25519_winnode Administrator@<win> "echo OK"
+```
+
+### 单元与定时器
+
+`/etc/systemd/system/qsys-daily-archive.service` + `.timer`，
+`OnCalendar=Mon..Fri 15:40 Asia/Shanghai`，`Persistent=true`
+（机器停过则开机后补跑）。
+
+`ProtectHome=read-only` 仍允许读 `~/.ssh` 里的私钥去驱动 Windows——
+已实跑验证。
+
+```bash
+sudo systemctl enable --now qsys-daily-archive.timer
+systemctl list-timers qsys-daily-archive --no-pager
+sudo journalctl -u qsys-daily-archive.service -n 50 --no-pager
+```
+
+### 实跑验证（2026-09-09）
+
+| 步骤 | 结果 |
+|---|---|
+| 日线增量 | 5,217 只，0 失败 |
+| 候选计算 | 308 组，**其中只缺 7 组**（增量生效，不重复下载） |
+| 驱动 Windows 下载 | 5.9 秒 |
+| 导入 | 15,665 行 / 0 错误 |
+| 跨源校验 | 2 天，**0 问题** |
+| 总耗时 | 5.7 分钟（CPU 4 分钟） |
+
+退出码非 0 表示跨源校验发现问题，systemd 会记为失败。
+
 ## 待办
 
 - [ ] 关闭 SSH 密码认证（`PasswordAuthentication no`）——公网 22 端口每天被扫数千次

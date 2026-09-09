@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import shutil
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, time
 from pathlib import Path
 
 import polars as pl
@@ -69,10 +69,27 @@ def import_minute_bars(
         archive = Path(archive_dir)
         archive.mkdir(parents=True, exist_ok=True)
         for path in good:
-            shutil.move(str(path), str(archive / path.name))
+            shutil.move(str(path), str(_free_name(archive, path.name)))
 
     log.info("minutes.imported", files=len(good), rows=rows, errors=errors)
     return ImportResult(len(good), rows, errors)
+
+
+def _free_name(archive: Path, name: str) -> Path:
+    """归档时避开重名。
+
+    Windows 侧每天在新目录里从 minutes_00000.parquet 重新编号，直接按原名
+    存会让后一天覆盖前一天的归档记录。
+    """
+    target = archive / name
+    if not target.exists():
+        return target
+    stem, suffix = target.stem, target.suffix
+    for n in range(1, 10_000):
+        candidate = archive / f"{stem}.{n}{suffix}"
+        if not candidate.exists():
+            return candidate
+    raise RuntimeError(f"归档目录里 {name} 的重名太多")
 
 
 def _write_by_year(warehouse: Warehouse, fresh: pl.DataFrame) -> int:
@@ -92,3 +109,31 @@ def _write_by_year(warehouse: Warehouse, fresh: pl.DataFrame) -> int:
         warehouse.write(_DATASET, merged.to_arrow().cast(schema.MINUTE_BARS), year=year)
         written += incoming.height
     return written
+
+
+def missing_stock_days(warehouse: Warehouse, candidates: pl.DataFrame) -> pl.DataFrame:
+    """候选里还没有分钟线的那些股-日。
+
+    每日增量只该下缺的那部分：候选窗口会与前几天重叠，全量重下既浪费
+    时间又白占 QMT 的本地缓存。
+    """
+    if candidates.height == 0:
+        return candidates
+
+    days = candidates["dt"].to_list()
+    have = WarehouseQuery(warehouse).minute_bars(
+        None,
+        datetime.combine(min(days), time(0, 0)),
+        datetime.combine(max(days), time(23, 59, 59)),
+    )
+    if have.height == 0:
+        return candidates
+
+    owned = (
+        have.select(
+            pl.col("symbol"),
+            pl.col("dt").dt.date().alias("dt"),
+        )
+        .unique()
+    )
+    return candidates.join(owned, on=["symbol", "dt"], how="anti").sort(["dt", "symbol"])

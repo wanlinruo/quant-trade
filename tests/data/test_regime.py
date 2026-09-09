@@ -181,3 +181,15 @@ def test_rebuild_is_idempotent(warehouse):
 
 def test_build_on_empty_warehouse_returns_zero(warehouse):
     assert build_market_regime(warehouse, D[0], D[1]) == 0
+
+
+def test_partial_rebuild_keeps_the_rest_of_the_year(warehouse):
+    """生态因子同理：只重算一段不能抹掉同年其余日期。"""
+    rows = []
+    for i, d in enumerate(D):
+        rows.append(("600001.SH", d, 10.0, 10.0, 10.0, 10.0, 1e8))
+    seed(warehouse, rows)
+    assert build_market_regime(warehouse, D[0], D[-1]) == 3
+    build_market_regime(warehouse, D[-1], D[-1])
+    after = WarehouseQuery(warehouse).market_regime()
+    assert after.height == 3, "早先的生态因子被覆盖掉了"
