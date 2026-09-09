@@ -131,3 +131,18 @@ def test_a_second_batch_does_not_drop_the_first(warehouse, tmp_path):
     )
     assert df["symbol"].n_unique() == 2
     assert df.height == 6
+
+
+def test_archiving_does_not_clobber_a_same_named_earlier_file(warehouse, tmp_path):
+    """Windows 每天在新目录里从 minutes_00000.parquet 重新编号，
+    归档目录若按原名存，后一天会把前一天的记录覆盖掉。"""
+    incoming, archive = tmp_path / "in", tmp_path / "done"
+
+    write_incoming(incoming, "minutes_00000.parquet", symbol="600036.SH")
+    import_minute_bars(warehouse, incoming, archive_dir=archive)
+
+    write_incoming(incoming, "minutes_00000.parquet", symbol="000001.SZ",
+                   start=datetime(2024, 1, 3, 9, 31))
+    import_minute_bars(warehouse, incoming, archive_dir=archive)
+
+    assert len(list(archive.glob("*.parquet"))) == 2, "归档被同名文件覆盖了"

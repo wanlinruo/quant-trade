@@ -69,10 +69,27 @@ def import_minute_bars(
         archive = Path(archive_dir)
         archive.mkdir(parents=True, exist_ok=True)
         for path in good:
-            shutil.move(str(path), str(archive / path.name))
+            shutil.move(str(path), str(_free_name(archive, path.name)))
 
     log.info("minutes.imported", files=len(good), rows=rows, errors=errors)
     return ImportResult(len(good), rows, errors)
+
+
+def _free_name(archive: Path, name: str) -> Path:
+    """归档时避开重名。
+
+    Windows 侧每天在新目录里从 minutes_00000.parquet 重新编号，直接按原名
+    存会让后一天覆盖前一天的归档记录。
+    """
+    target = archive / name
+    if not target.exists():
+        return target
+    stem, suffix = target.stem, target.suffix
+    for n in range(1, 10_000):
+        candidate = archive / f"{stem}.{n}{suffix}"
+        if not candidate.exists():
+            return candidate
+    raise RuntimeError(f"归档目录里 {name} 的重名太多")
 
 
 def _write_by_year(warehouse: Warehouse, fresh: pl.DataFrame) -> int:
