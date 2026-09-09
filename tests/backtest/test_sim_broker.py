@@ -104,27 +104,42 @@ def test_limit_up_rejects_buy():
 
 
 def test_volume_cap_clamps_the_fill():
-    """单笔成交不超过当根 bar 成交量的 5%。"""
+    """单笔成交不超过当根 bar 成交量的 5%。
+
+    **bar.volume 的单位是手，order.qty 的单位是股**——1,000 手 = 100,000 股，
+    5% 上限是 5,000 股。早先这里少乘了 100，上限被收紧 100 倍。
+    """
     b = broker(Portfolio(10_000_000.0), volume_cap=0.05)
     b.submit(order(Side.BUY, 100_000))
-    b.on_market_data(snapshot(10.00, volume=1_000_000))
-    assert b.poll_fills()[0].qty == 50_000
+    b.on_market_data(snapshot(10.00, volume=1_000))
+    assert b.poll_fills()[0].qty == 5_000
+
+
+def test_volume_cap_counts_lots_as_lots_not_shares():
+    """1,000 手够 100,000 股的单全额成交（5% × 100,000 股 = 5,000... 不够），
+    但 100,000 手 = 1,000 万股，5% = 50 万股，这一单就该全成。"""
+    b = broker(Portfolio(10_000_000.0), volume_cap=0.05)
+    b.submit(order(Side.BUY, 100_000))
+    b.on_market_data(snapshot(10.00, volume=100_000))
+    assert b.poll_fills()[0].qty == 100_000
+    assert b.poll_rejects() == ()
 
 
 def test_volume_capped_remainder_is_rejected_not_silently_dropped():
     b = broker(Portfolio(10_000_000.0), volume_cap=0.05)
     b.submit(order(Side.BUY, 100_000))
-    b.on_market_data(snapshot(10.00, volume=1_000_000))
+    b.on_market_data(snapshot(10.00, volume=1_000))
     rejects = b.poll_rejects()
     assert len(rejects) == 1
-    assert rejects[0].qty == 50_000
+    assert rejects[0].qty == 95_000
     assert "volume cap" in rejects[0].reason
 
 
 def test_volume_cap_rounds_down_to_lot():
+    """11 手 = 1,100 股，5% = 55 股，不足一手。"""
     b = broker(Portfolio(10_000_000.0), volume_cap=0.05)
     b.submit(order(Side.BUY, 100_000))
-    b.on_market_data(snapshot(10.00, volume=1_111))
+    b.on_market_data(snapshot(10.00, volume=11))
     assert b.poll_fills() == ()
     assert b.poll_rejects() != ()
 

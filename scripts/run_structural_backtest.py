@@ -38,6 +38,36 @@ from qsys.strategy.structural.strategy import (
 )
 
 
+def _cost_model(jq_compat: bool):
+    """成本口径：默认用我们自己的实盘档位；对账时切成聚宽的默认值。
+
+    原策略**没有调用** `set_slippage` / `set_order_cost`，所以聚宽用的是
+    它的默认值。别凭记忆——从它导出的 86 笔 lot 反推：`entry_price / 当日
+    open` 的中位数是 **0.001241**，正是 `PriceRelatedSlippage(0.00246)` 的
+    单边值 0.00123。86/86 笔全部配上，说明两边的 open 本身完全一致。
+
+    聚宽默认 `OrderCost`：佣金双边万三、最低 5 元，印花税**千一**（旧税率，
+    仅卖出），**不收过户费**。我们的默认档位是现行税率（印花税万五）且计过户费
+    ——更贴近实盘，但对账时必须换成它的。
+    """
+    if jq_compat:
+        return (
+            AShareFeeModel(
+                commission_rate=0.0003,
+                min_commission=5.0,
+                stamp_duty_rate=0.001,     # 聚宽默认仍是旧税率
+                transfer_fee_rate=0.0,     # 聚宽默认不收过户费
+            ),
+            FixedRateSlippage(0.00123),    # PriceRelatedSlippage(0.00246) 的单边
+            "聚宽默认（滑点 0.123% / 印花税 0.1% / 无过户费）",
+        )
+    return (
+        AShareFeeModel(),
+        FixedRateSlippage(0.0005),
+        "qsys 实盘档位（滑点 0.05% / 印花税 0.05% / 含过户费）",
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Structural Strategy 回测")
     parser.add_argument("--start", required=True)
@@ -48,6 +78,10 @@ def main() -> int:
     parser.add_argument(
         "--no-require-auction-volume", dest="require_auction_volume",
         action="store_false",
+    )
+    parser.add_argument(
+        "--jq-compat", action="store_true",
+        help="成本口径切成聚宽默认值，用于逐笔对账（见下方 _cost_model）",
     )
     args = parser.parse_args()
 
@@ -103,7 +137,8 @@ def main() -> int:
         )
     )
 
-    print(f"区间 {start} ~ {end}，标的池 {len(universe)} 只")
+    fees, slippage, cost_label = _cost_model(args.jq_compat)
+    print(f"区间 {start} ~ {end}，标的池 {len(universe)} 只   成本口径 {cost_label}")
     print(f"竞价时刻 {AUCTION_AT.strftime('%H:%M')}  检查点 {[t.strftime('%H:%M') for t in CHECKPOINTS]}")
     started = _time.time()
 
@@ -111,7 +146,7 @@ def main() -> int:
         strategy,
         feed=feed, calendar=calendar, universe=universe,
         initial_cash=args.cash, pipeline=ashare_pipeline(),
-        fees=AShareFeeModel(), slippage=FixedRateSlippage(0.0005),
+        fees=fees, slippage=slippage,
         checkpoints=CHECKPOINTS, auction_at=AUCTION_AT,
         intraday=intraday, market=market,
         corporate_actions=actions,

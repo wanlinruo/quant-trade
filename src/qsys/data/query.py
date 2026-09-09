@@ -140,6 +140,28 @@ class WarehouseQuery:
             params.extend(symbols)
         return self._con.execute(sql + " ORDER BY symbol, dt", params).pl()
 
+    def auction_ticks(
+        self,
+        symbols: Sequence[str] | None,
+        start: date,
+        end: date,
+    ) -> pl.DataFrame:
+        """集合竞价快照。`dt` 是交易日，`ts` 是快照时刻（北京时间）。"""
+        if symbols is not None and len(symbols) == 0:
+            return _empty(schema.AUCTION_TICKS)
+        glob = self._glob("auction_ticks", partitioned=True)
+        if glob is None:
+            return _empty(schema.AUCTION_TICKS)
+
+        columns = _projection(self._con, glob, schema.AUCTION_TICKS)
+        sql = f"SELECT {columns} FROM {_read(glob)} WHERE dt BETWEEN ? AND ?"
+        params: list[object] = [start, end]
+        if symbols is not None:
+            placeholders = ", ".join("?" for _ in symbols)
+            sql += f" AND symbol IN ({placeholders})"
+            params.extend(symbols)
+        return self._con.execute(sql + " ORDER BY symbol, ts", params).pl()
+
     def daily_flags(
         self, start: date | None = None, end: date | None = None
     ) -> pl.DataFrame:

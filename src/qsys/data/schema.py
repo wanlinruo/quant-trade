@@ -197,10 +197,31 @@ LIVE_RECON = pa.schema(
 )
 
 
+AUCTION_TICKS = pa.schema(
+    [
+        ("symbol", pa.string()),
+        ("dt", pa.date32()),  # 交易日
+        # 快照时刻（北京时间）。QMT 的 tick.time 是毫秒 epoch（UTC），
+        # 导出时已 +8 小时。沪市固定 3 秒一笔，深市按盘口变化推送。
+        ("ts", pa.timestamp("us")),  # 与 minute_bars.dt 同精度
+        # 竞价期间 bid1 == ask1 == **虚拟开盘价**，bid_vol1 == ask_vol1 ==
+        # **匹配量（手）**。09:25 撮合完成后这条恒等式才失效。
+        ("bid1", pa.float64()),
+        ("ask1", pa.float64()),
+        ("bid_vol1", pa.int64()),
+        ("ask_vol1", pa.int64()),
+        ("last_price", pa.float64()),  # 撮合前为 0
+        ("volume", pa.int64()),  # 累计成交量（手），撮合前为 0
+        ("amount", pa.float64()),
+    ]
+)
+
+
 PARTITIONED: dict[str, pa.Schema] = {
     "bars_daily": BARS_DAILY,
     "index_bars": INDEX_BARS,
     "minute_bars": MINUTE_BARS,
+    "auction_ticks": AUCTION_TICKS,
     "daily_flags": DAILY_FLAGS,
     "market_regime": MARKET_REGIME,
     "valuation_snapshot": VALUATION_SNAPSHOT,

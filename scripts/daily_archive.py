@@ -1,7 +1,9 @@
-"""每日归档：日线增量 -> 派生重算 -> 分钟线补齐 -> 导入校验。
+"""每日归档：日线增量 -> 派生重算 -> 分钟线补齐 -> 竞价 tick -> 导入校验。
 
-**为什么必须每天跑**：QMT 的分钟线只保留约一年且是滚动窗口，实测最早
-2025-09-09。每过一天就永久丢一天，漏跑的日子事后补不回来。
+**为什么必须每天跑**：两份数据都是滚动窗口，漏跑的日子事后补不回来。
+  - 分钟线：约一年，实测最早 2025-09-09
+  - **竞价 tick：只有约 20 个交易日**（实测边界 2026-08-10 / 锚点 2026-09-08）
+    ——这条比分钟线急一个数量级，漏三周就全丢。
 
 在 Linux 上跑，通过 SSH 驱动 Windows 下载。**一个编排者、一份日志、
 一处看失败**——两边各自定时是把「多系统拼接脆弱」这个老毛病请回来。
@@ -25,6 +27,10 @@ import polars as pl
 import structlog
 
 from qsys.core.calendar import AShareCalendar, last_closed_session
+from qsys.data.pipeline.auction import (
+    import_auction_ticks,
+    missing_auction_days,
+)
 from qsys.data.pipeline.candidates import candidate_stock_days, write_manifest
 from qsys.data.pipeline.capital import import_share_capital
 from qsys.data.pipeline.flags import build_daily_flags
@@ -61,6 +67,47 @@ def run(cmd: list[str], *, what: str, timeout: int = 3600) -> str:
     return result.stdout
 
 
+def _archive_auction(args, warehouse, wanted, ssh, key, stamp) -> None:
+    """竞价 tick 归档。失败**不中断**整个归档——日线与分钟线更要紧。"""
+    missing = missing_auction_days(warehouse, wanted)
+    print(f"竞价 tick：候选 {wanted.height} 组，其中缺 {missing.height} 组")
+    if missing.height == 0:
+        print("竞价 tick 已齐")
+        return
+
+    local = Path("var/auction-incoming")
+    local.mkdir(parents=True, exist_ok=True)
+    manifest = Path("var") / f"auction_manifest_{stamp}.csv"
+    write_manifest(missing, manifest)
+
+    win_dir = f"{args.win_root}/auction_{stamp}"
+    try:
+        run(ssh + [f"New-Item -ItemType Directory -Force -Path {win_dir} | Out-Null"],
+            what="建竞价目录")
+        run(["scp", "-i", key, "-o", "BatchMode=yes", str(manifest),
+             f"{args.win_host}:{win_dir}/manifest.csv"], what="上传竞价清单")
+        output = run(ssh + [
+            f'$env:PYTHONIOENCODING="utf-8"; {args.win_python} -u '
+            f'{args.win_auction_script} --manifest {win_dir}\\manifest.csv '
+            f'--out {win_dir} --sleep 0.1'
+        ], what="Windows 下载竞价 tick", timeout=7200)
+        for line in output.strip().splitlines()[-3:]:
+            print("  " + line)
+        run(["scp", "-i", key, "-o", "BatchMode=yes",
+             f"{args.win_host}:{win_dir}/*.parquet", str(local)],
+            what="回传竞价 parquet")
+    except Exception as exc:
+        log.error("archive.auction_failed", error=str(exc))
+        print(f"  [竞价 tick 失败] {exc}——继续做分钟线")
+        return
+
+    result = import_auction_ticks(
+        warehouse, local, archive_dir=Path("var/auction-done")
+    )
+    print(f"竞价 tick 导入 {result.files} 文件 / {result.rows:,} 笔 / "
+          f"{result.errors} 错误")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="每日数据归档")
     parser.add_argument("--warehouse", default="warehouse")
@@ -69,6 +116,9 @@ def main() -> int:
     parser.add_argument("--boards", default="main,gem,star")
     parser.add_argument("--batch-size", type=int, default=500)
     parser.add_argument("--skip-minutes", action="store_true")
+    parser.add_argument("--skip-auction", action="store_true")
+    parser.add_argument("--win-auction-script",
+                        default=r"C:\qsys\win_download_auction_ticks.py")
     parser.add_argument("--skip-capital", action="store_true")
     parser.add_argument("--win-capital-script", default=r"C:\qsys\win_download_capital.py")
     parser.add_argument("--win-host", default="Administrator@118.25.42.149")
@@ -160,12 +210,19 @@ def main() -> int:
 
     print(f"估值 {build_valuation(warehouse, derived_from, complete_through):,} 行")
 
+    wanted = candidate_stock_days(warehouse, start, complete_through)
+
+    # --- 4. 竞价 tick：窗口只有约 20 个交易日，**先于分钟线做** ---
+    # 分钟线滚动一年，晚几小时无所谓；tick 漏了就没了。
+    if not args.skip_auction:
+        _archive_auction(args, warehouse, wanted, ssh, key, stamp)
+
     if args.skip_minutes:
         print("按要求跳过分钟线")
+        print(f"=== 完成，耗时 {(time.time()-started)/60:.1f} 分钟 ===")
         return 0
 
-    # --- 4. 算出还缺哪些股-日的分钟线 ---
-    wanted = candidate_stock_days(warehouse, start, complete_through)
+    # --- 5. 算出还缺哪些股-日的分钟线 ---
     missing = missing_stock_days(warehouse, wanted)
     print(f"候选 {wanted.height} 组，其中缺分钟线 {missing.height} 组")
     if missing.height == 0:

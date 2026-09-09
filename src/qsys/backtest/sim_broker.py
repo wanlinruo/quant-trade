@@ -25,6 +25,12 @@ log = structlog.get_logger(__name__)
 
 _OPEN_TIME = time(9, 30)
 
+# 日线 volume 的单位是**手**，订单 qty 的单位是**股**。实测 86.5 万根日线，
+# 99.88% 满足 low <= amount/(volume*100) <= high，按“股”解释则 0 条命中。
+# 早先这里直接拿 volume 当股数比，成交量上限被收紧了 100 倍——小资金撞不到，
+# 159.6 万本金对账时一天冒出 155 次 volume_capped 才暴露。
+LOT = 100
+
 
 class SimBroker(Broker):
     def __init__(
@@ -108,14 +114,15 @@ class SimBroker(Broker):
             return
 
         qty = result.allowed_qty
-        cap = int(bar.volume * self._volume_cap)
+        cap = int(bar.volume * LOT * self._volume_cap)
         if qty > cap:
             dropped = qty - cap
             qty = cap
             # 被削减的部分作废并告警，不得静默丢弃
             self._reject(
                 order, dropped,
-                f"volume cap {self._volume_cap:.0%} of {bar.volume}: {dropped} shares dropped",
+                f"volume cap {self._volume_cap:.0%} of {bar.volume * LOT} shares: "
+                f"{dropped} shares dropped",
                 at,
             )
             log.warning(

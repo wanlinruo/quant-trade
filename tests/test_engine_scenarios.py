@@ -166,14 +166,19 @@ def test_lot_size_rounds_the_order_down():
 
 
 def test_volume_cap_limits_a_large_order():
-    sessions, rows = flat_series(3, volume=1_000)
+    """10 手 = 1,000 股，5% 上限只有 50 股，不足一手，整单成不了。"""
+    sessions, rows = flat_series(3, volume=10)
     result = build(BuyOnFirstBar(qty=100_000), sessions, rows, cash=10_000_000.0)
     assert result.fills == ()
     assert result.rejects != ()
 
 
 def test_volume_cap_partial_fill_is_reported():
-    sessions, rows = flat_series(3, volume=100_000)
+    """1,000 手 = 100,000 股，5% 上限 5,000 股。
+
+    **bar.volume 的单位是手，order.qty 的单位是股**——早先这里少乘 100。
+    """
+    sessions, rows = flat_series(3, volume=1_000)
     result = build(BuyOnFirstBar(qty=100_000), sessions, rows, cash=10_000_000.0)
     assert result.fills[0].qty == 5000
     assert any("volume cap" in r.reason for r in result.rejects)
