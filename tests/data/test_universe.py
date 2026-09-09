@@ -55,7 +55,10 @@ def symbols(n: int) -> list[str]:
 
 def test_ingests_every_symbol(warehouse):
     p = CountingProvider()
-    progress = ingest_universe(p, warehouse, symbols(5), SESSIONS[0], SESSIONS[-1])
+    progress = ingest_universe(
+        p, warehouse, symbols(5), SESSIONS[0], SESSIONS[-1],
+        complete_through=SESSIONS[-1],
+    )
     assert progress.done == 5
     assert progress.failed == 0
     df = WarehouseQuery(warehouse).daily_bars(None, SESSIONS[0], SESSIONS[-1])
@@ -73,14 +76,18 @@ def test_writes_in_batches_rather_than_all_at_once(warehouse):
 
     spy = SpyWarehouse(warehouse.root)
     ingest_universe(
-        CountingProvider(), spy, symbols(10), SESSIONS[0], SESSIONS[-1], batch_size=3
+        CountingProvider(), spy, symbols(10), SESSIONS[0], SESSIONS[-1],
+        complete_through=SESSIONS[-1], batch_size=3,
     )
     assert written.count("bars_daily") >= 4, "10 只 / 每批 3 只应至少写 4 次"
 
 
 def test_failures_do_not_abort_the_run(warehouse):
     p = CountingProvider(failing={"600002.SH"})
-    progress = ingest_universe(p, warehouse, symbols(5), SESSIONS[0], SESSIONS[-1])
+    progress = ingest_universe(
+        p, warehouse, symbols(5), SESSIONS[0], SESSIONS[-1],
+        complete_through=SESSIONS[-1],
+    )
     assert progress.done == 4
     assert progress.failed == 1
     assert len(p.calls) == 5
@@ -89,7 +96,10 @@ def test_failures_do_not_abort_the_run(warehouse):
 def test_empty_results_count_as_done_not_failed(warehouse):
     """停牌整段或未上市返回空，不是失败。"""
     p = CountingProvider(empty={"600001.SH"})
-    progress = ingest_universe(p, warehouse, symbols(3), SESSIONS[0], SESSIONS[-1])
+    progress = ingest_universe(
+        p, warehouse, symbols(3), SESSIONS[0], SESSIONS[-1],
+        complete_through=SESSIONS[-1],
+    )
     assert progress.failed == 0
 
 
@@ -101,6 +111,7 @@ def test_progress_callback_reports_each_batch(warehouse):
         symbols(10),
         SESSIONS[0],
         SESSIONS[-1],
+        complete_through=SESSIONS[-1],
         batch_size=4,
         on_progress=seen.append,
     )
@@ -112,38 +123,80 @@ def test_progress_callback_reports_each_batch(warehouse):
 def test_resume_skips_already_completed_symbols(warehouse):
     """进程被杀后重跑要能接着跑，不是从头再来。"""
     first = CountingProvider()
-    ingest_universe(first, warehouse, symbols(5), SESSIONS[0], SESSIONS[-1])
+    ingest_universe(
+        first, warehouse, symbols(5), SESSIONS[0], SESSIONS[-1],
+        complete_through=SESSIONS[-1],
+    )
 
     second = CountingProvider()
-    ingest_universe(second, warehouse, symbols(8), SESSIONS[0], SESSIONS[-1])
+    ingest_universe(
+        second, warehouse, symbols(8), SESSIONS[0], SESSIONS[-1],
+        complete_through=SESSIONS[-1],
+    )
     assert set(second.calls) == set(symbols(8)) - set(symbols(5))
 
 
 def test_skip_done_false_forces_a_full_refetch(warehouse):
     first = CountingProvider()
-    ingest_universe(first, warehouse, symbols(3), SESSIONS[0], SESSIONS[-1])
+    ingest_universe(
+        first, warehouse, symbols(3), SESSIONS[0], SESSIONS[-1],
+        complete_through=SESSIONS[-1],
+    )
     second = CountingProvider()
     ingest_universe(
-        second, warehouse, symbols(3), SESSIONS[0], SESSIONS[-1], skip_done=False
+        second, warehouse, symbols(3), SESSIONS[0], SESSIONS[-1],
+        complete_through=SESSIONS[-1], skip_done=False,
     )
     assert len(second.calls) == 3
 
 
 def test_completed_symbols_reflects_what_was_ingested(warehouse):
-    ingest_universe(CountingProvider(), warehouse, symbols(4), SESSIONS[0], SESSIONS[-1])
+    ingest_universe(
+        CountingProvider(), warehouse, symbols(4), SESSIONS[0], SESSIONS[-1],
+        complete_through=SESSIONS[-1],
+    )
     assert completed_symbols(warehouse, SESSIONS[0], SESSIONS[-1]) == set(symbols(4))
 
 
 def test_failed_symbols_are_retried_on_the_next_run(warehouse):
     first = CountingProvider(failing={"600001.SH"})
-    ingest_universe(first, warehouse, symbols(3), SESSIONS[0], SESSIONS[-1])
+    ingest_universe(
+        first, warehouse, symbols(3), SESSIONS[0], SESSIONS[-1],
+        complete_through=SESSIONS[-1],
+    )
     second = CountingProvider()
-    ingest_universe(second, warehouse, symbols(3), SESSIONS[0], SESSIONS[-1])
+    ingest_universe(
+        second, warehouse, symbols(3), SESSIONS[0], SESSIONS[-1],
+        complete_through=SESSIONS[-1],
+    )
     assert "600001.SH" in second.calls
 
 
 def test_empty_symbol_list_is_a_no_op(warehouse):
     progress = ingest_universe(
-        CountingProvider(), warehouse, [], SESSIONS[0], SESSIONS[-1]
+        CountingProvider(), warehouse, [], SESSIONS[0], SESSIONS[-1],
+        complete_through=SESSIONS[-1],
     )
     assert progress.total == 0
+
+
+def test_bars_after_the_last_closed_session_are_dropped(warehouse):
+    """盘中采集时「今日」的 bar 是残缺的，绝不能落盘。"""
+    p = CountingProvider()
+    ingest_universe(
+        p, warehouse, symbols(1), SESSIONS[0], SESSIONS[-1],
+        complete_through=SESSIONS[-2],
+    )
+    df = WarehouseQuery(warehouse).daily_bars(None, SESSIONS[0], SESSIONS[-1])
+    assert df["dt"].max() == SESSIONS[-2]
+
+
+def test_a_symbol_with_only_incomplete_bars_still_counts_as_done(warehouse):
+    """全部被丢弃不等于失败——下次重跑不该再抓一遍。"""
+    p = CountingProvider()
+    progress = ingest_universe(
+        p, warehouse, symbols(1), SESSIONS[0], SESSIONS[-1],
+        complete_through=date(2023, 12, 31),
+    )
+    assert progress.failed == 0
+    assert progress.done == 1

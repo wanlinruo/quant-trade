@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import date
+from datetime import date, datetime
 
 import duckdb
 import polars as pl
@@ -52,6 +52,27 @@ class WarehouseQuery:
             params.extend(symbols)
         sql += " ORDER BY symbol, dt"
         return self._con.execute(sql, params).pl()
+
+    def minute_bars(
+        self,
+        symbols: Sequence[str] | None,
+        start: datetime,
+        end: datetime,
+    ) -> pl.DataFrame:
+        if symbols is not None and len(symbols) == 0:
+            return _empty(schema.MINUTE_BARS)
+        glob = self._glob("minute_bars", partitioned=True)
+        if glob is None:
+            return _empty(schema.MINUTE_BARS)
+
+        columns = ", ".join(schema.MINUTE_BARS.names)
+        sql = f"SELECT {columns} FROM read_parquet('{glob}') WHERE dt BETWEEN ? AND ?"
+        params: list[object] = [start, end]
+        if symbols is not None:
+            placeholders = ", ".join("?" for _ in symbols)
+            sql += f" AND symbol IN ({placeholders})"
+            params.extend(symbols)
+        return self._con.execute(sql + " ORDER BY symbol, dt", params).pl()
 
     def daily_flags(
         self, start: date | None = None, end: date | None = None
