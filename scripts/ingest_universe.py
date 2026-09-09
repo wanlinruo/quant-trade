@@ -97,7 +97,14 @@ def main() -> int:
         # 只有当日快照。非交易日跑会把上一交易日的数字记到今天名下，
         # 定时任务应只在交易日收盘后触发。
         print("=== 估值快照（当日）===")
-        print(f"  {ingest_valuation_snapshot(reference, warehouse, date.today())} 行")
+        try:
+            rows = ingest_valuation_snapshot(reference, warehouse, date.today())
+            print(f"  {rows} 行")
+        except Exception as exc:
+            # 估值是附加数据，它取不到不该让已经跑了几小时的日线采集
+            # 连同派生数据一起白费。
+            print(f"  跳过：{type(exc).__name__}: {exc}")
+            log.warning("ingest.valuation_failed", error=str(exc))
 
     print("=== 派生数据 ===")
     print(f"  涨跌停标记 {build_daily_flags(warehouse, start, end)} 行")
