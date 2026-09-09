@@ -1,7 +1,9 @@
 """Structural Strategy V1.2 的 qsys 组装版。
 
 买入（原文 `run_daily(buy, '09:26')`）：选股 -> S8 权重分配 -> 按当日开盘价
-下单。在引擎里放在 `on_session_start`，成交价即当日开盘价。
+下单。放在 `on_auction`（引擎的竞价时刻，默认 09:30）而**不是**
+`on_session_start`——后者在 09:15，那时竞价尚未结算、当日开盘价不可见，
+`allocate` 会拿不到价格而把每一单都跳过。
 
 退出（三个检查点）：
 
@@ -40,6 +42,10 @@ from qsys.strategy.structural.exits import (
 
 log = structlog.get_logger(__name__)
 
+# 竞价结算后下单。原策略是 09:26；我们的竞价 bar 以 09:30 标注（收盘时刻
+# 约定），故取 09:30——两者都在开盘撮合之前，成交价同为当日开盘价。
+AUCTION_AT = time(9, 30)
+
 # 原文 L188-L204 的 run_daily 时刻
 CHECKPOINTS = (time(11, 25), time(14, 25), time(14, 50))
 
@@ -55,9 +61,14 @@ class StructuralStrategy(Strategy):
     # ---- 买入 ----
 
     def on_session_start(self, ctx) -> None:
+        """只记交易日推进。真正的选股下单在 on_auction。"""
         today = ctx.now.date()
-        previous = ctx.state.get("last_session")
+        ctx.state["previous_session"] = ctx.state.get("last_session")
         ctx.state["last_session"] = today
+
+    def on_auction(self, ctx) -> None:
+        today = ctx.now.date()
+        previous = ctx.state.get("previous_session")
         if previous is None:
             # 没有前一交易日就无从选股
             return

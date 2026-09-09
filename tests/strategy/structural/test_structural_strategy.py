@@ -6,7 +6,7 @@ import pytest
 
 from qsys.core.trading import Side
 from qsys.core.types import Market, Symbol
-from qsys.strategy.structural.strategy import CHECKPOINTS, StructuralStrategy
+from qsys.strategy.structural.strategy import AUCTION_AT, CHECKPOINTS, StructuralStrategy
 
 SYM = Symbol("600001", Market.SH)
 DAY = date(2024, 1, 4)
@@ -115,6 +115,7 @@ def test_first_session_places_no_orders():
     strategy = StructuralStrategy(FakeSelection([Pick(str(SYM), "LOW_MAIN")]))
     ctx = FakeCtx(datetime.combine(DAY, time(9, 15)))
     strategy.on_session_start(ctx)
+    strategy.on_auction(ctx)
     assert ctx.order.submitted == []
 
 
@@ -124,11 +125,12 @@ def test_a_pick_becomes_a_buy_order():
     state = {}
     strategy.on_session_start(FakeCtx(datetime.combine(date(2024, 1, 3), time(9, 15)), state=state))
     ctx = FakeCtx(
-        datetime.combine(DAY, time(9, 15)),
+        datetime.combine(DAY, AUCTION_AT),
         market=FakeMarket(opens={str(SYM): 10.0}),
         state=state,
     )
     strategy.on_session_start(ctx)
+    strategy.on_auction(ctx)
     assert ctx.order.submitted == [(str(SYM), Side.BUY, 10000)]
 
 
@@ -138,10 +140,10 @@ def test_the_tag_is_remembered_for_the_exit_side():
     strategy = StructuralStrategy(sel)
     state = {}
     strategy.on_session_start(FakeCtx(datetime.combine(date(2024, 1, 3), time(9, 15)), state=state))
-    strategy.on_session_start(
-        FakeCtx(datetime.combine(DAY, time(9, 15)),
+    c = FakeCtx(datetime.combine(DAY, AUCTION_AT),
                 market=FakeMarket(opens={str(SYM): 10.0}), state=state)
-    )
+    strategy.on_session_start(c)
+    strategy.on_auction(c)
     assert state["tags"][str(SYM)] == "HIGH_MAIN"
 
 
@@ -150,8 +152,9 @@ def test_no_open_price_means_no_order():
     strategy = StructuralStrategy(sel)
     state = {}
     strategy.on_session_start(FakeCtx(datetime.combine(date(2024, 1, 3), time(9, 15)), state=state))
-    ctx = FakeCtx(datetime.combine(DAY, time(9, 15)), state=state)
+    ctx = FakeCtx(datetime.combine(DAY, AUCTION_AT), state=state)
     strategy.on_session_start(ctx)
+    strategy.on_auction(ctx)
     assert ctx.order.submitted == []
 
 
@@ -268,3 +271,8 @@ def test_an_untagged_position_is_left_alone():
 
 def test_checkpoints_are_the_three_from_the_original():
     assert CHECKPOINTS == (time(11, 25), time(14, 25), time(14, 50))
+
+
+def test_buying_happens_at_the_auction_not_at_0915():
+    """09:15 竞价还没结算，开盘价不可见——买入必须在竞价时刻。"""
+    assert AUCTION_AT == time(9, 30)

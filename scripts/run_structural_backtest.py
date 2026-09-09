@@ -30,7 +30,11 @@ from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
 from qsys.markets.ashare import ashare_pipeline
 from qsys.strategy.structural.selection import StructuralSelection
-from qsys.strategy.structural.strategy import CHECKPOINTS, StructuralStrategy
+from qsys.strategy.structural.strategy import (
+    AUCTION_AT,
+    CHECKPOINTS,
+    StructuralStrategy,
+)
 
 
 def main() -> int:
@@ -81,7 +85,7 @@ def main() -> int:
     )
 
     print(f"区间 {start} ~ {end}，标的池 {len(universe)} 只")
-    print(f"检查点 {[t.strftime('%H:%M') for t in CHECKPOINTS]}")
+    print(f"竞价时刻 {AUCTION_AT.strftime('%H:%M')}  检查点 {[t.strftime('%H:%M') for t in CHECKPOINTS]}")
     started = _time.time()
 
     engine = BacktestEngine(
@@ -89,7 +93,8 @@ def main() -> int:
         feed=feed, calendar=calendar, universe=universe,
         initial_cash=args.cash, pipeline=ashare_pipeline(),
         fees=AShareFeeModel(), slippage=FixedRateSlippage(0.0005),
-        checkpoints=CHECKPOINTS, intraday=intraday, market=market,
+        checkpoints=CHECKPOINTS, auction_at=AUCTION_AT,
+        intraday=intraday, market=market,
         boards={Symbol.parse(k): v for k, v in boards.items()},
         params={"strategy": "structural_v1_2"},
     )
