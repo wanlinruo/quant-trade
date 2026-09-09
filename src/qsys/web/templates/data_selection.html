@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2>选股结果</h2>
+  <div class="kpis">
+    <div class="kpi"><div class="label">入选</div><div class="value">{{ summary.allowed }}</div></div>
+    <div class="kpi"><div class="label">判定总数</div><div class="value">{{ summary.total }}</div></div>
+    <div class="kpi"><div class="label">Gate 通过率</div><div class="value">{{ pass_rate }}</div></div>
+    <div class="kpi"><div class="label">交易日</div><div class="value">{{ summary.sessions }}</div></div>
+    <div class="kpi"><div class="label">标的</div><div class="value">{{ summary.symbols }}</div></div>
+  </div>
+</div>
+{% if summary.total %}
+<div class="card">
+  <h2>分支与年度分布</h2>
+  <table>
+    <tr><th>分支</th><th class="num">入选</th></tr>
+    {% for tag, n in summary.by_tag %}<tr><td>{{ tag }}</td><td class="num">{{ n }}</td></tr>{% endfor %}
+  </table>
+  <table style="margin-top:12px">
+    <tr><th>年</th><th class="num">入选</th></tr>
+    {% for year, n in summary.by_year %}<tr><td>{{ year }}</td><td class="num">{{ n }}</td></tr>{% endfor %}
+  </table>
+</div>
+<div class="card">
+  <h2>Gate 判定分布（含被拒的）</h2>
+  <table>
+    <tr><th>分支</th><th>判定</th><th class="num">条数</th></tr>
+    {% for tag, state, n in summary.by_state %}
+    <tr><td>{{ tag }}</td><td>{{ state }}</td><td class="num">{{ n }}</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+<div class="card">
+  <h2>入选明细（最近 {{ rows|length }} 条）</h2>
+  <div style="margin-bottom:10px">
+    <a href="/data/selection" class="pill {{ 'ok' if not tag }}">全部</a>
+    {% for t in tags %}
+    <a href="/data/selection?tag={{ t }}" class="pill {{ 'ok' if tag == t }}">{{ t }}</a>
+    {% endfor %}
+  </div>
+  {% if rows %}
+  <table>
+    <tr><th>日期</th><th>标的</th><th>分支</th><th>Gate</th></tr>
+    {% for r in rows %}
+    <tr><td>{{ r.dt }}</td><td>{{ r.symbol }}</td><td>{{ r.tag }}</td><td>{{ r.state }}</td></tr>
+    {% endfor %}
+  </table>
+  {% else %}<div class="empty">还没有选股结果。跑 scripts/run_selection.py 生成。</div>{% endif %}
+</div>
+{% endblock %}

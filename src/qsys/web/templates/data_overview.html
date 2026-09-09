@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2>仓库总量</h2>
+  <div class="kpis">
+    <div class="kpi"><div class="label">总行数</div><div class="value">{{ "{:,}".format(total_rows) }}</div></div>
+    <div class="kpi"><div class="label">标的数</div><div class="value">{{ "{:,}".format(total_symbols) }}</div></div>
+    <div class="kpi"><div class="label">数据表</div><div class="value">{{ coverage|length }}</div></div>
+    <div class="kpi"><div class="label">最后交易日</div><div class="value">{{ latest or "—" }}</div></div>
+  </div>
+</div>
+<div class="card">
+  <h2>数据覆盖</h2>
+  {% if coverage %}
+  <table>
+    <tr><th>表</th><th class="num">行数</th><th class="num">标的</th><th>区间</th></tr>
+    {% for c in coverage %}
+    <tr>
+      <td>{{ c.dataset }}</td>
+      <td class="num">{{ "{:,}".format(c.rows) }}</td>
+      <td class="num">{{ c.symbols if c.symbols else "—" }}</td>
+      <td>{% if c.first_dt %}{{ c.first_dt }} ~ {{ c.last_dt }}{% else %}（无日期）{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}<div class="empty">仓库为空。</div>{% endif %}
+</div>
+{% endblock %}

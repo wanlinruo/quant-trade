@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2>涨停家数（最近 {{ limit_up|length }} 个交易日）</h2>
+  {{ limit_up_chart|safe }}
+</div>
+<div class="card">
+  <h2>沪深300 MA20 五日斜率</h2>
+  {{ slope_chart|safe }}
+</div>
+<div class="card">
+  <h2>最近 {{ rows|length }} 个交易日</h2>
+  {% if rows %}
+  <table>
+    <tr><th>日期</th><th class="num">涨停</th><th class="num">跌停</th><th class="num">触板</th>
+        <th class="num">炸板</th><th class="num">首板</th><th class="num">上涨占比</th>
+        <th class="num">中位涨幅</th><th class="num">指数斜率</th></tr>
+    {% for r in rows %}
+    <tr>
+      <td>{{ r.dt }}</td>
+      <td class="num">{{ r.limit_up_count }}</td>
+      <td class="num">{{ r.limit_down_count }}</td>
+      <td class="num">{{ r.touched_limit_up_count }}</td>
+      <td class="num">{{ r.broken_board_count }}</td>
+      <td class="num">{{ r.first_board_count }}</td>
+      <td class="num">{{ "%.1f%%"|format(r.market_advance_ratio * 100) if r.market_advance_ratio is not none else "—" }}</td>
+      <td class="num {{ 'up' if (r.market_median_return_1d or 0) > 0 else 'down' }}">
+        {{ "%.2f%%"|format(r.market_median_return_1d * 100) if r.market_median_return_1d is not none else "—" }}</td>
+      <td class="num">{{ "%.4f"|format(r.index_ma20_slope_5d) if r.index_ma20_slope_5d is not none else "—" }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}<div class="empty">还没有生态因子。跑 scripts/daily_archive.py 生成。</div>{% endif %}
+</div>
+{% endblock %}

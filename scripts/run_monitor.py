@@ -20,13 +20,20 @@ from qsys.data.storage import Warehouse
 from qsys.ops.journal import SessionJournal
 from qsys.web.app import create_app
 from qsys.web.config import WebConfig
+from qsys.web.data_views import DataService
 from qsys.web.views import MonitorService
 
 log = structlog.get_logger("monitor")
 
 
-def build_app(warehouse_root: Path, config: WebConfig, config_path: str | None):
-    journal = SessionJournal(Warehouse(warehouse_root))
+def build_app(
+    warehouse_root: Path,
+    config: WebConfig,
+    config_path: str | None,
+    selection_path: Path | None = None,
+):
+    warehouse = Warehouse(warehouse_root)
+    journal = SessionJournal(warehouse)
 
     transport = None
     try:
@@ -38,7 +45,11 @@ def build_app(warehouse_root: Path, config: WebConfig, config_path: str | None):
         # Redis 不可用时监控台仍应能打开——历史数据来自仓库，不依赖 Redis
         log.warning("monitor.redis_unavailable", error=str(exc))
 
-    return create_app(MonitorService(journal, config=config, transport=transport), config)
+    return create_app(
+        MonitorService(journal, config=config, transport=transport),
+        config,
+        DataService(warehouse, selection_path),
+    )
 
 
 def main() -> int:
@@ -47,6 +58,10 @@ def main() -> int:
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--warehouse", default="warehouse")
     parser.add_argument("--config", default=None)
+    parser.add_argument(
+        "--selection", default="var/selection_loose.csv",
+        help="run_selection.py 产出的选股结果，数据台用它渲染",
+    )
     args = parser.parse_args()
 
     if args.host == "0.0.0.0":  # noqa: S104 - 刻意检查
@@ -56,7 +71,7 @@ def main() -> int:
         )
 
     config = WebConfig(host=args.host, port=args.port)
-    app = build_app(Path(args.warehouse), config, args.config)
+    app = build_app(Path(args.warehouse), config, args.config, Path(args.selection))
     log.info("monitor.started", host=args.host, port=args.port)
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
     return 0
