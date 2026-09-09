@@ -91,3 +91,73 @@ def test_partitioned_reads_do_not_leak_the_hive_partition_column(warehouse: Ware
         ), year=2024)
         df = read(WarehouseQuery(warehouse))
         assert df.columns == list(arrow_schema.names), dataset
+
+
+def _seed_minutes(warehouse: Warehouse) -> None:
+    import pyarrow as pa
+    from datetime import datetime
+
+    warehouse.write(
+        "minute_bars",
+        pa.table(
+            {
+                "symbol": ["600036.SH"] * 3 + ["000001.SZ"],
+                "dt": [
+                    datetime(2024, 1, 2, 9, 31),
+                    datetime(2024, 1, 2, 9, 32),
+                    datetime(2024, 1, 2, 15, 0),
+                    datetime(2024, 1, 2, 9, 31),
+                ],
+                "open": [10.0] * 4,
+                "high": [10.5] * 4,
+                "low": [9.5] * 4,
+                "close": [10.2] * 4,
+                "volume": [100] * 4,
+                "amount": [1020.0] * 4,
+            },
+            schema=schema.MINUTE_BARS,
+        ),
+        year=2024,
+    )
+
+
+def test_minute_bars_filter_by_symbol_and_time(warehouse: Warehouse):
+    from datetime import datetime
+
+    _seed_minutes(warehouse)
+    q = WarehouseQuery(warehouse)
+    df = q.minute_bars(
+        ["600036.SH"], datetime(2024, 1, 2, 9, 0), datetime(2024, 1, 2, 10, 0)
+    )
+    assert df.height == 2
+    assert df["symbol"].unique().to_list() == ["600036.SH"]
+
+
+def test_minute_bars_all_symbols(warehouse: Warehouse):
+    from datetime import datetime
+
+    _seed_minutes(warehouse)
+    df = WarehouseQuery(warehouse).minute_bars(
+        None, datetime(2024, 1, 2, 0, 0), datetime(2024, 1, 2, 23, 59)
+    )
+    assert df.height == 4
+
+
+def test_minute_bars_empty_symbol_list_returns_nothing(warehouse: Warehouse):
+    from datetime import datetime
+
+    _seed_minutes(warehouse)
+    df = WarehouseQuery(warehouse).minute_bars(
+        [], datetime(2024, 1, 2, 0, 0), datetime(2024, 1, 2, 23, 59)
+    )
+    assert df.height == 0
+
+
+def test_minute_bars_on_empty_warehouse(warehouse: Warehouse):
+    from datetime import datetime
+
+    df = WarehouseQuery(warehouse).minute_bars(
+        None, datetime(2024, 1, 1, 0, 0), datetime(2024, 1, 2, 0, 0)
+    )
+    assert df.height == 0
+    assert df.columns == list(schema.MINUTE_BARS.names)

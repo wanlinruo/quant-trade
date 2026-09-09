@@ -31,6 +31,21 @@ BARS_DAILY = pa.schema(
     ]
 )
 
+MINUTE_BARS = pa.schema(
+    [
+        ("symbol", pa.string()),
+        # 该分钟的**收盘时刻**：09:30–09:31 这根记 09:31。
+        # 如此 PIT 可见性就是 dt <= as_of，没有差一分钟的歧义。
+        ("dt", pa.timestamp("us")),
+        ("open", pa.float64()),
+        ("high", pa.float64()),
+        ("low", pa.float64()),
+        ("close", pa.float64()),
+        ("volume", pa.int64()),
+        ("amount", pa.float64()),
+    ]
+)
+
 CORPORATE_ACTIONS = pa.schema(
     [
         ("symbol", pa.string()),
@@ -157,6 +172,7 @@ LIVE_RECON = pa.schema(
 
 PARTITIONED: dict[str, pa.Schema] = {
     "bars_daily": BARS_DAILY,
+    "minute_bars": MINUTE_BARS,
     "daily_flags": DAILY_FLAGS,
     "market_regime": MARKET_REGIME,
     "valuation_snapshot": VALUATION_SNAPSHOT,
