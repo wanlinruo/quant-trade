@@ -1,0 +1,270 @@
+"""策略组装：选股下单 + 三个检查点退出。"""
+
+from datetime import date, datetime, time
+
+import pytest
+
+from qsys.core.trading import Side
+from qsys.core.types import Market, Symbol
+from qsys.strategy.structural.strategy import CHECKPOINTS, StructuralStrategy
+
+SYM = Symbol("600001", Market.SH)
+DAY = date(2024, 1, 4)
+
+
+class FakeSelection:
+    def __init__(self, picks=()):
+        self.picks = list(picks)
+        self.calls = []
+
+    def select(self, day, previous):
+        self.calls.append((day, previous))
+        return self.picks
+
+
+class Pick:
+    def __init__(self, symbol, tag):
+        self.symbol, self.tag = symbol, tag
+
+
+class FakeOrder:
+    def __init__(self):
+        self.submitted = []
+
+    def submit(self, symbol, side, qty):
+        self.submitted.append((str(symbol), side, qty))
+
+
+class FakePosition:
+    def __init__(self, qty=0, available=0, avg=0.0):
+        self.total_qty, self.available_qty, self.avg_cost = qty, available, avg
+
+
+class FakePortfolio:
+    def __init__(self, cash=100_000.0, positions=None):
+        self.cash = cash
+        self._p = positions or {}
+
+    def position(self, symbol):
+        return self._p.get(str(symbol), FakePosition())
+
+    @property
+    def symbols(self):
+        return frozenset(self._p)
+
+
+class FakeMarket:
+    def __init__(self, opens=None, intraday=None, limit_up=None):
+        self._opens = opens or {}
+        self._intraday = intraday or {}
+        self._limit_up = limit_up or {}
+
+    def session_open(self, symbols, day):
+        return {s: v for s, v in self._opens.items() if s in symbols}
+
+    def intraday(self, symbols, day, at):
+        return {s: v for s, v in self._intraday.items() if s in symbols}
+
+    def limit_up_price(self, symbols, day):
+        return {s: v for s, v in self._limit_up.items() if s in symbols}
+
+
+class Quote:
+    def __init__(self, price, volume=1000):
+        self.price, self.volume = price, volume
+
+
+class FakeData:
+    def __init__(self, closes=()):
+        self._closes = list(closes)
+
+    def get(self, symbols, start, end, adjustment=None):
+        import polars as pl
+
+        n = len(self._closes)
+        return pl.DataFrame(
+            {
+                "symbol": [str(SYM)] * n,
+                "dt": [date(2024, 1, 1)] * n,
+                "open": self._closes, "high": self._closes,
+                "low": self._closes, "close": self._closes,
+                "volume": [1000] * n, "amount": [0.0] * n,
+            }
+        )
+
+
+class FakeCtx:
+    def __init__(self, now, portfolio=None, market=None, data=None, state=None):
+        self.now = now
+        self.portfolio = portfolio or FakePortfolio()
+        self.market = market or FakeMarket()
+        self.data = data or FakeData()
+        self.order = FakeOrder()
+        self.state = state if state is not None else {}
+        self.params = {}
+        import structlog
+
+        self.log = structlog.get_logger("test")
+
+
+# ---------------- 买入 ----------------
+
+
+def test_first_session_places_no_orders():
+    """没有前一交易日就无从选股。"""
+    strategy = StructuralStrategy(FakeSelection([Pick(str(SYM), "LOW_MAIN")]))
+    ctx = FakeCtx(datetime.combine(DAY, time(9, 15)))
+    strategy.on_session_start(ctx)
+    assert ctx.order.submitted == []
+
+
+def test_a_pick_becomes_a_buy_order():
+    sel = FakeSelection([Pick(str(SYM), "LOW_MAIN")])
+    strategy = StructuralStrategy(sel)
+    state = {}
+    strategy.on_session_start(FakeCtx(datetime.combine(date(2024, 1, 3), time(9, 15)), state=state))
+    ctx = FakeCtx(
+        datetime.combine(DAY, time(9, 15)),
+        market=FakeMarket(opens={str(SYM): 10.0}),
+        state=state,
+    )
+    strategy.on_session_start(ctx)
+    assert ctx.order.submitted == [(str(SYM), Side.BUY, 10000)]
+
+
+def test_the_tag_is_remembered_for_the_exit_side():
+    """退出要按分支分流，买入时就得记下标签。"""
+    sel = FakeSelection([Pick(str(SYM), "HIGH_MAIN")])
+    strategy = StructuralStrategy(sel)
+    state = {}
+    strategy.on_session_start(FakeCtx(datetime.combine(date(2024, 1, 3), time(9, 15)), state=state))
+    strategy.on_session_start(
+        FakeCtx(datetime.combine(DAY, time(9, 15)),
+                market=FakeMarket(opens={str(SYM): 10.0}), state=state)
+    )
+    assert state["tags"][str(SYM)] == "HIGH_MAIN"
+
+
+def test_no_open_price_means_no_order():
+    sel = FakeSelection([Pick(str(SYM), "LOW_MAIN")])
+    strategy = StructuralStrategy(sel)
+    state = {}
+    strategy.on_session_start(FakeCtx(datetime.combine(date(2024, 1, 3), time(9, 15)), state=state))
+    ctx = FakeCtx(datetime.combine(DAY, time(9, 15)), state=state)
+    strategy.on_session_start(ctx)
+    assert ctx.order.submitted == []
+
+
+# ---------------- 退出 ----------------
+
+
+def held(tag, qty=1000, avg=10.0):
+    return {
+        "portfolio": FakePortfolio(
+            positions={str(SYM): FakePosition(qty, qty, avg)}
+        ),
+        "state": {"tags": {str(SYM): tag}},
+    }
+
+
+def test_high_takes_profit_at_1125():
+    h = held("HIGH_MAIN")
+    ctx = FakeCtx(
+        datetime.combine(DAY, time(11, 25)), portfolio=h["portfolio"], state=h["state"],
+        market=FakeMarket(intraday={str(SYM): Quote(11.0)}, limit_up={str(SYM): 12.0}),
+        data=FakeData([10.0, 10.0, 10.0, 10.0]),
+    )
+    StructuralStrategy(FakeSelection()).on_checkpoint(ctx, time(11, 25))
+    assert ctx.order.submitted == [(str(SYM), Side.SELL, 1000)]
+
+
+def test_low_holds_at_1125_when_not_profitable():
+    h = held("LOW_MAIN")
+    ctx = FakeCtx(
+        datetime.combine(DAY, time(11, 25)), portfolio=h["portfolio"], state=h["state"],
+        market=FakeMarket(intraday={str(SYM): Quote(9.5)}, limit_up={str(SYM): 12.0}),
+    )
+    StructuralStrategy(FakeSelection()).on_checkpoint(ctx, time(11, 25))
+    assert ctx.order.submitted == []
+
+
+def test_low_sells_unconditionally_at_1425():
+    h = held("LOW_MAIN")
+    ctx = FakeCtx(
+        datetime.combine(DAY, time(14, 25)), portfolio=h["portfolio"], state=h["state"],
+        market=FakeMarket(intraday={str(SYM): Quote(9.0)}, limit_up={str(SYM): 12.0}),
+    )
+    StructuralStrategy(FakeSelection()).on_checkpoint(ctx, time(14, 25))
+    assert ctx.order.submitted == [(str(SYM), Side.SELL, 1000)]
+
+
+def test_high_is_untouched_at_1425():
+    """14:25 只作用于 LOW。"""
+    h = held("HIGH_MAIN")
+    ctx = FakeCtx(
+        datetime.combine(DAY, time(14, 25)), portfolio=h["portfolio"], state=h["state"],
+        market=FakeMarket(intraday={str(SYM): Quote(9.0)}, limit_up={str(SYM): 12.0}),
+        data=FakeData([10.0] * 4),
+    )
+    StructuralStrategy(FakeSelection()).on_checkpoint(ctx, time(14, 25))
+    assert ctx.order.submitted == []
+
+
+def test_low_is_untouched_at_1450():
+    """14:50 只作用于 HIGH。"""
+    h = held("LOW_MAIN")
+    ctx = FakeCtx(
+        datetime.combine(DAY, time(14, 50)), portfolio=h["portfolio"], state=h["state"],
+        market=FakeMarket(intraday={str(SYM): Quote(9.0)}, limit_up={str(SYM): 12.0}),
+    )
+    StructuralStrategy(FakeSelection()).on_checkpoint(ctx, time(14, 50))
+    assert ctx.order.submitted == []
+
+
+def test_limit_up_holds_overnight():
+    h = held("LOW_MAIN")
+    ctx = FakeCtx(
+        datetime.combine(DAY, time(14, 25)), portfolio=h["portfolio"], state=h["state"],
+        market=FakeMarket(intraday={str(SYM): Quote(12.0)}, limit_up={str(SYM): 12.0}),
+    )
+    StructuralStrategy(FakeSelection()).on_checkpoint(ctx, time(14, 25))
+    assert ctx.order.submitted == []
+
+
+def test_only_settled_shares_are_sold():
+    """当日买入不可卖——只卖已解冻的部分。"""
+    portfolio = FakePortfolio(positions={str(SYM): FakePosition(2000, 600, 10.0)})
+    ctx = FakeCtx(
+        datetime.combine(DAY, time(14, 25)), portfolio=portfolio,
+        state={"tags": {str(SYM): "LOW_MAIN"}},
+        market=FakeMarket(intraday={str(SYM): Quote(9.0)}, limit_up={str(SYM): 12.0}),
+    )
+    StructuralStrategy(FakeSelection()).on_checkpoint(ctx, time(14, 25))
+    assert ctx.order.submitted == [(str(SYM), Side.SELL, 600)]
+
+
+def test_no_intraday_quote_means_no_exit():
+    """拿不到当时价格就不能判——绝不用别的价格顶替。"""
+    h = held("LOW_MAIN")
+    ctx = FakeCtx(
+        datetime.combine(DAY, time(14, 25)), portfolio=h["portfolio"], state=h["state"],
+        market=FakeMarket(limit_up={str(SYM): 12.0}),
+    )
+    StructuralStrategy(FakeSelection()).on_checkpoint(ctx, time(14, 25))
+    assert ctx.order.submitted == []
+
+
+def test_an_untagged_position_is_left_alone():
+    """没有标签就不知道该按哪条规则退，宁可不动。"""
+    ctx = FakeCtx(
+        datetime.combine(DAY, time(14, 25)),
+        portfolio=FakePortfolio(positions={str(SYM): FakePosition(1000, 1000, 10.0)}),
+        state={},
+        market=FakeMarket(intraday={str(SYM): Quote(9.0)}, limit_up={str(SYM): 12.0}),
+    )
+    StructuralStrategy(FakeSelection()).on_checkpoint(ctx, time(14, 25))
+    assert ctx.order.submitted == []
+
+
+def test_checkpoints_are_the_three_from_the_original():
+    assert CHECKPOINTS == (time(11, 25), time(14, 25), time(14, 50))
