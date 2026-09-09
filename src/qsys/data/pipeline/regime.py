@@ -11,8 +11,9 @@
 `prior_limitup_nextday_return` 要看昨日的涨停状态，跨年那一天没有回看
 就会算空。
 
-**不含 index_ma20_slope_5d**：那需要沪深 300 指数日线，指数数据源与个股
-不同，归入后续计划。
+`index_ma20_slope_5d` 取自沪深 300 指数日线（`index_bars`）：
+MA20 相对 5 个交易日前的 MA20 的变化率。**没有指数数据时留空而不是填 0**——
+S6 Gate 对 None 走 UNKNOWN_ALLOW，填 0 会被当成真实的「趋势走平」。
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ import polars as pl
 import structlog
 
 from qsys.data import schema
+from qsys.data.pipeline.index_bars import CSI300
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
 
@@ -45,6 +47,7 @@ _REGIME_COLUMNS = [
     "prior_limitup_nextday_return_mean",
     "prior_limitup_nextday_return_median",
     "valid_stock_count",
+    "index_ma20_slope_5d",
 ]
 
 
@@ -68,6 +71,7 @@ def build_market_regime(warehouse: Warehouse, start: date, end: date) -> int:
         daily = _aggregate(bars, flags).filter(pl.col("dt").is_between(lo, hi))
         if daily.height == 0:
             continue
+        daily = daily.join(_index_slope(query, back, hi), on="dt", how="left")
 
         chunk = daily.sort("dt").select(_REGIME_COLUMNS)
         # 与 flags 同理：分区整年覆盖写，只重算一段时必须先合并同年既有数据
@@ -142,4 +146,37 @@ def _aggregate(bars: pl.DataFrame, flags: pl.DataFrame) -> pl.DataFrame:
             .cast(pl.Float64)
             .alias("market_advance_ratio"),
         )
+    )
+
+
+# MA20 与「5 个交易日前的 MA20」合起来要 25 根
+_MA_WINDOW = 20
+_SLOPE_LAG = 5
+
+
+def _index_slope(query: WarehouseQuery, start: date, end: date) -> pl.DataFrame:
+    """沪深 300 的 MA20 相对 5 个交易日前 MA20 的变化率，按日返回。
+
+    取数区间要比 [start, end] 更早 —— MA20 需要往前 20 根、再往前 5 根。
+    不足 25 根的日子留空：S6 Gate 对 None 走 UNKNOWN_ALLOW，填 0 会被
+    当成真实的「趋势走平」而误判。
+    """
+    empty = pl.DataFrame(schema={"dt": pl.Date, "index_ma20_slope_5d": pl.Float64})
+    need = _MA_WINDOW + _SLOPE_LAG
+    # 多取 2 倍窗口的日历日，足够覆盖 25 个交易日
+    bars = query.index_bars([CSI300], start - timedelta(days=need * 3), end)
+    if bars.height < need:
+        return empty
+
+    ma = bars.sort("dt").with_columns(
+        pl.col("close").rolling_mean(window_size=_MA_WINDOW).alias("_ma20")
+    )
+    return (
+        ma.with_columns(
+            (pl.col("_ma20") / pl.col("_ma20").shift(_SLOPE_LAG) - 1.0).alias(
+                "index_ma20_slope_5d"
+            )
+        )
+        .select(["dt", "index_ma20_slope_5d"])
+        .filter(pl.col("dt").is_between(start, end))
     )

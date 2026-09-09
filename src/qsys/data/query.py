@@ -53,6 +53,33 @@ class WarehouseQuery:
         sql += " ORDER BY symbol, dt"
         return self._con.execute(sql, params).pl()
 
+    def index_bars(
+        self,
+        symbols: Sequence[str] | None = None,
+        start: date | None = None,
+        end: date | None = None,
+    ) -> pl.DataFrame:
+        if symbols is not None and len(symbols) == 0:
+            return _empty(schema.INDEX_BARS)
+        glob = self._glob("index_bars", partitioned=True)
+        if glob is None:
+            return _empty(schema.INDEX_BARS)
+
+        columns = ", ".join(schema.INDEX_BARS.names)
+        sql = f"SELECT {columns} FROM read_parquet('{glob}')"
+        params: list[object] = []
+        clauses: list[str] = []
+        if start is not None and end is not None:
+            clauses.append("dt BETWEEN ? AND ?")
+            params.extend([start, end])
+        if symbols is not None:
+            placeholders = ", ".join("?" for _ in symbols)
+            clauses.append(f"symbol IN ({placeholders})")
+            params.extend(symbols)
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+        return self._con.execute(sql + " ORDER BY symbol, dt", params).pl()
+
     def minute_bars(
         self,
         symbols: Sequence[str] | None,
