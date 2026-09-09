@@ -144,3 +144,23 @@ def test_missing_daily_bar_skips_the_cross_checks(warehouse):
 
 def test_no_minute_data_yields_no_issues(warehouse):
     assert check_minute_bars(warehouse, DAY) == []
+
+
+def test_the_0930_auction_bar_is_not_outside_the_session(warehouse):
+    """09:30 是开盘集合竞价，正常数据，不该被判成时段外。"""
+    seed(
+        warehouse,
+        [(9, 30, 41.01, 41.01, 41.01, 41.01, 2195), (15, 0, 40.9, 40.9, 40.9, 40.9, 8221)],
+        daily=(41.01, 41.01, 40.9, 40.9, 10416),
+    )
+    assert "outside_session" not in rules_of(check_minute_bars(warehouse, DAY))
+
+
+def test_zero_volume_bars_are_accepted(warehouse):
+    """收盘竞价时段的 14:58/14:59 成交量为 0，四价相等，是正常的。"""
+    seed(
+        warehouse,
+        [(14, 59, 41.01, 41.01, 41.01, 41.01, 0), (15, 0, 40.9, 40.9, 40.9, 40.9, 100)],
+        daily=(41.01, 41.01, 40.9, 40.9, 100),
+    )
+    assert check_minute_bars(warehouse, DAY) == []

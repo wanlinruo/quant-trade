@@ -26,7 +26,9 @@ log = structlog.get_logger(__name__)
 _VOLUME_TOLERANCE = 0.01
 _PRICE_TOLERANCE = 0.005  # 半分
 
-_MORNING = (time(9, 31), time(11, 30))
+# 09:30 是开盘集合竞价那一根，属于正常数据，不能判成时段外。
+# 13:00 则确实不存在（12:59–13:00 无交易），故下午自 13:01 起。
+_MORNING = (time(9, 30), time(11, 30))
 _AFTERNOON = (time(13, 1), time(15, 0))
 
 

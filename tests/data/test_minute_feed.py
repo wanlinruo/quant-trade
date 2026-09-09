@@ -185,3 +185,39 @@ def test_empty_symbol_list_returns_nothing(feed):
         as_of=datetime(2024, 1, 2, 15, 0),
     )
     assert df.height == 0
+
+
+def test_the_auction_bar_at_0930_is_included(warehouse, tmp_path):
+    """09:30 是开盘集合竞价那一根，策略判高开/低开就靠它，不能漏。"""
+    import pyarrow.parquet as pq
+
+    from qsys.data.pipeline.minutes import import_minute_bars
+
+    incoming = tmp_path / "in"
+    incoming.mkdir(parents=True)
+    pq.write_table(
+        pa.table(
+            {
+                "symbol": ["600036.SH"] * 2,
+                # 竞价根四价相等，是集合竞价的特征
+                "dt": [datetime(2024, 1, 2, 9, 30), datetime(2024, 1, 2, 9, 31)],
+                "open": [41.01, 41.01],
+                "high": [41.01, 41.38],
+                "low": [41.01, 41.01],
+                "close": [41.01, 41.24],
+                "volume": [2195, 13629],
+                "amount": [0.0, 0.0],
+            },
+            schema=schema.MINUTE_BARS,
+        ),
+        incoming / "a.parquet",
+    )
+    import_minute_bars(warehouse, incoming)
+
+    feed = MinuteFeed(WarehouseQuery(warehouse))
+    session = feed.session_bars(["600036.SH"], DAY, as_of=datetime(2024, 1, 2, 15, 0))
+    assert session.height == 2, "09:30 竞价根被漏掉了"
+
+    auction = feed.first_bar(["600036.SH"], DAY, as_of=datetime(2024, 1, 2, 9, 30))
+    assert auction["dt"].to_list() == [datetime(2024, 1, 2, 9, 30)]
+    assert auction["volume"].to_list() == [2195]
