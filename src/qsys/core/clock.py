@@ -16,6 +16,7 @@ from qsys.core.calendar import TradingCalendar
 
 class Phase(StrEnum):
     SESSION_START = "session_start"  # 盘前：当日 bar 尚不可见
+    AUCTION = "auction"  # 集合竞价已结算：当日 open 已确定，其余仍不可见
     CHECKPOINT = "checkpoint"  # 盘中某时刻：只有当时及更早的分钟线可见
     BAR = "bar"  # 收盘：当日 bar 可见
     SESSION_END = "session_end"  # 收盘后：记录与复盘
@@ -37,11 +38,14 @@ class BacktestClock(Clock):
         start: date,
         end: date,
         checkpoints: Sequence[time] = (),
+        auction_at: time | None = None,
     ) -> None:
         self._calendar = calendar
         self._sessions = calendar.sessions_in_range(start, end)
         # 盘中检查点，按时间先后推进。不配则时钟行为与原来完全一致。
         self._checkpoints = tuple(sorted(checkpoints))
+        # 集合竞价结算时刻。不配则时钟行为与原来完全一致。
+        self._auction_at = auction_at
         self._now: datetime | None = None
         self._session: date | None = None
 
@@ -59,6 +63,10 @@ class BacktestClock(Clock):
         for session in self._sessions:
             self._session = session
             moments = [(datetime.combine(session, self.PRE_OPEN), Phase.SESSION_START)]
+            if self._auction_at is not None:
+                moments.append(
+                    (datetime.combine(session, self._auction_at), Phase.AUCTION)
+                )
             moments += [
                 (datetime.combine(session, at), Phase.CHECKPOINT)
                 for at in self._checkpoints

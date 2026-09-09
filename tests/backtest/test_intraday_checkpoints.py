@@ -202,3 +202,53 @@ def test_checkpoints_without_an_intraday_source_are_inert():
         SellAtFirstCheckpoint(), checkpoints=CHECKPOINTS
     ).run(SESSIONS[0], SESSIONS[-1])
     assert [f for f in result.fills if f.side is Side.SELL] == []
+
+
+class BuyAtAuction(Strategy):
+    """在竞价时刻下单——此时当日开盘价已确定。"""
+
+    def on_auction(self, ctx):
+        if not ctx.state.get("bought"):
+            ctx.state["bought"] = True
+            ctx.order.submit(Symbol.parse(SYMBOL), Side.BUY, 1000)
+
+
+def test_without_an_auction_phase_the_engine_is_unchanged():
+    """不配竞价时刻时，run_id 与净值必须与扩展前一致。"""
+    result = engine_for(BuyOnce()).run(SESSIONS[0], SESSIONS[-1])
+    assert result.run_id == engine_for(BuyOnce()).run(SESSIONS[0], SESSIONS[-1]).run_id
+
+
+def test_configuring_an_auction_phase_changes_the_run_id():
+    plain = engine_for(DoNothing()).run(SESSIONS[0], SESSIONS[-1])
+    with_auction = BacktestEngine(
+        DoNothing(), feed=StubFeed(), calendar=AShareCalendar(SESSIONS),
+        universe=[Symbol.parse(SYMBOL)], initial_cash=1_000_000.0,
+        pipeline=ashare_pipeline(), fees=ZeroFeeModel(), slippage=NoSlippage(),
+        auction_at=time(9, 30),
+    ).run(SESSIONS[0], SESSIONS[-1])
+    assert plain.run_id != with_auction.run_id
+
+
+def auction_engine(strategy):
+    return BacktestEngine(
+        strategy, feed=StubFeed(), calendar=AShareCalendar(SESSIONS),
+        universe=[Symbol.parse(SYMBOL)], initial_cash=1_000_000.0,
+        pipeline=ashare_pipeline(), fees=ZeroFeeModel(), slippage=NoSlippage(),
+        auction_at=time(9, 30),
+    )
+
+
+def test_an_auction_order_fills_at_the_same_day_open():
+    """竞价时刻下的单当日开盘成交，不排到次日。"""
+    result = auction_engine(BuyAtAuction()).run(SESSIONS[0], SESSIONS[-1])
+    buys = [f for f in result.fills if f.side is Side.BUY]
+    assert len(buys) == 1
+    assert buys[0].filled_at.date() == SESSIONS[0]
+    assert buys[0].price == pytest.approx(10.0)
+
+
+def test_session_start_orders_still_fill_when_an_auction_phase_exists():
+    """盘前提交的单也在同一次开盘撮合里成交，不会被漏掉。"""
+    result = auction_engine(BuyOnce()).run(SESSIONS[0], SESSIONS[-1])
+    assert [f for f in result.fills if f.side is Side.BUY]

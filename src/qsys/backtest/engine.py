@@ -73,6 +73,7 @@ class BacktestEngine:
         params: Mapping[str, object] | None = None,
         boards: Mapping[Symbol, str] | None = None,
         checkpoints: Sequence[time] = (),
+        auction_at: time | None = None,
         intraday: object | None = None,
         market: object | None = None,
     ) -> None:
@@ -90,6 +91,9 @@ class BacktestEngine:
         self._boards = dict(boards or {})
         # 盘中检查点。不配则引擎行为与原来逐字节相同。
         self._checkpoints = tuple(sorted(checkpoints))
+        # 配了竞价时刻，则开盘撮合推迟到那一刻之后——策略要先看到已结算的
+        # 竞价价才能定量。不配则与原来完全一致。
+        self._auction_at = auction_at
         # intraday(session, at, symbols) -> {symbol: (price, 截至该时刻的成交量)}
         self._intraday = intraday
         self._market = market
@@ -109,6 +113,11 @@ class BacktestEngine:
                 **(
                     {"checkpoints": [t.isoformat() for t in self._checkpoints]}
                     if self._checkpoints
+                    else {}
+                ),
+                **(
+                    {"auction_at": self._auction_at.isoformat()}
+                    if self._auction_at is not None
                     else {}
                 ),
             },
@@ -176,7 +185,9 @@ class BacktestEngine:
         portfolio = Portfolio(self._initial_cash)
         broker = SimBroker(portfolio, self._pipeline, self._fees, self._slippage,
                            volume_cap=self._volume_cap)
-        clock = BacktestClock(self._calendar, start, end, self._checkpoints)
+        clock = BacktestClock(
+            self._calendar, start, end, self._checkpoints, self._auction_at
+        )
         state: dict[str, object] = {}
 
         all_fills: list[Fill] = []
@@ -200,6 +211,21 @@ class BacktestEngine:
                 broker.submit(Order(f"o{order_seq}", intent.symbol, intent.side,
                                     intent.qty, intent.order_type, intent.limit_price, at))
 
+        def match_at_open(at: datetime) -> None:
+            session = at.date()
+            snapshot = MarketSnapshot(
+                session=session, bars=bars_by_session.get(session, {}),
+                prev_closes=dict(prev_closes), boards=self._boards,
+            )
+            broker.on_market_data(snapshot)
+            all_rejects.extend(broker.poll_rejects())
+            for fill in broker.poll_fills():
+                portfolio.apply_fill(fill)
+                all_fills.append(fill)
+                fill_ctx, fill_api = make_ctx(last_close)
+                self._strategy.on_fill(fill_ctx, fill)
+                flush(fill_api, at)
+
         self._strategy.on_init(make_ctx(last_close)[0])
 
         for moment, phase in clock.ticks():
@@ -215,19 +241,16 @@ class BacktestEngine:
                 self._strategy.on_session_start(ctx)
                 flush(api, moment)
 
-                snapshot = MarketSnapshot(
-                    session=session, bars=bars, prev_closes=dict(prev_closes),
-                    boards=self._boards,
-                )
-                broker.on_market_data(snapshot)
-                fills = broker.poll_fills()
-                all_rejects.extend(broker.poll_rejects())
-                for fill in fills:
-                    portfolio.apply_fill(fill)
-                    all_fills.append(fill)
-                    fill_ctx, fill_api = make_ctx(last_close)
-                    self._strategy.on_fill(fill_ctx, fill)
-                    flush(fill_api, moment)
+                if self._auction_at is None:
+                    match_at_open(moment)
+
+            elif phase is Phase.AUCTION:
+                # 竞价已结算，当日 open 已确定；策略在此定量下单，
+                # 随后按开盘价撮合——对应原策略的 run_daily(buy, '09:26')
+                ctx, api = make_ctx(last_close)
+                self._strategy.on_auction(ctx)
+                flush(api, moment)
+                match_at_open(moment)
 
             elif phase is Phase.CHECKPOINT:
                 # 钩子总是触发：「没持仓」与「没分钟线」是两回事，不能混为一谈。

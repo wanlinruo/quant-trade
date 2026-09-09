@@ -17,6 +17,15 @@ class Strategy:
     def on_session_start(self, ctx: Any) -> None:
         """每日盘前：选股、算目标仓位。此时当日 bar 尚不可见。"""
 
+    def on_auction(self, ctx: Any) -> None:
+        """集合竞价结算后、开盘撮合前。
+
+        此时当日**开盘价已确定**（竞价成交价即开盘价），但当日 bar 的
+        high/low/close 仍不可见。在此提交的订单按当日开盘价成交。
+
+        对应原策略的 `run_daily(buy, '09:26')`。
+        """
+
     def on_checkpoint(self, ctx: Any, at: Any) -> None:
         """盘中检查点。`at` 是该检查点的时刻（datetime.time）。
 
