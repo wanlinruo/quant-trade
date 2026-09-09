@@ -17,6 +17,15 @@ def _empty(arrow_schema: pa.Schema) -> pl.DataFrame:
     return pl.from_arrow(arrow_schema.empty_table())
 
 
+# 分区读取一律带上：跨年分区可能由不同 schema 版本写下，
+# 没有它 duckdb 会在「某年有这列、某年没有」时直接报错。
+_UNION = "union_by_name=true"
+
+
+def _read(glob: str) -> str:
+    return f"read_parquet('{glob}', {_UNION})"
+
+
 def _projection(con, glob: str, arrow_schema: pa.Schema) -> str:
     """按当前 schema 生成 SELECT 列表，文件里没有的列取 NULL。
 
@@ -26,9 +35,7 @@ def _projection(con, glob: str, arrow_schema: pa.Schema) -> str:
     """
     present = {
         row[0]
-        for row in con.execute(
-            f"DESCRIBE SELECT * FROM read_parquet('{glob}')"
-        ).fetchall()
+        for row in con.execute(f"DESCRIBE SELECT * FROM {_read(glob)}").fetchall()
     }
     parts = []
     for field in arrow_schema:
@@ -75,7 +82,7 @@ class WarehouseQuery:
 
         sql = (
             "SELECT symbol, dt, open, high, low, close, volume, amount "
-            f"FROM read_parquet('{glob}') WHERE dt BETWEEN ? AND ?"
+            f"FROM {_read(glob)} WHERE dt BETWEEN ? AND ?"
         )
         params: list[object] = [start, end]
         if symbols is not None:
@@ -98,7 +105,7 @@ class WarehouseQuery:
             return _empty(schema.INDEX_BARS)
 
         columns = _projection(self._con, glob, schema.INDEX_BARS)
-        sql = f"SELECT {columns} FROM read_parquet('{glob}')"
+        sql = f"SELECT {columns} FROM {_read(glob)}"
         params: list[object] = []
         clauses: list[str] = []
         if start is not None and end is not None:
@@ -125,7 +132,7 @@ class WarehouseQuery:
             return _empty(schema.MINUTE_BARS)
 
         columns = _projection(self._con, glob, schema.MINUTE_BARS)
-        sql = f"SELECT {columns} FROM read_parquet('{glob}') WHERE dt BETWEEN ? AND ?"
+        sql = f"SELECT {columns} FROM {_read(glob)} WHERE dt BETWEEN ? AND ?"
         params: list[object] = [start, end]
         if symbols is not None:
             placeholders = ", ".join("?" for _ in symbols)
@@ -143,7 +150,7 @@ class WarehouseQuery:
         # 自动推断 hive 分区并多返回一列 year，SELECT * 拿到的宽度与
         # schema 不符，写回时 concat/cast 都会炸。
         columns = _projection(self._con, glob, schema.DAILY_FLAGS)
-        sql = f"SELECT {columns} FROM read_parquet('{glob}')"
+        sql = f"SELECT {columns} FROM {_read(glob)}"
         params: list[object] = []
         if start is not None and end is not None:
             sql += " WHERE dt BETWEEN ? AND ?"
@@ -160,7 +167,7 @@ class WarehouseQuery:
         # 自动推断 hive 分区并多返回一列 year，SELECT * 拿到的宽度与
         # schema 不符，写回时 concat/cast 都会炸。
         columns = _projection(self._con, glob, schema.MARKET_REGIME)
-        sql = f"SELECT {columns} FROM read_parquet('{glob}')"
+        sql = f"SELECT {columns} FROM {_read(glob)}"
         params: list[object] = []
         if start is not None and end is not None:
             sql += " WHERE dt BETWEEN ? AND ?"
@@ -177,7 +184,7 @@ class WarehouseQuery:
         # 自动推断 hive 分区并多返回一列 year，SELECT * 拿到的宽度与
         # schema 不符，写回时 concat/cast 都会炸。
         columns = _projection(self._con, glob, schema.VALUATION_SNAPSHOT)
-        sql = f"SELECT {columns} FROM read_parquet('{glob}')"
+        sql = f"SELECT {columns} FROM {_read(glob)}"
         params: list[object] = []
         if start is not None and end is not None:
             sql += " WHERE dt BETWEEN ? AND ?"
