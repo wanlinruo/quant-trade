@@ -208,3 +208,34 @@ def test_rebuild_is_idempotent(warehouse):
 
 def test_build_on_empty_warehouse_returns_zero(warehouse):
     assert build_daily_flags(warehouse, D[0], D[1]) == 0
+
+
+def test_partial_rebuild_keeps_the_rest_of_the_year(warehouse):
+    """只重算一段区间，不能把同年其余日期的标记删掉。
+
+    分区是整年覆盖写的，若不与既有数据合并，每日增量重算会把历史抹掉。
+    """
+    days = [date(2024, 1, d) for d in (2, 3, 4, 5, 8)]
+    seed(warehouse, [("600001.SH", d, 10.0, 10.0, 10.0, 10.0) for d in days])
+
+    assert build_daily_flags(warehouse, days[0], days[-1]) == 5
+    build_daily_flags(warehouse, days[-2], days[-1])  # 只重算最后两天
+
+    after = WarehouseQuery(warehouse).daily_flags()
+    assert after.height == 5, "早先的标记被覆盖掉了"
+    assert after["dt"].to_list() == days
+
+
+def test_partial_rebuild_refreshes_the_rows_it_covers(warehouse):
+    """重算区间内的行要用新值覆盖，不是保留旧值。"""
+    days = [date(2024, 1, d) for d in (2, 3)]
+    seed(warehouse, [("600001.SH", days[0], 10.0, 10.0, 10.0, 10.0),
+                     ("600001.SH", days[1], 10.5, 10.5, 10.5, 10.5)])
+    build_daily_flags(warehouse, days[0], days[-1])
+    assert flags_of(warehouse, "600001.SH", days[1])["is_limit_up"] is False
+
+    # 把第二天改成涨停后只重算那一天
+    seed(warehouse, [("600001.SH", days[0], 10.0, 10.0, 10.0, 10.0),
+                     ("600001.SH", days[1], 11.0, 11.0, 11.0, 11.0)])
+    build_daily_flags(warehouse, days[1], days[1])
+    assert flags_of(warehouse, "600001.SH", days[1])["is_limit_up"] is True

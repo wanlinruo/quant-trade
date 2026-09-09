@@ -87,8 +87,9 @@ def build_daily_flags(warehouse: Warehouse, start: date, end: date) -> int:
 
     written = 0
     for year in range(start.year, end.year + 1):
-        lo = max(start, date(year, 1, 1))
-        hi = min(end, date(year, 12, 31))
+        lo_year, hi_year = date(year, 1, 1), date(year, 12, 31)
+        lo = max(start, lo_year)
+        hi = min(end, hi_year)
         if lo > hi:
             continue
 
@@ -101,8 +102,17 @@ def build_daily_flags(warehouse: Warehouse, start: date, end: date) -> int:
             continue
 
         chunk = flags.sort(["dt", "symbol"]).select(_FLAG_COLUMNS)
+        # 分区是整年覆盖写的，必须与同年既有数据合并：只重算一段区间时
+        # 直接写会把同年其余日期的标记抹掉。新行在后，keep="last" 让重算
+        # 覆盖旧值。
+        merged = (
+            pl.concat([query.daily_flags(lo_year, hi_year), chunk], how="vertical")
+            .unique(subset=["dt", "symbol"], keep="last", maintain_order=True)
+            .sort(["dt", "symbol"])
+            .select(_FLAG_COLUMNS)
+        )
         warehouse.write(
-            "daily_flags", chunk.to_arrow().cast(schema.DAILY_FLAGS), year=year
+            "daily_flags", merged.to_arrow().cast(schema.DAILY_FLAGS), year=year
         )
         written += chunk.height
 

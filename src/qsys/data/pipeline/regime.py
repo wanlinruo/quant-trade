@@ -53,8 +53,9 @@ def build_market_regime(warehouse: Warehouse, start: date, end: date) -> int:
 
     written = 0
     for year in range(start.year, end.year + 1):
-        lo = max(start, date(year, 1, 1))
-        hi = min(end, date(year, 12, 31))
+        lo_year, hi_year = date(year, 1, 1), date(year, 12, 31)
+        lo = max(start, lo_year)
+        hi = min(end, hi_year)
         if lo > hi:
             continue
 
@@ -69,8 +70,15 @@ def build_market_regime(warehouse: Warehouse, start: date, end: date) -> int:
             continue
 
         chunk = daily.sort("dt").select(_REGIME_COLUMNS)
+        # 与 flags 同理：分区整年覆盖写，只重算一段时必须先合并同年既有数据
+        merged = (
+            pl.concat([query.market_regime(lo_year, hi_year), chunk], how="vertical")
+            .unique(subset=["dt"], keep="last", maintain_order=True)
+            .sort("dt")
+            .select(_REGIME_COLUMNS)
+        )
         warehouse.write(
-            "market_regime", chunk.to_arrow().cast(schema.MARKET_REGIME), year=year
+            "market_regime", merged.to_arrow().cast(schema.MARKET_REGIME), year=year
         )
         written += chunk.height
 
