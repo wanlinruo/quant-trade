@@ -18,6 +18,7 @@ from pathlib import Path
 
 import polars as pl
 
+from qsys.backtest.corporate import CorporateAction
 from qsys.backtest.engine import BacktestEngine
 from qsys.backtest.fees import AShareFeeModel
 from qsys.backtest.metrics import compute_metrics
@@ -68,6 +69,24 @@ def main() -> int:
         zip(instruments["symbol"].to_list(), instruments["board"].to_list())
     )
 
+    # 除权除息：持仓期间遇到除权，价格会掉，不处理就被当成亏损。
+    # 全市场 6 万条，一期 bootstrap 时只有 3 只，回测入口此前根本没传。
+    actions: dict[date, list[CorporateAction]] = {}
+    ca = query.corporate_actions()
+    for row in ca.filter(
+        (pl.col("ex_date") >= start) & (pl.col("ex_date") <= end)
+        & ((pl.col("cash_per_share") > 0) | (pl.col("stock_per_share") > 0))
+    ).iter_rows(named=True):
+        actions.setdefault(row["ex_date"], []).append(
+            CorporateAction(
+                symbol=Symbol.parse(row["symbol"]),
+                ex_date=row["ex_date"],
+                cash_per_share=row["cash_per_share"],
+                stock_per_share=row["stock_per_share"],
+            )
+        )
+    print(f"除权除息事件 {sum(len(v) for v in actions.values()):,} 条 / {len(actions)} 天")
+
     def intraday(session: date, at: time, symbols):
         quotes = market.bind(datetime.combine(session, at)).intraday(
             [str(s) for s in symbols], session, at
@@ -95,6 +114,7 @@ def main() -> int:
         fees=AShareFeeModel(), slippage=FixedRateSlippage(0.0005),
         checkpoints=CHECKPOINTS, auction_at=AUCTION_AT,
         intraday=intraday, market=market,
+        corporate_actions=actions,
         boards={Symbol.parse(k): v for k, v in boards.items()},
         params={"strategy": "structural_v1_2"},
     )
