@@ -50,6 +50,51 @@ ADJ_FACTORS = pa.schema(
     ]
 )
 
+DAILY_FLAGS = pa.schema(
+    [
+        ("dt", pa.date32()),
+        ("symbol", pa.string()),
+        ("prev_close", pa.float64()),  # 无前收（首个 bar）为 null
+        ("limit_up", pa.float64()),
+        ("limit_down", pa.float64()),
+        ("is_limit_up", pa.bool_()),
+        ("is_limit_down", pa.bool_()),
+        ("touched_limit_up", pa.bool_()),  # 盘中触及涨停（含封住）
+        ("is_broken_board", pa.bool_()),  # 炸板：触及但未封住
+        ("is_first_board", pa.bool_()),  # 首板：今日涨停且昨日未涨停
+    ]
+)
+
+MARKET_REGIME = pa.schema(
+    [
+        ("dt", pa.date32()),
+        ("limit_up_count", pa.int64()),
+        ("limit_down_count", pa.int64()),
+        ("limit_up_down_ratio", pa.float64()),
+        ("touched_limit_up_count", pa.int64()),
+        ("broken_board_count", pa.int64()),
+        ("broken_board_rate", pa.float64()),
+        ("first_board_count", pa.int64()),
+        ("market_advance_ratio", pa.float64()),
+        ("market_median_return_1d", pa.float64()),
+        ("market_total_money", pa.float64()),
+        ("prior_limitup_nextday_return_mean", pa.float64()),
+        ("prior_limitup_nextday_return_median", pa.float64()),
+        ("valid_stock_count", pa.int64()),
+    ]
+)
+
+VALUATION_SNAPSHOT = pa.schema(
+    [
+        ("dt", pa.date32()),
+        ("symbol", pa.string()),
+        ("close", pa.float64()),
+        ("market_cap", pa.float64()),  # 总市值（元）
+        ("circulating_market_cap", pa.float64()),  # 流通市值（元）
+        ("turnover_ratio", pa.float64()),  # 换手率（%）
+    ]
+)
+
 INGEST_LOG = pa.schema(
     [
         ("dataset", pa.string()),
@@ -112,6 +157,9 @@ LIVE_RECON = pa.schema(
 
 PARTITIONED: dict[str, pa.Schema] = {
     "bars_daily": BARS_DAILY,
+    "daily_flags": DAILY_FLAGS,
+    "market_regime": MARKET_REGIME,
+    "valuation_snapshot": VALUATION_SNAPSHOT,
     "ingest_log": INGEST_LOG,
     "live_equity": LIVE_EQUITY,
     "live_fills": LIVE_FILLS,

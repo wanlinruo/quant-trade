@@ -8,15 +8,21 @@ from qsys.data.providers.mootdx_provider import MootdxProvider
 
 
 class FakeClient:
-    """模拟 mootdx Quotes 客户端。列名以 Task 5 探针录得的真实结构为准。"""
+    """模拟 mootdx Quotes 客户端。列名以 Task 5 探针录得的真实结构为准。
+
+    只有第一页有数据，后续页为空——模拟一个历史很短的标的。分页由
+    tests/data/test_mootdx_pagination.py 单独覆盖。
+    """
 
     def __init__(self, frame: pd.DataFrame) -> None:
         self._frame = frame
         self.calls: list[dict] = []
 
-    def bars(self, symbol, frequency, offset):
-        self.calls.append({"symbol": symbol, "frequency": frequency, "offset": offset})
-        return self._frame
+    def bars(self, symbol, frequency, start=0, offset=800):
+        self.calls.append(
+            {"symbol": symbol, "frequency": frequency, "start": start, "offset": offset}
+        )
+        return self._frame if start == 0 else pd.DataFrame()
 
 
 @pytest.fixture
@@ -85,9 +91,21 @@ def test_provider_name():
     assert MootdxProvider(client=FakeClient(pd.DataFrame())).name == "mootdx"
 
 
-def test_truncated_history_is_reported(frame):
-    """offset 上限导致回溯不足时必须显式告警，不能静默截断。"""
+def test_data_running_out_is_not_truncation(frame):
+    """标的上市晚于请求起点不是截断——翻到空页即停，无告警。"""
     provider = MootdxProvider(client=FakeClient(frame))
+    provider.fetch_daily_bars("600036.SH", date(2020, 1, 1), date(2024, 1, 31))
+    assert provider.truncated == []
+
+
+def test_truncated_history_is_reported(frame):
+    """翻满分页上限仍未覆盖请求起点时必须显式告警，不能静默截断。"""
+
+    class NeverEndingClient:
+        def bars(self, symbol, frequency, start=0, offset=800):
+            return frame
+
+    provider = MootdxProvider(client=NeverEndingClient(), max_pages=3)
     provider.fetch_daily_bars("600036.SH", date(2020, 1, 1), date(2024, 1, 31))
     assert provider.truncated == [("600036.SH", date(2020, 1, 1), date(2024, 1, 2))]
 
