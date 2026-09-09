@@ -4,9 +4,12 @@
 done.csv，重跑跳过。
 
 策略依据 2026-09-09 的实测：
-  · 按标的整年下载 0.69s/只，比按股-日单独下还快——数据在服务端是现成的
-  · 因此**下载按标的整年**，但**导出只导候选日**：整年 3515 只共约 2 亿行，
-    落 parquet 要几个 GB；候选日只有 13,622 组约 330 万行
+  · 按标的整年下载 0.69s/只，比按股-日（0.60s/组）**看起来**更快
+  · **但整年下载会撑爆磁盘**：QMT 把下到的数据全留在 userdata_mini，
+    实测 1056 只就占了 4.8 GB（4.5 MB/只），3515 只要约 16 GB，
+    而这台机器只剩 15.9 GB，且它跑着实盘通道，磁盘写满会一起出事
+  · 我们只需要 13,622 个股-日，而整年是 3515 × 242 = 850,000 个股-日——
+    **要的只占 1.6%**。故默认**按股-日下载**（--whole-window 可切回整年）
   · QMT 分钟线只有约一年（实测最早 2025-09-09），且是滚动窗口——
     每过一天就永久丢一天，必须每日增量归档
 
@@ -124,6 +127,9 @@ def main() -> int:
                         help="攒够多少行写一个 parquet")
     parser.add_argument("--sleep", type=float, default=0.0,
                         help="每只之间歇多久，给同机的其它进程让路")
+    parser.add_argument("--whole-window", action="store_true",
+                        help="按标的整年下载。快，但会把整年灌进 QMT 本地缓存——"
+                             "磁盘不宽裕时不要用")
     args = parser.parse_args()
 
     from xtquant import xtdata
@@ -153,13 +159,21 @@ def main() -> int:
     for position, symbol in enumerate(todo, 1):
         stamps = wanted[symbol]
         try:
-            xtdata.download_history_data(
-                symbol, period="1m",
-                start_time=args.window_start, end_time=args.window_end,
-            )
+            if args.whole_window:
+                xtdata.download_history_data(
+                    symbol, period="1m",
+                    start_time=args.window_start, end_time=args.window_end,
+                )
+            else:
+                # 只下要的那几天。QMT 会把下到的一切留在 userdata_mini，
+                # 整年下载会把 850,000 个股-日灌进磁盘，而我们只要 13,622 个。
+                for stamp in stamps:
+                    xtdata.download_history_data(
+                        symbol, period="1m", start_time=stamp, end_time=stamp
+                    )
             data = xtdata.get_market_data(
                 field_list=[], stock_list=[symbol], period="1m",
-                start_time=args.window_start, end_time=args.window_end,
+                start_time=min(stamps), end_time=max(stamps),
                 dividend_type="none",
             )
             rows = to_rows(symbol, data, stamps) if isinstance(data, dict) else []
