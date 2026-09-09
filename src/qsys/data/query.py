@@ -213,6 +213,25 @@ class WarehouseQuery:
     def share_capital(self, symbols: Sequence[str] | None = None) -> pl.DataFrame:
         return self._read_unpartitioned("share_capital", schema.SHARE_CAPITAL, symbols)
 
+    def listing_dates(self) -> dict[str, date]:
+        """每只标的在库内的首个 bar 日期。
+
+        策略的 `filter_new_stock(days=50)` 只需区分「上市不足 50 天」——
+        近 50 天上市的标的其首根日线必在库内，故首个 bar 日期足以替代
+        真正的上市日（免费源不提供 list_date，实测 94% 为空）。
+
+        **库内最早日期本身不可信**：那天有 bar 的标的可能上市很久了，
+        也可能恰好那天上市，区分不了。调用方按「不新」处理即可——
+        入场判定另需 60 根历史，前 60 个交易日本就选不出票。
+        """
+        glob = self._glob("bars_daily", partitioned=True)
+        if glob is None:
+            return {}
+        rows = self._con.execute(
+            f"SELECT symbol, min(dt) FROM {_read(glob)} GROUP BY symbol"
+        ).fetchall()
+        return {symbol: first for symbol, first in rows}
+
     def instruments(self) -> pl.DataFrame:
         return self._read_unpartitioned("instruments", schema.INSTRUMENTS)
 
