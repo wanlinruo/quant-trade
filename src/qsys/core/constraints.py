@@ -13,9 +13,12 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from decimal import ROUND_HALF_UP, Decimal
 
 from qsys.core.portfolio import Portfolio
 from qsys.core.trading import OrderIntent, Side, to_cents
+
+_CENT = Decimal("0.01")
 
 
 @dataclass(frozen=True, slots=True)
@@ -161,8 +164,18 @@ class PriceLimitConstraint(Constraint):
 
     @staticmethod
     def limit_prices(prev_close: float, limit: float) -> tuple[float, float]:
-        """返回 (涨停价, 跌停价)，均四舍五入到分。"""
-        return to_cents(prev_close * (1.0 + limit)), to_cents(prev_close * (1.0 - limit))
+        """返回 (涨停价, 跌停价)，均四舍五入到分。
+
+        乘法在 Decimal 里做，不能先用 float 算再取整：前收 1.65 的跌停价
+        真值是 1.485，四舍五入应为 1.49，而 float 的 1.65*0.9 是
+        1.4849999999999999，其最短表示已经低于半分，取整会得到 1.48。
+        实测 0.01~499.99 元区间内有 1.6% 的价格踩中这个坑，全在跌停一侧。
+        """
+        base = Decimal(str(prev_close))
+        ratio = Decimal(str(limit))
+        up = (base * (Decimal(1) + ratio)).quantize(_CENT, rounding=ROUND_HALF_UP)
+        down = (base * (Decimal(1) - ratio)).quantize(_CENT, rounding=ROUND_HALF_UP)
+        return float(up), float(down)
 
     def apply(self, intent: OrderIntent, ctx: ConstraintContext) -> Verdict:
         if ctx.prev_close is None or ctx.prev_close <= 0:

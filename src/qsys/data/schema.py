@@ -50,6 +50,21 @@ ADJ_FACTORS = pa.schema(
     ]
 )
 
+DAILY_FLAGS = pa.schema(
+    [
+        ("dt", pa.date32()),
+        ("symbol", pa.string()),
+        ("prev_close", pa.float64()),  # 无前收（首个 bar）为 null
+        ("limit_up", pa.float64()),
+        ("limit_down", pa.float64()),
+        ("is_limit_up", pa.bool_()),
+        ("is_limit_down", pa.bool_()),
+        ("touched_limit_up", pa.bool_()),  # 盘中触及涨停（含封住）
+        ("is_broken_board", pa.bool_()),  # 炸板：触及但未封住
+        ("is_first_board", pa.bool_()),  # 首板：今日涨停且昨日未涨停
+    ]
+)
+
 INGEST_LOG = pa.schema(
     [
         ("dataset", pa.string()),
@@ -112,6 +127,7 @@ LIVE_RECON = pa.schema(
 
 PARTITIONED: dict[str, pa.Schema] = {
     "bars_daily": BARS_DAILY,
+    "daily_flags": DAILY_FLAGS,
     "ingest_log": INGEST_LOG,
     "live_equity": LIVE_EQUITY,
     "live_fills": LIVE_FILLS,
