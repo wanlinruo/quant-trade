@@ -1,0 +1,141 @@
+"""入场判定，逐行对照原文 L1201-L1346。
+
+三个函数都接收**已取好的历史 DataFrame**，自己不访问数据——这样单元测试
+可以用构造数据直接断言，不必搭起整个仓库。
+
+**单位陷阱**：原策略 `vwap = money / volume`，聚宽的 volume 单位是**股**；
+我们的日线 volume 是**手**。实测 600036.SH 2026-09-08：
+`amount/(volume*100) = 41.00` 正落在当日区间 [40.81, 41.38] 内，
+而 `amount/volume = 4100`。照抄会让 avg_inc 变成 +40 而不是 +0.07，
+`check_high_open` 会放行所有股票——而且不会报错。
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+
+import polars as pl
+
+from qsys.strategy.structural.params import (
+    HIGH_AUCTION_RATIO_MAX,
+    HIGH_AUCTION_RATIO_MIN,
+    HIGH_AUCTION_VOL_RATIO_MIN,
+    HIGH_AVG_INC_MIN,
+    HIGH_MAX_CIRCULATING_CAP,
+    HIGH_MAX_MONEY,
+    HIGH_MIN_MARKET_CAP,
+    HIGH_MIN_MONEY,
+    LEFT_PRESSURE_DEFAULT_ZYTS,
+    LEFT_PRESSURE_PADDING,
+    LEFT_PRESSURE_VOLUME_FACTOR,
+    LOW_AUCTION_RATIO_MAX,
+    LOW_AUCTION_RATIO_MIN,
+    LOW_HISTORY_DAYS,
+    LOW_MIN_MONEY,
+    LOW_RELATIVE_POSITION_MAX,
+)
+
+LOT = 100  # 日线 volume 单位是手，换算成股要乘 100
+
+
+def check_low_open(history: pl.DataFrame, auction_price: float | None) -> bool:
+    """低开入场（原文 L1201-L1221）。
+
+    `history` 为截至昨日的日线，需满 60 根。
+    """
+    if auction_price is None or history.height < LOW_HISTORY_DAYS:
+        return False
+
+    close = history["close"].to_list()[-1]
+    high = history["high"].max()
+    low = history["low"].min()
+    if high <= low:
+        return False
+
+    relative_position = (close - low) / (high - low)
+    money = history["amount"].to_list()[-1]
+    if relative_position > LOW_RELATIVE_POSITION_MAX or money < LOW_MIN_MONEY:
+        return False
+
+    if close <= 0:
+        return False
+    ratio = auction_price / close
+    return LOW_AUCTION_RATIO_MIN <= ratio <= LOW_AUCTION_RATIO_MAX
+
+
+def check_left_pressure(history: pl.DataFrame) -> bool:
+    """左侧压力与放量（原文 L1334-L1346）。
+
+    原版有两处刻意的写法，照抄不改：
+      · 从**倒数第 3 天**起找前高，不是倒数第 1 天
+      · `volume[-zyts:]` 不做越界检查，zyts 超过长度时就是取全部
+    """
+    highs = history["high"].to_list()
+    volumes = history["volume"].to_list()
+    if not highs:
+        return False
+
+    prev_high = highs[-1]
+    zyts_0 = LEFT_PRESSURE_DEFAULT_ZYTS
+    for i in range(3, len(highs)):
+        if highs[-i] >= prev_high:
+            zyts_0 = i - 1
+            break
+
+    window = volumes[-(zyts_0 + LEFT_PRESSURE_PADDING) :]
+    if len(window) < 2:
+        return False
+    return window[-1] > max(window[:-1]) * LEFT_PRESSURE_VOLUME_FACTOR
+
+
+def check_high_open(
+    history: pl.DataFrame,
+    auction_price: float | None,
+    auction_volume: float | None,
+    valuation: Mapping[str, float] | None,
+) -> bool:
+    """高开入场（原文 L1222-L1272）。
+
+    `history` 为截至昨日的日线，至少 2 根；`check_left_pressure` 所需的
+    101 根由调用方一并传入（本函数只用最后 2 根做前置判定）。
+    """
+    if auction_price is None or auction_volume is None or history.height < 2:
+        return False
+
+    closes = history["close"].to_list()
+    volumes = history["volume"].to_list()
+    moneys = history["amount"].to_list()
+
+    pre_prev_close, prev_close = closes[-2], closes[-1]
+    prev_volume, prev_money = volumes[-1], moneys[-1]
+    if pre_prev_close <= 0 or prev_close <= 0 or prev_volume <= 0:
+        return False
+
+    # volume 是手，换算成股才是每股均价
+    vwap = prev_money / (prev_volume * LOT)
+    avg_inc = vwap / pre_prev_close - 1
+    if (
+        avg_inc < HIGH_AVG_INC_MIN
+        or prev_money < HIGH_MIN_MONEY
+        or prev_money > HIGH_MAX_MONEY
+    ):
+        return False
+
+    # 没有市值数据不能放行——原策略 turn.empty 时直接 return False
+    if valuation is None:
+        return False
+    if (
+        valuation["market_cap"] < HIGH_MIN_MARKET_CAP
+        or valuation["circulating_market_cap"] > HIGH_MAX_CIRCULATING_CAP
+    ):
+        return False
+
+    # 竞价量与昨日量同为手，比值不受单位影响
+    if auction_volume / prev_volume < HIGH_AUCTION_VOL_RATIO_MIN:
+        return False
+
+    ratio = auction_price / prev_close
+    if ratio <= HIGH_AUCTION_RATIO_MIN or ratio >= HIGH_AUCTION_RATIO_MAX:
+        return False
+
+    return check_left_pressure(history)
