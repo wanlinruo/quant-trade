@@ -266,3 +266,40 @@ def test_high_open_needs_two_days_of_history():
         )
         is False
     )
+
+
+def test_high_open_can_skip_the_auction_volume_filter():
+    """近似版：竞价量缺失时跳过那一条，而不是整只剔除。
+
+    分钟线只覆盖最近约一年。不给这个口子，HIGH 分支就完全落不到早期区间，
+    对账时会表现为「漏掉全部 HIGH 票」——那是数据缺失的假象。
+    """
+    assert (
+        check_high_open(
+            high_history(), auction_price=11.0 * 1.03, auction_volume=None,
+            valuation=valuation(), require_auction_volume=False,
+        )
+        is True
+    )
+
+
+def test_skipping_the_filter_does_not_bypass_the_other_conditions():
+    """跳过竞价量不等于放行——其余条件照查。"""
+    assert (
+        check_high_open(
+            high_history(), auction_price=11.0 * 1.03, auction_volume=None,
+            valuation=valuation(market_cap=69.9), require_auction_volume=False,
+        )
+        is False
+    )
+
+
+def test_a_present_auction_volume_is_still_checked_in_loose_mode():
+    """有数据就还是要查——近似只针对「没有」，不是「不查」。"""
+    assert (
+        check_high_open(
+            high_history(), auction_price=11.0 * 1.03, auction_volume=1e6 * 0.01,
+            valuation=valuation(), require_auction_volume=False,
+        )
+        is False
+    )

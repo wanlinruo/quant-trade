@@ -130,7 +130,10 @@ class StructuralSelection:
             factors = _stock_factors(bars) if tag == "LOW_MAIN" else {}
             return self._gate(day, previous, symbol, tag, market, factors)
 
-        if check_high_open(bars, auction_price, auction_volume, valuation):
+        if check_high_open(
+            bars, auction_price, auction_volume, valuation,
+            require_auction_volume=self._require_auction_volume,
+        ):
             return self._gate(
                 day, previous, symbol, strategy_tag("HIGH", symbol), market, {}
             )

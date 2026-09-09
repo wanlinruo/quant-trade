@@ -93,13 +93,22 @@ def check_high_open(
     auction_price: float | None,
     auction_volume: float | None,
     valuation: Mapping[str, float] | None,
+    *,
+    require_auction_volume: bool = True,
 ) -> bool:
     """高开入场（原文 L1222-L1272）。
 
     `history` 为截至昨日的日线，至少 2 根；`check_left_pressure` 所需的
     101 根由调用方一并传入（本函数只用最后 2 根做前置判定）。
+
+    `require_auction_volume=False` 时，竞价量缺失则**跳过**那一条过滤而不是
+    整只剔除。分钟线只覆盖最近约一年，若不给这个口子，HIGH 分支就完全落不到
+    早期区间——对账时会表现为「qsys 漏掉了全部 HIGH 票」，那是数据缺失的
+    假象而非移植错误。差异在对账时按此归因。
     """
-    if auction_price is None or auction_volume is None or history.height < 2:
+    if auction_price is None or history.height < 2:
+        return False
+    if auction_volume is None and require_auction_volume:
         return False
 
     closes = history["close"].to_list()
@@ -131,8 +140,9 @@ def check_high_open(
         return False
 
     # 竞价量与昨日量同为手，比值不受单位影响
-    if auction_volume / prev_volume < HIGH_AUCTION_VOL_RATIO_MIN:
-        return False
+    if auction_volume is not None:
+        if auction_volume / prev_volume < HIGH_AUCTION_VOL_RATIO_MIN:
+            return False
 
     ratio = auction_price / prev_close
     if ratio <= HIGH_AUCTION_RATIO_MIN or ratio >= HIGH_AUCTION_RATIO_MAX:
