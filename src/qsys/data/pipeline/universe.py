@@ -70,11 +70,18 @@ def ingest_universe(
     start: date,
     end: date,
     *,
+    complete_through: date,
     batch_size: int = 200,
     on_progress: Callable[[IngestProgress], None] | None = None,
     skip_done: bool = True,
 ) -> IngestProgress:
-    """分批采集全市场日线。返回最终进度。"""
+    """分批采集全市场日线。返回最终进度。
+
+    `complete_through` 是**已收盘**的最后一个交易日，晚于它的 bar 一律丢弃。
+    这个参数没有默认值，是故意的：盘中采到的「今日」只有半天成交量，收盘价
+    其实是采集那一刻的价格，落盘后会让涨停判定与生态因子一路错下去且不报错。
+    调用方必须明确表态截止到哪一天，不能忘。
+    """
     targets = list(symbols)
     if skip_done:
         already = completed_symbols(warehouse, start, end)
@@ -99,6 +106,7 @@ def ingest_universe(
                 log.warning("universe.fetch_failed", symbol=symbol, error=str(exc))
                 continue
             succeeded.append(symbol)
+            frame = frame.filter(pl.col("dt") <= complete_through)
             if frame.height:
                 collected.append(
                     frame.with_columns(pl.lit(symbol).alias("symbol")).select(BAR_COLUMNS)

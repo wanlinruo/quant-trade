@@ -85,6 +85,7 @@ def rig(warehouse):
         symbols,
         SESSIONS[0],
         SESSIONS[-1],
+        complete_through=SESSIONS[-1],
         batch_size=2,
     )
     build_daily_flags(warehouse, SESSIONS[0], SESSIONS[-1])
@@ -154,7 +155,10 @@ def test_resuming_after_a_kill_only_fetches_what_is_missing(rig):
         return original(symbol, start, end)
 
     again.fetch_daily_bars = spy
-    ingest_universe(again, warehouse, symbols, SESSIONS[0], SESSIONS[-1])
+    ingest_universe(
+        again, warehouse, symbols, SESSIONS[0], SESSIONS[-1],
+        complete_through=SESSIONS[-1],
+    )
     assert seen == []
 
 

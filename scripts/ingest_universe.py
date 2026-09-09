@@ -13,12 +13,13 @@ from __future__ import annotations
 import argparse
 import sys
 import time
-from datetime import date
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import polars as pl
 import structlog
 
+from qsys.core.calendar import AShareCalendar, last_closed_session
 from qsys.data.coverage import coverage
 from qsys.data.pipeline.flags import build_daily_flags
 from qsys.data.pipeline.instruments import build_instruments
@@ -69,6 +70,16 @@ def main() -> int:
         symbols = symbols[: args.limit]
     print(f"  待采集 {len(symbols)} 只（板块 {sorted(boards)}）")
 
+    # 收盘前采到的「今日」只有半天数据：收盘价其实是采集那一刻的价格，
+    # 成交量约为整日的六成。落盘会让涨停判定与生态因子一路错下去且不报错。
+    sessions = reference.fetch_sessions(end - timedelta(days=60), end)
+    complete_through = last_closed_session(AShareCalendar(sessions), datetime.now())
+    if complete_through is None:
+        print("  没有已收盘的交易日可采，退出")
+        return 1
+    if complete_through < end:
+        print(f"  ⚠ 末日截到 {complete_through}（{end} 尚未收盘，半天的 bar 不落盘）")
+
     print("=== 日线采集 ===")
     started = time.time()
 
@@ -88,6 +99,7 @@ def main() -> int:
         symbols,
         start,
         end,
+        complete_through=complete_through,
         batch_size=args.batch_size,
         on_progress=show,
     )
@@ -107,8 +119,8 @@ def main() -> int:
             log.warning("ingest.valuation_failed", error=str(exc))
 
     print("=== 派生数据 ===")
-    print(f"  涨跌停标记 {build_daily_flags(warehouse, start, end)} 行")
-    print(f"  市场生态因子 {build_market_regime(warehouse, start, end)} 行")
+    print(f"  涨跌停标记 {build_daily_flags(warehouse, start, complete_through)} 行")
+    print(f"  市场生态因子 {build_market_regime(warehouse, start, complete_through)} 行")
 
     print("=== 覆盖情况 ===")
     for c in coverage(warehouse):

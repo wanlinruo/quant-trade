@@ -15,7 +15,7 @@ from enum import StrEnum
 
 import polars as pl
 
-from qsys.core.calendar import TradingCalendar
+from qsys.core.calendar import TradingCalendar, last_closed_session
 from qsys.data.query import WarehouseQuery
 
 PRICE_COLUMNS = ("open", "high", "low", "close")
@@ -47,13 +47,7 @@ class HistoricalFeed(DataFeed):
 
     def _last_visible_session(self, as_of: datetime) -> date | None:
         """as_of 时刻已收盘的最后一个交易日。"""
-        day = as_of.date()
-        if self._calendar.is_trading_day(day) and as_of >= self._calendar.close_time(day):
-            return day
-        try:
-            return self._calendar.prev_session(day)
-        except ValueError:
-            return None
+        return last_closed_session(self._calendar, as_of)
 
     def get(
         self,

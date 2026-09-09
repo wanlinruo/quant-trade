@@ -11,6 +11,24 @@ from collections.abc import Iterable
 from datetime import date, datetime, time
 
 
+def last_closed_session(calendar: "TradingCalendar", as_of: datetime) -> date | None:
+    """as_of 时刻已经收盘的最后一个交易日。
+
+    两处共用，且必须共用：
+      · PIT 读取——日线在收盘后才可见
+      · 日线采集——**收盘前的当日 bar 是残缺的**，落盘会污染仓库。
+        盘中采到的「今日」只有半天成交量，收盘价其实是采集那一刻的价格，
+        据此判出的涨停、据涨停汇总的生态因子会一路错下去，且不会报错。
+    """
+    day = as_of.date()
+    if calendar.is_trading_day(day) and as_of >= calendar.close_time(day):
+        return day
+    try:
+        return calendar.prev_session(day)
+    except ValueError:
+        return None
+
+
 class TradingCalendar(ABC):
     @abstractmethod
     def is_trading_day(self, day: date) -> bool: ...
