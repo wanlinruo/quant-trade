@@ -142,3 +142,82 @@ def test_manifest_is_written_as_csv(warehouse, tmp_path):
     text = path.read_text()
     assert "symbol,dt" in text
     assert "600001.SH,2024-01-03" in text
+
+
+# ---- 持仓期股-日：退出要的是持仓每一天的日内报价，不是候选日那几天 ----
+
+def _fills(rows):
+    """rows: [(symbol, dt, side)]"""
+    import polars as pl
+
+    return pl.DataFrame(
+        {
+            "symbol": [r[0] for r in rows],
+            "dt": [r[1] for r in rows],
+            "side": [r[2] for r in rows],
+        },
+        schema={"symbol": pl.Utf8, "dt": pl.Date, "side": pl.Utf8},
+    )
+
+
+def test_holding_days_start_the_session_after_the_buy():
+    """T+1：买入当日不可卖，那天不需要退出报价。"""
+    from qsys.data.pipeline.candidates import holding_stock_days
+
+    got = holding_stock_days(_fills([("600001.SH", D[1], "buy")]), D, window=2)
+
+    assert got.to_dicts() == [
+        {"symbol": "600001.SH", "dt": D[2]},
+        {"symbol": "600001.SH", "dt": D[3]},
+    ]
+
+
+def test_holding_days_walk_sessions_not_calendar_days():
+    """D[3]=1/5 是周五，下一个交易日是 D[4]=1/8。"""
+    from qsys.data.pipeline.candidates import holding_stock_days
+
+    got = holding_stock_days(_fills([("600001.SH", D[3], "buy")]), D, window=1)
+
+    assert got["dt"].to_list() == [D[4]]
+
+
+def test_holding_days_ignore_sells():
+    from qsys.data.pipeline.candidates import holding_stock_days
+
+    got = holding_stock_days(
+        _fills([("600001.SH", D[0], "sell"), ("600002.SH", D[0], "buy")]),
+        D,
+        window=1,
+    )
+
+    assert got["symbol"].to_list() == ["600002.SH"]
+
+
+def test_holding_days_stop_at_the_last_session():
+    from qsys.data.pipeline.candidates import holding_stock_days
+
+    got = holding_stock_days(_fills([("600001.SH", D[4], "buy")]), D, window=5)
+
+    assert got.height == 0
+
+
+def test_holding_days_deduplicate_overlapping_windows():
+    """同一标的连买两次，重叠的那几天只出现一次。"""
+    from qsys.data.pipeline.candidates import holding_stock_days
+
+    got = holding_stock_days(
+        _fills([("600001.SH", D[0], "buy"), ("600001.SH", D[1], "buy")]),
+        D,
+        window=2,
+    )
+
+    assert got["dt"].to_list() == [D[1], D[2], D[3]]
+
+
+def test_holding_days_reject_zero_window():
+    import pytest
+
+    from qsys.data.pipeline.candidates import holding_stock_days
+
+    with pytest.raises(ValueError, match="window must be >= 1"):
+        holding_stock_days(_fills([("600001.SH", D[0], "buy")]), D, window=0)

@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import date
 from pathlib import Path
 
@@ -77,3 +78,52 @@ def write_manifest(frame: pl.DataFrame, path: Path) -> int:
     frame.select(MANIFEST_COLUMNS).write_csv(path)
     log.info("manifest.written", path=str(path), rows=frame.height)
     return frame.height
+
+
+def holding_stock_days(
+    fills: pl.DataFrame,
+    sessions: Sequence[date],
+    *,
+    window: int = 30,
+) -> pl.DataFrame:
+    """每笔买入之后 `window` 个交易日的（标的, 日期）组合。
+
+    候选清单（`candidate_stock_days`）只覆盖**买入决策**要的那几天。退出
+    要的是**持仓期间**每一天的日内报价——两者不是一回事。
+
+    实测教训：分钟线缺哪天，`on_checkpoint` 就在哪天拿不到报价而静默跳过，
+    持仓于是**永久卡死**。回测里 603809.SH 从 2025-12-26 一直挂到区间末尾，
+    300821.SZ 挂了 5 个月。满仓建仓的策略被一只卡死的持仓抽干现金，
+    后面 16 个该买的买不进去——包括聚宽当天买了 6 只的 2026-07-31。
+
+    T+1：买入当日不可卖，故从 D+1 开始。
+    """
+    if window < 1:
+        raise ValueError(f"window must be >= 1: {window}")
+
+    empty = pl.DataFrame(schema=_SCHEMA)
+    buys = fills.filter(pl.col("side") == "buy")
+    if buys.height == 0:
+        return empty
+
+    ordered_sessions = sorted(sessions)
+    position = {d: i for i, d in enumerate(ordered_sessions)}
+
+    pairs: set[tuple[str, date]] = set()
+    for symbol, day in zip(buys["symbol"].to_list(), buys["dt"].to_list()):
+        origin = position.get(day)
+        if origin is None:
+            continue
+        for step in range(1, window + 1):
+            following = origin + step
+            if following < len(ordered_sessions):
+                pairs.add((symbol, ordered_sessions[following]))
+
+    if not pairs:
+        return empty
+
+    ordered = sorted(pairs, key=lambda p: (p[1], p[0]))
+    return pl.DataFrame(
+        {"symbol": [p[0] for p in ordered], "dt": [p[1] for p in ordered]},
+        schema=_SCHEMA,
+    )

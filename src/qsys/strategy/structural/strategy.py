@@ -115,7 +115,14 @@ class StructuralStrategy(Strategy):
                 continue
             quote = quotes.get(key)
             if quote is None:
-                # 拿不到当时价格就不能判，绝不用别的价格顶替
+                # 拿不到当时价格就不能判，绝不用别的价格顶替。
+                # 但**必须出声**：静默跳过会让持仓永久卡死。实测 603809.SH
+                # 因分钟线只覆盖到买入后第 3 天，从 2025-12-26 一直挂到区间
+                # 末尾，把满仓策略的现金抽干，连累后面 16 笔该买的没买成。
+                log.warning(
+                    "structural.no_quote", symbol=key, at=str(at), dt=str(today),
+                    qty=ctx.portfolio.position(symbol).available_qty,
+                )
                 continue
 
             position = ctx.portfolio.position(symbol)
