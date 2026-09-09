@@ -183,3 +183,48 @@ def test_bound_market_does_not_take_another_as_of(market):
     bound = market.bind(at(D[2], 9, 30))
     with pytest.raises(TypeError):
         bound.flags(["600001.SH"], D[0], D[2], as_of=at(D[2], 15, 0))
+
+
+# ---------------- 日内报价与涨停判定 ----------------
+
+
+def test_intraday_returns_the_last_bar_at_or_before_the_moment(market):
+    got = market.bind(at(D[2], 9, 31)).intraday(["600001.SH"], D[2], time(9, 31))
+    assert got["600001.SH"].price == 12.3
+
+
+def test_intraday_does_not_look_past_the_moment(market):
+    """问 09:30 就只能拿到 09:30 那根，不能把 09:31 的价格给出去。"""
+    got = market.bind(at(D[2], 15, 0)).intraday(["600001.SH"], D[2], time(9, 30))
+    assert got["600001.SH"].price == 12.0
+
+
+def test_intraday_beyond_as_of_is_refused(market):
+    """as_of 是 09:31 时问 15:00 的价——必须拿不到。"""
+    got = market.bind(at(D[2], 9, 31)).intraday(["600001.SH"], D[2], time(15, 0))
+    assert got == {}
+
+
+def test_intraday_accumulates_volume_up_to_the_moment(market):
+    """成交量是截至该时刻的累计量，不是全日量——用于成交量上限。"""
+    got = market.bind(at(D[2], 9, 31)).intraday(["600001.SH"], D[2], time(9, 31))
+    assert got["600001.SH"].volume == 50 + 300
+
+
+def test_intraday_without_minute_data_is_empty(market):
+    assert market.bind(at(D[0], 15, 0)).intraday(["600001.SH"], D[0], time(11, 25)) == {}
+
+
+def test_limit_up_price_is_visible_from_the_open(market):
+    """涨停价由昨收算出，开盘前就已确定，不该锁到当日收盘。"""
+    got = market.bind(at(D[2], 9, 30)).limit_up_price(["600001.SH"], D[2])
+    assert got["600001.SH"] == 12.32
+
+
+def test_limit_up_price_is_invisible_before_the_open(market):
+    assert market.bind(at(D[2], 9, 29)).limit_up_price(["600001.SH"], D[2]) == {}
+
+
+def test_limit_up_price_is_absent_without_a_prior_close(market):
+    """首个 bar 没有前收，涨停价为 null——不能编一个出来。"""
+    assert market.bind(at(D[0], 9, 30)).limit_up_price(["600001.SH"], D[0]) == {}
