@@ -104,6 +104,18 @@ def main() -> int:
     out.parent.mkdir(parents=True, exist_ok=True)
     result.equity.write_csv(out)
 
+    # 成交明细：对账要逐笔比入场价、出场价、退出时刻
+    fills_path = out.with_name(out.stem + "_fills.csv")
+    pl.DataFrame({
+        "filled_at": [f.filled_at for f in result.fills],
+        "symbol": [str(f.symbol) for f in result.fills],
+        "side": [f.side.value for f in result.fills],
+        "qty": [f.qty for f in result.fills],
+        "price": [f.price for f in result.fills],
+        "fee": [f.fee for f in result.fills],
+    }).write_csv(fills_path)
+    print(f"成交明细已写入 {fills_path}")
+
     print(f"\nrun_id {result.run_id}   耗时 {(_time.time()-started)/60:.1f} 分钟")
     print(f"成交 {len(result.fills)} 笔   拒单 {len(result.rejects)} 笔")
     buys = [f for f in result.fills if f.side.value == "buy"]
