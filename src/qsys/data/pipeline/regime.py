@@ -77,7 +77,9 @@ def build_market_regime(warehouse: Warehouse, start: date, end: date) -> int:
         if bars.height == 0 or flags.height == 0:
             continue
 
-        daily = _aggregate(bars, flags).filter(pl.col("dt").is_between(lo, hi))
+        daily = _aggregate(bars, flags, query.adj_factors()).filter(
+            pl.col("dt").is_between(lo, hi)
+        )
         if daily.height == 0:
             continue
         daily = daily.join(_index_slope(query, back, hi), on="dt", how="left")
@@ -110,15 +112,28 @@ def _in_breadth_universe(frame: pl.DataFrame) -> pl.DataFrame:
     return frame.filter(~excluded)
 
 
-def _aggregate(bars: pl.DataFrame, flags: pl.DataFrame) -> pl.DataFrame:
+def _aggregate(
+    bars: pl.DataFrame, flags: pl.DataFrame, factors: pl.DataFrame | None = None
+) -> pl.DataFrame:
     joined = (
         bars.join(flags, on=["symbol", "dt"], how="inner")
         .sort(["symbol", "dt"])
         .with_columns(
-            (pl.col("close") / pl.col("prev_close") - 1.0).alias("ret_1d"),
             pl.col("is_limit_up").shift(1).over("symbol").alias("was_limit_up"),
         )
     )
+    if factors is not None and factors.height:
+        ratio = (
+            factors.sort(["symbol", "dt"])
+            .with_columns(
+                (pl.col("cum_factor")
+                 / pl.col("cum_factor").shift(1).over("symbol"))
+                .alias("_daily_factor")
+            )
+            .select(["symbol", "dt", "_daily_factor"])
+        )
+        joined = joined.join(ratio, on=["symbol", "dt"], how="left")
+    joined = joined.with_columns(_ret_1d(joined, factors).alias("ret_1d"))
 
     return (
         joined.group_by("dt")
@@ -167,6 +182,26 @@ def _aggregate(bars: pl.DataFrame, flags: pl.DataFrame) -> pl.DataFrame:
             .alias("market_advance_ratio"),
         )
     )
+
+
+def _ret_1d(joined: pl.DataFrame, factors: pl.DataFrame | None) -> pl.Expr:
+    """日收益，**跨除权日要复权**。
+
+    `close / prev_close - 1` 在除权日会看到一笔凭空的大跌：10 送 4 派 0.2
+    的当天原始价跌约 29%，实际持有人没亏。不修正的后果是广度类因子被
+    系统性压低——`market_advance_ratio` 与 `market_median_return_1d` 的
+    判定阈值分别只有 0.5105 和 0.004255，压低一点就翻转。
+
+    复权后的日收益 = (原始收益 + 1) x 当日因子 - 1，其中
+    当日因子 = cum_factor(t) / cum_factor(t-1)，非除权日恒为 1。
+
+    实测：三个与聚宽分歧的日子，其因子日的除权只数分别是 35 / 93 / 104，
+    而全区间中位数只有 9。
+    """
+    raw = pl.col("close") / pl.col("prev_close")
+    if factors is None or factors.height == 0:
+        return raw - 1.0
+    return raw * pl.col("_daily_factor").fill_null(1.0) - 1.0
 
 
 # MA20 与「5 个交易日前的 MA20」合起来要 25 根

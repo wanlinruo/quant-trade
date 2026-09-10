@@ -280,3 +280,63 @@ def test_b_shares_stay_in_the_breadth_universe(warehouse):
     seed(warehouse, rows)
     build_market_regime(warehouse, D[0], D[1])
     assert regime_of(warehouse, D[1])["valid_stock_count"] == 2
+
+
+def test_the_ex_dividend_drop_is_not_counted_as_a_fall(warehouse):
+    """除权日的原始价大跌不是真跌，不修正会把广度类因子系统性压低。
+
+    A 股 10 送 1：前收 11.00，除权参考价 10.00，当日平收 10.00。
+    原始收益 -9.1%，复权后 0%。
+    """
+    seed(warehouse, [
+        ("600001.SH", D[0], 11.0, 11.0, 11.0, 11.0, 1e8),
+        ("600001.SH", D[1], 10.0, 10.0, 10.0, 10.0, 1e8),
+        # 陪跑的一只，保证分母不为空
+        ("600002.SH", D[0], 10.0, 10.0, 10.0, 10.0, 1e8),
+        ("600002.SH", D[1], 10.1, 10.1, 10.1, 10.1, 1e8),
+    ])
+    warehouse.write(
+        "adj_factors",
+        pa.table(
+            {
+                "symbol": ["600001.SH"] * 2 + ["600002.SH"] * 2,
+                "dt": [D[0], D[1], D[0], D[1]],
+                "cum_factor": [1.0, 1.1, 1.0, 1.0],
+                "cum_share_factor": [1.0, 1.1, 1.0, 1.0],
+            },
+            schema=schema.ADJ_FACTORS,
+        ),
+    )
+    build_daily_flags(warehouse, D[0], D[1])
+    build_market_regime(warehouse, D[0], D[1])
+
+    row = (
+        WarehouseQuery(warehouse)
+        .market_regime()
+        .filter(pl_col_eq("dt", D[1]))
+        .to_dicts()[0]
+    )
+    # 除权那只算 0%（不涨不跌），另一只 +1% -> 上涨 1 家、下跌 0 家
+    assert row["market_advance_ratio"] == pytest.approx(1.0)
+    assert row["market_median_return_1d"] == pytest.approx(0.005)
+
+
+def test_without_factors_the_raw_return_is_used(warehouse):
+    """仓库还没有复权因子时不能崩，退化成原始收益。"""
+    seed(warehouse, [
+        ("600001.SH", D[0], 11.0, 11.0, 11.0, 11.0, 1e8),
+        ("600001.SH", D[1], 10.0, 10.0, 10.0, 10.0, 1e8),
+    ])
+    build_daily_flags(warehouse, D[0], D[1])
+    assert build_market_regime(warehouse, D[0], D[1]) > 0
+    row = (
+        WarehouseQuery(warehouse).market_regime()
+        .filter(pl_col_eq("dt", D[1])).to_dicts()[0]
+    )
+    assert row["market_advance_ratio"] == pytest.approx(0.0)
+
+
+def pl_col_eq(name, value):
+    import polars as pl
+
+    return pl.col(name) == value
