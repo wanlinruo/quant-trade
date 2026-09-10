@@ -19,6 +19,7 @@ import uvicorn
 from qsys.data.storage import Warehouse
 from qsys.ops.journal import SessionJournal
 from qsys.web.app import create_app
+from qsys.web.backtest_views import BacktestService
 from qsys.web.config import WebConfig
 from qsys.web.data_views import DataService
 from qsys.web.views import MonitorService
@@ -31,6 +32,7 @@ def build_app(
     config: WebConfig,
     config_path: str | None,
     selection_path: Path | None = None,
+    runs_dir: Path | None = None,
 ):
     warehouse = Warehouse(warehouse_root)
     journal = SessionJournal(warehouse)
@@ -49,6 +51,7 @@ def build_app(
         MonitorService(journal, config=config, transport=transport),
         config,
         DataService(warehouse, selection_path),
+        BacktestService(runs_dir or Path("var/runs")),
     )
 
 
@@ -62,6 +65,10 @@ def main() -> int:
         "--selection", default="var/selection_loose.csv",
         help="run_selection.py 产出的选股结果，数据台用它渲染",
     )
+    parser.add_argument(
+        "--runs", default="var/runs",
+        help="回测运行的落盘根目录，回测页用它列出与下载",
+    )
     args = parser.parse_args()
 
     if args.host == "0.0.0.0":  # noqa: S104 - 刻意检查
@@ -71,7 +78,8 @@ def main() -> int:
         )
 
     config = WebConfig(host=args.host, port=args.port)
-    app = build_app(Path(args.warehouse), config, args.config, Path(args.selection))
+    app = build_app(Path(args.warehouse), config, args.config,
+                    Path(args.selection), Path(args.runs))
     log.info("monitor.started", host=args.host, port=args.port)
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
     return 0

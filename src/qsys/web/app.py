@@ -14,9 +14,15 @@ from pathlib import Path
 
 import structlog
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import (
+    HTMLResponse,
+    PlainTextResponse,
+    RedirectResponse,
+    Response,
+)
 from fastapi.templating import Jinja2Templates
 
+from qsys.web.backtest_views import BacktestService
 from qsys.web.config import WebConfig
 from qsys.web.data_views import DataService
 from qsys.web.svg import line_chart
@@ -31,6 +37,7 @@ def create_app(
     service: MonitorService,
     config: WebConfig,
     data: DataService | None = None,
+    backtests: BacktestService | None = None,
 ) -> FastAPI:
     app = FastAPI(title=config.title, docs_url=None, redoc_url=None)
 
@@ -89,6 +96,53 @@ def create_app(
                 "limit_up_chart": line_chart(limit_up, stroke="#dc2626"),
                 "slope_chart": line_chart(slope),
             },
+        )
+
+    @app.get("/backtests", response_class=HTMLResponse)
+    def backtest_index(request: Request):
+        if backtests is None:
+            raise HTTPException(status_code=404, detail="backtest console not enabled")
+        return TEMPLATES.TemplateResponse(
+            request=request, name="backtests.html",
+            context={
+                "title": config.title, "session": None, "page": "backtests",
+                "runs": backtests.runs(),
+            },
+        )
+
+    @app.get("/backtests/{name}", response_class=HTMLResponse)
+    def backtest_detail(request: Request, name: str):
+        if backtests is None:
+            raise HTTPException(status_code=404, detail="backtest console not enabled")
+        run = backtests.run(name)
+        if run is None:
+            raise HTTPException(status_code=404, detail=f"no run named {name}")
+        points = backtests.equity_points(name)
+        return TEMPLATES.TemplateResponse(
+            request=request, name="backtest_detail.html",
+            context={
+                "title": config.title, "session": None, "page": "backtests",
+                "run": run,
+                "files": backtests.files(name),
+                "zip_name": f"{run.name}.zip",
+                "metrics": backtests.metrics(name),
+                "branches": backtests.branch_summary(name),
+                "chart": line_chart([v for _, v in points]) if points else "",
+            },
+        )
+
+    @app.get("/backtests/{name}/file/{filename}")
+    def backtest_file(name: str, filename: str):
+        if backtests is None:
+            raise HTTPException(status_code=404, detail="backtest console not enabled")
+        found = backtests.file_bytes(name, filename)
+        if found is None:
+            raise HTTPException(status_code=404, detail="no such file")
+        body, media = found
+        return Response(
+            content=body, media_type=media,
+            # 让浏览器直接下载而不是内联渲染——这些文件是拿去对账的
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
     @app.get("/healthz")

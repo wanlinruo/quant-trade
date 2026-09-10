@@ -18,6 +18,7 @@ from pathlib import Path
 
 import polars as pl
 
+from qsys.backtest.artifacts import write_run
 from qsys.backtest.corporate import CorporateAction
 from qsys.backtest.engine import BacktestEngine
 from qsys.backtest.fees import AShareFeeModel
@@ -76,6 +77,11 @@ def main() -> int:
     parser.add_argument("--cash", type=float, default=100_000.0)
     parser.add_argument("--out", default="var/backtest_equity.csv")
     parser.add_argument(
+        "--runs-dir", default="var/runs",
+        help="每次运行落一个自包含目录 + zip，文件名对齐聚宽导出",
+    )
+    parser.add_argument("--run-name", default=None, help="运行目录名，默认按时间戳")
+    parser.add_argument(
         "--no-require-auction-volume", dest="require_auction_volume",
         action="store_false",
     )
@@ -130,12 +136,12 @@ def main() -> int:
             for s in symbols if str(s) in quotes
         }
 
-    strategy = StructuralStrategy(
-        StructuralSelection(
-            feed, market, query,
-            require_auction_volume=args.require_auction_volume,
-        )
+    # 留一个引用：跑完要把它累计的全部 Gate 判定（含被拒的）一起落盘
+    selection = StructuralSelection(
+        feed, market, query,
+        require_auction_volume=args.require_auction_volume,
     )
+    strategy = StructuralStrategy(selection)
 
     fees, slippage, cost_label = _cost_model(args.jq_compat)
     print(f"区间 {start} ~ {end}，标的池 {len(universe)} 只   成本口径 {cost_label}")
@@ -170,6 +176,44 @@ def main() -> int:
         "fee": [f.fee for f in result.fills],
     }).write_csv(fills_path)
     print(f"成交明细已写入 {fills_path}")
+
+    # 一次运行 = 一个自包含目录。文件名与列名对齐聚宽的研究导出，
+    # 两边可以直接 diff——对账是双向的，我们这边也得拿得出同样的东西。
+    run_name = args.run_name or (
+        f"{datetime.now():%Y%m%d-%H%M%S}-{result.run_id[:8]}"
+    )
+    metrics_map: dict[str, float] = {}
+    if result.equity.height:
+        m = compute_metrics(result.equity, result.fills)
+        metrics_map = {
+            "total_return": m.total_return,
+            "annualized_return": m.annualized_return,
+            "volatility": m.volatility,
+            "sharpe": m.sharpe,
+            "max_drawdown": m.max_drawdown,
+            "max_drawdown_days": float(m.max_drawdown_days),
+            "n_trades": float(m.n_trades),
+            "win_rate": m.win_rate,
+        }
+    run_dir = write_run(
+        result, Path(args.runs_dir) / run_name,
+        strategy="StructuralStrategy",
+        start=start, end=end, initial_cash=args.cash,
+        config={
+            "cost_model": cost_label,
+            "jq_compat": args.jq_compat,
+            "require_auction_volume": args.require_auction_volume,
+            "auction_at": AUCTION_AT.strftime("%H:%M"),
+            "checkpoints": ",".join(t.strftime("%H:%M") for t in CHECKPOINTS),
+            "universe_size": len(universe),
+            "corporate_action_days": len(actions),
+        },
+        metrics=metrics_map,
+        decisions=getattr(selection, "decisions", ()),
+        regime=query.market_regime(),
+        sessions=sessions,
+    )
+    print(f"运行目录 {run_dir}   （zip: {run_dir.name}.zip）")
 
     print(f"\nrun_id {result.run_id}   耗时 {(_time.time()-started)/60:.1f} 分钟")
     print(f"成交 {len(result.fills)} 笔   拒单 {len(result.rejects)} 笔")

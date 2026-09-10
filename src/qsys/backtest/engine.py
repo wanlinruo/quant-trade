@@ -48,6 +48,9 @@ class BacktestResult:
     rejects: tuple[Reject, ...]
     run_id: str
     params: Mapping[str, object] = field(default_factory=dict)
+    # 策略在 ctx.state 里攒下的东西。落盘要用它还原每笔买入的分支标签——
+    # Fill 本身不带标签，那是策略层的概念。
+    state: Mapping[str, object] = field(default_factory=dict)
 
     @property
     def final_value(self) -> float:
@@ -302,4 +305,4 @@ class BacktestEngine:
         log.info("backtest.finished", sessions=len(sessions), fills=len(all_fills),
                  rejects=len(all_rejects))
         return BacktestResult(equity, tuple(all_fills), tuple(all_rejects),
-                              self._run_id(start, end), self._params)
+                              self._run_id(start, end), self._params, state)
