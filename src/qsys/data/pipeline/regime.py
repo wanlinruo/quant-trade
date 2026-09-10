@@ -38,6 +38,9 @@ log = structlog.get_logger(__name__)
 
 _LOOKBACK_DAYS = 30
 
+# 日收益取整位数。见 _ret_1d 的说明。
+_RET_PRECISION = 12
+
 # 与原策略 filter_kcbj_stock 一致：4/8 开头是北交所，68 开头是科创板
 EXCLUDED_CODE_PREFIXES = ("4", "8", "68")
 
@@ -200,8 +203,13 @@ def _ret_1d(joined: pl.DataFrame, factors: pl.DataFrame | None) -> pl.Expr:
     """
     raw = pl.col("close") / pl.col("prev_close")
     if factors is None or factors.height == 0:
-        return raw - 1.0
-    return raw * pl.col("_daily_factor").fill_null(1.0) - 1.0
+        expr = raw - 1.0
+    else:
+        expr = raw * pl.col("_daily_factor").fill_null(1.0) - 1.0
+    # 取整到 1e-12：没动的票会算出 -2.22e-16 这种数，被判成「下跌」而不是
+    # 「持平」。实测 2026-04-30 有 002841.SZ 因此错分。1e-12 的收益在经济上
+    # 就是零，而 advance_ratio 的分母不含持平，错分一只就直接改比值。
+    return expr.round(_RET_PRECISION)
 
 
 # MA20 与「5 个交易日前的 MA20」合起来要 25 根

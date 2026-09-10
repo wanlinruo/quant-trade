@@ -340,3 +340,39 @@ def pl_col_eq(name, value):
     import polars as pl
 
     return pl.col(name) == value
+
+
+def test_a_stock_that_did_not_move_is_flat_not_down(warehouse):
+    """浮点噪声不能算成下跌。
+
+    close/prev_close 乘上复权因子后，没动的票会算出 -2.22e-16 这种数。
+    advance_ratio 的分母不含持平，错分一只就直接改比值——实测
+    2026-04-30 的 002841.SZ 就因此被判成下跌。
+    """
+    seed(warehouse, [
+        ("600001.SH", D[0], 8.99, 8.99, 8.99, 8.99, 1e8),
+        ("600001.SH", D[1], 8.99, 8.99, 8.99, 8.99, 1e8),
+        ("600002.SH", D[0], 10.0, 10.0, 10.0, 10.0, 1e8),
+        ("600002.SH", D[1], 10.1, 10.1, 10.1, 10.1, 1e8),
+    ])
+    warehouse.write(
+        "adj_factors",
+        pa.table(
+            {
+                "symbol": ["600001.SH"] * 2 + ["600002.SH"] * 2,
+                "dt": [D[0], D[1], D[0], D[1]],
+                # 因子恒定，但 cum_factor(t)/cum_factor(t-1) 的浮点除法
+                # 未必给出精确的 1.0
+                "cum_factor": [1.07, 1.07, 1.0, 1.0],
+                "cum_share_factor": [1.0, 1.0, 1.0, 1.0],
+            },
+            schema=schema.ADJ_FACTORS,
+        ),
+    )
+    build_daily_flags(warehouse, D[0], D[1])
+    build_market_regime(warehouse, D[0], D[1])
+
+    row = (WarehouseQuery(warehouse).market_regime()
+           .filter(pl_col_eq("dt", D[1])).to_dicts()[0])
+    # 没动的那只算持平，不进分母 -> 只剩上涨的那只
+    assert row["market_advance_ratio"] == pytest.approx(1.0)
