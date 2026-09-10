@@ -13,24 +13,39 @@
 **逐年处理**，并向前多读 `_LOOKBACK_DAYS` 天日历日只为给年初第一根 bar
 补上前收——否则每年 1 月的第一个交易日会因缺前收而被判成「无涨跌停」。
 
-**ST 由价格行为反推**：ST 股涨跌幅是 5%，而免费源没有历史 ST 名单。
-但 5% 涨停价 `round(前收 x 1.05, 2)` 精确到分，`high` 恰好等于它几乎不
-可能是巧合（实测每日约 28 只，占全市场 0.6%，与「约 300 只 ST 中一成
-触板」的量级吻合）。
+**ST 由价格行为反推**：ST 股涨跌幅是 5%，而免费源没有历史 ST 名单
+（QMT 没有 ST 板块，`get_instrument_detail` 只给当日涨跌停价；akshare 的
+东财接口在拒，新浪的曾用名接口不带日期）。
 
-不做这件事的代价是实测出来的：与聚宽对账时 `touched_limit_up_count`
-中位低 28（约 25%），HIGH_CHINEXT 的 Gate 判定因此系统性偏严——
-9 个分歧日补上 ST 触板后 9 个全部翻转为与聚宽一致。
+判定用两条，缺一不可：
 
-`limit_pct` 列记下每个股-日实际生效的涨跌幅，0.10 或 0.05，可回溯。
+1. 当日 `high` 恰好等于 5% 涨停价 `round(前收 x 1.05, 2)`，精确到分；
+2. **该股回看 60 根内被第 1 条命中过至少 2 次**。
 
-**试过并否决的改法**：给 5% 命中加一条佐证——「回看 20 根内涨幅从未超过
-5%」，理由是真 ST 被 5% 压着碰不到更高。实测反而更差：与聚宽的触板判定
-一致率从 52/57 降到 49/57，修好 4 个过高却新造 7 个过低。原因是真 ST 股
-在回看窗口里可能有戴帽前的大涨幅，被这条佐证误杀。**不要再加这个。**
+第 2 条是关键。只用第 1 条会大量误判：一只 ¥10 的股当日高点落在 +5% 那
+一分上的概率约 1/10，全市场每天撞出十几个纯属巧合。而 ST 是持续数月的
+状态，真 ST 会反复贴着 5% 板，巧合只命中一次。
 
-残留误差：5 天触板数偏高（104~117，刚越过 103.33 的阈值），0 天偏低。
-方向单一说明仍有少量误判，但当前版本已是实测最优。
+**标定依据**（聚宽导出的 792 天 `regime_daily` 真值，见
+`docs/reference/joinquant-alignment.md`）：
+
+| 规则 | 触板数平均绝对误差 | Gate 全区间一致 | 近窗一致 | 近窗多放行 |
+|---|---|---|---|---|
+| 不判 ST | 19.1 | 83.3% | 77.9% | 0（多拒 53） |
+| 只用第 1 条 | 11.2 | 90.7% | 83.3% | **40** |
+| **加第 2 条（窗 60）** | **4.4** | **96.3%** | **93.8%** | **12** |
+
+只用第 1 条时近窗口 40 天多放行、0 天多拒掉——**单边偏差**，正是移植版
+比聚宽多选的直接来源。
+
+窗口取 40 / 60 / 90 / 120 的一致率分别是 96.1% / 96.3% / 96.7% / 96.7%，
+**都在噪声内，别再为小数点调它**。取 60 是因为它在两个区间上的中位偏差
+都接近 0，且与策略里已有的 60 根形态窗口同一量级。
+
+（早先曾用「回看 20 根涨幅从未超过 5%」做佐证并以 57 个样本否决。真值多
+了 14 倍后重测，那条确实不如「命中 >=2 次」：|差|均 8.9 对 4.4。）
+
+`limit_pct` 列记下每个股-日实际生效的涨跌幅（0.05 / 0.10 / 0.20），可回溯。
 """
 
 from __future__ import annotations
@@ -50,9 +65,13 @@ log = structlog.get_logger(__name__)
 
 _DEFAULT_LIMIT = 0.10
 ST_LIMIT = 0.05
-# 跨年补前收的回看窗口。元旦假期远短于此；停牌超过这么久的标的
-# 复牌首日会缺前收，标记全 False。
-_LOOKBACK_DAYS = 30
+# ST 反推的第 2 条：回看多少根、至少命中几次
+ST_CONFIRM_BARS = 60
+ST_CONFIRM_HITS = 2
+# 跨年回看窗口：既为补前收，也为 ST 判定的滚动计数。
+# ST 判定要回看 60 根 K 线，约 90 个日历日；再留出假期余量。
+# 取 30 的话每年 1 月前 60 根的回看窗口是残缺的，ST 会被系统性漏判。
+_LOOKBACK_DAYS = 150
 
 _FLAG_COLUMNS = [
     "dt",
@@ -164,11 +183,20 @@ def _compute(bars: pl.DataFrame, boards: dict[str, str]) -> pl.DataFrame:
         _limit_expr(cents, st_down_milli).alias("_st_down"),
     )
 
-    # ST 反推：当日最高价恰好等于 5% 涨停价（精确到分）且没有更高，
-    # 就按 5% 判。涨过 5% 的必然不是 ST。
-    looks_st = (pl.col("high") == pl.col("_st_up")).fill_null(False)
+    # ST 反推第 1 条：当日最高价恰好等于 5% 涨停价（精确到分）。
+    hit_st = (pl.col("high") == pl.col("_st_up")).fill_null(False)
+    # 第 2 条：该股回看 ST_CONFIRM_BARS 根内命中过 >= ST_CONFIRM_HITS 次。
+    # 只回看不前瞻——rolling_sum 是尾窗，含当根。ST 持续数月，真 ST 会反复
+    # 贴板；单次命中多半是巧合（详见模块 docstring 的标定表）。
+    confirmed = (
+        hit_st.cast(pl.Int32)
+        .rolling_sum(window_size=ST_CONFIRM_BARS, min_samples=1)
+        .over("symbol")
+        >= ST_CONFIRM_HITS
+    ).fill_null(False)
+    looks_st = hit_st & confirmed
     frame = frame.with_columns(
-        pl.when(looks_st).then(pl.lit(ST_LIMIT)).otherwise(pl.lit(_DEFAULT_LIMIT))
+        pl.when(looks_st).then(pl.lit(ST_LIMIT)).otherwise(pl.col("_ratio"))
         .alias("limit_pct"),
         pl.when(looks_st).then(pl.col("_st_up")).otherwise(pl.col("_board_up"))
         .alias("limit_up"),

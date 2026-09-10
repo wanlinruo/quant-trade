@@ -11,7 +11,7 @@ from qsys.data.pipeline.flags import build_daily_flags, limit_prices
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
 
-D = [date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4)]
+D = [date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4), date(2024, 1, 5)]
 
 
 def test_main_board_limits_are_ten_percent():
@@ -243,39 +243,58 @@ def test_partial_rebuild_refreshes_the_rows_it_covers(warehouse):
     assert flags_of(warehouse, "600001.SH", days[1])["is_limit_up"] is True
 
 
-def test_a_five_percent_limit_touch_is_detected(warehouse):
-    """ST 股涨跌幅 5%。没有历史 ST 数据，但涨停价 round(前收x1.05, 2) 精确到分，
-    high 恰好等于它几乎不可能是巧合——据此反推。
+def test_one_five_percent_hit_alone_is_not_an_st_stock(warehouse):
+    """单次命中多半是巧合，不能据此判 ST。
 
-    与聚宽对账实测：不补这一条，touched_limit_up_count 中位低 28（约 25%），
-    直接导致 HIGH_CHINEXT 的 Gate 判定系统性偏严。
+    一只 ¥10 的股当日高点落在 +5% 那一分上的概率约 1/10，全市场每天撞出
+    十几个。只用「当日命中」这一条时，与聚宽对账近窗口 40 天多放行、
+    0 天多拒掉——单边偏差。
     """
     seed(
         warehouse,
         [
             ("600036.SH", D[0], 10.0, 10.0, 10.0, 10.0),
-            # 前收 10.00 -> 5% 涨停价 10.50；触板但未封住
+            # 前收 10.00 -> 5% 价 10.50，恰好摸到，但只此一次
             ("600036.SH", D[1], 10.2, 10.5, 10.1, 10.3),
         ],
     )
     build_daily_flags(warehouse, D[0], D[1])
     row = flags_of(warehouse, "600036.SH", D[1])
+    assert row["limit_pct"] == pytest.approx(0.10)
+    assert row["touched_limit_up"] is False
+
+
+def test_a_second_five_percent_hit_confirms_st(warehouse):
+    """ST 是持续数月的状态，真 ST 会反复贴着 5% 板。"""
+    seed(
+        warehouse,
+        [
+            ("600036.SH", D[0], 10.0, 10.0, 10.0, 10.0),
+            ("600036.SH", D[1], 10.2, 10.5, 10.1, 10.0),   # 第 1 次命中
+            ("600036.SH", D[2], 10.2, 10.5, 10.1, 10.3),   # 第 2 次，确认
+        ],
+    )
+    build_daily_flags(warehouse, D[0], D[2])
+    assert flags_of(warehouse, "600036.SH", D[1])["limit_pct"] == pytest.approx(0.10)
+    row = flags_of(warehouse, "600036.SH", D[2])
     assert row["touched_limit_up"] is True
     assert row["limit_pct"] == pytest.approx(0.05)
 
 
 def test_a_five_percent_close_at_limit_is_a_limit_up(warehouse):
+    """连续 5% 涨停时前收逐日抬高，5% 价也跟着走：10.00 -> 10.50 -> 11.03。"""
     seed(
         warehouse,
         [
             ("600036.SH", D[0], 10.0, 10.0, 10.0, 10.0),
-            ("600036.SH", D[1], 10.5, 10.5, 10.5, 10.5),
+            ("600036.SH", D[1], 10.5, 10.5, 10.5, 10.5),      # 第 1 次命中
+            ("600036.SH", D[2], 11.03, 11.03, 11.03, 11.03),  # 第 2 次，确认
         ],
     )
-    build_daily_flags(warehouse, D[0], D[1])
-    row = flags_of(warehouse, "600036.SH", D[1])
+    build_daily_flags(warehouse, D[0], D[2])
+    row = flags_of(warehouse, "600036.SH", D[2])
     assert row["is_limit_up"] is True
-    assert row["limit_up"] == pytest.approx(10.50)
+    assert row["limit_up"] == pytest.approx(11.03)
 
 
 def test_rising_above_five_percent_is_not_an_st_stock(warehouse):
@@ -308,15 +327,20 @@ def test_a_normal_stock_keeps_the_board_limit(warehouse):
 
 
 def test_a_five_percent_first_board_counts(warehouse):
-    """ST 股的首板同样是首板。"""
+    """ST 股的首板同样是首板。头两天先把 ST 身份坐实。"""
     seed(
         warehouse,
         [
             ("600036.SH", D[0], 10.0, 10.0, 10.0, 10.0),
-            ("600036.SH", D[1], 10.5, 10.5, 10.5, 10.5),
-            ("600036.SH", D[2], 11.03, 11.03, 11.03, 11.03),
+            # 前收 10.00 -> 5% 价 10.50：摸到但收在 10.30，第 1 次命中、未封板
+            ("600036.SH", D[1], 10.2, 10.5, 10.1, 10.3),
+            # 前收 10.30 -> 5% 价 10.82：第 2 次命中并封板，ST 身份确认
+            ("600036.SH", D[2], 10.82, 10.82, 10.82, 10.82),
+            # 前收 10.82 -> 5% 价 11.36：连板，不是首板
+            ("600036.SH", D[3], 11.36, 11.36, 11.36, 11.36),
         ],
     )
-    build_daily_flags(warehouse, D[0], D[2])
-    assert flags_of(warehouse, "600036.SH", D[1])["is_first_board"] is True
-    assert flags_of(warehouse, "600036.SH", D[2])["is_first_board"] is False
+    build_daily_flags(warehouse, D[0], D[3])
+    assert flags_of(warehouse, "600036.SH", D[1])["is_limit_up"] is False
+    assert flags_of(warehouse, "600036.SH", D[2])["is_first_board"] is True
+    assert flags_of(warehouse, "600036.SH", D[3])["is_first_board"] is False
