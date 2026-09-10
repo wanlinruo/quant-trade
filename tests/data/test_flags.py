@@ -37,6 +37,24 @@ def test_half_cent_rounds_up():
     assert limit_prices(1.65, "main")[1] == 1.49
 
 
+def seed_actions(warehouse: Warehouse, rows) -> None:
+    """rows: [(symbol, ex_date, cash, stock, rights, rights_price)]"""
+    warehouse.write(
+        "corporate_actions",
+        pa.table(
+            {
+                "symbol": [r[0] for r in rows],
+                "ex_date": [r[1] for r in rows],
+                "cash_per_share": [r[2] for r in rows],
+                "stock_per_share": [r[3] for r in rows],
+                "rights_per_share": [r[4] for r in rows],
+                "rights_price": [r[5] for r in rows],
+            },
+            schema=schema.CORPORATE_ACTIONS,
+        ),
+    )
+
+
 def seed(warehouse: Warehouse, rows, boards=None) -> None:
     """rows: [(symbol, dt, open, high, low, close)]"""
     warehouse.write(
@@ -344,3 +362,125 @@ def test_a_five_percent_first_board_counts(warehouse):
     assert flags_of(warehouse, "600036.SH", D[1])["is_limit_up"] is False
     assert flags_of(warehouse, "600036.SH", D[2])["is_first_board"] is True
     assert flags_of(warehouse, "600036.SH", D[3])["is_first_board"] is False
+
+
+# --- 除权日的涨跌停按参考价算，不是按前收 ---
+
+
+def test_cash_dividend_lowers_the_limit_up_price(warehouse):
+    """000158.SZ 2026-06-09 的真实数据：前收 13.94、每股派 0.027。
+
+    参考价 13.913，涨停价 15.30 —— 不是 13.94 x 1.1 = 15.33。
+    当天它收在 15.30，是涨停。漏了这一步就漏判。
+    """
+    seed(warehouse, [
+        ("000158.SZ", D[0], 14.11, 14.41, 13.74, 13.94),
+        ("000158.SZ", D[1], 14.05, 15.30, 13.81, 15.30),
+    ])
+    seed_actions(warehouse, [("000158.SZ", D[1], 0.027, 0.0, 0.0, 0.0)])
+    build_daily_flags(warehouse, D[0], D[1])
+
+    row = flags_of(warehouse, "000158.SZ", D[1])
+    assert row["prev_close"] == 13.94          # 原始前收不变
+    assert row["adj_prev_close"] == pytest.approx(13.913)
+    assert row["limit_up"] == 15.30
+    assert row["is_limit_up"] is True
+
+
+def test_without_the_dividend_the_same_bar_is_not_a_limit_up(warehouse):
+    """同一根 bar，去掉分红记录就该判成没涨停——证明差异确实来自除权。"""
+    seed(warehouse, [
+        ("000158.SZ", D[0], 14.11, 14.41, 13.74, 13.94),
+        ("000158.SZ", D[1], 14.05, 15.30, 13.81, 15.30),
+    ])
+    build_daily_flags(warehouse, D[0], D[1])
+
+    row = flags_of(warehouse, "000158.SZ", D[1])
+    assert row["limit_up"] == 15.33
+    assert row["is_limit_up"] is False
+
+
+def test_stock_dividend_divides_the_reference_price(warehouse):
+    """688368.SH 2026-06-09：前收 201.80，10送4派1。
+
+    参考价 (201.80 - 1.00) / 1.4 = 143.4286，科创板 20% 涨停价 172.12。
+    按前收算会得到 242.16，差了 40%。
+    """
+    seed(warehouse, [
+        ("688368.SH", D[0], 200.0, 205.0, 198.0, 201.80),
+        ("688368.SH", D[1], 150.0, 172.43, 145.0, 172.43),
+    ], boards={"688368.SH": "star"})
+    seed_actions(warehouse, [("688368.SH", D[1], 1.0, 0.4, 0.0, 0.0)])
+    build_daily_flags(warehouse, D[0], D[1])
+
+    row = flags_of(warehouse, "688368.SH", D[1])
+    assert row["adj_prev_close"] == pytest.approx(143.428571, abs=1e-6)
+    assert row["limit_up"] == 172.12
+    assert row["is_limit_up"] is True
+
+
+def test_rights_issue_adds_the_subscription_proceeds(warehouse):
+    """配股参考价 = (前收 + 配股价 x 配股比) / (1 + 配股比)。
+
+    前收 10.00、每 10 股配 3 股、配股价 5.00：
+    (10.00 + 5.00 x 0.3) / 1.3 = 8.846153，**先取整到分**得 8.85，
+    涨停 8.85 x 1.1 = 9.735 -> 9.74。
+
+    取整顺序不是细节：不先取整会得到 9.73，差一分就是涨停判定翻转。
+    交易所是先公布取整到分的除权参考价，再由它算涨跌停——这条口径
+    已用 000158.SZ / 003043.SZ / 603256.SH 三只的真实数据验证。
+    """
+    seed(warehouse, [
+        ("600036.SH", D[0], 10.0, 10.0, 10.0, 10.00),
+        ("600036.SH", D[1], 9.0, 9.74, 8.8, 9.74),
+    ])
+    seed_actions(warehouse, [("600036.SH", D[1], 0.0, 0.0, 0.3, 5.0)])
+    build_daily_flags(warehouse, D[0], D[1])
+
+    row = flags_of(warehouse, "600036.SH", D[1])
+    assert row["adj_prev_close"] == pytest.approx(8.846153, abs=1e-6)
+    assert row["limit_up"] == 9.74
+    assert row["is_limit_up"] is True
+
+
+def test_a_non_ex_date_reference_equals_the_previous_close(warehouse):
+    seed(warehouse, [
+        ("600036.SH", D[0], 10.0, 10.0, 10.0, 10.0),
+        ("600036.SH", D[1], 10.5, 10.5, 10.5, 10.5),
+    ])
+    seed_actions(warehouse, [("600036.SH", D[3], 0.5, 0.0, 0.0, 0.0)])
+    build_daily_flags(warehouse, D[0], D[1])
+
+    row = flags_of(warehouse, "600036.SH", D[1])
+    assert row["adj_prev_close"] == row["prev_close"] == 10.0
+    assert row["limit_up"] == 11.00
+
+
+def test_two_dividend_rows_on_the_same_day_are_summed(warehouse):
+    """部分数据源会把分次派息拆成多行，取合计而不是随机取一行。"""
+    seed(warehouse, [
+        ("600036.SH", D[0], 10.0, 10.0, 10.0, 10.00),
+        ("600036.SH", D[1], 9.5, 10.45, 9.4, 10.45),
+    ])
+    seed_actions(warehouse, [
+        ("600036.SH", D[1], 0.30, 0.0, 0.0, 0.0),
+        ("600036.SH", D[1], 0.20, 0.0, 0.0, 0.0),
+    ])
+    build_daily_flags(warehouse, D[0], D[1])
+
+    row = flags_of(warehouse, "600036.SH", D[1])
+    assert row["adj_prev_close"] == pytest.approx(9.50)
+    assert row["limit_up"] == 10.45
+    assert row["is_limit_up"] is True
+
+
+def test_flags_build_without_any_corporate_actions_table(warehouse):
+    """仓库里还没有公司行动数据时不能崩——退化成用前收。"""
+    seed(warehouse, [
+        ("600036.SH", D[0], 10.0, 10.0, 10.0, 10.0),
+        ("600036.SH", D[1], 11.0, 11.0, 11.0, 11.0),
+    ])
+    build_daily_flags(warehouse, D[0], D[1])
+    row = flags_of(warehouse, "600036.SH", D[1])
+    assert row["adj_prev_close"] == 10.0
+    assert row["is_limit_up"] is True

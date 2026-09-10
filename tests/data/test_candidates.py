@@ -21,6 +21,7 @@ def seed_flags(warehouse: Warehouse, rows) -> None:
                 "dt": [r[1] for r in rows],
                 "symbol": [r[0] for r in rows],
                 "prev_close": [10.0] * n,
+                "adj_prev_close": [10.0] * n,
                 "limit_up": [11.0] * n,
                 "limit_down": [9.0] * n,
                 "is_limit_up": [r[2] for r in rows],

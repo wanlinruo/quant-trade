@@ -41,6 +41,7 @@ def seed(warehouse: Warehouse) -> None:
                 "dt": list(D),
                 "symbol": ["600001.SH"] * n,
                 "prev_close": [None, 10.2, 11.2],
+                "adj_prev_close": [None, 10.2, 11.2],
                 "limit_up": [None, 11.22, 12.32],
                 "limit_down": [None, 9.18, 10.08],
                 "is_limit_up": [False, False, True],

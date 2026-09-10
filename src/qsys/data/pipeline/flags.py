@@ -46,6 +46,21 @@
 了 14 倍后重测，那条确实不如「命中 >=2 次」：|差|均 8.9 对 4.4。）
 
 `limit_pct` 列记下每个股-日实际生效的涨跌幅（0.05 / 0.10 / 0.20），可回溯。
+
+**涨跌停按除权除息参考价算，不是按前收盘价。** 除权日交易所用
+
+    参考价 = (前收 - 每股现金红利 + 配股价 x 每股配股数) / (1 + 每股送转 + 每股配股)
+
+例：000158.SZ 2026-06-09 前收 13.94、每股派 0.027，参考价 13.913，
+涨停价 15.30 而非 13.94 x 1.1 = 15.33。当天它收在 15.30，是涨停。
+
+漏了这一步的后果是**单向**的：参考价永远不高于前收（现金分红与送转都只会
+压低它），算出的涨停价因此偏高，涨停只会漏判不会误判。全区间实测 144 个
+股-日漏判涨停、217 个漏判触板，波及 106 个交易日——而候选池就是
+「昨日首板涨停股」，漏一个就少一个候选。
+
+`prev_close` 仍存**原始**前收（`market_regime` 的日收益用它再乘复权因子），
+参考价单独存 `adj_prev_close`，两者在非除权日相等。
 """
 
 from __future__ import annotations
@@ -77,6 +92,7 @@ _FLAG_COLUMNS = [
     "dt",
     "symbol",
     "prev_close",
+    "adj_prev_close",
     "limit_up",
     "limit_down",
     "is_limit_up",
@@ -112,6 +128,45 @@ def _limit_expr(cents: pl.Expr, ratio_milli: pl.Expr) -> pl.Expr:
     return (((cents * ratio_milli + 500) // 1000).cast(pl.Float64) / 100.0).round(2)
 
 
+_ACTION_COLUMNS = (
+    "cash_per_share", "stock_per_share", "rights_per_share", "rights_price",
+)
+
+
+def _with_reference_price(
+    frame: pl.DataFrame, actions: pl.DataFrame | None
+) -> pl.DataFrame:
+    """补上 `adj_prev_close` 列：除权除息参考价。
+
+    交易所公式：(前收 - 每股现金红利 + 配股价 x 每股配股数)
+                / (1 + 每股送转 + 每股配股)
+
+    非除权日 join 不上，四项全为 0，公式化为前收本身。
+    没有公司行动数据时整列退化为前收——早期仓库可能还没采过分红。
+    """
+    if actions is None or actions.height == 0:
+        return frame.with_columns(pl.col("prev_close").alias("adj_prev_close"))
+
+    ex = (
+        actions.rename({"ex_date": "dt"})
+        .select(["symbol", "dt", *_ACTION_COLUMNS])
+        # 同一天同一只有多行时取合计——分次派息在部分数据源里会拆开
+        .group_by(["symbol", "dt"])
+        .agg([pl.col(c).fill_null(0.0).sum() for c in _ACTION_COLUMNS])
+    )
+    cash, stock, rights, rprice = (
+        pl.col(c).fill_null(0.0) for c in _ACTION_COLUMNS
+    )
+    return (
+        frame.join(ex, on=["symbol", "dt"], how="left")
+        .with_columns(
+            ((pl.col("prev_close") - cash + rprice * rights) / (1.0 + stock + rights))
+            .alias("adj_prev_close")
+        )
+        .drop(_ACTION_COLUMNS)
+    )
+
+
 def build_daily_flags(warehouse: Warehouse, start: date, end: date) -> int:
     """从日线派生涨跌停与首板标记。返回写入行数。"""
     query = WarehouseQuery(warehouse)
@@ -121,6 +176,10 @@ def build_daily_flags(warehouse: Warehouse, start: date, end: date) -> int:
         if instruments.height
         else {}
     )
+
+    # 涨跌停按除权参考价算，故必须带上公司行动。全表一次读入：
+    # 全市场四年约 1.7 万条，比逐年过滤便宜。
+    actions = query.corporate_actions()
 
     written = 0
     for year in range(start.year, end.year + 1):
@@ -134,7 +193,9 @@ def build_daily_flags(warehouse: Warehouse, start: date, end: date) -> int:
         if bars.height == 0:
             continue
 
-        flags = _compute(bars, boards).filter(pl.col("dt").is_between(lo, hi))
+        flags = _compute(bars, boards, actions).filter(
+            pl.col("dt").is_between(lo, hi)
+        )
         if flags.height == 0:
             continue
 
@@ -157,7 +218,9 @@ def build_daily_flags(warehouse: Warehouse, start: date, end: date) -> int:
     return written
 
 
-def _compute(bars: pl.DataFrame, boards: dict[str, str]) -> pl.DataFrame:
+def _compute(
+    bars: pl.DataFrame, boards: dict[str, str], actions: pl.DataFrame | None = None
+) -> pl.DataFrame:
     limits = {board: PRICE_LIMITS.get(board, _DEFAULT_LIMIT) for board in PRICE_LIMITS}
     board_of = pl.col("symbol").replace_strict(
         boards, default="main", return_dtype=pl.Utf8
@@ -168,8 +231,10 @@ def _compute(bars: pl.DataFrame, boards: dict[str, str]) -> pl.DataFrame:
         pl.col("close").shift(1).over("symbol").alias("prev_close"),
         ratio.alias("_ratio"),
     )
+    frame = _with_reference_price(frame, actions)
 
-    cents = (pl.col("prev_close") * 100).round(0).cast(pl.Int64)
+    # 涨跌停按除权参考价算。非除权日它等于 prev_close，故这里无需分支。
+    cents = (pl.col("adj_prev_close") * 100).round(0).cast(pl.Int64)
     up_milli = ((1.0 + pl.col("_ratio")) * 1000).round(0).cast(pl.Int64)
     down_milli = ((1.0 - pl.col("_ratio")) * 1000).round(0).cast(pl.Int64)
 

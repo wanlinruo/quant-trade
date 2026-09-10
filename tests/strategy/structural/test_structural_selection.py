@@ -29,7 +29,8 @@ def build(warehouse: Warehouse, symbol, closes, highs, lows, amounts, volumes, o
     }, schema=schema.BARS_DAILY), year=2024)
     warehouse.write("daily_flags", pa.table({
         "dt": list(DAYS), "symbol": [symbol] * n,
-        "prev_close": [10.0] * n, "limit_up": [11.0] * n, "limit_down": [9.0] * n,
+        "prev_close": [10.0] * n, "adj_prev_close": [10.0] * n,
+        "limit_up": [11.0] * n, "limit_down": [9.0] * n,
         "is_limit_up": [d == first_board_on for d in DAYS],
         "is_limit_down": [False] * n,
         "touched_limit_up": [d in (first_board_on, broken_on) for d in DAYS],
