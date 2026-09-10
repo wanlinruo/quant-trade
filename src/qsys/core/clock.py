@@ -59,6 +59,14 @@ class BacktestClock(Clock):
     def session(self) -> date | None:
         return self._session
 
+    @property
+    def checkpoints(self) -> tuple[time, ...]:
+        return self._checkpoints
+
+    @property
+    def auction_at(self) -> time | None:
+        return self._auction_at
+
     def ticks(self) -> Iterator[tuple[datetime, Phase]]:
         for session in self._sessions:
             self._session = session

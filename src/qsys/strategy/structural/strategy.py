@@ -64,6 +64,15 @@ class StructuralStrategy(Strategy):
 
     # ---- 买入 ----
 
+    def on_init(self, ctx) -> None:
+        """自己声明调度——对应原文 L188-L204 的那几条 run_daily。
+
+        调度是策略的一部分，不是运行器的：检查点改到 14:40 应该改这里，
+        而不是改跑它的脚本。
+        """
+        ctx.schedule.auction(AUCTION_AT)
+        ctx.schedule.checkpoint(*CHECKPOINTS)
+
     def on_session_start(self, ctx) -> None:
         """只记交易日推进。真正的选股下单在 on_auction。"""
         today = ctx.now.date()

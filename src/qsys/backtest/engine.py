@@ -35,6 +35,7 @@ from qsys.core.clock import BacktestClock, Phase
 from qsys.core.constraints import ConstraintPipeline
 from qsys.core.events import MarketSnapshot, Reject
 from qsys.core.portfolio import Portfolio
+from qsys.strategy.schedule import Schedule
 from qsys.core.trading import Fill, Order, to_cents
 from qsys.core.types import Bar, Symbol
 
@@ -200,12 +201,12 @@ class BacktestEngine:
         prev_closes: dict[Symbol, float] = {}
         order_seq = 0
 
-        def make_ctx(prices: Mapping[Symbol, float]):
+        def make_ctx(prices: Mapping[Symbol, float], schedule=None):
             view = PortfolioView.of(portfolio, prices)
             api = OrderApi(view, prices)
             return Context(clock, self._feed, view, api,
                            params=self._params, state=state,
-                           market=self._market), api
+                           market=self._market, schedule=schedule), api
 
         def flush(api, at: datetime) -> None:
             nonlocal order_seq
@@ -229,7 +230,20 @@ class BacktestEngine:
                 self._strategy.on_fill(fill_ctx, fill)
                 flush(fill_api, at)
 
-        self._strategy.on_init(make_ctx(last_close)[0])
+        # 策略可以在 on_init 里自己声明调度（对应聚宽的 run_daily）。
+        # 声明了就按它重建时钟；没声明则沿用构造时给的值，老策略不受影响。
+        schedule = Schedule()
+        self._strategy.on_init(make_ctx(last_close, schedule)[0])
+        if schedule.declared:
+            clock = BacktestClock(
+                self._calendar, start, end,
+                schedule.checkpoints or self._checkpoints,
+                schedule.auction_at or self._auction_at,
+            )
+            # 就地改引擎上的调度：run_id 是在最后算的，把它一并算进去，
+            # 换了调度就是另一次运行——这是对的。
+            self._checkpoints = clock.checkpoints
+            self._auction_at = clock.auction_at
 
         for moment, phase in clock.ticks():
             session = moment.date()

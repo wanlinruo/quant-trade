@@ -22,6 +22,7 @@ from qsys.core.trading import to_cents
 from qsys.core.types import Symbol
 from qsys.data.feed import Adjustment, DataFeed
 from qsys.data.market_feed import BoundMarket, MarketFeed
+from qsys.strategy.schedule import Schedule
 
 
 class BoundFeed:
@@ -85,6 +86,7 @@ class Context:
         params: dict[str, Any],
         state: dict[str, Any],
         market: MarketFeed | None = None,
+        schedule: Schedule | None = None,
         log=None,
     ) -> None:
         self._clock = clock
@@ -92,6 +94,8 @@ class Context:
         self._portfolio = portfolio
         self._order = order_api
         self._market = market
+        # 只有 on_init 那一次的 ctx 带 schedule——调度在别处声明没有意义
+        self._schedule = schedule
         self.params = params
         self.state = state
         self.log = log if log is not None else structlog.get_logger("strategy")
@@ -111,6 +115,14 @@ class Context:
     @property
     def order(self):
         return self._order
+
+    @property
+    def schedule(self) -> Schedule:
+        """声明调度。**只在 `on_init` 里可用**——之后再声明也不会生效，
+        与其静默无效，不如直接报错。"""
+        if self._schedule is None:
+            raise RuntimeError("ctx.schedule 只在 on_init 里可用")
+        return self._schedule
 
     @property
     def market(self) -> BoundMarket:

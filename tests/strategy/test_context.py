@@ -124,3 +124,31 @@ def test_context_params_are_readable():
     ctx = Context(FixedClock(T), RecordingFeed(), PortfolioView.of(portfolio_with(0), {}),
                   object(), params={"window": 20}, state={})
     assert ctx.params["window"] == 20
+
+
+def test_schedule_is_only_available_during_on_init():
+    """在别处声明调度不会生效——与其静默无效，不如直接报错。"""
+    import pytest
+
+    from qsys.strategy.context import Context
+
+    ctx = Context(_Clock(), None, None, None, params={}, state={})
+    with pytest.raises(RuntimeError, match="on_init"):
+        ctx.schedule
+
+
+def test_schedule_is_there_when_the_engine_passes_one():
+    from qsys.strategy.context import Context
+    from qsys.strategy.schedule import Schedule
+
+    ctx = Context(_Clock(), None, None, None, params={}, state={},
+                  schedule=Schedule())
+    ctx.schedule.auction("09:30")
+    assert ctx.schedule.declared is True
+
+
+class _Clock:
+    @property
+    def now(self):
+        from datetime import datetime
+        return datetime(2024, 1, 2, 9, 30)
