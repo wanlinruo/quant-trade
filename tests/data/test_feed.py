@@ -40,6 +40,8 @@ def feed(warehouse: Warehouse) -> HistoricalFeed:
                 "symbol": ["600036.SH"] * 4,
                 "dt": SESSIONS,
                 "cum_factor": [1.0, 1.0, 2.0, 2.0],
+                # 价格因子 2.0 来自 1 送 1 且无派现，故股本比例同为 2.0
+                "cum_share_factor": [1.0, 1.0, 2.0, 2.0],
             },
             schema=schema.ADJ_FACTORS,
         ),
@@ -102,13 +104,41 @@ def test_forward_adjustment_anchors_on_last_visible_bar(feed):
     assert closes[1] == pytest.approx(10.0)
 
 
-def test_adjustment_scales_ohlc_but_not_volume(feed):
+def test_backward_adjustment_scales_ohlc_and_volume(feed):
+    """后复权以最早股本为基准：送转之后的成交量要缩回去。
+
+    不调成交量，跨送转的量就不可比——`check_left_pressure` 拿今天的量
+    去比 100 根前的量，1 送 1 会让它凭空看到「翻倍放量」。
+    """
     df = feed.get(
         ["600036.SH"], SESSIONS[0], SESSIONS[-1],
         as_of=datetime(2024, 1, 5, 15, 0), adjustment=Adjustment.BACKWARD,
     )
     assert df["open"].to_list()[0] == pytest.approx(19.0)
-    assert df["volume"].to_list() == [1000, 1000, 2000, 2000]
+    assert df["volume"].to_list() == [1000, 1000, 1000, 1000]
+
+
+def test_forward_adjustment_scales_historic_volume_up(feed):
+    """前复权以最后一根为锚：送转之前的成交量要放大到同一股本口径。"""
+    df = feed.get(
+        ["600036.SH"], SESSIONS[0], SESSIONS[-1],
+        as_of=datetime(2024, 1, 5, 15, 0), adjustment=Adjustment.FORWARD,
+    )
+    assert df["volume"].to_list() == [2000, 2000, 2000, 2000]
+
+
+def test_amount_is_never_adjusted(feed):
+    """成交额是真实换手的钱，与股数无关。
+
+    于是 amount / 复权后量 恰好是复权后的均价——check_high_open 的 vwap
+    因此与复权价同一量纲。
+    """
+    raw = feed.get(["600036.SH"], SESSIONS[0], SESSIONS[-1],
+                   as_of=datetime(2024, 1, 5, 15, 0))
+    adj = feed.get(["600036.SH"], SESSIONS[0], SESSIONS[-1],
+                   as_of=datetime(2024, 1, 5, 15, 0),
+                   adjustment=Adjustment.FORWARD)
+    assert adj["amount"].to_list() == raw["amount"].to_list()
 
 
 def test_get_requires_as_of_keyword(feed):

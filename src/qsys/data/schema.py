@@ -86,7 +86,10 @@ ADJ_FACTORS = pa.schema(
     [
         ("symbol", pa.string()),
         ("dt", pa.date32()),
-        ("cum_factor", pa.float64()),  # 后复权累计因子
+        ("cum_factor", pa.float64()),  # 后复权累计因子（价格用）
+        # 股本累计比例（成交量用）。价格因子含现金分红那一项，拿它去调
+        # 成交量会多调——股数只随送转与配股变化，与派现无关。
+        ("cum_share_factor", pa.float64()),
     ]
 )
 

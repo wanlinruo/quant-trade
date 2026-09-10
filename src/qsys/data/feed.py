@@ -20,6 +20,13 @@ from qsys.data.query import WarehouseQuery
 
 PRICE_COLUMNS = ("open", "high", "low", "close")
 
+# 成交量按**股本比例**复权，不按价格因子——价格因子含现金分红那一项，
+# 股数只随送转与配股变化。实测 301379.SZ 的 2026-06-05（10 送 4 派 0.2）：
+# 价格因子倒数 1.4075，股本比例 1.4000，差 0.5%，落在阈值上就翻转判定。
+#
+# `amount`（成交额）**不复权**：那是真实换手的钱，与股数无关。
+# 于是 amount / 复权后量 恰好是复权后的均价，与复权价同一量纲。
+
 
 class Adjustment(StrEnum):
     NONE = "none"
@@ -75,20 +82,34 @@ class HistoricalFeed(DataFeed):
             return bars
 
         joined = bars.join(factors, on=["symbol", "dt"], how="left").with_columns(
-            pl.col("cum_factor").fill_null(1.0)
+            pl.col("cum_factor").fill_null(1.0),
+            pl.col("cum_share_factor").fill_null(1.0)
+            if "cum_share_factor" in factors.columns
+            else pl.lit(1.0).alias("cum_share_factor"),
         )
 
         if adjustment is Adjustment.FORWARD:
             anchor = joined.group_by("symbol").agg(
-                pl.col("cum_factor").sort_by("dt").last().alias("anchor")
+                pl.col("cum_factor").sort_by("dt").last().alias("anchor"),
+                pl.col("cum_share_factor").sort_by("dt").last().alias("share_anchor"),
             )
             joined = joined.join(anchor, on="symbol", how="left").with_columns(
-                (pl.col("cum_factor") / pl.col("anchor")).alias("cum_factor")
+                (pl.col("cum_factor") / pl.col("anchor")).alias("cum_factor"),
+                # 前复权量：早于锚点的送转要把历史成交量放大到同一股本口径
+                (pl.col("share_anchor") / pl.col("cum_share_factor"))
+                .alias("volume_factor"),
+            )
+        else:
+            # 后复权量：以最早的股本为基准，送转之后的量要缩回去
+            joined = joined.with_columns(
+                (1.0 / pl.col("cum_share_factor")).alias("volume_factor")
             )
 
         return (
             joined.with_columns(
-                [(pl.col(c) * pl.col("cum_factor")).alias(c) for c in PRICE_COLUMNS]
+                *[(pl.col(c) * pl.col("cum_factor")).alias(c) for c in PRICE_COLUMNS],
+                (pl.col("volume") * pl.col("volume_factor")).round(0)
+                .cast(pl.Int64).alias("volume"),
             )
             .select(bars.columns)
             .sort(["symbol", "dt"])

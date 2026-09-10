@@ -20,7 +20,7 @@ from datetime import date, datetime, time
 import polars as pl
 import structlog
 
-from qsys.data.feed import HistoricalFeed
+from qsys.data.feed import Adjustment, HistoricalFeed
 from qsys.data.market_feed import MarketFeed
 from qsys.data.query import WarehouseQuery
 from qsys.strategy.structural.entry import check_high_open, check_low_open
@@ -162,8 +162,25 @@ class StructuralSelection:
     def _history(
         self, symbols: Sequence[str], through: date, as_of: datetime
     ) -> dict[str, pl.DataFrame]:
+        """入场判定要的历史日线，**前复权**，锚在 as_of 可见的最后一根。
+
+        入场的每一条都在跨日比价比量：`check_left_pressure` 拿今天的高点
+        比 100 根前的高点，`check_low_open` 算 60 日相对位置。中间发生
+        送转，不复权就完全不可比。
+
+        实测 301379.SZ @ 2026-07-06：2026-06-05 是 10 送 4 派 0.2，不复权
+        时 2026-05-20 的 high 是 42.30、复权后是 30.05。前者高于当日
+        prev_high 32.16，后者低于——`matched_i` 从 21 变成 None，
+        `zyts` 从 25 变成 105，整个左压窗口都不是同一段。
+
+        前复权而非后复权：锚在最近一根，阈值（成交额 5.5 亿等）才与当下
+        的价格量纲一致。
+        """
         start = date.fromordinal(max(through.toordinal() - _HISTORY_CALENDAR_DAYS, 1))
-        frame = self._feed.get(list(symbols), start, through, as_of=as_of)
+        frame = self._feed.get(
+            list(symbols), start, through, as_of=as_of,
+            adjustment=Adjustment.FORWARD,
+        )
         if frame.height == 0:
             return {}
         return {

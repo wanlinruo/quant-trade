@@ -7,6 +7,15 @@
     参考价 = (前收 - 每股现金红利 + 配股价 x 每股配股数) / (1 + 每股送转 + 每股配股)
     cum_factor(t) = 所有 ex_date <= t 的单日因子连乘
     后复权价(t) = 不复权价(t) x cum_factor(t)
+
+**成交量另有一套因子**：股数只随送转与配股变化，与派现无关，所以
+    单日股本比例 = 1 + 每股送转 + 每股配股
+    cum_share_factor(t) = 连乘
+    前复权量(t) = 不复权量(t) x cum_share_factor(锚点) / cum_share_factor(t)
+
+拿价格因子去调成交量会多调掉现金分红那一部分。实测 301379.SZ 的
+2026-06-05（10 送 4 派 0.2）：价格因子倒数 1.4075，股本比例 1.4000，
+差 0.5%——落在阈值上就能翻转判定。
 """
 
 from __future__ import annotations
@@ -42,6 +51,11 @@ def daily_factor(
     return prev_close / reference
 
 
+def share_factor(stock: float, rights: float) -> float:
+    """单日股本比例。派现不改变股数，故不参与。"""
+    return 1.0 + stock + rights
+
+
 def build_adj_factors(warehouse: Warehouse) -> int:
     query = WarehouseQuery(warehouse)
     bars = query.daily_bars(None, _EPOCH, _HORIZON)
@@ -54,7 +68,11 @@ def build_adj_factors(warehouse: Warehouse) -> int:
     )
 
     if actions.height == 0:
-        result = bars.select("symbol", "dt", pl.lit(1.0).alias("cum_factor"))
+        result = bars.select(
+            "symbol", "dt",
+            pl.lit(1.0).alias("cum_factor"),
+            pl.lit(1.0).alias("cum_share_factor"),
+        )
     else:
         joined = bars.join(
             actions, left_on=["symbol", "dt"], right_on=["symbol", "ex_date"], how="left"
@@ -71,12 +89,14 @@ def build_adj_factors(warehouse: Warehouse) -> int:
         )
 
         ratios: list[float] = []
+        shares: list[float] = []
         for row in joined.iter_rows(named=True):
             has_action = (
                 row["cash_per_share"] or row["stock_per_share"] or row["rights_per_share"]
             )
             if not has_action or row["prev_close"] is None:
                 ratios.append(1.0)
+                shares.append(1.0)
                 continue
             ratios.append(
                 daily_factor(
@@ -87,11 +107,20 @@ def build_adj_factors(warehouse: Warehouse) -> int:
                     row["rights_price"],
                 )
             )
+            shares.append(
+                share_factor(row["stock_per_share"], row["rights_per_share"])
+            )
 
         result = (
-            joined.with_columns(pl.Series("ratio", ratios))
-            .with_columns(pl.col("ratio").cum_prod().over("symbol").alias("cum_factor"))
-            .select("symbol", "dt", "cum_factor")
+            joined.with_columns(
+                pl.Series("ratio", ratios), pl.Series("share_ratio", shares)
+            )
+            .with_columns(
+                pl.col("ratio").cum_prod().over("symbol").alias("cum_factor"),
+                pl.col("share_ratio").cum_prod().over("symbol")
+                .alias("cum_share_factor"),
+            )
+            .select("symbol", "dt", "cum_factor", "cum_share_factor")
         )
 
     result = result.sort(["symbol", "dt"])
