@@ -4,7 +4,7 @@ from datetime import date, datetime, time
 
 import pytest
 
-from qsys.core.trading import Side
+from qsys.core.trading import OrderType, Side
 from qsys.core.types import Market, Symbol
 from qsys.strategy.structural.strategy import AUCTION_AT, CHECKPOINTS, StructuralStrategy
 
@@ -30,9 +30,11 @@ class Pick:
 class FakeOrder:
     def __init__(self):
         self.submitted = []
+        self.styles = []   # 每单的 (order_type, limit_price)，只在关心时断言
 
-    def submit(self, symbol, side, qty):
+    def submit(self, symbol, side, qty, order_type=None, limit_price=None):
         self.submitted.append((str(symbol), side, qty))
+        self.styles.append((order_type, limit_price))
 
 
 class FakePosition:
@@ -131,7 +133,10 @@ def test_a_pick_becomes_a_buy_order():
     )
     strategy.on_session_start(ctx)
     strategy.on_auction(ctx)
-    assert ctx.order.submitted == [(str(SYM), Side.BUY, 10000)]
+    # CASH-SAFE V2：按 10.00 x 1.002 定量并预留费用，故 9,900 股而非 10,000
+    assert ctx.order.submitted == [(str(SYM), Side.BUY, 9900)]
+    # 并且是挂在保护价上的限价单，不是市价单
+    assert ctx.order.styles == [(OrderType.LIMIT, pytest.approx(10.02))]
 
 
 def test_the_tag_is_remembered_for_the_exit_side():

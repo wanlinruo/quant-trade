@@ -18,6 +18,10 @@
 检查点只卖 `available_qty`——引擎的 `unfreeze()` 与 `SettlementConstraint`
 已经实现了这条规则。
 
+买入用 **CASH-SAFE V2** 定量：按 `开盘价 x 1.002` 挂限价单并预留费用，
+避免"按未滑点价用满现金、实际按滑点价成交"导致的透支。详见
+`allocation.py`。
+
 **已知偏差**：退出按**持仓均价**判盈亏，而非每笔买入的入场价。原策略有
 lot 级账本，我们的 `Portfolio` 按标的聚合——同一标的跨分支重复买入时会有
 偏差。lot 级账本归入后续。
@@ -29,7 +33,7 @@ from datetime import date, time, timedelta
 
 import structlog
 
-from qsys.core.trading import Side
+from qsys.core.trading import OrderType, Side
 from qsys.core.types import Symbol
 from qsys.strategy.base import Strategy
 from qsys.strategy.structural.allocation import allocate
@@ -77,9 +81,12 @@ class StructuralStrategy(Strategy):
         if not picks:
             return
 
-        opens = ctx.market.session_open([p.symbol for p in picks], today)
+        symbols = [p.symbol for p in picks]
+        opens = ctx.market.session_open(symbols, today)
+        # CASH-SAFE V2 的限价保护价以涨停价封顶，故要取当日涨停价
+        limit_ups = ctx.market.limit_up_price(symbols, today)
         budgets = allocate(
-            [(p.symbol, p.tag) for p in picks], ctx.portfolio.cash, opens
+            [(p.symbol, p.tag) for p in picks], ctx.portfolio.cash, opens, limit_ups
         )
         tags = ctx.state.setdefault("tags", {})
         for budget in budgets:
@@ -89,7 +96,13 @@ class StructuralStrategy(Strategy):
                 )
                 continue
             tags[budget.symbol] = budget.tag
-            ctx.order.submit(Symbol.parse(budget.symbol), Side.BUY, budget.qty)
+            # 限价单而非市价单：原策略 `order(..., LimitOrderStyle(protect_price))`。
+            # 回测里开盘价永远低于保护价，成交结果相同；实盘才见效——
+            # 聚宽 82 笔成交中保护价被击穿 0 次。
+            ctx.order.submit(
+                Symbol.parse(budget.symbol), Side.BUY, budget.qty,
+                OrderType.LIMIT, budget.protect_price,
+            )
 
     # ---- 退出 ----
 

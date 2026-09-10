@@ -2,7 +2,7 @@
 
 import pytest
 
-from qsys.strategy.structural.allocation import allocate
+from qsys.strategy.structural.allocation import allocate, fee_reserve
 
 
 def test_a_single_candidate_gets_the_whole_budget():
@@ -51,11 +51,56 @@ def test_a_budget_below_one_lot_is_skipped():
 
 
 def test_exactly_one_lot_is_allowed():
+    """1,010 元买 10.00 的股：保护价 10.02、准备金 5.01，本金 1,004.99 -> 100 股。"""
     budgets = allocate(
-        [("600001.SH", "LOW_MAIN")], cash=1000.0, opens={"600001.SH": 10.0}
+        [("600001.SH", "LOW_MAIN")], cash=1010.0, opens={"600001.SH": 10.0}
     )
     assert budgets[0].qty == 100
     assert budgets[0].status == "ORDER_SUBMITTED"
+
+
+def test_the_price_buffer_and_fee_reserve_shrink_the_size():
+    """旧口径 1,000 / 10.00 恰好一手；加上 0.2% 保护价与费用准备金就买不起了。
+
+    这不是保守过头：不预留就会出现"按未滑点价用满现金、实际按滑点价成交"
+    的透支。聚宽未加保护时 241 天里 44 天现金为负。
+    """
+    budgets = allocate(
+        [("600001.SH", "LOW_MAIN")], cash=1000.0, opens={"600001.SH": 10.0}
+    )
+    assert budgets[0].qty == 0
+    assert budgets[0].status == "BELOW_BOARD_LOT"
+
+
+def test_the_protect_price_is_the_open_lifted_by_the_buffer():
+    budgets = allocate(
+        [("600001.SH", "LOW_MAIN")], cash=100_000.0, opens={"600001.SH": 10.0}
+    )
+    assert budgets[0].protect_price == pytest.approx(10.02)
+
+
+def test_the_protect_price_never_exceeds_the_limit_up():
+    """开盘就在涨停价附近时，保护价不能挂到涨停之上——那种单挂不进去。"""
+    budgets = allocate(
+        [("600001.SH", "LOW_MAIN")], cash=100_000.0,
+        opens={"600001.SH": 11.00}, limit_ups={"600001.SH": 11.00},
+    )
+    assert budgets[0].protect_price == pytest.approx(11.00)
+
+
+def test_a_missing_limit_up_falls_back_to_the_plain_buffer():
+    budgets = allocate(
+        [("600001.SH", "LOW_MAIN")], cash=100_000.0,
+        opens={"600001.SH": 10.0}, limit_ups={},
+    )
+    assert budgets[0].protect_price == pytest.approx(10.02)
+
+
+def test_the_fee_reserve_matches_the_original_formula():
+    """原文：max(5, 预算 x 0.0003) + 预算 x 0.00001，与实际成本模型无关。"""
+    assert fee_reserve(50_000.0) == pytest.approx(15.5)   # max(5, 15) + 0.5
+    assert fee_reserve(1_000.0) == pytest.approx(5.01)    # max(5, 0.3) + 0.01
+    assert fee_reserve(0.0) == 0.0
 
 
 def test_quantity_is_rounded_down_to_whole_lots():
