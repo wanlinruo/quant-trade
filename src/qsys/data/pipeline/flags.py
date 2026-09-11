@@ -17,10 +17,30 @@
 （QMT 没有 ST 板块，`get_instrument_detail` 只给当日涨跌停价；akshare 的
 东财接口在拒，新浪的曾用名接口不带日期）。
 
-判定用两条，缺一不可：
+**这是 fallback，不是真值。** 三个字段留作审计：`st_inferred_raw`
+（启发式原始结论）、`st_inference_rejected_by_price_evidence`（被制度否决）、
+`st_inferred_final`（实际采用）。
 
-1. 当日 `high` 恰好等于 5% 涨停价 `round(前收 x 1.05, 2)`，精确到分；
-2. **该股回看 60 根内被第 1 条命中过至少 2 次**。
+判定用三条，缺一不可：
+
+1. 当日 `high` 恰好等于 5% 涨停价 `round(除权参考价 x 1.05, 2)`，精确到分；
+2. **该股回看 60 根内被第 1 条命中过至少 2 次**；
+3. **制度硬否决**：`high > 5%涨停价` 或 `low < 5%跌停价` 即为「越界」，
+   5% 档下不可能发生。第 2 条的命中次数**只数最近一次越界之后的**。
+
+第 3 条不用固定百分比判断，而是比「价格有没有走出 5% 档允许的区间」。
+涨跌停价取整到分，低价股的合法涨幅会超过 5%（前收 0.33 -> ST 涨停 0.35
+= +6.06%），按百分比卡会把真 ST 误否决。
+
+**为什么是「最近一次越界之后」而不是「窗口内有越界就否决」**：ST 是阶跃
+状态，越界只证明那一天不是 ST，不证明今天不是。按窗口一律否决会把刚被 ST
+的股票连坐——它们被 ST 之前必然有越界。实测那样做每天多否 7.9 个推断、
+241 天里 171 天与聚宽的差距变大（|差|均 3.73 -> 6.30）。
+
+第 3 条的来历：2025-12-05 我们数出 107 只触板、聚宽 103 只。107 只里 11 只
+由 ST 反推而来，其中 6 只（中金岭南、焦作万方、福建高速、*ST华幸、明阳智能、
+再升科技）在此前 60 根内有过 >5% 的真实单日波动——当时根本不在 5% 档。
+这 4 只的差额直接翻转了 2025-12-08 的 HIGH_CHINEXT Gate（阈值 103.33）。
 
 第 2 条是关键。只用第 1 条会大量误判：一只 ¥10 的股当日高点落在 +5% 那
 一分上的概率约 1/10，全市场每天撞出十几个纯属巧合。而 ST 是持续数月的
@@ -101,6 +121,9 @@ _FLAG_COLUMNS = [
     "is_broken_board",
     "is_first_board",
     "limit_pct",
+    "st_inferred_raw",
+    "st_inference_rejected_by_price_evidence",
+    "st_inferred_final",
 ]
 
 
@@ -259,8 +282,39 @@ def _compute(
         .over("symbol")
         >= ST_CONFIRM_HITS
     ).fill_null(False)
-    looks_st = hit_st & confirmed
+    st_raw = hit_st & confirmed
+
+    # 第 3 条：制度硬否决。5% 档下**不可能**出现走出 5% 区间的成交，
+    # 因此最近一次越界之前的贴板记录不能作为「现在是 ST」的证据。
+    #
+    # 判据用「价格是否走出 5% 档允许的区间」，不用固定百分比——涨跌停价
+    # 取整到分，低价股的合法涨幅会超过 5%（前收 0.33 -> ST 涨停 0.35 =
+    # +6.06%），按百分比卡会把真 ST 误否决。
+    breach = (
+        (pl.col("high") > pl.col("_st_up")) | (pl.col("low") < pl.col("_st_down"))
+    ).fill_null(False)
+
+    # ST 是阶跃状态：越界只证明「那一天不是 ST」，不证明「今天不是」。
+    # 一律按窗口否决会把刚被 ST 的股票连坐（它们被 ST 之前必然有越界），
+    # 实测那样做每天多否掉 7.9 个、241 天里 171 天变差。
+    #
+    # 正确形式是把确认窗的**起点挪到最近一次越界之后**：累计命中数减去
+    # 最近一次越界时的累计命中数，就是「本轮 ST 期内」的命中次数。
+    # 不引入新参数，仍用 ST_CONFIRM_HITS。
+    cum_hits = hit_st.cast(pl.Int32).cum_sum().over("symbol")
+    hits_at_last_breach = (
+        pl.when(breach).then(cum_hits).otherwise(None)
+        .forward_fill().over("symbol").fill_null(0)
+    )
+    hits_since_breach = cum_hits - hits_at_last_breach
+    # 越界当根本身不可能是 ST
+    vetoed = (breach | (hits_since_breach < ST_CONFIRM_HITS)).fill_null(False)
+
+    looks_st = st_raw & ~vetoed
     frame = frame.with_columns(
+        st_raw.alias("st_inferred_raw"),
+        (st_raw & vetoed).alias("st_inference_rejected_by_price_evidence"),
+        looks_st.alias("st_inferred_final"),
         pl.when(looks_st).then(pl.lit(ST_LIMIT)).otherwise(pl.col("_ratio"))
         .alias("limit_pct"),
         pl.when(looks_st).then(pl.col("_st_up")).otherwise(pl.col("_board_up"))

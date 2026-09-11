@@ -109,6 +109,10 @@ DAILY_FLAGS = pa.schema(
         ("is_broken_board", pa.bool_()),  # 炸板：触及但未封住
         ("is_first_board", pa.bool_()),  # 首板：今日涨停且昨日未涨停
         ("limit_pct", pa.float64()),  # 实际生效的涨跌幅：0.05 为反推出的 ST，否则按板块 0.10 / 0.20
+        # ST 反推是 fallback（免费源没有历史 ST 名单），三个字段留作审计：
+        ("st_inferred_raw", pa.bool_()),  # 价格行为启发式的原始结论
+        ("st_inference_rejected_by_price_evidence", pa.bool_()),  # 被制度硬否决
+        ("st_inferred_final", pa.bool_()),  # 实际采用的结论
     ]
 )
 

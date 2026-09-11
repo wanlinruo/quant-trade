@@ -484,3 +484,136 @@ def test_flags_build_without_any_corporate_actions_table(warehouse):
     row = flags_of(warehouse, "600036.SH", D[1])
     assert row["adj_prev_close"] == 10.0
     assert row["is_limit_up"] is True
+
+
+# --- ST 反推的制度硬否决 ---
+
+
+def _st_series(warehouse, symbol, days, prices, boards=None):
+    """prices: [(open, high, low, close)]，与 days 等长。"""
+    seed(warehouse, [(symbol, d, *p) for d, p in zip(days, prices)], boards)
+
+
+def test_repeated_five_percent_hits_infer_st(warehouse):
+    """基线：连续贴 5% 板、从不越界，判成 ST。"""
+    days = [date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4)]
+    # 10.00 -> 10.50 -> 11.03，每天恰好 +5%
+    _st_series(warehouse, "600000.SH", days, [
+        (10.00, 10.00, 10.00, 10.00),
+        (10.50, 10.50, 10.50, 10.50),
+        (11.03, 11.03, 11.03, 11.03),
+    ])
+    build_daily_flags(warehouse, days[0], days[-1])
+    row = flags_of(warehouse, "600000.SH", days[-1])
+    assert row["st_inferred_raw"] is True
+    assert row["st_inference_rejected_by_price_evidence"] is False
+    assert row["st_inferred_final"] is True
+    assert row["limit_pct"] == 0.05
+
+
+def test_hits_before_a_breach_do_not_count_towards_st(warehouse):
+    """越界把计数清零：越界前的贴板不能证明「现在是 ST」。
+
+    这是 2025-12-05 那 6 只的形态——早先贴过 5% 板，中间走出过 5% 区间，
+    然后又贴了一次。旧规则只数 60 根内的命中，会把它们判成 ST。
+    """
+    days = [date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4), date(2024, 1, 5)]
+    _st_series(warehouse, "600000.SH", days, [
+        (10.00, 10.00, 10.00, 10.00),
+        (10.50, 10.50, 10.50, 10.50),   # 恰好 +5% -> 命中 1
+        (11.50, 11.60, 11.40, 11.50),   # 高点 11.60 > 5% 涨停价 11.03 -> 越界
+        (12.08, 12.08, 12.00, 12.08),   # 恰好 +5% -> 命中 2（但在越界之后只此一次）
+    ])
+    build_daily_flags(warehouse, days[0], days[-1])
+    row = flags_of(warehouse, "600000.SH", days[-1])
+    assert row["st_inferred_raw"] is True          # 60 根内确有 2 次命中
+    assert row["st_inference_rejected_by_price_evidence"] is True
+    assert row["st_inferred_final"] is False
+    assert row["limit_pct"] == 0.10
+    assert row["limit_up"] == 12.65                # 11.50 x 1.1，不是 12.08
+    assert row["is_limit_up"] is False
+    assert row["touched_limit_up"] is False
+
+
+def test_two_hits_after_a_breach_re_establish_st(warehouse):
+    """越界之后又攒够两次贴板 -> 期间被 ST 了，重新按 5% 档。
+
+    ST 是阶跃状态：越界只证明那一天不是 ST。一律按窗口否决会把刚被 ST
+    的股票连坐，因为它们被 ST 之前必然有越界。
+    """
+    days = [date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4),
+            date(2024, 1, 5), date(2024, 1, 8)]
+    _st_series(warehouse, "600000.SH", days, [
+        (10.00, 10.00, 10.00, 10.00),
+        (10.50, 10.50, 10.50, 10.50),   # 命中 1
+        (11.50, 11.60, 11.40, 11.50),   # 越界，计数清零
+        (12.08, 12.08, 12.00, 12.08),   # 越界后命中 1
+        (12.68, 12.68, 12.60, 12.68),   # 越界后命中 2 -> 重新认定 ST
+    ])
+    build_daily_flags(warehouse, days[0], days[-1])
+    assert flags_of(warehouse, "600000.SH", days[3])["st_inferred_final"] is False
+    row = flags_of(warehouse, "600000.SH", days[-1])
+    assert row["st_inference_rejected_by_price_evidence"] is False
+    assert row["st_inferred_final"] is True
+    assert row["limit_pct"] == 0.05
+
+
+def test_a_downside_breach_also_counts(warehouse):
+    """跌破 5% 跌停同样是越界证据，不能只看上方。"""
+    days = [date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4), date(2024, 1, 5)]
+    _st_series(warehouse, "600000.SH", days, [
+        (10.00, 10.00, 10.00, 10.00),
+        (10.50, 10.50, 10.50, 10.50),   # 命中 1
+        (9.60, 9.70, 9.50, 9.60),       # 低点 9.50 < 5% 跌停价 9.98 -> 越界
+        (10.08, 10.08, 10.00, 10.08),   # 恰好 +5%，越界后只此一次
+    ])
+    build_daily_flags(warehouse, days[0], days[-1])
+    row = flags_of(warehouse, "600000.SH", days[-1])
+    assert row["st_inferred_raw"] is True
+    assert row["st_inference_rejected_by_price_evidence"] is True
+    assert row["st_inferred_final"] is False
+
+
+def test_the_veto_uses_the_band_not_a_fixed_percentage(warehouse):
+    """低价股的分位取整会合法产生 >5% 涨幅，不能按百分比否决。
+
+    前收 0.33 -> ST 涨停 round(0.3465, 2) = 0.35，涨幅 +6.06%。
+    这是 5% 档下的合法成交，不构成否决证据。
+    """
+    days = [date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4)]
+    _st_series(warehouse, "600000.SH", days, [
+        (0.33, 0.33, 0.33, 0.33),
+        (0.35, 0.35, 0.34, 0.35),        # +6.06%，但恰好等于 ST 涨停价
+        (0.37, 0.37, 0.36, 0.37),        # 0.35 x 1.05 = 0.3675 -> 0.37
+    ])
+    build_daily_flags(warehouse, days[0], days[-1])
+    row = flags_of(warehouse, "600000.SH", days[-1])
+    assert row["st_inference_rejected_by_price_evidence"] is False
+    assert row["st_inferred_final"] is True
+
+
+def test_the_veto_only_looks_backwards(warehouse):
+    """未来的越界不能影响今天的判定——PIT 契约。"""
+    days = [date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4), date(2024, 1, 5)]
+    _st_series(warehouse, "600000.SH", days, [
+        (10.00, 10.00, 10.00, 10.00),
+        (10.50, 10.50, 10.50, 10.50),    # +5%
+        (11.03, 11.03, 11.03, 11.03),    # +5%，此刻应判 ST
+        (12.20, 12.50, 12.10, 12.40),    # 之后才越界
+    ])
+    build_daily_flags(warehouse, days[0], days[-1])
+    assert flags_of(warehouse, "600000.SH", days[2])["st_inferred_final"] is True
+    assert flags_of(warehouse, "600000.SH", days[3])["st_inferred_final"] is False
+
+
+def test_a_normal_stock_is_never_marked_st(warehouse):
+    days = [date(2024, 1, 2), date(2024, 1, 3)]
+    _st_series(warehouse, "600000.SH", days, [
+        (10.00, 10.00, 10.00, 10.00),
+        (10.20, 10.30, 10.10, 10.25),
+    ])
+    build_daily_flags(warehouse, days[0], days[-1])
+    row = flags_of(warehouse, "600000.SH", days[-1])
+    assert row["st_inferred_raw"] is False
+    assert row["st_inference_rejected_by_price_evidence"] is False
+    assert row["st_inferred_final"] is False

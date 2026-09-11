@@ -37,6 +37,9 @@ def build(warehouse: Warehouse, symbol, closes, highs, lows, amounts, volumes, o
         "is_broken_board": [d == broken_on for d in DAYS],
         "is_first_board": [d == first_board_on for d in DAYS],
         "limit_pct": [0.10] * n,
+        "st_inferred_raw": [False] * n,
+        "st_inference_rejected_by_price_evidence": [False] * n,
+        "st_inferred_final": [False] * n,
     }, schema=schema.DAILY_FLAGS), year=2024)
 
 
