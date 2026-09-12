@@ -18,7 +18,26 @@ from qsys.core.constraints import (
     SuspensionConstraint,
 )
 
-# 日涨跌幅上限。ST 股为 5%，但一期无 ST 历史数据，暂按板块处理。
+def board_of(code: str) -> str:
+    """按号段判板块。入参是**不带交易所后缀**的代码。
+
+    与 PRICE_LIMITS 同住一处：板块词表和它的涨跌幅上限必须一起改，
+    分开放就会出现「新增板块忘了给上限」而无人报错。
+    """
+    if code.startswith(("688", "689")):
+        return "star"
+    if code.startswith(("300", "301")):
+        return "gem"
+    if code[:2] in ("43", "83", "87", "92"):
+        return "bse"
+    if code[:2] in ("90", "20"):
+        # B 股：外币计价、交易规则与 A 股不同，单独标注以便股票池排除
+        return "bshare"
+    return "main"
+
+
+# 日涨跌幅上限。**ST 为 5%，自 2026-09-12 起由付费源 name 列直取判定**
+# （见 data/pipeline/flags.py），不再按板块近似。此表只管板块档位。
 PRICE_LIMITS: dict[str, float] = {
     "main": 0.10,
     "gem": 0.20,
