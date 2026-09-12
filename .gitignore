@@ -5,3 +5,4 @@ __pycache__/
 warehouse/
 config/deploy.local.toml
 var/
+.DS_Store

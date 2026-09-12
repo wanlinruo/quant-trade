@@ -1,10 +1,15 @@
 """全市场批量采集：分批落盘、断点续传、单只失败不中断。"""
 
+import time
 from datetime import date
 
 import polars as pl
 
-from qsys.data.pipeline.universe import completed_symbols, ingest_universe
+from qsys.data.pipeline.universe import (
+    completed_symbols,
+    ingest_universe,
+    source_is_serving,
+)
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
 
@@ -200,3 +205,74 @@ def test_a_symbol_with_only_incomplete_bars_still_counts_as_done(warehouse):
     )
     assert progress.failed == 0
     assert progress.done == 1
+
+
+def test_empty_results_are_not_recorded_as_done(warehouse):
+    """空结果不记账。
+
+    记了账，续传就会跳过它——上游整体失效那天会把 5000 多只全部记成已完成，
+    之后再也不会回补。空结果重取的代价是一次请求，记错账的代价是永久缺数据。
+    """
+    p = CountingProvider(empty={"600001.SH"})
+    ingest_universe(
+        p, warehouse, symbols(3), SESSIONS[0], SESSIONS[-1],
+        complete_through=SESSIONS[-1],
+    )
+    done = completed_symbols(warehouse, SESSIONS[0], SESSIONS[-1])
+    assert "600001.SH" not in done
+    assert {"600000.SH", "600002.SH"} <= done
+
+
+def test_progress_counts_empty_apart_from_done(warehouse):
+    """空和有数据必须分开计数，否则「5219 成功 / 0 失败」会掩盖零行入库。"""
+    p = CountingProvider(empty={"600001.SH", "600002.SH"})
+    progress = ingest_universe(
+        p, warehouse, symbols(4), SESSIONS[0], SESSIONS[-1],
+        complete_through=SESSIONS[-1],
+    )
+    assert progress.done == 2
+    assert progress.empty == 2
+    assert progress.failed == 0
+
+
+def test_source_is_serving_is_false_when_every_probe_comes_back_empty(warehouse):
+    """探针全空 = 上游失效。高流动性标的不会同时整段停牌。"""
+    p = CountingProvider(empty={"600000.SH", "600001.SH", "600002.SH"})
+    assert not source_is_serving(p, symbols(3), SESSIONS[0], SESSIONS[-1])
+
+
+def test_source_is_serving_is_true_when_any_probe_has_rows(warehouse):
+    p = CountingProvider(empty={"600000.SH", "600001.SH"})
+    assert source_is_serving(p, symbols(3), SESSIONS[0], SESSIONS[-1])
+
+
+def test_source_is_serving_treats_exceptions_as_outage(warehouse):
+    p = CountingProvider(failing={"600000.SH", "600001.SH", "600002.SH"})
+    assert not source_is_serving(p, symbols(3), SESSIONS[0], SESSIONS[-1])
+
+
+def test_stops_at_the_deadline_instead_of_running_over(warehouse):
+    """日线跑超时不能把后面的步骤一起拖死。
+
+    分钟线和竞价 tick 是滚动窗口，漏一天补不回来；日线漏了可以明天再采。
+    所以日线要有自己的时间预算，到点就交还控制权，而不是等 systemd 把整个
+    归档杀掉。
+    """
+    p = CountingProvider()
+    progress = ingest_universe(
+        p, warehouse, symbols(10), SESSIONS[0], SESSIONS[-1],
+        complete_through=SESSIONS[-1], batch_size=3,
+        deadline=time.monotonic() - 1,
+    )
+    assert p.calls == []
+    assert progress.done == 0
+
+
+def test_a_deadline_in_the_future_does_not_stop_the_run(warehouse):
+    p = CountingProvider()
+    progress = ingest_universe(
+        p, warehouse, symbols(6), SESSIONS[0], SESSIONS[-1],
+        complete_through=SESSIONS[-1], batch_size=3,
+        deadline=time.monotonic() + 600,
+    )
+    assert progress.done == 6
