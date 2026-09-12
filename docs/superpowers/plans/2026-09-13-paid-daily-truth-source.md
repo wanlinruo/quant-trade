@@ -551,6 +551,131 @@ git commit -m "feat(data): daily_bars 换底读付费源，旧表降为 legacy_d
 
 ---
 
+## Task 2b: 旧表写入方的读取改为 `legacy_daily_bars`
+
+Task 2 换底后暴露的计划缺口。三个生产模块同时「写 `bars_daily`」和「读
+`daily_bars()`」做合并，换底之后它们变成**读付费源、写旧表**：
+
+```
+pipeline/universe.py       _DATASET = "bars_daily"        + query.daily_bars(...)
+pipeline/bars.py           write("bars_daily", ...)       + query.daily_bars(...)
+pipeline/daily_backfill.py write("bars_daily", ...)       + query.daily_bars(...)
+```
+
+两个后果：
+
+1. **付费数据会被灌进冻结的旧表。** Task 5 的回归对账正是拿 `bars_daily` 当参照物，
+   污染之后对账失去意义。
+2. **类型不匹配**：`paid_daily.volume` 是 Float64，`BARS_DAILY.volume` 是 Int64，
+   `.cast(schema.BARS_DAILY)` 会截断或报错。
+
+实践上这三条当前跑不到（mootdx 上游已失效，`daily_archive` 的探针会拦下），但那是
+运气不是设计——`daily_backfill` 是 QMT 补缺口通道，计划 B 还要用它。
+
+**修法**：每个模块读自己写的那张表。三处 `query.daily_bars(...)` 改成
+`query.legacy_daily_bars(...)`。不删除这三个模块——`daily_backfill` 是计划 B 的
+QMT 通道，`universe` 刚在 bb01f33 加过上游探针与时间预算。
+
+**Files:**
+- Modify: `src/qsys/data/pipeline/universe.py`（`_write_batch` 内的读取）
+- Modify: `src/qsys/data/pipeline/bars.py:~50`（`existing` 的来源）
+- Modify: `src/qsys/data/pipeline/daily_backfill.py:~85`（`existing` 的来源）
+- Test: `tests/data/pipeline/test_legacy_writers.py`
+
+**Interfaces:**
+- Consumes: `WarehouseQuery.legacy_daily_bars`（Task 2）
+- Produces: 无新接口，三个模块的内部读取改向
+
+- [ ] **Step 1: 写失败测试**
+
+```python
+# tests/data/pipeline/test_legacy_writers.py
+
+"""写 bars_daily 的模块必须读 bars_daily。
+
+换底之后 daily_bars() 读的是付费源。这三个模块仍然维护旧表，
+若继续读 daily_bars()，合并结果会把付费数据写进冻结的旧表，
+而 Task 5 的回归对账正是拿旧表当参照物。
+"""
+
+import inspect
+
+from qsys.data.pipeline import bars, daily_backfill, universe
+
+
+def test_universe_reads_the_table_it_writes():
+    src = inspect.getsource(universe)
+    assert "legacy_daily_bars" in src
+    assert ".daily_bars(" not in src
+
+
+def test_bars_reads_the_table_it_writes():
+    src = inspect.getsource(bars)
+    assert "legacy_daily_bars" in src
+    assert ".daily_bars(" not in src
+
+
+def test_daily_backfill_reads_the_table_it_writes():
+    src = inspect.getsource(daily_backfill)
+    assert "legacy_daily_bars" in src
+    assert ".daily_bars(" not in src
+```
+
+这三条是源码级断言，不是行为断言——刻意为之。行为断言要造两张表的数据才能
+区分，成本远高于收益；而「读写配对」本身就是一条可以直接检查的结构约束。
+
+- [ ] **Step 2: 跑测试确认失败**
+
+Run: `.venv/bin/python -m pytest tests/data/pipeline/test_legacy_writers.py -v`
+Expected: FAIL，三条都因 `.daily_bars(` 仍在源码里而失败
+
+- [ ] **Step 3: 三处改向**
+
+```python
+# src/qsys/data/pipeline/universe.py —— _write_batch 内
+        merged = (
+            # 读自己写的那张表。daily_bars() 换底读付费源之后，用它做合并
+            # 会把付费数据灌进冻结的旧表，毁掉回归对账的参照物。
+            pl.concat([query.legacy_daily_bars(None, lo, hi), incoming], how="vertical")
+```
+
+```python
+# src/qsys/data/pipeline/bars.py —— existing 的来源，同上理由
+        existing = query.legacy_daily_bars(None, year_start, year_end)
+```
+
+```python
+# src/qsys/data/pipeline/daily_backfill.py —— existing 的来源，同上理由
+        existing = query.legacy_daily_bars(None, year_start, year_end)
+```
+
+各处的实际变量名与参数以文件现状为准，只改被调用的方法名，不改其余逻辑。
+改完在每处留一句中文注释说明「读自己写的那张表」这条约束。
+
+- [ ] **Step 4: 跑测试确认通过**
+
+Run: `.venv/bin/python -m pytest tests/data/pipeline/test_legacy_writers.py -v`
+Expected: PASS（3 个）
+
+- [ ] **Step 5: 确认这三个模块的既有测试恢复**
+
+Run: `.venv/bin/python -m pytest tests/data/test_universe.py tests/data/pipeline/test_bars.py tests/data/pipeline/test_daily_backfill.py -rfE --tb=no -q`
+Expected: 这三个文件的失败应大幅减少或清零——它们写 `bars_daily`、读也回到
+`bars_daily`，夹具本就是对的。**仍失败的用例记进报告**，交 Task 3 判断。
+
+- [ ] **Step 6: 提交**
+
+```bash
+git add src/qsys/data/pipeline/universe.py src/qsys/data/pipeline/bars.py \
+        src/qsys/data/pipeline/daily_backfill.py tests/data/pipeline/test_legacy_writers.py
+git commit -m "fix(data): 维护旧表的三个模块改读 legacy_daily_bars
+
+换底后它们变成读付费源、写旧表，会把付费数据灌进冻结的对账参照表，
+且 Float64 volume 转 Int64 会截断。"
+```
+
+---
+
 ## Task 3: 既有测试夹具迁移
 
 Task 2 换底后，所有「写 `bars_daily` 再读 `daily_bars()`」的测试都会失败。它们测的是业务逻辑而非存储位置，因此迁移夹具即可，断言不动。
