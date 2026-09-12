@@ -586,7 +586,8 @@ Expected: FAIL，`fixture 'write_daily_bars' not found`
 ```python
 # tests/conftest.py 追加
 
-import pyarrow as pa
+from datetime import date
+
 import pyarrow.parquet as pq
 import pytest
 
@@ -718,12 +719,20 @@ git commit -m "fix(core): Bar.volume 改浮点，付费源手数带小数"
 在改 `flags.py` **之前**先把「只换源」这一段的差异定量固化。spec §10 的三段式验收，本任务是第 1 段。
 
 **Files:**
-- Create: `scripts/regression_paid_daily.py`
-- Test: `tests/test_regression_paid_daily.py`
+- Create: `src/qsys/data/quality/source_diff.py`（纯逻辑）
+- Create: `scripts/regression_paid_daily.py`（薄 CLI）
+- Test: `tests/data/quality/test_source_diff.py`
+
+**分层理由**：`scripts/` 不是 Python 包（没有 `__init__.py`），测试无法
+`from scripts.xxx import`。本仓库既有分层是纯逻辑进模块、脚本只做薄 CLI
+（`scripts/ingest_paid_daily.py` 55 行之于 `pipeline/paid_daily.py` 241 行）。
+`src/qsys/data/quality/` 已有 `rules.py` / `report.py` / `daily_rules.py`，
+对账逻辑归在这里。
 
 **Interfaces:**
-- Consumes: `WarehouseQuery.daily_bars`、`WarehouseQuery.legacy_daily_bars`（Task 2）
-- Produces: `compare_daily_sources(query, start, end, boards) -> SourceDiff`，其中
+- Consumes: `WarehouseQuery.daily_bars`、`WarehouseQuery.legacy_daily_bars`（Task 2）、
+  `markets.ashare.board_of`（Task 0）、`write_daily_bars` fixture（Task 3）
+- Produces: `qsys.data.quality.source_diff.compare_daily_sources(query, start, end, boards) -> SourceDiff`，其中
   `SourceDiff` 是 dataclass，字段 `only_in_paid: pl.DataFrame`、`only_in_legacy: pl.DataFrame`、
   `value_diffs: pl.DataFrame`（列 `symbol, dt, field, paid, legacy, abs_diff`）、
   `summary: dict[str, int | float]`
@@ -731,7 +740,7 @@ git commit -m "fix(core): Bar.volume 改浮点，付费源手数带小数"
 - [ ] **Step 1: 写失败测试**
 
 ```python
-# tests/test_regression_paid_daily.py
+# tests/data/quality/test_source_diff.py
 
 """换源回归对账：差异必须能逐键列出，不能只给一个总数。"""
 
@@ -741,12 +750,17 @@ import polars as pl
 
 from qsys.data import schema
 from qsys.data.query import WarehouseQuery
-from scripts.regression_paid_daily import compare_daily_sources
+from qsys.data.quality.source_diff import compare_daily_sources
 
 DAY = date(2026, 9, 9)
 
 
 def _legacy(warehouse, rows):
+    """造旧表数据作对账参照物。
+
+    Global Constraints 说 bars_daily 冻结不写入，指的是**生产路径**；
+    这里写的是 tmp_path 下的临时仓库，不触碰生产数据。
+    """
     frame = pl.DataFrame(rows)
     warehouse.write("bars_daily", frame.to_arrow().cast(schema.BARS_DAILY), year=2026)
 
@@ -837,39 +851,30 @@ def test_board_filter_excludes_beijing_from_the_comparison(warehouse, write_dail
 
 - [ ] **Step 2: 跑测试确认失败**
 
-Run: `.venv/bin/python -m pytest tests/test_regression_paid_daily.py -v`
-Expected: FAIL，`ModuleNotFoundError: No module named 'scripts.regression_paid_daily'`
+Run: `.venv/bin/python -m pytest tests/data/quality/test_source_diff.py -v`
+Expected: FAIL，`ModuleNotFoundError: No module named 'qsys.data.quality.source_diff'`
 
 - [ ] **Step 3: 实现**
 
 ```python
-# scripts/regression_paid_daily.py
+# src/qsys/data/quality/source_diff.py
 
 """换源回归对账：付费源 vs 冻结的旧表，逐键列差异。
 
 **为什么要逐键**：换源必然产生差异（volume 精度、amount 舍入、北交所覆盖、
 停牌占位行）。只报一个总数，就无法区分「已知的口径差」与「真的错了」。
-spec §10 的三段式验收全靠这份逐键清单。
-
-用法:
-    uv run python scripts/regression_paid_daily.py \\
-        --warehouse /data/qsys/warehouse --start 2026-01-01 --end 2026-09-11 \\
-        --out artifacts/regression_stage1.json
+spec §10 的三段式验收全靠这份逐键清单。命令行入口在
+scripts/regression_paid_daily.py。
 """
 
 from __future__ import annotations
 
-import argparse
-import json
 from dataclasses import dataclass
 from datetime import date
-from pathlib import Path
 
 import polars as pl
 
 from qsys.data.query import WarehouseQuery
-from qsys.data.storage import Warehouse
-
 from qsys.markets.ashare import board_of
 
 _VALUE_FIELDS = ["open", "high", "low", "close", "volume", "amount"]
@@ -953,6 +958,48 @@ def compare_daily_sources(
     return SourceDiff(only_paid, only_legacy, value_diffs, summary)
 
 
+```
+
+模块里只留逻辑，不要 `argparse`、不要 `main()`、不要 `if __name__`——那些进 CLI。
+模块顶部的导入相应收敛为：
+
+```python
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import date
+
+import polars as pl
+
+from qsys.data.query import WarehouseQuery
+from qsys.markets.ashare import board_of
+```
+
+CLI 单独一个文件：
+
+```python
+# scripts/regression_paid_daily.py
+
+"""换源回归对账的命令行入口。逻辑在 qsys.data.quality.source_diff。
+
+用法:
+    uv run python scripts/regression_paid_daily.py \
+        --warehouse /data/qsys/warehouse --start 2023-01-03 --end 2026-09-09 \
+        --out artifacts/regression_stage1.json
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+from datetime import date
+from pathlib import Path
+
+from qsys.data.quality.source_diff import compare_daily_sources
+from qsys.data.query import WarehouseQuery
+from qsys.data.storage import Warehouse
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--warehouse", type=Path, default=Path("warehouse"))
@@ -984,7 +1031,7 @@ if __name__ == "__main__":
 
 - [ ] **Step 4: 跑测试确认通过**
 
-Run: `.venv/bin/python -m pytest tests/test_regression_paid_daily.py -v`
+Run: `.venv/bin/python -m pytest tests/data/quality/test_source_diff.py -v`
 Expected: PASS（5 个）
 
 - [ ] **Step 5: 在节点上跑第 1 段真实对账**
@@ -1003,7 +1050,7 @@ ssh -i ~/.ssh/qmt_bridge_ed25519 ubuntu@110.42.205.144 \
 - [ ] **Step 6: 提交**
 
 ```bash
-git add scripts/regression_paid_daily.py tests/test_regression_paid_daily.py artifacts/regression_stage1.json
+git add src/qsys/data/quality/source_diff.py scripts/regression_paid_daily.py tests/data/quality/test_source_diff.py artifacts/regression_stage1.json
 git commit -m "test(data): 换源第 1 段回归对账，逐键差异清单"
 ```
 
