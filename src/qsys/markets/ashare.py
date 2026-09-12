@@ -3,7 +3,7 @@
 core/ 不认识这些数值——它们只出现在这里。将来接币圈或美股，
 新增一个同形状的模块即可，core/ 无需改动。
 
-板块取值与计划 1-1 数据层 `_board_of()` 的输出一一对应。
+板块取值由本模块的 `board_of()` 给出，`PRICE_LIMITS` 的键与它一一对应。
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from qsys.core.constraints import (
     SettlementConstraint,
     SuspensionConstraint,
 )
+
 
 def board_of(code: str) -> str:
     """按号段判板块。入参是**不带交易所后缀**的代码。
@@ -36,8 +37,8 @@ def board_of(code: str) -> str:
     return "main"
 
 
-# 日涨跌幅上限。**ST 为 5%，自 2026-09-12 起由付费源 name 列直取判定**
-# （见 data/pipeline/flags.py），不再按板块近似。此表只管板块档位。
+# 日涨跌幅上限。ST 为 5%，不在此表——ST 是股票的状态而非板块属性，
+# 由 data/pipeline/flags.py 判定。本表只登记板块档位。
 PRICE_LIMITS: dict[str, float] = {
     "main": 0.10,
     "gem": 0.20,

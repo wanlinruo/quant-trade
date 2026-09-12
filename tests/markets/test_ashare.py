@@ -1,10 +1,12 @@
 from datetime import datetime
 
+import pytest
+
 from qsys.core.constraints import ConstraintContext
 from qsys.core.portfolio import Portfolio
 from qsys.core.trading import Fill, OrderIntent, Side
 from qsys.core.types import Market, Symbol
-from qsys.markets.ashare import LOT_SIZE, PRICE_LIMITS, ashare_pipeline
+from qsys.markets.ashare import LOT_SIZE, PRICE_LIMITS, ashare_pipeline, ashare_pre_trade_pipeline, board_of
 
 CMB = Symbol("600036", Market.SH)
 NOW = datetime(2024, 1, 2, 15, 0)
@@ -70,11 +72,6 @@ def test_fee_buffer_is_configurable():
 
 # --- 下单时刻可评估的约束子集 ---
 
-from qsys.core.constraints import ConstraintContext
-from qsys.core.portfolio import Portfolio
-from qsys.core.trading import OrderIntent
-from qsys.markets.ashare import ashare_pre_trade_pipeline
-
 
 def test_pre_trade_pipeline_excludes_market_dependent_rules():
     """涨跌停与停牌依赖当时行情，核心侧下单时未必持有，留给券商。"""
@@ -103,10 +100,6 @@ def test_pre_trade_pipeline_enforces_t_plus_one():
 
 
 # --- board_of 共享函数 ---
-
-import pytest
-
-from qsys.markets.ashare import board_of
 
 
 @pytest.mark.parametrize(
