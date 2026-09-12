@@ -84,7 +84,9 @@ def backfill_daily_bars(
         incoming_year = fresh.filter(pl.col("dt").is_between(lo, hi)).select(
             BAR_COLUMNS
         )
-        existing = query.daily_bars(None, lo, hi)
+        # 读自己写的那张表。daily_bars() 换底读付费源之后，用它做合并
+        # 会把付费数据灌进冻结的旧表，毁掉回归对账的参照物。
+        existing = query.legacy_daily_bars(None, lo, hi)
         # 只补洞：仓库已有的股-日原样保留
         new_rows = incoming_year.join(
             existing.select(["symbol", "dt"]), on=["symbol", "dt"], how="anti"

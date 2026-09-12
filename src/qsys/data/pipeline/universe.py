@@ -193,7 +193,9 @@ def _write_batch(warehouse: Warehouse, fresh: pl.DataFrame) -> None:
         lo, hi = date(year, 1, 1), date(year, 12, 31)
         incoming = fresh.filter(pl.col("dt").is_between(lo, hi))
         merged = (
-            pl.concat([query.daily_bars(None, lo, hi), incoming], how="vertical")
+            # 读自己写的那张表。daily_bars() 换底读付费源之后，用它做合并
+            # 会把付费数据灌进冻结的旧表，毁掉回归对账的参照物。
+            pl.concat([query.legacy_daily_bars(None, lo, hi), incoming], how="vertical")
             .unique(subset=["symbol", "dt"], keep="last", maintain_order=True)
             .sort(["symbol", "dt"])
             .select(BAR_COLUMNS)
