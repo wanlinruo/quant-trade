@@ -70,7 +70,8 @@
 - [ ] **Step 1: 写失败测试**
 
 ```python
-# tests/markets/test_ashare.py 追加
+# tests/markets/test_ashare.py
+# 导入加到**文件顶部的导入块**里，不要跟着测试函数追加到文件中部。
 
 import pytest
 
@@ -139,10 +140,23 @@ def board_of(code: str) -> str:
 
 ```python
 # src/qsys/markets/ashare.py —— PRICE_LIMITS 上方的注释订正
+#
+# **此刻为真**：ST 的 5% 档由 flags.py 决定，本表只登记板块档位。
+# 不要在这里预告 flags.py 将来怎么判 ST——Task 7 改完它之后，由 Task 7
+# 负责把那句话补上。注释断言一个尚未发生的事实，就是一句失实注释。
 
-# 日涨跌幅上限。**ST 为 5%，自 2026-09-12 起由付费源 name 列直取判定**
-# （见 data/pipeline/flags.py），不再按板块近似。此表只管板块档位。
+# 日涨跌幅上限。ST 为 5%，不在此表——ST 是股票的状态而非板块属性，
+# 由 data/pipeline/flags.py 判定。本表只登记板块档位。
 PRICE_LIMITS: dict[str, float] = {
+```
+
+```python
+# src/qsys/markets/ashare.py —— 模块 docstring 第 6 行订正
+#
+# 原文：板块取值与计划 1-1 数据层 `_board_of()` 的输出一一对应。
+# 本任务把 board_of 搬到了本模块，方向反了，改为：
+
+板块取值由本模块的 `board_of()` 给出，`PRICE_LIMITS` 的键与它一一对应。
 ```
 
 ```python
@@ -1484,6 +1498,17 @@ def _compute(bars: pl.DataFrame, boards: dict[str, str]) -> pl.DataFrame:
 ```
 
 同时删除现已无人使用的常量 `ST_CONFIRM_BARS`、`ST_CONFIRM_HITS`。
+
+**接手 Task 0 留下的注释**：`flags.py` 现在真的按 `name` 直取 ST 了，把
+`src/qsys/markets/ashare.py` 里 `PRICE_LIMITS` 上方的注释补成：
+
+```python
+# 日涨跌幅上限。ST 为 5%，不在此表——ST 是股票的状态而非板块属性，
+# 自 2026-09-12 起由 data/pipeline/flags.py 从付费源 name 列直取判定。
+# 本表只登记板块档位。
+```
+
+Task 0 当时不能写这句：那时 flags.py 还在用价格反推，写了就是失实注释。
 
 - [ ] **Step 6: 跑测试确认通过**
 
