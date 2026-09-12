@@ -1,0 +1,30 @@
+{
+  "year": 2022,
+  "decision": "APPROVED_FOR_PUBLISH_WITH_DOCUMENTED_MARKET_CONVENTION_DIFFERENCES",
+  "decided_at": "2026-09-12T21:22:07.044573+08:00",
+  "checks": {
+    "manifest_row_count_matches": true,
+    "invalid_session_times_zero": true,
+    "missing_paid_days_zero": true,
+    "non_241_regular_days_zero": true,
+    "factor_not_unique_days_zero": true,
+    "factor_mismatch_days_zero": true,
+    "all_shard_and_zip_hashes_verified": true
+  },
+  "retained_source_differences": {
+    "daily_ohlc_mismatch_days": 50806,
+    "daily_volume_mismatch_days": 1984,
+    "daily_amount_mismatch_gt_100_days": 217,
+    "policy": "direct paid minute values retained; no calculated repair or cross-source overwrite"
+  },
+  "quarantine": {
+    "files": 149,
+    "rows": 4631240,
+    "reasons": {
+      "VALUE_CONSTRAINT": 342,
+      "CORE_FIELD_NULL": 320864,
+      "OUTSIDE_OFFICIAL_LISTING_PERIOD": 330278,
+      "ZERO_TRADE_FLAT_NO_DAILY_RECORD": 3979756
+    }
+  }
+}

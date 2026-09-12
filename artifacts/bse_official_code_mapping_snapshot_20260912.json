@@ -1,0 +1,2985 @@
+{
+  "fetched_at": "2026-09-12T21:16:23.535632+08:00",
+  "source_url": "https://www.bse.cn/service/code_mapping.html",
+  "source_html_sha256": "95d43bba3b5ca2d6e5a2654755ea732ef52fa8d2c39fe667b5d4eab533a3b877",
+  "total_rows": 248,
+  "records": [
+    {
+      "symbol": "920931.BJ",
+      "name": "无锡鼎邦",
+      "listing_date": "20240408",
+      "old_symbol": "872931.BJ",
+      "source_fields": {
+        "sequence": "1",
+        "listing_date_display": "2024/4/8",
+        "old_code": "872931",
+        "new_code": "920931"
+      }
+    },
+    {
+      "symbol": "920123.BJ",
+      "name": "芭薇股份",
+      "listing_date": "20240329",
+      "old_symbol": "837023.BJ",
+      "source_fields": {
+        "sequence": "2",
+        "listing_date_display": "2024/3/29",
+        "old_code": "837023",
+        "new_code": "920123"
+      }
+    },
+    {
+      "symbol": "920438.BJ",
+      "name": "戈碧迦",
+      "listing_date": "20240325",
+      "old_symbol": "835438.BJ",
+      "source_fields": {
+        "sequence": "3",
+        "listing_date_display": "2024/3/25",
+        "old_code": "835438",
+        "new_code": "920438"
+      }
+    },
+    {
+      "symbol": "920706.BJ",
+      "name": "铁拓机械",
+      "listing_date": "20240308",
+      "old_symbol": "873706.BJ",
+      "source_fields": {
+        "sequence": "4",
+        "listing_date_display": "2024/3/8",
+        "old_code": "873706",
+        "new_code": "920706"
+      }
+    },
+    {
+      "symbol": "920656.BJ",
+      "name": "海昇药业",
+      "listing_date": "20240202",
+      "old_symbol": "870656.BJ",
+      "source_fields": {
+        "sequence": "5",
+        "listing_date_display": "2024/2/2",
+        "old_code": "870656",
+        "new_code": "920656"
+      }
+    },
+    {
+      "symbol": "920496.BJ",
+      "name": "许昌智能",
+      "listing_date": "20240126",
+      "old_symbol": "831396.BJ",
+      "source_fields": {
+        "sequence": "6",
+        "listing_date_display": "2024/1/26",
+        "old_code": "831396",
+        "new_code": "920496"
+      }
+    },
+    {
+      "symbol": "920403.BJ",
+      "name": "康农种业",
+      "listing_date": "20240118",
+      "old_symbol": "837403.BJ",
+      "source_fields": {
+        "sequence": "7",
+        "listing_date_display": "2024/1/18",
+        "old_code": "837403",
+        "new_code": "920403"
+      }
+    },
+    {
+      "symbol": "920806.BJ",
+      "name": "云星宇",
+      "listing_date": "20240111",
+      "old_symbol": "873806.BJ",
+      "source_fields": {
+        "sequence": "8",
+        "listing_date_display": "2024/1/11",
+        "old_code": "873806",
+        "new_code": "920806"
+      }
+    },
+    {
+      "symbol": "920690.BJ",
+      "name": "捷众科技",
+      "listing_date": "20240105",
+      "old_symbol": "873690.BJ",
+      "source_fields": {
+        "sequence": "9",
+        "listing_date_display": "2024/1/5",
+        "old_code": "873690",
+        "new_code": "920690"
+      }
+    },
+    {
+      "symbol": "920363.BJ",
+      "name": "莱赛激光",
+      "listing_date": "20231228",
+      "old_symbol": "871263.BJ",
+      "source_fields": {
+        "sequence": "10",
+        "listing_date_display": "2023/12/28",
+        "old_code": "871263",
+        "new_code": "920363"
+      }
+    },
+    {
+      "symbol": "920061.BJ",
+      "name": "西磁科技",
+      "listing_date": "20231221",
+      "old_symbol": "836961.BJ",
+      "source_fields": {
+        "sequence": "11",
+        "listing_date_display": "2023/12/21",
+        "old_code": "836961",
+        "new_code": "920061"
+      }
+    },
+    {
+      "symbol": "920284.BJ",
+      "name": "灵鸽科技",
+      "listing_date": "20231219",
+      "old_symbol": "833284.BJ",
+      "source_fields": {
+        "sequence": "12",
+        "listing_date_display": "2023/12/19",
+        "old_code": "833284",
+        "new_code": "920284"
+      }
+    },
+    {
+      "symbol": "920375.BJ",
+      "name": "派诺科技",
+      "listing_date": "20231214",
+      "old_symbol": "831175.BJ",
+      "source_fields": {
+        "sequence": "13",
+        "listing_date_display": "2023/12/14",
+        "old_code": "831175",
+        "new_code": "920375"
+      }
+    },
+    {
+      "symbol": "920547.BJ",
+      "name": "无锡晶海",
+      "listing_date": "20231212",
+      "old_symbol": "836547.BJ",
+      "source_fields": {
+        "sequence": "14",
+        "listing_date_display": "2023/12/12",
+        "old_code": "836547",
+        "new_code": "920547"
+      }
+    },
+    {
+      "symbol": "920703.BJ",
+      "name": "广厦环能",
+      "listing_date": "20231205",
+      "old_symbol": "873703.BJ",
+      "source_fields": {
+        "sequence": "15",
+        "listing_date_display": "2023/12/5",
+        "old_code": "873703",
+        "new_code": "920703"
+      }
+    },
+    {
+      "symbol": "920579.BJ",
+      "name": "机科股份",
+      "listing_date": "20231130",
+      "old_symbol": "835579.BJ",
+      "source_fields": {
+        "sequence": "16",
+        "listing_date_display": "2023/11/30",
+        "old_code": "835579",
+        "new_code": "920579"
+      }
+    },
+    {
+      "symbol": "920570.BJ",
+      "name": "坤博精工",
+      "listing_date": "20231123",
+      "old_symbol": "873570.BJ",
+      "source_fields": {
+        "sequence": "17",
+        "listing_date_display": "2023/11/23",
+        "old_code": "873570",
+        "new_code": "920570"
+      }
+    },
+    {
+      "symbol": "920522.BJ",
+      "name": "纳科诺尔",
+      "listing_date": "20231116",
+      "old_symbol": "832522.BJ",
+      "source_fields": {
+        "sequence": "18",
+        "listing_date_display": "2023/11/16",
+        "old_code": "832522",
+        "new_code": "920522"
+      }
+    },
+    {
+      "symbol": "920132.BJ",
+      "name": "泰鹏智能",
+      "listing_date": "20231116",
+      "old_symbol": "873132.BJ",
+      "source_fields": {
+        "sequence": "19",
+        "listing_date_display": "2023/11/16",
+        "old_code": "873132",
+        "new_code": "920132"
+      }
+    },
+    {
+      "symbol": "920679.BJ",
+      "name": "前进科技",
+      "listing_date": "20231110",
+      "old_symbol": "873679.BJ",
+      "source_fields": {
+        "sequence": "20",
+        "listing_date_display": "2023/11/10",
+        "old_code": "873679",
+        "new_code": "920679"
+      }
+    },
+    {
+      "symbol": "920833.BJ",
+      "name": "美心翼申",
+      "listing_date": "20231108",
+      "old_symbol": "873833.BJ",
+      "source_fields": {
+        "sequence": "21",
+        "listing_date_display": "2023/11/8",
+        "old_code": "873833",
+        "new_code": "920833"
+      }
+    },
+    {
+      "symbol": "920130.BJ",
+      "name": "立方控股",
+      "listing_date": "20231102",
+      "old_symbol": "833030.BJ",
+      "source_fields": {
+        "sequence": "22",
+        "listing_date_display": "2023/11/2",
+        "old_code": "833030",
+        "new_code": "920130"
+      }
+    },
+    {
+      "symbol": "920493.BJ",
+      "name": "并行科技",
+      "listing_date": "20231101",
+      "old_symbol": "839493.BJ",
+      "source_fields": {
+        "sequence": "23",
+        "listing_date_display": "2023/11/1",
+        "old_code": "839493",
+        "new_code": "920493"
+      }
+    },
+    {
+      "symbol": "920693.BJ",
+      "name": "阿为特",
+      "listing_date": "20231027",
+      "old_symbol": "873693.BJ",
+      "source_fields": {
+        "sequence": "24",
+        "listing_date_display": "2023/10/27",
+        "old_code": "873693",
+        "new_code": "920693"
+      }
+    },
+    {
+      "symbol": "920026.BJ",
+      "name": "卓兆点胶",
+      "listing_date": "20231019",
+      "old_symbol": "873726.BJ",
+      "source_fields": {
+        "sequence": "25",
+        "listing_date_display": "2023/10/19",
+        "old_code": "873726",
+        "new_code": "920026"
+      }
+    },
+    {
+      "symbol": "920786.BJ",
+      "name": "骑士乳业",
+      "listing_date": "20231013",
+      "old_symbol": "832786.BJ",
+      "source_fields": {
+        "sequence": "26",
+        "listing_date_display": "2023/10/13",
+        "old_code": "832786",
+        "new_code": "920786"
+      }
+    },
+    {
+      "symbol": "920978.BJ",
+      "name": "开特股份",
+      "listing_date": "20230928",
+      "old_symbol": "832978.BJ",
+      "source_fields": {
+        "sequence": "27",
+        "listing_date_display": "2023/9/28",
+        "old_code": "832978",
+        "new_code": "920978"
+      }
+    },
+    {
+      "symbol": "920665.BJ",
+      "name": "科强股份",
+      "listing_date": "20230926",
+      "old_symbol": "873665.BJ",
+      "source_fields": {
+        "sequence": "28",
+        "listing_date_display": "2023/9/26",
+        "old_code": "873665",
+        "new_code": "920665"
+      }
+    },
+    {
+      "symbol": "920469.BJ",
+      "name": "富恒新材",
+      "listing_date": "20230918",
+      "old_symbol": "832469.BJ",
+      "source_fields": {
+        "sequence": "29",
+        "listing_date_display": "2023/9/18",
+        "old_code": "832469",
+        "new_code": "920469"
+      }
+    },
+    {
+      "symbol": "920519.BJ",
+      "name": "万德股份",
+      "listing_date": "20230915",
+      "old_symbol": "836419.BJ",
+      "source_fields": {
+        "sequence": "30",
+        "listing_date_display": "2023/9/15",
+        "old_code": "836419",
+        "new_code": "920519"
+      }
+    },
+    {
+      "symbol": "920627.BJ",
+      "name": "力王股份",
+      "listing_date": "20230907",
+      "old_symbol": "831627.BJ",
+      "source_fields": {
+        "sequence": "31",
+        "listing_date_display": "2023/9/7",
+        "old_code": "831627",
+        "new_code": "920627"
+      }
+    },
+    {
+      "symbol": "920976.BJ",
+      "name": "视声智能",
+      "listing_date": "20230901",
+      "old_symbol": "870976.BJ",
+      "source_fields": {
+        "sequence": "32",
+        "listing_date_display": "2023/9/1",
+        "old_code": "870976",
+        "new_code": "920976"
+      }
+    },
+    {
+      "symbol": "920953.BJ",
+      "name": "国子软件",
+      "listing_date": "20230823",
+      "old_symbol": "872953.BJ",
+      "source_fields": {
+        "sequence": "33",
+        "listing_date_display": "2023/8/23",
+        "old_code": "872953",
+        "new_code": "920953"
+      }
+    },
+    {
+      "symbol": "920274.BJ",
+      "name": "宏裕包材",
+      "listing_date": "20230818",
+      "old_symbol": "837174.BJ",
+      "source_fields": {
+        "sequence": "34",
+        "listing_date_display": "2023/8/18",
+        "old_code": "837174",
+        "new_code": "920274"
+      }
+    },
+    {
+      "symbol": "920504.BJ",
+      "name": "博迅生物",
+      "listing_date": "20230817",
+      "old_symbol": "836504.BJ",
+      "source_fields": {
+        "sequence": "35",
+        "listing_date_display": "2023/8/17",
+        "old_code": "836504",
+        "new_code": "920504"
+      }
+    },
+    {
+      "symbol": "920748.BJ",
+      "name": "路桥信息",
+      "listing_date": "20230816",
+      "old_symbol": "837748.BJ",
+      "source_fields": {
+        "sequence": "36",
+        "listing_date_display": "2023/8/16",
+        "old_code": "837748",
+        "new_code": "920748"
+      }
+    },
+    {
+      "symbol": "920058.BJ",
+      "name": "华洋赛车",
+      "listing_date": "20230810",
+      "old_symbol": "834058.BJ",
+      "source_fields": {
+        "sequence": "37",
+        "listing_date_display": "2023/8/10",
+        "old_code": "834058",
+        "new_code": "920058"
+      }
+    },
+    {
+      "symbol": "920926.BJ",
+      "name": "鸿智科技",
+      "listing_date": "20230808",
+      "old_symbol": "870726.BJ",
+      "source_fields": {
+        "sequence": "38",
+        "listing_date_display": "2023/8/8",
+        "old_code": "870726",
+        "new_code": "920926"
+      }
+    },
+    {
+      "symbol": "920982.BJ",
+      "name": "锦波生物",
+      "listing_date": "20230720",
+      "old_symbol": "832982.BJ",
+      "source_fields": {
+        "sequence": "39",
+        "listing_date_display": "2023/7/20",
+        "old_code": "832982",
+        "new_code": "920982"
+      }
+    },
+    {
+      "symbol": "920701.BJ",
+      "name": "豪声电子",
+      "listing_date": "20230719",
+      "old_symbol": "838701.BJ",
+      "source_fields": {
+        "sequence": "40",
+        "listing_date_display": "2023/7/19",
+        "old_code": "838701",
+        "new_code": "920701"
+      }
+    },
+    {
+      "symbol": "920751.BJ",
+      "name": "惠同新材",
+      "listing_date": "20230717",
+      "old_symbol": "833751.BJ",
+      "source_fields": {
+        "sequence": "41",
+        "listing_date_display": "2023/7/17",
+        "old_code": "833751",
+        "new_code": "920751"
+      }
+    },
+    {
+      "symbol": "920576.BJ",
+      "name": "天力复合",
+      "listing_date": "20230712",
+      "old_symbol": "873576.BJ",
+      "source_fields": {
+        "sequence": "42",
+        "listing_date_display": "2023/7/12",
+        "old_code": "873576",
+        "new_code": "920576"
+      }
+    },
+    {
+      "symbol": "920592.BJ",
+      "name": "华信永道",
+      "listing_date": "20230710",
+      "old_symbol": "837592.BJ",
+      "source_fields": {
+        "sequence": "43",
+        "listing_date_display": "2023/7/10",
+        "old_code": "837592",
+        "new_code": "920592"
+      }
+    },
+    {
+      "symbol": "920717.BJ",
+      "name": "瑞星股份",
+      "listing_date": "20230703",
+      "old_symbol": "836717.BJ",
+      "source_fields": {
+        "sequence": "44",
+        "listing_date_display": "2023/7/3",
+        "old_code": "836717",
+        "new_code": "920717"
+      }
+    },
+    {
+      "symbol": "920175.BJ",
+      "name": "东方碳素",
+      "listing_date": "20230630",
+      "old_symbol": "832175.BJ",
+      "source_fields": {
+        "sequence": "45",
+        "listing_date_display": "2023/6/30",
+        "old_code": "832175",
+        "new_code": "920175"
+      }
+    },
+    {
+      "symbol": "920208.BJ",
+      "name": "青矩技术",
+      "listing_date": "20230629",
+      "old_symbol": "836208.BJ",
+      "source_fields": {
+        "sequence": "46",
+        "listing_date_display": "2023/6/29",
+        "old_code": "836208",
+        "new_code": "920208"
+      }
+    },
+    {
+      "symbol": "920651.BJ",
+      "name": "天罡股份",
+      "listing_date": "20230627",
+      "old_symbol": "832651.BJ",
+      "source_fields": {
+        "sequence": "47",
+        "listing_date_display": "2023/6/27",
+        "old_code": "832651",
+        "new_code": "920651"
+      }
+    },
+    {
+      "symbol": "920455.BJ",
+      "name": "汇隆活塞",
+      "listing_date": "20230621",
+      "old_symbol": "833455.BJ",
+      "source_fields": {
+        "sequence": "48",
+        "listing_date_display": "2023/6/21",
+        "old_code": "833455",
+        "new_code": "920455"
+      }
+    },
+    {
+      "symbol": "920221.BJ",
+      "name": "易实精密",
+      "listing_date": "20230608",
+      "old_symbol": "836221.BJ",
+      "source_fields": {
+        "sequence": "49",
+        "listing_date_display": "2023/6/8",
+        "old_code": "836221",
+        "new_code": "920221"
+      }
+    },
+    {
+      "symbol": "920779.BJ",
+      "name": "武汉蓝电",
+      "listing_date": "20230601",
+      "old_symbol": "830779.BJ",
+      "source_fields": {
+        "sequence": "50",
+        "listing_date_display": "2023/6/1",
+        "old_code": "830779",
+        "new_code": "920779"
+      }
+    },
+    {
+      "symbol": "920017.BJ",
+      "name": "星昊医药",
+      "listing_date": "20230531",
+      "old_symbol": "430017.BJ",
+      "source_fields": {
+        "sequence": "51",
+        "listing_date_display": "2023/5/31",
+        "old_code": "430017",
+        "new_code": "920017"
+      }
+    },
+    {
+      "symbol": "920719.BJ",
+      "name": "宁新新材",
+      "listing_date": "20230526",
+      "old_symbol": "839719.BJ",
+      "source_fields": {
+        "sequence": "52",
+        "listing_date_display": "2023/5/26",
+        "old_code": "839719",
+        "new_code": "920719"
+      }
+    },
+    {
+      "symbol": "920471.BJ",
+      "name": "美邦科技",
+      "listing_date": "20230525",
+      "old_symbol": "832471.BJ",
+      "source_fields": {
+        "sequence": "53",
+        "listing_date_display": "2023/5/25",
+        "old_code": "832471",
+        "new_code": "920471"
+      }
+    },
+    {
+      "symbol": "920006.BJ",
+      "name": "晟楠科技",
+      "listing_date": "20230518",
+      "old_symbol": "837006.BJ",
+      "source_fields": {
+        "sequence": "54",
+        "listing_date_display": "2023/5/18",
+        "old_code": "837006",
+        "new_code": "920006"
+      }
+    },
+    {
+      "symbol": "920837.BJ",
+      "name": "华原股份",
+      "listing_date": "20230515",
+      "old_symbol": "838837.BJ",
+      "source_fields": {
+        "sequence": "55",
+        "listing_date_display": "2023/5/15",
+        "old_code": "838837",
+        "new_code": "920837"
+      }
+    },
+    {
+      "symbol": "920578.BJ",
+      "name": "巨能股份",
+      "listing_date": "20230512",
+      "old_symbol": "871478.BJ",
+      "source_fields": {
+        "sequence": "56",
+        "listing_date_display": "2023/5/12",
+        "old_code": "871478",
+        "new_code": "920578"
+      }
+    },
+    {
+      "symbol": "920699.BJ",
+      "name": "海达尔",
+      "listing_date": "20230509",
+      "old_symbol": "836699.BJ",
+      "source_fields": {
+        "sequence": "57",
+        "listing_date_display": "2023/5/9",
+        "old_code": "836699",
+        "new_code": "920699"
+      }
+    },
+    {
+      "symbol": "920394.BJ",
+      "name": "民士达",
+      "listing_date": "20230425",
+      "old_symbol": "833394.BJ",
+      "source_fields": {
+        "sequence": "58",
+        "listing_date_display": "2023/4/25",
+        "old_code": "833394",
+        "new_code": "920394"
+      }
+    },
+    {
+      "symbol": "920694.BJ",
+      "name": "中裕科技",
+      "listing_date": "20230424",
+      "old_symbol": "871694.BJ",
+      "source_fields": {
+        "sequence": "59",
+        "listing_date_display": "2023/4/24",
+        "old_code": "871694",
+        "new_code": "920694"
+      }
+    },
+    {
+      "symbol": "920896.BJ",
+      "name": "旺成科技",
+      "listing_date": "20230419",
+      "old_symbol": "830896.BJ",
+      "source_fields": {
+        "sequence": "60",
+        "listing_date_display": "2023/4/19",
+        "old_code": "830896",
+        "new_code": "920896"
+      }
+    },
+    {
+      "symbol": "920304.BJ",
+      "name": "迪尔化工",
+      "listing_date": "20230418",
+      "old_symbol": "831304.BJ",
+      "source_fields": {
+        "sequence": "61",
+        "listing_date_display": "2023/4/18",
+        "old_code": "831304",
+        "new_code": "920304"
+      }
+    },
+    {
+      "symbol": "920593.BJ",
+      "name": "鼎智科技",
+      "listing_date": "20230413",
+      "old_symbol": "873593.BJ",
+      "source_fields": {
+        "sequence": "62",
+        "listing_date_display": "2023/4/13",
+        "old_code": "873593",
+        "new_code": "920593"
+      }
+    },
+    {
+      "symbol": "920895.BJ",
+      "name": "花溪科技",
+      "listing_date": "20230406",
+      "old_symbol": "872895.BJ",
+      "source_fields": {
+        "sequence": "63",
+        "listing_date_display": "2023/4/6",
+        "old_code": "872895",
+        "new_code": "920895"
+      }
+    },
+    {
+      "symbol": "920261.BJ",
+      "name": "一诺威",
+      "listing_date": "20230403",
+      "old_symbol": "834261.BJ",
+      "source_fields": {
+        "sequence": "64",
+        "listing_date_display": "2023/4/3",
+        "old_code": "834261",
+        "new_code": "920261"
+      }
+    },
+    {
+      "symbol": "920792.BJ",
+      "name": "东和新材",
+      "listing_date": "20230330",
+      "old_symbol": "839792.BJ",
+      "source_fields": {
+        "sequence": "65",
+        "listing_date_display": "2023/3/30",
+        "old_code": "839792",
+        "new_code": "920792"
+      }
+    },
+    {
+      "symbol": "920809.BJ",
+      "name": "安达科技",
+      "listing_date": "20230323",
+      "old_symbol": "830809.BJ",
+      "source_fields": {
+        "sequence": "66",
+        "listing_date_display": "2023/3/23",
+        "old_code": "830809",
+        "new_code": "920809"
+      }
+    },
+    {
+      "symbol": "920556.BJ",
+      "name": "雅达股份",
+      "listing_date": "20230317",
+      "old_symbol": "430556.BJ",
+      "source_fields": {
+        "sequence": "67",
+        "listing_date_display": "2023/3/17",
+        "old_code": "430556",
+        "new_code": "920556"
+      }
+    },
+    {
+      "symbol": "920663.BJ",
+      "name": "明阳科技",
+      "listing_date": "20230315",
+      "old_symbol": "837663.BJ",
+      "source_fields": {
+        "sequence": "68",
+        "listing_date_display": "2023/3/15",
+        "old_code": "837663",
+        "new_code": "920663"
+      }
+    },
+    {
+      "symbol": "920575.BJ",
+      "name": "康乐卫士",
+      "listing_date": "20230315",
+      "old_symbol": "833575.BJ",
+      "source_fields": {
+        "sequence": "69",
+        "listing_date_display": "2023/3/15",
+        "old_code": "833575",
+        "new_code": "920575"
+      }
+    },
+    {
+      "symbol": "920057.BJ",
+      "name": "百甲科技",
+      "listing_date": "20230314",
+      "old_symbol": "835857.BJ",
+      "source_fields": {
+        "sequence": "70",
+        "listing_date_display": "2023/3/14",
+        "old_code": "835857",
+        "new_code": "920057"
+      }
+    },
+    {
+      "symbol": "920541.BJ",
+      "name": "铁大科技",
+      "listing_date": "20230310",
+      "old_symbol": "872541.BJ",
+      "source_fields": {
+        "sequence": "71",
+        "listing_date_display": "2023/3/10",
+        "old_code": "872541",
+        "new_code": "920541"
+      }
+    },
+    {
+      "symbol": "920974.BJ",
+      "name": "凯大催化",
+      "listing_date": "20230308",
+      "old_symbol": "830974.BJ",
+      "source_fields": {
+        "sequence": "72",
+        "listing_date_display": "2023/3/8",
+        "old_code": "830974",
+        "new_code": "920974"
+      }
+    },
+    {
+      "symbol": "920422.BJ",
+      "name": "润普食品",
+      "listing_date": "20230301",
+      "old_symbol": "836422.BJ",
+      "source_fields": {
+        "sequence": "73",
+        "listing_date_display": "2023/3/1",
+        "old_code": "836422",
+        "new_code": "920422"
+      }
+    },
+    {
+      "symbol": "920770.BJ",
+      "name": "艾能聚",
+      "listing_date": "20230228",
+      "old_symbol": "834770.BJ",
+      "source_fields": {
+        "sequence": "74",
+        "listing_date_display": "2023/2/28",
+        "old_code": "834770",
+        "new_code": "920770"
+      }
+    },
+    {
+      "symbol": "920478.BJ",
+      "name": "峆一药业",
+      "listing_date": "20230223",
+      "old_symbol": "430478.BJ",
+      "source_fields": {
+        "sequence": "75",
+        "listing_date_display": "2023/2/23",
+        "old_code": "430478",
+        "new_code": "920478"
+      }
+    },
+    {
+      "symbol": "920906.BJ",
+      "name": "舜宇精工",
+      "listing_date": "20230222",
+      "old_symbol": "831906.BJ",
+      "source_fields": {
+        "sequence": "76",
+        "listing_date_display": "2023/2/22",
+        "old_code": "831906",
+        "new_code": "920906"
+      }
+    },
+    {
+      "symbol": "920273.BJ",
+      "name": "一致魔芋",
+      "listing_date": "20230221",
+      "old_symbol": "839273.BJ",
+      "source_fields": {
+        "sequence": "77",
+        "listing_date_display": "2023/2/21",
+        "old_code": "839273",
+        "new_code": "920273"
+      }
+    },
+    {
+      "symbol": "920249.BJ",
+      "name": "利尔达",
+      "listing_date": "20230217",
+      "old_symbol": "832149.BJ",
+      "source_fields": {
+        "sequence": "78",
+        "listing_date_display": "2023/2/17",
+        "old_code": "832149",
+        "new_code": "920249"
+      }
+    },
+    {
+      "symbol": "920407.BJ",
+      "name": "驰诚股份",
+      "listing_date": "20230216",
+      "old_symbol": "834407.BJ",
+      "source_fields": {
+        "sequence": "79",
+        "listing_date_display": "2023/2/16",
+        "old_code": "834407",
+        "new_code": "920407"
+      }
+    },
+    {
+      "symbol": "920367.BJ",
+      "name": "新赣江",
+      "listing_date": "20230209",
+      "old_symbol": "873167.BJ",
+      "source_fields": {
+        "sequence": "80",
+        "listing_date_display": "2023/2/9",
+        "old_code": "873167",
+        "new_code": "920367"
+      }
+    },
+    {
+      "symbol": "920802.BJ",
+      "name": "保丽洁",
+      "listing_date": "20230206",
+      "old_symbol": "832802.BJ",
+      "source_fields": {
+        "sequence": "81",
+        "listing_date_display": "2023/2/6",
+        "old_code": "832802",
+        "new_code": "920802"
+      }
+    },
+    {
+      "symbol": "920023.BJ",
+      "name": "田野股份",
+      "listing_date": "20230202",
+      "old_symbol": "832023.BJ",
+      "source_fields": {
+        "sequence": "82",
+        "listing_date_display": "2023/2/2",
+        "old_code": "832023",
+        "new_code": "920023"
+      }
+    },
+    {
+      "symbol": "920425.BJ",
+      "name": "乐创技术",
+      "listing_date": "20230130",
+      "old_symbol": "430425.BJ",
+      "source_fields": {
+        "sequence": "83",
+        "listing_date_display": "2023/1/30",
+        "old_code": "430425",
+        "new_code": "920425"
+      }
+    },
+    {
+      "symbol": "920252.BJ",
+      "name": "天宏锂电",
+      "listing_date": "20230119",
+      "old_symbol": "873152.BJ",
+      "source_fields": {
+        "sequence": "84",
+        "listing_date_display": "2023/1/19",
+        "old_code": "873152",
+        "new_code": "920252"
+      }
+    },
+    {
+      "symbol": "920371.BJ",
+      "name": "欧福蛋业",
+      "listing_date": "20230118",
+      "old_symbol": "839371.BJ",
+      "source_fields": {
+        "sequence": "85",
+        "listing_date_display": "2023/1/18",
+        "old_code": "839371",
+        "new_code": "920371"
+      }
+    },
+    {
+      "symbol": "920950.BJ",
+      "name": "迅安科技",
+      "listing_date": "20230111",
+      "old_symbol": "834950.BJ",
+      "source_fields": {
+        "sequence": "86",
+        "listing_date_display": "2023/1/11",
+        "old_code": "834950",
+        "new_code": "920950"
+      }
+    },
+    {
+      "symbol": "920392.BJ",
+      "name": "佳合科技",
+      "listing_date": "20221230",
+      "old_symbol": "872392.BJ",
+      "source_fields": {
+        "sequence": "87",
+        "listing_date_display": "2022/12/30",
+        "old_code": "872392",
+        "new_code": "920392"
+      }
+    },
+    {
+      "symbol": "920262.BJ",
+      "name": "太湖雪",
+      "listing_date": "20221230",
+      "old_symbol": "838262.BJ",
+      "source_fields": {
+        "sequence": "88",
+        "listing_date_display": "2022/12/30",
+        "old_code": "838262",
+        "new_code": "920262"
+      }
+    },
+    {
+      "symbol": "920195.BJ",
+      "name": "三祥科技",
+      "listing_date": "20221230",
+      "old_symbol": "831195.BJ",
+      "source_fields": {
+        "sequence": "89",
+        "listing_date_display": "2022/12/30",
+        "old_code": "831195",
+        "new_code": "920195"
+      }
+    },
+    {
+      "symbol": "920855.BJ",
+      "name": "浙江大农",
+      "listing_date": "20221229",
+      "old_symbol": "831855.BJ",
+      "source_fields": {
+        "sequence": "90",
+        "listing_date_display": "2022/12/29",
+        "old_code": "831855",
+        "new_code": "920855"
+      }
+    },
+    {
+      "symbol": "920351.BJ",
+      "name": "华光源海",
+      "listing_date": "20221229",
+      "old_symbol": "872351.BJ",
+      "source_fields": {
+        "sequence": "91",
+        "listing_date_display": "2022/12/29",
+        "old_code": "872351",
+        "new_code": "920351"
+      }
+    },
+    {
+      "symbol": "920227.BJ",
+      "name": "美登科技",
+      "listing_date": "20221228",
+      "old_symbol": "838227.BJ",
+      "source_fields": {
+        "sequence": "92",
+        "listing_date_display": "2022/12/28",
+        "old_code": "838227",
+        "new_code": "920227"
+      }
+    },
+    {
+      "symbol": "920001.BJ",
+      "name": "纬达光电",
+      "listing_date": "20221227",
+      "old_symbol": "873001.BJ",
+      "source_fields": {
+        "sequence": "93",
+        "listing_date_display": "2022/12/27",
+        "old_code": "873001",
+        "new_code": "920001"
+      }
+    },
+    {
+      "symbol": "920781.BJ",
+      "name": "瑞奇智造",
+      "listing_date": "20221226",
+      "old_symbol": "833781.BJ",
+      "source_fields": {
+        "sequence": "94",
+        "listing_date_display": "2022/12/26",
+        "old_code": "833781",
+        "new_code": "920781"
+      }
+    },
+    {
+      "symbol": "920247.BJ",
+      "name": "华密新材",
+      "listing_date": "20221223",
+      "old_symbol": "836247.BJ",
+      "source_fields": {
+        "sequence": "95",
+        "listing_date_display": "2022/12/23",
+        "old_code": "836247",
+        "new_code": "920247"
+      }
+    },
+    {
+      "symbol": "920190.BJ",
+      "name": "雷神科技",
+      "listing_date": "20221223",
+      "old_symbol": "872190.BJ",
+      "source_fields": {
+        "sequence": "96",
+        "listing_date_display": "2022/12/23",
+        "old_code": "872190",
+        "new_code": "920190"
+      }
+    },
+    {
+      "symbol": "920718.BJ",
+      "name": "合肥高科",
+      "listing_date": "20221222",
+      "old_symbol": "430718.BJ",
+      "source_fields": {
+        "sequence": "97",
+        "listing_date_display": "2022/12/22",
+        "old_code": "430718",
+        "new_code": "920718"
+      }
+    },
+    {
+      "symbol": "920526.BJ",
+      "name": "凯华材料",
+      "listing_date": "20221222",
+      "old_symbol": "831526.BJ",
+      "source_fields": {
+        "sequence": "98",
+        "listing_date_display": "2022/12/22",
+        "old_code": "831526",
+        "new_code": "920526"
+      }
+    },
+    {
+      "symbol": "920505.BJ",
+      "name": "九菱科技",
+      "listing_date": "20221221",
+      "old_symbol": "873305.BJ",
+      "source_fields": {
+        "sequence": "99",
+        "listing_date_display": "2022/12/21",
+        "old_code": "873305",
+        "new_code": "920505"
+      }
+    },
+    {
+      "symbol": "920033.BJ",
+      "name": "康普化学",
+      "listing_date": "20221221",
+      "old_symbol": "834033.BJ",
+      "source_fields": {
+        "sequence": "100",
+        "listing_date_display": "2022/12/21",
+        "old_code": "834033",
+        "new_code": "920033"
+      }
+    },
+    {
+      "symbol": "920879.BJ",
+      "name": "基康技术",
+      "listing_date": "20221220",
+      "old_symbol": "830879.BJ",
+      "source_fields": {
+        "sequence": "101",
+        "listing_date_display": "2022/12/20",
+        "old_code": "830879",
+        "new_code": "920879"
+      }
+    },
+    {
+      "symbol": "920807.BJ",
+      "name": "奔朗新材",
+      "listing_date": "20221220",
+      "old_symbol": "836807.BJ",
+      "source_fields": {
+        "sequence": "102",
+        "listing_date_display": "2022/12/20",
+        "old_code": "836807",
+        "new_code": "920807"
+      }
+    },
+    {
+      "symbol": "920810.BJ",
+      "name": "春光智能",
+      "listing_date": "20221216",
+      "old_symbol": "838810.BJ",
+      "source_fields": {
+        "sequence": "103",
+        "listing_date_display": "2022/12/16",
+        "old_code": "838810",
+        "new_code": "920810"
+      }
+    },
+    {
+      "symbol": "920608.BJ",
+      "name": "丰安股份",
+      "listing_date": "20221216",
+      "old_symbol": "870508.BJ",
+      "source_fields": {
+        "sequence": "104",
+        "listing_date_display": "2022/12/16",
+        "old_code": "870508",
+        "new_code": "920608"
+      }
+    },
+    {
+      "symbol": "920429.BJ",
+      "name": "康比特",
+      "listing_date": "20221215",
+      "old_symbol": "833429.BJ",
+      "source_fields": {
+        "sequence": "105",
+        "listing_date_display": "2022/12/15",
+        "old_code": "833429",
+        "new_code": "920429"
+      }
+    },
+    {
+      "symbol": "920571.BJ",
+      "name": "国航远洋",
+      "listing_date": "20221215",
+      "old_symbol": "833171.BJ",
+      "source_fields": {
+        "sequence": "106",
+        "listing_date_display": "2022/12/15",
+        "old_code": "833171",
+        "new_code": "920571"
+      }
+    },
+    {
+      "symbol": "920957.BJ",
+      "name": "汉维科技",
+      "listing_date": "20221214",
+      "old_symbol": "836957.BJ",
+      "source_fields": {
+        "sequence": "107",
+        "listing_date_display": "2022/12/14",
+        "old_code": "836957",
+        "new_code": "920957"
+      }
+    },
+    {
+      "symbol": "920075.BJ",
+      "name": "柏星龙",
+      "listing_date": "20221214",
+      "old_symbol": "833075.BJ",
+      "source_fields": {
+        "sequence": "108",
+        "listing_date_display": "2022/12/14",
+        "old_code": "833075",
+        "new_code": "920075"
+      }
+    },
+    {
+      "symbol": "920014.BJ",
+      "name": "特瑞斯",
+      "listing_date": "20221213",
+      "old_symbol": "834014.BJ",
+      "source_fields": {
+        "sequence": "109",
+        "listing_date_display": "2022/12/13",
+        "old_code": "834014",
+        "new_code": "920014"
+      }
+    },
+    {
+      "symbol": "920414.BJ",
+      "name": "欧普泰",
+      "listing_date": "20221212",
+      "old_symbol": "836414.BJ",
+      "source_fields": {
+        "sequence": "110",
+        "listing_date_display": "2022/12/12",
+        "old_code": "836414",
+        "new_code": "920414"
+      }
+    },
+    {
+      "symbol": "920866.BJ",
+      "name": "绿亨科技",
+      "listing_date": "20221209",
+      "old_symbol": "870866.BJ",
+      "source_fields": {
+        "sequence": "111",
+        "listing_date_display": "2022/12/9",
+        "old_code": "870866",
+        "new_code": "920866"
+      }
+    },
+    {
+      "symbol": "920230.BJ",
+      "name": "欧康医药",
+      "listing_date": "20221209",
+      "old_symbol": "833230.BJ",
+      "source_fields": {
+        "sequence": "112",
+        "listing_date_display": "2022/12/9",
+        "old_code": "833230",
+        "new_code": "920230"
+      }
+    },
+    {
+      "symbol": "920942.BJ",
+      "name": "恒立钻具",
+      "listing_date": "20221208",
+      "old_symbol": "836942.BJ",
+      "source_fields": {
+        "sequence": "113",
+        "listing_date_display": "2022/12/8",
+        "old_code": "836942",
+        "new_code": "920942"
+      }
+    },
+    {
+      "symbol": "920300.BJ",
+      "name": "辰光医疗",
+      "listing_date": "20221207",
+      "old_symbol": "430300.BJ",
+      "source_fields": {
+        "sequence": "114",
+        "listing_date_display": "2022/12/7",
+        "old_code": "430300",
+        "new_code": "920300"
+      }
+    },
+    {
+      "symbol": "920087.BJ",
+      "name": "秋乐种业",
+      "listing_date": "20221207",
+      "old_symbol": "831087.BJ",
+      "source_fields": {
+        "sequence": "115",
+        "listing_date_display": "2022/12/7",
+        "old_code": "831087",
+        "new_code": "920087"
+      }
+    },
+    {
+      "symbol": "920110.BJ",
+      "name": "雷特科技",
+      "listing_date": "20221206",
+      "old_symbol": "832110.BJ",
+      "source_fields": {
+        "sequence": "116",
+        "listing_date_display": "2022/12/6",
+        "old_code": "832110",
+        "new_code": "920110"
+      }
+    },
+    {
+      "symbol": "920641.BJ",
+      "name": "格利尔",
+      "listing_date": "20221202",
+      "old_symbol": "831641.BJ",
+      "source_fields": {
+        "sequence": "117",
+        "listing_date_display": "2022/12/2",
+        "old_code": "831641",
+        "new_code": "920641"
+      }
+    },
+    {
+      "symbol": "920199.BJ",
+      "name": "倍益康",
+      "listing_date": "20221201",
+      "old_symbol": "870199.BJ",
+      "source_fields": {
+        "sequence": "118",
+        "listing_date_display": "2022/12/1",
+        "old_code": "870199",
+        "new_code": "920199"
+      }
+    },
+    {
+      "symbol": "920374.BJ",
+      "name": "云里物里",
+      "listing_date": "20221129",
+      "old_symbol": "872374.BJ",
+      "source_fields": {
+        "sequence": "119",
+        "listing_date_display": "2022/11/29",
+        "old_code": "872374",
+        "new_code": "920374"
+      }
+    },
+    {
+      "symbol": "920662.BJ",
+      "name": "方盛股份",
+      "listing_date": "20221128",
+      "old_symbol": "832662.BJ",
+      "source_fields": {
+        "sequence": "120",
+        "listing_date_display": "2022/11/28",
+        "old_code": "832662",
+        "new_code": "920662"
+      }
+    },
+    {
+      "symbol": "920237.BJ",
+      "name": "力佳科技",
+      "listing_date": "20221125",
+      "old_symbol": "835237.BJ",
+      "source_fields": {
+        "sequence": "121",
+        "listing_date_display": "2022/11/25",
+        "old_code": "835237",
+        "new_code": "920237"
+      }
+    },
+    {
+      "symbol": "920634.BJ",
+      "name": "新威凌",
+      "listing_date": "20221124",
+      "old_symbol": "871634.BJ",
+      "source_fields": {
+        "sequence": "122",
+        "listing_date_display": "2022/11/24",
+        "old_code": "871634",
+        "new_code": "920634"
+      }
+    },
+    {
+      "symbol": "920808.BJ",
+      "name": "曙光数创",
+      "listing_date": "20221118",
+      "old_symbol": "872808.BJ",
+      "source_fields": {
+        "sequence": "123",
+        "listing_date_display": "2022/11/18",
+        "old_code": "872808",
+        "new_code": "920808"
+      }
+    },
+    {
+      "symbol": "920357.BJ",
+      "name": "雅葆轩",
+      "listing_date": "20221118",
+      "old_symbol": "870357.BJ",
+      "source_fields": {
+        "sequence": "124",
+        "listing_date_display": "2022/11/18",
+        "old_code": "870357",
+        "new_code": "920357"
+      }
+    },
+    {
+      "symbol": "920339.BJ",
+      "name": "恒太照明",
+      "listing_date": "20221117",
+      "old_symbol": "873339.BJ",
+      "source_fields": {
+        "sequence": "125",
+        "listing_date_display": "2022/11/17",
+        "old_code": "873339",
+        "new_code": "920339"
+      }
+    },
+    {
+      "symbol": "920914.BJ",
+      "name": "远航精密",
+      "listing_date": "20221111",
+      "old_symbol": "833914.BJ",
+      "source_fields": {
+        "sequence": "126",
+        "listing_date_display": "2022/11/11",
+        "old_code": "833914",
+        "new_code": "920914"
+      }
+    },
+    {
+      "symbol": "920876.BJ",
+      "name": "慧为智能",
+      "listing_date": "20221109",
+      "old_symbol": "832876.BJ",
+      "source_fields": {
+        "sequence": "127",
+        "listing_date_display": "2022/11/9",
+        "old_code": "832876",
+        "new_code": "920876"
+      }
+    },
+    {
+      "symbol": "920753.BJ",
+      "name": "天纺标",
+      "listing_date": "20221031",
+      "old_symbol": "871753.BJ",
+      "source_fields": {
+        "sequence": "128",
+        "listing_date_display": "2022/10/31",
+        "old_code": "871753",
+        "new_code": "920753"
+      }
+    },
+    {
+      "symbol": "920139.BJ",
+      "name": "华岭股份",
+      "listing_date": "20221028",
+      "old_symbol": "430139.BJ",
+      "source_fields": {
+        "sequence": "129",
+        "listing_date_display": "2022/10/28",
+        "old_code": "430139",
+        "new_code": "920139"
+      }
+    },
+    {
+      "symbol": "920527.BJ",
+      "name": "夜光明",
+      "listing_date": "20221027",
+      "old_symbol": "873527.BJ",
+      "source_fields": {
+        "sequence": "130",
+        "listing_date_display": "2022/10/27",
+        "old_code": "873527",
+        "new_code": "920527"
+      }
+    },
+    {
+      "symbol": "920992.BJ",
+      "name": "中科美菱",
+      "listing_date": "20221018",
+      "old_symbol": "835892.BJ",
+      "source_fields": {
+        "sequence": "131",
+        "listing_date_display": "2022/10/18",
+        "old_code": "835892",
+        "new_code": "920992"
+      }
+    },
+    {
+      "symbol": "920476.BJ",
+      "name": "海能技术",
+      "listing_date": "20221014",
+      "old_symbol": "430476.BJ",
+      "source_fields": {
+        "sequence": "132",
+        "listing_date_display": "2022/10/14",
+        "old_code": "430476",
+        "new_code": "920476"
+      }
+    },
+    {
+      "symbol": "920046.BJ",
+      "name": "亿能电力",
+      "listing_date": "20221013",
+      "old_symbol": "837046.BJ",
+      "source_fields": {
+        "sequence": "133",
+        "listing_date_display": "2022/10/13",
+        "old_code": "837046",
+        "new_code": "920046"
+      }
+    },
+    {
+      "symbol": "920685.BJ",
+      "name": "新芝生物",
+      "listing_date": "20221010",
+      "old_symbol": "430685.BJ",
+      "source_fields": {
+        "sequence": "134",
+        "listing_date_display": "2022/10/10",
+        "old_code": "430685",
+        "new_code": "920685"
+      }
+    },
+    {
+      "symbol": "920402.BJ",
+      "name": "硅烷科技",
+      "listing_date": "20220928",
+      "old_symbol": "838402.BJ",
+      "source_fields": {
+        "sequence": "135",
+        "listing_date_display": "2022/9/28",
+        "old_code": "838402",
+        "new_code": "920402"
+      }
+    },
+    {
+      "symbol": "920971.BJ",
+      "name": "天马新材",
+      "listing_date": "20220927",
+      "old_symbol": "838971.BJ",
+      "source_fields": {
+        "sequence": "136",
+        "listing_date_display": "2022/9/27",
+        "old_code": "838971",
+        "new_code": "920971"
+      }
+    },
+    {
+      "symbol": "920122.BJ",
+      "name": "中纺标",
+      "listing_date": "20220927",
+      "old_symbol": "873122.BJ",
+      "source_fields": {
+        "sequence": "137",
+        "listing_date_display": "2022/9/27",
+        "old_code": "873122",
+        "new_code": "920122"
+      }
+    },
+    {
+      "symbol": "920207.BJ",
+      "name": "众诚科技",
+      "listing_date": "20220923",
+      "old_symbol": "835207.BJ",
+      "source_fields": {
+        "sequence": "138",
+        "listing_date_display": "2022/9/23",
+        "old_code": "835207",
+        "new_code": "920207"
+      }
+    },
+    {
+      "symbol": "920790.BJ",
+      "name": "联迪信息",
+      "listing_date": "20220902",
+      "old_symbol": "839790.BJ",
+      "source_fields": {
+        "sequence": "139",
+        "listing_date_display": "2022/9/2",
+        "old_code": "839790",
+        "new_code": "920790"
+      }
+    },
+    {
+      "symbol": "920270.BJ",
+      "name": "天铭科技",
+      "listing_date": "20220902",
+      "old_symbol": "836270.BJ",
+      "source_fields": {
+        "sequence": "140",
+        "listing_date_display": "2022/9/2",
+        "old_code": "836270",
+        "new_code": "920270"
+      }
+    },
+    {
+      "symbol": "920395.BJ",
+      "name": "朗鸿科技",
+      "listing_date": "20220901",
+      "old_symbol": "836395.BJ",
+      "source_fields": {
+        "sequence": "141",
+        "listing_date_display": "2022/9/1",
+        "old_code": "836395",
+        "new_code": "920395"
+      }
+    },
+    {
+      "symbol": "920152.BJ",
+      "name": "昆工科技",
+      "listing_date": "20220901",
+      "old_symbol": "831152.BJ",
+      "source_fields": {
+        "sequence": "142",
+        "listing_date_display": "2022/9/1",
+        "old_code": "831152",
+        "new_code": "920152"
+      }
+    },
+    {
+      "symbol": "920834.BJ",
+      "name": "三维装备",
+      "listing_date": "20220822",
+      "old_symbol": "831834.BJ",
+      "source_fields": {
+        "sequence": "143",
+        "listing_date_display": "2022/8/22",
+        "old_code": "831834",
+        "new_code": "920834"
+      }
+    },
+    {
+      "symbol": "920985.BJ",
+      "name": "海泰新能",
+      "listing_date": "20220808",
+      "old_symbol": "835985.BJ",
+      "source_fields": {
+        "sequence": "144",
+        "listing_date_display": "2022/8/8",
+        "old_code": "835985",
+        "new_code": "920985"
+      }
+    },
+    {
+      "symbol": "920871.BJ",
+      "name": "派特尔",
+      "listing_date": "20220722",
+      "old_symbol": "836871.BJ",
+      "source_fields": {
+        "sequence": "145",
+        "listing_date_display": "2022/7/22",
+        "old_code": "836871",
+        "new_code": "920871"
+      }
+    },
+    {
+      "symbol": "920725.BJ",
+      "name": "惠丰钻石",
+      "listing_date": "20220718",
+      "old_symbol": "839725.BJ",
+      "source_fields": {
+        "sequence": "146",
+        "listing_date_display": "2022/7/18",
+        "old_code": "839725",
+        "new_code": "920725"
+      }
+    },
+    {
+      "symbol": "920062.BJ",
+      "name": "科润智控",
+      "listing_date": "20220713",
+      "old_symbol": "834062.BJ",
+      "source_fields": {
+        "sequence": "147",
+        "listing_date_display": "2022/7/13",
+        "old_code": "834062",
+        "new_code": "920062"
+      }
+    },
+    {
+      "symbol": "920639.BJ",
+      "name": "晨光电缆",
+      "listing_date": "20220712",
+      "old_symbol": "834639.BJ",
+      "source_fields": {
+        "sequence": "148",
+        "listing_date_display": "2022/7/12",
+        "old_code": "834639",
+        "new_code": "920639"
+      }
+    },
+    {
+      "symbol": "920821.BJ",
+      "name": "则成电子",
+      "listing_date": "20220706",
+      "old_symbol": "837821.BJ",
+      "source_fields": {
+        "sequence": "149",
+        "listing_date_display": "2022/7/6",
+        "old_code": "837821",
+        "new_code": "920821"
+      }
+    },
+    {
+      "symbol": "920870.BJ",
+      "name": "恒进感应",
+      "listing_date": "20220705",
+      "old_symbol": "838670.BJ",
+      "source_fields": {
+        "sequence": "150",
+        "listing_date_display": "2022/7/5",
+        "old_code": "838670",
+        "new_code": "920870"
+      }
+    },
+    {
+      "symbol": "920943.BJ",
+      "name": "优机股份",
+      "listing_date": "20220624",
+      "old_symbol": "833943.BJ",
+      "source_fields": {
+        "sequence": "151",
+        "listing_date_display": "2022/6/24",
+        "old_code": "833943",
+        "new_code": "920943"
+      }
+    },
+    {
+      "symbol": "920378.BJ",
+      "name": "泰德股份",
+      "listing_date": "20220620",
+      "old_symbol": "831278.BJ",
+      "source_fields": {
+        "sequence": "152",
+        "listing_date_display": "2022/6/20",
+        "old_code": "831278",
+        "new_code": "920378"
+      }
+    },
+    {
+      "symbol": "920564.BJ",
+      "name": "天润科技",
+      "listing_date": "20220617",
+      "old_symbol": "430564.BJ",
+      "source_fields": {
+        "sequence": "153",
+        "listing_date_display": "2022/6/17",
+        "old_code": "430564",
+        "new_code": "920564"
+      }
+    },
+    {
+      "symbol": "920491.BJ",
+      "name": "奥迪威",
+      "listing_date": "20220614",
+      "old_symbol": "832491.BJ",
+      "source_fields": {
+        "sequence": "154",
+        "listing_date_display": "2022/6/14",
+        "old_code": "832491",
+        "new_code": "920491"
+      }
+    },
+    {
+      "symbol": "920299.BJ",
+      "name": "灿能电力",
+      "listing_date": "20220610",
+      "old_symbol": "870299.BJ",
+      "source_fields": {
+        "sequence": "155",
+        "listing_date_display": "2022/6/10",
+        "old_code": "870299",
+        "new_code": "920299"
+      }
+    },
+    {
+      "symbol": "920223.BJ",
+      "name": "荣亿精密",
+      "listing_date": "20220609",
+      "old_symbol": "873223.BJ",
+      "source_fields": {
+        "sequence": "156",
+        "listing_date_display": "2022/6/9",
+        "old_code": "873223",
+        "new_code": "920223"
+      }
+    },
+    {
+      "symbol": "920271.BJ",
+      "name": "邦德股份",
+      "listing_date": "20220602",
+      "old_symbol": "838171.BJ",
+      "source_fields": {
+        "sequence": "157",
+        "listing_date_display": "2022/6/2",
+        "old_code": "838171",
+        "new_code": "920271"
+      }
+    },
+    {
+      "symbol": "920267.BJ",
+      "name": "鑫汇科",
+      "listing_date": "20220527",
+      "old_symbol": "831167.BJ",
+      "source_fields": {
+        "sequence": "158",
+        "listing_date_display": "2022/5/27",
+        "old_code": "831167",
+        "new_code": "920267"
+      }
+    },
+    {
+      "symbol": "920533.BJ",
+      "name": "骏创科技",
+      "listing_date": "20220524",
+      "old_symbol": "833533.BJ",
+      "source_fields": {
+        "sequence": "159",
+        "listing_date_display": "2022/5/24",
+        "old_code": "833533",
+        "new_code": "920533"
+      }
+    },
+    {
+      "symbol": "920970.BJ",
+      "name": "大禹生物",
+      "listing_date": "20220518",
+      "old_symbol": "871970.BJ",
+      "source_fields": {
+        "sequence": "160",
+        "listing_date_display": "2022/5/18",
+        "old_code": "871970",
+        "new_code": "920970"
+      }
+    },
+    {
+      "symbol": "920580.BJ",
+      "name": "科创新材",
+      "listing_date": "20220513",
+      "old_symbol": "833580.BJ",
+      "source_fields": {
+        "sequence": "161",
+        "listing_date_display": "2022/5/13",
+        "old_code": "833580",
+        "new_code": "920580"
+      }
+    },
+    {
+      "symbol": "920169.BJ",
+      "name": "七丰精工",
+      "listing_date": "20220415",
+      "old_symbol": "873169.BJ",
+      "source_fields": {
+        "sequence": "162",
+        "listing_date_display": "2022/4/15",
+        "old_code": "873169",
+        "new_code": "920169"
+      }
+    },
+    {
+      "symbol": "920689.BJ",
+      "name": "克莱特",
+      "listing_date": "20220321",
+      "old_symbol": "831689.BJ",
+      "source_fields": {
+        "sequence": "163",
+        "listing_date_display": "2022/3/21",
+        "old_code": "831689",
+        "new_code": "920689"
+      }
+    },
+    {
+      "symbol": "920419.BJ",
+      "name": "路斯股份",
+      "listing_date": "20220311",
+      "old_symbol": "832419.BJ",
+      "source_fields": {
+        "sequence": "164",
+        "listing_date_display": "2022/3/11",
+        "old_code": "832419",
+        "new_code": "920419"
+      }
+    },
+    {
+      "symbol": "920179.BJ",
+      "name": "凯德石英",
+      "listing_date": "20220304",
+      "old_symbol": "835179.BJ",
+      "source_fields": {
+        "sequence": "165",
+        "listing_date_display": "2022/3/4",
+        "old_code": "835179",
+        "new_code": "920179"
+      }
+    },
+    {
+      "symbol": "920857.BJ",
+      "name": "泓禧科技",
+      "listing_date": "20220228",
+      "old_symbol": "871857.BJ",
+      "source_fields": {
+        "sequence": "166",
+        "listing_date_display": "2022/2/28",
+        "old_code": "871857",
+        "new_code": "920857"
+      }
+    },
+    {
+      "symbol": "920346.BJ",
+      "name": "威贸电子",
+      "listing_date": "20220223",
+      "old_symbol": "833346.BJ",
+      "source_fields": {
+        "sequence": "167",
+        "listing_date_display": "2022/2/23",
+        "old_code": "833346",
+        "new_code": "920346"
+      }
+    },
+    {
+      "symbol": "920204.BJ",
+      "name": "沪江材料",
+      "listing_date": "20220118",
+      "old_symbol": "870204.BJ",
+      "source_fields": {
+        "sequence": "168",
+        "listing_date_display": "2022/1/18",
+        "old_code": "870204",
+        "new_code": "920204"
+      }
+    },
+    {
+      "symbol": "920245.BJ",
+      "name": "威博液压",
+      "listing_date": "20220106",
+      "old_symbol": "871245.BJ",
+      "source_fields": {
+        "sequence": "169",
+        "listing_date_display": "2022/1/6",
+        "old_code": "871245",
+        "new_code": "920245"
+      }
+    },
+    {
+      "symbol": "920720.BJ",
+      "name": "吉冈精密",
+      "listing_date": "20211124",
+      "old_symbol": "836720.BJ",
+      "source_fields": {
+        "sequence": "170",
+        "listing_date_display": "2021/11/24",
+        "old_code": "836720",
+        "new_code": "920720"
+      }
+    },
+    {
+      "symbol": "920981.BJ",
+      "name": "晶赛科技",
+      "listing_date": "20211115",
+      "old_symbol": "871981.BJ",
+      "source_fields": {
+        "sequence": "171",
+        "listing_date_display": "2021/11/15",
+        "old_code": "871981",
+        "new_code": "920981"
+      }
+    },
+    {
+      "symbol": "920873.BJ",
+      "name": "中设咨询",
+      "listing_date": "20211115",
+      "old_symbol": "833873.BJ",
+      "source_fields": {
+        "sequence": "172",
+        "listing_date_display": "2021/11/15",
+        "old_code": "833873",
+        "new_code": "920873"
+      }
+    },
+    {
+      "symbol": "920932.BJ",
+      "name": "科达自控",
+      "listing_date": "20211115",
+      "old_symbol": "831832.BJ",
+      "source_fields": {
+        "sequence": "173",
+        "listing_date_display": "2021/11/15",
+        "old_code": "831832",
+        "new_code": "920932"
+      }
+    },
+    {
+      "symbol": "920680.BJ",
+      "name": "*ST广道",
+      "listing_date": "20211115",
+      "old_symbol": "839680.BJ",
+      "source_fields": {
+        "sequence": "174",
+        "listing_date_display": "2021/11/15",
+        "old_code": "839680",
+        "new_code": "920680"
+      }
+    },
+    {
+      "symbol": "920454.BJ",
+      "name": "同心传动",
+      "listing_date": "20211115",
+      "old_symbol": "833454.BJ",
+      "source_fields": {
+        "sequence": "175",
+        "listing_date_display": "2021/11/15",
+        "old_code": "833454",
+        "new_code": "920454"
+      }
+    },
+    {
+      "symbol": "920436.BJ",
+      "name": "大地电气",
+      "listing_date": "20211115",
+      "old_symbol": "870436.BJ",
+      "source_fields": {
+        "sequence": "176",
+        "listing_date_display": "2021/11/15",
+        "old_code": "870436",
+        "new_code": "920436"
+      }
+    },
+    {
+      "symbol": "920260.BJ",
+      "name": "中寰股份",
+      "listing_date": "20211115",
+      "old_symbol": "836260.BJ",
+      "source_fields": {
+        "sequence": "177",
+        "listing_date_display": "2021/11/15",
+        "old_code": "836260",
+        "new_code": "920260"
+      }
+    },
+    {
+      "symbol": "920171.BJ",
+      "name": "志晟信息",
+      "listing_date": "20211115",
+      "old_symbol": "832171.BJ",
+      "source_fields": {
+        "sequence": "178",
+        "listing_date_display": "2021/11/15",
+        "old_code": "832171",
+        "new_code": "920171"
+      }
+    },
+    {
+      "symbol": "920145.BJ",
+      "name": "恒合股份",
+      "listing_date": "20211115",
+      "old_symbol": "832145.BJ",
+      "source_fields": {
+        "sequence": "179",
+        "listing_date_display": "2021/11/15",
+        "old_code": "832145",
+        "new_code": "920145"
+      }
+    },
+    {
+      "symbol": "920092.BJ",
+      "name": "汉鑫科技",
+      "listing_date": "20211115",
+      "old_symbol": "837092.BJ",
+      "source_fields": {
+        "sequence": "180",
+        "listing_date_display": "2021/11/15",
+        "old_code": "837092",
+        "new_code": "920092"
+      }
+    },
+    {
+      "symbol": "920089.BJ",
+      "name": "禾昌聚合",
+      "listing_date": "20211109",
+      "old_symbol": "832089.BJ",
+      "source_fields": {
+        "sequence": "181",
+        "listing_date_display": "2021/11/9",
+        "old_code": "832089",
+        "new_code": "920089"
+      }
+    },
+    {
+      "symbol": "920405.BJ",
+      "name": "海希通讯",
+      "listing_date": "20211105",
+      "old_symbol": "831305.BJ",
+      "source_fields": {
+        "sequence": "182",
+        "listing_date_display": "2021/11/5",
+        "old_code": "831305",
+        "new_code": "920405"
+      }
+    },
+    {
+      "symbol": "920924.BJ",
+      "name": "广脉科技",
+      "listing_date": "20211103",
+      "old_symbol": "838924.BJ",
+      "source_fields": {
+        "sequence": "183",
+        "listing_date_display": "2021/11/3",
+        "old_code": "838924",
+        "new_code": "920924"
+      }
+    },
+    {
+      "symbol": "920892.BJ",
+      "name": "广咨国际",
+      "listing_date": "20211028",
+      "old_symbol": "836892.BJ",
+      "source_fields": {
+        "sequence": "184",
+        "listing_date_display": "2021/10/28",
+        "old_code": "836892",
+        "new_code": "920892"
+      }
+    },
+    {
+      "symbol": "920925.BJ",
+      "name": "锦好医疗",
+      "listing_date": "20211025",
+      "old_symbol": "872925.BJ",
+      "source_fields": {
+        "sequence": "185",
+        "listing_date_display": "2021/10/25",
+        "old_code": "872925",
+        "new_code": "920925"
+      }
+    },
+    {
+      "symbol": "920077.BJ",
+      "name": "吉林碳谷",
+      "listing_date": "20210831",
+      "old_symbol": "836077.BJ",
+      "source_fields": {
+        "sequence": "186",
+        "listing_date_display": "2021/8/31",
+        "old_code": "836077",
+        "new_code": "920077"
+      }
+    },
+    {
+      "symbol": "920305.BJ",
+      "name": "*ST云创",
+      "listing_date": "20210826",
+      "old_symbol": "835305.BJ",
+      "source_fields": {
+        "sequence": "187",
+        "listing_date_display": "2021/8/26",
+        "old_code": "835305",
+        "new_code": "920305"
+      }
+    },
+    {
+      "symbol": "920174.BJ",
+      "name": "五新隧装",
+      "listing_date": "20210820",
+      "old_symbol": "835174.BJ",
+      "source_fields": {
+        "sequence": "188",
+        "listing_date_display": "2021/8/20",
+        "old_code": "835174",
+        "new_code": "920174"
+      }
+    },
+    {
+      "symbol": "920039.BJ",
+      "name": "国义招标",
+      "listing_date": "20210818",
+      "old_symbol": "831039.BJ",
+      "source_fields": {
+        "sequence": "189",
+        "listing_date_display": "2021/8/18",
+        "old_code": "831039",
+        "new_code": "920039"
+      }
+    },
+    {
+      "symbol": "920642.BJ",
+      "name": "通易航天",
+      "listing_date": "20210816",
+      "old_symbol": "871642.BJ",
+      "source_fields": {
+        "sequence": "190",
+        "listing_date_display": "2021/8/16",
+        "old_code": "871642",
+        "new_code": "920642"
+      }
+    },
+    {
+      "symbol": "920566.BJ",
+      "name": "梓橦宫",
+      "listing_date": "20210813",
+      "old_symbol": "832566.BJ",
+      "source_fields": {
+        "sequence": "191",
+        "listing_date_display": "2021/8/13",
+        "old_code": "832566",
+        "new_code": "920566"
+      }
+    },
+    {
+      "symbol": "920090.BJ",
+      "name": "同辉信息",
+      "listing_date": "20210809",
+      "old_symbol": "430090.BJ",
+      "source_fields": {
+        "sequence": "192",
+        "listing_date_display": "2021/8/9",
+        "old_code": "430090",
+        "new_code": "920090"
+      }
+    },
+    {
+      "symbol": "920553.BJ",
+      "name": "凯腾精工",
+      "listing_date": "20210806",
+      "old_symbol": "871553.BJ",
+      "source_fields": {
+        "sequence": "193",
+        "listing_date_display": "2021/8/6",
+        "old_code": "871553",
+        "new_code": "920553"
+      }
+    },
+    {
+      "symbol": "920146.BJ",
+      "name": "华阳变速",
+      "listing_date": "20210720",
+      "old_symbol": "839946.BJ",
+      "source_fields": {
+        "sequence": "194",
+        "listing_date_display": "2021/7/20",
+        "old_code": "839946",
+        "new_code": "920146"
+      }
+    },
+    {
+      "symbol": "920885.BJ",
+      "name": "星辰科技",
+      "listing_date": "20210708",
+      "old_symbol": "832885.BJ",
+      "source_fields": {
+        "sequence": "195",
+        "listing_date_display": "2021/7/8",
+        "old_code": "832885",
+        "new_code": "920885"
+      }
+    },
+    {
+      "symbol": "920765.BJ",
+      "name": "美之高",
+      "listing_date": "20210705",
+      "old_symbol": "834765.BJ",
+      "source_fields": {
+        "sequence": "196",
+        "listing_date_display": "2021/7/5",
+        "old_code": "834765",
+        "new_code": "920765"
+      }
+    },
+    {
+      "symbol": "920768.BJ",
+      "name": "拾比佰",
+      "listing_date": "20210628",
+      "old_symbol": "831768.BJ",
+      "source_fields": {
+        "sequence": "197",
+        "listing_date_display": "2021/6/28",
+        "old_code": "831768",
+        "new_code": "920768"
+      }
+    },
+    {
+      "symbol": "920212.BJ",
+      "name": "智新电子",
+      "listing_date": "20210608",
+      "old_symbol": "837212.BJ",
+      "source_fields": {
+        "sequence": "198",
+        "listing_date_display": "2021/6/8",
+        "old_code": "837212",
+        "new_code": "920212"
+      }
+    },
+    {
+      "symbol": "920523.BJ",
+      "name": "德瑞锂电",
+      "listing_date": "20210603",
+      "old_symbol": "833523.BJ",
+      "source_fields": {
+        "sequence": "199",
+        "listing_date_display": "2021/6/3",
+        "old_code": "833523",
+        "new_code": "920523"
+      }
+    },
+    {
+      "symbol": "920726.BJ",
+      "name": "朱老六",
+      "listing_date": "20210527",
+      "old_symbol": "831726.BJ",
+      "source_fields": {
+        "sequence": "200",
+        "listing_date_display": "2021/5/27",
+        "old_code": "831726",
+        "new_code": "920726"
+      }
+    },
+    {
+      "symbol": "920225.BJ",
+      "name": "利通科技",
+      "listing_date": "20210225",
+      "old_symbol": "832225.BJ",
+      "source_fields": {
+        "sequence": "201",
+        "listing_date_display": "2021/2/25",
+        "old_code": "832225",
+        "new_code": "920225"
+      }
+    },
+    {
+      "symbol": "920832.BJ",
+      "name": "齐鲁华信",
+      "listing_date": "20210223",
+      "old_symbol": "830832.BJ",
+      "source_fields": {
+        "sequence": "202",
+        "listing_date_display": "2021/2/23",
+        "old_code": "830832",
+        "new_code": "920832"
+      }
+    },
+    {
+      "symbol": "920599.BJ",
+      "name": "同力股份",
+      "listing_date": "20210222",
+      "old_symbol": "834599.BJ",
+      "source_fields": {
+        "sequence": "203",
+        "listing_date_display": "2021/2/22",
+        "old_code": "834599",
+        "new_code": "920599"
+      }
+    },
+    {
+      "symbol": "920735.BJ",
+      "name": "德源药业",
+      "listing_date": "20210219",
+      "old_symbol": "832735.BJ",
+      "source_fields": {
+        "sequence": "204",
+        "listing_date_display": "2021/2/19",
+        "old_code": "832735",
+        "new_code": "920735"
+      }
+    },
+    {
+      "symbol": "920239.BJ",
+      "name": "长虹能源",
+      "listing_date": "20210209",
+      "old_symbol": "836239.BJ",
+      "source_fields": {
+        "sequence": "205",
+        "listing_date_display": "2021/2/9",
+        "old_code": "836239",
+        "new_code": "920239"
+      }
+    },
+    {
+      "symbol": "920427.BJ",
+      "name": "华维设计",
+      "listing_date": "20210205",
+      "old_symbol": "833427.BJ",
+      "source_fields": {
+        "sequence": "206",
+        "listing_date_display": "2021/2/5",
+        "old_code": "833427",
+        "new_code": "920427"
+      }
+    },
+    {
+      "symbol": "920275.BJ",
+      "name": "驱动力",
+      "listing_date": "20210125",
+      "old_symbol": "838275.BJ",
+      "source_fields": {
+        "sequence": "207",
+        "listing_date_display": "2021/1/25",
+        "old_code": "838275",
+        "new_code": "920275"
+      }
+    },
+    {
+      "symbol": "920826.BJ",
+      "name": "盖世食品",
+      "listing_date": "20210112",
+      "old_symbol": "836826.BJ",
+      "source_fields": {
+        "sequence": "208",
+        "listing_date_display": "2021/1/12",
+        "old_code": "836826",
+        "new_code": "920826"
+      }
+    },
+    {
+      "symbol": "920509.BJ",
+      "name": "同惠电子",
+      "listing_date": "20210111",
+      "old_symbol": "833509.BJ",
+      "source_fields": {
+        "sequence": "209",
+        "listing_date_display": "2021/1/11",
+        "old_code": "833509",
+        "new_code": "920509"
+      }
+    },
+    {
+      "symbol": "920344.BJ",
+      "name": "三元基因",
+      "listing_date": "20210108",
+      "old_symbol": "837344.BJ",
+      "source_fields": {
+        "sequence": "210",
+        "listing_date_display": "2021/1/8",
+        "old_code": "837344",
+        "new_code": "920344"
+      }
+    },
+    {
+      "symbol": "920675.BJ",
+      "name": "秉扬科技",
+      "listing_date": "20201228",
+      "old_symbol": "836675.BJ",
+      "source_fields": {
+        "sequence": "211",
+        "listing_date_display": "2020/12/28",
+        "old_code": "836675",
+        "new_code": "920675"
+      }
+    },
+    {
+      "symbol": "920510.BJ",
+      "name": "丰光精密",
+      "listing_date": "20201228",
+      "old_symbol": "430510.BJ",
+      "source_fields": {
+        "sequence": "212",
+        "listing_date_display": "2020/12/28",
+        "old_code": "430510",
+        "new_code": "920510"
+      }
+    },
+    {
+      "symbol": "920856.BJ",
+      "name": "浩淼科技",
+      "listing_date": "20201225",
+      "old_symbol": "831856.BJ",
+      "source_fields": {
+        "sequence": "213",
+        "listing_date_display": "2020/12/25",
+        "old_code": "831856",
+        "new_code": "920856"
+      }
+    },
+    {
+      "symbol": "920000.BJ",
+      "name": "安徽凤凰",
+      "listing_date": "20201223",
+      "old_symbol": "832000.BJ",
+      "source_fields": {
+        "sequence": "214",
+        "listing_date_display": "2020/12/23",
+        "old_code": "832000",
+        "new_code": "920000"
+      }
+    },
+    {
+      "symbol": "920670.BJ",
+      "name": "数字人",
+      "listing_date": "20201208",
+      "old_symbol": "835670.BJ",
+      "source_fields": {
+        "sequence": "215",
+        "listing_date_display": "2020/12/8",
+        "old_code": "835670",
+        "new_code": "920670"
+      }
+    },
+    {
+      "symbol": "920030.BJ",
+      "name": "德众汽车",
+      "listing_date": "20201127",
+      "old_symbol": "838030.BJ",
+      "source_fields": {
+        "sequence": "216",
+        "listing_date_display": "2020/11/27",
+        "old_code": "838030",
+        "new_code": "920030"
+      }
+    },
+    {
+      "symbol": "920047.BJ",
+      "name": "诺思兰德",
+      "listing_date": "20201124",
+      "old_symbol": "430047.BJ",
+      "source_fields": {
+        "sequence": "217",
+        "listing_date_display": "2020/11/24",
+        "old_code": "430047",
+        "new_code": "920047"
+      }
+    },
+    {
+      "symbol": "920396.BJ",
+      "name": "常辅股份",
+      "listing_date": "20201118",
+      "old_symbol": "871396.BJ",
+      "source_fields": {
+        "sequence": "218",
+        "listing_date_display": "2020/11/18",
+        "old_code": "871396",
+        "new_code": "920396"
+      }
+    },
+    {
+      "symbol": "920839.BJ",
+      "name": "万通液压",
+      "listing_date": "20201109",
+      "old_symbol": "830839.BJ",
+      "source_fields": {
+        "sequence": "219",
+        "listing_date_display": "2020/11/9",
+        "old_code": "830839",
+        "new_code": "920839"
+      }
+    },
+    {
+      "symbol": "920964.BJ",
+      "name": "润农节水",
+      "listing_date": "20200727",
+      "old_symbol": "830964.BJ",
+      "source_fields": {
+        "sequence": "220",
+        "listing_date_display": "2020/7/27",
+        "old_code": "830964",
+        "new_code": "920964"
+      }
+    },
+    {
+      "symbol": "920961.BJ",
+      "name": "创远信科",
+      "listing_date": "20200727",
+      "old_symbol": "831961.BJ",
+      "source_fields": {
+        "sequence": "221",
+        "listing_date_display": "2020/7/27",
+        "old_code": "831961",
+        "new_code": "920961"
+      }
+    },
+    {
+      "symbol": "920946.BJ",
+      "name": "森萱医药",
+      "listing_date": "20200727",
+      "old_symbol": "830946.BJ",
+      "source_fields": {
+        "sequence": "222",
+        "listing_date_display": "2020/7/27",
+        "old_code": "830946",
+        "new_code": "920946"
+      }
+    },
+    {
+      "symbol": "920819.BJ",
+      "name": "颖泰生物",
+      "listing_date": "20200727",
+      "old_symbol": "833819.BJ",
+      "source_fields": {
+        "sequence": "223",
+        "listing_date_display": "2020/7/27",
+        "old_code": "833819",
+        "new_code": "920819"
+      }
+    },
+    {
+      "symbol": "920799.BJ",
+      "name": "艾融软件",
+      "listing_date": "20200727",
+      "old_symbol": "830799.BJ",
+      "source_fields": {
+        "sequence": "224",
+        "listing_date_display": "2020/7/27",
+        "old_code": "830799",
+        "new_code": "920799"
+      }
+    },
+    {
+      "symbol": "920729.BJ",
+      "name": "永顺生物",
+      "listing_date": "20200727",
+      "old_symbol": "839729.BJ",
+      "source_fields": {
+        "sequence": "225",
+        "listing_date_display": "2020/7/27",
+        "old_code": "839729",
+        "new_code": "920729"
+      }
+    },
+    {
+      "symbol": "920682.BJ",
+      "name": "球冠电缆",
+      "listing_date": "20200727",
+      "old_symbol": "834682.BJ",
+      "source_fields": {
+        "sequence": "226",
+        "listing_date_display": "2020/7/27",
+        "old_code": "834682",
+        "new_code": "920682"
+      }
+    },
+    {
+      "symbol": "920640.BJ",
+      "name": "富士达",
+      "listing_date": "20200727",
+      "old_symbol": "835640.BJ",
+      "source_fields": {
+        "sequence": "227",
+        "listing_date_display": "2020/7/27",
+        "old_code": "835640",
+        "new_code": "920640"
+      }
+    },
+    {
+      "symbol": "920508.BJ",
+      "name": "殷图网联",
+      "listing_date": "20200727",
+      "old_symbol": "835508.BJ",
+      "source_fields": {
+        "sequence": "228",
+        "listing_date_display": "2020/7/27",
+        "old_code": "835508",
+        "new_code": "920508"
+      }
+    },
+    {
+      "symbol": "920489.BJ",
+      "name": "佳先股份",
+      "listing_date": "20200727",
+      "old_symbol": "430489.BJ",
+      "source_fields": {
+        "sequence": "229",
+        "listing_date_display": "2020/7/27",
+        "old_code": "430489",
+        "new_code": "920489"
+      }
+    },
+    {
+      "symbol": "920475.BJ",
+      "name": "三友科技",
+      "listing_date": "20200727",
+      "old_symbol": "834475.BJ",
+      "source_fields": {
+        "sequence": "230",
+        "listing_date_display": "2020/7/27",
+        "old_code": "834475",
+        "new_code": "920475"
+      }
+    },
+    {
+      "symbol": "920445.BJ",
+      "name": "龙竹科技",
+      "listing_date": "20200727",
+      "old_symbol": "831445.BJ",
+      "source_fields": {
+        "sequence": "231",
+        "listing_date_display": "2020/7/27",
+        "old_code": "831445",
+        "new_code": "920445"
+      }
+    },
+    {
+      "symbol": "920433.BJ",
+      "name": "大唐药业",
+      "listing_date": "20200727",
+      "old_symbol": "836433.BJ",
+      "source_fields": {
+        "sequence": "232",
+        "listing_date_display": "2020/7/27",
+        "old_code": "836433",
+        "new_code": "920433"
+      }
+    },
+    {
+      "symbol": "920418.BJ",
+      "name": "苏轴股份",
+      "listing_date": "20200727",
+      "old_symbol": "430418.BJ",
+      "source_fields": {
+        "sequence": "233",
+        "listing_date_display": "2020/7/27",
+        "old_code": "430418",
+        "new_code": "920418"
+      }
+    },
+    {
+      "symbol": "920415.BJ",
+      "name": "恒拓开源",
+      "listing_date": "20200727",
+      "old_symbol": "834415.BJ",
+      "source_fields": {
+        "sequence": "234",
+        "listing_date_display": "2020/7/27",
+        "old_code": "834415",
+        "new_code": "920415"
+      }
+    },
+    {
+      "symbol": "920370.BJ",
+      "name": "新安洁",
+      "listing_date": "20200727",
+      "old_symbol": "831370.BJ",
+      "source_fields": {
+        "sequence": "235",
+        "listing_date_display": "2020/7/27",
+        "old_code": "831370",
+        "new_code": "920370"
+      }
+    },
+    {
+      "symbol": "920368.BJ",
+      "name": "连城数控",
+      "listing_date": "20200727",
+      "old_symbol": "835368.BJ",
+      "source_fields": {
+        "sequence": "236",
+        "listing_date_display": "2020/7/27",
+        "old_code": "835368",
+        "new_code": "920368"
+      }
+    },
+    {
+      "symbol": "920278.BJ",
+      "name": "鹿得医疗",
+      "listing_date": "20200727",
+      "old_symbol": "832278.BJ",
+      "source_fields": {
+        "sequence": "237",
+        "listing_date_display": "2020/7/27",
+        "old_code": "832278",
+        "new_code": "920278"
+      }
+    },
+    {
+      "symbol": "920266.BJ",
+      "name": "生物谷",
+      "listing_date": "20200727",
+      "old_symbol": "833266.BJ",
+      "source_fields": {
+        "sequence": "238",
+        "listing_date_display": "2020/7/27",
+        "old_code": "833266",
+        "new_code": "920266"
+      }
+    },
+    {
+      "symbol": "920263.BJ",
+      "name": "中航泰达",
+      "listing_date": "20200727",
+      "old_symbol": "836263.BJ",
+      "source_fields": {
+        "sequence": "239",
+        "listing_date_display": "2020/7/27",
+        "old_code": "836263",
+        "new_code": "920263"
+      }
+    },
+    {
+      "symbol": "920242.BJ",
+      "name": "建邦科技",
+      "listing_date": "20200727",
+      "old_symbol": "837242.BJ",
+      "source_fields": {
+        "sequence": "240",
+        "listing_date_display": "2020/7/27",
+        "old_code": "837242",
+        "new_code": "920242"
+      }
+    },
+    {
+      "symbol": "920198.BJ",
+      "name": "微创光电",
+      "listing_date": "20200727",
+      "old_symbol": "430198.BJ",
+      "source_fields": {
+        "sequence": "241",
+        "listing_date_display": "2020/7/27",
+        "old_code": "430198",
+        "new_code": "920198"
+      }
+    },
+    {
+      "symbol": "920185.BJ",
+      "name": "贝特瑞",
+      "listing_date": "20200727",
+      "old_symbol": "835185.BJ",
+      "source_fields": {
+        "sequence": "242",
+        "listing_date_display": "2020/7/27",
+        "old_code": "835185",
+        "new_code": "920185"
+      }
+    },
+    {
+      "symbol": "920184.BJ",
+      "name": "国源科技",
+      "listing_date": "20200727",
+      "old_symbol": "835184.BJ",
+      "source_fields": {
+        "sequence": "243",
+        "listing_date_display": "2020/7/27",
+        "old_code": "835184",
+        "new_code": "920184"
+      }
+    },
+    {
+      "symbol": "920167.BJ",
+      "name": "同享科技",
+      "listing_date": "20200727",
+      "old_symbol": "839167.BJ",
+      "source_fields": {
+        "sequence": "244",
+        "listing_date_display": "2020/7/27",
+        "old_code": "839167",
+        "new_code": "920167"
+      }
+    },
+    {
+      "symbol": "920163.BJ",
+      "name": "方大新材",
+      "listing_date": "20200727",
+      "old_symbol": "838163.BJ",
+      "source_fields": {
+        "sequence": "245",
+        "listing_date_display": "2020/7/27",
+        "old_code": "838163",
+        "new_code": "920163"
+      }
+    },
+    {
+      "symbol": "920149.BJ",
+      "name": "旭杰科技",
+      "listing_date": "20200727",
+      "old_symbol": "836149.BJ",
+      "source_fields": {
+        "sequence": "246",
+        "listing_date_display": "2020/7/27",
+        "old_code": "836149",
+        "new_code": "920149"
+      }
+    },
+    {
+      "symbol": "920021.BJ",
+      "name": "流金科技",
+      "listing_date": "20200727",
+      "old_symbol": "834021.BJ",
+      "source_fields": {
+        "sequence": "247",
+        "listing_date_display": "2020/7/27",
+        "old_code": "834021",
+        "new_code": "920021"
+      }
+    },
+    {
+      "symbol": "920010.BJ",
+      "name": "凯添燃气",
+      "listing_date": "20200727",
+      "old_symbol": "831010.BJ",
+      "source_fields": {
+        "sequence": "248",
+        "listing_date_display": "2020/7/27",
+        "old_code": "831010",
+        "new_code": "920010"
+      }
+    }
+  ],
+  "note": "北交所官方新旧代码对照表；上市日期按页面原值结构化，源值保留于 source_fields。"
+}

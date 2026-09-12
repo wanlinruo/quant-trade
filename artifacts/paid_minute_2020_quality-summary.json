@@ -1,0 +1,51 @@
+{
+  "year": 2020,
+  "status": "PUBLISHED",
+  "source_manifest": "/home/ubuntu/qsys/warehouse/paid_minute_bars/year=2020/manifest.json",
+  "structural": {
+    "row_count": 227507133,
+    "symbols": 4146,
+    "min_dt": "2020-01-02 09:30:00",
+    "max_dt": "2020-12-31 15:00:00",
+    "invalid_session_times": 0,
+    "bj_post_close_rows": 0,
+    "bj_post_close_trade_rows": 0
+  },
+  "daily_comparison": {
+    "stock_days": 944013,
+    "matched_paid_days": 944013,
+    "missing_paid_days": 0,
+    "non_241_regular_days": 0,
+    "min_minutes_per_day": 241,
+    "max_minutes_per_day": 241,
+    "factor_not_unique_days": 0,
+    "ohlc_mismatch_days": 396992,
+    "volume_mismatch_days": 1516,
+    "amount_mismatch_gt_100_days": 7,
+    "max_amount_abs_diff": 25205853.0,
+    "factor_mismatch_days": 0
+  },
+  "qmt_comparison": {
+    "available": false
+  },
+  "quarantine": {
+    "files": 110,
+    "rows": 685404,
+    "reasons": {
+      "ZERO_TRADE_FLAT_NO_DAILY_RECORD": 685404
+    }
+  },
+  "artifacts": {
+    "daily_aggregate": "/home/ubuntu/qsys/warehouse/paid_minute_quality/year=2020/daily_aggregate.parquet",
+    "daily_discrepancies": "/home/ubuntu/qsys/warehouse/paid_minute_quality/year=2020/daily_discrepancies.parquet"
+  },
+  "rules": {
+    "ohlc_daily_tolerance_cny": 0.005,
+    "volume_rule": "sum(source minute shares) == source daily lots * 100, tolerance 0.5 share",
+    "amount_daily_tolerance_cny": 100,
+    "factor_tolerance": 1e-10,
+    "ohlc_session": "09:30-15:00; BJ 15:01-15:30 retained as direct post-close/bulk-trade observations",
+    "note": "aggregates are validation-only and never written to source facts"
+  },
+  "published_at": "2026-09-12T22:40:37.324639+08:00"
+}
