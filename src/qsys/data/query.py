@@ -55,6 +55,10 @@ _DUCKDB_TYPES = {
     "timestamp[us]": "TIMESTAMP",
 }
 
+# daily_bars() 与 legacy_daily_bars() 共用的 8 列投影——
+# 两者列名相同，差别只在读哪张表、volume 是不是带小数。
+_DAILY_BAR_COLUMNS = "symbol, dt, open, high, low, close, volume, amount"
+
 
 class WarehouseQuery:
     def __init__(self, warehouse: Warehouse) -> None:
@@ -74,6 +78,67 @@ class WarehouseQuery:
         start: date,
         end: date,
     ) -> pl.DataFrame:
+        """日线。**读付费源 `paid_daily`**，投影 8 列。
+
+        2026-09-12 由 `bars_daily` 换底。mootdx 的 K 线接口自 09-10 起在上游
+        失效，付费源成为唯一日线真值源。列名与旧表相同，故 32 处调用点无需改动；
+        唯一差别是 `volume` 为 Float64——付费源的手数带小数，取整会丢精度。
+
+        **不回退旧表。** 付费源没有的日期就是没有，回退会让调用方在不知情的
+        情况下拿到另一个源的值。
+        """
+        if symbols is not None and len(symbols) == 0:
+            return _empty(schema.DAILY_BARS)
+        glob = self._glob("paid_daily", partitioned=True)
+        if glob is None:
+            return _empty(schema.DAILY_BARS)
+
+        sql = (
+            f"SELECT {_DAILY_BAR_COLUMNS} "
+            f"FROM {_read(glob)} WHERE dt BETWEEN ? AND ?"
+        )
+        params: list[object] = [start, end]
+        if symbols is not None:
+            placeholders = ", ".join("?" for _ in symbols)
+            sql += f" AND symbol IN ({placeholders})"
+            params.extend(symbols)
+        sql += " ORDER BY symbol, dt"
+        return self._con.execute(sql, params).pl()
+
+    def paid_daily(
+        self,
+        symbols: Sequence[str] | None,
+        start: date,
+        end: date,
+    ) -> pl.DataFrame:
+        """付费源全部 28 列。flags / adjust / valuation 要用 name、factor、pre_close。"""
+        if symbols is not None and len(symbols) == 0:
+            return _empty(schema.PAID_DAILY)
+        glob = self._glob("paid_daily", partitioned=True)
+        if glob is None:
+            return _empty(schema.PAID_DAILY)
+
+        columns = ", ".join(schema.PAID_DAILY.names)
+        sql = f"SELECT {columns} FROM {_read(glob)} WHERE dt BETWEEN ? AND ?"
+        params: list[object] = [start, end]
+        if symbols is not None:
+            placeholders = ", ".join("?" for _ in symbols)
+            sql += f" AND symbol IN ({placeholders})"
+            params.extend(symbols)
+        sql += " ORDER BY symbol, dt"
+        return self._con.execute(sql, params).pl()
+
+    def legacy_daily_bars(
+        self,
+        symbols: Sequence[str] | None,
+        start: date,
+        end: date,
+    ) -> pl.DataFrame:
+        """冻结的 mootdx/QMT 旧日线表。**唯一用途是换源回归对账。**
+
+        不要在生产路径上调用它。表已不再更新（mootdx 上游失效），
+        保留只为给这次换源提供逐键比对的参照物。
+        """
         if symbols is not None and len(symbols) == 0:
             return _empty(schema.BARS_DAILY)
         glob = self._glob("bars_daily", partitioned=True)
@@ -81,7 +146,7 @@ class WarehouseQuery:
             return _empty(schema.BARS_DAILY)
 
         sql = (
-            "SELECT symbol, dt, open, high, low, close, volume, amount "
+            f"SELECT {_DAILY_BAR_COLUMNS} "
             f"FROM {_read(glob)} WHERE dt BETWEEN ? AND ?"
         )
         params: list[object] = [start, end]
