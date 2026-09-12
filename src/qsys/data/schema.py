@@ -31,6 +31,22 @@ BARS_DAILY = pa.schema(
     ]
 )
 
+# daily_bars() 视图的契约。列名与 BARS_DAILY 相同，但 volume 是 float64：
+# 付费源给的是带小数的手数（582305.98），取整会丢掉真实精度。
+# BARS_DAILY 保留 int64，因为它描述的是已冻结的 bars_daily 旧表。
+DAILY_BARS = pa.schema(
+    [
+        ("symbol", pa.string()),
+        ("dt", pa.date32()),
+        ("open", pa.float64()),
+        ("high", pa.float64()),
+        ("low", pa.float64()),
+        ("close", pa.float64()),
+        ("volume", pa.float64()),
+        ("amount", pa.float64()),
+    ]
+)
+
 SHARE_CAPITAL = pa.schema(
     [
         ("symbol", pa.string()),
@@ -224,6 +240,29 @@ AUCTION_TICKS = pa.schema(
         ("volume", pa.int64()),  # 累计成交量（手），撮合前为 0
         ("amount", pa.float64()),
     ]
+)
+
+# 付费源日线，28 列。唯一的日线真值事实表，永久只读——**不要**注册进
+# PARTITIONED，那会让 Warehouse.write("paid_daily", ...) 成为可能。
+# 列顺序严格对应卖家 Excel 第三行；单位换算只做乘法，见 pipeline/paid_daily.py。
+_PAID_DAILY_NUMERIC = [
+    "open", "high", "low", "close", "pre_close", "change", "pct_change",
+    "volume", "amount", "factor", "turnover_ratio", "free_turnover_ratio",
+    "volume_ratio", "pe", "pe_ttm", "pb", "ps", "ps_ttm",
+    "dividend_yield", "dividend_yield_ttm", "total_shares",
+    "circulating_shares", "free_shares", "market_cap", "circulating_market_cap",
+]
+PAID_DAILY = pa.schema(
+    [("dt", pa.date32()), ("symbol", pa.string()), ("name", pa.string())]
+    + [(n, pa.float64()) for n in _PAID_DAILY_NUMERIC],
+    metadata={
+        b"provider": b"yuhaha-baidupan",
+        b"volume_unit": b"lot=100 shares",
+        b"money_unit": b"CNY",
+        b"share_capital_unit": b"share",
+        b"percentage_unit": b"percent",
+        b"factor": b"cumulative backward adjustment",
+    },
 )
 
 

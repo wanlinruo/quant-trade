@@ -3,6 +3,7 @@ import json
 
 import openpyxl
 import polars as pl
+import pyarrow as pa
 import pytest
 
 from qsys.data.pipeline.paid_daily import COLUMNS, read_day, import_year, audit
@@ -114,3 +115,40 @@ def test_audit_remembers_stock_across_absent_year(tmp_path):
         import_year(incoming, wh, entries, "/daily", year)
     report = audit(wh, date(2006, 1, 4), 3)
     assert report["factor_anomalies_gt_1pct"] == 1
+
+
+def test_paid_daily_schema_lives_in_the_schema_module():
+    """schema 的 canonical 位置是 schema.py，pipeline 只引用不定义。
+
+    query.py 要用它构造空表，而 pipeline 反过来 import query——
+    schema 留在 pipeline 里就成了循环导入。
+    """
+    from qsys.data import schema
+    from qsys.data.pipeline import paid_daily
+
+    assert paid_daily.SCHEMA is schema.PAID_DAILY
+    assert len(schema.PAID_DAILY) == 28
+    assert schema.PAID_DAILY.field("volume").type == pa.float64()
+    assert schema.PAID_DAILY.field("name").type == pa.string()
+    assert schema.PAID_DAILY.metadata[b"volume_unit"] == b"lot=100 shares"
+
+
+def test_paid_daily_is_not_writable_through_the_warehouse():
+    """付费表永久只读。注册进 PARTITIONED 就等于开了写入口子。"""
+    from qsys.data import schema
+
+    assert "paid_daily" not in schema.PARTITIONED
+    assert "paid_daily" not in schema.UNPARTITIONED
+
+
+def test_daily_bars_view_schema_keeps_volume_unrounded():
+    """daily_bars 视图的 volume 是 float64。
+
+    付费源 volume 带小数（582305.98 手）。取整是有损变换，
+    而 BARS_DAILY 描述的是冻结的旧表（int64），两者必须分开。
+    """
+    from qsys.data import schema
+
+    assert schema.DAILY_BARS.field("volume").type == pa.float64()
+    assert schema.BARS_DAILY.field("volume").type == pa.int64()
+    assert schema.DAILY_BARS.names == schema.BARS_DAILY.names

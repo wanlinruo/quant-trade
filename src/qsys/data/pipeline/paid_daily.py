@@ -16,6 +16,8 @@ import polars as pl
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from qsys.data import schema as _schema
+
 # 顺序严格对应卖家 Excel 第三行；单位转换只做乘法。
 COLUMNS = [
     ("交易日期", "dt", 1), ("股票代码", "symbol", 1), ("股票名称", "name", 1),
@@ -36,13 +38,9 @@ COLUMNS = [
     ("流通市值（万元）", "circulating_market_cap", 10000),
 ]
 EXCHANGES = {"00": "SZ", "30": "SZ", "60": "SH", "68": "SH", "83": "BJ", "92": "BJ"}
-SCHEMA = pa.schema(
-    [("dt", pa.date32()), ("symbol", pa.string()), ("name", pa.string())]
-    + [(name, pa.float64()) for _, name, _ in COLUMNS[3:]],
-    metadata={b"provider": b"yuhaha-baidupan", b"volume_unit": b"lot=100 shares",
-              b"money_unit": b"CNY", b"share_capital_unit": b"share",
-              b"percentage_unit": b"percent", b"factor": b"cumulative backward adjustment"},
-)
+
+# canonical 定义在 schema.py。放在这里会与 query.py 循环导入。
+SCHEMA = _schema.PAID_DAILY
 VERSION = 1
 
 
