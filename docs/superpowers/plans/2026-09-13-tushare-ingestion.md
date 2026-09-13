@@ -2403,44 +2403,77 @@ git commit -m "feat(data): limit_list_d 落库，首板与炸板改直取"
 ## Task 9: 每日增量任务
 
 **Files:**
+- Create: `src/qsys/data/pipeline/tushare_sync.py`
 - Create: `scripts/tushare_daily_sync.py`
-- Test: `tests/test_tushare_daily_sync.py`
+- Test: `tests/data/pipeline/test_tushare_sync.py`
 
 **Interfaces:**
-- Consumes: 前八个任务的全部 `ingest_*` 函数
-- Produces: `scripts/tushare_daily_sync.py` 的 `sync(provider, warehouse, day) -> dict[str, int]`
+- Consumes: `compose_daily` / `write_year`（`pipeline/tushare_daily.py`，Task 2）、
+  `TushareProvider.daily/daily_basic/adj_factor`（Task 1）、
+  `load_tushare_config`（`qsys.live.config`）
+- Produces: `sync(provider, warehouse, day) -> dict[str, int]`，
+  以及模块级 `_REFERENCE_STEPS: list[tuple[str, Callable]]`——Task 4-8 各自把
+  自己的 `ingest_*` 追加进去
+
+**2026-09-14 订正**（依据写在下面，原文的问题一并记录）：
+
+原文的 `sync` 从 `qsys.data.pipeline.tushare_reference` 导入
+`ingest_price_limits` / `ingest_suspensions` / `ingest_limit_list` /
+`ingest_index_daily` 四个函数——**那个模块由 Task 4-8 创建，现在不存在**。
+照原文写会 `ImportError`，任务根本跑不起来。
+
+本任务提前到 Task 4-8 之前执行，理由是生产链路正断着：mootdx 已死，
+自 2026-09-10 起没有任何日线自动入库，`paid_daily` 靠手动转存、
+`tushare_daily` 靠一次性回填。先接上每日数据流，再补真值表。
+
+订正为：`sync` 只做当前存在的数据集（`tushare_daily`），
+参考数据集改为模块级 `_REFERENCE_STEPS` 列表，当前为空，Task 4-8 各自追加。
+
+**并加一道接线守卫测试**：一旦 `tushare_reference` 模块存在，其公开的每个
+`ingest_*` 函数都必须出现在 `_REFERENCE_STEPS` 里，否则测试失败。
+这一条不是多余——计划 A 的 Task 8 就踩过同一个坑：`build_daily_flags`
+加了 `boards` 参数却没有任何生产调用点在传，派生表一天天被污染回去且不报错。
+新增一个采集函数却忘了接进每日任务，是同一类缺陷。
 
 **承接 spec §8 作废后仍成立的两条**：
 
 1. **没拿到新数据必须显式报错退出**，不许静默当成正常。2026-09-10/11 的归档
    超时事故根因就是上游静默返回空而系统当成正常。
 2. **15:40 的既有归档不依赖当日日线**——竞价 tick、股本、分钟线的候选均只需
-   T-1 的 `daily_flags`。故本任务排在其后，不改动既有归档的时点。
+   T-1 的 `daily_flags`。故本任务不改动既有归档的时点。
 
 - [ ] **Step 1: 写失败测试**
 
 ```python
-# tests/test_tushare_daily_sync.py
+# tests/data/pipeline/test_tushare_sync.py
 
 """每日增量同步。拿不到数据必须显式失败，不许静默当成正常。"""
 
+import importlib
 from datetime import date
 
 import polars as pl
 import pytest
 
+from qsys.data.pipeline import tushare_sync
 from qsys.data.pipeline.tushare_sync import sync
 
 DAY = date(2026, 9, 11)
 
 
 class FakeProvider:
-    def __init__(self, daily_rows=1, **kw):
-        self.daily_rows = daily_rows
-        self.kw = kw
+    """只实现 sync 真正会调的三个方法。
 
-    def _frame(self, n):
-        if n == 0:
+    多实现没用到的方法会掩盖「sync 调了不该调的接口」——每次调用都是积分。
+    """
+
+    def __init__(self, daily_rows: int = 1) -> None:
+        self.daily_rows = daily_rows
+        self.calls: list[str] = []
+
+    def daily(self, d: date) -> pl.DataFrame:
+        self.calls.append("daily")
+        if self.daily_rows == 0:
             return pl.DataFrame()
         return pl.DataFrame({
             "ts_code": ["000001.SZ"], "trade_date": ["20260911"],
@@ -2449,25 +2482,12 @@ class FakeProvider:
             "vol": [100.0], "amount": [1000.0],
         })
 
-    def daily(self, d):
-        return self._frame(self.daily_rows)
-
-    def daily_basic(self, d):
+    def daily_basic(self, d: date) -> pl.DataFrame:
+        self.calls.append("daily_basic")
         return pl.DataFrame()
 
-    def adj_factor(self, d):
-        return pl.DataFrame()
-
-    def stk_limit(self, d):
-        return pl.DataFrame()
-
-    def suspend_d(self, d):
-        return pl.DataFrame()
-
-    def limit_list_d(self, d, limit_type):
-        return pl.DataFrame()
-
-    def index_daily(self, code, start, end):
+    def adj_factor(self, d: date) -> pl.DataFrame:
+        self.calls.append("adj_factor")
         return pl.DataFrame()
 
 
@@ -2480,24 +2500,54 @@ def test_an_empty_daily_is_an_explicit_failure(warehouse):
     """日线 0 行 = 上游没给数据。静默当成正常正是 09-10/11 事故的根因。"""
     with pytest.raises(RuntimeError) as exc:
         sync(FakeProvider(daily_rows=0), warehouse, DAY)
-    assert "20260911" in str(exc.value) or "2026-09-11" in str(exc.value)
+    assert "20260911" in str(exc.value)
 
 
-def test_an_empty_suspension_list_is_not_a_failure(warehouse):
-    """没有停牌是常态，与日线为空不同。"""
-    got = sync(FakeProvider(), warehouse, DAY)
-    assert got["suspend_daily"] == 0
+def test_an_empty_daily_writes_nothing(warehouse):
+    """报错之前不能已经写了一半——半张表比没有表更难查。"""
+    from qsys.data.query import WarehouseQuery
+
+    with pytest.raises(RuntimeError):
+        sync(FakeProvider(daily_rows=0), warehouse, DAY)
+    assert WarehouseQuery(warehouse).tushare_daily().height == 0
+
+
+def test_does_not_call_interfaces_it_does_not_need(warehouse):
+    """每次接口调用都是积分。只该调 daily / daily_basic / adj_factor 三个。"""
+    provider = FakeProvider()
+    sync(provider, warehouse, DAY)
+    assert sorted(provider.calls) == ["adj_factor", "daily", "daily_basic"]
+
+
+def test_every_reference_ingest_is_wired_into_sync():
+    """Task 4-8 新增的 ingest_* 必须接进每日任务，否则采集不到却不报错。
+
+    计划 A 的 Task 8 踩过同一个坑：build_daily_flags 加了 boards 参数却没有
+    生产调用点在传，派生表一天天被污染回去且不报错。
+
+    tushare_reference 尚不存在时本条不生效——此时 _REFERENCE_STEPS 应为空。
+    """
+    wired = {name for name, _ in tushare_sync._REFERENCE_STEPS}
+    try:
+        ref = importlib.import_module("qsys.data.pipeline.tushare_reference")
+    except ModuleNotFoundError:
+        assert wired == set(), "参考模块还不存在，_REFERENCE_STEPS 应为空"
+        return
+    exported = {n for n in dir(ref) if n.startswith("ingest_")}
+    missing = {n for n in exported if not any(fn.__name__ == n
+                                              for _, fn in tushare_sync._REFERENCE_STEPS)}
+    assert not missing, f"这些采集函数没接进每日同步：{sorted(missing)}"
 ```
 
 - [ ] **Step 2: 跑测试确认失败**
 
-Run: `.venv/bin/python -m pytest tests/test_tushare_daily_sync.py -v`
-Expected: FAIL，`ModuleNotFoundError`
+Run: `uv run pytest tests/data/pipeline/test_tushare_sync.py -v`
+Expected: FAIL，`ModuleNotFoundError: qsys.data.pipeline.tushare_sync`
 
 - [ ] **Step 3: 实现**
 
-`scripts/` 不是 Python 包，测试无法 `from scripts.x import`（这一条在计划 A 的
-pre-flight 已经踩过）。按本仓库既有分层——纯逻辑进模块、脚本只做薄 CLI
+`scripts/` 不是 Python 包，测试无法 `from scripts.x import`（计划 A 的 pre-flight
+已经踩过）。按本仓库既有分层——纯逻辑进模块、脚本只做薄 CLI
 （`scripts/ingest_paid_daily.py` 55 行之于 `pipeline/paid_daily.py` 241 行）——
 `sync` 放进 `src/qsys/data/pipeline/tushare_sync.py`。
 
@@ -2508,28 +2558,40 @@ pre-flight 已经踩过）。按本仓库既有分层——纯逻辑进模块、
 
 **日线为空必须显式失败。** 2026-09-10/11 的归档在 7200 秒超时被杀，根因是
 mootdx 上游静默返回空表而系统当成正常，连采了两小时空数据都没报错。
-停牌、涨跌停列表为空则是常态，不视为失败。
+停牌、涨跌停列表为空则是常态，不视为失败——这两类的判据在各自的
+ingest_* 函数里，不在这里。
+
+`_REFERENCE_STEPS` 当前为空：涨跌停价、停牌、涨跌停列表、指数日线四张表
+由计划 C 的 Task 4-8 建，各自把自己的 ingest_* 追加进来。
+tests/data/pipeline/test_tushare_sync.py 有一条守卫测试盯着这件事——
+新增采集函数却忘了接线，是「采集不到却不报错」的经典形态。
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import date
 
 import structlog
 
 from qsys.data.pipeline.tushare_daily import compose_daily, write_year
-from qsys.data.pipeline.tushare_reference import (
-    ingest_index_daily, ingest_limit_list, ingest_price_limits,
-    ingest_suspensions,
-)
 from qsys.data.storage import Warehouse
 
 log = structlog.get_logger(__name__)
 
 CSI300 = "000300.SH"
 
+# (数据集名, 采集函数)。函数签名统一为 fn(provider, warehouse, [day]) -> int。
+# Task 4: ingest_price_limits / Task 5: ingest_suspensions
+# Task 6: ingest_index_daily  / Task 8: ingest_limit_list
+_REFERENCE_STEPS: list[tuple[str, Callable[..., int]]] = []
+
 
 def sync(provider, warehouse: Warehouse, day: date) -> dict[str, int]:
+    """同步一个交易日。返回 {数据集: 写入行数}。
+
+    日线为空直接抛错，**且在抛错之前不写任何表**——半张表比没有表更难查。
+    """
     daily = provider.daily(day)
     if daily.height == 0:
         # 非交易日由调用方用 trade_cal 提前排除；走到这里就是该有数据却没有。
@@ -2538,15 +2600,11 @@ def sync(provider, warehouse: Warehouse, day: date) -> dict[str, int]:
             f"不写入任何表，退出。"
         )
 
-    frame = compose_daily(daily, provider.daily_basic(day),
-                          provider.adj_factor(day))
-    counts = {
-        "tushare_daily": write_year(warehouse, frame, day.year),
-        "price_limits_daily": ingest_price_limits(provider, warehouse, [day]),
-        "suspend_daily": ingest_suspensions(provider, warehouse, [day]),
-        "limit_list_daily": ingest_limit_list(provider, warehouse, [day]),
-        "index_bars": ingest_index_daily(provider, warehouse, [CSI300], day, day),
-    }
+    frame = compose_daily(daily, provider.daily_basic(day), provider.adj_factor(day))
+    counts = {"tushare_daily": write_year(warehouse, frame, day.year)}
+    for name, ingest in _REFERENCE_STEPS:
+        counts[name] = ingest(provider, warehouse, [day])
+
     log.info("tushare_sync.done", day=str(day), **counts)
     return counts
 ```
@@ -2614,10 +2672,22 @@ if __name__ == "__main__":
 
 - [ ] **Step 4: 跑测试确认通过 + 全量测试**
 
-Run: `.venv/bin/python -m pytest tests/test_tushare_daily_sync.py -v && .venv/bin/python -m pytest -rfE --tb=no -q`
-Expected: 新测试 PASS；全量失败数不增加
+Run: `uv run pytest tests/data/pipeline/test_tushare_sync.py -v && uv run pytest -q`
+Expected: 新测试全 PASS；全量 exit=0
 
-- [ ] **Step 5: 在节点上装 systemd 单元**
+- [ ] **Step 5: 提交**
+
+```bash
+git add src/qsys/data/pipeline/tushare_sync.py scripts/tushare_daily_sync.py \
+        tests/data/pipeline/test_tushare_sync.py
+git commit -m "feat(data): Tushare 每日增量同步"
+```
+
+- [ ] **Step 6: 在节点上装 systemd 单元（由控制方执行，不派实现者）**
+
+生产节点的写操作留在控制方手里——`warehouse` 是指向 `/data/qsys` 的软链接，
+`ProtectSystem=strict` 少写一条 `ReadWritePaths` 就会在第一次写入时失败，
+这个坑本仓库已经踩过一次。
 
 ```bash
 ssh -i ~/.ssh/qmt_bridge_ed25519 ubuntu@110.42.205.144 "sudo tee /etc/systemd/system/qsys-tushare-sync.service >/dev/null <<'UNIT'
@@ -2662,7 +2732,7 @@ sudo systemctl daemon-reload && sudo systemctl enable --now qsys-tushare-sync.ti
 systemctl list-timers qsys-tushare-sync --no-pager"
 ```
 
-- [ ] **Step 6: 实跑一次并核对**
+- [ ] **Step 7: 实跑一次并核对**
 
 ```bash
 ssh -i ~/.ssh/qmt_bridge_ed25519 ubuntu@110.42.205.144 \
@@ -2671,14 +2741,10 @@ ssh -i ~/.ssh/qmt_bridge_ed25519 ubuntu@110.42.205.144 \
    sudo journalctl -u qsys-tushare-sync.service -n 20 --no-pager -o cat"
 ```
 
-Expected：`Result=success`，各数据集行数非零（日线约 5,500 行）。
+Expected：`Result=success`，`tushare_daily` 行数约 5,500。
 
-- [ ] **Step 7: 提交**
-
-```bash
-git add src/qsys/data/pipeline/tushare_sync.py scripts/tushare_daily_sync.py tests/test_tushare_daily_sync.py
-git commit -m "feat(data): Tushare 每日增量同步与 systemd 定时器"
-```
+**节点上必须先有 `config/deploy.local.toml`**（已 gitignore，不随 git 同步）。
+装单元之前先确认它在，否则 `load_tushare_config` 会 `FileNotFoundError`。
 
 ---
 
