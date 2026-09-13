@@ -124,11 +124,13 @@ DAILY_FLAGS = pa.schema(
         ("touched_limit_up", pa.bool_()),  # 盘中触及涨停（含封住）
         ("is_broken_board", pa.bool_()),  # 炸板：触及但未封住
         ("is_first_board", pa.bool_()),  # 首板：今日涨停且昨日未涨停
-        ("limit_pct", pa.float64()),  # 实际生效的涨跌幅：0.05 为反推出的 ST，否则按板块 0.10 / 0.20
-        # ST 反推是 fallback（免费源没有历史 ST 名单），三个字段留作审计：
-        ("st_inferred_raw", pa.bool_()),  # 价格行为启发式的原始结论
-        ("st_inference_rejected_by_price_evidence", pa.bool_()),  # 被制度硬否决
-        ("st_inferred_final", pa.bool_()),  # 实际采用的结论
+        ("limit_pct", pa.float64()),  # 实际生效的涨跌幅：ST 为 0.05，否则按板块 0.10 / 0.20 / 0.30
+        # ST 真值。直取自付费源当日 `name` 列是否含 "ST"。
+        # 2026-09-12 之前这里是三条价格启发式反推出来的，一致率 93.8%，已删除。
+        ("is_st", pa.bool_()),
+        # 该行 ST 值的来源。本计划内恒为 "paid"；兜底路径（计划 B）会写
+        # "carried_from_<日期>"，届时消费方必须能区分。
+        ("st_source", pa.string()),
     ]
 )
 

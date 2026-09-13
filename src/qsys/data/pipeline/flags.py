@@ -121,9 +121,8 @@ _FLAG_COLUMNS = [
     "is_broken_board",
     "is_first_board",
     "limit_pct",
-    "st_inferred_raw",
-    "st_inference_rejected_by_price_evidence",
-    "st_inferred_final",
+    "is_st",
+    "st_source",
 ]
 
 
