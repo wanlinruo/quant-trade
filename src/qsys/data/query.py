@@ -136,6 +136,18 @@ class WarehouseQuery:
             "paid_daily", columns, schema.PAID_DAILY, symbols, start, end
         )
 
+    def tushare_daily(
+        self,
+        symbols: Sequence[str] | None,
+        start: date,
+        end: date,
+    ) -> pl.DataFrame:
+        """Tushare 日线全部 28 列。切换生产查询之前，只有对账与回填读它。"""
+        columns = ", ".join(schema.TUSHARE_DAILY.names)
+        return self._dated_query(
+            "tushare_daily", columns, schema.TUSHARE_DAILY, symbols, start, end
+        )
+
     def legacy_daily_bars(
         self,
         symbols: Sequence[str] | None,
