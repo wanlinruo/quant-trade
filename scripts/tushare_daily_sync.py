@@ -7,10 +7,11 @@
 from __future__ import annotations
 
 import argparse
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
-from qsys.data.pipeline.tushare_sync import last_open_day, sync
+from qsys.data.pipeline.tushare_sync import completed_calendar_end, last_open_day, sync
 from qsys.data.providers.tushare import TushareProvider
 from qsys.data.providers.tushare_client import TushareClient
 from qsys.data.storage import Warehouse
@@ -26,7 +27,10 @@ def main() -> int:
     args = parser.parse_args()
 
     client = TushareClient(load_tushare_config(args.config).token)
-    day = args.day or last_open_day(client, date.today())
+    now = datetime.now(ZoneInfo("Asia/Shanghai"))
+    # 16:00 前当日数据可能尚未结算；默认只允许选到前一自然日。
+    calendar_end = completed_calendar_end(now)
+    day = args.day or last_open_day(client, calendar_end)
     if day is None:
         print("最近 30 天没有交易日，退出")
         return 0

@@ -34,10 +34,16 @@ _BASIC_FLOATS = ("close", "turnover_rate", "turnover_rate_f", "volume_ratio",
 class TushareProvider:
     def __init__(self, client: TushareClient) -> None:
         self._client = client
+        self._daily_cache: dict[date, pl.DataFrame] = {}
 
     def daily(self, trade_date: date) -> pl.DataFrame:
+        cached = self._daily_cache.get(trade_date)
+        if cached is not None:
+            return cached.clone()
         rows = self._client.call("daily", {"trade_date": trade_date.strftime("%Y%m%d")})
-        return _rows_to_frame(rows, _DAILY_FLOATS)
+        frame = _rows_to_frame(rows, _DAILY_FLOATS)
+        self._daily_cache[trade_date] = frame
+        return frame.clone()
 
     def daily_basic(self, trade_date: date) -> pl.DataFrame:
         rows = self._client.call("daily_basic",

@@ -49,6 +49,15 @@ def ingest_price_limits(provider, warehouse: Warehouse, days: Sequence[date]) ->
     for day in days:
         raw = provider.stk_limit(day)
         if raw.height:
+            # stk_limit 实际只给 up_limit/down_limit；pre_close 同样是 Tushare
+            # daily 的直接字段。真实 provider 会缓存 sync 已取得的当日日线，
+            # 因而这里不会多耗一次接口调用。
+            if "pre_close" not in raw.columns:
+                daily = provider.daily(day)
+                raw = raw.join(
+                    daily.select("ts_code", "trade_date", "pre_close"),
+                    on=["ts_code", "trade_date"], how="left",
+                )
             frames.append(raw.select(
                 pl.col("ts_code").alias("symbol"),
                 _date_expr("trade_date").alias("dt"),

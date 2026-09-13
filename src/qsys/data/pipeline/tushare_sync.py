@@ -14,7 +14,7 @@ tests/data/pipeline/test_tushare_sync.py 有一条守卫测试盯着这件事—
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 
 import structlog
 
@@ -76,6 +76,11 @@ def last_open_day(client, today: date) -> date | None:
         return None
     stamp = days[-1]
     return date(int(stamp[:4]), int(stamp[4:6]), int(stamp[6:]))
+
+
+def completed_calendar_end(now: datetime) -> date:
+    """自动同步允许查询到的最后自然日；16:00 前不选择当日。"""
+    return now.date() if now.time() >= time(16, 0) else now.date() - timedelta(days=1)
 
 
 def sync(provider, warehouse: Warehouse, day: date) -> dict[str, int]:

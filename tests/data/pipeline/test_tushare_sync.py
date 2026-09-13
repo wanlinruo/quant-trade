@@ -1,13 +1,13 @@
 """每日增量同步。拿不到数据必须显式失败，不许静默当成正常。"""
 
 import importlib
-from datetime import date
+from datetime import date, datetime
 
 import polars as pl
 import pytest
 
 from qsys.data.pipeline import tushare_sync
-from qsys.data.pipeline.tushare_sync import last_open_day, sync
+from qsys.data.pipeline.tushare_sync import completed_calendar_end, last_open_day, sync
 
 DAY = date(2026, 9, 11)
 
@@ -155,3 +155,8 @@ def test_last_open_day_when_trade_cal_is_empty():
     """trade_cal 空 = 最近 30 天没有交易日（数据本身有问题），返回 None。"""
     client = FakeCalClient([])
     assert last_open_day(client, date(2026, 9, 11)) is None
+
+
+def test_automatic_day_never_selects_an_unclosed_session():
+    assert completed_calendar_end(datetime(2026, 9, 14, 15, 59)) == date(2026, 9, 13)
+    assert completed_calendar_end(datetime(2026, 9, 14, 16, 0)) == date(2026, 9, 14)

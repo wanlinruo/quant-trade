@@ -63,6 +63,22 @@ def test_price_limits_are_direct_and_idempotent(warehouse):
     assert got["pre_close"].to_list() == [11.70, 250.0]
 
 
+def test_price_limits_get_pre_close_from_tushare_daily_when_api_omits_it(warehouse):
+    provider = FakeProvider(
+        stk_limit=pl.DataFrame({
+            "ts_code": ["000001.SZ"], "trade_date": ["20260911"],
+            "up_limit": [12.87], "down_limit": [10.53],
+        }),
+        daily=pl.DataFrame({
+            "ts_code": ["000001.SZ"], "trade_date": ["20260911"],
+            "pre_close": [11.70],
+        }),
+    )
+    provider.daily = lambda _day: provider.tables["daily"]
+    ingest_price_limits(provider, warehouse, [DAY])
+    assert WarehouseQuery(warehouse).price_limits(None, DAY, DAY)["pre_close"].item() == 11.70
+
+
 def test_empty_reference_days_write_nothing(warehouse):
     provider = FakeProvider()
     assert ingest_price_limits(provider, warehouse, [DAY]) == 0

@@ -27,6 +27,16 @@ def test_daily_passes_compact_trade_date_and_preserves_values():
     assert got["amount"].to_list() == [682946.78266]
 
 
+def test_daily_is_cached_per_provider_and_day():
+    client = FakeClient([{"ts_code": "000001.SZ", "vol": "1.5"}])
+    provider = TushareProvider(client)
+    first = provider.daily(date(2026, 9, 11))
+    first.clear()
+    second = provider.daily(date(2026, 9, 11))
+    assert second.height == 1
+    assert len(client.calls) == 1
+
+
 def test_daily_basic_calls_the_declared_interface():
     client = FakeClient([{"ts_code": "000001.SZ", "total_share": "1.5"}])
     got = TushareProvider(client).daily_basic(date(2026, 9, 11))
