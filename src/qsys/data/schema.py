@@ -265,6 +265,21 @@ PAID_DAILY = pa.schema(
     },
 )
 
+# Tushare Pro 日线，28 列。与 PAID_DAILY 同名、同序、同类型——换源不改 schema，
+# 只改 metadata 的来源标记。这样计划 A 建立的查询层与派生链路无需任何改动。
+TUSHARE_DAILY = pa.schema(
+    list(PAID_DAILY),
+    metadata={
+        b"provider": b"tushare-pro",
+        b"volume_unit": b"lot=100 shares",
+        b"money_unit": b"CNY",
+        b"share_capital_unit": b"share",
+        b"percentage_unit": b"percent",
+        b"factor": b"cumulative backward adjustment",
+        b"apis": b"daily+daily_basic+adj_factor",
+    },
+)
+
 
 PARTITIONED: dict[str, pa.Schema] = {
     "bars_daily": BARS_DAILY,
@@ -279,6 +294,7 @@ PARTITIONED: dict[str, pa.Schema] = {
     "live_fills": LIVE_FILLS,
     "live_rejects": LIVE_REJECTS,
     "live_recon": LIVE_RECON,
+    "tushare_daily": TUSHARE_DAILY,
 }
 
 UNPARTITIONED: dict[str, pa.Schema] = {
