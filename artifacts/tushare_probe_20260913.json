@@ -1,0 +1,293 @@
+{
+  "probed_at": "2026-09-13T10:35:18",
+  "note": "凭证不落盘。本文件可入库。",
+  "connectivity": {
+    "ok": true,
+    "rows": 5562,
+    "msg": "",
+    "seconds": 0.83
+  },
+  "stock_basic_delisted": {
+    "ok": true,
+    "rows": 339,
+    "msg": ""
+  },
+  "stk_limit_history": {
+    "20260911": {
+      "ok": true,
+      "rows": 5641,
+      "msg": ""
+    },
+    "20250102": {
+      "ok": true,
+      "rows": 5467,
+      "msg": ""
+    },
+    "20240102": {
+      "ok": true,
+      "rows": 5377,
+      "msg": ""
+    },
+    "20230103": {
+      "ok": true,
+      "rows": 5110,
+      "msg": ""
+    },
+    "20220104": {
+      "ok": true,
+      "rows": 4727,
+      "msg": ""
+    },
+    "20210104": {
+      "ok": true,
+      "rows": 4179,
+      "msg": ""
+    },
+    "20200102": {
+      "ok": true,
+      "rows": 3801,
+      "msg": ""
+    },
+    "20190102": {
+      "ok": true,
+      "rows": 3566,
+      "msg": ""
+    },
+    "20180102": {
+      "ok": true,
+      "rows": 3466,
+      "msg": ""
+    },
+    "20160104": {
+      "ok": true,
+      "rows": 2809,
+      "msg": ""
+    },
+    "20140102": {
+      "ok": true,
+      "rows": 2466,
+      "msg": ""
+    },
+    "20100104": {
+      "ok": true,
+      "rows": 1671,
+      "msg": ""
+    },
+    "20050104": {
+      "ok": true,
+      "rows": 0,
+      "msg": ""
+    },
+    "20000104": {
+      "ok": true,
+      "rows": 0,
+      "msg": ""
+    }
+  },
+  "daily_20260911": {
+    "ok": true,
+    "rows": 5550,
+    "msg": "",
+    "seconds": 1.07,
+    "fields": [
+      "ts_code",
+      "trade_date",
+      "open",
+      "high",
+      "low",
+      "close",
+      "pre_close",
+      "change",
+      "pct_chg",
+      "vol",
+      "amount"
+    ]
+  },
+  "daily_basic_20260911": {
+    "ok": true,
+    "rows": 5550,
+    "msg": "",
+    "seconds": 0.85,
+    "fields": [
+      "ts_code",
+      "trade_date",
+      "close",
+      "turnover_rate",
+      "turnover_rate_f",
+      "volume_ratio",
+      "pe",
+      "pe_ttm",
+      "pb",
+      "ps",
+      "ps_ttm",
+      "dv_ratio",
+      "dv_ttm",
+      "total_share",
+      "float_share",
+      "free_share",
+      "total_mv",
+      "circ_mv"
+    ]
+  },
+  "adj_factor_20260911": {
+    "ok": true,
+    "rows": 5562,
+    "msg": "",
+    "seconds": 0.51,
+    "fields": [
+      "ts_code",
+      "trade_date",
+      "adj_factor"
+    ]
+  },
+  "index_daily_csi300": {
+    "ok": true,
+    "rows": 9,
+    "msg": "",
+    "fields": [
+      "ts_code",
+      "trade_date",
+      "close",
+      "open",
+      "high",
+      "low",
+      "pre_close",
+      "change",
+      "pct_chg",
+      "vol",
+      "amount"
+    ]
+  },
+  "suspend_d": {
+    "ok": true,
+    "rows": 13,
+    "msg": "",
+    "fields": [
+      "ts_code",
+      "trade_date",
+      "suspend_timing",
+      "suspend_type"
+    ]
+  },
+  "limit_list_d_history": {
+    "20260911": {
+      "ok": true,
+      "rows": 40,
+      "msg": ""
+    },
+    "20250102": {
+      "ok": true,
+      "rows": 58,
+      "msg": ""
+    },
+    "20240102": {
+      "ok": true,
+      "rows": 52,
+      "msg": ""
+    },
+    "20230103": {
+      "ok": true,
+      "rows": 96,
+      "msg": ""
+    },
+    "20220104": {
+      "ok": true,
+      "rows": 94,
+      "msg": ""
+    },
+    "20210104": {
+      "ok": true,
+      "rows": 111,
+      "msg": ""
+    },
+    "20200102": {
+      "ok": true,
+      "rows": 84,
+      "msg": ""
+    },
+    "20190102": {
+      "ok": true,
+      "rows": 0,
+      "msg": ""
+    }
+  },
+  "namechange": {
+    "ok": true,
+    "rows": 12,
+    "msg": "",
+    "fields": [
+      "ts_code",
+      "name",
+      "start_date",
+      "end_date",
+      "ann_date",
+      "change_reason"
+    ],
+    "sample": [
+      [
+        "000010.SZ",
+        "*ST美丽",
+        "20260430",
+        null,
+        "20260429",
+        "*ST"
+      ],
+      [
+        "000010.SZ",
+        "美丽生态",
+        "20200722",
+        "20260429",
+        "20200721",
+        "撤销*ST"
+      ],
+      [
+        "000010.SZ",
+        "*ST美丽",
+        "20190426",
+        "20200721",
+        "20190425",
+        "*ST"
+      ]
+    ]
+  },
+  "trade_cal": {
+    "ok": true,
+    "rows": 30,
+    "msg": ""
+  },
+  "burst_12_calls": {
+    "all_ok": false,
+    "failures": [
+      {
+        "ok": false,
+        "rows": 0,
+        "seconds": 60.27,
+        "msg": "TimeoutError: The read operation timed out"
+      }
+    ],
+    "total_seconds": 65.13
+  },
+  "cross_check_20260911": {
+    "note": "Tushare daily vs 现有 paid_daily 逐字段比对，在生产节点执行",
+    "tushare_rows": 5550,
+    "paid_daily_rows": 5550,
+    "joined": 5550,
+    "only_in_paid": 0,
+    "only_in_tushare": 0,
+    "max_abs_diff": {
+      "open": 0.0,
+      "high": 0.0,
+      "low": 0.0,
+      "close": 0.0,
+      "pre_close": 0.0,
+      "volume": 0.0,
+      "amount": 0.0
+    },
+    "conclusion": "逐字段零差异。百度网盘卖家转售 Tushare 一事由推断升级为实测证实。"
+  },
+  "node_connectivity": {
+    "ok": true,
+    "seconds_per_call": 0.38,
+    "note": "腾讯云节点直连 api.tushare.pro 正常"
+  }
+}
