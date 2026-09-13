@@ -58,12 +58,14 @@ class FakeProvider:
         return pl.DataFrame()
 
 
-def test_reports_row_counts_per_dataset(warehouse):
+def test_reports_row_counts_per_dataset(warehouse, monkeypatch):
+    monkeypatch.setattr(tushare_sync, "_REFERENCE_STEPS", [])
     got = sync(FakeProvider(), warehouse, DAY)
     assert got["tushare_daily"] == 1
 
 
-def test_an_empty_daily_is_an_explicit_failure(warehouse):
+def test_an_empty_daily_is_an_explicit_failure(warehouse, monkeypatch):
+    monkeypatch.setattr(tushare_sync, "_REFERENCE_STEPS", [])
     """日线 0 行 = 上游没给数据。静默当成正常正是 09-10/11 事故的根因。"""
     with pytest.raises(RuntimeError) as exc:
         sync(FakeProvider(daily_rows=0), warehouse, DAY)
@@ -89,17 +91,26 @@ def test_an_empty_daily_writes_nothing(warehouse, monkeypatch):
         return 0
 
     monkeypatch.setattr(tushare_sync, "write_year", fake_write_year)
+    monkeypatch.setattr(tushare_sync, "_REFERENCE_STEPS", [])
 
     with pytest.raises(RuntimeError):
         sync(FakeProvider(daily_rows=0), warehouse, DAY)
     assert calls == []
 
 
-def test_does_not_call_interfaces_it_does_not_need(warehouse):
+def test_daily_stage_calls_exactly_its_three_interfaces(warehouse, monkeypatch):
     """每次接口调用都是积分。只该调 daily / daily_basic / adj_factor 三个。"""
+    monkeypatch.setattr(tushare_sync, "_REFERENCE_STEPS", [])
     provider = FakeProvider()
     sync(provider, warehouse, DAY)
     assert sorted(provider.calls) == ["adj_factor", "daily", "daily_basic"]
+
+
+def test_all_reference_datasets_have_a_daily_step():
+    assert {name for name, _ in tushare_sync._REFERENCE_STEPS} == {
+        "price_limits_daily", "suspend_daily", "index_bars",
+        "instruments", "name_history", "limit_list_daily",
+    }
 
 
 def test_every_reference_ingest_is_wired_into_sync():
@@ -122,8 +133,7 @@ def test_every_reference_ingest_is_wired_into_sync():
         return
     exported = {n for n in dir(ref) if n.startswith("ingest_")}
     missing = {n for n in exported
-               if not any(fn is getattr(ref, n, None)
-                          for _, fn in tushare_sync._REFERENCE_STEPS)}
+               if getattr(ref, n, None) not in tushare_sync._REFERENCE_INGESTS}
     assert not missing, f"这些采集函数没接进每日同步：{sorted(missing)}"
 
 

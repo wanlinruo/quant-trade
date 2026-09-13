@@ -15,7 +15,7 @@ def warehouse(tmp_path: Path) -> Warehouse:
 
 @pytest.fixture
 def write_daily_bars():
-    """把 8 列日线写进 paid_daily 分区，供既有测试复用。
+    """把日线夹具写进生产 ``tushare_daily`` 分区，供既有测试复用。
 
     paid_daily 永久只读、不经 Warehouse.write，所以这里直接落分区文件。
     未提供的 20 列一律补 **null**——补 0 会让下游把「没有数据」当成
@@ -31,10 +31,10 @@ def write_daily_bars():
             + [pl.lit(None, dtype=pl.Float64).alias(n) for n in missing if n != "name"]
         ).select(schema.PAID_DAILY.names)
         for year in sorted({d.year for d in frame["dt"].to_list()}):
-            path = warehouse.root / "paid_daily" / f"year={year}" / "part.parquet"
+            path = warehouse.root / "tushare_daily" / f"year={year}" / "part.parquet"
             path.parent.mkdir(parents=True, exist_ok=True)
             mask = pl.col("dt").is_between(date(year, 1, 1), date(year, 12, 31))
-            chunk = frame.filter(mask).to_arrow().cast(schema.PAID_DAILY)
+            chunk = frame.filter(mask).to_arrow().cast(schema.TUSHARE_DAILY)
             pq.write_table(chunk, path)
 
     return write

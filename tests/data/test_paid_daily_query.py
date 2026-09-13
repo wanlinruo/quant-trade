@@ -20,6 +20,14 @@ def _write_paid(warehouse, rows):
     pq.write_table(table, path)
 
 
+def _write_tushare(warehouse, rows):
+    frame = pl.DataFrame(rows)
+    table = frame.to_arrow().cast(schema.TUSHARE_DAILY)
+    path = warehouse.root / "tushare_daily" / "year=2026" / "part.parquet"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pq.write_table(table, path)
+
+
 def _paid_row(symbol, dt, close, volume):
     row = {"dt": dt, "symbol": symbol, "name": "平安银行"}
     for field in schema.PAID_DAILY.names:
@@ -32,8 +40,8 @@ def _paid_row(symbol, dt, close, volume):
     return row
 
 
-def test_daily_bars_reads_the_paid_source(warehouse):
-    _write_paid(warehouse, [_paid_row("000001.SZ", DAYS[0], 11.70, 582305.98)])
+def test_daily_bars_reads_tushare(warehouse):
+    _write_tushare(warehouse, [_paid_row("000001.SZ", DAYS[0], 11.70, 582305.98)])
     got = WarehouseQuery(warehouse).daily_bars(None, DAYS[0], DAYS[-1])
     assert got.height == 1
     assert got["close"].to_list() == [11.70]
@@ -41,7 +49,7 @@ def test_daily_bars_reads_the_paid_source(warehouse):
 
 def test_daily_bars_keeps_the_fractional_lot_count(warehouse):
     """付费源 volume 带小数，取整是有损变换。"""
-    _write_paid(warehouse, [_paid_row("000001.SZ", DAYS[0], 11.70, 582305.98)])
+    _write_tushare(warehouse, [_paid_row("000001.SZ", DAYS[0], 11.70, 582305.98)])
     got = WarehouseQuery(warehouse).daily_bars(None, DAYS[0], DAYS[-1])
     assert got["volume"].dtype == pl.Float64
     assert got["volume"].to_list() == [582305.98]
@@ -49,7 +57,7 @@ def test_daily_bars_keeps_the_fractional_lot_count(warehouse):
 
 def test_daily_bars_projects_exactly_the_eight_columns(warehouse):
     """32 处调用点依赖这 8 列，多给或少给都会波及下游。"""
-    _write_paid(warehouse, [_paid_row("000001.SZ", DAYS[0], 11.70, 100.0)])
+    _write_tushare(warehouse, [_paid_row("000001.SZ", DAYS[0], 11.70, 100.0)])
     got = WarehouseQuery(warehouse).daily_bars(None, DAYS[0], DAYS[-1])
     assert got.columns == list(schema.DAILY_BARS.names)
 
@@ -80,8 +88,8 @@ def test_legacy_daily_bars_still_reads_the_frozen_table(warehouse):
     assert got["volume"].dtype == pl.Int64
 
 
-def test_daily_bars_does_not_fall_back_to_the_frozen_table(warehouse):
-    """只写了旧表时 daily_bars 必须返回空。
+def test_daily_bars_does_not_fall_back_to_frozen_sources(warehouse):
+    """只写了两张冻结旧表时 daily_bars 必须返回空。
 
     悄悄回退到旧表，就等于在付费源缺数据的日子里用另一个源顶上，
     而调用方不会知道——这正是要消除的双主表歧义。
@@ -91,7 +99,14 @@ def test_daily_bars_does_not_fall_back_to_the_frozen_table(warehouse):
          "low": [11.69], "close": [11.70], "volume": [582306], "amount": [6.8e8]}
     )
     warehouse.write("bars_daily", old.to_arrow().cast(schema.BARS_DAILY), year=2026)
+    _write_paid(warehouse, [_paid_row("000001.SZ", DAYS[0], 99.0, 100.0)])
     assert WarehouseQuery(warehouse).daily_bars(None, DAYS[0], DAYS[-1]).height == 0
+
+
+def test_legacy_paid_daily_reads_the_frozen_paid_table(warehouse):
+    _write_paid(warehouse, [_paid_row("000001.SZ", DAYS[0], 11.70, 100.0)])
+    got = WarehouseQuery(warehouse).legacy_paid_daily(None, DAYS[0], DAYS[0])
+    assert got["close"].to_list() == [11.70]
 
 
 def test_write_daily_bars_fixture_round_trips(warehouse, write_daily_bars):
@@ -108,6 +123,6 @@ def test_write_daily_bars_fixture_round_trips(warehouse, write_daily_bars):
     got = WarehouseQuery(warehouse).daily_bars(None, DAYS[0], DAYS[0])
     assert got["close"].to_list() == [11.70]
 
-    full = WarehouseQuery(warehouse).paid_daily(None, DAYS[0], DAYS[0])
+    full = WarehouseQuery(warehouse).tushare_daily(None, DAYS[0], DAYS[0])
     assert full["factor"].to_list() == [None]
     assert full["name"].to_list() == [None]

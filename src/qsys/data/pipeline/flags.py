@@ -5,7 +5,7 @@
   炸板   high >= limit_up 但 close < limit_up
   首板   今日涨停且昨日未涨停（连板不是首板）
 
-派生自 paid_daily + instruments.board，可完全重算——重算必须得到相同结果。
+派生自 tushare_daily + instruments.board，可完全重算——重算必须得到相同结果。
 
 **全表用 polars 表达式算，不逐行 iter_rows**：全市场 4 年约 500 万行，
 每行造一个 dict 会占几个 GB。
@@ -115,7 +115,7 @@ def build_daily_flags(
             continue
 
         # 取 28 列：name 给 ST 真值，pre_close 给涨跌停基准。
-        bars = query.paid_daily(None, lo - timedelta(days=_LOOKBACK_DAYS), hi)
+        bars = query.tushare_daily(None, lo - timedelta(days=_LOOKBACK_DAYS), hi)
         if bars.height == 0:
             continue
         if boards is not None:
@@ -195,7 +195,7 @@ def _compute(bars: pl.DataFrame, boards: dict[str, str]) -> pl.DataFrame:
         pl.col("pre_close").alias("adj_prev_close"),
         ratio.alias("_ratio"),
         is_st.alias("is_st"),
-        pl.lit("paid", dtype=pl.Utf8).alias("st_source"),
+        pl.lit("tushare", dtype=pl.Utf8).alias("st_source"),
     )
 
     frame = frame.with_columns(

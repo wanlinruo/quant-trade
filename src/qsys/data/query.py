@@ -109,19 +109,16 @@ class WarehouseQuery:
         start: date,
         end: date,
     ) -> pl.DataFrame:
-        """日线。**读付费源 `paid_daily`**，投影 8 列。
+        """生产日线。**读 Tushare 直连表 `tushare_daily`**，投影 8 列。
 
-        由 `bars_daily` 换底而来（依据见
-        docs/superpowers/specs/2026-09-12-paid-daily-truth-source-design.md §5）：
-        mootdx 的 K 线接口在上游失效，付费源成为唯一日线真值源。列名与旧表
-        相同，故 32 处调用点无需改动；唯一差别是 `volume` 为 Float64——
-        付费源的手数带小数，取整会丢精度。
+        2026-09-13 由 ``paid_daily`` 原子换底，依据是 Tushare 换源对账报告。
+        两者逐字段同源，直连消除了人工转存中断。``volume`` 保持 Float64。
 
-        **不回退旧表。** 付费源没有的日期就是没有，回退会让调用方在不知情的
+        **不回退旧表。** Tushare 没有的日期就是没有，回退会让调用方在不知情的
         情况下拿到另一个源的值。
         """
         return self._dated_query(
-            "paid_daily", _DAILY_BAR_COLUMNS, schema.DAILY_BARS, symbols, start, end
+            "tushare_daily", _DAILY_BAR_COLUMNS, schema.DAILY_BARS, symbols, start, end
         )
 
     def paid_daily(
@@ -147,12 +144,29 @@ class WarehouseQuery:
         symbols: Sequence[str] | None,
         start: date,
         end: date,
+        *,
+        columns: Sequence[str] | None = None,
     ) -> pl.DataFrame:
-        """Tushare 日线全部 28 列。切换生产查询之前，只有对账与回填读它。"""
-        columns = ", ".join(schema.TUSHARE_DAILY.names)
+        """Tushare 直连日线；可投影列以控制全历史任务内存。"""
+        names = list(columns) if columns is not None else schema.TUSHARE_DAILY.names
+        unknown = set(names) - set(schema.TUSHARE_DAILY.names)
+        if unknown:
+            raise ValueError(f"unknown tushare_daily columns: {sorted(unknown)}")
+        selected_schema = pa.schema([schema.TUSHARE_DAILY.field(name) for name in names])
         return self._dated_query(
-            "tushare_daily", columns, schema.TUSHARE_DAILY, symbols, start, end
+            "tushare_daily", ", ".join(names), selected_schema, symbols, start, end
         )
+
+    def legacy_paid_daily(
+        self,
+        symbols: Sequence[str] | None,
+        start: date,
+        end: date,
+        *,
+        columns: Sequence[str] | None = None,
+    ) -> pl.DataFrame:
+        """冻结的百度网盘日线，仅供换源审计与对账。"""
+        return self.paid_daily(symbols, start, end, columns=columns)
 
     def legacy_daily_bars(
         self,
@@ -195,6 +209,33 @@ class WarehouseQuery:
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
         return self._con.execute(sql + " ORDER BY symbol, dt", params).pl()
+
+    def price_limits(
+        self, symbols: Sequence[str] | None, start: date, end: date
+    ) -> pl.DataFrame:
+        """每日涨跌停价格真值（Tushare ``stk_limit``）。"""
+        return self._dated_query(
+            "price_limits_daily", ", ".join(schema.PRICE_LIMITS_DAILY.names),
+            schema.PRICE_LIMITS_DAILY, symbols, start, end,
+        )
+
+    def suspensions(
+        self, symbols: Sequence[str] | None, start: date, end: date
+    ) -> pl.DataFrame:
+        """每日停复牌真值（Tushare ``suspend_d``）。"""
+        return self._dated_query(
+            "suspend_daily", ", ".join(schema.SUSPEND_DAILY.names),
+            schema.SUSPEND_DAILY, symbols, start, end,
+        )
+
+    def limit_list(
+        self, symbols: Sequence[str] | None, start: date, end: date
+    ) -> pl.DataFrame:
+        """涨跌停列表（Tushare ``limit_list_d``；自 2020 年起）。"""
+        return self._dated_query(
+            "limit_list_daily", ", ".join(schema.LIMIT_LIST_DAILY.names),
+            schema.LIMIT_LIST_DAILY, symbols, start, end,
+        )
 
     def minute_bars(
         self,
@@ -323,14 +364,14 @@ class WarehouseQuery:
         也可能恰好那天上市，区分不了。调用方按「不新」处理即可——
         入场判定另需 60 根历史，前 60 个交易日本就选不出票。
 
-        **读 `paid_daily`，不是 `bars_daily`。** 与 `daily_bars()` 同源
+        **读 `tushare_daily`，不是两张冻结旧表。** 与 `daily_bars()` 同源
         （见其文档字符串）：`bars_daily` 已冻结不再更新，若还从那张表算
         「首个 bar 日期」，换源之后新上市的标的永远查不到自己的上市日。
         而 `candidate_pool` 的 `keep()` 是「不知道上市日就不放行」，
         于是这些标的会被**永久排除**在候选池之外——哪怕早已上市超过 50 天。
         是静默少选，不是多选。
         """
-        glob = self._glob("paid_daily", partitioned=True)
+        glob = self._glob("tushare_daily", partitioned=True)
         if glob is None:
             return {}
         rows = self._con.execute(
@@ -340,6 +381,11 @@ class WarehouseQuery:
 
     def instruments(self) -> pl.DataFrame:
         return self._read_unpartitioned("instruments", schema.INSTRUMENTS)
+
+    def name_history(self, symbols: Sequence[str] | None = None) -> pl.DataFrame:
+        """曾用名区间表；ST 状态由区间覆盖关系派生。"""
+        frame = self._read_unpartitioned("name_history", schema.NAME_HISTORY, symbols)
+        return frame.sort(["symbol", "start_date"])
 
     def corporate_actions(self, symbols: Sequence[str] | None = None) -> pl.DataFrame:
         return self._read_unpartitioned(

@@ -18,17 +18,45 @@ from datetime import date, timedelta
 
 import structlog
 
+from qsys.data.pipeline.index_bars import CSI300
 from qsys.data.pipeline.tushare_daily import compose_daily, write_year
+from qsys.data.pipeline import tushare_reference as reference
 from qsys.data.storage import Warehouse
 
 log = structlog.get_logger(__name__)
 
-# (数据集名, 采集函数)。函数签名统一为 fn(provider, warehouse, [day]) -> int。
-#   Task 4: ingest_price_limits    Task 5: ingest_suspensions
-#   Task 6: ingest_index_daily     Task 8: ingest_limit_list
-# Task 6 落地时从 qsys.data.pipeline.index_bars 取 CSI300，不在这里重复定义
-# ——同一字面量两处定义早晚会漂移。
-_REFERENCE_STEPS: list[tuple[str, Callable[..., int]]] = []
+def _sync_index(provider, warehouse: Warehouse, days: list[date]) -> int:
+    return reference.ingest_index_daily(provider, warehouse, [CSI300], days[0], days[-1])
+
+
+def _sync_instruments(provider, warehouse: Warehouse, _days: list[date]) -> int:
+    return reference.ingest_instruments(provider, warehouse)
+
+
+def _sync_name_history(provider, warehouse: Warehouse, _days: list[date]) -> int:
+    return reference.ingest_name_history(provider, warehouse)
+
+
+# 每日任务的统一签名是 fn(provider, warehouse, [day])。指数与无分区主表的
+# 原始 ingest 签名不同，故用三个显式适配器；不要用 partial 隐藏参数语义。
+_REFERENCE_STEPS: list[tuple[str, Callable[..., int]]] = [
+    ("price_limits_daily", reference.ingest_price_limits),
+    ("suspend_daily", reference.ingest_suspensions),
+    ("index_bars", _sync_index),
+    ("instruments", _sync_instruments),
+    ("name_history", _sync_name_history),
+    ("limit_list_daily", reference.ingest_limit_list),
+]
+
+# 接线守卫检查的是实际公开 ingest，而不是适配器函数名。
+_REFERENCE_INGESTS = {
+    reference.ingest_price_limits,
+    reference.ingest_suspensions,
+    reference.ingest_index_daily,
+    reference.ingest_instruments,
+    reference.ingest_name_history,
+    reference.ingest_limit_list,
+}
 
 
 def last_open_day(client, today: date) -> date | None:

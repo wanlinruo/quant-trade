@@ -55,3 +55,42 @@ def test_numeric_type_inference_scans_every_upstream_row():
     rows.append({"ts_code": "600000.SH", "pe": 1.204})
     got = TushareProvider(FakeClient(rows)).daily_basic(date(1995, 4, 20))
     assert got["pe"].tail(1).to_list() == [1.204]
+
+
+def test_reference_daily_interfaces_use_compact_dates():
+    day = date(2026, 9, 11)
+    client = FakeClient([])
+    provider = TushareProvider(client)
+    provider.stk_limit(day)
+    provider.suspend_d(day)
+    provider.limit_list_d(day, "U")
+    assert client.calls == [
+        ("stk_limit", {"trade_date": "20260911"}, ""),
+        ("suspend_d", {"trade_date": "20260911"}, ""),
+        ("limit_list_d", {"trade_date": "20260911", "limit_type": "U"}, ""),
+    ]
+
+
+def test_index_daily_passes_code_and_range():
+    client = FakeClient([])
+    TushareProvider(client).index_daily(
+        "000300.SH", date(2005, 1, 1), date(2026, 9, 11)
+    )
+    assert client.calls == [(
+        "index_daily",
+        {"ts_code": "000300.SH", "start_date": "20050101", "end_date": "20260911"},
+        "",
+    )]
+
+
+def test_static_reference_interfaces_request_declared_fields():
+    client = FakeClient([])
+    provider = TushareProvider(client)
+    provider.stock_basic("D")
+    provider.namechange()
+    assert client.calls == [
+        ("stock_basic", {"exchange": "", "list_status": "D"},
+         "ts_code,symbol,name,area,industry,list_date,delist_date"),
+        ("namechange", {},
+         "ts_code,name,start_date,end_date,ann_date,change_reason"),
+    ]

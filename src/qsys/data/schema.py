@@ -130,7 +130,7 @@ DAILY_FLAGS = pa.schema(
         # ST 真值。直取自付费源当日 `name` 列是否含 "ST"。
         # 2026-09-12 之前这里是三条价格启发式反推出来的，一致率 93.8%，已删除。
         ("is_st", pa.bool_()),
-        # 该行 ST 值的来源。本计划内恒为 "paid"；兜底路径（计划 B）会写
+        # 该行 ST 值的来源。生产换源后恒为 "tushare"；兜底路径会写
         # "carried_from_<日期>"，届时消费方必须能区分。
         ("st_source", pa.string()),
     ]
@@ -284,6 +284,53 @@ TUSHARE_DAILY = pa.schema(
     },
 )
 
+# Tushare 参考事实。四张日表均为外部接口直取值，不用价格或名称反推。
+PRICE_LIMITS_DAILY = pa.schema(
+    [
+        ("symbol", pa.string()),
+        ("dt", pa.date32()),
+        ("pre_close", pa.float64()),
+        ("limit_up", pa.float64()),
+        ("limit_down", pa.float64()),
+    ]
+)
+
+SUSPEND_DAILY = pa.schema(
+    [
+        ("symbol", pa.string()),
+        ("dt", pa.date32()),
+        ("suspend_type", pa.string()),  # S 停牌 / R 复牌
+        ("suspend_timing", pa.string()),  # 全天停牌时可为 null
+    ]
+)
+
+# limit_list_d 实测自 2020 年起，且不含 ST 股票统计。
+LIMIT_LIST_DAILY = pa.schema(
+    [
+        ("symbol", pa.string()),
+        ("dt", pa.date32()),
+        ("limit_type", pa.string()),  # U 涨停 / D 跌停 / Z 炸板
+        ("limit_times", pa.int64()),
+        ("open_times", pa.int64()),
+        ("first_time", pa.string()),
+        ("fd_amount", pa.float64()),
+        ("limit_amount", pa.float64()),
+        ("float_mv", pa.float64()),
+    ]
+)
+
+# 曾用名区间原样落库；ST 状态由区间覆盖关系纯派生。
+NAME_HISTORY = pa.schema(
+    [
+        ("symbol", pa.string()),
+        ("name", pa.string()),
+        ("start_date", pa.date32()),
+        ("end_date", pa.date32()),
+        ("ann_date", pa.date32()),
+        ("change_reason", pa.string()),
+    ]
+)
+
 
 PARTITIONED: dict[str, pa.Schema] = {
     "bars_daily": BARS_DAILY,
@@ -299,6 +346,9 @@ PARTITIONED: dict[str, pa.Schema] = {
     "live_rejects": LIVE_REJECTS,
     "live_recon": LIVE_RECON,
     "tushare_daily": TUSHARE_DAILY,
+    "price_limits_daily": PRICE_LIMITS_DAILY,
+    "suspend_daily": SUSPEND_DAILY,
+    "limit_list_daily": LIMIT_LIST_DAILY,
 }
 
 UNPARTITIONED: dict[str, pa.Schema] = {
@@ -306,6 +356,7 @@ UNPARTITIONED: dict[str, pa.Schema] = {
     "corporate_actions": CORPORATE_ACTIONS,
     "adj_factors": ADJ_FACTORS,
     "share_capital": SHARE_CAPITAL,
+    "name_history": NAME_HISTORY,
 }
 
 ALL: dict[str, pa.Schema] = {**PARTITIONED, **UNPARTITIONED}

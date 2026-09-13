@@ -48,3 +48,51 @@ class TushareProvider:
         rows = self._client.call("adj_factor",
                                  {"trade_date": trade_date.strftime("%Y%m%d")})
         return _rows_to_frame(rows, ("adj_factor",))
+
+    def stk_limit(self, trade_date: date) -> pl.DataFrame:
+        rows = self._client.call(
+            "stk_limit", {"trade_date": trade_date.strftime("%Y%m%d")}
+        )
+        return _rows_to_frame(rows, ("pre_close", "up_limit", "down_limit"))
+
+    def suspend_d(self, trade_date: date) -> pl.DataFrame:
+        rows = self._client.call(
+            "suspend_d", {"trade_date": trade_date.strftime("%Y%m%d")}
+        )
+        return pl.DataFrame(rows, infer_schema_length=None) if rows else pl.DataFrame()
+
+    def index_daily(self, ts_code: str, start: date, end: date) -> pl.DataFrame:
+        rows = self._client.call(
+            "index_daily",
+            {
+                "ts_code": ts_code,
+                "start_date": start.strftime("%Y%m%d"),
+                "end_date": end.strftime("%Y%m%d"),
+            },
+        )
+        return _rows_to_frame(
+            rows, ("open", "high", "low", "close", "pre_close", "vol", "amount")
+        )
+
+    def stock_basic(self, list_status: str) -> pl.DataFrame:
+        rows = self._client.call(
+            "stock_basic",
+            {"exchange": "", "list_status": list_status},
+            "ts_code,symbol,name,area,industry,list_date,delist_date",
+        )
+        return pl.DataFrame(rows, infer_schema_length=None) if rows else pl.DataFrame()
+
+    def namechange(self) -> pl.DataFrame:
+        rows = self._client.call(
+            "namechange",
+            {},
+            "ts_code,name,start_date,end_date,ann_date,change_reason",
+        )
+        return pl.DataFrame(rows, infer_schema_length=None) if rows else pl.DataFrame()
+
+    def limit_list_d(self, trade_date: date, limit_type: str = "U") -> pl.DataFrame:
+        rows = self._client.call(
+            "limit_list_d",
+            {"trade_date": trade_date.strftime("%Y%m%d"), "limit_type": limit_type},
+        )
+        return _rows_to_frame(rows, ("fd_amount", "limit_amount", "float_mv"))

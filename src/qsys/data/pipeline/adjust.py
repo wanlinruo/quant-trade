@@ -3,7 +3,7 @@
 行情事实表存不复权价格永不重写，复权因子单独存储并可随时重算——
 这样任意历史时点的复权价都能精确重现，避免前复权序列落盘后腐烂。
 
-价格累计因子从日线真值源的 ``factor`` 列直取。以下公式只用于校验，不再
+价格累计因子从 Tushare 直连日线的 ``factor`` 列直取。以下公式只用于校验，不再
 参与 ``cum_factor`` 落库：除权日单日因子 = 前收盘价 / 除权除息参考价，其中
     参考价 = (前收 - 每股现金红利 + 配股价 x 每股配股数) / (1 + 每股送转 + 每股配股)
     cum_factor(t) = 所有 ex_date <= t 的单日因子连乘
@@ -60,7 +60,7 @@ def share_factor(stock: float, rights: float) -> float:
 def build_adj_factors(warehouse: Warehouse) -> int:
     """落库直取价格因子，并继续派生独立的成交量股本因子。"""
     query = WarehouseQuery(warehouse)
-    direct = paid_factors(query, None, _EPOCH, _HORIZON)
+    direct = tushare_factors(query, None, _EPOCH, _HORIZON)
     if direct.height == 0:
         return 0
 
@@ -103,14 +103,14 @@ def build_adj_factors(warehouse: Warehouse) -> int:
     return result.height
 
 
-def paid_factors(
+def tushare_factors(
     query: WarehouseQuery,
     symbols: Sequence[str] | None,
     start: date,
     end: date,
 ) -> pl.DataFrame:
-    """从付费日线真值源直取累计后复权因子。"""
-    return query.paid_daily(
+    """从 Tushare 直连日线直取累计后复权因子。"""
+    return query.tushare_daily(
         symbols, start, end, columns=["symbol", "dt", "factor"]
     )
 
@@ -147,10 +147,10 @@ def verify_computed_factors(
     for year in range(start.year, end.year + 1):
         lo = max(start, date(year, 1, 1))
         hi = min(end, date(year, 12, 31))
-        paid = query.paid_daily(None, lo, hi, columns=columns)
-        if paid.height == 0:
+        direct_daily = query.tushare_daily(None, lo, hi, columns=columns)
+        if direct_daily.height == 0:
             continue
-        paid = paid.sort(["symbol", "dt"])
+        direct_daily = direct_daily.sort(["symbol", "dt"])
 
         if state:
             prior = pl.DataFrame(
@@ -160,15 +160,15 @@ def verify_computed_factors(
                     "_prior_direct": [v[1] for v in state.values()],
                 }
             )
-            paid = paid.join(prior, on="symbol", how="left")
+            direct_daily = direct_daily.join(prior, on="symbol", how="left")
         else:
-            paid = paid.with_columns(
+            direct_daily = direct_daily.with_columns(
                 pl.lit(None, dtype=pl.Float64).alias("_prior_close"),
                 pl.lit(None, dtype=pl.Float64).alias("_prior_direct"),
             )
 
         frame = (
-            paid.with_columns(
+            direct_daily.with_columns(
                 pl.col("close")
                 .shift(1)
                 .over("symbol")

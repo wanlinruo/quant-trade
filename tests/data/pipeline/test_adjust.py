@@ -9,7 +9,7 @@ from qsys.data.pipeline.adjust import (
     build_adj_factors,
     build_corporate_actions,
     daily_factor,
-    paid_factors,
+    tushare_factors,
     verify_computed_factors,
 )
 from qsys.data.query import WarehouseQuery
@@ -99,7 +99,7 @@ def test_direct_factor_wins_when_corporate_action_computation_disagrees(
 ):
     """价格因子取真值；corporate_actions 只再负责成交量股本因子。"""
     _seed(warehouse, write_daily_bars)
-    path = warehouse.root / "paid_daily" / "year=2024" / "part.parquet"
+    path = warehouse.root / "tushare_daily" / "year=2024" / "part.parquet"
     frame = pl.read_parquet(path).with_columns(
         pl.when(pl.col("dt") >= date(2024, 1, 4))
         .then(3.0)
@@ -235,7 +235,7 @@ def _seed_bars_only(warehouse: Warehouse, write_daily_bars) -> None:
     }))
 
 
-def test_factor_is_read_directly_from_the_paid_source(warehouse, write_daily_bars):
+def test_factor_is_read_directly_from_tushare(warehouse, write_daily_bars):
     day = date(2026, 9, 9)
     write_daily_bars(warehouse, pl.DataFrame({
         "symbol": ["000001.SZ"], "dt": [day], "name": ["平安银行"],
@@ -243,7 +243,7 @@ def test_factor_is_read_directly_from_the_paid_source(warehouse, write_daily_bar
         "pre_close": [11.70], "volume": [100.0], "amount": [1e5],
         "factor": [139.008],
     }))
-    got = paid_factors(WarehouseQuery(warehouse), None, day, day)
+    got = tushare_factors(WarehouseQuery(warehouse), None, day, day)
     assert got.to_dicts() == [{"symbol": "000001.SZ", "dt": day, "factor": 139.008}]
 
 

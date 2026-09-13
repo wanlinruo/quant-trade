@@ -52,7 +52,7 @@ def test_st_is_read_from_the_name_column(warehouse, write_daily_bars):
     build_daily_flags(warehouse, DAYS[1], DAYS[1])
     got = WarehouseQuery(warehouse).daily_flags(DAYS[1], DAYS[1])
     assert got["is_st"].to_list() == [True]
-    assert got["st_source"].to_list() == ["paid"]
+    assert got["st_source"].to_list() == ["tushare"]
 
 
 def test_a_plain_name_is_not_st(warehouse, write_daily_bars):
