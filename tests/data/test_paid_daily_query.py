@@ -92,3 +92,22 @@ def test_daily_bars_does_not_fall_back_to_the_frozen_table(warehouse):
     )
     warehouse.write("bars_daily", old.to_arrow().cast(schema.BARS_DAILY), year=2026)
     assert WarehouseQuery(warehouse).daily_bars(None, DAYS[0], DAYS[-1]).height == 0
+
+
+def test_write_daily_bars_fixture_round_trips(warehouse, write_daily_bars):
+    """夹具写进去的，daily_bars 要能原样读出来。
+
+    缺失的 20 列补 null 而不是 0——0 是一个真实数值，会在下游被当成
+    「成交额为零」「因子为零」使用；null 才是「没有这个数据」。
+    """
+    write_daily_bars(warehouse, pl.DataFrame({
+        "symbol": ["000001.SZ"], "dt": [DAYS[0]],
+        "open": [11.76], "high": [11.79], "low": [11.69], "close": [11.70],
+        "volume": [582306.0], "amount": [6.8e8],
+    }))
+    got = WarehouseQuery(warehouse).daily_bars(None, DAYS[0], DAYS[0])
+    assert got["close"].to_list() == [11.70]
+
+    full = WarehouseQuery(warehouse).paid_daily(None, DAYS[0], DAYS[0])
+    assert full["factor"].to_list() == [None]
+    assert full["name"].to_list() == [None]

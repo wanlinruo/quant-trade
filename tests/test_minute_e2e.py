@@ -6,6 +6,7 @@ Windows 下载那一段不在此覆盖——它依赖 xtquant，Linux 上装不�
 
 from datetime import date, datetime
 
+import polars as pl
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
@@ -23,30 +24,23 @@ D = [date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4)]
 SYMBOL = "600001.SH"
 
 
-def seed_daily_and_flags(warehouse: Warehouse) -> None:
+def seed_daily_and_flags(warehouse: Warehouse, write_daily_bars) -> None:
     """D0 平走、D1 首板涨停、D2 次日——D2 就是候选日。"""
     rows = [
         (D[0], 10.0, 10.0, 10.0, 10.0),
         (D[1], 11.0, 11.0, 11.0, 11.0),
         (D[2], 11.5, 11.9, 11.4, 11.8),
     ]
-    warehouse.write(
-        "bars_daily",
-        pa.table(
-            {
-                "symbol": [SYMBOL] * 3,
-                "dt": [r[0] for r in rows],
-                "open": [r[1] for r in rows],
-                "high": [r[2] for r in rows],
-                "low": [r[3] for r in rows],
-                "close": [r[4] for r in rows],
-                "volume": [1000] * 3,
-                "amount": [0.0] * 3,
-            },
-            schema=schema.BARS_DAILY,
-        ),
-        year=2024,
-    )
+    write_daily_bars(warehouse, pl.DataFrame({
+        "symbol": [SYMBOL] * 3,
+        "dt": [r[0] for r in rows],
+        "open": [r[1] for r in rows],
+        "high": [r[2] for r in rows],
+        "low": [r[3] for r in rows],
+        "close": [r[4] for r in rows],
+        "volume": [1000.0] * 3,
+        "amount": [0.0] * 3,
+    }))
     warehouse.write(
         "instruments",
         pa.table(
@@ -86,8 +80,8 @@ def write_minutes_for_candidate(directory, volumes=(600, 400)):
 
 
 @pytest.fixture
-def rig(warehouse, tmp_path):
-    seed_daily_and_flags(warehouse)
+def rig(warehouse, tmp_path, write_daily_bars):
+    seed_daily_and_flags(warehouse, write_daily_bars)
     return warehouse, tmp_path
 
 

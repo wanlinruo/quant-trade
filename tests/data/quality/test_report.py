@@ -1,5 +1,6 @@
 from datetime import date
 
+import polars as pl
 import pyarrow as pa
 import pytest
 
@@ -19,26 +20,19 @@ SESSIONS = [date(2024, 1, 2), date(2024, 1, 3)]
 CAL = AShareCalendar(SESSIONS)
 
 
-def _seed(warehouse: Warehouse, *, complete: bool = True) -> None:
+def _seed(warehouse: Warehouse, write_daily_bars, *, complete: bool = True) -> None:
     days = SESSIONS if complete else SESSIONS[:1]
     n = len(days)
-    warehouse.write(
-        "bars_daily",
-        pa.table(
-            {
-                "symbol": ["600036.SH"] * n,
-                "dt": days,
-                "open": [10.0] * n,
-                "high": [10.5] * n,
-                "low": [9.8] * n,
-                "close": [10.2] * n,
-                "volume": [1000] * n,
-                "amount": [10200.0] * n,
-            },
-            schema=schema.BARS_DAILY,
-        ),
-        year=2024,
-    )
+    write_daily_bars(warehouse, pl.DataFrame({
+        "symbol": ["600036.SH"] * n,
+        "dt": days,
+        "open": [10.0] * n,
+        "high": [10.5] * n,
+        "low": [9.8] * n,
+        "close": [10.2] * n,
+        "volume": [1000.0] * n,
+        "amount": [10200.0] * n,
+    }))
     warehouse.write(
         "instruments",
         pa.table(
@@ -55,8 +49,8 @@ def _seed(warehouse: Warehouse, *, complete: bool = True) -> None:
     )
 
 
-def test_clean_data_produces_no_violations(warehouse: Warehouse):
-    _seed(warehouse)
+def test_clean_data_produces_no_violations(warehouse: Warehouse, write_daily_bars):
+    _seed(warehouse, write_daily_bars)
     report = run_quality_checks(
         WarehouseQuery(warehouse), CAL, ["600036.SH"], SESSIONS[0], SESSIONS[-1]
     )
@@ -64,8 +58,8 @@ def test_clean_data_produces_no_violations(warehouse: Warehouse):
     assert report.is_blocked is False
 
 
-def test_missing_session_blocks(warehouse: Warehouse):
-    _seed(warehouse, complete=False)
+def test_missing_session_blocks(warehouse: Warehouse, write_daily_bars):
+    _seed(warehouse, write_daily_bars, complete=False)
     report = run_quality_checks(
         WarehouseQuery(warehouse), CAL, ["600036.SH"], SESSIONS[0], SESSIONS[-1]
     )

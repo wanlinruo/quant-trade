@@ -2,6 +2,7 @@
 
 from datetime import date, datetime, time, timedelta
 
+import polars as pl
 import pyarrow as pa
 import pytest
 
@@ -19,14 +20,14 @@ DAYS = [START + timedelta(days=i) for i in range(120)]
 YESTERDAY, TODAY = DAYS[-2], DAYS[-1]
 
 
-def build(warehouse: Warehouse, symbol, closes, highs, lows, amounts, volumes, opens,
-          first_board_on=None, broken_on=None):
+def build(warehouse: Warehouse, write_daily_bars, symbol, closes, highs, lows, amounts,
+          volumes, opens, first_board_on=None, broken_on=None):
     n = len(DAYS)
-    warehouse.write("bars_daily", pa.table({
+    write_daily_bars(warehouse, pl.DataFrame({
         "symbol": [symbol] * n, "dt": list(DAYS),
         "open": opens, "high": highs, "low": lows, "close": closes,
-        "volume": volumes, "amount": amounts,
-    }, schema=schema.BARS_DAILY), year=2024)
+        "volume": [float(v) for v in volumes], "amount": amounts,
+    }))
     warehouse.write("daily_flags", pa.table({
         "dt": list(DAYS), "symbol": [symbol] * n,
         "prev_close": [10.0] * n, "adj_prev_close": [10.0] * n,
@@ -78,13 +79,13 @@ def write_auction(warehouse, symbol, day, volume):
     }, schema=schema.MINUTE_BARS), year=2024)
 
 
-def low_setup(warehouse, symbol="600001.SH", today_open=9.6):
+def low_setup(warehouse, write_daily_bars, symbol="600001.SH", today_open=9.6):
     """构造一只能通过 check_low_open 的票：相对位置低、成交额足、低开 4%。"""
     n = len(DAYS)
     closes = [12.0] * (n - 1) + [10.0]
     closes[-2] = 10.0  # 昨日收盘 10.0
     build(
-        warehouse, symbol,
+        warehouse, write_daily_bars, symbol,
         closes=closes,
         highs=[14.0] * n, lows=[9.5] * n,
         amounts=[2e8] * n, volumes=[1000] * n,
@@ -102,50 +103,50 @@ def selector(warehouse, **kw):
     )
 
 
-def test_low_branch_selects_a_valid_candidate(warehouse):
-    low_setup(warehouse)
+def test_low_branch_selects_a_valid_candidate(warehouse, write_daily_bars):
+    low_setup(warehouse, write_daily_bars)
     picks = selector(warehouse, require_auction_volume=False).select(TODAY, YESTERDAY)
     assert [p.symbol for p in picks] == ["600001.SH"]
     assert picks[0].tag == "LOW_MAIN"
 
 
-def test_low_main_needs_the_auction_volume_filter_when_required(warehouse):
+def test_low_main_needs_the_auction_volume_filter_when_required(warehouse, write_daily_bars):
     """忠实版：没有分钟线就拿不到竞价量，该只整只剔除。"""
-    low_setup(warehouse)
+    low_setup(warehouse, write_daily_bars)
     assert selector(warehouse, require_auction_volume=True).select(TODAY, YESTERDAY) == []
 
 
-def test_low_main_passes_when_the_auction_volume_is_enough(warehouse):
-    low_setup(warehouse)
+def test_low_main_passes_when_the_auction_volume_is_enough(warehouse, write_daily_bars):
+    low_setup(warehouse, write_daily_bars)
     write_auction(warehouse, "600001.SH", TODAY, volume=30)  # 30/1000 = 3% >= 2%
     picks = selector(warehouse, require_auction_volume=True).select(TODAY, YESTERDAY)
     assert [p.symbol for p in picks] == ["600001.SH"]
 
 
-def test_low_main_is_dropped_when_the_auction_volume_is_thin(warehouse):
-    low_setup(warehouse)
+def test_low_main_is_dropped_when_the_auction_volume_is_thin(warehouse, write_daily_bars):
+    low_setup(warehouse, write_daily_bars)
     write_auction(warehouse, "600001.SH", TODAY, volume=10)  # 1% < 2%
     assert selector(warehouse, require_auction_volume=True).select(TODAY, YESTERDAY) == []
 
 
-def test_low_chinext_skips_the_auction_volume_filter(warehouse):
+def test_low_chinext_skips_the_auction_volume_filter(warehouse, write_daily_bars):
     """Stage4 附加过滤只作用于 LOW_MAIN，创业板不受影响。"""
-    low_setup(warehouse, symbol="300001.SZ")
+    low_setup(warehouse, write_daily_bars, symbol="300001.SZ")
     picks = selector(warehouse, require_auction_volume=True).select(TODAY, YESTERDAY)
     assert [p.tag for p in picks] == ["LOW_CHINEXT"]
 
 
-def test_a_gated_out_candidate_is_not_returned(warehouse):
+def test_a_gated_out_candidate_is_not_returned(warehouse, write_daily_bars):
     """LOW_MAIN 判成 RISK 时被 S7 Gate 拒掉。"""
-    low_setup(warehouse)
+    low_setup(warehouse, write_daily_bars)
     write_regime(warehouse, slope=0.5, heat=0.5)  # 趋势不弱且情绪高 -> RISK
     picks = selector(warehouse, require_auction_volume=False).select(TODAY, YESTERDAY)
     assert picks == []
 
 
-def test_gate_decisions_are_recorded_even_when_rejected(warehouse):
+def test_gate_decisions_are_recorded_even_when_rejected(warehouse, write_daily_bars):
     """拒了也要留痕，否则对账时说不清是没选中还是被 Gate 拦了。"""
-    low_setup(warehouse)
+    low_setup(warehouse, write_daily_bars)
     write_regime(warehouse, slope=0.5, heat=0.5)
     sel = selector(warehouse, require_auction_volume=False)
     sel.select(TODAY, YESTERDAY)
@@ -153,11 +154,11 @@ def test_gate_decisions_are_recorded_even_when_rejected(warehouse):
     assert sel.decisions[0].allow is False
 
 
-def test_a_non_first_board_is_not_a_candidate(warehouse):
-    low_setup(warehouse)
+def test_a_non_first_board_is_not_a_candidate(warehouse, write_daily_bars):
+    low_setup(warehouse, write_daily_bars)
     # 把首板标记挪到更早的一天
     build(
-        warehouse, "600001.SH",
+        warehouse, write_daily_bars, "600001.SH",
         closes=[12.0] * (len(DAYS) - 1) + [10.0],
         highs=[14.0] * len(DAYS), lows=[9.5] * len(DAYS),
         amounts=[2e8] * len(DAYS), volumes=[1000] * len(DAYS),

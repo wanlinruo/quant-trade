@@ -2,6 +2,7 @@
 
 from datetime import date, datetime, time
 
+import polars as pl
 import pyarrow as pa
 import pytest
 
@@ -15,25 +16,18 @@ D = [date(2024, 1, d) for d in (2, 3, 4)]
 SESSIONS = list(D)
 
 
-def seed(warehouse: Warehouse) -> None:
+def seed(warehouse: Warehouse, write_daily_bars) -> None:
     n = len(D)
-    warehouse.write(
-        "bars_daily",
-        pa.table(
-            {
-                "symbol": ["600001.SH"] * n,
-                "dt": list(D),
-                "open": [10.0, 11.0, 12.0],
-                "high": [10.5, 11.5, 12.5],
-                "low": [9.5, 10.5, 11.5],
-                "close": [10.2, 11.2, 12.2],
-                "volume": [1000, 2000, 3000],
-                "amount": [0.0] * n,
-            },
-            schema=schema.BARS_DAILY,
-        ),
-        year=2024,
-    )
+    write_daily_bars(warehouse, pl.DataFrame({
+        "symbol": ["600001.SH"] * n,
+        "dt": list(D),
+        "open": [10.0, 11.0, 12.0],
+        "high": [10.5, 11.5, 12.5],
+        "low": [9.5, 10.5, 11.5],
+        "close": [10.2, 11.2, 12.2],
+        "volume": [1000.0, 2000.0, 3000.0],
+        "amount": [0.0] * n,
+    }))
     warehouse.write(
         "daily_flags",
         pa.table(
@@ -117,8 +111,8 @@ def seed(warehouse: Warehouse) -> None:
 
 
 @pytest.fixture
-def market(warehouse):
-    seed(warehouse)
+def market(warehouse, write_daily_bars):
+    seed(warehouse, write_daily_bars)
     return MarketFeed(WarehouseQuery(warehouse), AShareCalendar(SESSIONS))
 
 

@@ -72,7 +72,7 @@ class FakeReference:
         )
 
 
-def test_full_pipeline_produces_pit_queryable_warehouse(tmp_path):
+def test_full_pipeline_produces_pit_queryable_warehouse(tmp_path, write_daily_bars):
     warehouse = Warehouse(tmp_path / "warehouse")
     calendar = AShareCalendar(SESSIONS)
 
@@ -81,6 +81,13 @@ def test_full_pipeline_produces_pit_queryable_warehouse(tmp_path):
         FakeBars(), warehouse, ["600036.SH"], SESSIONS[0], SESSIONS[-1]
     )
     assert written == 3
+    # ingest_daily_bars 只维护冻结的旧表 bars_daily；下面的复权/质检/PIT 读取
+    # 都走 daily_bars()，现在指向付费源 paid_daily。把刚写入的日线原样镜像
+    # 过去——同一份真值，只是补上新的读取入口，不是编造数据。
+    bars = WarehouseQuery(warehouse).legacy_daily_bars(
+        ["600036.SH"], SESSIONS[0], SESSIONS[-1]
+    )
+    write_daily_bars(warehouse, bars)
     assert build_adj_factors(warehouse) == 3
 
     query = WarehouseQuery(warehouse)

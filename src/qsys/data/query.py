@@ -304,8 +304,13 @@ class WarehouseQuery:
         **库内最早日期本身不可信**：那天有 bar 的标的可能上市很久了，
         也可能恰好那天上市，区分不了。调用方按「不新」处理即可——
         入场判定另需 60 根历史，前 60 个交易日本就选不出票。
+
+        **读 `paid_daily`，不是 `bars_daily`。** 与 `daily_bars()` 同源
+        （见其文档字符串）：`bars_daily` 已冻结不再更新，若还从那张表算
+        「首个 bar 日期」，换源之后新上市的标的永远查不到自己的上市日，
+        会被误判为「一直存在」而漏掉新股过滤。
         """
-        glob = self._glob("bars_daily", partitioned=True)
+        glob = self._glob("paid_daily", partitioned=True)
         if glob is None:
             return {}
         rows = self._con.execute(

@@ -76,7 +76,7 @@ def seed_instruments(warehouse: Warehouse, symbols) -> None:
 
 
 @pytest.fixture
-def rig(warehouse):
+def rig(warehouse, write_daily_bars):
     symbols = [f"{600001 + i}.SH" for i in range(5)]
     seed_instruments(warehouse, symbols)
     ingest_universe(
@@ -88,14 +88,20 @@ def rig(warehouse):
         complete_through=SESSIONS[-1],
         batch_size=2,
     )
+    # ingest_universe 只维护冻结的旧表 bars_daily；flags/regime 现在读付费源
+    # paid_daily。把同一批刚写入的日线原样镜像过去，下游派生管线才有数据可读——
+    # 这不是编造，是把 ingest_universe 已经落盘的真值复制到新的读取入口。
+    bars = WarehouseQuery(warehouse).legacy_daily_bars(None, SESSIONS[0], SESSIONS[-1])
+    write_daily_bars(warehouse, bars)
     build_daily_flags(warehouse, SESSIONS[0], SESSIONS[-1])
     build_market_regime(warehouse, SESSIONS[0], SESSIONS[-1])
     return warehouse, symbols
 
 
 def test_all_symbols_are_ingested(rig):
+    """验证 ingest_universe 自己的写入——它写的是冻结的旧表 bars_daily。"""
     warehouse, symbols = rig
-    df = WarehouseQuery(warehouse).daily_bars(None, SESSIONS[0], SESSIONS[-1])
+    df = WarehouseQuery(warehouse).legacy_daily_bars(None, SESSIONS[0], SESSIONS[-1])
     assert df["symbol"].n_unique() == len(symbols)
 
 

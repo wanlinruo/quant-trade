@@ -66,7 +66,7 @@ def test_ingests_every_symbol(warehouse):
     )
     assert progress.done == 5
     assert progress.failed == 0
-    df = WarehouseQuery(warehouse).daily_bars(None, SESSIONS[0], SESSIONS[-1])
+    df = WarehouseQuery(warehouse).legacy_daily_bars(None, SESSIONS[0], SESSIONS[-1])
     assert df["symbol"].n_unique() == 5
 
 
@@ -192,7 +192,7 @@ def test_bars_after_the_last_closed_session_are_dropped(warehouse):
         p, warehouse, symbols(1), SESSIONS[0], SESSIONS[-1],
         complete_through=SESSIONS[-2],
     )
-    df = WarehouseQuery(warehouse).daily_bars(None, SESSIONS[0], SESSIONS[-1])
+    df = WarehouseQuery(warehouse).legacy_daily_bars(None, SESSIONS[0], SESSIONS[-1])
     assert df["dt"].max() == SESSIONS[-2]
 
 

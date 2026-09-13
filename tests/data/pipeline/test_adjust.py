@@ -43,25 +43,18 @@ def test_zero_reference_price_raises():
         daily_factor(1.0, 1.0, 0.0, 0.0, 0.0)
 
 
-def _seed(warehouse: Warehouse) -> None:
+def _seed(warehouse: Warehouse, write_daily_bars) -> None:
     """600036 在 2024-01-04 除权：10 送 10。除权前收 20，除权后 10。"""
-    warehouse.write(
-        "bars_daily",
-        pa.table(
-            {
-                "symbol": ["600036.SH"] * 4,
-                "dt": [date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4), date(2024, 1, 5)],
-                "open": [19.0, 19.5, 10.0, 10.1],
-                "high": [20.0, 20.5, 10.5, 10.6],
-                "low": [18.5, 19.0, 9.8, 9.9],
-                "close": [19.5, 20.0, 10.0, 10.2],
-                "volume": [1000, 1000, 2000, 2000],
-                "amount": [19500.0, 20000.0, 20000.0, 20400.0],
-            },
-            schema=schema.BARS_DAILY,
-        ),
-        year=2024,
-    )
+    write_daily_bars(warehouse, pl.DataFrame({
+        "symbol": ["600036.SH"] * 4,
+        "dt": [date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4), date(2024, 1, 5)],
+        "open": [19.0, 19.5, 10.0, 10.1],
+        "high": [20.0, 20.5, 10.5, 10.6],
+        "low": [18.5, 19.0, 9.8, 9.9],
+        "close": [19.5, 20.0, 10.0, 10.2],
+        "volume": [1000.0, 1000.0, 2000.0, 2000.0],
+        "amount": [19500.0, 20000.0, 20000.0, 20400.0],
+    }))
     warehouse.write(
         "corporate_actions",
         pa.table(
@@ -78,29 +71,29 @@ def _seed(warehouse: Warehouse) -> None:
     )
 
 
-def test_build_writes_one_row_per_bar(warehouse: Warehouse):
-    _seed(warehouse)
+def test_build_writes_one_row_per_bar(warehouse: Warehouse, write_daily_bars):
+    _seed(warehouse, write_daily_bars)
     assert build_adj_factors(warehouse) == 4
     assert WarehouseQuery(warehouse).adj_factors().height == 4
 
 
-def test_factor_is_one_before_ex_date(warehouse: Warehouse):
-    _seed(warehouse)
+def test_factor_is_one_before_ex_date(warehouse: Warehouse, write_daily_bars):
+    _seed(warehouse, write_daily_bars)
     build_adj_factors(warehouse)
     df = WarehouseQuery(warehouse).adj_factors().sort("dt")
     assert df["cum_factor"].to_list()[:2] == [pytest.approx(1.0), pytest.approx(1.0)]
 
 
-def test_factor_doubles_from_ex_date(warehouse: Warehouse):
-    _seed(warehouse)
+def test_factor_doubles_from_ex_date(warehouse: Warehouse, write_daily_bars):
+    _seed(warehouse, write_daily_bars)
     build_adj_factors(warehouse)
     df = WarehouseQuery(warehouse).adj_factors().sort("dt")
     assert df["cum_factor"].to_list()[2:] == [pytest.approx(2.0), pytest.approx(2.0)]
 
 
-def test_adjusted_close_is_continuous_across_ex_date(warehouse: Warehouse):
+def test_adjusted_close_is_continuous_across_ex_date(warehouse: Warehouse, write_daily_bars):
     """除权前后后复权收盘价不应跳变：20.0 -> 10.0 x 2 = 20.0。"""
-    _seed(warehouse)
+    _seed(warehouse, write_daily_bars)
     build_adj_factors(warehouse)
     q = WarehouseQuery(warehouse)
     bars = q.daily_bars(None, date(2024, 1, 1), date(2024, 12, 31))
@@ -111,8 +104,8 @@ def test_adjusted_close_is_continuous_across_ex_date(warehouse: Warehouse):
     assert adjusted[2] == pytest.approx(20.0)
 
 
-def test_build_is_idempotent(warehouse: Warehouse):
-    _seed(warehouse)
+def test_build_is_idempotent(warehouse: Warehouse, write_daily_bars):
+    _seed(warehouse, write_daily_bars)
     build_adj_factors(warehouse)
     build_adj_factors(warehouse)
     assert WarehouseQuery(warehouse).adj_factors().height == 4
@@ -194,29 +187,22 @@ def test_build_corporate_actions_with_no_events_writes_nothing(warehouse: Wareho
     assert build_corporate_actions(_FakeReference({}), warehouse, ["600036.SH"]) == 0
 
 
-def test_factors_are_all_one_when_corporate_actions_missing(warehouse: Warehouse):
+def test_factors_are_all_one_when_corporate_actions_missing(warehouse: Warehouse, write_daily_bars):
     """回归防护：忘记灌 corporate_actions 时因子会全为 1.0 且不报错。"""
-    _seed_bars_only(warehouse)
+    _seed_bars_only(warehouse, write_daily_bars)
     build_adj_factors(warehouse)
     factors = WarehouseQuery(warehouse).adj_factors()
     assert set(factors["cum_factor"].to_list()) == {1.0}
 
 
-def _seed_bars_only(warehouse: Warehouse) -> None:
-    warehouse.write(
-        "bars_daily",
-        pa.table(
-            {
-                "symbol": ["600036.SH"] * 2,
-                "dt": [date(2024, 1, 2), date(2024, 1, 3)],
-                "open": [19.0, 19.5],
-                "high": [20.0, 20.5],
-                "low": [18.5, 19.0],
-                "close": [19.5, 20.0],
-                "volume": [1000, 1000],
-                "amount": [19500.0, 20000.0],
-            },
-            schema=schema.BARS_DAILY,
-        ),
-        year=2024,
-    )
+def _seed_bars_only(warehouse: Warehouse, write_daily_bars) -> None:
+    write_daily_bars(warehouse, pl.DataFrame({
+        "symbol": ["600036.SH"] * 2,
+        "dt": [date(2024, 1, 2), date(2024, 1, 3)],
+        "open": [19.0, 19.5],
+        "high": [20.0, 20.5],
+        "low": [18.5, 19.0],
+        "close": [19.5, 20.0],
+        "volume": [1000.0, 1000.0],
+        "amount": [19500.0, 20000.0],
+    }))
