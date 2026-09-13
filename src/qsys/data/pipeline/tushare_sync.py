@@ -5,10 +5,9 @@ mootdx 上游静默返回空表而系统当成正常，连采了两小时空数�
 停牌、涨跌停列表为空则是常态，不视为失败——这两类的判据在各自的
 ingest_* 函数里，不在这里。
 
-`_REFERENCE_STEPS` 当前为空：涨跌停价、停牌、涨跌停列表、指数日线四张表
-由计划 C 的 Task 4-8 建，各自把自己的 ingest_* 追加进来。
-tests/data/pipeline/test_tushare_sync.py 有一条守卫测试盯着这件事——
-新增采集函数却忘了接线，是「采集不到却不报错」的经典形态。
+`_REFERENCE_STEPS` 已接入涨跌停价、停牌、指数、标的、名称区间和涨停列表。
+tests/data/pipeline/test_tushare_sync.py 有守卫测试盯着这件事——新增采集函数却
+忘了接线，是「采集不到却不报错」的经典形态。
 """
 
 from __future__ import annotations
@@ -21,6 +20,10 @@ import structlog
 from qsys.data.pipeline.index_bars import CSI300
 from qsys.data.pipeline.tushare_daily import compose_daily, write_year
 from qsys.data.pipeline import tushare_reference as reference
+from qsys.data.pipeline.adjust import build_adj_factors
+from qsys.data.pipeline.flags import build_daily_flags
+from qsys.data.pipeline.regime import build_market_regime
+from qsys.data.pipeline.valuation import build_valuation
 from qsys.data.storage import Warehouse
 
 log = structlog.get_logger(__name__)
@@ -57,6 +60,9 @@ _REFERENCE_INGESTS = {
     reference.ingest_name_history,
     reference.ingest_limit_list,
 }
+
+_PRODUCTION_BOARDS = {"main", "gem", "star"}
+_DERIVED_LOOKBACK_DAYS = 150
 
 
 def last_open_day(client, today: date) -> date | None:
@@ -102,4 +108,21 @@ def sync(provider, warehouse: Warehouse, day: date) -> dict[str, int]:
         counts[name] = ingest(provider, warehouse, [day])
 
     log.info("tushare_sync.done", day=str(day), **counts)
+    return counts
+
+
+def refresh_derived(warehouse: Warehouse, day: date) -> dict[str, int]:
+    """事实表成功后刷新所有生产消费者，避免价格与因子/flags 跨日断层。"""
+    start = day - timedelta(days=_DERIVED_LOOKBACK_DAYS)
+    counts = {
+        "adj_factors": build_adj_factors(warehouse),
+        "daily_flags": build_daily_flags(
+            warehouse, start, day, boards=_PRODUCTION_BOARDS
+        ),
+        "market_regime": build_market_regime(
+            warehouse, start, day, boards=_PRODUCTION_BOARDS
+        ),
+        "valuation_snapshot": build_valuation(warehouse, day, day),
+    }
+    log.info("tushare_sync.derived_refreshed", day=str(day), **counts)
     return counts

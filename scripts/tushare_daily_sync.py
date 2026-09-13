@@ -11,7 +11,12 @@ from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from qsys.data.pipeline.tushare_sync import completed_calendar_end, last_open_day, sync
+from qsys.data.pipeline.tushare_sync import (
+    completed_calendar_end,
+    last_open_day,
+    refresh_derived,
+    sync,
+)
 from qsys.data.providers.tushare import TushareProvider
 from qsys.data.providers.tushare_client import TushareClient
 from qsys.data.storage import Warehouse
@@ -36,6 +41,7 @@ def main() -> int:
         return 0
 
     counts = sync(TushareProvider(client), Warehouse(args.warehouse), day)
+    counts.update(refresh_derived(Warehouse(args.warehouse), day))
     print(f"=== {day} ===")
     for name, rows in counts.items():
         print(f"  {name:22s} {rows:>9,} 行")

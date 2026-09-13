@@ -39,7 +39,6 @@ from qsys.data.pipeline.capital import import_share_capital
 from qsys.data.pipeline.flags import build_daily_flags
 from qsys.data.pipeline.index_bars import CSI300, ingest_index_bars
 from qsys.data.pipeline.minutes import import_minute_bars, missing_stock_days
-from qsys.data.pipeline.instruments import build_instruments
 from qsys.data.pipeline.regime import build_market_regime
 from qsys.data.pipeline.valuation import build_valuation
 from qsys.data.pipeline.universe import ingest_universe, source_is_serving
@@ -157,8 +156,12 @@ def main() -> int:
     print(f"=== 归档至 {complete_through}（回看 {args.lookback_days} 天）===")
 
     # --- 2. 标的主表与日线增量 ---
-    print(f"标的主表 {build_instruments(reference, warehouse)} 只")
+    # instruments 已由 16:30 的 Tushare 同步维护（含退市股）。这里若继续调用
+    # AkShare，会在每天 15:40 把真值表覆盖回不含退市股的旧源。
     instruments = WarehouseQuery(warehouse).instruments()
+    if instruments.height == 0:
+        raise RuntimeError("instruments 为空；先恢复 qsys-tushare-sync，不回退 AkShare")
+    print(f"标的主表 {instruments.height} 只（Tushare 已落库）")
     boards = {b.strip() for b in args.boards.split(",") if b.strip()}
     alive = instruments.filter(
         pl.col("board").is_in(list(boards))

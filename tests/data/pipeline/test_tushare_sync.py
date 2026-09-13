@@ -7,7 +7,12 @@ import polars as pl
 import pytest
 
 from qsys.data.pipeline import tushare_sync
-from qsys.data.pipeline.tushare_sync import completed_calendar_end, last_open_day, sync
+from qsys.data.pipeline.tushare_sync import (
+    completed_calendar_end,
+    last_open_day,
+    refresh_derived,
+    sync,
+)
 
 DAY = date(2026, 9, 11)
 
@@ -160,3 +165,23 @@ def test_last_open_day_when_trade_cal_is_empty():
 def test_automatic_day_never_selects_an_unclosed_session():
     assert completed_calendar_end(datetime(2026, 9, 14, 15, 59)) == date(2026, 9, 13)
     assert completed_calendar_end(datetime(2026, 9, 14, 16, 0)) == date(2026, 9, 14)
+
+
+def test_refresh_derived_wires_every_production_consumer(warehouse, monkeypatch):
+    calls = []
+    monkeypatch.setattr(tushare_sync, "build_adj_factors",
+                        lambda wh: calls.append(("factors", wh)) or 1)
+    monkeypatch.setattr(tushare_sync, "build_daily_flags",
+                        lambda wh, start, end, boards: calls.append(
+                            ("flags", wh, start, end, boards)) or 2)
+    monkeypatch.setattr(tushare_sync, "build_market_regime",
+                        lambda wh, start, end, boards: calls.append(
+                            ("regime", wh, start, end, boards)) or 3)
+    monkeypatch.setattr(tushare_sync, "build_valuation",
+                        lambda wh, start, end: calls.append(
+                            ("valuation", wh, start, end)) or 4)
+    got = refresh_derived(warehouse, DAY)
+    assert got == {"adj_factors": 1, "daily_flags": 2, "market_regime": 3,
+                   "valuation_snapshot": 4}
+    assert [call[0] for call in calls] == ["factors", "flags", "regime", "valuation"]
+    assert calls[-1][2:] == (DAY, DAY)

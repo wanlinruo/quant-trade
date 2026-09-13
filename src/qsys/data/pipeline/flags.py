@@ -10,13 +10,13 @@
 **全表用 polars 表达式算，不逐行 iter_rows**：全市场 4 年约 500 万行，
 每行造一个 dict 会占几个 GB。
 
-**ST 是真值，不是推断**（2026-09-12 起）：`is_st` 直取自付费源当日
-`name` 列是否含 "ST"。此前的三条价格启发式（贴 5% 板 + 回看确认 +
+**ST 是真值，不是推断**（2026-09-12 起）：`is_st` 由 Tushare `namechange`
+名称区间按股票日展开。此前的三条价格启发式（贴 5% 板 + 回看确认 +
 制度硬否决）已整段删除——它的近窗一致率只有 93.8%，误差会向下游传播
 并伪装成策略问题。拿不到名称就记 null，**不默认成「不是 ST」**：
 默认 False 会让 ST 股按 10% 档算涨停价，首板判定直接错。
 
-**涨跌停基准直取 `pre_close`**：付费源的 `pre_close` 就是除权参考价
+**涨跌停基准直取 `pre_close`**：Tushare 的 `pre_close` 就是除权参考价
 本身（3980 个除权日实测，与因子折算值中位差 0.000154），不再用
 `corporate_actions` 事件表自算。`_with_reference_price` 已删除——计划 B 作废后
 它不再有调用点。`adj_prev_close` 列保留，来源改为 `pre_close` 直取。
@@ -87,6 +87,19 @@ def attach_name_history(bars: pl.DataFrame, history: pl.DataFrame) -> pl.DataFra
     ).drop("start_date", "end_date")
 
 
+def _assert_name_coverage(bars: pl.DataFrame) -> None:
+    """拒绝大面积缺名称的生产窗口；零星历史缺口仍保持 null。"""
+    if bars.height < 100:
+        return
+    missing = bars["name"].null_count()
+    ratio = missing / bars.height
+    if ratio > 0.10:
+        raise RuntimeError(
+            f"name_history 覆盖不足：{missing}/{bars.height} ({ratio:.1%}) 为 null；"
+            "拒绝生成可能让候选池静默归零的 daily_flags"
+        )
+
+
 def limit_prices(prev_close: float, board: str) -> tuple[float, float]:
     """返回 (涨停价, 跌停价)，四舍五入到分。
 
@@ -117,7 +130,7 @@ def build_daily_flags(
     end: date,
     boards: set[str] | None = None,
 ) -> int:
-    """从付费日线派生涨跌停与首板标记。返回写入行数。
+    """从 Tushare 日线与名称区间派生涨跌停及首板标记。返回写入行数。
 
     `boards` 给定时只保留该板块的标的。付费源含北交所 343 只而旧表没有，
     不过滤就会让 market_regime 的广度因子静默变化。
@@ -144,6 +157,7 @@ def build_daily_flags(
         if bars.height == 0:
             continue
         bars = attach_name_history(bars, name_history)
+        _assert_name_coverage(bars)
         if boards is not None:
             def _board(s: str) -> str:
                 # 显式判 None，不用 `or`——board 若曾经取值空字符串会被

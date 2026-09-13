@@ -1,5 +1,11 @@
 # Tushare Pro 接入（计划 C） —— 实施计划
 
+> **完成状态（2026-09-14）：Task 1–10 全部完成。** 生产代码位于提交
+> `ca84fa2` 及其后续实测修复；Linux 节点已回填、重建派生表并启用
+> `qsys-tushare-sync.timer`。详见
+> `artifacts/Tushare剩余计划执行记录_2026-09-14.md` 与
+> `artifacts/Tushare换源对账报告_2026-09-14.md`。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 把日线真值源从「百度网盘转售 + 人工转存」换成 Tushare Pro API 直连，并接入 `stk_limit` / `suspend_d` / `index_daily` / `stock_basic` / `namechange` / `limit_list_d` 六个接口，把涨跌停价、停牌、退市股、ST 状态、首板炸板从派生改为直取。
@@ -111,7 +117,7 @@
     —— 成功返回行的列表（每行是 `{字段名: 值}`）；失败抛 `TushareError`
   - `qsys.data.providers.tushare_client.TushareError`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```python
 # tests/live/test_tushare_config.py
@@ -256,12 +262,12 @@ def test_does_not_retry_a_permission_error():
     assert len(t.requests) == 1
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `.venv/bin/python -m pytest tests/live/test_tushare_config.py tests/data/providers/test_tushare_client.py -v`
 Expected: FAIL，`ImportError: cannot import name 'TushareConfig'`
 
-- [ ] **Step 3: 加配置**
+- [x] **Step 3: 加配置**
 
 ```python
 # src/qsys/live/config.py —— 在 DeployConfig 之后插入
@@ -296,7 +302,7 @@ def load_tushare_config(path: str | Path | None = None) -> TushareConfig:
     )
 ```
 
-- [ ] **Step 4: 实现 client**
+- [x] **Step 4: 实现 client**
 
 ```python
 # src/qsys/data/providers/tushare_client.py
@@ -386,17 +392,17 @@ class TushareClient:
 `code` 一律立即抛出，不重试——权限不足、token 无效、参数错误重试多少次都一样，
 只会白白消耗额度。`test_does_not_retry_a_permission_error` 守着这条。
 
-- [ ] **Step 5: 跑测试确认通过**
+- [x] **Step 5: 跑测试确认通过**
 
 Run: `.venv/bin/python -m pytest tests/live/test_tushare_config.py tests/data/providers/test_tushare_client.py -v`
 Expected: PASS（12 个）
 
-- [ ] **Step 6: 跑全量测试**
+- [x] **Step 6: 跑全量测试**
 
 Run: `.venv/bin/python -m pytest -rfE --tb=no -q`
 Expected: 失败数不增加（计划 A 未完成期间仍有既有失败）
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add src/qsys/live/config.py src/qsys/data/providers/tushare_client.py tests/live/test_tushare_config.py tests/data/providers/test_tushare_client.py
@@ -424,7 +430,7 @@ git commit -m "feat(data): Tushare 凭证配置与 HTTP client"
   - `qsys.data.pipeline.tushare_daily.write_year(warehouse, frame, year) -> int`
   - `schema.TUSHARE_DAILY`（28 列，与 `PAID_DAILY` 同名同序同类型，metadata 的 provider 改为 `tushare-pro`）
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```python
 # tests/data/pipeline/test_tushare_daily.py
@@ -657,7 +663,7 @@ def test_a_missing_numeric_column_does_not_raise():
     assert got["close"].dtype == pl.Float64
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `.venv/bin/python -m pytest tests/data/pipeline/test_tushare_daily.py -v`
 Expected: FAIL，`ModuleNotFoundError: No module named 'qsys.data.pipeline.tushare_daily'`
@@ -667,7 +673,7 @@ Expected: FAIL，`ModuleNotFoundError: No module named 'qsys.data.pipeline.tusha
 Run: `.venv/bin/python -m pytest tests/data/providers/test_tushare_provider.py -v`
 Expected: FAIL，`ImportError: cannot import name 'TushareProvider'`
 
-- [ ] **Step 3: 加 schema**
+- [x] **Step 3: 加 schema**
 
 ```python
 # src/qsys/data/schema.py —— 在 PAID_DAILY 之后插入
@@ -690,7 +696,7 @@ TUSHARE_DAILY = pa.schema(
 
 并在 `PARTITIONED` 字典里加 `"tushare_daily": TUSHARE_DAILY`。
 
-- [ ] **Step 4: 实现 provider 与合成**
+- [x] **Step 4: 实现 provider 与合成**
 
 ```python
 # src/qsys/data/providers/tushare.py
@@ -871,7 +877,7 @@ def write_year(warehouse: Warehouse, frame: pl.DataFrame, year: int) -> int:
     return frame.height
 ```
 
-- [ ] **Step 5: 加查询方法**
+- [x] **Step 5: 加查询方法**
 
 ```python
 # src/qsys/data/query.py —— 复用 Task 2（计划 A）建立的 _dated_query
@@ -888,12 +894,12 @@ def tushare_daily(
                              symbols, start, end)
 ```
 
-- [ ] **Step 6: 跑测试确认通过**
+- [x] **Step 6: 跑测试确认通过**
 
 Run: `.venv/bin/python -m pytest tests/data/pipeline/test_tushare_daily.py tests/data/providers/test_tushare_provider.py -v`
 Expected: PASS
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add src/qsys/data/schema.py src/qsys/data/query.py src/qsys/data/providers/tushare.py src/qsys/data/pipeline/tushare_daily.py tests/
@@ -915,7 +921,7 @@ git commit -m "feat(data): Tushare 日线三接口合成 28 列，total_shares �
   - `qsys.data.quality.tushare_reconcile.reconcile(query, start, end) -> ReconcileReport`
   - `ReconcileReport` dataclass：`only_in_tushare`、`only_in_paid`、`value_diffs`（列 `symbol, dt, field, tushare, paid, abs_diff`）、`summary: dict`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```python
 # tests/data/quality/test_tushare_reconcile.py
@@ -1115,7 +1121,7 @@ def test_null_on_one_side_only_is_a_difference(warehouse):
     assert rep.value_diffs.filter(pl.col("field") == "pe").height == 1
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `.venv/bin/python -m pytest tests/data/quality/test_tushare_reconcile.py -v`
 Expected: FAIL，`ModuleNotFoundError: No module named 'qsys.data.quality.tushare_reconcile'`
@@ -1126,7 +1132,7 @@ Expected: FAIL，`ModuleNotFoundError: No module named 'qsys.data.quality.tushar
 与 `test_year_windows_are_clipped_to_the_requested_range`，**以它们的失败
 作为 Step 2 的确认依据**。
 
-- [ ] **Step 3: 实现对账**
+- [x] **Step 3: 实现对账**
 
 ```python
 # src/qsys/data/quality/tushare_reconcile.py
@@ -1264,7 +1270,7 @@ def reconcile(query: WarehouseQuery, start: date, end: date) -> ReconcileReport:
     return ReconcileReport(only_ts_all, only_paid_all, value_diffs, summary)
 ```
 
-- [ ] **Step 4: 写回填 CLI**
+- [x] **Step 4: 写回填 CLI**
 
 ```python
 # scripts/tushare_backfill.py
@@ -1347,12 +1353,12 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-- [ ] **Step 5: 跑测试确认通过**
+- [x] **Step 5: 跑测试确认通过**
 
 Run: `.venv/bin/python -m pytest tests/data/quality/test_tushare_reconcile.py -v`
 Expected: PASS（10 个）
 
-- [ ] **Step 6: 在节点上全量回填**
+- [x] **Step 6: 在节点上全量回填**
 
 ```bash
 ssh -i ~/.ssh/qmt_bridge_ed25519 ubuntu@110.42.205.144 \
@@ -1364,7 +1370,7 @@ ssh -i ~/.ssh/qmt_bridge_ed25519 ubuntu@110.42.205.144 \
 按实测 0.38 秒/次 × 3 接口 × 约 8,700 交易日，预计 **2.5–3.5 小时**。
 过程中**不要**同时跑回测——节点 4 核，并发会拖慢。
 
-- [ ] **Step 7: 出对账报告**
+- [x] **Step 7: 出对账报告**
 
 ```bash
 ssh -i ~/.ssh/qmt_bridge_ed25519 ubuntu@110.42.205.144 \
@@ -1388,7 +1394,7 @@ rep.only_in_paid.write_parquet('artifacts/tushare_reconcile_only_paid.parquet')
 或极少且可逐条解释；`total_shares`/`circulating_shares` 的差异**预期存在**
 （旧源反算所致），需按年统计并确认集中在 A+H 股。**任何价格类差异都必须查清再往下走。**
 
-- [ ] **Step 8: 提交**
+- [x] **Step 8: 提交**
 
 ```bash
 git add src/qsys/data/quality/tushare_reconcile.py scripts/tushare_backfill.py tests/data/quality/test_tushare_reconcile.py
@@ -1398,6 +1404,10 @@ git commit -m "feat(data): Tushare 全量回填与逐键对账"
 ---
 
 ## Task 4: `stk_limit` —— 涨跌停价真值表
+
+> **执行订正（2026-09-14）：**生产响应不含计划假定的 `pre_close`，只含
+> `up_limit/down_limit`。落库时从同源 `daily.pre_close` 直取；provider 对当日
+> daily 做缓存，不重复消耗接口积分。以下原始步骤保留作审计。
 
 **Files:**
 - Modify: `src/qsys/data/schema.py`、`src/qsys/data/query.py`
@@ -1414,7 +1424,7 @@ git commit -m "feat(data): Tushare 全量回填与逐键对账"
   - `qsys.data.pipeline.tushare_reference._merge_write(warehouse, dataset, frame, arrow_schema, keys, reader) -> int`
     —— 按年合并写入的私有辅助，**Task 5 / 6 / 8 都复用它**，不要各写一份
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```python
 # tests/data/pipeline/test_tushare_reference.py
@@ -1475,12 +1485,12 @@ def test_reingesting_the_same_day_is_idempotent(warehouse):
     assert WarehouseQuery(warehouse).price_limits(None, DAY, DAY).height == 1
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `.venv/bin/python -m pytest tests/data/pipeline/test_tushare_reference.py -v`
 Expected: FAIL，`ModuleNotFoundError: No module named 'qsys.data.pipeline.tushare_reference'`
 
-- [ ] **Step 3: 加 schema、provider 方法与落库**
+- [x] **Step 3: 加 schema、provider 方法与落库**
 
 ```python
 # src/qsys/data/schema.py —— 新增并注册进 PARTITIONED
@@ -1591,12 +1601,12 @@ def price_limits(
                              schema.PRICE_LIMITS_DAILY, symbols, start, end)
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `.venv/bin/python -m pytest tests/data/pipeline/test_tushare_reference.py -v`
 Expected: PASS（3 个）
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/qsys/data/schema.py src/qsys/data/query.py src/qsys/data/providers/tushare.py src/qsys/data/pipeline/tushare_reference.py tests/data/pipeline/test_tushare_reference.py
@@ -1621,7 +1631,7 @@ git commit -m "feat(data): stk_limit 落库，涨跌停价改直取"
 spec §3.6/§3.7 记录过：付费源里停牌日整行缺席，`volume == 0` 的行数为 0，
 因此旧的「四价等于前收 + 量为 0」判据在新源下**永远不会命中**。本表是它的替代。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```python
 # tests/data/pipeline/test_tushare_reference.py 追加
@@ -1657,12 +1667,12 @@ def test_a_day_with_no_suspensions_writes_nothing(warehouse):
     assert ingest_suspensions(FakeSuspendProvider(pl.DataFrame()), warehouse, [DAY]) == 0
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `.venv/bin/python -m pytest tests/data/pipeline/test_tushare_reference.py -k suspen -v`
 Expected: FAIL，`ImportError: cannot import name 'ingest_suspensions'`
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 ```python
 # src/qsys/data/schema.py —— 新增并注册进 PARTITIONED
@@ -1737,12 +1747,12 @@ def suspensions(
                              symbols, start, end)
 ```
 
-- [ ] **Step 4: 跑测试确认通过 + 全量测试**
+- [x] **Step 4: 跑测试确认通过 + 全量测试**
 
 Run: `.venv/bin/python -m pytest tests/data/pipeline/test_tushare_reference.py -v && .venv/bin/python -m pytest -rfE --tb=no -q`
 Expected: 新测试 PASS；全量失败数不增加
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/qsys/data/schema.py src/qsys/data/query.py src/qsys/data/providers/tushare.py src/qsys/data/pipeline/tushare_reference.py tests/data/pipeline/test_tushare_reference.py
@@ -1752,6 +1762,10 @@ git commit -m "feat(data): suspend_d 落库，停牌改直取"
 ---
 
 ## Task 6: `index_daily` —— 补上指数日线缺口
+
+> **执行订正（2026-09-14）：**全历史 5,270 行中 186 行 `vol` 含小数，原计划
+> 的 int64 拒绝策略在生产实跑时确实阻断回填。为遵守“不丢精度”，最终将
+> `INDEX_BARS.volume` 无损迁移为 Float64，旧整数值自然提升。以下原始方案保留。
 
 **Files:**
 - Modify: `src/qsys/data/providers/tushare.py`、`src/qsys/data/pipeline/tushare_reference.py`
@@ -1766,7 +1780,7 @@ git commit -m "feat(data): suspend_d 落库，停牌改直取"
 `market_regime` 的 `index_ma20_slope_5d` 依赖它，S6 Gate 要用。本任务只换来源，
 **不改 schema**。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```python
 # tests/data/pipeline/test_tushare_reference.py 追加
@@ -1823,12 +1837,12 @@ def test_index_amount_is_converted_from_thousand_yuan(warehouse):
     assert got["amount"].to_list() == [1500000000.0]
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `.venv/bin/python -m pytest tests/data/pipeline/test_tushare_reference.py -k index -v`
 Expected: FAIL，`ImportError: cannot import name 'ingest_index_daily'`
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 ```python
 # src/qsys/data/providers/tushare.py 追加
@@ -1894,12 +1908,12 @@ def ingest_index_daily(provider, warehouse: Warehouse,
 上面的 `select` 与之逐列对应。**不要改 schema**——`volume` 的 int64 是既有
 `index_bars` 数据的类型，改了会让已落库的分区读不出来。
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `.venv/bin/python -m pytest tests/data/pipeline/test_tushare_reference.py -k index -v`
 Expected: PASS（3 个）
 
-- [ ] **Step 5: 回填 CSI300 全历史**
+- [x] **Step 5: 回填 CSI300 全历史**
 
 ```bash
 ssh -i ~/.ssh/qmt_bridge_ed25519 ubuntu@110.42.205.144 \
@@ -1917,7 +1931,7 @@ print('写入', ingest_index_daily(p, Warehouse(Path('warehouse')), ['000300.SH'
 \""
 ```
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add src/qsys/data/providers/tushare.py src/qsys/data/pipeline/tushare_reference.py tests/data/pipeline/test_tushare_reference.py
@@ -1927,6 +1941,10 @@ git commit -m "feat(data): index_daily 补上 mootdx 失效后的指数日线缺
 ---
 
 ## Task 7: `stock_basic` + `namechange` —— 标的主表与 ST 真值
+
+> **执行订正（2026-09-14）：**`namechange` 首次响应恰好 10,000 行，实测还有
+> 第二页。provider 已按 10,000 行分页拉取，去重后生产落库 13,858 个区间；
+> flags 已按区间 as-of 连接，并对大面积名称缺失显式失败。
 
 **Files:**
 - Modify: `src/qsys/data/schema.py`、`src/qsys/data/query.py`、`src/qsys/data/providers/tushare.py`、`src/qsys/data/pipeline/tushare_reference.py`
@@ -1946,7 +1964,7 @@ git commit -m "feat(data): index_daily 补上 mootdx 失效后的指数日线缺
 `change_reason`，按区间展开成每日状态属**纯派生**（可逐位重算）；
 而 `name.str.contains("ST")` 会把名称中恰好含 "ST" 的正常标的误判。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```python
 # tests/data/pipeline/test_tushare_reference.py 追加
@@ -2058,12 +2076,12 @@ def test_st_on_recognises_plain_st_not_only_star_st():
     assert st_on(hist, date(2026, 9, 11))["is_st"].to_list() == [True]
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `.venv/bin/python -m pytest tests/data/pipeline/test_tushare_reference.py -k "instrument or name_history or st_on" -v`
 Expected: FAIL，`ImportError: cannot import name 'ingest_instruments'`
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 ```python
 # src/qsys/data/schema.py —— 新增，注册进 UNPARTITIONED（无日期分区）
@@ -2222,12 +2240,12 @@ def name_history(self, symbols: Sequence[str] | None = None) -> pl.DataFrame:
 注意 `board` 的取值必须与 `qsys.markets.ashare.board_of` 一致——
 计划 A 的 Task 0 已把它提升为共享函数，这里直接复用，不要另写一份。
 
-- [ ] **Step 4: 跑测试确认通过 + 全量测试**
+- [x] **Step 4: 跑测试确认通过 + 全量测试**
 
 Run: `.venv/bin/python -m pytest tests/data/pipeline/test_tushare_reference.py -v && .venv/bin/python -m pytest -rfE --tb=no -q`
 Expected: 新测试 PASS；全量失败数不增加
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/qsys/data/schema.py src/qsys/data/query.py src/qsys/data/providers/tushare.py src/qsys/data/pipeline/tushare_reference.py tests/data/pipeline/test_tushare_reference.py
@@ -2254,7 +2272,7 @@ git commit -m "feat(data): stock_basic 含退市股，namechange 区间表给 ST
 回测区间 2023 起，两条限制都不影响当前用途——但必须记录，否则将来有人
 拿它做 2020 年之前的统计会得到静默的空结果。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```python
 # tests/data/pipeline/test_tushare_reference.py 追加
@@ -2295,12 +2313,12 @@ def test_limit_list_before_2020_is_empty_not_an_error(warehouse):
     assert ingest_limit_list(p, warehouse, [date(2019, 1, 2)]) == 0
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `.venv/bin/python -m pytest tests/data/pipeline/test_tushare_reference.py -k limit_list -v`
 Expected: FAIL，`ImportError: cannot import name 'ingest_limit_list'`
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 ```python
 # src/qsys/data/schema.py —— 新增并注册进 PARTITIONED
@@ -2386,12 +2404,12 @@ def limit_list(
                              schema.LIMIT_LIST_DAILY, symbols, start, end)
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `.venv/bin/python -m pytest tests/data/pipeline/test_tushare_reference.py -k limit_list -v`
 Expected: PASS（2 个）
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/qsys/data/schema.py src/qsys/data/query.py src/qsys/data/providers/tushare.py src/qsys/data/pipeline/tushare_reference.py tests/data/pipeline/test_tushare_reference.py
@@ -2401,6 +2419,10 @@ git commit -m "feat(data): limit_list_d 落库，首板与炸板改直取"
 ---
 
 ## Task 9: 每日增量任务
+
+> **最终接线（2026-09-14）：**`_REFERENCE_STEPS` 已接入六个参考数据集；事实表
+> 成功后还会刷新 `adj_factors`、`daily_flags`、`market_regime` 与当日估值，避免
+> 次日出现价格已更新而因子/派生表停滞。systemd 已实跑成功。
 
 **Files:**
 - Create: `src/qsys/data/pipeline/tushare_sync.py`
@@ -2442,7 +2464,7 @@ git commit -m "feat(data): limit_list_d 落库，首板与炸板改直取"
 2. **15:40 的既有归档不依赖当日日线**——竞价 tick、股本、分钟线的候选均只需
    T-1 的 `daily_flags`。故本任务不改动既有归档的时点。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```python
 # tests/data/pipeline/test_tushare_sync.py
@@ -2541,12 +2563,12 @@ def test_every_reference_ingest_is_wired_into_sync():
     assert not missing, f"这些采集函数没接进每日同步：{sorted(missing)}"
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `uv run pytest tests/data/pipeline/test_tushare_sync.py -v`
 Expected: FAIL，`ModuleNotFoundError: qsys.data.pipeline.tushare_sync`
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `scripts/` 不是 Python 包，测试无法 `from scripts.x import`（计划 A 的 pre-flight
 已经踩过）。按本仓库既有分层——纯逻辑进模块、脚本只做薄 CLI
@@ -2672,12 +2694,12 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-- [ ] **Step 4: 跑测试确认通过 + 全量测试**
+- [x] **Step 4: 跑测试确认通过 + 全量测试**
 
 Run: `uv run pytest tests/data/pipeline/test_tushare_sync.py -v && uv run pytest -q`
 Expected: 新测试全 PASS；全量 exit=0
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/qsys/data/pipeline/tushare_sync.py scripts/tushare_daily_sync.py \
@@ -2685,7 +2707,7 @@ git add src/qsys/data/pipeline/tushare_sync.py scripts/tushare_daily_sync.py \
 git commit -m "feat(data): Tushare 每日增量同步"
 ```
 
-- [ ] **Step 6: 在节点上装 systemd 单元（由控制方执行，不派实现者）**
+- [x] **Step 6: 在节点上装 systemd 单元（由控制方执行，不派实现者）**
 
 生产节点的写操作留在控制方手里——`warehouse` 是指向 `/data/qsys` 的软链接，
 `ProtectSystem=strict` 少写一条 `ReadWritePaths` 就会在第一次写入时失败，
@@ -2734,7 +2756,7 @@ sudo systemctl daemon-reload && sudo systemctl enable --now qsys-tushare-sync.ti
 systemctl list-timers qsys-tushare-sync --no-pager"
 ```
 
-- [ ] **Step 7: 实跑一次并核对**
+- [x] **Step 7: 实跑一次并核对**
 
 ```bash
 ssh -i ~/.ssh/qmt_bridge_ed25519 ubuntu@110.42.205.144 \
@@ -2763,7 +2785,7 @@ Expected：`Result=success`，`tushare_daily` 行数约 5,500。
 - Modify: `docs/reference/strategy-data-dependencies.md`
 - Create: `artifacts/Tushare换源对账报告_<日期>.md`
 
-- [ ] **Step 1: 对账报告过目**
+- [x] **Step 1: 对账报告过目**
 
 把 Task 3 Step 7 的三个 parquet 与 summary 整理成
 `artifacts/Tushare换源对账报告_<日期>.md`，**必须包含**：
@@ -2774,7 +2796,7 @@ Expected：`Result=success`，`tushare_daily` 行数约 5,500。
   没有解释的差异不算通过；
 - 只在一边的股票日清单。
 
-- [ ] **Step 2: 切换 `daily_bars()` 的底层**
+- [x] **Step 2: 切换 `daily_bars()` 的底层**
 
 ```python
 # src/qsys/data/query.py —— daily_bars 的 dataset 由 "paid_daily" 改为 "tushare_daily"
@@ -2789,12 +2811,12 @@ docstring 相应更新：说明 2026-09-13 由 `paid_daily` 再次换底，依�
 同一步还要把计划 A Task 9 建立的直取因子入口切到底层 `tushare_daily`，并加
 回归测试断言新到交易日能进入 `adj_factors.cum_factor`。价格与因子必须原子换源。
 
-- [ ] **Step 3: 跑全量测试**
+- [x] **Step 3: 跑全量测试**
 
 Run: `.venv/bin/python -m pytest -rfE --tb=no -q`
 Expected: 全绿（前提是计划 A 已完成）
 
-- [ ] **Step 4: 更新参考文档**
+- [x] **Step 4: 更新参考文档**
 
 `docs/reference/baidupan-data-source.md` 头部加：
 
@@ -2808,7 +2830,7 @@ Expected: 全绿（前提是计划 A 已完成）
 `docs/reference/strategy-data-dependencies.md` 的映射表里，把「Tushare 对应」
 一列从计划状态改为实际的表名与查询方法。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/qsys/data/query.py docs/ artifacts/

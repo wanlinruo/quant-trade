@@ -32,7 +32,7 @@ from datetime import date
 
 import polars as pl
 
-from qsys.data.pipeline.flags import attach_name_history, build_daily_flags
+from qsys.data.pipeline.flags import _assert_name_coverage, attach_name_history, build_daily_flags
 from qsys.data.query import WarehouseQuery
 
 DAYS = [date(2026, 4, 29), date(2026, 4, 30)]
@@ -123,6 +123,14 @@ def test_name_history_gap_stays_unknown():
         "start_date": [DAYS[1]], "end_date": [None],
     })
     assert attach_name_history(bars, history)["name"].to_list() == [None]
+
+
+def test_large_name_coverage_failure_is_explicit():
+    import pytest
+
+    bars = pl.DataFrame({"name": [None] * 100})
+    with pytest.raises(RuntimeError, match="覆盖不足"):
+        _assert_name_coverage(bars)
 
 
 def test_limit_price_uses_the_direct_pre_close(warehouse, write_daily_bars):

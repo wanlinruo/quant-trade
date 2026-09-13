@@ -176,6 +176,11 @@ S6_HC_ADVANCE_NOT_LOW       =  0.5104943476458254
 
 ## D-6 `tushare_daily.name` 恒为 null 会让候选池静默归零
 
+**状态：已于 2026-09-14 结案。** `namechange` 已完整分页落入 `name_history`，
+`build_daily_flags` 用区间 as-of 连接取得当日名称，并在 100 行以上的窗口中对
+名称空值率设置 10% 显式失败闸门。生产 2023-01-01 至 2026-09-11 重建实测
+4,568,042 行中 4,474,268 行有名称结论（97.95%），未覆盖行保持 null。
+
 **事实**：计划 C 的 `compose_daily` 把 `name` 留给 `namechange` 单独成表
 （`src/qsys/data/pipeline/tushare_daily.py:99-100`），因此 `tushare_daily.name` 恒为 null。
 
@@ -188,10 +193,9 @@ name = null → is_st = null → limit_pct = null → limit_up = null
   → 候选池永远为空，且不报错
 ```
 
-**影响**：当前不触发（`build_daily_flags` 读的是 `query.paid_daily`，那张表有 `name`）。
-但计划 C Task 10 若把派生链路切到 `tushare_daily`，就会全线静默失效。
+**原影响**：切换前不触发；若直接换到 `tushare_daily` 会全线静默失效。
 
-**为何现在不做**：它是**计划 C Task 10 的硬阻断条件**，不是独立待办。
+**处理时点**：作为计划 C Task 10 的硬阻断条件随换源一并完成。
 
 **做的时候要做什么**：计划 C Task 10 之前必须先完成计划 C Task 7
 （`namechange` → name/ST 真值）并把 `name` 接进派生链路；

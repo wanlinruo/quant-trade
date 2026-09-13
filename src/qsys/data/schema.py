@@ -117,7 +117,7 @@ DAILY_FLAGS = pa.schema(
         ("symbol", pa.string()),
         ("prev_close", pa.float64()),  # 无前收（首个 bar）为 null
         # 除权除息参考价。涨跌停是按它算的，不是按 prev_close。
-        # 直取自付费源当日 `pre_close`（2026-09-12 起，不再由
+        # 直取自 Tushare 当日 `pre_close`（2026-09-12 起，不再由
         # corporate_actions 事件表自算）：非除权日等于前一日收盘，
         # 除权日是交易所公布的除权后参考价。
         ("adj_prev_close", pa.float64()),
@@ -129,7 +129,7 @@ DAILY_FLAGS = pa.schema(
         ("is_broken_board", pa.bool_()),  # 炸板：触及但未封住
         ("is_first_board", pa.bool_()),  # 首板：今日涨停且昨日未涨停
         ("limit_pct", pa.float64()),  # 实际生效的涨跌幅：ST 为 0.05，否则按板块 0.10 / 0.20 / 0.30
-        # ST 真值。直取自付费源当日 `name` 列是否含 "ST"。
+        # ST 真值。由 Tushare namechange 的名称区间按当日展开。
         # 2026-09-12 之前这里是三条价格启发式反推出来的，一致率 93.8%，已删除。
         ("is_st", pa.bool_()),
         # 该行 ST 值的来源。生产换源后恒为 "tushare"；兜底路径会写
@@ -248,7 +248,7 @@ AUCTION_TICKS = pa.schema(
     ]
 )
 
-# 付费源日线，28 列。唯一的日线真值事实表，永久只读——**不要**注册进
+# 冻结的付费源日线，28 列。永久只读——**不要**注册进
 # PARTITIONED，那会让 Warehouse.write("paid_daily", ...) 成为可能。
 # 列顺序严格对应卖家 Excel 第三行；单位换算只做乘法，见 pipeline/paid_daily.py。
 _PAID_DAILY_NUMERIC = [

@@ -1,6 +1,6 @@
 # 策略的数据依赖与数据源映射
 
-更新日期：2026-09-13
+更新日期：2026-09-14
 对应策略版本：`STRUCTURAL_STRATEGY_V1_2_PREAUCTION_EARLY_ORDER_FINAL`（聚宽研究版）
 
 本文把策略实际调用的每一个聚宽接口，映射到自研系统的数据集与可选的外部数据源，
@@ -24,16 +24,16 @@ WEAK 家族在 S7 Gate 之前整体删除（`_v12_keep_non_weak`），炸板池�
 | 策略调用 | 用途 | 自研系统对应 | Tushare 对应 | 门槛 |
 |---|---|---|---|---|
 | `get_call_auction(fields=['time','volume','current'])` | **三个入场判定 + 09:24 早单** | `auction_ticks`（QMT，9 秒快照） | **无等价接口** | — |
-| `get_price(..., 'high_limit','low_limit')` | 涨停判定、挂单价上界 | `daily_flags.limit_up`（自算） | `stk_limit`（直取，9 点） | 2000 积分 |
-| `get_price(..., 'paused')` | 停牌过滤 | 无真值，靠缺席 | `suspend_d` | 2000 积分 |
-| `attribute_history(N,'1d',...)` | 历史 OHLCV/money | `paid_daily` | `daily` + `adj_factor` | 2000 积分 |
-| `get_valuation(turnover_ratio, market_cap, circulating_market_cap)` | HIGH/WEAK 市值过滤 | `paid_daily` 的 15 个估值列 | `daily_basic` | 2000 积分 |
-| `get_all_securities('stock', date)` | 股票池 | `instruments`（akshare） | `stock_basic`（含退市） | 2000 积分 |
+| `get_price(..., 'high_limit','low_limit')` | 涨停判定、挂单价上界 | `price_limits_daily` / `WarehouseQuery.price_limits()`；`daily_flags` 暂保留可重算派生 | `stk_limit` + 同源 `daily.pre_close` | 2000 积分 |
+| `get_price(..., 'paused')` | 停牌过滤 | `suspend_daily` / `WarehouseQuery.suspensions()` | `suspend_d` | 2000 积分 |
+| `attribute_history(N,'1d',...)` | 历史 OHLCV/money | `tushare_daily` / `WarehouseQuery.daily_bars()` | `daily` + `adj_factor` | 2000 积分 |
+| `get_valuation(turnover_ratio, market_cap, circulating_market_cap)` | HIGH/WEAK 市值过滤 | `tushare_daily` 估值列 | `daily_basic` | 2000 积分 |
+| `get_all_securities('stock', date)` | 股票池 | `instruments`（Tushare，含退市） | `stock_basic` | 2000 积分 |
 | `get_security_info(s).start_date` | 次新股过滤（50 天） | `instruments.list_date` | `stock_basic.list_date` | 2000 积分 |
-| `attribute_history('000300.XSHG', 80, '1d')` | `index_ma20_slope_5d` | `index_bars`（**mootdx 已死，现无源**） | `index_daily` | 2000 积分 |
+| `attribute_history('000300.XSHG', 80, '1d')` | `index_ma20_slope_5d` | `index_bars`（Tushare 已回填至 2026-09-11） | `index_daily` | 2000 积分 |
 | `get_trade_days` | 交易日历 | `AShareCalendar`（akshare） | `trade_cal` | 120 积分 |
-| `cur[s].is_st` / `'退' in cur[s].name` | ST 与退市过滤 | `paid_daily.name` | `namechange` 按区间展开 | 2000 积分 |
-| `get_hl_stock` / `get_ever_hl_stock2` | 昨日首板 / 昨日炸板 | `daily_flags.is_first_board` / `is_broken_board`（派生） | `limit_list_d` 的 `limit_times` / `open_times`（直取） | 5000 积分 |
+| `cur[s].is_st` / `'退' in cur[s].name` | ST 与退市过滤 | `name_history` / `WarehouseQuery.name_history()`，按区间展开 | `namechange` | 2000 积分 |
+| `get_hl_stock` / `get_ever_hl_stock2` | 昨日首板 / 昨日炸板 | `limit_list_daily` / `WarehouseQuery.limit_list()`；`daily_flags` 保留派生 | `limit_list_d` 的 `limit_times` / `open_times` | 5000 积分 |
 | `get_current_data().last_price` | 盘中检查点（11:25/14:25/14:50） | `minute_bars` | — （实盘走 QMT） | — |
 
 ## 三、竞价逐笔是唯一买不到的东西
@@ -118,5 +118,5 @@ B 股，必须先明确广度股票池是否纳入外币计价标的，再统一
 |---|---|---|
 | **买不到，必须自采** | 竞价逐笔（09:15–09:24） | QMT 实时，每日采集 |
 | **可换真值直取** | 涨跌停价、停牌、指数日线、退市股、首板/炸板 | Tushare |
-| **已有** | 日线、估值、复权因子、分钟线（2009-2025） | `paid_daily`（即 Tushare 转售）、QMT |
+| **已有** | 日线、估值、复权因子、参考表、分钟线（2009-2025） | `tushare_daily`、Tushare 参考接口、QMT |
 | **不必买** | 集合竞价成交、历史分钟、RT 行情 | 口径对不上 / 已有 / QMT 已覆盖 |
