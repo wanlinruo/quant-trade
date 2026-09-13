@@ -1933,7 +1933,7 @@ Expected: FAIL，`ImportError: cannot import name 'paid_factors'`
 Run: `.venv/bin/python -m pytest -q`
 Expected: 全绿
 
-- [ ] **Step 5: 在节点上跑全量因子校验**
+- [x] **Step 5: 在节点上跑全量因子校验**
 
 ```bash
 ssh -i ~/.ssh/qmt_bridge_ed25519 ubuntu@110.42.205.144 \
@@ -1951,10 +1951,13 @@ print(r.head(20))
 \""
 ```
 
-预期：偏差 >1% 的记录集中在 2005—2006。**超出该区间的大偏差必须逐个解释**
-才能进入 Task 10。
+实际（2026-09-13）：偏差 >1% 共 1,807 条、1,541 只股票，其中 1,119 条
+位于 2005—2006，另有 688 条在区间之外；最大异常簇之一来自 920 北交所。
+完整摘要见 `artifacts/task9-factor-verification-2026-09-13.md`，逐行数据见
+`artifacts/factor_verification.parquet`。**结果不符合原预期，Task 10 第 3 段
+仍须逐类解释，不能直接标为通过。**
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 分两次提交（实现提交 + 生产校验产物提交）**
 
 ```bash
 git add src/qsys/data/pipeline/adjust.py tests/data/pipeline/test_adjust.py artifacts/factor_verification.parquet
