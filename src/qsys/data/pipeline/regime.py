@@ -33,6 +33,7 @@ from qsys.data import schema
 from qsys.data.pipeline.index_bars import CSI300
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
+from qsys.markets.ashare import board_of
 
 log = structlog.get_logger(__name__)
 
@@ -63,7 +64,27 @@ _REGIME_COLUMNS = [
 ]
 
 
-def build_market_regime(warehouse: Warehouse, start: date, end: date) -> int:
+def _keep_boards(frame: pl.DataFrame, boards: set[str] | None) -> pl.DataFrame:
+    """按板块过滤。
+
+    广度因子的分母就是这个池子。付费源比旧表多 343 只北交所，不过滤会让
+    market_advance_ratio 在换源当天静默跳变而没有任何地方报错。
+    """
+    if boards is None or frame.height == 0:
+        return frame
+    return frame.filter(
+        pl.col("symbol")
+        .map_elements(lambda s: board_of(s.split(".")[0]), return_dtype=pl.Utf8)
+        .is_in(list(boards))
+    )
+
+
+def build_market_regime(
+    warehouse: Warehouse,
+    start: date,
+    end: date,
+    boards: set[str] | None = None,
+) -> int:
     query = WarehouseQuery(warehouse)
 
     written = 0
@@ -75,8 +96,8 @@ def build_market_regime(warehouse: Warehouse, start: date, end: date) -> int:
             continue
 
         back = lo - timedelta(days=_LOOKBACK_DAYS)
-        bars = _in_breadth_universe(query.daily_bars(None, back, hi))
-        flags = _in_breadth_universe(query.daily_flags(back, hi))
+        bars = _keep_boards(_in_breadth_universe(query.daily_bars(None, back, hi)), boards)
+        flags = _keep_boards(_in_breadth_universe(query.daily_flags(back, hi)), boards)
         if bars.height == 0 or flags.height == 0:
             continue
 

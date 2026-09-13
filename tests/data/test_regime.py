@@ -348,6 +348,27 @@ def pl_col_eq(name, value):
     return pl.col(name) == value
 
 
+def test_board_filter_keeps_beijing_out_of_the_breadth_factor(warehouse, write_daily_bars):
+	"""广度因子的口径必须与策略一致——策略排北交所。
+
+	付费源比旧表多 343 只北交所，不过滤会让 market_advance_ratio
+	在换源当天静默跳变，而没有任何地方报错。
+	"""
+	day = date(2026, 9, 9)
+	write_daily_bars(warehouse, pl.DataFrame({
+		"symbol": ["000001.SZ", "920268.BJ"], "dt": [day, day],
+		"name": ["平安银行", "京证股份"],
+		"open": [10.0, 5.0], "high": [10.0, 5.0], "low": [10.0, 5.0],
+		"close": [10.0, 5.0], "pre_close": [10.0, 5.0],
+		"volume": [100.0, 100.0], "amount": [1e5, 5e4],
+	}))
+	boards = {"main", "gem", "star"}
+	build_daily_flags(warehouse, day, day, boards=boards)
+	build_market_regime(warehouse, day, day, boards=boards)
+	got = WarehouseQuery(warehouse).market_regime(day, day)
+	assert got.height == 1
+
+
 def test_a_stock_that_did_not_move_is_flat_not_down(warehouse, write_daily_bars):
     """浮点噪声不能算成下跌。
 

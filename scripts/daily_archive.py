@@ -237,8 +237,8 @@ def main() -> int:
 
         # --- 3. 派生表重算（合并写，不会抹掉同年其余数据）---
         derived_from = complete_through - timedelta(days=_DERIVED_LOOKBACK)
-        print(f"涨跌停标记 {build_daily_flags(warehouse, derived_from, complete_through)} 行")
-        print(f"生态因子 {build_market_regime(warehouse, derived_from, complete_through)} 行")
+        print(f"涨跌停标记 {build_daily_flags(warehouse, derived_from, complete_through, boards=boards)} 行")
+        print(f"生态因子 {build_market_regime(warehouse, derived_from, complete_through, boards=boards)} 行")
 
     # --- 3b. 股本与估值 ---
     if not args.skip_capital:
