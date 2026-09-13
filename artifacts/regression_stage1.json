@@ -1,0 +1,11 @@
+{
+  "paid_rows": 4557629,
+  "legacy_rows": 4504869,
+  "common_rows": 4504859,
+  "only_in_paid": 52770,
+  "only_in_legacy": 10,
+  "ohlc_diff_rows": 0,
+  "volume_diff_rows": 3618167,
+  "amount_diff_rows": 3732214,
+  "max_amount_diff": 3400.0
+}
