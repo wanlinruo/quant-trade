@@ -32,7 +32,7 @@ from datetime import date
 
 import polars as pl
 
-from qsys.data.pipeline.flags import build_daily_flags
+from qsys.data.pipeline.flags import attach_name_history, build_daily_flags
 from qsys.data.query import WarehouseQuery
 
 DAYS = [date(2026, 4, 29), date(2026, 4, 30)]
@@ -97,6 +97,32 @@ def test_a_null_name_yields_null_st_not_false(warehouse, write_daily_bars):
     got = WarehouseQuery(warehouse).daily_flags(DAYS[0], DAYS[0])
     assert got["is_st"].to_list() == [None]
     assert got["limit_up"].to_list() == [None]
+
+
+def test_name_history_steps_on_the_exact_effective_day():
+    bars = pl.DataFrame({
+        "symbol": ["000010.SZ", "000010.SZ"], "dt": DAYS, "name": [None, None]
+    })
+    history = pl.DataFrame({
+        "symbol": ["000010.SZ", "000010.SZ"],
+        "name": ["美丽生态", "*ST美丽"],
+        "start_date": [date(2020, 7, 22), date(2026, 4, 30)],
+        "end_date": [date(2026, 4, 29), None],
+    })
+    assert attach_name_history(bars, history).sort("dt")["name"].to_list() == [
+        "美丽生态", "*ST美丽"
+    ]
+
+
+def test_name_history_gap_stays_unknown():
+    bars = pl.DataFrame({
+        "symbol": ["000010.SZ"], "dt": [DAYS[0]], "name": [None]
+    })
+    history = pl.DataFrame({
+        "symbol": ["000010.SZ"], "name": ["*ST美丽"],
+        "start_date": [DAYS[1]], "end_date": [None],
+    })
+    assert attach_name_history(bars, history)["name"].to_list() == [None]
 
 
 def test_limit_price_uses_the_direct_pre_close(warehouse, write_daily_bars):

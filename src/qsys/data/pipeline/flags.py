@@ -63,6 +63,30 @@ _FLAG_COLUMNS = [
 ]
 
 
+def attach_name_history(bars: pl.DataFrame, history: pl.DataFrame) -> pl.DataFrame:
+    """按名称区间给每个股票日附上 PIT 可见的名称。
+
+    ``tushare_daily`` 本身没有 name；不能把 null 当作非 ST，也不能拿当前名称
+    回填历史。这里只找当日之前最近的区间起点，并继续检查区间末端。
+    """
+    if history.height == 0:
+        return bars
+    intervals = history.filter(pl.col("start_date").is_not_null()).select(
+        "symbol", "name", "start_date", "end_date"
+    ).sort(["symbol", "start_date"])
+    if intervals.height == 0:
+        return bars
+    joined = bars.drop("name").sort(["symbol", "dt"]).join_asof(
+        intervals, left_on="dt", right_on="start_date", by="symbol", strategy="backward"
+    )
+    return joined.with_columns(
+        pl.when(pl.col("end_date").is_null() | (pl.col("dt") <= pl.col("end_date")))
+        .then(pl.col("name"))
+        .otherwise(None)
+        .alias("name")
+    ).drop("start_date", "end_date")
+
+
 def limit_prices(prev_close: float, board: str) -> tuple[float, float]:
     """返回 (涨停价, 跌停价)，四舍五入到分。
 
@@ -100,6 +124,7 @@ def build_daily_flags(
     """
     query = WarehouseQuery(warehouse)
     instruments = query.instruments()
+    name_history = query.name_history()
     board_map = (
         dict(zip(instruments["symbol"].to_list(), instruments["board"].to_list()))
         if instruments.height
@@ -118,6 +143,7 @@ def build_daily_flags(
         bars = query.tushare_daily(None, lo - timedelta(days=_LOOKBACK_DAYS), hi)
         if bars.height == 0:
             continue
+        bars = attach_name_history(bars, name_history)
         if boards is not None:
             def _board(s: str) -> str:
                 # 显式判 None，不用 `or`——board 若曾经取值空字符串会被
