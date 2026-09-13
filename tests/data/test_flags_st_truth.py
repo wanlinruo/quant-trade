@@ -162,3 +162,36 @@ def test_board_filter_keeps_beijing_out_of_daily_flags(warehouse, write_daily_ba
     build_daily_flags(warehouse, DAYS[0], DAYS[0], boards={"main", "gem", "star"})
     got = WarehouseQuery(warehouse).daily_flags(DAYS[0], DAYS[0])
     assert got["symbol"].to_list() == ["000001.SZ"]
+
+
+def test_ex_dividend_day_uses_pre_close_not_the_previous_row_close(
+    warehouse, write_daily_bars
+):
+    """`prev_close`（昨日收盘）与 `adj_prev_close`（除权参考价，直取自
+    `pre_close`）只在除权日不相等——回归测试必须造一个真的会让两者分叉
+    的除权日，否则测不出「涨跌停算错了基准」这种 bug。
+
+    此前删除 `_with_reference_price`（事件表自算除权价）时的测试都是
+    单行序列：`prev_close` 在那里是 null，不是"一个合理但错误的数值"，
+    分辨不出 `_compute` 里 `cents = (pl.col("adj_prev_close") * 100)...`
+    这一行如果被误改成 `prev_close` 会不会被测出来。
+
+    这里构造两天连续数据：第一天收盘 11.30；第二天 `pre_close` 给
+    10.94（模拟除权，不等于第一天收盘）。若涨跌停基准用错成
+    `prev_close`（11.30），limit_up 会是 12.43 且 12.03 摸不到涨停；
+    用对 `adj_prev_close`（10.94），limit_up 是 12.03 且当日封住涨停。
+    """
+    _paid(write_daily_bars, warehouse, {
+        "symbol": ["000001.SZ", "000001.SZ"], "dt": DAYS,
+        "name": ["平安银行", "平安银行"],
+        "open": [11.30, 11.50], "high": [11.30, 12.03],
+        "low": [11.30, 11.40], "close": [11.30, 12.03],
+        "pre_close": [None, 10.94],
+        "volume": [100.0, 100.0], "amount": [1e5, 1e5],
+    })
+    build_daily_flags(warehouse, DAYS[0], DAYS[1])
+    got = WarehouseQuery(warehouse).daily_flags(DAYS[1], DAYS[1])
+    assert got["prev_close"].to_list() == [11.30]       # 昨日收盘，未变
+    assert got["adj_prev_close"].to_list() == [10.94]   # 除权参考价，直取
+    assert got["limit_up"].to_list() == [12.03]         # round(10.94 * 1.10, 2)
+    assert got["is_limit_up"].to_list() == [True]       # 用对基准才封得住涨停

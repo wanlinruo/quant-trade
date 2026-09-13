@@ -119,9 +119,15 @@ def build_daily_flags(
         if bars.height == 0:
             continue
         if boards is not None:
+            def _board(s: str) -> str:
+                # 显式判 None，不用 `or`——board 若曾经取值空字符串会被
+                # `or` 误当成「未匹配」而走号段兜底，虽然当前
+                # instruments.board 不会是空串，但判断本身应该准确。
+                found = board_map.get(s)
+                return found if found is not None else board_of(s.split(".")[0])
+
             keep = pl.col("symbol").map_elements(
-                lambda s: board_map.get(s) or board_of(s.split(".")[0]),
-                return_dtype=pl.Utf8,
+                _board, return_dtype=pl.Utf8
             ).is_in(list(boards))
             bars = bars.filter(keep)
             if bars.height == 0:

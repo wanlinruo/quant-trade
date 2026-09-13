@@ -115,7 +115,9 @@ DAILY_FLAGS = pa.schema(
         ("symbol", pa.string()),
         ("prev_close", pa.float64()),  # 无前收（首个 bar）为 null
         # 除权除息参考价。涨跌停是按它算的，不是按 prev_close。
-        # 非除权日等于 prev_close；除权日 = (前收 - 现金红利 + 配股价x配股比) / (1 + 送转比 + 配股比)
+        # 直取自付费源当日 `pre_close`（2026-09-12 起，不再由
+        # corporate_actions 事件表自算）：非除权日等于前一日收盘，
+        # 除权日是交易所公布的除权后参考价。
         ("adj_prev_close", pa.float64()),
         ("limit_up", pa.float64()),
         ("limit_down", pa.float64()),
