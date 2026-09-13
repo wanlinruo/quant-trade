@@ -988,6 +988,76 @@ def test_null_on_both_sides_is_not_a_difference(warehouse):
     assert rep.value_diffs.filter(pl.col("field") == "pe").height == 0
 
 
+def _empty_frame(arrow_schema) -> pl.DataFrame:
+    return pl.DataFrame(schema={
+        n: (pl.Date if n == "dt" else pl.Utf8 if n in ("symbol", "name") else pl.Float64)
+        for n in arrow_schema.names
+    })
+
+
+class RecordingQuery:
+    """记录每次读取的区间。**守的是实现约束，不是语义。**
+
+    跨年汇总的语义测试在「一次性载入全历史」的实现上同样会通过，所以它们
+    守不住「必须逐年」。而逐年正是为了避免 OOM 才改的（2026-09-13 生产节点
+    实测 7.24 GiB RSS 被 OOM killer 杀），因此必须单独守一条。
+    """
+
+    def __init__(self):
+        self.calls: list[tuple[str, object, object]] = []
+
+    def tushare_daily(self, symbols, start, end):
+        self.calls.append(("tushare_daily", start, end))
+        return _empty_frame(schema.TUSHARE_DAILY)
+
+    def paid_daily(self, symbols, start, end):
+        self.calls.append(("paid_daily", start, end))
+        return _empty_frame(schema.PAID_DAILY)
+
+
+def test_every_read_is_confined_to_a_single_year():
+    """任何一次读取都不得跨年——跨年就意味着可能一次载入全历史。"""
+    import datetime as _dt
+
+    q = RecordingQuery()
+    reconcile(q, _dt.date(2025, 3, 4), _dt.date(2026, 9, 11))
+
+    assert q.calls, "reconcile 没有发生任何读取"
+    for name, lo, hi in q.calls:
+        assert lo.year == hi.year, (
+            f"{name} 一次读了 {lo} ~ {hi}，跨了年。"
+            f"全历史一次性载入约 8.2 GiB，生产节点只有 7.5 GiB。"
+        )
+
+
+def test_one_read_per_table_per_year():
+    """2025-2026 两年，每张表各读两次，不多不少。
+
+    多读说明有重复 IO，少读说明漏了年份。
+    """
+    import datetime as _dt
+
+    q = RecordingQuery()
+    reconcile(q, _dt.date(2025, 3, 4), _dt.date(2026, 9, 11))
+
+    assert [c[0] for c in q.calls].count("tushare_daily") == 2
+    assert [c[0] for c in q.calls].count("paid_daily") == 2
+
+
+def test_year_windows_are_clipped_to_the_requested_range():
+    """年窗口要被请求区间裁剪，不能读到区间之外去。"""
+    import datetime as _dt
+
+    q = RecordingQuery()
+    reconcile(q, _dt.date(2025, 3, 4), _dt.date(2026, 9, 11))
+
+    windows = sorted({(lo, hi) for _, lo, hi in q.calls})
+    assert windows == [
+        (_dt.date(2025, 3, 4), _dt.date(2025, 12, 31)),
+        (_dt.date(2026, 1, 1), _dt.date(2026, 9, 11)),
+    ]
+
+
 def test_summary_aggregates_across_years(warehouse):
     """逐年处理不能改变跨年汇总的结果。
 
@@ -1049,6 +1119,12 @@ def test_null_on_one_side_only_is_a_difference(warehouse):
 
 Run: `.venv/bin/python -m pytest tests/data/quality/test_tushare_reconcile.py -v`
 Expected: FAIL，`ModuleNotFoundError: No module named 'qsys.data.quality.tushare_reconcile'`
+
+**若本任务是在已有一个全量载入版实现的基础上返工**（2026-09-13 的情形）：
+跨年语义的两条测试会**直接通过**——全量载入同样满足那些语义，它们守不住
+「必须逐年」。真正会红的是 `test_every_read_is_confined_to_a_single_year`
+与 `test_year_windows_are_clipped_to_the_requested_range`，**以它们的失败
+作为 Step 2 的确认依据**。
 
 - [ ] **Step 3: 实现对账**
 
@@ -1274,7 +1350,7 @@ if __name__ == "__main__":
 - [ ] **Step 5: 跑测试确认通过**
 
 Run: `.venv/bin/python -m pytest tests/data/quality/test_tushare_reconcile.py -v`
-Expected: PASS（7 个）
+Expected: PASS（10 个）
 
 - [ ] **Step 6: 在节点上全量回填**
 
