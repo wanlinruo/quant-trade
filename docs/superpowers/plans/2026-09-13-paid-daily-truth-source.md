@@ -1794,16 +1794,45 @@ def build_market_regime(
 `query.index_bars(...)` **不要**包——沪深 300 不是个股，`board_of("000300")`
 会把它判成 `main` 而侥幸通过，但那是巧合不是设计。
 
-- [ ] **Step 4: 跑全量测试**
+- [ ] **Step 4: 把两个生产调用点接上（2026-09-13 补）**
 
-Run: `.venv/bin/python -m pytest -q`
+Task 7 给 `build_daily_flags` 加了 `boards` 参数，但**没有任何生产调用点传它**——
+实测 `scripts/daily_archive.py:240` 与 `scripts/ingest_universe.py:122` 都是三参数调用。
+本任务给 `build_market_regime` 加的参数同理。
+
+不接线的后果：Task 10 的一次性全量重算**带**板块过滤，而每日归档**不带**，
+两者口径不一致，派生表会一天天被污染回去，343 只北交所重新流进广度因子——
+而且不报错。
+
+两个脚本都已经有板块集合，只是没往下传：
+
+```python
+# scripts/daily_archive.py —— boards 变量在第 156 行附近已算好
+        print(f"涨跌停标记 {build_daily_flags(warehouse, derived_from, complete_through, boards=boards)} 行")
+        print(f"生态因子 {build_market_regime(warehouse, derived_from, complete_through, boards=boards)} 行")
+```
+
+```python
+# scripts/ingest_universe.py —— boards 变量在第 61 行已算好，同样往下传
+    print(f"  涨跌停标记 {build_daily_flags(warehouse, start, complete_through, boards=boards)} 行")
+    print(f"  市场生态因子 {build_market_regime(warehouse, start, complete_through, boards=boards)} 行")
+```
+
+两处的 `boards` 都来自各自的 `--boards` 参数（默认 `main,gem,star`），
+实测位置：`daily_archive.py:162`、`ingest_universe.py:61`。
+**不要在调用处写死字面量集合**——那会让 `--boards` 参数失效而无人察觉。
+
+- [ ] **Step 5: 跑全量测试**
+
+Run: `.venv/bin/python -m pytest -rfE --tb=no -q`
 Expected: 全绿
 
-- [ ] **Step 5: 提交**
+- [ ] **Step 6: 提交**
 
 ```bash
-git add src/qsys/data/pipeline/regime.py tests/data/test_regime.py
-git commit -m "feat(data): market_regime 加板块过滤，与候选池口径对齐"
+git add src/qsys/data/pipeline/regime.py scripts/daily_archive.py \
+        scripts/ingest_universe.py tests/data/test_regime.py
+git commit -m "feat(data): market_regime 加板块过滤，并把两个生产调用点接上"
 ```
 
 ---
