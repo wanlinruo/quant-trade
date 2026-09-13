@@ -98,6 +98,13 @@ def rig(warehouse, write_daily_bars):
     # 两条链路在生产里永远不会衔接。此处的镜像是测试基础设施，不是被
     # 验证系统本身的行为。
     bars = WarehouseQuery(warehouse).legacy_daily_bars(None, SESSIONS[0], SESSIONS[-1])
+    # 镜像时补上 pre_close（同股前一行 close）与 name：这两列现在是
+    # flags.py 派生涨跌停/ST 的直接输入，legacy_daily_bars 没有它们，
+    # 不补的话 is_st 恒为 null、涨跌停价也恒为 null。
+    bars = bars.sort(["symbol", "dt"]).with_columns(
+        pl.col("close").shift(1).over("symbol").alias("pre_close"),
+        pl.lit("x").alias("name"),
+    )
     write_daily_bars(warehouse, bars)
     build_daily_flags(warehouse, SESSIONS[0], SESSIONS[-1])
     build_market_regime(warehouse, SESSIONS[0], SESSIONS[-1])

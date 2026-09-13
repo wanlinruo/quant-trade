@@ -16,15 +16,27 @@ D = [date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4)]
 
 
 def seed(warehouse: Warehouse, write_daily_bars, rows) -> None:
-    """rows: [(symbol, dt, open, high, low, close, amount)]"""
+    """rows: [(symbol, dt, open, high, low, close, amount)]
+
+    `pre_close` 取同一只股票前一行的 close（真实付费源同样如此，非除权日
+    pre_close 恒等于前收）；`name` 给个不含 "ST" 的名字——这里测的是
+    market_regime 的派生逻辑，不是 ST 判定本身。
+    """
     syms = sorted({r[0] for r in rows})
+    last_close: dict[str, float] = {}
+    pre_closes: list[float | None] = []
+    for r in rows:
+        pre_closes.append(last_close.get(r[0]))
+        last_close[r[0]] = r[5]
     write_daily_bars(warehouse, pl.DataFrame({
         "symbol": [r[0] for r in rows],
         "dt": [r[1] for r in rows],
+        "name": ["平安银行"] * len(rows),
         "open": [r[2] for r in rows],
         "high": [r[3] for r in rows],
         "low": [r[4] for r in rows],
         "close": [r[5] for r in rows],
+        "pre_close": pre_closes,
         "volume": [1000.0] * len(rows),
         "amount": [r[6] for r in rows],
     }))

@@ -31,13 +31,19 @@ def seed_daily_and_flags(warehouse: Warehouse, write_daily_bars) -> None:
         (D[1], 11.0, 11.0, 11.0, 11.0),
         (D[2], 11.5, 11.9, 11.4, 11.8),
     ]
+    # pre_close 取前一行 close：非除权日付费源的 pre_close 恒等于前收。
+    # name 给个不含 "ST" 的名字——is_st 现在直取自它，缺了这一列
+    # is_st/limit_up 都会是 null。
+    pre_closes = [None] + [r[4] for r in rows[:-1]]
     write_daily_bars(warehouse, pl.DataFrame({
         "symbol": [SYMBOL] * 3,
         "dt": [r[0] for r in rows],
+        "name": ["x"] * 3,
         "open": [r[1] for r in rows],
         "high": [r[2] for r in rows],
         "low": [r[3] for r in rows],
         "close": [r[4] for r in rows],
+        "pre_close": pre_closes,
         "volume": [1000.0] * 3,
         "amount": [0.0] * 3,
     }))

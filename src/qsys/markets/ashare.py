@@ -38,7 +38,8 @@ def board_of(code: str) -> str:
 
 
 # 日涨跌幅上限。ST 为 5%，不在此表——ST 是股票的状态而非板块属性，
-# 由 data/pipeline/flags.py 判定。本表只登记板块档位。
+# 自 2026-09-12 起由 data/pipeline/flags.py 从付费源 name 列直取判定。
+# 本表只登记板块档位。
 PRICE_LIMITS: dict[str, float] = {
     "main": 0.10,
     "gem": 0.20,
