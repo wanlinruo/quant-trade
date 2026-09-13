@@ -1992,7 +1992,7 @@ git commit -m "feat(data): 复权因子改直取，自算降级为校验报告"
    `docs/reference/deferred-corrections.md` D-1/D-2。本任务**如实记录数量与分布**，
    **不做归因、不做过滤**，也不因此阻断验收。
 
-- [ ] **Step 1: 重算之前先备份三张派生表**
+- [x] **Step 1: 重算之前先备份三张派生表**
 
 ```bash
 ssh -i ~/.ssh/qmt_bridge_ed25519 ubuntu@110.42.205.144 \
@@ -2007,7 +2007,7 @@ ssh -i ~/.ssh/qmt_bridge_ed25519 ubuntu@110.42.205.144 \
 
 备份不存在就没有第 2、3 段——这一步失败必须停下，不能继续重算。
 
-- [ ] **Step 2: 全量重算（顺序不能换）**
+- [x] **Step 2: 全量重算（顺序不能换）**
 
 顺序是 `adj_factors` → `daily_flags` → `market_regime`：`market_regime` 读因子表，
 因子表不先重算，重算出来的 regime 仍是旧因子的结果。
@@ -2031,7 +2031,7 @@ print('market_regime', build_market_regime(w, date(2023,1,1), date(2026,9,11), b
 区间沿用旧表的 2023–2026，是为了让新旧逐键可比。付费源有 1990 年起的历史，
 是否把派生表向前扩展是独立决定，不在本任务内。
 
-- [ ] **Step 3: 出第 2 段（ST 真值）差异**
+- [x] **Step 3: 出第 2 段（ST 真值）差异**
 
 ```bash
 ssh -i ~/.ssh/qmt_bridge_ed25519 ubuntu@110.42.205.144 \
@@ -2070,7 +2070,7 @@ open('artifacts/stage2_summary.json','w').write(json.dumps(out, indent=2))
 
 首板翻转清单是本段的核心产出：候选池的变化全部由它解释。
 
-- [ ] **Step 4: 出第 3 段（因子直取）差异**
+- [x] **Step 4: 出第 3 段（因子直取）差异**
 
 ```bash
 ssh -i ~/.ssh/qmt_bridge_ed25519 ubuntu@110.42.205.144 \
@@ -2104,19 +2104,19 @@ open('artifacts/stage3_summary.json','w').write(json.dumps(out, indent=2))
 **只记录数量与分布，不解释、不过滤**。大偏差的归因挂在
 `docs/reference/deferred-corrections.md` D-1，等数据源换完再做。
 
-- [ ] **Step 5: 写回归报告**
+- [x] **Step 5: 写回归报告**
 
 `artifacts/换源回归报告_2026-09-13.md` 要包含三段各自的：影响行数、影响标的数、
 最大偏差、分布。第 1 段直接引用已有的 `artifacts/regression_stage1.json`。
 第 3 段的大偏差写明「已挂账 D-1，本轮不归因」，**不得写成「已通过」**。
 
-- [ ] **Step 6: 更新参考文档**
+- [x] **Step 6: 更新参考文档**
 
 `docs/reference/baidupan-data-source.md` 加一节「作为日线真值源」，记录：
 `daily_bars()` 已换底、`volume` 为 Float64、ST 与因子直取、板块过滤要求、
 以及 spec §3.7 记的「停牌判据在新源下永不命中」。
 
-- [ ] **Step 7: 把聚宽 spec 与 plan 标作废**
+- [x] **Step 7: 把聚宽 spec 与 plan 标作废**
 
 两份文档头部各加：
 
@@ -2126,7 +2126,7 @@ open('artifacts/stage3_summary.json','w').write(json.dumps(out, indent=2))
 > 已并入 `docs/superpowers/specs/2026-09-12-paid-daily-truth-source-design.md`。
 ```
 
-- [ ] **Step 8: 提交**
+- [x] **Step 8: 提交**
 
 ```bash
 git add docs/ artifacts/

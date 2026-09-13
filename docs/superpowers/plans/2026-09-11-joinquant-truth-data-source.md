@@ -1,5 +1,15 @@
 # 聚宽真值数据源接入 —— 实施计划
 
+> **已作废（2026-09-11）**：真值源改为百度网盘付费数据，本方案的聚宽采集部分
+> （Task 1-6、8、9）不再执行。消费侧改造（Task 7、10-14）的目标仍然成立，
+> 已并入 `docs/superpowers/specs/2026-09-12-paid-daily-truth-source-design.md`，
+> 并已由该 spec 的实施计划
+> `docs/superpowers/plans/2026-09-13-paid-daily-truth-source.md` 完成。
+>
+> **2026-09-13 再次变更**：日线源进一步改为 Tushare Pro API 直连
+> （付费源实测即 Tushare 转售），见
+> `docs/superpowers/plans/2026-09-13-tushare-ingestion.md`。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 把 ST 判定、涨跌停价、停牌、退市股这四项从「价格反推」换成聚宽直接返回的真值，使生产路径上不再存在任何推断。
