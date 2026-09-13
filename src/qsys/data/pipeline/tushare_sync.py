@@ -24,9 +24,10 @@ from qsys.data.storage import Warehouse
 log = structlog.get_logger(__name__)
 
 # (数据集名, 采集函数)。函数签名统一为 fn(provider, warehouse, [day]) -> int。
-# Task 4: ingest_price_limits / Task 5: ingest_suspensions
-# Task 6 落地指数日线时从 qsys.data.pipeline.index_bars import CSI300，
-# 不在这里重复定义常量。       / Task 8: ingest_limit_list
+#   Task 4: ingest_price_limits    Task 5: ingest_suspensions
+#   Task 6: ingest_index_daily     Task 8: ingest_limit_list
+# Task 6 落地时从 qsys.data.pipeline.index_bars 取 CSI300，不在这里重复定义
+# ——同一字面量两处定义早晚会漂移。
 _REFERENCE_STEPS: list[tuple[str, Callable[..., int]]] = []
 
 
