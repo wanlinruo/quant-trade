@@ -84,6 +84,12 @@ def test_full_pipeline_produces_pit_queryable_warehouse(tmp_path, write_daily_ba
     # ingest_daily_bars 只维护冻结的旧表 bars_daily；下面的复权/质检/PIT 读取
     # 都走 daily_bars()，现在指向付费源 paid_daily。把刚写入的日线原样镜像
     # 过去——同一份真值，只是补上新的读取入口，不是编造数据。
+    #
+    # 这座桥只存在于测试里：生产环境中 ingest_daily_bars（mootdx 路径）不会
+    # 再喂给 build_adj_factors/run_quality_checks/HistoricalFeed——paid_daily
+    # 永久只读、只能靠外部批量导入 parquet 分区，mootdx 写的是冻结的
+    # bars_daily，两条链路在生产里永远不会衔接。此处的镜像是测试基础设施，
+    # 不是被验证系统本身的行为。
     bars = WarehouseQuery(warehouse).legacy_daily_bars(
         ["600036.SH"], SESSIONS[0], SESSIONS[-1]
     )

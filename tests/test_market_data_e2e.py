@@ -91,6 +91,12 @@ def rig(warehouse, write_daily_bars):
     # ingest_universe 只维护冻结的旧表 bars_daily；flags/regime 现在读付费源
     # paid_daily。把同一批刚写入的日线原样镜像过去，下游派生管线才有数据可读——
     # 这不是编造，是把 ingest_universe 已经落盘的真值复制到新的读取入口。
+    #
+    # 这座桥只存在于测试里：生产环境中 ingest_universe（mootdx 路径）不会
+    # 再喂给 build_daily_flags/build_market_regime——paid_daily 永久只读、
+    # 只能靠外部批量导入 parquet 分区，mootdx 写的是冻结的 bars_daily，
+    # 两条链路在生产里永远不会衔接。此处的镜像是测试基础设施，不是被
+    # 验证系统本身的行为。
     bars = WarehouseQuery(warehouse).legacy_daily_bars(None, SESSIONS[0], SESSIONS[-1])
     write_daily_bars(warehouse, bars)
     build_daily_flags(warehouse, SESSIONS[0], SESSIONS[-1])

@@ -307,8 +307,10 @@ class WarehouseQuery:
 
         **读 `paid_daily`，不是 `bars_daily`。** 与 `daily_bars()` 同源
         （见其文档字符串）：`bars_daily` 已冻结不再更新，若还从那张表算
-        「首个 bar 日期」，换源之后新上市的标的永远查不到自己的上市日，
-        会被误判为「一直存在」而漏掉新股过滤。
+        「首个 bar 日期」，换源之后新上市的标的永远查不到自己的上市日。
+        而 `candidate_pool` 的 `keep()` 是「不知道上市日就不放行」，
+        于是这些标的会被**永久排除**在候选池之外——哪怕早已上市超过 50 天。
+        是静默少选，不是多选。
         """
         glob = self._glob("paid_daily", partitioned=True)
         if glob is None:
