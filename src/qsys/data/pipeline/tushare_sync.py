@@ -14,7 +14,7 @@ tests/data/pipeline/test_tushare_sync.py 有一条守卫测试盯着这件事—
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import date
+from datetime import date, timedelta
 
 import structlog
 
@@ -23,12 +23,30 @@ from qsys.data.storage import Warehouse
 
 log = structlog.get_logger(__name__)
 
-CSI300 = "000300.SH"
-
 # (数据集名, 采集函数)。函数签名统一为 fn(provider, warehouse, [day]) -> int。
 # Task 4: ingest_price_limits / Task 5: ingest_suspensions
-# Task 6: ingest_index_daily  / Task 8: ingest_limit_list
+# Task 6 落地指数日线时从 qsys.data.pipeline.index_bars import CSI300，
+# 不在这里重复定义常量。       / Task 8: ingest_limit_list
 _REFERENCE_STEPS: list[tuple[str, Callable[..., int]]] = []
+
+
+def last_open_day(client, today: date) -> date | None:
+    """最近一个已收盘的交易日。交易日历取自 trade_cal，不自行推算。
+
+    是「同步哪一天」的判断逻辑，不是脚本的参数解析，所以放在这个模块里
+    （而不是 scripts/tushare_daily_sync.py）——scripts/ 不是包，测试没法
+    `from scripts.x import`，这条规矩本仓库已经踩过一次坑（见 brief）。
+    """
+    rows = client.call("trade_cal", {
+        "exchange": "SSE",
+        "start_date": (today - timedelta(days=30)).strftime("%Y%m%d"),
+        "end_date": today.strftime("%Y%m%d"), "is_open": "1",
+    })
+    days = sorted(r["cal_date"] for r in rows)
+    if not days:
+        return None
+    stamp = days[-1]
+    return date(int(stamp[:4]), int(stamp[4:6]), int(stamp[6:]))
 
 
 def sync(provider, warehouse: Warehouse, day: date) -> dict[str, int]:
