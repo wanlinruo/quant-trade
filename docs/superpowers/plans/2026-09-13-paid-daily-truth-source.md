@@ -766,15 +766,38 @@ def write_daily_bars():
 Run: `.venv/bin/python -m pytest tests/data/test_paid_daily_query.py -k round_trips -v`
 Expected: PASS
 
-- [ ] **Step 5: 逐个迁移 Task 2 记录的失败测试**
+- [ ] **Step 5: 逐个迁移失败测试 —— 先分清是哪一类**
 
-对每个失败文件，把
-`warehouse.write("bars_daily", frame.to_arrow().cast(schema.BARS_DAILY), year=YYYY)`
-替换为
-`write_daily_bars(warehouse, frame)`
-并在测试函数签名里加 `write_daily_bars` 参数。**断言一行不改**——它们测的是业务逻辑，不是存储位置。
+失败分两类，处理方式相反，**不要一刀切**。判据是「被测模块往哪张表写」。
+
+**A 类：测 `daily_bars()` 的消费方**（`test_flags` / `test_regime` / `test_feed` /
+`test_valuation_derived` / `test_query` / `test_daily_rules` / 各 e2e 等）。
+被测模块只读不写日线，夹具自己造数据。改**夹具**：
+
+把 `warehouse.write("bars_daily", frame.to_arrow().cast(schema.BARS_DAILY), year=YYYY)`
+换成 `write_daily_bars(warehouse, frame)`，并在测试函数签名里加 `write_daily_bars` 参数。
+**断言一行不改**——它们测的是业务逻辑，不是存储位置。
 
 `volume` 若是整数字面量（如 `[1000]`），改成浮点（`[1000.0]`）以匹配新 dtype。
+
+**B 类：测「维护旧表的三个模块」**（`tests/data/pipeline/test_bars.py`、
+`tests/data/pipeline/test_daily_backfill.py`、`tests/data/test_universe.py`，
+Task 2b 之后仍失败的约 9 条）。这一类**夹具是对的**——数据由被测模块
+（`ingest_daily_bars` / `fill_daily_holes` / `ingest_universe`）自己写进 `bars_daily`。
+错的是**断言**：它们用 `WarehouseQuery(...).daily_bars(...)` 去验证结果，而那个
+现在读付费源。改**断言**：
+
+```python
+# 被测模块写的是 bars_daily，验证就得读 bars_daily。
+df = WarehouseQuery(warehouse).legacy_daily_bars(None, lo, hi)
+```
+
+B 类**不要引入 `write_daily_bars` 夹具**，也不要把它们的数据改写进 `paid_daily`——
+那会让测试不再覆盖这三个模块真正的写入路径。
+
+**分类方法**：看测试里有没有调用 `ingest_daily_bars`、`ingest_universe`、
+`fill_daily_holes` 这类会自己写表的函数。有 → B 类；没有、靠 `warehouse.write`
+手工造数据 → A 类。拿不准的逐个看被测函数写哪张表，**不要猜**。
 
 - [ ] **Step 6: 跑全量测试**
 
