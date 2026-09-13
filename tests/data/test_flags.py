@@ -244,6 +244,54 @@ def test_partial_rebuild_refreshes_the_rows_it_covers(warehouse, write_daily_bar
     assert flags_of(warehouse, "600001.SH", days[1])["is_limit_up"] is True
 
 
+def test_rebuild_drops_rows_the_source_no_longer_has(warehouse, write_daily_bars):
+    """重算区间内源不再产出的股-日，必须从表里消失，不能留旧值。
+
+    合并逻辑只做「增/覆盖」，窗口内被源删掉的行会一直留着。生产上实测到
+    10 行这样的残留：旧表 bars_daily 有、付费源没有的股-日，重算后仍带着
+    旧的 limit_pct=0.1，而 is_st / st_source 是新 schema 的 null——
+    一行里一半是旧真值源的断言、一半是新真值源的空缺。表在断言一件当前
+    真值源根本支撑不了的事，属于「拿不到就记 null，不准填」的结构性违反。
+    """
+    days = [date(2024, 1, 2), date(2024, 1, 3)]
+    seed(warehouse, write_daily_bars,
+         [("600001.SH", days[0], 10.0, 10.0, 10.0, 10.0),
+          ("600001.SH", days[1], 10.0, 10.0, 10.0, 10.0),
+          ("600002.SH", days[0], 20.0, 20.0, 20.0, 20.0),
+          ("600002.SH", days[1], 20.0, 20.0, 20.0, 20.0)])
+    assert build_daily_flags(warehouse, days[0], days[1]) == 4
+
+    # 源里去掉 600002.SH 的第二天，再按同一区间整体重算
+    seed(warehouse, write_daily_bars,
+         [("600001.SH", days[0], 10.0, 10.0, 10.0, 10.0),
+          ("600001.SH", days[1], 10.0, 10.0, 10.0, 10.0),
+          ("600002.SH", days[0], 20.0, 20.0, 20.0, 20.0)])
+    build_daily_flags(warehouse, days[0], days[1])
+
+    after = WarehouseQuery(warehouse).daily_flags()
+    assert after.height == 3, "源已删除的股-日仍留在表里"
+    assert (after["symbol"] == "600002.SH").sum() == 1
+
+
+def test_partial_rebuild_does_not_touch_rows_outside_the_window(warehouse, write_daily_bars):
+    """删除只限于重算窗口之内——窗口外的行即便源里没有也不能动。
+
+    这一条守着上一条的修法别改过头：按 dt 范围删，不是按全年删。
+    """
+    days = [date(2024, 1, d) for d in (2, 3, 4)]
+    seed(warehouse, write_daily_bars,
+         [("600001.SH", d, 10.0, 10.0, 10.0, 10.0) for d in days])
+    assert build_daily_flags(warehouse, days[0], days[-1]) == 3
+
+    # 源只剩最后一天，但只重算最后一天：前两天必须原样保留
+    seed(warehouse, write_daily_bars,
+         [("600001.SH", days[-1], 10.0, 10.0, 10.0, 10.0)])
+    build_daily_flags(warehouse, days[-1], days[-1])
+
+    after = WarehouseQuery(warehouse).daily_flags()
+    assert after["dt"].to_list() == days
+
+
 def test_a_normal_stock_keeps_the_board_limit(warehouse, write_daily_bars):
     seed(warehouse, write_daily_bars,
         [

@@ -115,9 +115,14 @@ def build_market_regime(
         daily = daily.join(_index_slope(query, back, hi), on="dt", how="left")
 
         chunk = daily.sort("dt").select(_REGIME_COLUMNS)
-        # 与 flags 同理：分区整年覆盖写，只重算一段时必须先合并同年既有数据
+        # 与 flags 同理：分区整年覆盖写，只重算一段时要保留窗口**之外**的
+        # 既有行；窗口**之内**完全以本次重算为准，包括它的缺席。
+        # 生态因子是 S7 Gate 的全部输入，残留一天旧因子就是给 Gate 喂一天
+        # 当前数据支撑不了的事实，而且不报错。
+        existing = query.market_regime(lo_year, hi_year)
+        outside = existing.filter(~pl.col("dt").is_between(lo, hi))
         merged = (
-            pl.concat([query.market_regime(lo_year, hi_year), chunk], how="vertical")
+            pl.concat([outside, chunk], how="vertical")
             .unique(subset=["dt"], keep="last", maintain_order=True)
             .sort("dt")
             .select(_REGIME_COLUMNS)

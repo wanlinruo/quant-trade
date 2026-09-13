@@ -138,11 +138,19 @@ def build_daily_flags(
             continue
 
         chunk = flags.sort(["dt", "symbol"]).select(_FLAG_COLUMNS)
-        # 分区是整年覆盖写的，必须与同年既有数据合并：只重算一段区间时
-        # 直接写会把同年其余日期的标记抹掉。新行在后，keep="last" 让重算
-        # 覆盖旧值。
+        # 分区是整年覆盖写的，只重算一段区间时直接写会把同年其余日期抹掉，
+        # 所以要保留窗口**之外**的既有行。
+        #
+        # 窗口**之内**则完全以本次重算为准，包括它的缺席：源不再产出的
+        # 股-日必须跟着消失。早先这里是「并集 + keep=last」，只做增与覆盖、
+        # 从不删除，生产上因此留下 10 行残骸——旧表 bars_daily 有、付费源
+        # 没有的股-日，重算后仍带着旧的 limit_pct，而 is_st/st_source 是
+        # 新 schema 的 null。一行里一半是旧真值源的断言、一半是新真值源的
+        # 空缺，等于在断言当前真值源支撑不了的事实。
+        existing = query.daily_flags(lo_year, hi_year)
+        outside = existing.filter(~pl.col("dt").is_between(lo, hi))
         merged = (
-            pl.concat([query.daily_flags(lo_year, hi_year), chunk], how="vertical")
+            pl.concat([outside, chunk], how="vertical")
             .unique(subset=["dt", "symbol"], keep="last", maintain_order=True)
             .sort(["dt", "symbol"])
             .select(_FLAG_COLUMNS)

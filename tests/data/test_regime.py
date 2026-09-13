@@ -201,6 +201,41 @@ def test_partial_rebuild_keeps_the_rest_of_the_year(warehouse, write_daily_bars)
     assert after.height == 3, "早先的生态因子被覆盖掉了"
 
 
+def test_rebuild_drops_dates_the_source_no_longer_has(warehouse, write_daily_bars):
+    """重算区间内源不再产出的交易日，必须从表里消失。
+
+    与 daily_flags 同一个缺陷：合并只做增与覆盖、从不删除。生态因子是
+    S7 Gate 的全部输入，残留一天旧因子就是给 Gate 喂一天当前数据支撑不了
+    的事实，而且不报错。
+    """
+    rows = [("600001.SH", d, 10.0, 10.0, 10.0, 10.0, 1e8) for d in D]
+    seed(warehouse, write_daily_bars, rows)
+    assert build_market_regime(warehouse, D[0], D[-1]) == 3
+
+    # 源里去掉最后一天，按同一区间整体重算
+    seed(warehouse, write_daily_bars, rows[:-1])
+    build_daily_flags(warehouse, D[0], D[-1])
+    build_market_regime(warehouse, D[0], D[-1])
+
+    after = WarehouseQuery(warehouse).market_regime()
+    assert after["dt"].to_list() == D[:-1], "源已删除的交易日仍留在表里"
+
+
+def test_regime_partial_rebuild_does_not_touch_dates_outside_the_window(
+    warehouse, write_daily_bars
+):
+    """删除只限于重算窗口之内——守着上一条的修法别改过头。"""
+    rows = [("600001.SH", d, 10.0, 10.0, 10.0, 10.0, 1e8) for d in D]
+    seed(warehouse, write_daily_bars, rows)
+    assert build_market_regime(warehouse, D[0], D[-1]) == 3
+
+    seed(warehouse, write_daily_bars, rows[-1:])
+    build_market_regime(warehouse, D[-1], D[-1])
+
+    after = WarehouseQuery(warehouse).market_regime()
+    assert after["dt"].to_list() == D
+
+
 def seed_index(warehouse, closes, start=date(2024, 1, 2)):
     """连续 len(closes) 个交易日的沪深300 收盘价。"""
     from datetime import timedelta
