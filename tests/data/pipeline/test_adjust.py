@@ -9,6 +9,8 @@ from qsys.data.pipeline.adjust import (
     build_adj_factors,
     build_corporate_actions,
     daily_factor,
+    paid_factors,
+    verify_computed_factors,
 )
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
@@ -52,6 +54,7 @@ def _seed(warehouse: Warehouse, write_daily_bars) -> None:
         "high": [20.0, 20.5, 10.5, 10.6],
         "low": [18.5, 19.0, 9.8, 9.9],
         "close": [19.5, 20.0, 10.0, 10.2],
+        "factor": [1.0, 1.0, 2.0, 2.0],
         "volume": [1000.0, 1000.0, 2000.0, 2000.0],
         "amount": [19500.0, 20000.0, 20000.0, 20400.0],
     }))
@@ -89,6 +92,26 @@ def test_factor_doubles_from_ex_date(warehouse: Warehouse, write_daily_bars):
     build_adj_factors(warehouse)
     df = WarehouseQuery(warehouse).adj_factors().sort("dt")
     assert df["cum_factor"].to_list()[2:] == [pytest.approx(2.0), pytest.approx(2.0)]
+
+
+def test_direct_factor_wins_when_corporate_action_computation_disagrees(
+    warehouse: Warehouse, write_daily_bars
+):
+    """价格因子取真值；corporate_actions 只再负责成交量股本因子。"""
+    _seed(warehouse, write_daily_bars)
+    path = warehouse.root / "paid_daily" / "year=2024" / "part.parquet"
+    frame = pl.read_parquet(path).with_columns(
+        pl.when(pl.col("dt") >= date(2024, 1, 4))
+        .then(3.0)
+        .otherwise(1.0)
+        .alias("factor")
+    )
+    frame.write_parquet(path)
+
+    build_adj_factors(warehouse)
+    got = WarehouseQuery(warehouse).adj_factors().sort("dt")
+    assert got["cum_factor"].to_list() == [1.0, 1.0, 3.0, 3.0]
+    assert got["cum_share_factor"].to_list() == [1.0, 1.0, 2.0, 2.0]
 
 
 def test_adjusted_close_is_continuous_across_ex_date(warehouse: Warehouse, write_daily_bars):
@@ -187,12 +210,15 @@ def test_build_corporate_actions_with_no_events_writes_nothing(warehouse: Wareho
     assert build_corporate_actions(_FakeReference({}), warehouse, ["600036.SH"]) == 0
 
 
-def test_factors_are_all_one_when_corporate_actions_missing(warehouse: Warehouse, write_daily_bars):
-    """回归防护：忘记灌 corporate_actions 时因子会全为 1.0 且不报错。"""
+def test_direct_price_factors_survive_when_corporate_actions_are_missing(
+    warehouse: Warehouse, write_daily_bars
+):
+    """缺 corporate_actions 只降级成交量因子，不能抹掉直取价格因子。"""
     _seed_bars_only(warehouse, write_daily_bars)
     build_adj_factors(warehouse)
     factors = WarehouseQuery(warehouse).adj_factors()
-    assert set(factors["cum_factor"].to_list()) == {1.0}
+    assert factors["cum_factor"].to_list() == [1.0, 1.5]
+    assert set(factors["cum_share_factor"].to_list()) == {1.0}
 
 
 def _seed_bars_only(warehouse: Warehouse, write_daily_bars) -> None:
@@ -203,6 +229,50 @@ def _seed_bars_only(warehouse: Warehouse, write_daily_bars) -> None:
         "high": [20.0, 20.5],
         "low": [18.5, 19.0],
         "close": [19.5, 20.0],
+        "factor": [1.0, 1.5],
         "volume": [1000.0, 1000.0],
         "amount": [19500.0, 20000.0],
     }))
+
+
+def test_factor_is_read_directly_from_the_paid_source(warehouse, write_daily_bars):
+    day = date(2026, 9, 9)
+    write_daily_bars(warehouse, pl.DataFrame({
+        "symbol": ["000001.SZ"], "dt": [day], "name": ["平安银行"],
+        "open": [11.76], "high": [11.79], "low": [11.69], "close": [11.70],
+        "pre_close": [11.70], "volume": [100.0], "amount": [1e5],
+        "factor": [139.008],
+    }))
+    got = paid_factors(WarehouseQuery(warehouse), None, day, day)
+    assert got.to_dicts() == [{"symbol": "000001.SZ", "dt": day, "factor": 139.008}]
+
+
+def test_verification_reports_the_gap_without_overwriting(warehouse, write_daily_bars):
+    days = [date(2026, 6, 11), date(2026, 6, 12)]
+    write_daily_bars(warehouse, pl.DataFrame({
+        "symbol": ["000001.SZ", "000001.SZ"], "dt": days,
+        "name": ["平安银行", "平安银行"],
+        "open": [11.30, 10.94], "high": [11.30, 10.94],
+        "low": [11.30, 10.94], "close": [11.30, 10.94],
+        "pre_close": [11.30, 10.94], "volume": [100.0, 100.0],
+        "amount": [1e5, 1e5], "factor": [134.5794, 139.008],
+    }))
+    report = verify_computed_factors(WarehouseQuery(warehouse), days[0], days[1])
+    assert report.height == 1
+    assert report.row(0, named=True)["dt"] == days[1]
+
+
+def test_verification_carries_state_across_years(warehouse, write_daily_bars):
+    days = [date(2025, 12, 31), date(2026, 1, 2)]
+    write_daily_bars(warehouse, pl.DataFrame({
+        "symbol": ["000001.SZ", "000001.SZ"], "dt": days,
+        "name": ["平安银行", "平安银行"],
+        "open": [10.0, 5.0], "high": [10.0, 5.0], "low": [10.0, 5.0],
+        "close": [10.0, 5.0], "pre_close": [10.0, 5.0],
+        "volume": [100.0, 100.0], "amount": [1e5, 1e5],
+        # 价格反推是 2 倍，直取故意写成 3 倍；跨年首行必须报出来。
+        "factor": [1.0, 3.0],
+    }))
+    report = verify_computed_factors(WarehouseQuery(warehouse), days[0], days[1])
+    assert report.height == 1
+    assert report.row(0, named=True)["dt"] == days[1]

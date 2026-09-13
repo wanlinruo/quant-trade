@@ -2684,6 +2684,11 @@ git commit -m "feat(data): Tushare 每日增量同步与 systemd 定时器"
 
 ## Task 10: 切换生产查询、冻结旧源、文档
 
+> **与计划 A Task 9 的衔接（2026-09-13 补）：**生产日线切到
+> `tushare_daily` 时，复权因子落库入口也必须从 `paid_daily.factor` 切到
+> `tushare_daily.factor`。只改 `daily_bars()` 会让价格行情持续更新而
+> `adj_factors.cum_factor` 停在旧源最后一天，形成静默的跨源断层。
+
 **Files:**
 - Modify: `src/qsys/data/query.py`
 - Modify: `docs/reference/baidupan-data-source.md`
@@ -2712,6 +2717,9 @@ git commit -m "feat(data): Tushare 每日增量同步与 systemd 定时器"
 docstring 相应更新：说明 2026-09-13 由 `paid_daily` 再次换底，依据是对账报告。
 **`paid_daily` 随之冻结**，与 `bars_daily` 同等对待：新增
 `WarehouseQuery.legacy_paid_daily()` 供对账，生产路径不再读它。
+
+同一步还要把计划 A Task 9 建立的直取因子入口切到底层 `tushare_daily`，并加
+回归测试断言新到交易日能进入 `adj_factors.cum_factor`。价格与因子必须原子换源。
 
 - [ ] **Step 3: 跑全量测试**
 

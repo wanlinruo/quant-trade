@@ -6,7 +6,8 @@
 
 导入落进 `corporate_actions`（回测在除权日据此调整持仓与现金）。
 `factor` 列是 QMT 给的单次复权因子，只用于交叉校验，不入库——
-复权因子由 `adjust.build_adj_factors` 从这张表自行推算，保持可重算。
+价格复权因子从日线真值源直取；本表仍供 `adjust.build_adj_factors` 派生
+成交量所需的股本累计比例，保持可重算。
 """
 
 from __future__ import annotations

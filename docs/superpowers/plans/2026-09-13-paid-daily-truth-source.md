@@ -164,7 +164,7 @@ PRICE_LIMITS: dict[str, float] = {
 from qsys.markets.ashare import board_of as _board_of
 ```
 
-- [ ] **Step 4: 跑全量测试**
+- [x] **Step 4: 跑全量测试（1267 passed，11 warnings）**
 
 Run: `.venv/bin/python -m pytest -q`
 Expected: 1195 passed + 本任务 3 个
@@ -1841,14 +1841,25 @@ git commit -m "feat(data): market_regime 加板块过滤，并把两个生产调
 
 **Files:**
 - Modify: `src/qsys/data/pipeline/adjust.py`
+- Modify: `src/qsys/data/query.py`
+- Modify: `src/qsys/data/pipeline/dividends.py`
 - Test: `tests/data/pipeline/test_adjust.py`
 
 **Interfaces:**
 - Consumes: `WarehouseQuery.paid_daily`（Task 2）
-- Produces: `paid_factors(query, symbols, start, end) -> pl.DataFrame`（列 `symbol, dt, factor`）；
-  `verify_computed_factors(query, start, end) -> pl.DataFrame`（列 `symbol, dt, direct, computed, rel_diff`）
+- Produces: `build_adj_factors(warehouse)`，其中 `cum_factor` 直取、
+  `cum_share_factor` 继续从送转配股派生；
+  `paid_factors(query, symbols, start, end) -> pl.DataFrame`（列 `symbol, dt, factor`）；
+  `verify_computed_factors(query, start, end) -> pl.DataFrame`
+  （列 `symbol, dt, direct, computed, rel_diff`，两种值均为事件日单日因子）
 
-- [ ] **Step 1: 写失败测试**
+> **2026-09-13 实施前复核修正：**原计划只新增两个旁路函数，没有改
+> `build_adj_factors()`，会导致 `HistoricalFeed` 与 `market_regime` 继续消费
+> 自算因子，与本任务标题和 spec §7 冲突。现改为真正替换生产落库值。
+> 同时，全历史校验不得一次加载 28 列；此前 Tushare 对账已在生产节点因此
+> OOM。实现必须只投影 5 列、逐年读取，并携带跨年状态。
+
+- [x] **Step 1: 写失败测试**
 
 ```python
 # tests/data/pipeline/test_adjust.py 追加
@@ -1900,76 +1911,22 @@ def test_verification_reports_the_gap_without_overwriting(warehouse, write_daily
     assert report.height >= 1
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 确认旧实现不满足测试（代码审查确认，未单独保留 red-run 日志）**
 
 Run: `.venv/bin/python -m pytest tests/data/pipeline/test_adjust.py -k "directly or verification" -v`
 Expected: FAIL，`ImportError: cannot import name 'paid_factors'`
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
-```python
-# src/qsys/data/pipeline/adjust.py 追加
+实现约束：
 
-def paid_factors(
-    query: WarehouseQuery,
-    symbols: Sequence[str] | None,
-    start: date,
-    end: date,
-) -> pl.DataFrame:
-    """付费源的累计后复权因子，直取。
-
-    卖家的 `复权因子` 已验证为 Tushare `adj_factor`：以上市首日为基准
-    （=1.0）的累计后复权因子（40/40 只样本首日因子为 1.0）。
-    后复权价 = 原始价 x factor。
-    """
-    return query.paid_daily(symbols, start, end).select(["symbol", "dt", "factor"])
-
-
-def verify_computed_factors(
-    query: WarehouseQuery,
-    start: date,
-    end: date,
-) -> pl.DataFrame:
-    """把自算因子与直取因子逐键比对。**只报告，不落库、不覆盖。**
-
-    自算公式见模块 docstring。实测 522 次因子变动中 7 例相对偏差 >1%，
-    100% 落在 2005-2006 股权分置改革期间。这些差异是数据源之间的真实
-    分歧，保留在报告里供人判断，不能挑一边抹平另一边。
-    """
-    paid = query.paid_daily(None, start, end).select(
-        ["symbol", "dt", "close", "pre_close", "factor"]
-    ).sort(["symbol", "dt"])
-    if paid.height == 0:
-        return pl.DataFrame(
-            schema={"symbol": pl.Utf8, "dt": pl.Date, "direct": pl.Float64,
-                    "computed": pl.Float64, "rel_diff": pl.Float64}
-        )
-
-    # 单日因子 = 前收盘价 / 除权参考价。付费源的 pre_close 即除权参考价，
-    # close.shift(1) 即前收盘价，两者在非除权日相等、单日因子为 1。
-    frame = paid.with_columns(
-        (pl.col("close").shift(1).over("symbol") / pl.col("pre_close")).alias("_daily")
-    ).with_columns(
-        pl.col("_daily").fill_null(1.0).cum_prod().over("symbol").alias("_cum")
-    )
-    base = frame.group_by("symbol").agg(
-        (pl.col("factor").first() / pl.col("_cum").first()).alias("_base")
-    )
-    frame = frame.join(base, on="symbol").with_columns(
-        (pl.col("_cum") * pl.col("_base")).alias("computed")
-    )
-    return (
-        frame.select(
-            "symbol", "dt",
-            pl.col("factor").alias("direct"),
-            pl.col("computed"),
-            ((pl.col("computed") - pl.col("factor")).abs() / pl.col("factor"))
-            .alias("rel_diff"),
-        )
-        .filter(pl.col("rel_diff") > 1e-9)
-        .sort("rel_diff", descending=True)
-    )
-```
+- `build_adj_factors()` 的 `cum_factor` 必须来自 `paid_daily.factor`，不得再由
+  `corporate_actions` 覆盖；后者仅负责 `cum_share_factor`。
+- `WarehouseQuery.paid_daily(..., columns=...)` 只接受 schema 内列名，供全历史
+  任务做安全投影。
+- 校验比较相邻日 `factor(t)/factor(t-1)` 与 `close(t-1)/pre_close(t)`，只报告
+  事件日差异；若比较累计值，一次股改差异会污染其后所有交易日。
+- 逐年处理时携带每只股票上一行的 `close` 和 `factor`，不能漏掉年初首日事件。
 
 - [ ] **Step 4: 跑全量测试**
 

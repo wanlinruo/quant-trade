@@ -129,11 +129,17 @@ class WarehouseQuery:
         symbols: Sequence[str] | None,
         start: date,
         end: date,
+        *,
+        columns: Sequence[str] | None = None,
     ) -> pl.DataFrame:
-        """付费源全部 28 列。flags / adjust / valuation 要用 name、factor、pre_close。"""
-        columns = ", ".join(schema.PAID_DAILY.names)
+        """付费源日线；可投影列以控制全历史任务的内存占用。"""
+        names = list(columns) if columns is not None else schema.PAID_DAILY.names
+        unknown = set(names) - set(schema.PAID_DAILY.names)
+        if unknown:
+            raise ValueError(f"unknown paid_daily columns: {sorted(unknown)}")
+        selected_schema = pa.schema([schema.PAID_DAILY.field(name) for name in names])
         return self._dated_query(
-            "paid_daily", columns, schema.PAID_DAILY, symbols, start, end
+            "paid_daily", ", ".join(names), selected_schema, symbols, start, end
         )
 
     def tushare_daily(
