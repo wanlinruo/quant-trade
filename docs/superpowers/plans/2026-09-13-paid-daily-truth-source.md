@@ -1321,8 +1321,19 @@ _compute 的实现在下一个任务。"
 - Consumes: `WarehouseQuery.paid_daily`（Task 2）、`DAILY_FLAGS`（Task 6）
 - Produces: `build_daily_flags(warehouse, start, end, boards=None) -> int`（新增 `boards` 参数）
 
-**保留** `_with_reference_price`：付费路径不再调用它，但兜底路径（计划 B）没有
-`pre_close`，仍需用 `corporate_actions` 自算。删掉它会让计划 B 无从下手。
+**删除** `_with_reference_price`（2026-09-13 订正）。
+
+计划初稿要求保留它，理由是「兜底路径（计划 B）没有 `pre_close`，仍需用
+`corporate_actions` 自算」。**计划 B 已于 2026-09-13 整段作废**（日线源改 Tushare
+API 直连，人工转存环节消失，兜底路径不再存在），这条依据随之失效。
+
+实测确认它只有 `_compute` 一处调用点，删掉后即为死代码零残留。连带删除：
+`build_daily_flags` 里的 `actions = query.corporate_actions()` 读取、
+`_compute` 的 `actions` 参数、以及 `frame = _with_reference_price(frame, actions)` 调用。
+
+**注意 `adj_prev_close` 这一列要留**——它在 `DAILY_FLAGS` schema 里、有测试、
+下游有消费方。变的只是它的来源：从「`corporate_actions` 事件表自算」改为
+「`pre_close` 直取」。
 
 本任务需在 `flags.py` 顶部加 `from qsys.markets.ashare import PRICE_LIMITS, board_of`
 （原来只导入 `PRICE_LIMITS`）。
@@ -1498,8 +1509,8 @@ Expected: FAIL，`TypeError: build_daily_flags() got an unexpected keyword argum
 
 **涨跌停基准直取 `pre_close`**：付费源的 `pre_close` 就是除权参考价
 本身（3980 个除权日实测，与因子折算值中位差 0.000154），不再用
-`corporate_actions` 事件表自算。`_with_reference_price` 保留，只服务
-计划 B 的兜底路径——QMT 没有 `pre_close`。
+`corporate_actions` 事件表自算。`_with_reference_price` 已删除——计划 B 作废后
+它不再有调用点。`adj_prev_close` 列保留，来源改为 `pre_close` 直取。
 
 **逐年处理**，并向前多读 `_LOOKBACK_DAYS` 天日历日只为给年初第一根 bar
 补上前收。
@@ -1573,9 +1584,15 @@ def build_daily_flags(
 
 - [ ] **Step 5: 改 `_compute`**
 
-删除 `_compute` 中从 `hit_st = (pl.col("high") == pl.col("_st_up"))` 到
-`looks_st = st_raw & ~vetoed` 的整段（三条启发式），以及 `actions` 参数和
-`frame = _with_reference_price(frame, actions)` 调用。替换末段为：
+删除以下四处：
+
+1. `_compute` 中从 `hit_st = (pl.col("high") == pl.col("_st_up"))` 到
+   `looks_st = st_raw & ~vetoed` 的整段（三条 ST 启发式）；
+2. `_compute` 的 `actions` 参数与 `frame = _with_reference_price(frame, actions)` 调用；
+3. `_with_reference_price` 函数本身（删后零调用点，实测确认）；
+4. `build_daily_flags` 里的 `actions = query.corporate_actions()` 读取。
+
+替换 `_compute` 末段为：
 
 ```python
 def _compute(bars: pl.DataFrame, boards: dict[str, str]) -> pl.DataFrame:
@@ -1681,7 +1698,8 @@ git add src/qsys/data/pipeline/flags.py tests/data/pipeline/
 git commit -m "feat(data): ST 改真值直取，涨跌停基准改 pre_close 直取
 
 删除三条价格启发式（近窗一致率 93.8%）与 adj_prev_close 的事件表自算。
-_with_reference_price 保留给计划 B 的兜底路径。"
+_with_reference_price 一并删除——计划 B 作废后它不再有调用点。
+adj_prev_close 列保留，来源改为 pre_close 直取。"
 ```
 
 ---
