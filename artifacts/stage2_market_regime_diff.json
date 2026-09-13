@@ -1,0 +1,65 @@
+{
+  "old_rows": 894,
+  "new_rows": 896,
+  "common_dates": 894,
+  "only_in_old": 0,
+  "only_in_new": 2,
+  "fields": {
+    "limit_up_count": {
+      "diff_dates": 872,
+      "max_rel": null
+    },
+    "limit_down_count": {
+      "diff_dates": 861,
+      "max_rel": null
+    },
+    "limit_up_down_ratio": {
+      "diff_dates": 893,
+      "max_rel": Infinity
+    },
+    "touched_limit_up_count": {
+      "diff_dates": 892,
+      "max_rel": null
+    },
+    "broken_board_count": {
+      "diff_dates": 832,
+      "max_rel": null
+    },
+    "broken_board_rate": {
+      "diff_dates": 889,
+      "max_rel": Infinity
+    },
+    "first_board_count": {
+      "diff_dates": 846,
+      "max_rel": null
+    },
+    "market_advance_ratio": {
+      "diff_dates": 848,
+      "max_rel": Infinity
+    },
+    "market_median_return_1d": {
+      "diff_dates": 772,
+      "max_rel": Infinity
+    },
+    "market_total_money": {
+      "diff_dates": 894,
+      "max_rel": 0.0297295642514597
+    },
+    "prior_limitup_nextday_return_mean": {
+      "diff_dates": 875,
+      "max_rel": 592.3432241269588
+    },
+    "prior_limitup_nextday_return_median": {
+      "diff_dates": 769,
+      "max_rel": Infinity
+    },
+    "valid_stock_count": {
+      "diff_dates": 838,
+      "max_rel": null
+    },
+    "index_ma20_slope_5d": {
+      "diff_dates": 0,
+      "max_rel": null
+    }
+  }
+}

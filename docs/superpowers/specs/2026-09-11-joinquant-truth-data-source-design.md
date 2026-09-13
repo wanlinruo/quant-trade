@@ -5,13 +5,15 @@
 > 已并入 `docs/superpowers/specs/2026-09-12-paid-daily-truth-source-design.md`，
 > 并已由该 spec 的实施计划
 > `docs/superpowers/plans/2026-09-13-paid-daily-truth-source.md` 完成。
+> **例外：停牌真值不在付费源方案内**——付费源没有停牌标志，停牌日直接不产出行
+> （付费源 spec §3.6/§3.7），该目标改由计划 C 的 Tushare `suspend_d` 承接。
 >
 > **2026-09-13 再次变更**：日线源进一步改为 Tushare Pro API 直连
 > （付费源实测即 Tushare 转售），见
 > `docs/superpowers/plans/2026-09-13-tushare-ingestion.md`。
 
 **日期**：2026-09-11
-**状态**：设计已审，待实施计划
+**状态**：已作废，见文首说明
 
 ## 一、目标与非目标
 

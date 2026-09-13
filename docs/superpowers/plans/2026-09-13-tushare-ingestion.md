@@ -2509,7 +2509,9 @@ def test_an_empty_daily_writes_nothing(warehouse):
 
     with pytest.raises(RuntimeError):
         sync(FakeProvider(daily_rows=0), warehouse, DAY)
-    assert WarehouseQuery(warehouse).tushare_daily().height == 0
+    # 日线族的查询方法强制显式区间（防止误读全历史，计划 C 的 Task 3 曾因
+    # 一次性读两张全历史表在生产节点撞 OOM），所以这里不能无参调用。
+    assert WarehouseQuery(warehouse).tushare_daily(None, DAY, DAY).height == 0
 
 
 def test_does_not_call_interfaces_it_does_not_need(warehouse):
