@@ -1972,89 +1972,151 @@ git commit -m "feat(data): 复权因子改直取，自算降级为校验报告"
 - Modify: `docs/reference/baidupan-data-source.md`
 - Modify: `docs/superpowers/specs/2026-09-11-joinquant-truth-data-source-design.md`（标作废）
 - Modify: `docs/superpowers/plans/2026-09-11-joinquant-truth-data-source.md`（标作废）
-- Create: `artifacts/换源回归报告_<日期>.md`
+- Create: `artifacts/换源回归报告_2026-09-13.md`
 
-- [ ] **Step 1: 在节点上全量重算派生表**
+**2026-09-13 订正**（订正依据写在每条里，原步骤的问题一并记录）：
+
+1. **备份必须排在重算之前**。原 Step 1 先重算、Step 2 才说「重算之前必须先备份」，
+   照着执行就会把旧值覆盖掉、无从比对。备份提到 Step 1。
+2. **`adj_factors` 也要备份并重算**。原步骤只重算 `daily_flags` / `market_regime`，
+   但 Task 9 改的是 `adj_factors.cum_factor`（自算 → 直取），不重算它，
+   第 3 段就没有被测对象。且 `market_regime` 读 `query.adj_factors()`
+   （`regime.py:110`），不先重算因子，重算出来的 regime 仍是旧因子算的。
+3. **第 3 段不能直接比 `cum_factor` 的绝对值**。实测旧表 4,504,869 行、
+   区间 2023-01-03 至 2026-09-09，`cum_factor` 以窗口首日归一（首日恒为 1.0）；
+   新值是付费源自带锚点的累计因子，两者不同尺度，直接相减会全市场 100% 差异且毫无意义。
+   两个下游消费方都是锚点无关的——`regime.py:159` 用 `cum_factor(t)/cum_factor(t-1)`，
+   `feed.py:93-97` 除以末日锚点——所以第 3 段按**同锚归一后**比对。
+4. **大偏差不在本任务解释**。用户 2026-09-13 指示：先把数据源替换完毕，
+   再处理因子与计算偏差。Task 9 查出的 1,807 条 `rel_diff > 1%` 已挂账
+   `docs/reference/deferred-corrections.md` D-1/D-2。本任务**如实记录数量与分布**，
+   **不做归因、不做过滤**，也不因此阻断验收。
+
+- [ ] **Step 1: 重算之前先备份三张派生表**
+
+```bash
+ssh -i ~/.ssh/qmt_bridge_ed25519 ubuntu@110.42.205.144 \
+  "set -e
+   B=/data/qsys/warehouse/backups
+   mkdir -p \$B
+   cp -r /data/qsys/warehouse/daily_flags    \$B/daily_flags_before_st_truth
+   cp -r /data/qsys/warehouse/market_regime  \$B/market_regime_before_st_truth
+   cp -r /data/qsys/warehouse/adj_factors    \$B/adj_factors_before_direct
+   du -sh \$B/*"
+```
+
+备份不存在就没有第 2、3 段——这一步失败必须停下，不能继续重算。
+
+- [ ] **Step 2: 全量重算（顺序不能换）**
+
+顺序是 `adj_factors` → `daily_flags` → `market_regime`：`market_regime` 读因子表，
+因子表不先重算，重算出来的 regime 仍是旧因子的结果。
 
 ```bash
 ssh -i ~/.ssh/qmt_bridge_ed25519 ubuntu@110.42.205.144 \
   "cd /home/ubuntu/qsys && .venv/bin/python -c \"
 from datetime import date
 from pathlib import Path
+from qsys.data.pipeline.adjust import build_adj_factors
 from qsys.data.pipeline.flags import build_daily_flags
 from qsys.data.pipeline.regime import build_market_regime
 from qsys.data.storage import Warehouse
 w = Warehouse(Path('warehouse')); b = {'main','gem','star'}
-print('daily_flags', build_daily_flags(w, date(2023,1,1), date(2026,9,11), boards=b))
-print('market_regime', build_market_regime(w, date(2023,1,1), date(2026,9,11), boards=b))
+print('adj_factors', build_adj_factors(w), flush=True)
+print('daily_flags', build_daily_flags(w, date(2023,1,1), date(2026,9,11), boards=b), flush=True)
+print('market_regime', build_market_regime(w, date(2023,1,1), date(2026,9,11), boards=b), flush=True)
 \""
 ```
 
-- [ ] **Step 2: 出第 2 段（ST 真值）差异**
+区间沿用旧表的 2023–2026，是为了让新旧逐键可比。付费源有 1990 年起的历史，
+是否把派生表向前扩展是独立决定，不在本任务内。
 
-**Step 1 重算之前必须先备份**，否则旧值被覆盖就无从比对：
-
-```bash
-ssh -i ~/.ssh/qmt_bridge_ed25519 ubuntu@110.42.205.144 \
-  "cp -r /data/qsys/warehouse/daily_flags /data/qsys/warehouse/backups/daily_flags_before_st_truth"
-```
-
-重算后比对：
+- [ ] **Step 3: 出第 2 段（ST 真值）差异**
 
 ```bash
 ssh -i ~/.ssh/qmt_bridge_ed25519 ubuntu@110.42.205.144 \
   "cd /home/ubuntu/qsys && .venv/bin/python -c \"
-import polars as pl, glob
-old = pl.concat([pl.read_parquet(f) for f in
-    sorted(glob.glob('/data/qsys/warehouse/backups/daily_flags_before_st_truth/**/*.parquet', recursive=True))])
-new = pl.concat([pl.read_parquet(f) for f in
-    sorted(glob.glob('/data/qsys/warehouse/daily_flags/**/*.parquet', recursive=True))])
+import polars as pl, glob, json
+def load(p):
+    return pl.concat([pl.read_parquet(f) for f in
+        sorted(glob.glob(p + '/**/*.parquet', recursive=True))])
+old = load('/data/qsys/warehouse/backups/daily_flags_before_st_truth')
+new = load('/data/qsys/warehouse/daily_flags')
 j = old.join(new, on=['dt','symbol'], how='inner', suffix='_new')
-fb = j.filter(pl.col('is_first_board') != pl.col('is_first_board_new'))
-lp = j.filter(pl.col('limit_pct') != pl.col('limit_pct_new'))
-st = j.filter(pl.col('st_inferred_final') != pl.col('is_st_new'))
-print('共同股-日', j.height)
-print('首板翻转', fb.height, '涉及标的', fb['symbol'].n_unique())
-print('涨跌幅档位变化', lp.height, '涉及标的', lp['symbol'].n_unique())
-print('ST 判定翻转', st.height, '涉及标的', st['symbol'].n_unique())
-print('按年分布:'); print(st.group_by(pl.col('dt').dt.year()).len().sort('dt'))
+def differs(a, b):
+    both_null = pl.col(a).is_null() & pl.col(b).is_null()
+    return (~both_null) & (pl.col(a).is_null() | pl.col(b).is_null()
+                           | (pl.col(a) != pl.col(b)))
+fb = j.filter(differs('is_first_board','is_first_board_new'))
+lp = j.filter(differs('limit_pct','limit_pct_new'))
+st = j.filter(differs('st_inferred_final','is_st_new'))
+out = {'old_rows': old.height, 'new_rows': new.height, 'common_rows': j.height,
+       'first_board_flips': fb.height, 'first_board_symbols': fb['symbol'].n_unique(),
+       'limit_pct_changes': lp.height, 'limit_pct_symbols': lp['symbol'].n_unique(),
+       'st_flips': st.height, 'st_symbols': st['symbol'].n_unique()}
+print(json.dumps(out, indent=2))
+print('ST 翻转按年:'); print(st.group_by(pl.col('dt').dt.year().alias('y')).len().sort('y'))
+print('首板翻转按年:'); print(fb.group_by(pl.col('dt').dt.year().alias('y')).len().sort('y'))
+print('首板翻转方向:'); print(fb.group_by(['is_first_board','is_first_board_new']).len())
 fb.write_parquet('artifacts/stage2_first_board_flips.parquet')
 st.write_parquet('artifacts/stage2_st_flips.parquet')
+open('artifacts/stage2_summary.json','w').write(json.dumps(out, indent=2))
 \""
 ```
 
-首板翻转清单是本段的核心产出——候选池变化全由它解释。
+判差异用的是「两边都 null 才不算差异」的写法，不是 `!=`——polars 里
+`null != value` 求值为 null，被 `filter` 当成 False，会把「一边有值一边没有」
+的差异静默吞掉（这是 Task 5 修过的同一个 Critical）。
 
-- [ ] **Step 3: 出第 3 段（因子直取）差异**
+首板翻转清单是本段的核心产出：候选池的变化全部由它解释。
+
+- [ ] **Step 4: 出第 3 段（因子直取）差异**
 
 ```bash
 ssh -i ~/.ssh/qmt_bridge_ed25519 ubuntu@110.42.205.144 \
   "cd /home/ubuntu/qsys && .venv/bin/python -c \"
-import polars as pl
-r = pl.read_parquet('artifacts/factor_verification.parquet')
-big = r.filter(pl.col('rel_diff') > 0.01)
-print('偏差 >1% 的股-日', big.height, '涉及标的', big['symbol'].n_unique())
-print(big.group_by(pl.col('dt').dt.year()).len().sort('dt'))
-print('落在 2005-2006 之外的:')
-print(big.filter(~pl.col('dt').dt.year().is_between(2005, 2006)))
+import polars as pl, json
+old = pl.read_parquet('/data/qsys/warehouse/backups/adj_factors_before_direct/part.parquet')
+new = pl.read_parquet('/data/qsys/warehouse/adj_factors/part.parquet')
+lo, hi = old['dt'].min(), old['dt'].max()
+new = new.filter(pl.col('dt').is_between(lo, hi))
+j = old.join(new, on=['symbol','dt'], how='inner', suffix='_new').sort(['symbol','dt'])
+# 同锚归一：每只股票除以自己在窗口内首日的值，消掉两边锚点不同的影响
+j = j.with_columns(
+    (pl.col('cum_factor') / pl.col('cum_factor').first().over('symbol')).alias('o'),
+    (pl.col('cum_factor_new') / pl.col('cum_factor_new').first().over('symbol')).alias('n'),
+).with_columns(((pl.col('n') - pl.col('o')).abs() / pl.col('o')).alias('rel'))
+out = {'old_rows': old.height, 'new_rows_in_window': new.height, 'common_rows': j.height,
+       'gt_1e_9': j.filter(pl.col('rel') > 1e-9).height,
+       'gt_0_02pct': j.filter(pl.col('rel') > 2e-4).height,
+       'gt_0_1pct': j.filter(pl.col('rel') > 1e-3).height,
+       'gt_1pct': j.filter(pl.col('rel') > 1e-2).height,
+       'gt_1pct_symbols': j.filter(pl.col('rel') > 1e-2)['symbol'].n_unique(),
+       'max_rel': float(j['rel'].max() or 0.0)}
+print(json.dumps(out, indent=2))
+big = j.filter(pl.col('rel') > 1e-2)
+print('按年:'); print(big.group_by(pl.col('dt').dt.year().alias('y')).len().sort('y'))
+big.select('symbol','dt','o','n','rel').write_parquet('artifacts/stage3_factor_diffs.parquet')
+open('artifacts/stage3_summary.json','w').write(json.dumps(out, indent=2))
 \""
 ```
 
-预期：>1% 的偏差集中在 2005—2006 股改期间。**落在该区间之外的每一条都必须
-在报告里逐个解释**，不能只给一个总数。
+**只记录数量与分布，不解释、不过滤**。大偏差的归因挂在
+`docs/reference/deferred-corrections.md` D-1，等数据源换完再做。
 
-- [ ] **Step 4: 写回归报告**
+- [ ] **Step 5: 写回归报告**
 
-`artifacts/换源回归报告_<日期>.md` 必须包含三段各自的：影响行数、影响标的数、
-最大偏差、以及**每一类差异的解释**。没有解释的差异不算通过。
+`artifacts/换源回归报告_2026-09-13.md` 要包含三段各自的：影响行数、影响标的数、
+最大偏差、分布。第 1 段直接引用已有的 `artifacts/regression_stage1.json`。
+第 3 段的大偏差写明「已挂账 D-1，本轮不归因」，**不得写成「已通过」**。
 
-- [ ] **Step 5: 更新参考文档**
+- [ ] **Step 6: 更新参考文档**
 
 `docs/reference/baidupan-data-source.md` 加一节「作为日线真值源」，记录：
 `daily_bars()` 已换底、`volume` 为 Float64、ST 与因子直取、板块过滤要求、
 以及 spec §3.7 记的「停牌判据在新源下永不命中」。
 
-- [ ] **Step 6: 把聚宽 spec 与 plan 标作废**
+- [ ] **Step 7: 把聚宽 spec 与 plan 标作废**
 
 两份文档头部各加：
 
@@ -2064,7 +2126,7 @@ print(big.filter(~pl.col('dt').dt.year().is_between(2005, 2006)))
 > 已并入 `docs/superpowers/specs/2026-09-12-paid-daily-truth-source-design.md`。
 ```
 
-- [ ] **Step 7: 提交**
+- [ ] **Step 8: 提交**
 
 ```bash
 git add docs/ artifacts/
