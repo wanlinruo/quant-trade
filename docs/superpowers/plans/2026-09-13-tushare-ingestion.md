@@ -553,10 +553,119 @@ def test_empty_inputs_produce_an_empty_frame_with_the_right_schema():
     assert got.columns == list(schema.TUSHARE_DAILY.names)
 ```
 
+
+**provider 层的测试**（本文件在计划初稿里被遗漏，由 codex 在执行 Task 2 时报出，
+2026-09-13 补入）：
+
+```python
+# tests/data/providers/test_tushare_provider.py
+
+"""TushareProvider：只做取数与类型规范化，不做单位换算。
+
+单位换算是业务语义，属 pipeline 层（见 test_tushare_daily.py）。
+本层的契约只有三条：接口名对、参数格式对、数值列是 Float64 且原值不动。
+"""
+
+from datetime import date
+
+import polars as pl
+
+from qsys.data.providers.tushare import TushareProvider
+
+
+class RecordingClient:
+    """记录调用、按脚本返回行。不联网。"""
+
+    def __init__(self, rows=None):
+        self.rows = rows if rows is not None else []
+        self.calls = []
+
+    def call(self, api_name, params, fields=""):
+        self.calls.append((api_name, params, fields))
+        return list(self.rows)
+
+
+def test_daily_calls_the_daily_api_with_a_yyyymmdd_date():
+    """trade_date 必须是 YYYYMMDD 字符串——传 date 对象或带横线的格式，
+    上游会返回空结果而不是报错，静默拿到 0 行最难查。"""
+    c = RecordingClient()
+    TushareProvider(c).daily(date(2026, 9, 11))
+    assert c.calls[0][0] == "daily"
+    assert c.calls[0][1] == {"trade_date": "20260911"}
+
+
+def test_daily_basic_calls_its_own_api():
+    c = RecordingClient()
+    TushareProvider(c).daily_basic(date(2026, 9, 11))
+    assert c.calls[0][0] == "daily_basic"
+    assert c.calls[0][1] == {"trade_date": "20260911"}
+
+
+def test_adj_factor_calls_its_own_api():
+    c = RecordingClient()
+    TushareProvider(c).adj_factor(date(2026, 9, 11))
+    assert c.calls[0][0] == "adj_factor"
+    assert c.calls[0][1] == {"trade_date": "20260911"}
+
+
+def test_numeric_columns_become_float64():
+    """上游把数值也当字符串返回过。不显式转型，下游的算术会静默变成字符串拼接。"""
+    c = RecordingClient([{"ts_code": "000001.SZ", "trade_date": "20260911",
+                          "open": "11.76", "high": "11.79", "low": "11.69",
+                          "close": "11.70", "pre_close": "11.70",
+                          "change": "0.0", "pct_chg": "0.0",
+                          "vol": "582305.98", "amount": "682946.78"}])
+    got = TushareProvider(c).daily(date(2026, 9, 11))
+    assert got["close"].dtype == pl.Float64
+    assert got["vol"].dtype == pl.Float64
+
+
+def test_values_are_not_converted_in_the_provider_layer():
+    """**本层不做单位换算。** amount 仍是上游的千元原值，x1000 在 pipeline 层做。
+    两层都换算就会换两次，而且谁都不会报错。"""
+    c = RecordingClient([{"ts_code": "000001.SZ", "trade_date": "20260911",
+                          "open": 11.76, "high": 11.79, "low": 11.69,
+                          "close": 11.70, "pre_close": 11.70, "change": 0.0,
+                          "pct_chg": 0.0, "vol": 582305.98,
+                          "amount": 682946.78266}])
+    got = TushareProvider(c).daily(date(2026, 9, 11))
+    assert got["amount"].to_list() == [682946.78266]
+    assert got["vol"].to_list() == [582305.98]
+
+
+def test_column_names_are_left_as_upstream_returns_them():
+    """改名也在 pipeline 层做。本层原样透传，便于对着接口文档核对。"""
+    c = RecordingClient([{"ts_code": "000001.SZ", "trade_date": "20260911",
+                          "close": 11.70, "vol": 1.0, "amount": 1.0}])
+    got = TushareProvider(c).daily(date(2026, 9, 11))
+    assert "ts_code" in got.columns
+    assert "symbol" not in got.columns
+
+
+def test_an_empty_result_is_an_empty_frame_not_an_error():
+    """非交易日返回 0 行是合法事实。"""
+    got = TushareProvider(RecordingClient([])).daily(date(2026, 9, 12))
+    assert got.height == 0
+
+
+def test_a_missing_numeric_column_does_not_raise():
+    """上游偶尔少给列。少了就少了，不要凭空造一列 0 出来。"""
+    c = RecordingClient([{"ts_code": "000001.SZ", "trade_date": "20260911",
+                          "close": 11.70}])
+    got = TushareProvider(c).daily(date(2026, 9, 11))
+    assert "amount" not in got.columns
+    assert got["close"].dtype == pl.Float64
+```
+
 - [ ] **Step 2: 跑测试确认失败**
 
 Run: `.venv/bin/python -m pytest tests/data/pipeline/test_tushare_daily.py -v`
 Expected: FAIL，`ModuleNotFoundError: No module named 'qsys.data.pipeline.tushare_daily'`
+
+同时跑 provider 测试：
+
+Run: `.venv/bin/python -m pytest tests/data/providers/test_tushare_provider.py -v`
+Expected: FAIL，`ImportError: cannot import name 'TushareProvider'`
 
 - [ ] **Step 3: 加 schema**
 

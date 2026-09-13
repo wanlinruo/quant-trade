@@ -48,7 +48,7 @@
 |---|---|
 | `scripts/regression_paid_daily.py` | 三段式回归对账，逐键比对新旧派生表并出差异报告 |
 | `tests/data/test_paid_daily_query.py` | 查询层换底的测试 |
-| `tests/data/pipeline/test_flags_st_truth.py` | ST 真值与涨跌停基准的测试 |
+| `tests/data/test_flags_st_truth.py` | ST 真值与涨跌停基准的测试 |
 
 ---
 
@@ -1223,7 +1223,7 @@ git commit -m "test(data): 换源第 1 段回归对账，逐键差异清单"
 **Files:**
 - Modify: `src/qsys/data/schema.py:95-116`（`DAILY_FLAGS`）
 - Modify: `src/qsys/data/pipeline/flags.py:111-128`（`_FLAG_COLUMNS`）
-- Test: `tests/data/pipeline/test_flags_st_truth.py`
+- Test: `tests/data/test_flags_st_truth.py`
 
 **Interfaces:**
 - Produces: `DAILY_FLAGS` 新增 `is_st: bool`、`st_source: string`；删除 `st_inferred_raw`、`st_inference_rejected_by_price_evidence`、`st_inferred_final`
@@ -1233,7 +1233,7 @@ git commit -m "test(data): 换源第 1 段回归对账，逐键差异清单"
 - [ ] **Step 1: 写失败测试**
 
 ```python
-# tests/data/pipeline/test_flags_st_truth.py
+# tests/data/test_flags_st_truth.py
 
 """ST 由真值直取，不再从价格反推。"""
 
@@ -1267,7 +1267,7 @@ def test_flag_columns_match_the_schema():
 
 - [ ] **Step 2: 跑测试确认失败**
 
-Run: `.venv/bin/python -m pytest tests/data/pipeline/test_flags_st_truth.py -v`
+Run: `.venv/bin/python -m pytest tests/data/test_flags_st_truth.py -v`
 Expected: FAIL，`assert 'is_st' in {...}`
 
 - [ ] **Step 3: 改 schema 与列清单**
@@ -1293,16 +1293,16 @@ Expected: FAIL，`assert 'is_st' in {...}`
 
 - [ ] **Step 4: 跑新测试确认通过，记录既有 flags 测试的失败**
 
-Run: `.venv/bin/python -m pytest tests/data/pipeline/test_flags_st_truth.py -v`
+Run: `.venv/bin/python -m pytest tests/data/test_flags_st_truth.py -v`
 Expected: PASS
 
-Run: `.venv/bin/python -m pytest tests/data/pipeline/test_flags.py -q 2>&1 | tail -20`
+Run: `.venv/bin/python -m pytest tests/data/test_flags.py -q 2>&1 | tail -20`
 Expected: **失败**，`_compute` 仍产出旧三列。原样记录，Task 7 修复。
 
 - [ ] **Step 5: 提交（允许带着已知失败）**
 
 ```bash
-git add src/qsys/data/schema.py src/qsys/data/pipeline/flags.py tests/data/pipeline/test_flags_st_truth.py
+git add src/qsys/data/schema.py src/qsys/data/pipeline/flags.py tests/data/test_flags_st_truth.py
 git commit -m "feat(data): daily_flags 换 ST 真值列，删掉反推审计列
 
 _compute 的实现在下一个任务。"
@@ -1314,8 +1314,8 @@ _compute 的实现在下一个任务。"
 
 **Files:**
 - Modify: `src/qsys/data/pipeline/flags.py`（模块 docstring、`build_daily_flags`、`_compute`）
-- Modify: `tests/data/pipeline/test_flags.py`（Task 6 记录的失败用例）
-- Test: `tests/data/pipeline/test_flags_st_truth.py`
+- Modify: `tests/data/test_flags.py`（Task 6 记录的失败用例）
+- Test: `tests/data/test_flags_st_truth.py`
 
 **Interfaces:**
 - Consumes: `WarehouseQuery.paid_daily`（Task 2）、`DAILY_FLAGS`（Task 6）
@@ -1330,7 +1330,7 @@ _compute 的实现在下一个任务。"
 - [ ] **Step 1: 写失败测试**
 
 ```python
-# tests/data/pipeline/test_flags_st_truth.py 追加
+# tests/data/test_flags_st_truth.py 追加
 
 from datetime import date
 
@@ -1470,7 +1470,7 @@ def test_board_filter_keeps_beijing_out_of_daily_flags(warehouse, write_daily_ba
 
 - [ ] **Step 2: 跑测试确认失败**
 
-Run: `.venv/bin/python -m pytest tests/data/pipeline/test_flags_st_truth.py -v`
+Run: `.venv/bin/python -m pytest tests/data/test_flags_st_truth.py -v`
 Expected: FAIL，`TypeError: build_daily_flags() got an unexpected keyword argument 'boards'`
 
 - [ ] **Step 3: 改模块 docstring**
@@ -1660,7 +1660,7 @@ Task 0 当时不能写这句：那时 flags.py 还在用价格反推，写了就
 
 - [ ] **Step 6: 跑测试确认通过**
 
-Run: `.venv/bin/python -m pytest tests/data/pipeline/test_flags_st_truth.py -v`
+Run: `.venv/bin/python -m pytest tests/data/test_flags_st_truth.py -v`
 Expected: PASS（9 个）
 
 - [ ] **Step 7: 迁移 Task 6 记录的既有 flags 测试**
