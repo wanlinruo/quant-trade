@@ -28,7 +28,7 @@ def _merge_write(warehouse: Warehouse, dataset: str, frame: pl.DataFrame,
         lo, hi = date(year, 1, 1), date(year, 12, 31)
         chunk = frame.filter(pl.col("dt").is_between(lo, hi))
         merged = (
-            pl.concat([reader(lo, hi), chunk], how="vertical")
+            pl.concat([reader(lo, hi), chunk], how="vertical_relaxed")
             .unique(subset=keys, keep="last", maintain_order=True)
             .sort(keys)
             .select(arrow_schema.names)
@@ -101,16 +101,11 @@ def ingest_index_daily(provider, warehouse: Warehouse, ts_codes: Sequence[str],
         raw = provider.index_daily(code, start, end)
         if not raw.height:
             continue
-        fractional = raw.filter((pl.col("vol") - pl.col("vol").round(0)).abs() > 1e-9)
-        if fractional.height:
-            raise ValueError(
-                f"{code} 的 index_daily vol 含非整数值，INDEX_BARS.volume 是 int64；不截断、不写入"
-            )
         frames.append(raw.select(
             pl.col("ts_code").alias("symbol"),
             _date_expr("trade_date").alias("dt"),
             "open", "high", "low", "close",
-            pl.col("vol").round(0).cast(pl.Int64).alias("volume"),
+            pl.col("vol").cast(pl.Float64).alias("volume"),
             (pl.col("amount") * 1000.0).alias("amount"),
         ))
     if not frames:

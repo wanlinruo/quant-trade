@@ -208,7 +208,9 @@ class WarehouseQuery:
             params.extend(symbols)
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
-        return self._con.execute(sql + " ORDER BY symbol, dt", params).pl()
+        return self._con.execute(sql + " ORDER BY symbol, dt", params).pl().with_columns(
+            pl.col("volume").cast(pl.Float64)
+        )
 
     def price_limits(
         self, symbols: Sequence[str] | None, start: date, end: date

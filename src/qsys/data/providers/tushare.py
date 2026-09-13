@@ -83,11 +83,18 @@ class TushareProvider:
         return pl.DataFrame(rows, infer_schema_length=None) if rows else pl.DataFrame()
 
     def namechange(self) -> pl.DataFrame:
-        rows = self._client.call(
-            "namechange",
-            {},
-            "ts_code,name,start_date,end_date,ann_date,change_reason",
-        )
+        fields = "ts_code,name,start_date,end_date,ann_date,change_reason"
+        rows: list[dict] = []
+        page_size = 10_000
+        for offset in range(0, 1_000_000, page_size):
+            page = self._client.call(
+                "namechange", {"offset": offset, "limit": page_size}, fields
+            )
+            rows.extend(page)
+            if len(page) < page_size:
+                break
+        else:  # pragma: no cover - 上游异常膨胀时宁可失败，不返回截断表
+            raise RuntimeError("namechange 分页超过 1,000,000 行，拒绝静默截断")
         return pl.DataFrame(rows, infer_schema_length=None) if rows else pl.DataFrame()
 
     def limit_list_d(self, trade_date: date, limit_type: str = "U") -> pl.DataFrame:

@@ -67,7 +67,9 @@ INDEX_BARS = pa.schema(
         ("high", pa.float64()),
         ("low", pa.float64()),
         ("close", pa.float64()),
-        ("volume", pa.int64()),
+        # Tushare index_daily.vol 有小数（全历史 5,270 行中实测 186 行）。
+        # 2026-09-14 从 int64 无损迁移为 float64，旧整数值读取时自然提升。
+        ("volume", pa.float64()),
         ("amount", pa.float64()),
     ]
 )

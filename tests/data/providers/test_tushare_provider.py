@@ -91,6 +91,24 @@ def test_static_reference_interfaces_request_declared_fields():
     assert client.calls == [
         ("stock_basic", {"exchange": "", "list_status": "D"},
          "ts_code,symbol,name,area,industry,list_date,delist_date"),
-        ("namechange", {},
+        ("namechange", {"offset": 0, "limit": 10000},
          "ts_code,name,start_date,end_date,ann_date,change_reason"),
     ]
+
+
+def test_namechange_reads_past_the_ten_thousand_row_api_page():
+    class PagedClient:
+        def __init__(self):
+            self.offsets = []
+
+        def call(self, api_name, params, fields=""):
+            assert api_name == "namechange"
+            self.offsets.append(params["offset"])
+            if params["offset"] == 0:
+                return [{"ts_code": f"{i:06d}.SZ"} for i in range(10_000)]
+            return [{"ts_code": "600000.SH"}]
+
+    client = PagedClient()
+    got = TushareProvider(client).namechange()
+    assert got.height == 10_001
+    assert client.offsets == [0, 10_000]

@@ -61,9 +61,11 @@ def ingest_index_bars(
     written = 0
     for year in sorted({d.year for d in fresh["dt"].to_list()}):
         lo, hi = date(year, 1, 1), date(year, 12, 31)
-        incoming = fresh.filter(pl.col("dt").is_between(lo, hi))
+        incoming = fresh.filter(pl.col("dt").is_between(lo, hi)).with_columns(
+            pl.col("volume").cast(pl.Float64)
+        )
         merged = (
-            pl.concat([query.index_bars(None, lo, hi), incoming], how="vertical")
+            pl.concat([query.index_bars(None, lo, hi), incoming], how="vertical_relaxed")
             .unique(subset=["symbol", "dt"], keep="last", maintain_order=True)
             .sort(["symbol", "dt"])
             .select(BAR_COLUMNS)

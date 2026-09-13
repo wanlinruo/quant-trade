@@ -3,8 +3,6 @@
 from datetime import date
 
 import polars as pl
-import pytest
-
 from qsys.data.pipeline.tushare_reference import (
     ingest_index_daily,
     ingest_instruments,
@@ -101,10 +99,11 @@ def test_index_daily_writes_existing_schema_and_converts_amount(warehouse):
     assert got["amount"].to_list() == [1_500_000_000.0]
 
 
-def test_fractional_index_volume_is_refused(warehouse):
+def test_fractional_index_volume_is_preserved(warehouse):
     provider = FakeProvider(index_daily=_index_frame(123456.78))
-    with pytest.raises(ValueError, match="int64"):
-        ingest_index_daily(provider, warehouse, ["000300.SH"], DAY, DAY)
+    ingest_index_daily(provider, warehouse, ["000300.SH"], DAY, DAY)
+    got = WarehouseQuery(warehouse).index_bars(["000300.SH"], DAY, DAY)
+    assert got["volume"].to_list() == [123456.78]
 
 
 def _basic_frame(codes, status):
