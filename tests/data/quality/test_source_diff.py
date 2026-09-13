@@ -103,3 +103,41 @@ def test_board_filter_excludes_beijing_from_the_comparison(warehouse, write_dail
         WarehouseQuery(warehouse), DAY, DAY, boards={"main", "gem", "star"}
     )
     assert diff.only_in_paid.height == 0
+
+
+def test_a_null_on_one_side_only_is_a_difference(warehouse, write_daily_bars):
+    """一边缺值一边有值必须算差异。
+
+    polars 里 `null != 有值` 求值为 null，filter 会把它当 False 丢掉——
+    这类差异既不进 value_diffs 也不计入 summary，还不报错，是最难发现的一类。
+    """
+    write_daily_bars(warehouse, pl.DataFrame({
+        "symbol": ["000001.SZ"], "dt": [DAY], "open": [11.76], "high": [11.79],
+        "low": [11.69], "volume": [582306.0], "amount": [6.8e8],
+        # 不传 close——write_daily_bars 会把缺列一律补 null。
+    }))
+    _legacy(warehouse, {
+        "symbol": ["000001.SZ"], "dt": [DAY], "open": [11.76], "high": [11.79],
+        "low": [11.69], "close": [11.70], "volume": [582306], "amount": [6.8e8],
+    })
+    diff = compare_daily_sources(WarehouseQuery(warehouse), DAY, DAY, boards=None)
+    hit = diff.value_diffs.filter(pl.col("field") == "close")
+    assert hit.height == 1
+    row = hit.to_dicts()[0]
+    assert row["paid"] is None
+    assert row["legacy"] == 11.70
+
+
+def test_both_sides_null_is_not_a_difference(warehouse, write_daily_bars):
+    """两边都缺值不算差异——否则会把大量正常的空值误报成差异。"""
+    write_daily_bars(warehouse, pl.DataFrame({
+        "symbol": ["000001.SZ"], "dt": [DAY], "open": [11.76], "high": [11.79],
+        "low": [11.69], "volume": [582306.0], "amount": [6.8e8],
+        # 不传 close——补 null。
+    }))
+    _legacy(warehouse, {
+        "symbol": ["000001.SZ"], "dt": [DAY], "open": [11.76], "high": [11.79],
+        "low": [11.69], "close": [None], "volume": [582306], "amount": [6.8e8],
+    })
+    diff = compare_daily_sources(WarehouseQuery(warehouse), DAY, DAY, boards=None)
+    assert diff.value_diffs.filter(pl.col("field") == "close").height == 0

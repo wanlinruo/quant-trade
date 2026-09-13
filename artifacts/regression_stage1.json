@@ -7,5 +7,10 @@
   "ohlc_diff_rows": 0,
   "volume_diff_rows": 3618167,
   "amount_diff_rows": 3732214,
-  "max_amount_diff": 3400.0
+  "max_amount_diff": 3400.0,
+  "boards": [
+    "gem",
+    "main",
+    "star"
+  ]
 }

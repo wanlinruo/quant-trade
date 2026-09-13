@@ -58,7 +58,16 @@ def compare_daily_sources(
     common = paid.join(legacy, on=keys, how="inner", suffix="_legacy")
     diffs: list[pl.DataFrame] = []
     for field in _VALUE_FIELDS:
-        hit = common.filter(pl.col(field) != pl.col(f"{field}_legacy"))
+        other = f"{field}_legacy"
+        # null 的比较要显式写。polars 里 `null != 有值` 求值为 null，
+        # 而 filter 把 null 谓词当 False——一边缺值一边有值的差异会被静默
+        # 吞掉，既不进 value_diffs 也不计入 summary，还不报错。
+        both_null = pl.col(field).is_null() & pl.col(other).is_null()
+        differs = (~both_null) & (
+            pl.col(field).is_null() | pl.col(other).is_null()
+            | (pl.col(field) != pl.col(other))
+        )
+        hit = common.filter(differs)
         if hit.height == 0:
             continue
         diffs.append(
@@ -67,8 +76,8 @@ def compare_daily_sources(
                 + [
                     pl.lit(field).alias("field"),
                     pl.col(field).alias("paid"),
-                    pl.col(f"{field}_legacy").alias("legacy"),
-                    (pl.col(field) - pl.col(f"{field}_legacy")).abs().alias("abs_diff"),
+                    pl.col(other).alias("legacy"),
+                    (pl.col(field) - pl.col(other)).abs().alias("abs_diff"),
                 ]
             )
         )

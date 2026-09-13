@@ -32,14 +32,19 @@ def main() -> int:
     query = WarehouseQuery(Warehouse(args.warehouse))
     diff = compare_daily_sources(query, args.start, args.end, boards)
 
+    # 产物要能自证口径：只看 JSON 的人不知道 CLI 默认排除了北交所/B 股，
+    # 把实际生效的板块过滤落进去，避免被误当成全市场对账。
+    summary = dict(diff.summary)
+    summary["boards"] = sorted(boards) if boards is not None else "ALL"
+
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(diff.summary, indent=2, ensure_ascii=False))
+    args.out.write_text(json.dumps(summary, indent=2, ensure_ascii=False))
     for name, frame in (("only_in_paid", diff.only_in_paid),
                         ("only_in_legacy", diff.only_in_legacy),
                         ("value_diffs", diff.value_diffs)):
         frame.write_parquet(args.out.with_name(f"{args.out.stem}_{name}.parquet"))
 
-    print(json.dumps(diff.summary, indent=2, ensure_ascii=False))
+    print(json.dumps(summary, indent=2, ensure_ascii=False))
     return 0
 
 
