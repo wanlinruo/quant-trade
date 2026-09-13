@@ -16,7 +16,9 @@ from qsys.data.providers.tushare_client import TushareClient
 def _rows_to_frame(rows: list[dict], floats: tuple[str, ...]) -> pl.DataFrame:
     if not rows:
         return pl.DataFrame()
-    frame = pl.DataFrame(rows)
+    # 早期历史里同一数值列会先出现整数、百行后才出现小数。默认只采样前
+    # 100 行会把列误判为整数：部分 Polars 版本报错，部分版本会静默截断。
+    frame = pl.DataFrame(rows, infer_schema_length=None)
     return frame.with_columns(
         [pl.col(c).cast(pl.Float64, strict=False) for c in floats if c in frame.columns]
     )

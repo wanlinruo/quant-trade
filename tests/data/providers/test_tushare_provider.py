@@ -44,3 +44,14 @@ def test_adj_factor_calls_the_declared_interface():
 def test_empty_result_stays_empty():
     got = TushareProvider(FakeClient([])).daily(date(2026, 9, 11))
     assert got.is_empty()
+
+
+def test_numeric_type_inference_scans_every_upstream_row():
+    """早期历史里同一比率列会先出现整数、百行后才出现小数，不能采样推断。"""
+    rows = [
+        {"ts_code": f"{i:06d}.SZ", "pe": 1}
+        for i in range(100)
+    ]
+    rows.append({"ts_code": "600000.SH", "pe": 1.204})
+    got = TushareProvider(FakeClient(rows)).daily_basic(date(1995, 4, 20))
+    assert got["pe"].tail(1).to_list() == [1.204]
