@@ -988,6 +988,54 @@ def test_null_on_both_sides_is_not_a_difference(warehouse):
     assert rep.value_diffs.filter(pl.col("field") == "pe").height == 0
 
 
+def test_summary_aggregates_across_years(warehouse):
+    """逐年处理不能改变跨年汇总的结果。
+
+    全历史两张表同时载入约 8.2 GiB，生产节点只有 7.5 GiB——2026-09-13 实测
+    被 OOM killer 杀掉，因此改为逐年。这条测试守的就是「改了实现、没改语义」。
+    """
+    import datetime as _dt
+
+    day_2025 = _dt.date(2025, 3, 4)
+    rows_2025 = [_row("000001.SZ") | {"dt": day_2025}]
+    rows_2026 = [_row("000001.SZ"), _row("600000.SH")]
+
+    for dataset, arrow_schema in (("paid_daily", schema.PAID_DAILY),
+                                  ("tushare_daily", schema.TUSHARE_DAILY)):
+        for year, rows in ((2025, rows_2025), (2026, rows_2026)):
+            frame = pl.DataFrame(rows)
+            path = warehouse.root / dataset / f"year={year}" / "part.parquet"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            pq.write_table(frame.to_arrow().cast(arrow_schema), path)
+
+    rep = reconcile(WarehouseQuery(warehouse), day_2025, DAY)
+    assert rep.summary["common_rows"] == 3        # 2025 的 1 行 + 2026 的 2 行
+    assert rep.summary["only_in_tushare"] == 0
+    assert rep.summary["only_in_paid"] == 0
+
+
+def test_a_difference_in_an_earlier_year_is_not_lost(warehouse):
+    """早年的差异必须出现在最终清单里，不能被后一年覆盖掉。"""
+    import datetime as _dt
+
+    day_2025 = _dt.date(2025, 3, 4)
+    for dataset, arrow_schema, close in (("paid_daily", schema.PAID_DAILY, 11.70),
+                                         ("tushare_daily", schema.TUSHARE_DAILY, 11.71)):
+        frame = pl.DataFrame([_row("000001.SZ") | {"dt": day_2025, "close": close}])
+        path = warehouse.root / dataset / "year=2025" / "part.parquet"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        pq.write_table(frame.to_arrow().cast(arrow_schema), path)
+        frame26 = pl.DataFrame([_row("000001.SZ")])
+        path26 = warehouse.root / dataset / "year=2026" / "part.parquet"
+        path26.parent.mkdir(parents=True, exist_ok=True)
+        pq.write_table(frame26.to_arrow().cast(arrow_schema), path26)
+
+    rep = reconcile(WarehouseQuery(warehouse), day_2025, DAY)
+    hit = rep.value_diffs.filter(pl.col("field") == "close")
+    assert hit.height == 1
+    assert hit["dt"].to_list() == [day_2025]
+
+
 def test_null_on_one_side_only_is_a_difference(warehouse):
     """一边有值一边没有，必须报出来——这正是要查的东西。"""
     _write(warehouse, "paid_daily", [_row("000001.SZ", pe=5.39)], schema.PAID_DAILY)
@@ -1037,9 +1085,16 @@ class ReconcileReport:
     summary: dict[str, int | float]
 
 
-def reconcile(query: WarehouseQuery, start: date, end: date) -> ReconcileReport:
-    ts = query.tushare_daily(None, start, end)
-    paid = query.paid_daily(None, start, end)
+def _reconcile_year(query: WarehouseQuery, lo: date, hi: date):
+    """比对一年。返回 (only_ts, only_paid, value_diffs, 本年计数)。
+
+    **逐年处理是可行性前提，不是优化。** 全历史两张表同时载入约 8.2 GiB
+    （18.2M 行 x 28 列 x 8 字节 x 2），而生产节点只有 7.5 GiB——2026-09-13
+    实测被 OOM killer 杀掉。单年峰值约 450 MiB，宽裕。
+    仓库各处（universe.py / flags.py / build_daily_flags）都是同一套逐年模式。
+    """
+    ts = query.tushare_daily(None, lo, hi)
+    paid = query.paid_daily(None, lo, hi)
 
     only_ts = ts.join(paid.select(_KEYS), on=_KEYS, how="anti").sort(_KEYS)
     only_paid = paid.join(ts.select(_KEYS), on=_KEYS, how="anti").sort(_KEYS)
@@ -1068,29 +1123,69 @@ def reconcile(query: WarehouseQuery, start: date, end: date) -> ReconcileReport:
             ]
         ))
 
+    year_diffs = (
+        pl.concat(diffs, how="vertical") if diffs else _empty_diffs()
+    )
+    counts = {
+        "tushare_rows": ts.height,
+        "paid_rows": paid.height,
+        "common_rows": common.height,
+        "only_in_tushare": only_ts.height,
+        "only_in_paid": only_paid.height,
+    }
+    return only_ts, only_paid, year_diffs, counts
+
+
+def _empty_diffs() -> pl.DataFrame:
+    return pl.DataFrame(schema={"symbol": pl.Utf8, "dt": pl.Date, "field": pl.Utf8,
+                                "tushare": pl.Float64, "paid": pl.Float64,
+                                "abs_diff": pl.Float64})
+
+
+def reconcile(query: WarehouseQuery, start: date, end: date) -> ReconcileReport:
+    """逐年比对，跨年汇总。接口与产物与逐次全量版完全一致。
+
+    **不要改回一次性载入全历史**——那会在生产节点 OOM（见 `_reconcile_year`）。
+    """
+    only_ts_parts: list[pl.DataFrame] = []
+    only_paid_parts: list[pl.DataFrame] = []
+    diff_parts: list[pl.DataFrame] = []
+    totals = {"tushare_rows": 0, "paid_rows": 0, "common_rows": 0,
+              "only_in_tushare": 0, "only_in_paid": 0}
+
+    for year in range(start.year, end.year + 1):
+        lo = max(start, date(year, 1, 1))
+        hi = min(end, date(year, 12, 31))
+        if lo > hi:
+            continue
+        only_ts, only_paid, year_diffs, counts = _reconcile_year(query, lo, hi)
+        for k, v in counts.items():
+            totals[k] += v
+        if only_ts.height:
+            only_ts_parts.append(only_ts)
+        if only_paid.height:
+            only_paid_parts.append(only_paid)
+        if year_diffs.height:
+            diff_parts.append(year_diffs)
+
+    only_ts_all = (pl.concat(only_ts_parts, how="vertical").sort(_KEYS)
+                   if only_ts_parts else pl.DataFrame())
+    only_paid_all = (pl.concat(only_paid_parts, how="vertical").sort(_KEYS)
+                     if only_paid_parts else pl.DataFrame())
     value_diffs = (
-        pl.concat(diffs, how="vertical").sort(["field", "abs_diff"],
-                                              descending=[False, True])
-        if diffs else
-        pl.DataFrame(schema={"symbol": pl.Utf8, "dt": pl.Date, "field": pl.Utf8,
-                             "tushare": pl.Float64, "paid": pl.Float64,
-                             "abs_diff": pl.Float64})
+        pl.concat(diff_parts, how="vertical").sort(["field", "abs_diff"],
+                                                   descending=[False, True])
+        if diff_parts else _empty_diffs()
     )
 
     by_field = (
         value_diffs.group_by("field").len().sort("len", descending=True).to_dicts()
         if value_diffs.height else []
     )
-    summary = {
-        "tushare_rows": ts.height,
-        "paid_rows": paid.height,
-        "common_rows": common.height,
-        "only_in_tushare": only_ts.height,
-        "only_in_paid": only_paid.height,
-        "diff_rows": value_diffs.height,
-        "diff_by_field": {d["field"]: d["len"] for d in by_field},
-    }
-    return ReconcileReport(only_ts, only_paid, value_diffs, summary)
+    summary = dict(totals)
+    summary["diff_rows"] = value_diffs.height
+    summary["diff_by_field"] = {d["field"]: d["len"] for d in by_field}
+    return ReconcileReport(only_ts_all, only_paid_all, value_diffs, summary)
 ```
 
 - [ ] **Step 4: 写回填 CLI**
@@ -1179,7 +1274,7 @@ if __name__ == "__main__":
 - [ ] **Step 5: 跑测试确认通过**
 
 Run: `.venv/bin/python -m pytest tests/data/quality/test_tushare_reconcile.py -v`
-Expected: PASS（5 个）
+Expected: PASS（7 个）
 
 - [ ] **Step 6: 在节点上全量回填**
 
