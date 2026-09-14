@@ -450,9 +450,15 @@ glob 旧表——不修的话新上市标的会**永久**被排除出候选池�
 顺着 `is_st → limit_pct → limit_up → fill_null(False)` 一路下去
 **静默丢掉 867 个首板**。
 
-`flags.resolve_names` 按观测强度排优先级，三个候选都是直取字段：
+`flags.resolve_names` 按观测强度排优先级，四个候选都是直取字段：
 `tushare_daily.name` → `paid_daily.name`（逐日观测，覆盖至 2026-09-11）
-→ `namechange` 区间。付费源按 `(symbol, dt)` 精确连接，不向前后蔓延。
+→ `name_snapshots.name`（每日 `stock_basic` 快照，2026-09-14 起累积）
+→ `namechange` 区间。两个逐日观测源都按 `(symbol, dt)` 精确连接，
+不向前后蔓延。
+
+**付费源在这条链上是不可替代的那一段**：`name_snapshots` 只能从启用之日
+向后累积，补不了历史；`namechange` 有 2006 断层。所以 2026-09-11 及之前的
+名称真值只有 `paid_daily` 一个源，**这张表不能删**。
 
 详见 `artifacts/第4段回归_付费源到Tushare换源_2026-09-14.md` 与
 `deferred-corrections.md` D-10。
