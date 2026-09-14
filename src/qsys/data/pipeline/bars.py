@@ -51,7 +51,9 @@ def ingest_daily_bars(
     for year in sorted({d.year for d in fresh["dt"].to_list()}):
         year_start, year_end = date(year, 1, 1), date(year, 12, 31)
         incoming = fresh.filter(pl.col("dt").is_between(year_start, year_end))
-        existing = query.daily_bars(None, year_start, year_end)
+        # 读自己写的那张表。daily_bars() 换底读付费源之后，用它做合并
+        # 会把付费数据灌进冻结的旧表，毁掉回归对账的参照物。
+        existing = query.legacy_daily_bars(None, year_start, year_end)
         merged = (
             pl.concat([existing, incoming], how="vertical")
             # 新数据在后，keep="last" 让重采覆盖旧值；maintain_order 保证语义确定

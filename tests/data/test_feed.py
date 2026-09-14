@@ -1,5 +1,6 @@
 from datetime import date, datetime
 
+import polars as pl
 import pyarrow as pa
 import pytest
 
@@ -14,25 +15,18 @@ CAL = AShareCalendar(SESSIONS)
 
 
 @pytest.fixture
-def feed(warehouse: Warehouse) -> HistoricalFeed:
+def feed(warehouse: Warehouse, write_daily_bars) -> HistoricalFeed:
     """600036 在 2024-01-04 除权 10 送 10：不复权收盘 19.5 / 20.0 / 10.0 / 10.2。"""
-    warehouse.write(
-        "bars_daily",
-        pa.table(
-            {
-                "symbol": ["600036.SH"] * 4,
-                "dt": SESSIONS,
-                "open": [19.0, 19.5, 10.0, 10.1],
-                "high": [20.0, 20.5, 10.5, 10.6],
-                "low": [18.5, 19.0, 9.8, 9.9],
-                "close": [19.5, 20.0, 10.0, 10.2],
-                "volume": [1000, 1000, 2000, 2000],
-                "amount": [19500.0, 20000.0, 20000.0, 20400.0],
-            },
-            schema=schema.BARS_DAILY,
-        ),
-        year=2024,
-    )
+    write_daily_bars(warehouse, pl.DataFrame({
+        "symbol": ["600036.SH"] * 4,
+        "dt": SESSIONS,
+        "open": [19.0, 19.5, 10.0, 10.1],
+        "high": [20.0, 20.5, 10.5, 10.6],
+        "low": [18.5, 19.0, 9.8, 9.9],
+        "close": [19.5, 20.0, 10.0, 10.2],
+        "volume": [1000.0, 1000.0, 2000.0, 2000.0],
+        "amount": [19500.0, 20000.0, 20000.0, 20400.0],
+    }))
     warehouse.write(
         "adj_factors",
         pa.table(

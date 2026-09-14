@@ -55,7 +55,7 @@ def main() -> int:
     reference = AkshareProvider()
 
     print("=== 标的主表 ===")
-    print(f"  {build_instruments(reference, warehouse)} 只")
+    print(f"  {build_instruments(reference, warehouse, date.today())} 只")
 
     instruments = WarehouseQuery(warehouse).instruments()
     boards = {b.strip() for b in args.boards.split(",") if b.strip()}
@@ -119,8 +119,8 @@ def main() -> int:
             log.warning("ingest.valuation_failed", error=str(exc))
 
     print("=== 派生数据 ===")
-    print(f"  涨跌停标记 {build_daily_flags(warehouse, start, complete_through)} 行")
-    print(f"  市场生态因子 {build_market_regime(warehouse, start, complete_through)} 行")
+    print(f"  涨跌停标记 {build_daily_flags(warehouse, start, complete_through, boards=boards)} 行")
+    print(f"  市场生态因子 {build_market_regime(warehouse, start, complete_through, boards=boards)} 行")
 
     print("=== 覆盖情况 ===")
     for c in coverage(warehouse):

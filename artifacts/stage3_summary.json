@@ -1,0 +1,15 @@
+{
+  "old_rows": 4504869,
+  "new_rows_total": 18224238,
+  "new_rows_in_window": 4784999,
+  "common_rows": 4504859,
+  "gt_1e_9": 3220759,
+  "gt_0_02pct": 1617647,
+  "gt_0_1pct": 316822,
+  "gt_1pct": 15676,
+  "gt_1pct_symbols": 59,
+  "max_rel": 0.6666666666666666,
+  "share_factor_gt_1e_9_normalized": 0,
+  "share_factor_gt_1pct_normalized": 0,
+  "share_factor_max_rel_normalized": 3.1097595311793177e-16
+}

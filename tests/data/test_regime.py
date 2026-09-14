@@ -2,6 +2,7 @@
 
 from datetime import date
 
+import polars as pl
 import pyarrow as pa
 import pytest
 
@@ -14,26 +15,31 @@ from qsys.data.storage import Warehouse
 D = [date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4)]
 
 
-def seed(warehouse: Warehouse, rows) -> None:
-    """rows: [(symbol, dt, open, high, low, close, amount)]"""
+def seed(warehouse: Warehouse, write_daily_bars, rows) -> None:
+    """rows: [(symbol, dt, open, high, low, close, amount)]
+
+    `pre_close` 取同一只股票前一行的 close（真实付费源同样如此，非除权日
+    pre_close 恒等于前收）；`name` 给个不含 "ST" 的名字——这里测的是
+    market_regime 的派生逻辑，不是 ST 判定本身。
+    """
     syms = sorted({r[0] for r in rows})
-    warehouse.write(
-        "bars_daily",
-        pa.table(
-            {
-                "symbol": [r[0] for r in rows],
-                "dt": [r[1] for r in rows],
-                "open": [r[2] for r in rows],
-                "high": [r[3] for r in rows],
-                "low": [r[4] for r in rows],
-                "close": [r[5] for r in rows],
-                "volume": [1000] * len(rows),
-                "amount": [r[6] for r in rows],
-            },
-            schema=schema.BARS_DAILY,
-        ),
-        year=2024,
-    )
+    last_close: dict[str, float] = {}
+    pre_closes: list[float | None] = []
+    for r in rows:
+        pre_closes.append(last_close.get(r[0]))
+        last_close[r[0]] = r[5]
+    write_daily_bars(warehouse, pl.DataFrame({
+        "symbol": [r[0] for r in rows],
+        "dt": [r[1] for r in rows],
+        "name": ["平安银行"] * len(rows),
+        "open": [r[2] for r in rows],
+        "high": [r[3] for r in rows],
+        "low": [r[4] for r in rows],
+        "close": [r[5] for r in rows],
+        "pre_close": pre_closes,
+        "volume": [1000.0] * len(rows),
+        "amount": [r[6] for r in rows],
+    }))
     warehouse.write(
         "instruments",
         pa.table(
@@ -44,6 +50,7 @@ def seed(warehouse: Warehouse, rows) -> None:
                 "list_date": [None] * len(syms),
                 "delist_date": [None] * len(syms),
                 "board": ["main"] * len(syms),
+                "as_of": [None] * len(syms),
             },
             schema=schema.INSTRUMENTS,
         ),
@@ -56,9 +63,9 @@ def regime_of(warehouse, dt):
     return df.row(0, named=True)
 
 
-def test_counts_limit_ups(warehouse):
+def test_counts_limit_ups(warehouse, write_daily_bars):
     seed(
-        warehouse,
+        warehouse, write_daily_bars,
         [
             ("600001.SH", D[0], 10.0, 10.0, 10.0, 10.0, 1e8),
             ("600001.SH", D[1], 11.0, 11.0, 11.0, 11.0, 1e8),
@@ -70,9 +77,9 @@ def test_counts_limit_ups(warehouse):
     assert regime_of(warehouse, D[1])["limit_up_count"] == 1
 
 
-def test_counts_broken_boards_and_rate(warehouse):
+def test_counts_broken_boards_and_rate(warehouse, write_daily_bars):
     seed(
-        warehouse,
+        warehouse, write_daily_bars,
         [
             ("600001.SH", D[0], 10.0, 10.0, 10.0, 10.0, 1e8),
             ("600001.SH", D[1], 11.0, 11.0, 11.0, 11.0, 1e8),  # 封住
@@ -87,9 +94,9 @@ def test_counts_broken_boards_and_rate(warehouse):
     assert row["broken_board_rate"] == pytest.approx(0.5)
 
 
-def test_advance_ratio_and_median_return(warehouse):
+def test_advance_ratio_and_median_return(warehouse, write_daily_bars):
     seed(
-        warehouse,
+        warehouse, write_daily_bars,
         [
             ("600001.SH", D[0], 10.0, 10.0, 10.0, 10.0, 1e8),
             ("600001.SH", D[1], 10.0, 10.0, 10.0, 10.5, 1e8),  # +5%
@@ -105,9 +112,9 @@ def test_advance_ratio_and_median_return(warehouse):
     assert row["market_median_return_1d"] == pytest.approx(0.02)
 
 
-def test_first_board_count(warehouse):
+def test_first_board_count(warehouse, write_daily_bars):
     seed(
-        warehouse,
+        warehouse, write_daily_bars,
         [
             ("600001.SH", D[0], 10.0, 10.0, 10.0, 10.0, 1e8),
             ("600001.SH", D[1], 11.0, 11.0, 11.0, 11.0, 1e8),  # 首板
@@ -119,10 +126,10 @@ def test_first_board_count(warehouse):
     assert regime_of(warehouse, D[2])["first_board_count"] == 0
 
 
-def test_prior_limitup_next_day_return(warehouse):
+def test_prior_limitup_next_day_return(warehouse, write_daily_bars):
     """昨日涨停股今日的溢价——策略 S7 Gate 的 heat 指标。"""
     seed(
-        warehouse,
+        warehouse, write_daily_bars,
         [
             ("600001.SH", D[0], 10.0, 10.0, 10.0, 10.0, 1e8),
             ("600001.SH", D[1], 11.0, 11.0, 11.0, 11.0, 1e8),  # 涨停
@@ -135,10 +142,10 @@ def test_prior_limitup_next_day_return(warehouse):
     ] == pytest.approx(0.05)
 
 
-def test_prior_limitup_return_ignores_stocks_that_did_not_limit_up(warehouse):
+def test_prior_limitup_return_ignores_stocks_that_did_not_limit_up(warehouse, write_daily_bars):
     """只统计昨日涨停的那些票，不是全市场。"""
     seed(
-        warehouse,
+        warehouse, write_daily_bars,
         [
             ("600001.SH", D[0], 10.0, 10.0, 10.0, 10.0, 1e8),
             ("600001.SH", D[1], 11.0, 11.0, 11.0, 11.0, 1e8),  # 涨停
@@ -154,9 +161,9 @@ def test_prior_limitup_return_ignores_stocks_that_did_not_limit_up(warehouse):
     ] == pytest.approx(0.05)
 
 
-def test_total_money_is_summed(warehouse):
+def test_total_money_is_summed(warehouse, write_daily_bars):
     seed(
-        warehouse,
+        warehouse, write_daily_bars,
         [
             ("600001.SH", D[0], 10.0, 10.0, 10.0, 10.0, 1e8),
             ("600002.SH", D[0], 10.0, 10.0, 10.0, 10.0, 2e8),
@@ -166,9 +173,9 @@ def test_total_money_is_summed(warehouse):
     assert regime_of(warehouse, D[0])["market_total_money"] == pytest.approx(3e8)
 
 
-def test_rebuild_is_idempotent(warehouse):
+def test_rebuild_is_idempotent(warehouse, write_daily_bars):
     seed(
-        warehouse,
+        warehouse, write_daily_bars,
         [
             ("600001.SH", D[0], 10.0, 10.0, 10.0, 10.0, 1e8),
             ("600001.SH", D[1], 11.0, 11.0, 11.0, 11.0, 1e8),
@@ -179,20 +186,55 @@ def test_rebuild_is_idempotent(warehouse):
     assert WarehouseQuery(warehouse).market_regime().height == 2
 
 
-def test_build_on_empty_warehouse_returns_zero(warehouse):
+def test_build_on_empty_warehouse_returns_zero(warehouse, write_daily_bars):
     assert build_market_regime(warehouse, D[0], D[1]) == 0
 
 
-def test_partial_rebuild_keeps_the_rest_of_the_year(warehouse):
+def test_partial_rebuild_keeps_the_rest_of_the_year(warehouse, write_daily_bars):
     """生态因子同理：只重算一段不能抹掉同年其余日期。"""
     rows = []
     for i, d in enumerate(D):
         rows.append(("600001.SH", d, 10.0, 10.0, 10.0, 10.0, 1e8))
-    seed(warehouse, rows)
+    seed(warehouse, write_daily_bars, rows)
     assert build_market_regime(warehouse, D[0], D[-1]) == 3
     build_market_regime(warehouse, D[-1], D[-1])
     after = WarehouseQuery(warehouse).market_regime()
     assert after.height == 3, "早先的生态因子被覆盖掉了"
+
+
+def test_rebuild_drops_dates_the_source_no_longer_has(warehouse, write_daily_bars):
+    """重算区间内源不再产出的交易日，必须从表里消失。
+
+    与 daily_flags 同一个缺陷：合并只做增与覆盖、从不删除。生态因子是
+    S7 Gate 的全部输入，残留一天旧因子就是给 Gate 喂一天当前数据支撑不了
+    的事实，而且不报错。
+    """
+    rows = [("600001.SH", d, 10.0, 10.0, 10.0, 10.0, 1e8) for d in D]
+    seed(warehouse, write_daily_bars, rows)
+    assert build_market_regime(warehouse, D[0], D[-1]) == 3
+
+    # 源里去掉最后一天，按同一区间整体重算
+    seed(warehouse, write_daily_bars, rows[:-1])
+    build_daily_flags(warehouse, D[0], D[-1])
+    build_market_regime(warehouse, D[0], D[-1])
+
+    after = WarehouseQuery(warehouse).market_regime()
+    assert after["dt"].to_list() == D[:-1], "源已删除的交易日仍留在表里"
+
+
+def test_regime_partial_rebuild_does_not_touch_dates_outside_the_window(
+    warehouse, write_daily_bars
+):
+    """删除只限于重算窗口之内——守着上一条的修法别改过头。"""
+    rows = [("600001.SH", d, 10.0, 10.0, 10.0, 10.0, 1e8) for d in D]
+    seed(warehouse, write_daily_bars, rows)
+    assert build_market_regime(warehouse, D[0], D[-1]) == 3
+
+    seed(warehouse, write_daily_bars, rows[-1:])
+    build_market_regime(warehouse, D[-1], D[-1])
+
+    after = WarehouseQuery(warehouse).market_regime()
+    assert after["dt"].to_list() == D
 
 
 def seed_index(warehouse, closes, start=date(2024, 1, 2)):
@@ -221,38 +263,38 @@ def seed_index(warehouse, closes, start=date(2024, 1, 2)):
     return days
 
 
-def test_index_slope_is_null_without_index_data(warehouse):
+def test_index_slope_is_null_without_index_data(warehouse, write_daily_bars):
     """没有指数数据时留空，不能编——S6 Gate 会据此走 UNKNOWN_ALLOW。"""
-    seed(warehouse, [("600001.SH", D[0], 10.0, 10.0, 10.0, 10.0, 1e8)])
+    seed(warehouse, write_daily_bars, [("600001.SH", D[0], 10.0, 10.0, 10.0, 10.0, 1e8)])
     build_market_regime(warehouse, D[0], D[0])
     assert regime_of(warehouse, D[0])["index_ma20_slope_5d"] is None
 
 
-def test_index_slope_needs_at_least_25_sessions(warehouse):
+def test_index_slope_needs_at_least_25_sessions(warehouse, write_daily_bars):
     """MA20 与「5 日前的 MA20」合起来要 25 根，不足则留空。"""
     days = seed_index(warehouse, [3800.0] * 24)
-    seed(warehouse, [("600001.SH", d, 10.0, 10.0, 10.0, 10.0, 1e8) for d in days])
+    seed(warehouse, write_daily_bars, [("600001.SH", d, 10.0, 10.0, 10.0, 10.0, 1e8) for d in days])
     build_market_regime(warehouse, days[0], days[-1])
     assert regime_of(warehouse, days[-1])["index_ma20_slope_5d"] is None
 
 
-def test_index_slope_is_zero_on_a_flat_index(warehouse):
+def test_index_slope_is_zero_on_a_flat_index(warehouse, write_daily_bars):
     days = seed_index(warehouse, [3800.0] * 30)
-    seed(warehouse, [("600001.SH", d, 10.0, 10.0, 10.0, 10.0, 1e8) for d in days])
+    seed(warehouse, write_daily_bars, [("600001.SH", d, 10.0, 10.0, 10.0, 10.0, 1e8) for d in days])
     build_market_regime(warehouse, days[0], days[-1])
     assert regime_of(warehouse, days[-1])["index_ma20_slope_5d"] == pytest.approx(0.0)
 
 
-def test_index_slope_is_positive_on_a_rising_index(warehouse):
+def test_index_slope_is_positive_on_a_rising_index(warehouse, write_daily_bars):
     days = seed_index(warehouse, [3800.0 + i * 10 for i in range(30)])
-    seed(warehouse, [("600001.SH", d, 10.0, 10.0, 10.0, 10.0, 1e8) for d in days])
+    seed(warehouse, write_daily_bars, [("600001.SH", d, 10.0, 10.0, 10.0, 10.0, 1e8) for d in days])
     build_market_regime(warehouse, days[0], days[-1])
     row = regime_of(warehouse, days[-1])
     # 最近 20 根均值 = closes[10..29] = 3995；5 根之前的 20 根均值 = closes[5..24] = 3945
     assert row["index_ma20_slope_5d"] == pytest.approx(50.0 / 3945.0, rel=1e-9)
 
 
-def test_star_and_bse_are_excluded_from_market_breadth(warehouse):
+def test_star_and_bse_are_excluded_from_market_breadth(warehouse, write_daily_bars):
     """生态因子的股票池排除科创板与北交所（原策略 filter_kcbj_stock）。
 
     科创板涨跌幅是 20%，收益分布与主板不同；market_median_return_1d 的
@@ -262,13 +304,13 @@ def test_star_and_bse_are_excluded_from_market_breadth(warehouse):
     for symbol in ("600001.SH", "300001.SZ", "688001.SH", "430001.BJ", "830001.BJ"):
         rows.append((symbol, D[0], 10.0, 10.0, 10.0, 10.0, 1e8))
         rows.append((symbol, D[1], 10.0, 10.0, 10.0, 10.0, 1e8))
-    seed(warehouse, rows)
+    seed(warehouse, write_daily_bars, rows)
     build_market_regime(warehouse, D[0], D[1])
     # 只剩主板 600001 与创业板 300001
     assert regime_of(warehouse, D[1])["valid_stock_count"] == 2
 
 
-def test_b_shares_stay_in_the_breadth_universe(warehouse):
+def test_b_shares_stay_in_the_breadth_universe(warehouse, write_daily_bars):
     """filter_kcbj_stock 只排 4/8/68 开头，B 股（900/200）不在其列。
 
     照抄原策略的口径，不自作主张多排。
@@ -277,18 +319,18 @@ def test_b_shares_stay_in_the_breadth_universe(warehouse):
     for symbol in ("600001.SH", "900001.SH"):
         rows.append((symbol, D[0], 10.0, 10.0, 10.0, 10.0, 1e8))
         rows.append((symbol, D[1], 10.0, 10.0, 10.0, 10.0, 1e8))
-    seed(warehouse, rows)
+    seed(warehouse, write_daily_bars, rows)
     build_market_regime(warehouse, D[0], D[1])
     assert regime_of(warehouse, D[1])["valid_stock_count"] == 2
 
 
-def test_the_ex_dividend_drop_is_not_counted_as_a_fall(warehouse):
+def test_the_ex_dividend_drop_is_not_counted_as_a_fall(warehouse, write_daily_bars):
     """除权日的原始价大跌不是真跌，不修正会把广度类因子系统性压低。
 
     A 股 10 送 1：前收 11.00，除权参考价 10.00，当日平收 10.00。
     原始收益 -9.1%，复权后 0%。
     """
-    seed(warehouse, [
+    seed(warehouse, write_daily_bars, [
         ("600001.SH", D[0], 11.0, 11.0, 11.0, 11.0, 1e8),
         ("600001.SH", D[1], 10.0, 10.0, 10.0, 10.0, 1e8),
         # 陪跑的一只，保证分母不为空
@@ -321,9 +363,9 @@ def test_the_ex_dividend_drop_is_not_counted_as_a_fall(warehouse):
     assert row["market_median_return_1d"] == pytest.approx(0.005)
 
 
-def test_without_factors_the_raw_return_is_used(warehouse):
+def test_without_factors_the_raw_return_is_used(warehouse, write_daily_bars):
     """仓库还没有复权因子时不能崩，退化成原始收益。"""
-    seed(warehouse, [
+    seed(warehouse, write_daily_bars, [
         ("600001.SH", D[0], 11.0, 11.0, 11.0, 11.0, 1e8),
         ("600001.SH", D[1], 10.0, 10.0, 10.0, 10.0, 1e8),
     ])
@@ -342,14 +384,35 @@ def pl_col_eq(name, value):
     return pl.col(name) == value
 
 
-def test_a_stock_that_did_not_move_is_flat_not_down(warehouse):
+def test_board_filter_keeps_beijing_out_of_the_breadth_factor(warehouse, write_daily_bars):
+    """广度因子的口径必须与策略一致——策略排北交所。
+
+    付费源比旧表多 343 只北交所，不过滤会让 market_advance_ratio
+    在换源当天静默跳变，而没有任何地方报错。
+    """
+    day = date(2026, 9, 9)
+    write_daily_bars(warehouse, pl.DataFrame({
+        "symbol": ["000001.SZ", "920268.BJ"], "dt": [day, day],
+        "name": ["平安银行", "京证股份"],
+        "open": [10.0, 5.0], "high": [10.0, 5.0], "low": [10.0, 5.0],
+        "close": [10.0, 5.0], "pre_close": [10.0, 5.0],
+        "volume": [100.0, 100.0], "amount": [1e5, 5e4],
+    }))
+    boards = {"main", "gem", "star"}
+    build_daily_flags(warehouse, day, day, boards=boards)
+    build_market_regime(warehouse, day, day, boards=boards)
+    got = WarehouseQuery(warehouse).market_regime(day, day)
+    assert got.height == 1
+
+
+def test_a_stock_that_did_not_move_is_flat_not_down(warehouse, write_daily_bars):
     """浮点噪声不能算成下跌。
 
     close/prev_close 乘上复权因子后，没动的票会算出 -2.22e-16 这种数。
     advance_ratio 的分母不含持平，错分一只就直接改比值——实测
     2026-04-30 的 002841.SZ 就因此被判成下跌。
     """
-    seed(warehouse, [
+    seed(warehouse, write_daily_bars, [
         ("600001.SH", D[0], 8.99, 8.99, 8.99, 8.99, 1e8),
         ("600001.SH", D[1], 8.99, 8.99, 8.99, 8.99, 1e8),
         ("600002.SH", D[0], 10.0, 10.0, 10.0, 10.0, 1e8),

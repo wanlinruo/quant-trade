@@ -15,6 +15,21 @@ INSTRUMENTS = pa.schema(
         ("list_date", pa.date32()),
         ("delist_date", pa.date32()),  # 未退市为 null
         ("board", pa.string()),  # main / gem / star / bse
+        # 取这份快照的日期。instruments 是覆盖写的单张表，没有 as_of 就无法
+        # 判断 board / list_date / delist_date 有多陈旧，也无法把 name 安全地
+        # 限定在快照日使用——用快照名填历史就是结转。
+        ("as_of", pa.date32()),
+    ]
+)
+
+# 每日 stock_basic 快照的累积表。instruments 只留最新一份，而 daily_flags
+# 每次同步要重建近 150 天，一天的快照不够用，所以按观测日逐日留存。
+# 这是「点观测」，不是区间——绝不把它转成区间，那需要推断端点。
+NAME_SNAPSHOTS = pa.schema(
+    [
+        ("dt", pa.date32()),  # 观测日，即取 stock_basic 的那一天
+        ("symbol", pa.string()),
+        ("name", pa.string()),
     ]
 )
 
@@ -27,6 +42,22 @@ BARS_DAILY = pa.schema(
         ("low", pa.float64()),
         ("close", pa.float64()),
         ("volume", pa.int64()),
+        ("amount", pa.float64()),
+    ]
+)
+
+# daily_bars() 视图的契约。列名与 BARS_DAILY 相同，但 volume 是 float64：
+# 付费源给的是带小数的手数（582305.98），取整会丢掉真实精度。
+# BARS_DAILY 保留 int64，因为它描述的是已冻结的 bars_daily 旧表。
+DAILY_BARS = pa.schema(
+    [
+        ("symbol", pa.string()),
+        ("dt", pa.date32()),
+        ("open", pa.float64()),
+        ("high", pa.float64()),
+        ("low", pa.float64()),
+        ("close", pa.float64()),
+        ("volume", pa.float64()),
         ("amount", pa.float64()),
     ]
 )
@@ -51,7 +82,9 @@ INDEX_BARS = pa.schema(
         ("high", pa.float64()),
         ("low", pa.float64()),
         ("close", pa.float64()),
-        ("volume", pa.int64()),
+        # Tushare index_daily.vol 有小数（全历史 5,270 行中实测 186 行）。
+        # 2026-09-14 从 int64 无损迁移为 float64，旧整数值读取时自然提升。
+        ("volume", pa.float64()),
         ("amount", pa.float64()),
     ]
 )
@@ -99,7 +132,9 @@ DAILY_FLAGS = pa.schema(
         ("symbol", pa.string()),
         ("prev_close", pa.float64()),  # 无前收（首个 bar）为 null
         # 除权除息参考价。涨跌停是按它算的，不是按 prev_close。
-        # 非除权日等于 prev_close；除权日 = (前收 - 现金红利 + 配股价x配股比) / (1 + 送转比 + 配股比)
+        # 直取自 Tushare 当日 `pre_close`（2026-09-12 起，不再由
+        # corporate_actions 事件表自算）：非除权日等于前一日收盘，
+        # 除权日是交易所公布的除权后参考价。
         ("adj_prev_close", pa.float64()),
         ("limit_up", pa.float64()),
         ("limit_down", pa.float64()),
@@ -108,11 +143,13 @@ DAILY_FLAGS = pa.schema(
         ("touched_limit_up", pa.bool_()),  # 盘中触及涨停（含封住）
         ("is_broken_board", pa.bool_()),  # 炸板：触及但未封住
         ("is_first_board", pa.bool_()),  # 首板：今日涨停且昨日未涨停
-        ("limit_pct", pa.float64()),  # 实际生效的涨跌幅：0.05 为反推出的 ST，否则按板块 0.10 / 0.20
-        # ST 反推是 fallback（免费源没有历史 ST 名单），三个字段留作审计：
-        ("st_inferred_raw", pa.bool_()),  # 价格行为启发式的原始结论
-        ("st_inference_rejected_by_price_evidence", pa.bool_()),  # 被制度硬否决
-        ("st_inferred_final", pa.bool_()),  # 实际采用的结论
+        ("limit_pct", pa.float64()),  # 实际生效的涨跌幅：ST 为 0.05，否则按板块 0.10 / 0.20 / 0.30
+        # ST 真值。由 Tushare namechange 的名称区间按当日展开。
+        # 2026-09-12 之前这里是三条价格启发式反推出来的，一致率 93.8%，已删除。
+        ("is_st", pa.bool_()),
+        # 该行 ST 值的来源。生产换源后恒为 "tushare"；兜底路径会写
+        # "carried_from_<日期>"，届时消费方必须能区分。
+        ("st_source", pa.string()),
     ]
 )
 
@@ -226,6 +263,91 @@ AUCTION_TICKS = pa.schema(
     ]
 )
 
+# 冻结的付费源日线，28 列。永久只读——**不要**注册进
+# PARTITIONED，那会让 Warehouse.write("paid_daily", ...) 成为可能。
+# 列顺序严格对应卖家 Excel 第三行；单位换算只做乘法，见 pipeline/paid_daily.py。
+_PAID_DAILY_NUMERIC = [
+    "open", "high", "low", "close", "pre_close", "change", "pct_change",
+    "volume", "amount", "factor", "turnover_ratio", "free_turnover_ratio",
+    "volume_ratio", "pe", "pe_ttm", "pb", "ps", "ps_ttm",
+    "dividend_yield", "dividend_yield_ttm", "total_shares",
+    "circulating_shares", "free_shares", "market_cap", "circulating_market_cap",
+]
+PAID_DAILY = pa.schema(
+    [("dt", pa.date32()), ("symbol", pa.string()), ("name", pa.string())]
+    + [(n, pa.float64()) for n in _PAID_DAILY_NUMERIC],
+    metadata={
+        b"provider": b"yuhaha-baidupan",
+        b"volume_unit": b"lot=100 shares",
+        b"money_unit": b"CNY",
+        b"share_capital_unit": b"share",
+        b"percentage_unit": b"percent",
+        b"factor": b"cumulative backward adjustment",
+    },
+)
+
+# Tushare Pro 日线，28 列。与 PAID_DAILY 同名、同序、同类型——换源不改 schema，
+# 只改 metadata 的来源标记。这样计划 A 建立的查询层与派生链路无需任何改动。
+TUSHARE_DAILY = pa.schema(
+    list(PAID_DAILY),
+    metadata={
+        b"provider": b"tushare-pro",
+        b"volume_unit": b"lot=100 shares",
+        b"money_unit": b"CNY",
+        b"share_capital_unit": b"share",
+        b"percentage_unit": b"percent",
+        b"factor": b"cumulative backward adjustment",
+        b"apis": b"daily+daily_basic+adj_factor",
+    },
+)
+
+# Tushare 参考事实。四张日表均为外部接口直取值，不用价格或名称反推。
+PRICE_LIMITS_DAILY = pa.schema(
+    [
+        ("symbol", pa.string()),
+        ("dt", pa.date32()),
+        ("pre_close", pa.float64()),
+        ("limit_up", pa.float64()),
+        ("limit_down", pa.float64()),
+    ]
+)
+
+SUSPEND_DAILY = pa.schema(
+    [
+        ("symbol", pa.string()),
+        ("dt", pa.date32()),
+        ("suspend_type", pa.string()),  # S 停牌 / R 复牌
+        ("suspend_timing", pa.string()),  # 全天停牌时可为 null
+    ]
+)
+
+# limit_list_d 实测自 2020 年起，且不含 ST 股票统计。
+LIMIT_LIST_DAILY = pa.schema(
+    [
+        ("symbol", pa.string()),
+        ("dt", pa.date32()),
+        ("limit_type", pa.string()),  # U 涨停 / D 跌停 / Z 炸板
+        ("limit_times", pa.int64()),
+        ("open_times", pa.int64()),
+        ("first_time", pa.string()),
+        ("fd_amount", pa.float64()),
+        ("limit_amount", pa.float64()),
+        ("float_mv", pa.float64()),
+    ]
+)
+
+# 曾用名区间原样落库；ST 状态由区间覆盖关系纯派生。
+NAME_HISTORY = pa.schema(
+    [
+        ("symbol", pa.string()),
+        ("name", pa.string()),
+        ("start_date", pa.date32()),
+        ("end_date", pa.date32()),
+        ("ann_date", pa.date32()),
+        ("change_reason", pa.string()),
+    ]
+)
+
 
 PARTITIONED: dict[str, pa.Schema] = {
     "bars_daily": BARS_DAILY,
@@ -240,6 +362,11 @@ PARTITIONED: dict[str, pa.Schema] = {
     "live_fills": LIVE_FILLS,
     "live_rejects": LIVE_REJECTS,
     "live_recon": LIVE_RECON,
+    "tushare_daily": TUSHARE_DAILY,
+    "price_limits_daily": PRICE_LIMITS_DAILY,
+    "suspend_daily": SUSPEND_DAILY,
+    "limit_list_daily": LIMIT_LIST_DAILY,
+    "name_snapshots": NAME_SNAPSHOTS,
 }
 
 UNPARTITIONED: dict[str, pa.Schema] = {
@@ -247,6 +374,7 @@ UNPARTITIONED: dict[str, pa.Schema] = {
     "corporate_actions": CORPORATE_ACTIONS,
     "adj_factors": ADJ_FACTORS,
     "share_capital": SHARE_CAPITAL,
+    "name_history": NAME_HISTORY,
 }
 
 ALL: dict[str, pa.Schema] = {**PARTITIONED, **UNPARTITIONED}

@@ -5,82 +5,24 @@
   炸板   high >= limit_up 但 close < limit_up
   首板   今日涨停且昨日未涨停（连板不是首板）
 
-派生自 bars_daily + instruments.board，可完全重算——重算必须得到相同结果。
+派生自 tushare_daily + instruments.board，可完全重算——重算必须得到相同结果。
 
 **全表用 polars 表达式算，不逐行 iter_rows**：全市场 4 年约 500 万行，
-每行造一个 dict 会占几个 GB，Linux 核心节点只有 870 MB 可用。
+每行造一个 dict 会占几个 GB。
+
+**ST 是真值，不是推断**（2026-09-12 起）：`is_st` 由 Tushare `namechange`
+名称区间按股票日展开。此前的三条价格启发式（贴 5% 板 + 回看确认 +
+制度硬否决）已整段删除——它的近窗一致率只有 93.8%，误差会向下游传播
+并伪装成策略问题。拿不到名称就记 null，**不默认成「不是 ST」**：
+默认 False 会让 ST 股按 10% 档算涨停价，首板判定直接错。
+
+**涨跌停基准直取 `pre_close`**：Tushare 的 `pre_close` 就是除权参考价
+本身（3980 个除权日实测，与因子折算值中位差 0.000154），不再用
+`corporate_actions` 事件表自算。`_with_reference_price` 已删除——计划 B 作废后
+它不再有调用点。`adj_prev_close` 列保留，来源改为 `pre_close` 直取。
 
 **逐年处理**，并向前多读 `_LOOKBACK_DAYS` 天日历日只为给年初第一根 bar
-补上前收——否则每年 1 月的第一个交易日会因缺前收而被判成「无涨跌停」。
-
-**ST 由价格行为反推**：ST 股涨跌幅是 5%，而免费源没有历史 ST 名单
-（QMT 没有 ST 板块，`get_instrument_detail` 只给当日涨跌停价；akshare 的
-东财接口在拒，新浪的曾用名接口不带日期）。
-
-**这是 fallback，不是真值。** 三个字段留作审计：`st_inferred_raw`
-（启发式原始结论）、`st_inference_rejected_by_price_evidence`（被制度否决）、
-`st_inferred_final`（实际采用）。
-
-判定用三条，缺一不可：
-
-1. 当日 `high` 恰好等于 5% 涨停价 `round(除权参考价 x 1.05, 2)`，精确到分；
-2. **该股回看 60 根内被第 1 条命中过至少 2 次**；
-3. **制度硬否决**：`high > 5%涨停价` 或 `low < 5%跌停价` 即为「越界」，
-   5% 档下不可能发生。第 2 条的命中次数**只数最近一次越界之后的**。
-
-第 3 条不用固定百分比判断，而是比「价格有没有走出 5% 档允许的区间」。
-涨跌停价取整到分，低价股的合法涨幅会超过 5%（前收 0.33 -> ST 涨停 0.35
-= +6.06%），按百分比卡会把真 ST 误否决。
-
-**为什么是「最近一次越界之后」而不是「窗口内有越界就否决」**：ST 是阶跃
-状态，越界只证明那一天不是 ST，不证明今天不是。按窗口一律否决会把刚被 ST
-的股票连坐——它们被 ST 之前必然有越界。实测那样做每天多否 7.9 个推断、
-241 天里 171 天与聚宽的差距变大（|差|均 3.73 -> 6.30）。
-
-第 3 条的来历：2025-12-05 我们数出 107 只触板、聚宽 103 只。107 只里 11 只
-由 ST 反推而来，其中 6 只（中金岭南、焦作万方、福建高速、*ST华幸、明阳智能、
-再升科技）在此前 60 根内有过 >5% 的真实单日波动——当时根本不在 5% 档。
-这 4 只的差额直接翻转了 2025-12-08 的 HIGH_CHINEXT Gate（阈值 103.33）。
-
-第 2 条是关键。只用第 1 条会大量误判：一只 ¥10 的股当日高点落在 +5% 那
-一分上的概率约 1/10，全市场每天撞出十几个纯属巧合。而 ST 是持续数月的
-状态，真 ST 会反复贴着 5% 板，巧合只命中一次。
-
-**标定依据**（聚宽导出的 792 天 `regime_daily` 真值，见
-`docs/reference/joinquant-alignment.md`）：
-
-| 规则 | 触板数平均绝对误差 | Gate 全区间一致 | 近窗一致 | 近窗多放行 |
-|---|---|---|---|---|
-| 不判 ST | 19.1 | 83.3% | 77.9% | 0（多拒 53） |
-| 只用第 1 条 | 11.2 | 90.7% | 83.3% | **40** |
-| **加第 2 条（窗 60）** | **4.4** | **96.3%** | **93.8%** | **12** |
-
-只用第 1 条时近窗口 40 天多放行、0 天多拒掉——**单边偏差**，正是移植版
-比聚宽多选的直接来源。
-
-窗口取 40 / 60 / 90 / 120 的一致率分别是 96.1% / 96.3% / 96.7% / 96.7%，
-**都在噪声内，别再为小数点调它**。取 60 是因为它在两个区间上的中位偏差
-都接近 0，且与策略里已有的 60 根形态窗口同一量级。
-
-（早先曾用「回看 20 根涨幅从未超过 5%」做佐证并以 57 个样本否决。真值多
-了 14 倍后重测，那条确实不如「命中 >=2 次」：|差|均 8.9 对 4.4。）
-
-`limit_pct` 列记下每个股-日实际生效的涨跌幅（0.05 / 0.10 / 0.20），可回溯。
-
-**涨跌停按除权除息参考价算，不是按前收盘价。** 除权日交易所用
-
-    参考价 = (前收 - 每股现金红利 + 配股价 x 每股配股数) / (1 + 每股送转 + 每股配股)
-
-例：000158.SZ 2026-06-09 前收 13.94、每股派 0.027，参考价 13.913，
-涨停价 15.30 而非 13.94 x 1.1 = 15.33。当天它收在 15.30，是涨停。
-
-漏了这一步的后果是**单向**的：参考价永远不高于前收（现金分红与送转都只会
-压低它），算出的涨停价因此偏高，涨停只会漏判不会误判。全区间实测 144 个
-股-日漏判涨停、217 个漏判触板，波及 106 个交易日——而候选池就是
-「昨日首板涨停股」，漏一个就少一个候选。
-
-`prev_close` 仍存**原始**前收（`market_regime` 的日收益用它再乘复权因子），
-参考价单独存 `adj_prev_close`，两者在非除权日相等。
+补上前收。
 """
 
 from __future__ import annotations
@@ -94,18 +36,13 @@ from qsys.core.constraints import PriceLimitConstraint
 from qsys.data import schema
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
-from qsys.markets.ashare import PRICE_LIMITS
+from qsys.markets.ashare import PRICE_LIMITS, board_of
 
 log = structlog.get_logger(__name__)
 
 _DEFAULT_LIMIT = 0.10
 ST_LIMIT = 0.05
-# ST 反推的第 2 条：回看多少根、至少命中几次
-ST_CONFIRM_BARS = 60
-ST_CONFIRM_HITS = 2
-# 跨年回看窗口：既为补前收，也为 ST 判定的滚动计数。
-# ST 判定要回看 60 根 K 线，约 90 个日历日；再留出假期余量。
-# 取 30 的话每年 1 月前 60 根的回看窗口是残缺的，ST 会被系统性漏判。
+# 跨年回看窗口：只为补前收——每年 1 月的第一个交易日需要上一年末的收盘价。
 _LOOKBACK_DAYS = 150
 
 _FLAG_COLUMNS = [
@@ -121,10 +58,123 @@ _FLAG_COLUMNS = [
     "is_broken_board",
     "is_first_board",
     "limit_pct",
-    "st_inferred_raw",
-    "st_inference_rejected_by_price_evidence",
-    "st_inferred_final",
+    "is_st",
+    "st_source",
 ]
+
+
+def resolve_names(
+    bars: pl.DataFrame,
+    paid: pl.DataFrame,
+    history: pl.DataFrame,
+    snapshots: pl.DataFrame | None = None,
+) -> pl.DataFrame:
+    """解析每个股票日 PIT 可见的名称，并记下它来自哪个源。
+
+    三个候选**都是直取字段**，没有任何推断；优先级按「观测强度」排：
+
+    1. ``tushare_daily.name``——同一接口的当日字段（生产中恒为 null，
+       `compose_daily` 把 name 留给 namechange 单独成表）；
+    2. ``paid_daily.name``——**逐日观测到的名称**，覆盖 1990 至 2026-09-11；
+    3. ``name_snapshots.name``——每日 ``stock_basic`` 快照，**只对取快照那一天
+       成立**，覆盖付费源够不到的增量日；
+    4. ``namechange`` 区间——交易所公告的改名事件。
+
+    **为什么逐日观测要排在区间前面**：`namechange` 只记录变更事件，不是逐日
+    快照。2006 年股改 G 股摘牌之后，名称恢复原状的那次变更没有进
+    `namechange`，于是大量标的的最后一个区间停在 2006-10-08、`end_date`
+    非 null 且无后继，此后全部没有区间覆盖。实测单日 96 只、2023-2026 全区间
+    114 只因此没有名称，顺着 is_st → limit_pct → limit_up → fill_null(False)
+    一路下去静默丢掉 867 个首板。详见
+    `artifacts/第4段回归_付费源到Tushare换源_2026-09-14.md` 与 D-10。
+
+    三个都没有就记 **null**，绝不拿当前名称回填历史——`instruments.name`
+    是快照，用它填历史就是结转。
+    """
+    resolved = bars
+    if "name" not in resolved.columns:
+        resolved = resolved.with_columns(pl.lit(None, dtype=pl.Utf8).alias("name"))
+    resolved = resolved.with_columns(
+        pl.when(pl.col("name").is_not_null())
+        .then(pl.lit("tushare_daily"))
+        .otherwise(None)
+        .alias("name_source")
+    )
+
+    # 两个逐日观测源都按 (symbol, dt) 精确连接，不是 asof——只对它实际有行的
+    # 那一天生效，向前后蔓延就成了结转。
+    for frame, label in ((paid, "paid_daily"), (snapshots, "name_snapshot")):
+        if frame is None or frame.height == 0:
+            continue
+        resolved = resolved.join(
+            frame.select("symbol", "dt", pl.col("name").alias("_other")),
+            on=["symbol", "dt"],
+            how="left",
+        ).with_columns(
+            pl.when(pl.col("name").is_null() & pl.col("_other").is_not_null())
+            .then(pl.lit(label))
+            .otherwise(pl.col("name_source"))
+            .alias("name_source"),
+            pl.coalesce("name", "_other").alias("name"),
+        ).drop("_other")
+
+    intervals = history.filter(pl.col("start_date").is_not_null()).select(
+        "symbol", pl.col("name").alias("_hist_name"), "start_date", "end_date"
+    ).sort(["symbol", "start_date"]) if history.height else history
+    if history.height and intervals.height:
+        resolved = resolved.sort(["symbol", "dt"]).join_asof(
+            intervals,
+            left_on="dt",
+            right_on="start_date",
+            by="symbol",
+            strategy="backward",
+        )
+        in_range = pl.col("_hist_name").is_not_null() & (
+            pl.col("end_date").is_null() | (pl.col("dt") <= pl.col("end_date"))
+        )
+        resolved = resolved.with_columns(
+            pl.when(pl.col("name").is_null() & in_range)
+            .then(pl.lit("namechange"))
+            .otherwise(pl.col("name_source"))
+            .alias("name_source"),
+            pl.when(pl.col("name").is_null() & in_range)
+            .then(pl.col("_hist_name"))
+            .otherwise(pl.col("name"))
+            .alias("name"),
+        ).drop("_hist_name", "start_date", "end_date")
+
+    return resolved
+
+
+def _assert_name_coverage(bars: pl.DataFrame) -> None:
+    """拒绝大面积缺名称的生产窗口；零星历史缺口仍保持 null。
+
+    **这道闸门只挡得住全面失效，挡不住系统性缺口。** 2026-09-14 那次
+    114 只标的全区间没有名称，全局占比只有 2.05%，这里一声不响就放过了，
+    下游静默少了 867 个首板。所以另外把「整只标的全窗口无名称」的数量
+    记进结构化日志，并让 st_source 在名称为 null 时也为 null——
+    覆盖率就能直接从 daily_flags 表里查出来，不必靠这道阈值。
+    """
+    if bars.height < 100:
+        return
+    missing = bars["name"].null_count()
+    ratio = missing / bars.height
+    if ratio > 0.10:
+        raise RuntimeError(
+            f"名称覆盖不足：{missing}/{bars.height} ({ratio:.1%}) 为 null；"
+            "拒绝生成可能让候选池静默归零的 daily_flags"
+        )
+    if missing and "symbol" in bars.columns:
+        per_symbol = bars.group_by("symbol").agg(
+            pl.len().alias("rows"), pl.col("name").null_count().alias("missing")
+        )
+        blind = per_symbol.filter(pl.col("rows") == pl.col("missing")).height
+        log.info(
+            "daily_flags.name_coverage",
+            missing_rows=missing,
+            total_rows=bars.height,
+            blind_symbols=blind,
+        )
 
 
 def limit_prices(prev_close: float, board: str) -> tuple[float, float]:
@@ -151,58 +201,25 @@ def _limit_expr(cents: pl.Expr, ratio_milli: pl.Expr) -> pl.Expr:
     return (((cents * ratio_milli + 500) // 1000).cast(pl.Float64) / 100.0).round(2)
 
 
-_ACTION_COLUMNS = (
-    "cash_per_share", "stock_per_share", "rights_per_share", "rights_price",
-)
+def build_daily_flags(
+    warehouse: Warehouse,
+    start: date,
+    end: date,
+    boards: set[str] | None = None,
+) -> int:
+    """从 Tushare 日线与名称区间派生涨跌停及首板标记。返回写入行数。
 
-
-def _with_reference_price(
-    frame: pl.DataFrame, actions: pl.DataFrame | None
-) -> pl.DataFrame:
-    """补上 `adj_prev_close` 列：除权除息参考价。
-
-    交易所公式：(前收 - 每股现金红利 + 配股价 x 每股配股数)
-                / (1 + 每股送转 + 每股配股)
-
-    非除权日 join 不上，四项全为 0，公式化为前收本身。
-    没有公司行动数据时整列退化为前收——早期仓库可能还没采过分红。
+    `boards` 给定时只保留该板块的标的。付费源含北交所 343 只而旧表没有，
+    不过滤就会让 market_regime 的广度因子静默变化。
     """
-    if actions is None or actions.height == 0:
-        return frame.with_columns(pl.col("prev_close").alias("adj_prev_close"))
-
-    ex = (
-        actions.rename({"ex_date": "dt"})
-        .select(["symbol", "dt", *_ACTION_COLUMNS])
-        # 同一天同一只有多行时取合计——分次派息在部分数据源里会拆开
-        .group_by(["symbol", "dt"])
-        .agg([pl.col(c).fill_null(0.0).sum() for c in _ACTION_COLUMNS])
-    )
-    cash, stock, rights, rprice = (
-        pl.col(c).fill_null(0.0) for c in _ACTION_COLUMNS
-    )
-    return (
-        frame.join(ex, on=["symbol", "dt"], how="left")
-        .with_columns(
-            ((pl.col("prev_close") - cash + rprice * rights) / (1.0 + stock + rights))
-            .alias("adj_prev_close")
-        )
-        .drop(_ACTION_COLUMNS)
-    )
-
-
-def build_daily_flags(warehouse: Warehouse, start: date, end: date) -> int:
-    """从日线派生涨跌停与首板标记。返回写入行数。"""
     query = WarehouseQuery(warehouse)
     instruments = query.instruments()
-    boards = (
+    name_history = query.name_history()
+    board_map = (
         dict(zip(instruments["symbol"].to_list(), instruments["board"].to_list()))
         if instruments.height
         else {}
     )
-
-    # 涨跌停按除权参考价算，故必须带上公司行动。全表一次读入：
-    # 全市场四年约 1.7 万条，比逐年过滤便宜。
-    actions = query.corporate_actions()
 
     written = 0
     for year in range(start.year, end.year + 1):
@@ -212,22 +229,51 @@ def build_daily_flags(warehouse: Warehouse, start: date, end: date) -> int:
         if lo > hi:
             continue
 
-        bars = query.daily_bars(None, lo - timedelta(days=_LOOKBACK_DAYS), hi)
+        # 取 28 列：name 给 ST 真值，pre_close 给涨跌停基准。
+        bars = query.tushare_daily(None, lo - timedelta(days=_LOOKBACK_DAYS), hi)
         if bars.height == 0:
             continue
-
-        flags = _compute(bars, boards, actions).filter(
-            pl.col("dt").is_between(lo, hi)
+        # 付费源只投影三列：全历史 1,800 万行 × 28 列会把节点内存撑爆。
+        back = lo - timedelta(days=_LOOKBACK_DAYS)
+        paid_names = query.paid_daily(
+            None, back, hi, columns=["symbol", "dt", "name"],
         )
+        snapshots = query.name_snapshots(None, back, hi)
+        bars = resolve_names(bars, paid_names, name_history, snapshots)
+        _assert_name_coverage(bars)
+        if boards is not None:
+            def _board(s: str) -> str:
+                # 显式判 None，不用 `or`——board 若曾经取值空字符串会被
+                # `or` 误当成「未匹配」而走号段兜底，虽然当前
+                # instruments.board 不会是空串，但判断本身应该准确。
+                found = board_map.get(s)
+                return found if found is not None else board_of(s.split(".")[0])
+
+            keep = pl.col("symbol").map_elements(
+                _board, return_dtype=pl.Utf8
+            ).is_in(list(boards))
+            bars = bars.filter(keep)
+            if bars.height == 0:
+                continue
+
+        flags = _compute(bars, board_map).filter(pl.col("dt").is_between(lo, hi))
         if flags.height == 0:
             continue
 
         chunk = flags.sort(["dt", "symbol"]).select(_FLAG_COLUMNS)
-        # 分区是整年覆盖写的，必须与同年既有数据合并：只重算一段区间时
-        # 直接写会把同年其余日期的标记抹掉。新行在后，keep="last" 让重算
-        # 覆盖旧值。
+        # 分区是整年覆盖写的，只重算一段区间时直接写会把同年其余日期抹掉，
+        # 所以要保留窗口**之外**的既有行。
+        #
+        # 窗口**之内**则完全以本次重算为准，包括它的缺席：源不再产出的
+        # 股-日必须跟着消失。早先这里是「并集 + keep=last」，只做增与覆盖、
+        # 从不删除，生产上因此留下 10 行残骸——旧表 bars_daily 有、付费源
+        # 没有的股-日，重算后仍带着旧的 limit_pct，而 is_st/st_source 是
+        # 新 schema 的 null。一行里一半是旧真值源的断言、一半是新真值源的
+        # 空缺，等于在断言当前真值源支撑不了的事实。
+        existing = query.daily_flags(lo_year, hi_year)
+        outside = existing.filter(~pl.col("dt").is_between(lo, hi))
         merged = (
-            pl.concat([query.daily_flags(lo_year, hi_year), chunk], how="vertical")
+            pl.concat([outside, chunk], how="vertical")
             .unique(subset=["dt", "symbol"], keep="last", maintain_order=True)
             .sort(["dt", "symbol"])
             .select(_FLAG_COLUMNS)
@@ -241,102 +287,71 @@ def build_daily_flags(warehouse: Warehouse, start: date, end: date) -> int:
     return written
 
 
-def _compute(
-    bars: pl.DataFrame, boards: dict[str, str], actions: pl.DataFrame | None = None
-) -> pl.DataFrame:
+def _compute(bars: pl.DataFrame, boards: dict[str, str]) -> pl.DataFrame:
     limits = {board: PRICE_LIMITS.get(board, _DEFAULT_LIMIT) for board in PRICE_LIMITS}
-    board_of = pl.col("symbol").replace_strict(
-        boards, default="main", return_dtype=pl.Utf8
+    # 局部名不能叫 board_of——模块里已经从 markets.ashare 导入了同名函数。
+    #
+    # **default 必须按号段兜底，不能是 "main"**：instruments 缺了的标的
+    # 会拿到 main 的 10% 上限。旧表不含北交所所以从没触发过，付费源有
+    # 343 只北交所（实际上限 30%），照旧默认会把它们的涨停价全算错，
+    # 而且不报错。
+    board_expr = pl.col("symbol").replace_strict(
+        boards,
+        default=pl.col("symbol").map_elements(
+            lambda s: board_of(s.split(".")[0]), return_dtype=pl.Utf8
+        ),
+        return_dtype=pl.Utf8,
     )
-    ratio = board_of.replace_strict(limits, default=_DEFAULT_LIMIT, return_dtype=pl.Float64)
+    ratio = board_expr.replace_strict(limits, default=_DEFAULT_LIMIT, return_dtype=pl.Float64)
+
+    # ST 真值：名称含 "ST" 即为 ST（含 *ST）。名称为 null 时 is_st 也为 null,
+    # 不默认成 False——见模块 docstring。
+    is_st = (
+        pl.when(pl.col("name").is_null())
+        .then(None)
+        .otherwise(pl.col("name").str.contains("ST"))
+    )
 
     frame = bars.sort(["symbol", "dt"]).with_columns(
         pl.col("close").shift(1).over("symbol").alias("prev_close"),
+        # pre_close 直取即除权参考价，非除权日等于前收。
+        pl.col("pre_close").alias("adj_prev_close"),
         ratio.alias("_ratio"),
+        is_st.alias("is_st"),
+        # 来源随名称走；名称为 null 就没有 ST 真值，来源也为 null——
+        # 恒为一个字面量会让 2% 没有名称的行看起来也「有来源」。
+        (pl.col("name_source") if "name_source" in bars.columns
+         else pl.lit(None, dtype=pl.Utf8)).alias("st_source"),
     )
-    frame = _with_reference_price(frame, actions)
 
-    # 涨跌停按除权参考价算。非除权日它等于 prev_close，故这里无需分支。
+    frame = frame.with_columns(
+        pl.when(pl.col("is_st"))
+        .then(pl.lit(ST_LIMIT))
+        .otherwise(pl.when(pl.col("is_st").is_null()).then(None).otherwise(pl.col("_ratio")))
+        .alias("limit_pct")
+    )
+
     cents = (pl.col("adj_prev_close") * 100).round(0).cast(pl.Int64)
-    up_milli = ((1.0 + pl.col("_ratio")) * 1000).round(0).cast(pl.Int64)
-    down_milli = ((1.0 - pl.col("_ratio")) * 1000).round(0).cast(pl.Int64)
-
-    st_up_milli = pl.lit(int(round((1.0 + ST_LIMIT) * 1000)), dtype=pl.Int64)
-    st_down_milli = pl.lit(int(round((1.0 - ST_LIMIT) * 1000)), dtype=pl.Int64)
+    up_milli = ((1.0 + pl.col("limit_pct")) * 1000).round(0).cast(pl.Int64)
+    down_milli = ((1.0 - pl.col("limit_pct")) * 1000).round(0).cast(pl.Int64)
 
     frame = frame.with_columns(
-        _limit_expr(cents, up_milli).alias("_board_up"),
-        _limit_expr(cents, down_milli).alias("_board_down"),
-        _limit_expr(cents, st_up_milli).alias("_st_up"),
-        _limit_expr(cents, st_down_milli).alias("_st_down"),
+        _limit_expr(cents, up_milli).alias("limit_up"),
+        _limit_expr(cents, down_milli).alias("limit_down"),
     )
 
-    # ST 反推第 1 条：当日最高价恰好等于 5% 涨停价（精确到分）。
-    hit_st = (pl.col("high") == pl.col("_st_up")).fill_null(False)
-    # 第 2 条：该股回看 ST_CONFIRM_BARS 根内命中过 >= ST_CONFIRM_HITS 次。
-    # 只回看不前瞻——rolling_sum 是尾窗，含当根。ST 持续数月，真 ST 会反复
-    # 贴板；单次命中多半是巧合（详见模块 docstring 的标定表）。
-    confirmed = (
-        hit_st.cast(pl.Int32)
-        .rolling_sum(window_size=ST_CONFIRM_BARS, min_samples=1)
-        .over("symbol")
-        >= ST_CONFIRM_HITS
-    ).fill_null(False)
-    st_raw = hit_st & confirmed
-
-    # 第 3 条：制度硬否决。5% 档下**不可能**出现走出 5% 区间的成交，
-    # 因此最近一次越界之前的贴板记录不能作为「现在是 ST」的证据。
-    #
-    # 判据用「价格是否走出 5% 档允许的区间」，不用固定百分比——涨跌停价
-    # 取整到分，低价股的合法涨幅会超过 5%（前收 0.33 -> ST 涨停 0.35 =
-    # +6.06%），按百分比卡会把真 ST 误否决。
-    breach = (
-        (pl.col("high") > pl.col("_st_up")) | (pl.col("low") < pl.col("_st_down"))
-    ).fill_null(False)
-
-    # ST 是阶跃状态：越界只证明「那一天不是 ST」，不证明「今天不是」。
-    # 一律按窗口否决会把刚被 ST 的股票连坐（它们被 ST 之前必然有越界），
-    # 实测那样做每天多否掉 7.9 个、241 天里 171 天变差。
-    #
-    # 正确形式是把确认窗的**起点挪到最近一次越界之后**：累计命中数减去
-    # 最近一次越界时的累计命中数，就是「本轮 ST 期内」的命中次数。
-    # 不引入新参数，仍用 ST_CONFIRM_HITS。
-    cum_hits = hit_st.cast(pl.Int32).cum_sum().over("symbol")
-    hits_at_last_breach = (
-        pl.when(breach).then(cum_hits).otherwise(None)
-        .forward_fill().over("symbol").fill_null(0)
-    )
-    hits_since_breach = cum_hits - hits_at_last_breach
-    # 越界当根本身不可能是 ST
-    vetoed = (breach | (hits_since_breach < ST_CONFIRM_HITS)).fill_null(False)
-
-    looks_st = st_raw & ~vetoed
-    frame = frame.with_columns(
-        st_raw.alias("st_inferred_raw"),
-        (st_raw & vetoed).alias("st_inference_rejected_by_price_evidence"),
-        looks_st.alias("st_inferred_final"),
-        pl.when(looks_st).then(pl.lit(ST_LIMIT)).otherwise(pl.col("_ratio"))
-        .alias("limit_pct"),
-        pl.when(looks_st).then(pl.col("_st_up")).otherwise(pl.col("_board_up"))
-        .alias("limit_up"),
-        pl.when(looks_st).then(pl.col("_st_down")).otherwise(pl.col("_board_down"))
-        .alias("limit_down"),
-    )
-
-    # 价格与分位涨跌停价都已取整到分，直接比较即可，无需容差
     is_up = (pl.col("close") >= pl.col("limit_up")).fill_null(False)
+    is_down = (pl.col("close") <= pl.col("limit_down")).fill_null(False)
     touched = (pl.col("high") >= pl.col("limit_up")).fill_null(False)
-
     frame = frame.with_columns(
         is_up.alias("is_limit_up"),
-        (pl.col("close") <= pl.col("limit_down")).fill_null(False).alias("is_limit_down"),
+        is_down.alias("is_limit_down"),
         touched.alias("touched_limit_up"),
-        (touched & ~is_up).alias("is_broken_board"),
     )
-
     return frame.with_columns(
+        (pl.col("touched_limit_up") & ~pl.col("is_limit_up")).alias("is_broken_board"),
         (
             pl.col("is_limit_up")
             & ~pl.col("is_limit_up").shift(1, fill_value=False).over("symbol")
-        ).alias("is_first_board")
+        ).alias("is_first_board"),
     )

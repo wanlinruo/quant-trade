@@ -12,6 +12,9 @@
   uv run python scripts/daily_archive.py                    # 正常每日跑
   uv run python scripts/daily_archive.py --skip-minutes     # 只做日线
   uv run python scripts/daily_archive.py --lookback-days 30 # 补几天的缺口
+
+日线增量有自己的时间预算（--daily-budget-minutes），到点就收工去做分钟线：
+日线明天还能补，分钟线和竞价 tick 是滚动窗口，漏了就没了。
 """
 
 from __future__ import annotations
@@ -36,10 +39,9 @@ from qsys.data.pipeline.capital import import_share_capital
 from qsys.data.pipeline.flags import build_daily_flags
 from qsys.data.pipeline.index_bars import CSI300, ingest_index_bars
 from qsys.data.pipeline.minutes import import_minute_bars, missing_stock_days
-from qsys.data.pipeline.instruments import build_instruments
 from qsys.data.pipeline.regime import build_market_regime
 from qsys.data.pipeline.valuation import build_valuation
-from qsys.data.pipeline.universe import ingest_universe
+from qsys.data.pipeline.universe import ingest_universe, source_is_serving
 from qsys.data.providers.akshare_provider import AkshareProvider
 from qsys.data.providers.mootdx_provider import MootdxProvider
 from qsys.data.quality.minute_rules import check_minute_bars
@@ -50,6 +52,10 @@ log = structlog.get_logger("daily_archive")
 
 # 派生表要多回算一段：首板判定依赖前一日，生态因子依赖昨日涨停状态
 _DERIVED_LOOKBACK = 40
+
+# 上游探针。挑三只跨市场的高流动性标的：它们不会在同一个 8 天窗口里同时整段
+# 停牌，所以「三只全空」只可能是上游不给数据了。
+_PROBE_SYMBOLS = ("000001.SZ", "600000.SH", "600519.SH")
 
 
 def run(cmd: list[str], *, what: str, timeout: int = 3600) -> str:
@@ -115,6 +121,9 @@ def main() -> int:
                         help="日线与候选各回看几个日历日，用于补缺口")
     parser.add_argument("--boards", default="main,gem,star")
     parser.add_argument("--batch-size", type=int, default=500)
+    parser.add_argument("--daily-budget-minutes", type=float, default=75.0,
+                        help="日线增量的时间预算。到点就收工去做分钟线——"
+                             "日线明天能补，滚动窗口的数据补不回来")
     parser.add_argument("--skip-minutes", action="store_true")
     parser.add_argument("--skip-auction", action="store_true")
     parser.add_argument("--only-auction", action="store_true",
@@ -147,8 +156,12 @@ def main() -> int:
     print(f"=== 归档至 {complete_through}（回看 {args.lookback_days} 天）===")
 
     # --- 2. 标的主表与日线增量 ---
-    print(f"标的主表 {build_instruments(reference, warehouse)} 只")
+    # instruments 已由 16:30 的 Tushare 同步维护（含退市股）。这里若继续调用
+    # AkShare，会在每天 15:40 把真值表覆盖回不含退市股的旧源。
     instruments = WarehouseQuery(warehouse).instruments()
+    if instruments.height == 0:
+        raise RuntimeError("instruments 为空；先恢复 qsys-tushare-sync，不回退 AkShare")
+    print(f"标的主表 {instruments.height} 只（Tushare 已落库）")
     boards = {b.strip() for b in args.boards.split(",") if b.strip()}
     alive = instruments.filter(
         pl.col("board").is_in(list(boards))
@@ -174,27 +187,61 @@ def main() -> int:
         print(f"=== 只做竞价 tick，完成，耗时 {(time.time()-started)/60:.1f} 分钟 ===")
         return 0
 
-    progress = ingest_universe(
-        MootdxProvider(), warehouse, symbols, start, complete_through,
-        complete_through=complete_through, batch_size=args.batch_size,
-        skip_done=False,  # 每日跑的区间天天不同，跳过判定没有意义
-    )
-    print(f"日线 {progress.done} 成功 / {progress.failed} 失败")
-    if progress.failed:
-        log.warning("archive.some_symbols_failed", failed=progress.failed)
+    # --- 2a. 先探上游是否还在供数 ---
+    # 2026-09-10/11 两天的教训：mootdx 的 K 线接口失效后**不报错**，每次调用等
+    # 3.8 秒返回空表。全市场 5219 只要跑 5.5 小时，systemd 在 2 小时处杀掉，
+    # 后面的分钟线一步都没做。探针几秒钟就能把这种情况认出来。
+    provider = MootdxProvider()
+    probes = [s for s in _PROBE_SYMBOLS if s in set(symbols)] or symbols[:3]
+    daily_source_up = source_is_serving(provider, probes, start, complete_through)
 
-    # --- 2b. 指数日线（S6 Gate 的 index_ma20_slope_5d 要用）---
-    # 指数走 mootdx 的 index()，个股接口取不到
-    index_rows = ingest_index_bars(
-        MootdxProvider(), warehouse, [CSI300], start, complete_through,
-        complete_through=complete_through,
-    )
-    print(f"指数日线 {index_rows} 行")
+    if not daily_source_up:
+        log.error("archive.daily_source_down", probes=probes,
+                  hint="探针标的全部返回空——高流动性标的不会同时整段停牌")
+        print(f"[日线源失效] 探针 {probes} 全部取不到数据。")
+        print("  跳过日线、指数与派生表——跑下去只会用 3.8 秒/只换一批空表，")
+        print("  并把整个归档拖到超时，连后面的分钟线都做不成。")
+    else:
+        progress = ingest_universe(
+            provider, warehouse, symbols, start, complete_through,
+            complete_through=complete_through, batch_size=args.batch_size,
+            # 区间键含起止日期，换一天自然全采；同一天重跑才跳过已完成的，
+            # 这是被超时杀掉之后能续上的前提。
+            skip_done=True,
+            deadline=time.monotonic() + args.daily_budget_minutes * 60,
+        )
+        print(f"日线 {progress.done} 有数据 / {progress.empty} 空 / "
+              f"{progress.failed} 失败")
+        if progress.remaining > 0:
+            daily_source_up = False
+            log.warning("archive.daily_budget_exhausted",
+                        remaining=progress.remaining)
+            print(f"  [预算用尽] 还剩 {progress.remaining} 只没采，"
+                  f"先去做滚动窗口的数据；重跑本脚本会从断点续上")
+        if progress.failed:
+            log.warning("archive.some_symbols_failed", failed=progress.failed)
+        if progress.empty > progress.done:
+            # 探针过了但大面积返回空：上游在跑的过程中挂了。宁可当失败处理，
+            # 也不要让派生表基于半截日线重算。
+            daily_source_up = False
+            log.error("archive.daily_mostly_empty",
+                      done=progress.done, empty=progress.empty)
+            print(f"  [警告] 空结果多于有数据的（{progress.empty} > {progress.done}），"
+                  f"按上游失效处理，不重算派生表")
 
-    # --- 3. 派生表重算（合并写，不会抹掉同年其余数据）---
-    derived_from = complete_through - timedelta(days=_DERIVED_LOOKBACK)
-    print(f"涨跌停标记 {build_daily_flags(warehouse, derived_from, complete_through)} 行")
-    print(f"生态因子 {build_market_regime(warehouse, derived_from, complete_through)} 行")
+    if daily_source_up:
+        # --- 2b. 指数日线（S6 Gate 的 index_ma20_slope_5d 要用）---
+        # 指数走 mootdx 的 index()，个股接口取不到
+        index_rows = ingest_index_bars(
+            provider, warehouse, [CSI300], start, complete_through,
+            complete_through=complete_through,
+        )
+        print(f"指数日线 {index_rows} 行")
+
+        # --- 3. 派生表重算（合并写，不会抹掉同年其余数据）---
+        derived_from = complete_through - timedelta(days=_DERIVED_LOOKBACK)
+        print(f"涨跌停标记 {build_daily_flags(warehouse, derived_from, complete_through, boards=boards)} 行")
+        print(f"生态因子 {build_market_regime(warehouse, derived_from, complete_through, boards=boards)} 行")
 
     # --- 3b. 股本与估值 ---
     if not args.skip_capital:
@@ -223,7 +270,10 @@ def main() -> int:
         print(f"股本 {cap_result.files} 文件 / {cap_result.rows:,} 行 / "
               f"{cap_result.errors} 错误")
 
-    print(f"估值 {build_valuation(warehouse, derived_from, complete_through):,} 行")
+    if daily_source_up:
+        print(f"估值 {build_valuation(warehouse, derived_from, complete_through):,} 行")
+    else:
+        print("跳过估值重算——它依赖当日日线")
 
     wanted = candidate_stock_days(warehouse, start, complete_through)
 
@@ -236,9 +286,15 @@ def main() -> int:
     missing = missing_stock_days(warehouse, wanted)
     print(f"候选 {wanted.height} 组，其中缺分钟线 {missing.height} 组")
     if missing.height == 0:
-        print("分钟线已齐，无需下载")
+        if daily_source_up:
+            print("分钟线已齐，无需下载")
+        else:
+            # 候选由 daily_flags 的首板推出，daily_flags 又派生自当日日线。
+            # 日线没进来，候选就必然为空——这不是「已齐」，是算不出来。
+            print("[候选算不出] daily_flags 缺当日日线，候选为空——"
+                  "这不等于分钟线已齐，补上日线源后必须重跑")
         print(f"=== 完成，耗时 {(time.time()-started)/60:.1f} 分钟 ===")
-        return 0
+        return 0 if daily_source_up else 1
 
     local_dir = Path("var/minutes-incoming")
     local_dir.mkdir(parents=True, exist_ok=True)
@@ -288,8 +344,9 @@ def main() -> int:
 
     print(f"=== 完成，耗时 {(time.time()-started)/60:.1f} 分钟 ===")
     log.info("archive.done", days=len(days), rows=result.rows, issues=issues,
+             daily_source_up=daily_source_up,
              minutes=round((time.time()-started)/60, 1))
-    return 1 if issues else 0
+    return 1 if (issues or not daily_source_up) else 0
 
 
 if __name__ == "__main__":

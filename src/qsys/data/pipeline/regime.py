@@ -11,11 +11,15 @@
 `prior_limitup_nextday_return` 要看昨日的涨停状态，跨年那一天没有回看
 就会算空。
 
-**股票池排除科创板与北交所**，与原策略 `_s5_relevant_universe`
-（`filter_kcbj_stock`：排除 4/8/68 开头）一致。科创板涨跌幅是 20%，
-收益分布与主板不同；`market_median_return_1d` 的判定阈值只有 0.00426，
-混进去足以翻转 Gate 判定——与聚宽对账时实测有 19 条因此分歧。
-B 股（900/200）不在排除之列，照抄原口径不多排。
+股票池有两层过滤。第一层 `_in_breadth_universe` 固定排除科创板与北交所，
+沿用原策略 `filter_kcbj_stock` 的 4/8/68 前缀口径；第二层 `_keep_boards`
+按调用方传入的 `boards` 进一步取交集。第二层还堵住了原前缀表漏掉的 920
+号段（北交所 2023 年启用）。`boards` 不能把第一层已经排除的板块加回来，
+即便包含 `star`，科创板仍然不会进入广度股票池。
+
+原前缀口径不排 B 股（900/200），而生产调用默认 `boards=main,gem,star`
+又会把 `bshare` 排除，两层语义并不完全一致。2026-09-09 实测新旧生产
+日线中 B 股均为 0，只记录为未来数据源扩容风险，不在本次合并两层口径。
 
 `index_ma20_slope_5d` 取自沪深 300 指数日线（`index_bars`）：
 MA20 相对 5 个交易日前的 MA20 的变化率。**没有指数数据时留空而不是填 0**——
@@ -33,6 +37,7 @@ from qsys.data import schema
 from qsys.data.pipeline.index_bars import CSI300
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
+from qsys.markets.ashare import board_of
 
 log = structlog.get_logger(__name__)
 
@@ -63,7 +68,29 @@ _REGIME_COLUMNS = [
 ]
 
 
-def build_market_regime(warehouse: Warehouse, start: date, end: date) -> int:
+def _keep_boards(frame: pl.DataFrame, boards: set[str] | None) -> pl.DataFrame:
+    """在固定广度股票池之上按板块取交集。
+
+    广度因子的分母就是这个池子。付费源比旧表多 343 只北交所，不过滤会让
+    market_advance_ratio 在换源当天静默跳变而没有任何地方报错。此函数只会
+    进一步缩小股票池，不能恢复 `_in_breadth_universe` 已排除的板块。
+    """
+    if boards is None or frame.height == 0:
+        return frame
+    return frame.filter(
+        pl.col("symbol")
+        .map_elements(lambda s: board_of(s.split(".")[0]), return_dtype=pl.Utf8)
+        .is_in(list(boards))
+    )
+
+
+def build_market_regime(
+    warehouse: Warehouse,
+    start: date,
+    end: date,
+    boards: set[str] | None = None,
+) -> int:
+    """构建市场生态因子；`boards` 是固定广度股票池之上的二次限制。"""
     query = WarehouseQuery(warehouse)
 
     written = 0
@@ -75,8 +102,8 @@ def build_market_regime(warehouse: Warehouse, start: date, end: date) -> int:
             continue
 
         back = lo - timedelta(days=_LOOKBACK_DAYS)
-        bars = _in_breadth_universe(query.daily_bars(None, back, hi))
-        flags = _in_breadth_universe(query.daily_flags(back, hi))
+        bars = _keep_boards(_in_breadth_universe(query.daily_bars(None, back, hi)), boards)
+        flags = _keep_boards(_in_breadth_universe(query.daily_flags(back, hi)), boards)
         if bars.height == 0 or flags.height == 0:
             continue
 
@@ -88,9 +115,14 @@ def build_market_regime(warehouse: Warehouse, start: date, end: date) -> int:
         daily = daily.join(_index_slope(query, back, hi), on="dt", how="left")
 
         chunk = daily.sort("dt").select(_REGIME_COLUMNS)
-        # 与 flags 同理：分区整年覆盖写，只重算一段时必须先合并同年既有数据
+        # 与 flags 同理：分区整年覆盖写，只重算一段时要保留窗口**之外**的
+        # 既有行；窗口**之内**完全以本次重算为准，包括它的缺席。
+        # 生态因子是 S7 Gate 的全部输入，残留一天旧因子就是给 Gate 喂一天
+        # 当前数据支撑不了的事实，而且不报错。
+        existing = query.market_regime(lo_year, hi_year)
+        outside = existing.filter(~pl.col("dt").is_between(lo, hi))
         merged = (
-            pl.concat([query.market_regime(lo_year, hi_year), chunk], how="vertical")
+            pl.concat([outside, chunk], how="vertical")
             .unique(subset=["dt"], keep="last", maintain_order=True)
             .sort("dt")
             .select(_REGIME_COLUMNS)

@@ -42,6 +42,36 @@ class DeployConfig:
     consumer_name: str = "core-1"
 
 
+@dataclass(frozen=True, slots=True)
+class TushareConfig:
+    """Tushare Pro 凭据。
+
+    **积分一年有效期、到期回收**——到期未续费则日线源直接中断。
+    `purchased` 留作到期提醒的依据。
+    """
+
+    token: str = field(default="", repr=False)  # 不进 repr / 日志 / 异常
+    points: int = 0
+    purchased: str = ""
+
+
+def load_tushare_config(path: str | Path | None = None) -> TushareConfig:
+    target = Path(path) if path is not None else DEFAULT_PATH
+    if not target.exists():
+        raise FileNotFoundError(f"{target} 不存在。Tushare 凭据只写在这里（已 gitignore）。")
+    raw = tomllib.loads(target.read_text())
+    section = raw.get("tushare")
+    if not section or not section.get("token"):
+        # 显式报错而不是给个空 token——空 token 要到网络层才暴露，
+        # 那时错误信息是「token 无效」，查起来绕远路。
+        raise ValueError(f"{target} 里没有 [tushare] token")
+    return TushareConfig(
+        token=section["token"],
+        points=int(section.get("points", 0)),
+        purchased=str(section.get("purchased", "")),
+    )
+
+
 def load_deploy_config(path: str | Path | None = None) -> DeployConfig:
     target = Path(path) if path is not None else DEFAULT_PATH
     if not target.exists():

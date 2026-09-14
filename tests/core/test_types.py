@@ -53,3 +53,19 @@ def test_bar_holds_ohlcv():
     )
     assert bar.close == 30.5
     assert bar.dt == date(2024, 1, 2)
+
+
+def test_bar_volume_is_a_float():
+    """付费源的手数带小数（582305.98 手），Bar 不能把它标成 int。
+
+    标注错了不会立刻报错——dataclass 不做运行时校验——但会误导
+    每一个读这段代码的人，并让静态检查失去意义。
+    """
+    import typing
+
+    assert typing.get_type_hints(Bar)["volume"] is float
+
+    bar = Bar(symbol=Symbol.parse("000001.SZ"), dt=date(2026, 9, 9),
+              open=11.76, high=11.79, low=11.69, close=11.70,
+              volume=582305.98, amount=6.8e8)
+    assert bar.volume == 582305.98

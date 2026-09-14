@@ -59,6 +59,7 @@ def test_write_unpartitioned_dataset(warehouse: Warehouse):
             "list_date": [date(2002, 4, 9)],
             "delist_date": [None],
             "board": ["main"],
+            "as_of": [None],
         },
         schema=schema.INSTRUMENTS,
     )

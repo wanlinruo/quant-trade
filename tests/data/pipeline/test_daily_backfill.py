@@ -56,7 +56,7 @@ def test_a_hole_is_filled(warehouse, tmp_path):
     result = backfill_daily_bars(warehouse, src)
 
     assert result.filled_rows == 1
-    got = WarehouseQuery(warehouse).daily_bars(["600001.SH"], D[0], D[2])
+    got = WarehouseQuery(warehouse).legacy_daily_bars(["600001.SH"], D[0], D[2])
     assert got["close"].to_list() == [10.0, 11.0, 12.0]
 
 
@@ -68,7 +68,7 @@ def test_an_existing_day_is_never_overwritten(warehouse, tmp_path):
     result = backfill_daily_bars(warehouse, src)
 
     assert result.filled_rows == 0
-    got = WarehouseQuery(warehouse).daily_bars(["600001.SH"], D[0], D[0])
+    got = WarehouseQuery(warehouse).legacy_daily_bars(["600001.SH"], D[0], D[0])
     assert got["close"].to_list() == [10.0]
 
 
@@ -93,7 +93,7 @@ def test_only_restricts_what_gets_filled(warehouse, tmp_path):
     result = backfill_daily_bars(warehouse, src, only=only)
 
     assert result.filled_rows == 1
-    assert WarehouseQuery(warehouse).daily_bars(
+    assert WarehouseQuery(warehouse).legacy_daily_bars(
         ["600001.SH"], D[0], D[2])["dt"].to_list() == [D[0], D[1]]
 
 

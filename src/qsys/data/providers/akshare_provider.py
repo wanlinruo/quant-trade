@@ -13,6 +13,7 @@ import polars as pl
 import structlog
 
 from qsys.data.providers.base import ReferenceProvider, normalize_symbol
+from qsys.markets.ashare import board_of as _board_of
 
 log = structlog.get_logger(__name__)
 
@@ -84,19 +85,6 @@ class _AkshareApi:
         import akshare as ak
 
         return ak.stock_fhps_detail_em(symbol=code)
-
-
-def _board_of(code: str) -> str:
-    if code.startswith(("688", "689")):
-        return "star"
-    if code.startswith(("300", "301")):
-        return "gem"
-    if code[:2] in ("43", "83", "87", "92"):
-        return "bse"
-    if code[:2] in ("90", "20"):
-        # B 股：外币计价、交易规则与 A 股不同，单独标注以便股票池排除
-        return "bshare"
-    return "main"
 
 
 def _to_date_series(values: pl.Series) -> pl.Series:

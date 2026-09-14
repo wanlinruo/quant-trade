@@ -1,10 +1,12 @@
 from datetime import datetime
 
+import pytest
+
 from qsys.core.constraints import ConstraintContext
 from qsys.core.portfolio import Portfolio
 from qsys.core.trading import Fill, OrderIntent, Side
 from qsys.core.types import Market, Symbol
-from qsys.markets.ashare import LOT_SIZE, PRICE_LIMITS, ashare_pipeline
+from qsys.markets.ashare import LOT_SIZE, PRICE_LIMITS, ashare_pipeline, ashare_pre_trade_pipeline, board_of
 
 CMB = Symbol("600036", Market.SH)
 NOW = datetime(2024, 1, 2, 15, 0)
@@ -70,11 +72,6 @@ def test_fee_buffer_is_configurable():
 
 # --- 下单时刻可评估的约束子集 ---
 
-from qsys.core.constraints import ConstraintContext
-from qsys.core.portfolio import Portfolio
-from qsys.core.trading import OrderIntent
-from qsys.markets.ashare import ashare_pre_trade_pipeline
-
 
 def test_pre_trade_pipeline_excludes_market_dependent_rules():
     """涨跌停与停牌依赖当时行情，核心侧下单时未必持有，留给券商。"""
@@ -100,3 +97,38 @@ def test_pre_trade_pipeline_enforces_t_plus_one():
     assert ashare_pre_trade_pipeline().apply(
         OrderIntent(CMB, Side.SELL, 500), ctx
     ).is_rejected
+
+
+# --- board_of 共享函数 ---
+
+
+@pytest.mark.parametrize(
+    "code,board",
+    [
+        ("688981", "star"), ("689009", "star"),
+        ("300750", "gem"), ("301689", "gem"),
+        ("920268", "bse"), ("830799", "bse"), ("871396", "bse"), ("430418", "bse"),
+        ("900901", "bshare"), ("200011", "bshare"),
+        ("000001", "main"), ("600000", "main"), ("603005", "main"),
+    ],
+)
+def test_board_of_classifies_by_code_prefix(code, board):
+    assert board_of(code) == board
+
+
+def test_every_board_has_a_price_limit():
+    """板块词表与涨跌幅上限必须同步。
+
+    多一个板块而忘了给上限，涨跌停价会悄悄退到默认值，
+    首板判定跟着错，而没有任何地方报错。
+    """
+    produced = {board_of(c) for c in
+                ("688981", "300750", "920268", "900901", "000001")}
+    assert produced <= set(PRICE_LIMITS)
+
+
+def test_akshare_provider_reuses_the_shared_function():
+    """三处分头实现必然对同一天给出不同口径。"""
+    from qsys.data.providers import akshare_provider
+
+    assert akshare_provider._board_of is board_of

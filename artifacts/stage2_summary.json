@@ -1,0 +1,15 @@
+{
+  "old_rows": 4504869,
+  "new_rows": 4568042,
+  "common_rows": 4504859,
+  "only_in_old": 10,
+  "only_in_new": 63183,
+  "first_board_flips": 2508,
+  "first_board_symbols": 824,
+  "limit_up_flips": 2629,
+  "limit_up_symbols": 834,
+  "limit_pct_changes": 97545,
+  "limit_pct_symbols": 765,
+  "st_flips": 102554,
+  "st_symbols": 5212
+}

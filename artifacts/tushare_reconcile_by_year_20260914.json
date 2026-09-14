@@ -1,0 +1,345 @@
+{
+  "source": "artifacts/tushare_reconcile_value_diffs.parquet",
+  "common_rows": 18224238,
+  "field_count": 22,
+  "fields": [
+    {
+      "field": "amount",
+      "rows": 3342160,
+      "null_mismatches": 0,
+      "median_abs_diff": 7.450580596923828e-09,
+      "max_abs_diff": 370749771.20000005,
+      "ratio_of_common_rows": 0.1833909324494116,
+      "by_year": {
+        "1991": 92,
+        "1992": 2,
+        "1993": 17,
+        "1994": 6747,
+        "1995": 10719,
+        "1996": 20320,
+        "1997": 34892,
+        "1998": 43844,
+        "1999": 47827,
+        "2000": 54214,
+        "2001": 58306,
+        "2002": 59327,
+        "2003": 62447,
+        "2004": 66703,
+        "2005": 66633,
+        "2006": 63077,
+        "2007": 72503,
+        "2008": 82618,
+        "2009": 87638,
+        "2010": 106564,
+        "2011": 132273,
+        "2012": 148926,
+        "2013": 148565,
+        "2014": 150644,
+        "2015": 149154,
+        "2016": 154253,
+        "2017": 105173,
+        "2018": 114829,
+        "2019": 124995,
+        "2020": 133721,
+        "2021": 150779,
+        "2022": 164526,
+        "2023": 176103,
+        "2024": 180292,
+        "2025": 183676,
+        "2026": 179761
+      }
+    },
+    {
+      "field": "factor",
+      "rows": 1380345,
+      "null_mismatches": 0,
+      "median_abs_diff": 0.0002999999999997449,
+      "max_abs_diff": 3.2544000000000004,
+      "ratio_of_common_rows": 0.07574226148714695,
+      "by_year": {
+        "2018": 16,
+        "2020": 821147,
+        "2021": 10521,
+        "2022": 273818,
+        "2023": 229277,
+        "2024": 43838,
+        "2025": 164,
+        "2026": 1564
+      }
+    },
+    {
+      "field": "volume_ratio",
+      "rows": 38506,
+      "null_mismatches": 33048,
+      "median_abs_diff": 0.0025000000000000577,
+      "max_abs_diff": 0.0050000000000001155,
+      "ratio_of_common_rows": 0.0021129004131750255,
+      "by_year": {
+        "2026": 38506
+      }
+    },
+    {
+      "field": "free_shares",
+      "rows": 28903,
+      "null_mismatches": 27977,
+      "median_abs_diff": 4519089.999999985,
+      "max_abs_diff": 5338297305.000002,
+      "ratio_of_common_rows": 0.0015859648013815447,
+      "by_year": {
+        "2020": 119,
+        "2021": 215,
+        "2022": 1,
+        "2026": 28568
+      }
+    },
+    {
+      "field": "free_turnover_ratio",
+      "rows": 28795,
+      "null_mismatches": 27977,
+      "median_abs_diff": 0.1510499999999999,
+      "max_abs_diff": 72.4834,
+      "ratio_of_common_rows": 0.0015800386276781503,
+      "by_year": {
+        "2000": 1,
+        "2020": 119,
+        "2021": 215,
+        "2022": 1,
+        "2026": 28459
+      }
+    },
+    {
+      "field": "circulating_market_cap",
+      "rows": 8928,
+      "null_mismatches": 336,
+      "median_abs_diff": 332.50000071525574,
+      "max_abs_diff": 52219187602.99997,
+      "ratio_of_common_rows": 0.0004898970261472661,
+      "by_year": {
+        "2018": 1,
+        "2020": 118,
+        "2021": 215,
+        "2022": 1,
+        "2026": 8593
+      }
+    },
+    {
+      "field": "market_cap",
+      "rows": 8212,
+      "null_mismatches": 336,
+      "median_abs_diff": 351.0,
+      "max_abs_diff": 21788168680.0,
+      "ratio_of_common_rows": 0.00045060868937291093,
+      "by_year": {
+        "2018": 1,
+        "2020": 118,
+        "2021": 215,
+        "2022": 1,
+        "2026": 7877
+      }
+    },
+    {
+      "field": "pb",
+      "rows": 4927,
+      "null_mismatches": 369,
+      "median_abs_diff": 0.06680000000000019,
+      "max_abs_diff": 233.265,
+      "ratio_of_common_rows": 0.00027035423922799955,
+      "by_year": {
+        "2018": 1,
+        "2020": 107,
+        "2021": 215,
+        "2022": 1,
+        "2026": 4603
+      }
+    },
+    {
+      "field": "pe_ttm",
+      "rows": 2682,
+      "null_mismatches": 1868,
+      "median_abs_diff": 0.00010000000003174137,
+      "max_abs_diff": 225.80159999999998,
+      "ratio_of_common_rows": 0.0001471666469676263,
+      "by_year": {
+        "2018": 1,
+        "2020": 107,
+        "2021": 215,
+        "2022": 1,
+        "2026": 2358
+      }
+    },
+    {
+      "field": "pe",
+      "rows": 2303,
+      "null_mismatches": 1779,
+      "median_abs_diff": 0.00010000000000331966,
+      "max_abs_diff": 14.916200000000003,
+      "ratio_of_common_rows": 0.00012637016702701095,
+      "by_year": {
+        "2018": 1,
+        "2020": 107,
+        "2021": 213,
+        "2022": 1,
+        "2026": 1981
+      }
+    },
+    {
+      "field": "circulating_shares",
+      "rows": 1422,
+      "null_mismatches": 336,
+      "median_abs_diff": 239250.0,
+      "max_abs_diff": 1454168397.999999,
+      "ratio_of_common_rows": 7.802795376135892e-05,
+      "by_year": {
+        "2018": 1,
+        "2020": 118,
+        "2021": 215,
+        "2022": 1,
+        "2026": 1087
+      }
+    },
+    {
+      "field": "turnover_ratio",
+      "rows": 1062,
+      "null_mismatches": 337,
+      "median_abs_diff": 0.006399999999999739,
+      "max_abs_diff": 15.448,
+      "ratio_of_common_rows": 5.827404141671108e-05,
+      "by_year": {
+        "2000": 1,
+        "2018": 1,
+        "2020": 118,
+        "2021": 215,
+        "2022": 1,
+        "2026": 726
+      }
+    },
+    {
+      "field": "dividend_yield",
+      "rows": 966,
+      "null_mismatches": 829,
+      "median_abs_diff": 0.0009000000000001229,
+      "max_abs_diff": 0.06950000000000012,
+      "ratio_of_common_rows": 5.3006331458138335e-05,
+      "by_year": {
+        "2024": 209,
+        "2025": 581,
+        "2026": 176
+      }
+    },
+    {
+      "field": "ps_ttm",
+      "rows": 773,
+      "null_mismatches": 346,
+      "median_abs_diff": 0.016199999999999992,
+      "max_abs_diff": 1742.4232,
+      "ratio_of_common_rows": 4.2416039562257694e-05,
+      "by_year": {
+        "2018": 1,
+        "2020": 118,
+        "2021": 215,
+        "2022": 1,
+        "2026": 438
+      }
+    },
+    {
+      "field": "total_shares",
+      "rows": 765,
+      "null_mismatches": 336,
+      "median_abs_diff": 347858.9999999702,
+      "max_abs_diff": 811811880.0,
+      "ratio_of_common_rows": 4.197706373237663e-05,
+      "by_year": {
+        "2018": 1,
+        "2020": 118,
+        "2021": 215,
+        "2022": 1,
+        "2026": 430
+      }
+    },
+    {
+      "field": "ps",
+      "rows": 431,
+      "null_mismatches": 338,
+      "median_abs_diff": 9.999999999998899e-05,
+      "max_abs_diff": 0.5700000000000003,
+      "ratio_of_common_rows": 2.3649822834842258e-05,
+      "by_year": {
+        "2018": 1,
+        "2020": 118,
+        "2021": 215,
+        "2022": 1,
+        "2026": 96
+      }
+    },
+    {
+      "field": "dividend_yield_ttm",
+      "rows": 151,
+      "null_mismatches": 1,
+      "median_abs_diff": 0.0011000000000000454,
+      "max_abs_diff": 0.056499999999999995,
+      "ratio_of_common_rows": 8.28566878900506e-06,
+      "by_year": {
+        "2021": 1,
+        "2024": 1,
+        "2026": 149
+      }
+    },
+    {
+      "field": "volume",
+      "rows": 8,
+      "null_mismatches": 0,
+      "median_abs_diff": 136975.5,
+      "max_abs_diff": 1754235.0,
+      "ratio_of_common_rows": 4.389758298810628e-07,
+      "by_year": {
+        "2000": 7,
+        "2026": 1
+      }
+    },
+    {
+      "field": "low",
+      "rows": 3,
+      "null_mismatches": 0,
+      "median_abs_diff": 0.07000000000000028,
+      "max_abs_diff": 0.21999999999999975,
+      "ratio_of_common_rows": 1.6461593620539856e-07,
+      "by_year": {
+        "1991": 1,
+        "2014": 2
+      }
+    },
+    {
+      "field": "pct_change",
+      "rows": 1,
+      "null_mismatches": 0,
+      "median_abs_diff": 0.06529999999999969,
+      "max_abs_diff": 0.06529999999999969,
+      "ratio_of_common_rows": 5.487197873513285e-08,
+      "by_year": {
+        "2020": 1
+      }
+    },
+    {
+      "field": "change",
+      "rows": 1,
+      "null_mismatches": 0,
+      "median_abs_diff": 0.05999999999999961,
+      "max_abs_diff": 0.05999999999999961,
+      "ratio_of_common_rows": 5.487197873513285e-08,
+      "by_year": {
+        "2020": 1
+      }
+    },
+    {
+      "field": "open",
+      "rows": 1,
+      "null_mismatches": 0,
+      "median_abs_diff": 0.04999999999999982,
+      "max_abs_diff": 0.04999999999999982,
+      "ratio_of_common_rows": 5.487197873513285e-08,
+      "by_year": {
+        "1991": 1
+      }
+    }
+  ]
+}

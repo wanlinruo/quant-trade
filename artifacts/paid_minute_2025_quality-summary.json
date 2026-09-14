@@ -1,0 +1,58 @@
+{
+  "year": 2025,
+  "status": "PUBLISHED",
+  "source_manifest": "/home/ubuntu/qsys/warehouse/paid_minute_bars/year=2025/manifest.json",
+  "structural": {
+    "row_count": 317468846,
+    "symbols": 5487,
+    "min_dt": "2025-01-02 09:30:00",
+    "max_dt": "2025-12-31 15:00:00",
+    "invalid_session_times": 0,
+    "bj_post_close_rows": 1598340,
+    "bj_post_close_trade_rows": 35956
+  },
+  "daily_comparison": {
+    "stock_days": 1310666,
+    "matched_paid_days": 1310666,
+    "missing_paid_days": 0,
+    "non_241_regular_days": 0,
+    "min_minutes_per_day": 241,
+    "max_minutes_per_day": 271,
+    "factor_not_unique_days": 0,
+    "ohlc_mismatch_days": 57379,
+    "volume_mismatch_days": 14188,
+    "amount_mismatch_gt_100_days": 10044,
+    "max_amount_abs_diff": 93728000.73000008,
+    "factor_mismatch_days": 0
+  },
+  "qmt_comparison": {
+    "available": true,
+    "qmt_rows": 2854404,
+    "exact_key_overlap": 2835124,
+    "qmt_keys_without_paid": 19280,
+    "ohlc_mismatch_rows": 1127870,
+    "volume_mismatch_rows": 2771263,
+    "amount_mismatch_gt_1_rows": 1778990
+  },
+  "quarantine": {
+    "files": 174,
+    "rows": 831317,
+    "reasons": {
+      "CORE_FIELD_NULL": 5149,
+      "ZERO_TRADE_FLAT_NO_DAILY_RECORD": 826168
+    }
+  },
+  "artifacts": {
+    "daily_aggregate": "/home/ubuntu/qsys/warehouse/paid_minute_quality/year=2025/daily_aggregate.parquet",
+    "daily_discrepancies": "/home/ubuntu/qsys/warehouse/paid_minute_quality/year=2025/daily_discrepancies.parquet"
+  },
+  "rules": {
+    "ohlc_daily_tolerance_cny": 0.005,
+    "volume_rule": "sum(source minute shares) == source daily lots * 100, tolerance 0.5 share",
+    "amount_daily_tolerance_cny": 100,
+    "factor_tolerance": 1e-10,
+    "ohlc_session": "09:30-15:00; BJ 15:01-15:30 retained as direct post-close/bulk-trade observations",
+    "note": "aggregates are validation-only and never written to source facts"
+  },
+  "published_at": "2026-09-12T15:51:56.583052+08:00"
+}

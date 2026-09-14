@@ -1,0 +1,70 @@
+{
+  "fetched_at": "2026-09-12T18:24:24.143285+08:00",
+  "source_url": "https://www.bse.cn/nqxxController/nqxxCnzq.do",
+  "request_without_page": {
+    "typejb": "T",
+    "xxfcbj[]": "2",
+    "xxzqdm": "",
+    "sortfield": "xxzqdm",
+    "sorttype": "asc"
+  },
+  "total_pages": 18,
+  "total_rows": 343,
+  "records": [
+    {
+      "symbol": "920123.BJ",
+      "name": "芭薇股份",
+      "listing_date": "20240329",
+      "source_fields": {
+        "xxzqdm": "920123",
+        "xxzqjc": "芭薇股份",
+        "fxssrq": "20240329",
+        "xxgprq": "20240329"
+      }
+    },
+    {
+      "symbol": "920522.BJ",
+      "name": "纳科诺尔",
+      "listing_date": "20231116",
+      "source_fields": {
+        "xxzqdm": "920522",
+        "xxzqjc": "纳科诺尔",
+        "fxssrq": "20231116",
+        "xxgprq": "20231116"
+      }
+    },
+    {
+      "symbol": "920706.BJ",
+      "name": "铁拓机械",
+      "listing_date": "20240308",
+      "source_fields": {
+        "xxzqdm": "920706",
+        "xxzqjc": "铁拓机械",
+        "fxssrq": "20240308",
+        "xxgprq": "20240308"
+      }
+    },
+    {
+      "symbol": "920833.BJ",
+      "name": "美心翼申",
+      "listing_date": "20231108",
+      "source_fields": {
+        "xxzqdm": "920833",
+        "xxzqjc": "美心翼申",
+        "fxssrq": "20231108",
+        "xxgprq": "20231108"
+      }
+    },
+    {
+      "symbol": "920931.BJ",
+      "name": "无锡鼎邦",
+      "listing_date": "20240408",
+      "source_fields": {
+        "xxzqdm": "920931",
+        "xxzqjc": "无锡鼎邦",
+        "fxssrq": "20240408",
+        "xxgprq": "20240408"
+      }
+    }
+  ]
+}

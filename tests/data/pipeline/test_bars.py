@@ -54,7 +54,7 @@ def test_ingest_writes_bars(warehouse: Warehouse):
         provider, warehouse, ["600036.SH"], date(2024, 1, 1), date(2024, 1, 31)
     )
     assert written == 2
-    df = WarehouseQuery(warehouse).daily_bars(None, date(2024, 1, 1), date(2024, 1, 31))
+    df = WarehouseQuery(warehouse).legacy_daily_bars(None, date(2024, 1, 1), date(2024, 1, 31))
     assert df.height == 2
     assert df["symbol"].to_list() == ["600036.SH", "600036.SH"]
 
@@ -63,7 +63,7 @@ def test_ingest_is_idempotent(warehouse: Warehouse):
     provider = FakeProvider({"600036.SH": _bars([date(2024, 1, 2)], 30.0)})
     ingest_daily_bars(provider, warehouse, ["600036.SH"], date(2024, 1, 1), date(2024, 1, 31))
     ingest_daily_bars(provider, warehouse, ["600036.SH"], date(2024, 1, 1), date(2024, 1, 31))
-    assert WarehouseQuery(warehouse).daily_bars(
+    assert WarehouseQuery(warehouse).legacy_daily_bars(
         None, date(2024, 1, 1), date(2024, 1, 31)
     ).height == 1
 
@@ -77,7 +77,7 @@ def test_ingest_merges_with_existing_data(warehouse: Warehouse):
         FakeProvider({"000001.SZ": _bars([date(2024, 1, 2)], 10.0)}),
         warehouse, ["000001.SZ"], date(2024, 1, 1), date(2024, 1, 31),
     )
-    df = WarehouseQuery(warehouse).daily_bars(None, date(2024, 1, 1), date(2024, 1, 31))
+    df = WarehouseQuery(warehouse).legacy_daily_bars(None, date(2024, 1, 1), date(2024, 1, 31))
     assert sorted(df["symbol"].to_list()) == ["000001.SZ", "600036.SH"]
 
 
@@ -105,7 +105,7 @@ def test_failing_symbol_does_not_abort_others(warehouse: Warehouse):
         provider, warehouse, ["600036.SH", "000001.SZ"], date(2024, 1, 1), date(2024, 1, 31)
     )
     assert written == 1
-    df = WarehouseQuery(warehouse).daily_bars(None, date(2024, 1, 1), date(2024, 1, 31))
+    df = WarehouseQuery(warehouse).legacy_daily_bars(None, date(2024, 1, 1), date(2024, 1, 31))
     assert df["symbol"].to_list() == ["000001.SZ"]
 
 

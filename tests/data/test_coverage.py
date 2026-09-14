@@ -77,6 +77,7 @@ def test_datasets_without_a_date_column_are_still_reported(warehouse):
                 "list_date": [None],
                 "delist_date": [None],
                 "board": ["main"],
+                "as_of": [None],
             },
             schema=schema.INSTRUMENTS,
         ),

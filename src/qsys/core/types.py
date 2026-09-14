@@ -49,5 +49,6 @@ class Bar:
     high: float
     low: float
     close: float
-    volume: int
+    # 手。付费源给的是带小数的手数（582305.98），不取整。
+    volume: float
     amount: float

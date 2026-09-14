@@ -3,6 +3,10 @@ from datetime import date
 import polars as pl
 
 from qsys.data.pipeline.instruments import alive_on, build_instruments
+
+# 快照日期显式给定——build_instruments 不内部取 today()，
+# 否则结果依赖墙上时钟。
+AS_OF = date(2026, 9, 14)
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
 
@@ -47,27 +51,27 @@ def _frame() -> pl.DataFrame:
 
 
 def test_build_writes_deduplicated_instruments(warehouse: Warehouse):
-    count = build_instruments(FakeProvider(_frame()), warehouse)
+    count = build_instruments(FakeProvider(_frame()), warehouse, AS_OF)
     assert count == 3
     df = WarehouseQuery(warehouse).instruments()
     assert sorted(df["symbol"].to_list()) == ["000003.SZ", "300750.SZ", "600036.SH"]
 
 
 def test_build_keeps_delisted_instruments(warehouse: Warehouse):
-    build_instruments(FakeProvider(_frame()), warehouse)
+    build_instruments(FakeProvider(_frame()), warehouse, AS_OF)
     df = WarehouseQuery(warehouse).instruments()
     delisted = df.filter(pl.col("delist_date").is_not_null())
     assert delisted["symbol"].to_list() == ["000003.SZ"]
 
 
 def test_build_is_idempotent(warehouse: Warehouse):
-    build_instruments(FakeProvider(_frame()), warehouse)
-    build_instruments(FakeProvider(_frame()), warehouse)
+    build_instruments(FakeProvider(_frame()), warehouse, AS_OF)
+    build_instruments(FakeProvider(_frame()), warehouse, AS_OF)
     assert WarehouseQuery(warehouse).instruments().height == 3
 
 
 def test_dedupe_prefers_row_with_more_information(warehouse: Warehouse):
-    build_instruments(FakeProvider(_frame()), warehouse)
+    build_instruments(FakeProvider(_frame()), warehouse, AS_OF)
     df = WarehouseQuery(warehouse).instruments()
     cmb = df.filter(pl.col("symbol") == "600036.SH")
     assert cmb["list_date"].to_list() == [date(2002, 4, 9)]
