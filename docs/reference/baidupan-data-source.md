@@ -438,9 +438,29 @@ glob 旧表——不修的话新上市标的会**永久**被排除出候选池�
 旧源给 Int64（手，整数），付费源给 Float64。`Bar.volume` 已改浮点。
 **不要为了兼容把它转回整数**——转换会造数据。
 
+### 付费源现在的角色：历史名称的真值源
+
+日线主体已于 2026-09-14 切到 Tushare API 直连（`tushare_daily`），
+但 **`paid_daily.name` 仍是 `daily_flags` 的历史名称真值源**。
+
+原因：Tushare 的 `namechange` 只记录**变更事件**，不是逐日快照。
+2006 年股改 G 股摘牌之后名称恢复原状的那次变更没有进 `namechange`，
+大量标的的最后一个区间停在 2006-10-08 且无后继，此后没有区间覆盖。
+只用 `namechange` 会让 114 只标的在 2023-2026 全区间没有名称，
+顺着 `is_st → limit_pct → limit_up → fill_null(False)` 一路下去
+**静默丢掉 867 个首板**。
+
+`flags.resolve_names` 按观测强度排优先级，三个候选都是直取字段：
+`tushare_daily.name` → `paid_daily.name`（逐日观测，覆盖至 2026-09-11）
+→ `namechange` 区间。付费源按 `(symbol, dt)` 精确连接，不向前后蔓延。
+
+详见 `artifacts/第4段回归_付费源到Tushare换源_2026-09-14.md` 与
+`deferred-corrections.md` D-10。
+
 ### ST 与复权因子都是直取
 
-- `daily_flags.is_st` 直取自当日 `name` 是否含 "ST"，`st_source` 记来源。
+- `daily_flags.is_st` 直取自当日 `name` 是否含 "ST"，`st_source` 记**具体来源**
+  （`paid_daily` / `namechange` / `tushare_daily`），名称为 null 时也为 null。
   三条价格启发式（贴 5% 板 + 回看确认 + 制度硬否决）已整段删除。
   `name` 拿不到时 `is_st` 记 null，**不默认成 False**——默认 False 会让
   ST 股按 10% 档算涨停价，首板判定直接错。

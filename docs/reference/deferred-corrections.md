@@ -265,7 +265,7 @@ Task 9 把 `cum_factor` 从「窗口首日归一」换成「付费源自带锚�
 
 ---
 
-## D-10 `namechange` 区间的空洞让 867 个首板静默消失
+## D-10 `namechange` 区间的空洞让 867 个首板静默消失（历史已修，增量待定）
 
 **事实**（`artifacts/第4段回归_付费源到Tushare换源_2026-09-14.md`）：
 
@@ -306,3 +306,26 @@ Task 9 把 `cum_factor` 从「窗口首日归一」换成「付费源自带锚�
 同时应把 `_assert_name_coverage` 的阈值重新审视：10% 挡得住全面失效，
 挡不住这种 2% 量级的系统性缺口。考虑改为**按标的**判覆盖率，
 而不是按全窗口行数。
+
+
+### 2026-09-14 处置：历史已修复，增量路径仍有 96 只
+
+用户拍板方案一，已实施（提交 `70f9b71`）。名称改按三个直取源排优先级解析
+（`flags.resolve_names`）：`tushare_daily.name` → `paid_daily.name`（逐日观测）
+→ `namechange` 区间。付费源按 `(symbol, dt)` 精确连接，不向前后蔓延。
+
+复验结果：换源前后 `daily_flags` **逐键一致**——`is_st` / `limit_pct` /
+`is_limit_up` / `is_first_board` 差异全部归零，首板总数还原到 50,525，
+`is_st` 无 null，生产 `st_source` 全部为 `paid_daily`。
+
+**残留待办**：`paid_daily` 覆盖到 2026-09-11 为止，此后的交易日只有
+`namechange` 一个源，2006 断层还在——实测单日 **96 只标的无名称（1.73%）**。
+
+可行修法需要先拍板：`instruments` 由每日同步刷新，其 `name` 是**同步当日**
+的直接观测，用它填**当日**那一行是直取；但表里没有 `as_of` 列
+（symbol/name/market/list_date/delist_date/board），无法从表内判断快照日期，
+因而无法安全限定「只用于快照日」。**要走这条路必须先给 `instruments` 加
+`as_of`**，否则拿它填历史就是结转。
+
+另一条路是继续保留 `paid_daily` 的手动同步，仅为名称一列。代价是把已经
+去掉的人工环节又接回来，与「完全自动化」的目标冲突。
