@@ -63,40 +63,110 @@ _FLAG_COLUMNS = [
 ]
 
 
-def attach_name_history(bars: pl.DataFrame, history: pl.DataFrame) -> pl.DataFrame:
-    """按名称区间给每个股票日附上 PIT 可见的名称。
+def resolve_names(
+    bars: pl.DataFrame, paid: pl.DataFrame, history: pl.DataFrame
+) -> pl.DataFrame:
+    """解析每个股票日 PIT 可见的名称，并记下它来自哪个源。
 
-    ``tushare_daily`` 本身没有 name；不能把 null 当作非 ST，也不能拿当前名称
-    回填历史。这里只找当日之前最近的区间起点，并继续检查区间末端。
+    三个候选**都是直取字段**，没有任何推断；优先级按「观测强度」排：
+
+    1. ``tushare_daily.name``——同一接口的当日字段（生产中恒为 null，
+       `compose_daily` 把 name 留给 namechange 单独成表）；
+    2. ``paid_daily.name``——**逐日观测到的名称**，覆盖 1990 至 2026-09-11；
+    3. ``namechange`` 区间——交易所公告的改名事件。
+
+    **为什么逐日观测要排在区间前面**：`namechange` 只记录变更事件，不是逐日
+    快照。2006 年股改 G 股摘牌之后，名称恢复原状的那次变更没有进
+    `namechange`，于是大量标的的最后一个区间停在 2006-10-08、`end_date`
+    非 null 且无后继，此后全部没有区间覆盖。实测单日 96 只、2023-2026 全区间
+    114 只因此没有名称，顺着 is_st → limit_pct → limit_up → fill_null(False)
+    一路下去静默丢掉 867 个首板。详见
+    `artifacts/第4段回归_付费源到Tushare换源_2026-09-14.md` 与 D-10。
+
+    三个都没有就记 **null**，绝不拿当前名称回填历史——`instruments.name`
+    是快照，用它填历史就是结转。
     """
-    if history.height == 0:
-        return bars
-    intervals = history.filter(pl.col("start_date").is_not_null()).select(
-        "symbol", "name", "start_date", "end_date"
-    ).sort(["symbol", "start_date"])
-    if intervals.height == 0:
-        return bars
-    joined = bars.drop("name").sort(["symbol", "dt"]).join_asof(
-        intervals, left_on="dt", right_on="start_date", by="symbol", strategy="backward"
-    )
-    return joined.with_columns(
-        pl.when(pl.col("end_date").is_null() | (pl.col("dt") <= pl.col("end_date")))
-        .then(pl.col("name"))
+    resolved = bars
+    if "name" not in resolved.columns:
+        resolved = resolved.with_columns(pl.lit(None, dtype=pl.Utf8).alias("name"))
+    resolved = resolved.with_columns(
+        pl.when(pl.col("name").is_not_null())
+        .then(pl.lit("tushare_daily"))
         .otherwise(None)
-        .alias("name")
-    ).drop("start_date", "end_date")
+        .alias("name_source")
+    )
+
+    if paid.height:
+        # 按 (symbol, dt) 精确连接，不是 asof——付费源只对它实际有行的那一天
+        # 生效，向前后蔓延就成了结转。
+        resolved = resolved.join(
+            paid.select("symbol", "dt", pl.col("name").alias("_paid_name")),
+            on=["symbol", "dt"],
+            how="left",
+        ).with_columns(
+            pl.when(pl.col("name").is_null() & pl.col("_paid_name").is_not_null())
+            .then(pl.lit("paid_daily"))
+            .otherwise(pl.col("name_source"))
+            .alias("name_source"),
+            pl.coalesce("name", "_paid_name").alias("name"),
+        ).drop("_paid_name")
+
+    intervals = history.filter(pl.col("start_date").is_not_null()).select(
+        "symbol", pl.col("name").alias("_hist_name"), "start_date", "end_date"
+    ).sort(["symbol", "start_date"]) if history.height else history
+    if history.height and intervals.height:
+        resolved = resolved.sort(["symbol", "dt"]).join_asof(
+            intervals,
+            left_on="dt",
+            right_on="start_date",
+            by="symbol",
+            strategy="backward",
+        )
+        in_range = pl.col("_hist_name").is_not_null() & (
+            pl.col("end_date").is_null() | (pl.col("dt") <= pl.col("end_date"))
+        )
+        resolved = resolved.with_columns(
+            pl.when(pl.col("name").is_null() & in_range)
+            .then(pl.lit("namechange"))
+            .otherwise(pl.col("name_source"))
+            .alias("name_source"),
+            pl.when(pl.col("name").is_null() & in_range)
+            .then(pl.col("_hist_name"))
+            .otherwise(pl.col("name"))
+            .alias("name"),
+        ).drop("_hist_name", "start_date", "end_date")
+
+    return resolved
 
 
 def _assert_name_coverage(bars: pl.DataFrame) -> None:
-    """拒绝大面积缺名称的生产窗口；零星历史缺口仍保持 null。"""
+    """拒绝大面积缺名称的生产窗口；零星历史缺口仍保持 null。
+
+    **这道闸门只挡得住全面失效，挡不住系统性缺口。** 2026-09-14 那次
+    114 只标的全区间没有名称，全局占比只有 2.05%，这里一声不响就放过了，
+    下游静默少了 867 个首板。所以另外把「整只标的全窗口无名称」的数量
+    记进结构化日志，并让 st_source 在名称为 null 时也为 null——
+    覆盖率就能直接从 daily_flags 表里查出来，不必靠这道阈值。
+    """
     if bars.height < 100:
         return
     missing = bars["name"].null_count()
     ratio = missing / bars.height
     if ratio > 0.10:
         raise RuntimeError(
-            f"name_history 覆盖不足：{missing}/{bars.height} ({ratio:.1%}) 为 null；"
+            f"名称覆盖不足：{missing}/{bars.height} ({ratio:.1%}) 为 null；"
             "拒绝生成可能让候选池静默归零的 daily_flags"
+        )
+    if missing and "symbol" in bars.columns:
+        per_symbol = bars.group_by("symbol").agg(
+            pl.len().alias("rows"), pl.col("name").null_count().alias("missing")
+        )
+        blind = per_symbol.filter(pl.col("rows") == pl.col("missing")).height
+        log.info(
+            "daily_flags.name_coverage",
+            missing_rows=missing,
+            total_rows=bars.height,
+            blind_symbols=blind,
         )
 
 
@@ -156,7 +226,12 @@ def build_daily_flags(
         bars = query.tushare_daily(None, lo - timedelta(days=_LOOKBACK_DAYS), hi)
         if bars.height == 0:
             continue
-        bars = attach_name_history(bars, name_history)
+        # 付费源只投影三列：全历史 1,800 万行 × 28 列会把节点内存撑爆。
+        paid_names = query.paid_daily(
+            None, lo - timedelta(days=_LOOKBACK_DAYS), hi,
+            columns=["symbol", "dt", "name"],
+        )
+        bars = resolve_names(bars, paid_names, name_history)
         _assert_name_coverage(bars)
         if boards is not None:
             def _board(s: str) -> str:
@@ -235,7 +310,10 @@ def _compute(bars: pl.DataFrame, boards: dict[str, str]) -> pl.DataFrame:
         pl.col("pre_close").alias("adj_prev_close"),
         ratio.alias("_ratio"),
         is_st.alias("is_st"),
-        pl.lit("tushare", dtype=pl.Utf8).alias("st_source"),
+        # 来源随名称走；名称为 null 就没有 ST 真值，来源也为 null——
+        # 恒为一个字面量会让 2% 没有名称的行看起来也「有来源」。
+        (pl.col("name_source") if "name_source" in bars.columns
+         else pl.lit(None, dtype=pl.Utf8)).alias("st_source"),
     )
 
     frame = frame.with_columns(

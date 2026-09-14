@@ -32,7 +32,7 @@ from datetime import date
 
 import polars as pl
 
-from qsys.data.pipeline.flags import _assert_name_coverage, attach_name_history, build_daily_flags
+from qsys.data.pipeline.flags import _assert_name_coverage, build_daily_flags, resolve_names
 from qsys.data.query import WarehouseQuery
 
 DAYS = [date(2026, 4, 29), date(2026, 4, 30)]
@@ -52,7 +52,10 @@ def test_st_is_read_from_the_name_column(warehouse, write_daily_bars):
     build_daily_flags(warehouse, DAYS[1], DAYS[1])
     got = WarehouseQuery(warehouse).daily_flags(DAYS[1], DAYS[1])
     assert got["is_st"].to_list() == [True]
-    assert got["st_source"].to_list() == ["tushare"]
+    # 来源标的是具体那个源，不是笼统的 "tushare"。名称现在有三个候选直取源
+    # （tushare_daily / paid_daily / namechange），分不清来源就查不出
+    # 2026-09-14 那种「某一个源整段失效」的退化。
+    assert got["st_source"].to_list() == ["tushare_daily"]
 
 
 def test_a_plain_name_is_not_st(warehouse, write_daily_bars):
@@ -109,9 +112,9 @@ def test_name_history_steps_on_the_exact_effective_day():
         "start_date": [date(2020, 7, 22), date(2026, 4, 30)],
         "end_date": [date(2026, 4, 29), None],
     })
-    assert attach_name_history(bars, history).sort("dt")["name"].to_list() == [
-        "美丽生态", "*ST美丽"
-    ]
+    empty_paid = pl.DataFrame(schema={"symbol": pl.Utf8, "dt": pl.Date, "name": pl.Utf8})
+    got = resolve_names(bars, empty_paid, history).sort("dt")
+    assert got["name"].to_list() == ["美丽生态", "*ST美丽"]
 
 
 def test_name_history_gap_stays_unknown():
@@ -122,7 +125,8 @@ def test_name_history_gap_stays_unknown():
         "symbol": ["000010.SZ"], "name": ["*ST美丽"],
         "start_date": [DAYS[1]], "end_date": [None],
     })
-    assert attach_name_history(bars, history)["name"].to_list() == [None]
+    empty_paid = pl.DataFrame(schema={"symbol": pl.Utf8, "dt": pl.Date, "name": pl.Utf8})
+    assert resolve_names(bars, empty_paid, history)["name"].to_list() == [None]
 
 
 def test_large_name_coverage_failure_is_explicit():
@@ -229,3 +233,107 @@ def test_ex_dividend_day_uses_pre_close_not_the_previous_row_close(
     assert got["adj_prev_close"].to_list() == [10.94]   # 除权参考价，直取
     assert got["limit_up"].to_list() == [12.03]         # round(10.94 * 1.10, 2)
     assert got["is_limit_up"].to_list() == [True]       # 用对基准才封得住涨停
+
+
+# --- 名称来源优先级（2026-09-14）---------------------------------------
+#
+# namechange 只记变更事件。2006 年股改 G 股摘牌后名称恢复原状的那次变更
+# 没有进 namechange，于是大量标的的最后一个区间停在 2006-10-08 且无后继，
+# 此后全部无区间覆盖。实测单日 96 只、2023-2026 全区间 114 只因此没有名称，
+# 顺着 is_st → limit_pct → limit_up → fill_null(False) 一路下去，
+# 静默丢掉 867 个首板（artifacts/第4段回归_付费源到Tushare换源_2026-09-14.md）。
+#
+# 修法：paid_daily.name 是逐日观测到的名称，与 namechange 一样是直取字段，
+# 两个直取源各管一段。逐日观测比区间推算强，所以先取它。
+
+
+def _history(symbol, name, start, end):
+    return pl.DataFrame({"symbol": [symbol], "name": [name],
+                         "start_date": [start], "end_date": [end]})
+
+
+def test_paid_name_fills_the_gap_namechange_leaves():
+    """namechange 区间断在 2006 之后无后继——付费源的逐日名称要补上。"""
+    from qsys.data.pipeline.flags import resolve_names
+
+    bars = pl.DataFrame({"symbol": ["000006.SZ"], "dt": [DAYS[0]], "name": [None]})
+    paid = pl.DataFrame({"symbol": ["000006.SZ"], "dt": [DAYS[0]], "name": ["深振业A"]})
+    history = _history("000006.SZ", "G深振业", date(2006, 1, 12), date(2006, 10, 8))
+
+    got = resolve_names(bars, paid, history)
+    assert got["name"].to_list() == ["深振业A"]
+    assert got["name_source"].to_list() == ["paid_daily"]
+
+
+def test_namechange_still_covers_what_paid_does_not():
+    """付费源没有的股-日（增量日）仍走区间表——两个源各管一段。"""
+    from qsys.data.pipeline.flags import resolve_names
+
+    bars = pl.DataFrame({"symbol": ["000010.SZ"], "dt": [DAYS[1]], "name": [None]})
+    paid = pl.DataFrame(schema={"symbol": pl.Utf8, "dt": pl.Date, "name": pl.Utf8})
+    history = _history("000010.SZ", "*ST美丽", DAYS[0], None)
+
+    got = resolve_names(bars, paid, history)
+    assert got["name"].to_list() == ["*ST美丽"]
+    assert got["name_source"].to_list() == ["namechange"]
+
+
+def test_paid_name_wins_over_the_interval_when_both_exist():
+    """逐日观测优先于区间推算——区间只记变更，漏一次就整段错。"""
+    from qsys.data.pipeline.flags import resolve_names
+
+    bars = pl.DataFrame({"symbol": ["000010.SZ"], "dt": [DAYS[1]], "name": [None]})
+    paid = pl.DataFrame({"symbol": ["000010.SZ"], "dt": [DAYS[1]], "name": ["美丽生态"]})
+    history = _history("000010.SZ", "*ST美丽", DAYS[0], None)
+
+    got = resolve_names(bars, paid, history)
+    assert got["name"].to_list() == ["美丽生态"]
+    assert got["name_source"].to_list() == ["paid_daily"]
+
+
+def test_paid_name_is_not_carried_to_days_it_does_not_cover():
+    """付费源只对它实际有行的那一天生效，绝不向前后蔓延。"""
+    from qsys.data.pipeline.flags import resolve_names
+
+    bars = pl.DataFrame({"symbol": ["000010.SZ"] * 2, "dt": DAYS, "name": [None, None]})
+    paid = pl.DataFrame({"symbol": ["000010.SZ"], "dt": [DAYS[1]], "name": ["美丽生态"]})
+    history = pl.DataFrame(schema={"symbol": pl.Utf8, "name": pl.Utf8,
+                                   "start_date": pl.Date, "end_date": pl.Date})
+
+    got = resolve_names(bars, paid, history).sort("dt")
+    assert got["name"].to_list() == [None, "美丽生态"]
+    assert got["name_source"].to_list() == [None, "paid_daily"]
+
+
+def test_both_sources_missing_stays_null():
+    """两个源都没有就记 null——不拿当前名称回填历史。"""
+    from qsys.data.pipeline.flags import resolve_names
+
+    bars = pl.DataFrame({"symbol": ["000010.SZ"], "dt": [DAYS[0]], "name": [None]})
+    empty_paid = pl.DataFrame(schema={"symbol": pl.Utf8, "dt": pl.Date, "name": pl.Utf8})
+    empty_hist = pl.DataFrame(schema={"symbol": pl.Utf8, "name": pl.Utf8,
+                                      "start_date": pl.Date, "end_date": pl.Date})
+
+    got = resolve_names(bars, empty_paid, empty_hist)
+    assert got["name"].to_list() == [None]
+    assert got["name_source"].to_list() == [None]
+
+
+def test_st_source_is_null_exactly_where_the_name_is_unknown(warehouse, write_daily_bars):
+    """没有名称就没有 ST 真值，st_source 必须跟着为 null。
+
+    st_source 恒为一个字面量时，表面上每行都有来源，实际有 2% 的行根本
+    没有名称——这正是 2026-09-14 那次静默退化没被发现的原因之一。
+    让它为 null，覆盖率就能直接从表里查出来。
+    """
+    _paid(write_daily_bars, warehouse, {
+        "symbol": ["000010.SZ", "000011.SZ"], "dt": [DAYS[1], DAYS[1]],
+        "name": ["*ST美丽", None],
+        "open": [3.0, 3.0], "high": [3.0, 3.0], "low": [3.0, 3.0],
+        "close": [3.0, 3.0], "pre_close": [3.0, 3.0],
+        "volume": [100.0, 100.0], "amount": [3e4, 3e4],
+    })
+    build_daily_flags(warehouse, DAYS[1], DAYS[1])
+    got = WarehouseQuery(warehouse).daily_flags(DAYS[1], DAYS[1]).sort("symbol")
+    assert got["is_st"].to_list() == [True, None]
+    assert got["st_source"].to_list() == ["tushare_daily", None]
