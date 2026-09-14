@@ -43,6 +43,7 @@ def _seed(warehouse: Warehouse, write_daily_bars, *, complete: bool = True) -> N
                 "list_date": [date(2002, 4, 9)],
                 "delist_date": [None],
                 "board": ["main"],
+                "as_of": [None],
             },
             schema=schema.INSTRUMENTS,
         ),

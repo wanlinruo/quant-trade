@@ -337,3 +337,61 @@ def test_st_source_is_null_exactly_where_the_name_is_unknown(warehouse, write_da
     got = WarehouseQuery(warehouse).daily_flags(DAYS[1], DAYS[1]).sort("symbol")
     assert got["is_st"].to_list() == [True, None]
     assert got["st_source"].to_list() == ["tushare_daily", None]
+
+
+def test_snapshot_name_applies_only_to_the_day_it_was_taken():
+    """快照是某一天的观测，只对那一天有效——蔓延到别的日期就是结转。"""
+    from qsys.data.pipeline.flags import resolve_names
+
+    bars = pl.DataFrame({"symbol": ["000006.SZ"] * 2, "dt": DAYS, "name": [None, None]})
+    empty_paid = pl.DataFrame(schema={"symbol": pl.Utf8, "dt": pl.Date, "name": pl.Utf8})
+    empty_hist = pl.DataFrame(schema={"symbol": pl.Utf8, "name": pl.Utf8,
+                                      "start_date": pl.Date, "end_date": pl.Date})
+    snaps = pl.DataFrame({"symbol": ["000006.SZ"], "dt": [DAYS[1]], "name": ["深振业A"]})
+
+    got = resolve_names(bars, empty_paid, empty_hist, snaps).sort("dt")
+    assert got["name"].to_list() == [None, "深振业A"]
+    assert got["name_source"].to_list() == [None, "name_snapshot"]
+
+
+def test_snapshot_fills_the_gap_namechange_leaves_on_incremental_days():
+    """增量日 paid_daily 没有数据，快照要顶上 namechange 的 2006 断层。"""
+    from qsys.data.pipeline.flags import resolve_names
+
+    bars = pl.DataFrame({"symbol": ["000006.SZ"], "dt": [DAYS[1]], "name": [None]})
+    empty_paid = pl.DataFrame(schema={"symbol": pl.Utf8, "dt": pl.Date, "name": pl.Utf8})
+    history = _history("000006.SZ", "G深振业", date(2006, 1, 12), date(2006, 10, 8))
+    snaps = pl.DataFrame({"symbol": ["000006.SZ"], "dt": [DAYS[1]], "name": ["深振业A"]})
+
+    got = resolve_names(bars, empty_paid, history, snaps)
+    assert got["name"].to_list() == ["深振业A"]
+    assert got["name_source"].to_list() == ["name_snapshot"]
+
+
+def test_paid_daily_still_wins_over_the_snapshot():
+    """历史区间以付费源的逐日名称为准，快照只补它够不到的增量日。"""
+    from qsys.data.pipeline.flags import resolve_names
+
+    bars = pl.DataFrame({"symbol": ["000010.SZ"], "dt": [DAYS[1]], "name": [None]})
+    paid = pl.DataFrame({"symbol": ["000010.SZ"], "dt": [DAYS[1]], "name": ["美丽生态"]})
+    empty_hist = pl.DataFrame(schema={"symbol": pl.Utf8, "name": pl.Utf8,
+                                      "start_date": pl.Date, "end_date": pl.Date})
+    snaps = pl.DataFrame({"symbol": ["000010.SZ"], "dt": [DAYS[1]], "name": ["错的名字"]})
+
+    got = resolve_names(bars, paid, empty_hist, snaps)
+    assert got["name"].to_list() == ["美丽生态"]
+    assert got["name_source"].to_list() == ["paid_daily"]
+
+
+def test_snapshot_wins_over_the_namechange_interval():
+    """逐日观测强于区间推算——区间只记变更事件，漏一次就整段错。"""
+    from qsys.data.pipeline.flags import resolve_names
+
+    bars = pl.DataFrame({"symbol": ["000010.SZ"], "dt": [DAYS[1]], "name": [None]})
+    empty_paid = pl.DataFrame(schema={"symbol": pl.Utf8, "dt": pl.Date, "name": pl.Utf8})
+    history = _history("000010.SZ", "旧名", DAYS[0], None)
+    snaps = pl.DataFrame({"symbol": ["000010.SZ"], "dt": [DAYS[1]], "name": ["*ST美丽"]})
+
+    got = resolve_names(bars, empty_paid, history, snaps)
+    assert got["name"].to_list() == ["*ST美丽"]
+    assert got["name_source"].to_list() == ["name_snapshot"]

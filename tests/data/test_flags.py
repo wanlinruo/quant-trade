@@ -77,6 +77,7 @@ def seed(warehouse: Warehouse, write_daily_bars, rows, boards=None) -> None:
                 "list_date": [None] * len(uniq),
                 "delist_date": [None] * len(uniq),
                 "board": [boards.get(s, "main") for s in uniq],
+                "as_of": [None] * len(uniq),
             },
             schema=schema.INSTRUMENTS,
         ),

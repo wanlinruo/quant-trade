@@ -128,7 +128,18 @@ def ingest_index_daily(provider, warehouse: Warehouse, ts_codes: Sequence[str],
     return written
 
 
-def ingest_instruments(provider, warehouse: Warehouse) -> int:
+def ingest_instruments(provider, warehouse: Warehouse, as_of: date) -> int:
+    """落库标的主表，并把当日名称快照追加进 `name_snapshots`。
+
+    `as_of` 是**取这份快照的那一天**，不是正在同步的交易日。`stock_basic`
+    返回的是当前名称，所以它只对取数当天成立；回填历史就是结转。补跑旧交易日
+    时 `as_of` 仍是今天，于是快照与那个交易日对不上、自然不生效——这正是想要的。
+
+    为什么还要单独一张累积表：`instruments` 是覆盖写的，只留最新一份，
+    而 `daily_flags` 每次同步要重建近 150 天。详见 D-10。
+    """
+    from qsys.data.query import WarehouseQuery
+
     parts = [frame for status in ("L", "D")
              if (frame := provider.stock_basic(status)).height]
     if not parts:
@@ -142,9 +153,20 @@ def ingest_instruments(provider, warehouse: Warehouse) -> int:
         pl.col("ts_code").map_elements(
             lambda symbol: board_of(symbol.split(".")[0]), return_dtype=pl.Utf8
         ).alias("board"),
+        pl.lit(as_of, dtype=pl.Date).alias("as_of"),
     ).unique(subset=["symbol"], keep="last").sort("symbol")
     warehouse.write("instruments", out.to_arrow().cast(schema.INSTRUMENTS))
-    log.info("instruments.ingested", rows=out.height)
+
+    query = WarehouseQuery(warehouse)
+    snapshot = out.select(
+        pl.col("as_of").alias("dt"), "symbol", "name"
+    ).filter(pl.col("name").is_not_null())
+    _merge_write(
+        warehouse, "name_snapshots", snapshot, schema.NAME_SNAPSHOTS,
+        ["symbol", "dt"], lambda lo, hi: query.name_snapshots(None, lo, hi),
+    )
+
+    log.info("instruments.ingested", rows=out.height, as_of=str(as_of))
     return out.height
 
 

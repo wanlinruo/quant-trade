@@ -33,7 +33,13 @@ def _sync_index(provider, warehouse: Warehouse, days: list[date]) -> int:
 
 
 def _sync_instruments(provider, warehouse: Warehouse, _days: list[date]) -> int:
-    return reference.ingest_instruments(provider, warehouse)
+    """as_of 取**墙上时钟的今天**，不是正在同步的交易日。
+
+    `stock_basic` 返回的是当前名称，只对取数当天成立。补跑旧交易日时
+    as_of 仍是今天，快照与那个交易日对不上、自然不生效——这正是想要的，
+    把它错记成目标交易日就等于拿今天的名字填过去。
+    """
+    return reference.ingest_instruments(provider, warehouse, date.today())
 
 
 def _sync_name_history(provider, warehouse: Warehouse, _days: list[date]) -> int:

@@ -55,7 +55,7 @@ def main() -> int:
     reference = AkshareProvider()
 
     print("=== 标的主表 ===")
-    print(f"  {build_instruments(reference, warehouse)} 只")
+    print(f"  {build_instruments(reference, warehouse, date.today())} 只")
 
     instruments = WarehouseQuery(warehouse).instruments()
     boards = {b.strip() for b in args.boards.split(",") if b.strip()}

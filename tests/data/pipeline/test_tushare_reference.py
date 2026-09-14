@@ -139,7 +139,7 @@ def test_instruments_include_delisted_and_use_shared_board_mapping(warehouse):
         }),
         stock_basic_D=_basic_frame(["600001.SH"], "D"),
     )
-    assert ingest_instruments(provider, warehouse) == 2
+    assert ingest_instruments(provider, warehouse, date(2026, 9, 14)) == 2
     got = WarehouseQuery(warehouse).instruments().sort("symbol")
     assert set(got["symbol"].to_list()) == {"300750.SZ", "600001.SH"}
     assert got.filter(pl.col("symbol") == "300750.SZ")["board"].item() == "gem"
@@ -191,3 +191,50 @@ def test_limit_list_keeps_direct_board_statistics(warehouse):
     assert got["limit_times"].to_list() == [1, 3]
     assert got["open_times"].to_list() == [0, 2]
     assert got["limit_type"].to_list() == ["U", "U"]
+
+
+# --- 名称快照（2026-09-14）-------------------------------------------------
+#
+# paid_daily 覆盖到 2026-09-11 为止，此后的交易日只有 namechange 一个源，
+# 而它的 2006 断层让 96 只标的没有名称。stock_basic 给的是**当前**名称，
+# 用它填历史就是结转；但用它填**取快照那一天**是直接观测。
+# 所以把每天的快照累积成表，并显式记下观测日期。
+
+def test_instruments_record_the_snapshot_date(warehouse):
+    """instruments 是覆盖写的单张快照，必须知道它是哪天取的。
+
+    没有 as_of 就无法判断 board / list_date / delist_date 有多陈旧，
+    也无法安全地把 name 限定在快照日使用。
+    """
+    provider = FakeProvider(stock_basic_L=_basic_frame(["300750.SZ"], "L"))
+    ingest_instruments(provider, warehouse, date(2026, 9, 14))
+    got = WarehouseQuery(warehouse).instruments()
+    assert got["as_of"].to_list() == [date(2026, 9, 14)]
+
+
+def test_name_snapshots_accumulate_across_days(warehouse):
+    """两天的快照都要留下——单张覆盖写的表只够用一天。
+
+    daily_flags 每次同步都重建近 150 天，只有一天的快照解决不了问题。
+    """
+    provider = FakeProvider(stock_basic_L=_basic_frame(["300750.SZ"], "L"))
+    ingest_instruments(provider, warehouse, date(2026, 9, 14))
+    ingest_instruments(provider, warehouse, date(2026, 9, 15))
+
+    got = WarehouseQuery(warehouse).name_snapshots(
+        None, date(2026, 9, 1), date(2026, 9, 30)
+    ).sort("dt")
+    assert got["dt"].to_list() == [date(2026, 9, 14), date(2026, 9, 15)]
+    assert got["symbol"].to_list() == ["300750.SZ"] * 2
+
+
+def test_name_snapshot_rerun_on_the_same_day_is_idempotent(warehouse):
+    """同一天重跑不能产生两行——双触发定时器每天会跑两次。"""
+    provider = FakeProvider(stock_basic_L=_basic_frame(["300750.SZ"], "L"))
+    ingest_instruments(provider, warehouse, date(2026, 9, 14))
+    ingest_instruments(provider, warehouse, date(2026, 9, 14))
+
+    got = WarehouseQuery(warehouse).name_snapshots(
+        None, date(2026, 9, 14), date(2026, 9, 14)
+    )
+    assert got.height == 1

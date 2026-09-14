@@ -69,6 +69,7 @@ def seed_instruments(warehouse: Warehouse, symbols) -> None:
                 "list_date": [None] * len(symbols),
                 "delist_date": [None] * len(symbols),
                 "board": ["main"] * len(symbols),
+                "as_of": [None] * len(symbols),
             },
             schema=schema.INSTRUMENTS,
         ),

@@ -20,7 +20,13 @@ log = structlog.get_logger(__name__)
 COLUMNS = ["symbol", "name", "market", "list_date", "delist_date", "board"]
 
 
-def build_instruments(provider: ReferenceProvider, warehouse: Warehouse) -> int:
+def build_instruments(
+    provider: ReferenceProvider, warehouse: Warehouse, as_of: date
+) -> int:
+    """`as_of` 是取这份快照的日期，显式传入而不是内部取 today()。
+
+    内部取当天会让这个函数的结果依赖墙上时钟，测试要么锁时间要么失真。
+    """
     raw = provider.fetch_instruments().select(COLUMNS)
 
     # 同一 symbol 可能来自多个来源（在市表 / 退市表），合并时保留信息最全的一行：
@@ -37,6 +43,7 @@ def build_instruments(provider: ReferenceProvider, warehouse: Warehouse) -> int:
         .drop("_info")
         .sort("symbol")
         .select(COLUMNS)
+        .with_columns(pl.lit(as_of, dtype=pl.Date).alias("as_of"))
     )
 
     warehouse.write("instruments", merged.to_arrow().cast(schema.INSTRUMENTS))

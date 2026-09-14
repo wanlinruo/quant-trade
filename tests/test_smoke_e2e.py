@@ -76,7 +76,7 @@ def test_full_pipeline_produces_pit_queryable_warehouse(tmp_path, write_daily_ba
     warehouse = Warehouse(tmp_path / "warehouse")
     calendar = AShareCalendar(SESSIONS)
 
-    build_instruments(FakeReference(), warehouse)
+    build_instruments(FakeReference(), warehouse, date(2026, 9, 14))
     written = ingest_daily_bars(
         FakeBars(), warehouse, ["600036.SH"], SESSIONS[0], SESSIONS[-1]
     )

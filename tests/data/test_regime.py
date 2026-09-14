@@ -50,6 +50,7 @@ def seed(warehouse: Warehouse, write_daily_bars, rows) -> None:
                 "list_date": [None] * len(syms),
                 "delist_date": [None] * len(syms),
                 "board": ["main"] * len(syms),
+                "as_of": [None] * len(syms),
             },
             schema=schema.INSTRUMENTS,
         ),

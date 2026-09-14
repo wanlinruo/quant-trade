@@ -38,7 +38,7 @@ def bootstrap_warehouse(
     sessions = calendar.sessions_in_range(start, end)
     print(f"交易日: {len(sessions)}  ({sessions[0]} ~ {sessions[-1]})")
 
-    n_inst = build_instruments(reference, warehouse)
+    n_inst = build_instruments(reference, warehouse, date.today())
     print(f"标的主表: {n_inst}")
 
     n_bars = ingest_daily_bars(bars_provider, warehouse, symbols, start, end)

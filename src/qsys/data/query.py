@@ -384,6 +384,15 @@ class WarehouseQuery:
     def instruments(self) -> pl.DataFrame:
         return self._read_unpartitioned("instruments", schema.INSTRUMENTS)
 
+    def name_snapshots(
+        self, symbols: Sequence[str] | None, start: date, end: date
+    ) -> pl.DataFrame:
+        """每日 stock_basic 名称快照。`dt` 是观测日，不是生效日。"""
+        return self._dated_query(
+            "name_snapshots", ", ".join(schema.NAME_SNAPSHOTS.names),
+            schema.NAME_SNAPSHOTS, symbols, start, end,
+        )
+
     def name_history(self, symbols: Sequence[str] | None = None) -> pl.DataFrame:
         """曾用名区间表；ST 状态由区间覆盖关系派生。"""
         frame = self._read_unpartitioned("name_history", schema.NAME_HISTORY, symbols)

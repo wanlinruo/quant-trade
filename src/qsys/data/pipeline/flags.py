@@ -64,7 +64,10 @@ _FLAG_COLUMNS = [
 
 
 def resolve_names(
-    bars: pl.DataFrame, paid: pl.DataFrame, history: pl.DataFrame
+    bars: pl.DataFrame,
+    paid: pl.DataFrame,
+    history: pl.DataFrame,
+    snapshots: pl.DataFrame | None = None,
 ) -> pl.DataFrame:
     """解析每个股票日 PIT 可见的名称，并记下它来自哪个源。
 
@@ -73,7 +76,9 @@ def resolve_names(
     1. ``tushare_daily.name``——同一接口的当日字段（生产中恒为 null，
        `compose_daily` 把 name 留给 namechange 单独成表）；
     2. ``paid_daily.name``——**逐日观测到的名称**，覆盖 1990 至 2026-09-11；
-    3. ``namechange`` 区间——交易所公告的改名事件。
+    3. ``name_snapshots.name``——每日 ``stock_basic`` 快照，**只对取快照那一天
+       成立**，覆盖付费源够不到的增量日；
+    4. ``namechange`` 区间——交易所公告的改名事件。
 
     **为什么逐日观测要排在区间前面**：`namechange` 只记录变更事件，不是逐日
     快照。2006 年股改 G 股摘牌之后，名称恢复原状的那次变更没有进
@@ -96,20 +101,22 @@ def resolve_names(
         .alias("name_source")
     )
 
-    if paid.height:
-        # 按 (symbol, dt) 精确连接，不是 asof——付费源只对它实际有行的那一天
-        # 生效，向前后蔓延就成了结转。
+    # 两个逐日观测源都按 (symbol, dt) 精确连接，不是 asof——只对它实际有行的
+    # 那一天生效，向前后蔓延就成了结转。
+    for frame, label in ((paid, "paid_daily"), (snapshots, "name_snapshot")):
+        if frame is None or frame.height == 0:
+            continue
         resolved = resolved.join(
-            paid.select("symbol", "dt", pl.col("name").alias("_paid_name")),
+            frame.select("symbol", "dt", pl.col("name").alias("_other")),
             on=["symbol", "dt"],
             how="left",
         ).with_columns(
-            pl.when(pl.col("name").is_null() & pl.col("_paid_name").is_not_null())
-            .then(pl.lit("paid_daily"))
+            pl.when(pl.col("name").is_null() & pl.col("_other").is_not_null())
+            .then(pl.lit(label))
             .otherwise(pl.col("name_source"))
             .alias("name_source"),
-            pl.coalesce("name", "_paid_name").alias("name"),
-        ).drop("_paid_name")
+            pl.coalesce("name", "_other").alias("name"),
+        ).drop("_other")
 
     intervals = history.filter(pl.col("start_date").is_not_null()).select(
         "symbol", pl.col("name").alias("_hist_name"), "start_date", "end_date"
@@ -227,11 +234,12 @@ def build_daily_flags(
         if bars.height == 0:
             continue
         # 付费源只投影三列：全历史 1,800 万行 × 28 列会把节点内存撑爆。
+        back = lo - timedelta(days=_LOOKBACK_DAYS)
         paid_names = query.paid_daily(
-            None, lo - timedelta(days=_LOOKBACK_DAYS), hi,
-            columns=["symbol", "dt", "name"],
+            None, back, hi, columns=["symbol", "dt", "name"],
         )
-        bars = resolve_names(bars, paid_names, name_history)
+        snapshots = query.name_snapshots(None, back, hi)
+        bars = resolve_names(bars, paid_names, name_history, snapshots)
         _assert_name_coverage(bars)
         if boards is not None:
             def _board(s: str) -> str:

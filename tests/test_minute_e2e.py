@@ -57,6 +57,7 @@ def seed_daily_and_flags(warehouse: Warehouse, write_daily_bars) -> None:
                 "list_date": [None],
                 "delist_date": [None],
                 "board": ["main"],
+                "as_of": [None],
             },
             schema=schema.INSTRUMENTS,
         ),

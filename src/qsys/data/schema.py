@@ -15,6 +15,21 @@ INSTRUMENTS = pa.schema(
         ("list_date", pa.date32()),
         ("delist_date", pa.date32()),  # 未退市为 null
         ("board", pa.string()),  # main / gem / star / bse
+        # 取这份快照的日期。instruments 是覆盖写的单张表，没有 as_of 就无法
+        # 判断 board / list_date / delist_date 有多陈旧，也无法把 name 安全地
+        # 限定在快照日使用——用快照名填历史就是结转。
+        ("as_of", pa.date32()),
+    ]
+)
+
+# 每日 stock_basic 快照的累积表。instruments 只留最新一份，而 daily_flags
+# 每次同步要重建近 150 天，一天的快照不够用，所以按观测日逐日留存。
+# 这是「点观测」，不是区间——绝不把它转成区间，那需要推断端点。
+NAME_SNAPSHOTS = pa.schema(
+    [
+        ("dt", pa.date32()),  # 观测日，即取 stock_basic 的那一天
+        ("symbol", pa.string()),
+        ("name", pa.string()),
     ]
 )
 
@@ -351,6 +366,7 @@ PARTITIONED: dict[str, pa.Schema] = {
     "price_limits_daily": PRICE_LIMITS_DAILY,
     "suspend_daily": SUSPEND_DAILY,
     "limit_list_daily": LIMIT_LIST_DAILY,
+    "name_snapshots": NAME_SNAPSHOTS,
 }
 
 UNPARTITIONED: dict[str, pa.Schema] = {
