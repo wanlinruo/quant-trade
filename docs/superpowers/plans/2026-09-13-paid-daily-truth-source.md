@@ -67,7 +67,7 @@
 - Produces: `qsys.markets.ashare.board_of(code: str) -> str`，返回
   `"star" | "gem" | "bse" | "bshare" | "main"`，入参是**不带交易所后缀的代码**
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```python
 # tests/markets/test_ashare.py
@@ -110,12 +110,12 @@ def test_akshare_provider_reuses_the_shared_function():
     assert akshare_provider._board_of is board_of
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `.venv/bin/python -m pytest tests/markets/test_ashare.py -k board -v`
 Expected: FAIL，`ImportError: cannot import name 'board_of'`
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 ```python
 # src/qsys/markets/ashare.py —— 在 PRICE_LIMITS 之前插入
@@ -169,7 +169,7 @@ from qsys.markets.ashare import board_of as _board_of
 Run: `.venv/bin/python -m pytest -q`
 Expected: 1195 passed + 本任务 3 个
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/qsys/markets/ashare.py src/qsys/data/providers/akshare_provider.py tests/markets/test_ashare.py
@@ -190,7 +190,7 @@ git commit -m "refactor(markets): 板块判定提升为 board_of，与 PRICE_LIM
 **Interfaces:**
 - Produces: `schema.PAID_DAILY`（`pa.Schema`，28 列，带 metadata）、`schema.DAILY_BARS`（`pa.Schema`，8 列，volume 为 `float64`）
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```python
 # tests/data/pipeline/test_paid_daily.py 追加
@@ -232,12 +232,12 @@ def test_daily_bars_view_schema_keeps_volume_unrounded():
     assert schema.DAILY_BARS.names == schema.BARS_DAILY.names
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `.venv/bin/python -m pytest tests/data/pipeline/test_paid_daily.py -k "schema or writable or unrounded" -v`
 Expected: FAIL，`AttributeError: module 'qsys.data.schema' has no attribute 'PAID_DAILY'`
 
-- [ ] **Step 3: 把 schema 迁进 `schema.py`**
+- [x] **Step 3: 把 schema 迁进 `schema.py`**
 
 ```python
 # src/qsys/data/schema.py —— 在 BARS_DAILY 之后插入
@@ -292,17 +292,17 @@ from qsys.data import schema as _schema
 SCHEMA = _schema.PAID_DAILY
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `.venv/bin/python -m pytest tests/data/pipeline/test_paid_daily.py -v`
 Expected: PASS
 
-- [ ] **Step 5: 跑全量测试**
+- [x] **Step 5: 跑全量测试**
 
 Run: `.venv/bin/python -m pytest -q`
 Expected: 1201 passed（基线 1195 + Task 0 的 3 个 + 本任务 3 个）
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add src/qsys/data/schema.py src/qsys/data/pipeline/paid_daily.py tests/data/pipeline/test_paid_daily.py
@@ -328,7 +328,7 @@ QMT 兜底之间择一，而本计划没有兜底表，现在建等于建一个�
   - `WarehouseQuery.paid_daily(symbols, start, end) -> pl.DataFrame`（28 列）
   - `WarehouseQuery.legacy_daily_bars(symbols, start, end) -> pl.DataFrame`（8 列，读冻结的 `bars_daily`，volume 为 Int64）
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```python
 # tests/data/test_paid_daily_query.py
@@ -429,12 +429,12 @@ def test_daily_bars_does_not_fall_back_to_the_frozen_table(warehouse):
     assert WarehouseQuery(warehouse).daily_bars(None, DAYS[0], DAYS[-1]).height == 0
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `.venv/bin/python -m pytest tests/data/test_paid_daily_query.py -v`
 Expected: FAIL，`AttributeError: 'WarehouseQuery' object has no attribute 'paid_daily'`
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 ```python
 # src/qsys/data/query.py —— 替换原 daily_bars（第 71-93 行）
@@ -530,17 +530,17 @@ def legacy_daily_bars(
     return self._con.execute(sql, params).pl()
 ```
 
-- [ ] **Step 4: 跑新测试确认通过**
+- [x] **Step 4: 跑新测试确认通过**
 
 Run: `.venv/bin/python -m pytest tests/data/test_paid_daily_query.py -v`
 Expected: PASS（8 个）
 
-- [ ] **Step 5: 跑全量测试，记录被换底打破的用例**
+- [x] **Step 5: 跑全量测试，记录被换底打破的用例**
 
 Run: `.venv/bin/python -m pytest -q 2>&1 | tail -30`
 Expected: **会有失败**。既有测试大量用 `warehouse.write("bars_daily", ...)` 造数据再读 `daily_bars()`。把失败清单原样记录下来，Task 3 逐个迁移，**不要在本任务里顺手改**。
 
-- [ ] **Step 6: 提交（允许带着已知失败）**
+- [x] **Step 6: 提交（允许带着已知失败）**
 
 ```bash
 git add src/qsys/data/query.py tests/data/test_paid_daily_query.py
@@ -586,7 +586,7 @@ QMT 通道，`universe` 刚在 bb01f33 加过上游探针与时间预算。
 - Consumes: `WarehouseQuery.legacy_daily_bars`（Task 2）
 - Produces: 无新接口，三个模块的内部读取改向
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```python
 # tests/data/pipeline/test_legacy_writers.py
@@ -624,12 +624,12 @@ def test_daily_backfill_reads_the_table_it_writes():
 这三条是源码级断言，不是行为断言——刻意为之。行为断言要造两张表的数据才能
 区分，成本远高于收益；而「读写配对」本身就是一条可以直接检查的结构约束。
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `.venv/bin/python -m pytest tests/data/pipeline/test_legacy_writers.py -v`
 Expected: FAIL，三条都因 `.daily_bars(` 仍在源码里而失败
 
-- [ ] **Step 3: 三处改向**
+- [x] **Step 3: 三处改向**
 
 ```python
 # src/qsys/data/pipeline/universe.py —— _write_batch 内
@@ -652,18 +652,18 @@ Expected: FAIL，三条都因 `.daily_bars(` 仍在源码里而失败
 各处的实际变量名与参数以文件现状为准，只改被调用的方法名，不改其余逻辑。
 改完在每处留一句中文注释说明「读自己写的那张表」这条约束。
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `.venv/bin/python -m pytest tests/data/pipeline/test_legacy_writers.py -v`
 Expected: PASS（3 个）
 
-- [ ] **Step 5: 确认这三个模块的既有测试恢复**
+- [x] **Step 5: 确认这三个模块的既有测试恢复**
 
 Run: `.venv/bin/python -m pytest tests/data/test_universe.py tests/data/pipeline/test_bars.py tests/data/pipeline/test_daily_backfill.py -rfE --tb=no -q`
 Expected: 这三个文件的失败应大幅减少或清零——它们写 `bars_daily`、读也回到
 `bars_daily`，夹具本就是对的。**仍失败的用例记进报告**，交 Task 3 判断。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add src/qsys/data/pipeline/universe.py src/qsys/data/pipeline/bars.py \
@@ -688,7 +688,7 @@ Task 2 换底后，所有「写 `bars_daily` 再读 `daily_bars()`」的测试�
 - Consumes: `WarehouseQuery.daily_bars`（Task 2）
 - Produces: `write_daily_bars(warehouse, frame)` fixture —— 把 8 列日线写进 `paid_daily` 分区，缺失的 20 列补 null
 
-- [ ] **Step 1: 写 fixture 的测试**
+- [x] **Step 1: 写 fixture 的测试**
 
 ```python
 # tests/data/test_paid_daily_query.py 追加
@@ -715,12 +715,12 @@ def test_write_daily_bars_fixture_round_trips(warehouse, write_daily_bars):
     assert full["name"].to_list() == [None]
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `.venv/bin/python -m pytest tests/data/test_paid_daily_query.py -k round_trips -v`
 Expected: FAIL，`fixture 'write_daily_bars' not found`
 
-- [ ] **Step 3: 加 fixture**
+- [x] **Step 3: 加 fixture**
 
 ```python
 # tests/conftest.py 追加
@@ -761,12 +761,12 @@ def write_daily_bars():
     return write
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `.venv/bin/python -m pytest tests/data/test_paid_daily_query.py -k round_trips -v`
 Expected: PASS
 
-- [ ] **Step 5: 逐个迁移失败测试 —— 先分清是哪一类**
+- [x] **Step 5: 逐个迁移失败测试 —— 先分清是哪一类**
 
 失败分两类，处理方式相反，**不要一刀切**。判据是「被测模块往哪张表写」。
 
@@ -799,12 +799,12 @@ B 类**不要引入 `write_daily_bars` 夹具**，也不要把它们的数据改
 `fill_daily_holes` 这类会自己写表的函数。有 → B 类；没有、靠 `warehouse.write`
 手工造数据 → A 类。拿不准的逐个看被测函数写哪张表，**不要猜**。
 
-- [ ] **Step 6: 跑全量测试**
+- [x] **Step 6: 跑全量测试**
 
 Run: `.venv/bin/python -m pytest -q`
 Expected: 全绿，总数 = 1201 + 1
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add tests/
@@ -825,7 +825,7 @@ git commit -m "test: 日线测试夹具迁到 paid_daily"
 
 `sim_broker.py:117` 的 `cap = int(bar.volume * LOT * self._volume_cap)` 已包 `int()`，传浮点不需要改。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```python
 # tests/core/test_types.py 追加
@@ -849,12 +849,12 @@ def test_bar_volume_is_a_float():
     assert bar.volume == 582305.98
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `.venv/bin/python -m pytest tests/core/test_types.py -k volume_is_a_float -v`
 Expected: FAIL，`assert <class 'int'> is <class 'float'>`
 
-- [ ] **Step 3: 改类型**
+- [x] **Step 3: 改类型**
 
 ```python
 # src/qsys/core/types.py —— 第 52 行
@@ -862,12 +862,12 @@ Expected: FAIL，`assert <class 'int'> is <class 'float'>`
     volume: float
 ```
 
-- [ ] **Step 4: 跑全量测试**
+- [x] **Step 4: 跑全量测试**
 
 Run: `.venv/bin/python -m pytest -q`
 Expected: 全绿
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/qsys/core/types.py tests/core/test_types.py
@@ -899,7 +899,7 @@ git commit -m "fix(core): Bar.volume 改浮点，付费源手数带小数"
   `value_diffs: pl.DataFrame`（列 `symbol, dt, field, paid, legacy, abs_diff`）、
   `summary: dict[str, int | float]`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```python
 # tests/data/quality/test_source_diff.py
@@ -1011,12 +1011,12 @@ def test_board_filter_excludes_beijing_from_the_comparison(warehouse, write_dail
     assert diff.only_in_paid.height == 0
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `.venv/bin/python -m pytest tests/data/quality/test_source_diff.py -v`
 Expected: FAIL，`ModuleNotFoundError: No module named 'qsys.data.quality.source_diff'`
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 ```python
 # src/qsys/data/quality/source_diff.py
@@ -1191,12 +1191,12 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `.venv/bin/python -m pytest tests/data/quality/test_source_diff.py -v`
 Expected: PASS（5 个）
 
-- [ ] **Step 5: 在节点上跑第 1 段真实对账**
+- [x] **Step 5: 在节点上跑第 1 段真实对账**
 
 ```bash
 ssh -i ~/.ssh/qmt_bridge_ed25519 ubuntu@110.42.205.144 \
@@ -1209,7 +1209,7 @@ ssh -i ~/.ssh/qmt_bridge_ed25519 ubuntu@110.42.205.144 \
 `amount_diff_rows` 非零且全部为精度/舍入级；`only_in_legacy` 为那 10 行零成交占位。
 **任何 OHLC 差异都必须先查清再继续**，不得带着未解释的价格差进入 Task 6。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add src/qsys/data/quality/source_diff.py scripts/regression_paid_daily.py tests/data/quality/test_source_diff.py artifacts/regression_stage1.json
@@ -1230,7 +1230,7 @@ git commit -m "test(data): 换源第 1 段回归对账，逐键差异清单"
 
 本任务只改 schema 与列清单，`_compute` 的实现在 Task 7。改完 schema 后既有 flags 测试会失败，属预期，Task 7 一并修复。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```python
 # tests/data/test_flags_st_truth.py
@@ -1265,12 +1265,12 @@ def test_flag_columns_match_the_schema():
     assert _FLAG_COLUMNS == list(schema.DAILY_FLAGS.names)
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `.venv/bin/python -m pytest tests/data/test_flags_st_truth.py -v`
 Expected: FAIL，`assert 'is_st' in {...}`
 
-- [ ] **Step 3: 改 schema 与列清单**
+- [x] **Step 3: 改 schema 与列清单**
 
 ```python
 # src/qsys/data/schema.py —— DAILY_FLAGS 末尾三列替换为：
@@ -1291,7 +1291,7 @@ Expected: FAIL，`assert 'is_st' in {...}`
     "st_source",
 ```
 
-- [ ] **Step 4: 跑新测试确认通过，记录既有 flags 测试的失败**
+- [x] **Step 4: 跑新测试确认通过，记录既有 flags 测试的失败**
 
 Run: `.venv/bin/python -m pytest tests/data/test_flags_st_truth.py -v`
 Expected: PASS
@@ -1299,7 +1299,7 @@ Expected: PASS
 Run: `.venv/bin/python -m pytest tests/data/test_flags.py -q 2>&1 | tail -20`
 Expected: **失败**，`_compute` 仍产出旧三列。原样记录，Task 7 修复。
 
-- [ ] **Step 5: 提交（允许带着已知失败）**
+- [x] **Step 5: 提交（允许带着已知失败）**
 
 ```bash
 git add src/qsys/data/schema.py src/qsys/data/pipeline/flags.py tests/data/test_flags_st_truth.py
@@ -1338,7 +1338,7 @@ API 直连，人工转存环节消失，兜底路径不再存在），这条依�
 本任务需在 `flags.py` 顶部加 `from qsys.markets.ashare import PRICE_LIMITS, board_of`
 （原来只导入 `PRICE_LIMITS`）。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```python
 # tests/data/test_flags_st_truth.py 追加
@@ -1479,12 +1479,12 @@ def test_board_filter_keeps_beijing_out_of_daily_flags(warehouse, write_daily_ba
     assert got["symbol"].to_list() == ["000001.SZ"]
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `.venv/bin/python -m pytest tests/data/test_flags_st_truth.py -v`
 Expected: FAIL，`TypeError: build_daily_flags() got an unexpected keyword argument 'boards'`
 
-- [ ] **Step 3: 改模块 docstring**
+- [x] **Step 3: 改模块 docstring**
 
 删掉 docstring 中关于 ST 三条启发式的整段（「**ST 由价格行为反推**」到「第 3 条的来历」结束），替换为：
 
@@ -1517,7 +1517,7 @@ Expected: FAIL，`TypeError: build_daily_flags() got an unexpected keyword argum
 """
 ```
 
-- [ ] **Step 4: 改 `build_daily_flags`**
+- [x] **Step 4: 改 `build_daily_flags`**
 
 ```python
 # src/qsys/data/pipeline/flags.py
@@ -1582,7 +1582,7 @@ def build_daily_flags(
     return written
 ```
 
-- [ ] **Step 5: 改 `_compute`**
+- [x] **Step 5: 改 `_compute`**
 
 删除以下四处：
 
@@ -1675,23 +1675,23 @@ def _compute(bars: pl.DataFrame, boards: dict[str, str]) -> pl.DataFrame:
 
 Task 0 当时不能写这句：那时 flags.py 还在用价格反推，写了就是失实注释。
 
-- [ ] **Step 6: 跑测试确认通过**
+- [x] **Step 6: 跑测试确认通过**
 
 Run: `.venv/bin/python -m pytest tests/data/test_flags_st_truth.py -v`
 Expected: PASS（9 个）
 
-- [ ] **Step 7: 迁移 Task 6 记录的既有 flags 测试**
+- [x] **Step 7: 迁移 Task 6 记录的既有 flags 测试**
 
 原本断言 `st_inferred_final` 的用例改断言 `is_st`，并把夹具从「造价格让启发式命中」
 改成「直接给 `name`」。**断言 ST 三条规则本身的用例整体删除**——规则已不存在，
 留着等于测试一段已删代码的影子。删除时在 commit message 里列出被删的用例名。
 
-- [ ] **Step 8: 跑全量测试**
+- [x] **Step 8: 跑全量测试**
 
 Run: `.venv/bin/python -m pytest -q`
 Expected: 全绿
 
-- [ ] **Step 9: 提交**
+- [x] **Step 9: 提交**
 
 ```bash
 git add src/qsys/data/pipeline/flags.py tests/data/pipeline/
