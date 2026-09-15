@@ -5,9 +5,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+from pathlib import Path
 
-from qsys.data.catalog import REGISTRY, SOURCES, root_sources
-from qsys.data.catalog.types import UNKNOWN, Direct, Kind, Uncovered
+from qsys.data.catalog import REGISTRY, SOURCES, consumers, root_sources
+from qsys.data.catalog.types import (
+    UNKNOWN,
+    Computed,
+    Direct,
+    Kind,
+    Source,
+    SourceStatus,
+    Uncovered,
+)
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
 
@@ -72,6 +81,27 @@ class CatalogSummary:
     @property
     def coverage_rate(self) -> str:
         return f"{self.covered / self.total * 100:.0f}%" if self.total else "—"
+
+
+@dataclass(frozen=True, slots=True)
+class MetricDetail:
+    row: MetricRow
+    upstream: tuple[str, ...]
+    downstream: tuple[str, ...]
+    ext_consumers: tuple[str, ...]
+    formula: str
+    params: tuple[tuple[str, object], ...]
+    roots: tuple[str, ...]
+    checks: tuple[dict, ...]
+    history: tuple[dict, ...]
+    evidence: tuple[dict, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SourceRow:
+    source: Source
+    metric_count: int
+    metric_ids: tuple[str, ...]
 
 
 def _source_label(metric_id: str) -> str:
@@ -168,6 +198,57 @@ class CatalogService:
         checks = self._query.latest_metric_checks()
         latest_run = checks["checked_at"].max() if checks.height else None
         return CatalogSummary(len(rows), by_kind, covered, pending, latest_run)
+
+    def detail(self, metric_id: str) -> MetricDetail | None:
+        if metric_id not in REGISTRY:
+            return None
+        metric = REGISTRY[metric_id]
+        row = next(item for item in self.rows() if item.id == metric_id)
+        computed = isinstance(metric.lineage, Computed)
+        history = self._query.metric_checks(metric_id=metric_id)
+        evidence = self._query.metric_evidence(metric_id)
+        return MetricDetail(
+            row=row,
+            upstream=metric.lineage.upstream if computed else (),
+            downstream=consumers(metric_id),
+            ext_consumers=metric.ext_consumers,
+            formula=metric.lineage.formula if computed else "",
+            params=metric.lineage.params if computed else (),
+            roots=root_sources(metric_id),
+            checks=tuple(self._latest().get(metric_id, ())),
+            history=tuple(history.to_dicts()),
+            evidence=tuple(evidence.to_dicts()),
+        )
+
+    @staticmethod
+    def sources() -> list[SourceRow]:
+        """反向列出每个接口直接支撑的指标；失效源优先展示。"""
+        by_source: dict[str, list[str]] = {source_id: [] for source_id in SOURCES}
+        for metric_id, metric in REGISTRY.items():
+            if isinstance(metric.lineage, Direct):
+                by_source.setdefault(metric.lineage.source_id, []).append(metric_id)
+        rows = [
+            SourceRow(SOURCES[source_id], len(metric_ids), tuple(sorted(metric_ids)))
+            for source_id, metric_ids in by_source.items()
+            if source_id in SOURCES
+        ]
+        return sorted(
+            rows,
+            key=lambda row: (
+                row.source.status is SourceStatus.ACTIVE,
+                -row.metric_count,
+                row.source.id,
+            ),
+        )
+
+    @staticmethod
+    def sample_bytes(path: str) -> tuple[bytes, str] | None:
+        """只允许下载 ``artifacts/metric_checks`` 内的规则样本。"""
+        root = Path("artifacts/metric_checks").resolve()
+        target = Path(path).resolve()
+        if not target.is_file() or root not in target.parents:
+            return None
+        return target.read_bytes(), "application/octet-stream"
 
     @staticmethod
     def datasets() -> list[str]:

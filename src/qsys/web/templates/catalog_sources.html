@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2>数据源</h2>
+  <p style="color:var(--muted);font-size:12px;margin:0 0 12px">
+    这一页回答反向问题：<strong>这个源挂了会影响什么。</strong>非在用源排在最前。
+  </p>
+  <table>
+    <tr><th>源</th><th>状态</th><th>获取</th><th>门槛</th><th>到货节奏</th>
+        <th>支撑指标</th><th>已知坑</th></tr>
+    {% for row in rows %}
+    <tr>
+      <td><strong>{{ row.source.provider }}</strong>·{{ row.source.api }}</td>
+      <td><span class="pill {{ 'ok' if row.source.status == 'active' else 'bad' }}">
+        {{ {'active':'在用','dead':'已失效','frozen':'已冻结'}[row.source.status] }}</span></td>
+      <td>{{ {'api':'自动接口','file':'人工转存','realtime':'实时自采'}[row.source.access] }}</td>
+      <td>{{ row.source.tier or "—" }}</td>
+      <td>{{ row.source.cadence or "—" }}
+        {% if row.source.expires %}<br><span style="color:var(--warn);font-size:12px">
+          {{ row.source.expires }} 到期</span>{% endif %}</td>
+      <td>
+        <details><summary>{{ row.metric_count }}</summary>
+          {% for metric_id in row.metric_ids %}<div><a href="/data/catalog/{{ metric_id }}">{{ metric_id }}</a></div>{% endfor %}
+        </details>
+      </td>
+      <td style="max-width:380px;font-size:12px;color:var(--muted)">{{ row.source.caveat or "—" }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

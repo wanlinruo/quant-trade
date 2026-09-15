@@ -133,6 +133,55 @@ def create_app(
             },
         )
 
+    @app.get("/data/catalog/sources", response_class=HTMLResponse)
+    def catalog_sources(request: Request):
+        if catalog is None:
+            raise HTTPException(status_code=404, detail="catalog not enabled")
+        return TEMPLATES.TemplateResponse(
+            request=request,
+            name="catalog_sources.html",
+            context={
+                "title": config.title,
+                "session": None,
+                "page": "data_catalog",
+                "rows": catalog.sources(),
+            },
+        )
+
+    @app.get("/data/catalog/sample")
+    def catalog_sample(path: str):
+        if catalog is None:
+            raise HTTPException(status_code=404, detail="catalog not enabled")
+        found = catalog.sample_bytes(path)
+        if found is None:
+            raise HTTPException(status_code=404, detail="no such sample")
+        body, media_type = found
+        return Response(
+            content=body,
+            media_type=media_type,
+            headers={"Content-Disposition": 'attachment; filename="sample.parquet"'},
+        )
+
+    @app.get("/data/catalog/{metric_id}", response_class=HTMLResponse)
+    def catalog_detail(request: Request, metric_id: str):
+        if catalog is None:
+            raise HTTPException(status_code=404, detail="catalog not enabled")
+        detail = catalog.detail(metric_id)
+        if detail is None:
+            raise HTTPException(status_code=404, detail=f"no metric {metric_id}")
+        points = [float(row["violations"]) for row in reversed(detail.history)]
+        return TEMPLATES.TemplateResponse(
+            request=request,
+            name="catalog_detail.html",
+            context={
+                "title": config.title,
+                "session": None,
+                "page": "data_catalog",
+                "d": detail,
+                "chart": line_chart(points) if points else "",
+            },
+        )
+
     @app.get("/backtests", response_class=HTMLResponse)
     def backtest_index(request: Request):
         if backtests is None:
