@@ -31,6 +31,7 @@ td.num, th.num { text-align:right; }
 .pill.ok { background:#dcfce7; color:var(--ok); }
 .pill.bad { background:#fee2e2; color:var(--bad); }
 .pill.warn { background:#fef3c7; color:var(--warn); }
+.pill.todo { background:#f1f5f9; color:#64748b; }
 .up { color:var(--ok); } .down { color:var(--bad); }
 .empty { color:var(--muted); padding:12px 0; }
 pre { background:#0f172a; color:#e2e8f0; padding:14px; border-radius:8px;
@@ -43,6 +44,7 @@ pre { background:#0f172a; color:#e2e8f0; padding:14px; border-radius:8px;
   {% if page and page.startswith('data') %}
   <nav>
     <a href="/data" class="{{ 'active' if page == 'data' }}">数据覆盖</a>
+    <a href="/data/catalog" class="{{ 'active' if page == 'data_catalog' }}">数据层</a>
     <a href="/data/selection" class="{{ 'active' if page == 'data_selection' }}">选股结果</a>
     <a href="/data/regime" class="{{ 'active' if page == 'data_regime' }}">市场生态</a>
     <a href="/backtests" class="{{ 'active' if page == 'backtests' }}">回测运行</a>

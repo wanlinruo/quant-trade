@@ -23,6 +23,7 @@ from fastapi.responses import (
 from fastapi.templating import Jinja2Templates
 
 from qsys.web.backtest_views import BacktestService
+from qsys.web.catalog_views import CatalogService, Status
 from qsys.web.config import WebConfig
 from qsys.web.data_views import DataService
 from qsys.web.svg import line_chart
@@ -38,6 +39,7 @@ def create_app(
     config: WebConfig,
     data: DataService | None = None,
     backtests: BacktestService | None = None,
+    catalog: CatalogService | None = None,
 ) -> FastAPI:
     app = FastAPI(title=config.title, docs_url=None, redoc_url=None)
 
@@ -95,6 +97,39 @@ def create_app(
                 "limit_up": limit_up,
                 "limit_up_chart": line_chart(limit_up, stroke="#dc2626"),
                 "slope_chart": line_chart(slope),
+            },
+        )
+
+    @app.get("/data/catalog", response_class=HTMLResponse)
+    def catalog_overview(
+        request: Request,
+        dataset: str | None = None,
+        kind: str | None = None,
+        status: str | None = None,
+    ):
+        if catalog is None:
+            raise HTTPException(status_code=404, detail="catalog not enabled")
+        try:
+            selected_status = Status(status) if status else None
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="unknown catalog status") from exc
+        return TEMPLATES.TemplateResponse(
+            request=request,
+            name="catalog_overview.html",
+            context={
+                "title": config.title,
+                "session": None,
+                "page": "data_catalog",
+                "summary": catalog.summary(),
+                "rows": catalog.rows(
+                    dataset=dataset, kind=kind, status=selected_status
+                ),
+                "datasets": catalog.datasets(),
+                "kinds": catalog.kinds(),
+                "statuses": catalog.statuses(),
+                "sel_dataset": dataset,
+                "sel_kind": kind,
+                "sel_status": status,
             },
         )
 
