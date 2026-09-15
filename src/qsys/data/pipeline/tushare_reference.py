@@ -38,6 +38,25 @@ def _merge_write(warehouse: Warehouse, dataset: str, frame: pl.DataFrame,
     return total
 
 
+def _replace_days(warehouse: Warehouse, dataset: str, frame: pl.DataFrame,
+                  arrow_schema, days: Sequence[date], reader) -> int:
+    """以本次响应完整替换指定日期；上游撤销的行也会从本地消失。"""
+    target = set(days)
+    for year in sorted({day.year for day in target}):
+        year_days = {day for day in target if day.year == year}
+        lo, hi = date(year, 1, 1), date(year, 12, 31)
+        outside = reader(lo, hi).filter(~pl.col("dt").is_in(list(year_days)))
+        chunk = (frame.filter(pl.col("dt").is_in(list(year_days)))
+                 if frame.height else pl.from_arrow(arrow_schema.empty_table()))
+        merged = pl.concat([outside, chunk], how="vertical_relaxed").select(
+            arrow_schema.names
+        )
+        warehouse.write(dataset, merged.sort(["dt", "symbol"]).to_arrow().cast(
+            arrow_schema
+        ), year=year)
+    return frame.height
+
+
 def _date_expr(column: str) -> pl.Expr:
     return pl.col(column).cast(pl.Utf8).str.strptime(pl.Date, "%Y%m%d", strict=False)
 
@@ -90,14 +109,55 @@ def ingest_suspensions(provider, warehouse: Warehouse, days: Sequence[date]) -> 
             _date_expr("trade_date").alias("dt"),
             pl.col("suspend_type").cast(pl.Utf8), timing.alias("suspend_timing"),
         ))
-    if not frames:
-        return 0
     query = WarehouseQuery(warehouse)
-    written = _merge_write(
-        warehouse, "suspend_daily", pl.concat(frames), schema.SUSPEND_DAILY,
-        ["symbol", "dt"], lambda lo, hi: query.suspensions(None, lo, hi),
+    incoming = (pl.concat(frames) if frames
+                else pl.from_arrow(schema.SUSPEND_DAILY.empty_table()))
+    written = _replace_days(
+        warehouse, "suspend_daily", incoming, schema.SUSPEND_DAILY, days,
+        lambda lo, hi: query.suspensions(None, lo, hi),
     )
     log.info("suspensions.ingested", rows=written, days=len(days))
+    return written
+
+
+def ingest_stock_st(provider, warehouse: Warehouse, days: Sequence[date]) -> int:
+    """落库完整股票日布尔真值，而不是只保存 ST 正例。"""
+    from qsys.data.query import WarehouseQuery
+
+    query = WarehouseQuery(warehouse)
+    frames = []
+    for day in days:
+        universe = query.tushare_daily(
+            None, day, day, columns=["symbol", "dt"]
+        ).unique(subset=["symbol", "dt"])
+        if universe.height == 0:
+            raise RuntimeError(f"{day:%Y%m%d} 没有 tushare_daily，不能判定 ST 完整性")
+        raw = provider.stock_st(day)
+        if raw.height:
+            positives = raw.select(
+                pl.col("ts_code").alias("symbol"),
+                pl.col("name").cast(pl.Utf8),
+                pl.col("type").cast(pl.Utf8).alias("st_type"),
+                pl.col("type_name").cast(pl.Utf8).alias("st_type_name"),
+                pl.lit(True).alias("_matched"),
+            ).unique(subset=["symbol"], keep="last")
+        else:
+            positives = pl.DataFrame(schema={
+                "symbol": pl.Utf8, "name": pl.Utf8,
+                "st_type": pl.Utf8, "st_type_name": pl.Utf8,
+                "_matched": pl.Boolean,
+            })
+        frames.append(universe.join(positives, on="symbol", how="left").with_columns(
+            pl.col("_matched").fill_null(False).alias("is_st")
+        ).select(schema.STOCK_ST_DAILY.names))
+
+    incoming = pl.concat(frames, how="vertical_relaxed")
+    written = _replace_days(
+        warehouse, "stock_st_daily", incoming, schema.STOCK_ST_DAILY, days,
+        lambda lo, hi: query.stock_st(None, lo, hi),
+    )
+    log.info("stock_st.ingested", rows=written, days=len(days),
+             st_rows=incoming.filter(pl.col("is_st")).height)
     return written
 
 
@@ -208,29 +268,31 @@ def st_on(name_history: pl.DataFrame, day: date) -> pl.DataFrame:
 
 
 def ingest_limit_list(provider, warehouse: Warehouse, days: Sequence[date],
-                      limit_type: str = "U") -> int:
-    """直取涨停列表；接口自 2020 年起且不含 ST 股票统计。"""
+                      limit_types: Sequence[str] = ("U", "Z")) -> int:
+    """直取涨停与炸板列表；接口自 2020 年起且不含 ST 股票统计。"""
     from qsys.data.query import WarehouseQuery
 
     frames = []
     for day in days:
-        raw = provider.limit_list_d(day, limit_type)
-        if raw.height:
-            frames.append(raw.select(
-                pl.col("ts_code").alias("symbol"),
-                _date_expr("trade_date").alias("dt"),
-                pl.lit(limit_type, dtype=pl.Utf8).alias("limit_type"),
-                pl.col("limit_times").cast(pl.Int64),
-                pl.col("open_times").cast(pl.Int64),
-                pl.col("first_time").cast(pl.Utf8),
-                pl.col("fd_amount"), pl.col("limit_amount"), pl.col("float_mv"),
-            ))
-    if not frames:
-        return 0
+        for limit_type in limit_types:
+            raw = provider.limit_list_d(day, limit_type)
+            if raw.height:
+                frames.append(raw.select(
+                    pl.col("ts_code").alias("symbol"),
+                    _date_expr("trade_date").alias("dt"),
+                    pl.lit(limit_type, dtype=pl.Utf8).alias("limit_type"),
+                    pl.col("limit_times").cast(pl.Int64),
+                    pl.col("open_times").cast(pl.Int64),
+                    pl.col("first_time").cast(pl.Utf8),
+                    pl.col("fd_amount"), pl.col("limit_amount"), pl.col("float_mv"),
+                ))
     query = WarehouseQuery(warehouse)
-    written = _merge_write(
-        warehouse, "limit_list_daily", pl.concat(frames), schema.LIMIT_LIST_DAILY,
-        ["symbol", "dt", "limit_type"], lambda lo, hi: query.limit_list(None, lo, hi),
+    incoming = (pl.concat(frames) if frames
+                else pl.from_arrow(schema.LIMIT_LIST_DAILY.empty_table()))
+    written = _replace_days(
+        warehouse, "limit_list_daily", incoming, schema.LIMIT_LIST_DAILY, days,
+        lambda lo, hi: query.limit_list(None, lo, hi),
     )
-    log.info("limit_list.ingested", rows=written, days=len(days), limit_type=limit_type)
+    log.info("limit_list.ingested", rows=written, days=len(days),
+             limit_types=list(limit_types))
     return written

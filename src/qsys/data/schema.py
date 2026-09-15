@@ -321,7 +321,21 @@ SUSPEND_DAILY = pa.schema(
     ]
 )
 
-# limit_list_d 实测自 2020 年起，且不含 ST 股票统计。
+# 每日 ST 真值。Tushare stock_st 返回的是当日 ST 正例列表；落库时与当日
+# tushare_daily 股票全集左连，显式写出 True/False，避免把“接口失败/未回填”
+# 和“当日不是 ST”混为一谈。
+STOCK_ST_DAILY = pa.schema(
+    [
+        ("symbol", pa.string()),
+        ("dt", pa.date32()),
+        ("is_st", pa.bool_()),
+        ("name", pa.string()),
+        ("st_type", pa.string()),
+        ("st_type_name", pa.string()),
+    ]
+)
+
+# limit_list_d 实测自 2020 年起，且不含 ST 股票统计；同步 U 涨停与 Z 炸板。
 LIMIT_LIST_DAILY = pa.schema(
     [
         ("symbol", pa.string()),
@@ -365,6 +379,7 @@ PARTITIONED: dict[str, pa.Schema] = {
     "tushare_daily": TUSHARE_DAILY,
     "price_limits_daily": PRICE_LIMITS_DAILY,
     "suspend_daily": SUSPEND_DAILY,
+    "stock_st_daily": STOCK_ST_DAILY,
     "limit_list_daily": LIMIT_LIST_DAILY,
     "name_snapshots": NAME_SNAPSHOTS,
 }

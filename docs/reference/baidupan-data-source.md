@@ -458,7 +458,9 @@ glob 旧表——不修的话新上市标的会**永久**被排除出候选池�
 
 **付费源在这条链上是不可替代的那一段**：`name_snapshots` 只能从启用之日
 向后累积，补不了历史；`namechange` 有 2006 断层。所以 2026-09-11 及之前的
-名称真值只有 `paid_daily` 一个源，**这张表不能删**。
+名称真值原本只有 `paid_daily` 一个完整来源。2026-09-15 起新增 Tushare
+`stock_st_daily`；完成生产区间及 150 日回看窗口的全键验收前，这张表仍不能删。
+验收与清理闸门见 `docs/reference/tushare-direct-truth-refresh.md`。
 
 详见 `artifacts/第4段回归_付费源到Tushare换源_2026-09-14.md` 与
 `deferred-corrections.md` D-10。

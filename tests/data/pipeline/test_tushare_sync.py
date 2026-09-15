@@ -114,7 +114,7 @@ def test_daily_stage_calls_exactly_its_three_interfaces(warehouse, monkeypatch):
 def test_all_reference_datasets_have_a_daily_step():
     assert {name for name, _ in tushare_sync._REFERENCE_STEPS} == {
         "price_limits_daily", "suspend_daily", "index_bars",
-        "instruments", "name_history", "limit_list_daily",
+        "stock_st_daily", "instruments", "name_history", "limit_list_daily",
     }
 
 

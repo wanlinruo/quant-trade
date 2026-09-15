@@ -58,6 +58,24 @@ def test_st_is_read_from_the_name_column(warehouse, write_daily_bars):
     assert got["st_source"].to_list() == ["tushare_daily"]
 
 
+def test_complete_stock_st_truth_wins_over_a_conflicting_legacy_name(
+    warehouse, write_daily_bars
+):
+    _paid(write_daily_bars, warehouse, {
+        "symbol": ["000010.SZ"], "dt": [DAYS[1]], "name": ["*ST旧源"],
+        "open": [3.0], "high": [3.0], "low": [3.0], "close": [3.0],
+        "pre_close": [3.0], "volume": [100.0], "amount": [3e4],
+    })
+    warehouse.write("stock_st_daily", pa.table({
+        "symbol": ["000010.SZ"], "dt": [DAYS[1]], "is_st": [False],
+        "name": [None], "st_type": [None], "st_type_name": [None],
+    }, schema=schema.STOCK_ST_DAILY), year=2026)
+    build_daily_flags(warehouse, DAYS[1], DAYS[1])
+    got = WarehouseQuery(warehouse).daily_flags(DAYS[1], DAYS[1])
+    assert got["is_st"].to_list() == [False]
+    assert got["st_source"].to_list() == ["stock_st"]
+
+
 def test_a_plain_name_is_not_st(warehouse, write_daily_bars):
     _paid(write_daily_bars, warehouse, {
         "symbol": ["000010.SZ"], "dt": [DAYS[0]], "name": ["美丽生态"],

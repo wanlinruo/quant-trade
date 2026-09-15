@@ -89,6 +89,12 @@ class StructuralSelection:
             day=day,
             previous=previous,
         )
+        suspended = market.suspended_symbols(pool.first_boards, day)
+        if suspended:
+            pool = type(pool)(
+                [s for s in pool.first_boards if s not in suspended],
+                [s for s in pool.broken_boards if s not in suspended],
+            )
         if not pool.first_boards:
             return []
 
