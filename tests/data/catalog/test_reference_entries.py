@@ -9,7 +9,14 @@ corporate_actions），corporate_actions 的真实源也从草案假定的 aksha
 from collections import Counter
 
 from qsys.data.catalog.reference import DATASETS, METRICS
-from qsys.data.catalog.types import Computed, Direct, Kind, UNKNOWN, Validity
+from qsys.data.catalog.types import (
+    UNKNOWN,
+    Computed,
+    Direct,
+    Kind,
+    Uncovered,
+    Validity,
+)
 
 BY_ID = {m.id: m for m in METRICS}
 
@@ -161,7 +168,37 @@ def test_corporate_actions_points_at_qmt_dividends_not_akshare():
             if isinstance(m.lineage, Direct):
                 assert m.lineage.source_id == "qmt.dividends", m.id
             else:
-                assert m.lineage.formula.startswith("qmt.dividends"), m.id
+                assert (
+                    "qmt.dividends" in m.lineage.formula
+                    or "get_divid_factors" in m.lineage.formula
+                ), m.id
+
+
+def test_corporate_actions_symbol_is_derived_from_the_request_not_the_response():
+    """review fix round 1：get_divid_factors(symbol) 逐个标的调用，
+    响应体（以除权日为索引的 DataFrame）里没有任何字段携带标的身份——
+    这一列是脚本按调用参数回填的，不是从响应读出来的。与 R10 的
+    instruments.as_of / tushare_daily.name 同构：Computed(upstream=())，
+    且没有独立源字段可供比对，checks 是 Uncovered 不是普通规则元组。"""
+    m = BY_ID["corporate_actions.symbol"]
+    assert m.kind is Kind.DERIVED
+    assert isinstance(m.lineage, Computed)
+    assert m.lineage.upstream == ()
+    assert isinstance(m.checks, Uncovered)
+
+
+def test_share_capital_symbol_stays_direct_because_the_response_is_keyed_by_it():
+    """review fix round 1：与 corporate_actions.symbol 的区别在于
+    get_financial_data 是**批量**调用，返回值本身是按标的建索引的字典
+    （scripts/win_download_capital.py:111-116 批量请求，:122-123
+    `data.get(symbol)` 按键取值）——标的身份来自响应体的结构（字典键），
+    不是脚本凭空回填的入参，与 paid_daily.symbol 的 R9 判例同构，
+    保留 DIRECT。"""
+    m = BY_ID["share_capital.symbol"]
+    assert m.kind is Kind.DIRECT
+    assert isinstance(m.lineage, Direct)
+    assert m.lineage.source_id == "qmt.capital"
+    assert m.lineage.note is not None and len(m.lineage.note) > 10
 
 
 def test_stock_per_share_is_a_sum_of_two_source_fields():
@@ -204,8 +241,14 @@ def test_share_capital_field_names_are_the_qmt_names_not_warehouse_names():
     )
 
 
-def test_every_entry_has_nonempty_checks():
-    """checks=() 不允许，Metric.__post_init__ 已经守了这条，这里再断言一次
-    确保没有条目绕过构造期检查。"""
+def test_every_uncovered_reason_is_substantive():
+    """review fix round 1：`test_every_entry_has_nonempty_checks` 是重言式——
+    `Metric.__post_init__` 已经在构造期挡住了 `checks=()`，模块导入不了就
+    根本跑不到这条断言，它测不出任何真实缺陷。换成一条真正约束行为的
+    断言：每个 UNCOVERED 的 reason 必须言之有物，不能是「暂无」这种
+    没有信息量的占位符——这是 __post_init__ 不管、只有这里管的性质。"""
+    trivial = {"", "暂无", "无", "待定", "TODO"}
     for m in METRICS:
-        assert m.checks, m.id
+        if isinstance(m.checks, Uncovered):
+            assert m.checks.reason not in trivial, m.id
+            assert len(m.checks.reason) >= 10, m.id

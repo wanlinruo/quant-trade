@@ -61,6 +61,7 @@
 from __future__ import annotations
 
 from qsys.data.catalog.types import (
+    UNCOVERED,
     Computed,
     Direct,
     Kind,
@@ -505,17 +506,25 @@ _CORPORATE_ACTIONS_CHECKS = ("B5.span",)
 def _corporate_actions() -> list[Metric]:
     return [
         Metric(
-            id="corporate_actions.symbol", kind=Kind.DIRECT, validity=Validity.SESSION,
+            id="corporate_actions.symbol", kind=Kind.DERIVED, validity=Validity.SESSION,
             status=MetricStatus.ACTIVE,
-            meaning="标的代码。get_divid_factors 按标的逐个查询，这一列是"
-                    "调用方传入的合约代码本身，不是接口返回字段"
-                    "（scripts/win_download_dividends.py:129-131）",
-            lineage=Direct(
-                "qmt.dividends", "symbol",
-                note="调用方传入 get_divid_factors 的标的代码，接口不回传该"
-                     "字段，脚本按请求时的入参逐行回填",
+            meaning=(
+                "标的代码。get_divid_factors(symbol) 按单个标的逐次调用"
+                "（scripts/win_download_dividends.py:129-131），返回的 "
+                "DataFrame 只以除权日为索引，响应体里没有任何字段携带标的"
+                "身份——这一列是脚本按调用时的**入参**逐行回填，不是从响应"
+                "读出来的，因此指不到任何 (source_id, field)，归 DERIVED，"
+                "与 R10 的 instruments.as_of 同构（复核意见：见 fix report）"
             ),
-            checks=_CORPORATE_ACTIONS_CHECKS,
+            lineage=Computed(
+                upstream=(),
+                formula="脚本按 get_divid_factors(symbol) 的**入参**逐行回填；"
+                        "响应体不含该字段。见 scripts/win_download_dividends.py",
+            ),
+            checks=UNCOVERED(
+                "这一列的真值就是调用参数本身，没有独立的源字段可供比对——"
+                "验证它没有意义，因为它不可能与自己以外的任何东西不一致"
+            ),
         ),
         Metric(
             id="corporate_actions.ex_date", kind=Kind.DIRECT, validity=Validity.SESSION,
@@ -597,13 +606,22 @@ def _share_capital() -> list[Metric]:
         Metric(
             id="share_capital.symbol", kind=Kind.DIRECT, validity=Validity.SESSION,
             status=MetricStatus.ACTIVE,
-            meaning="标的代码。download_financial_data 按标的批量下载，这一列"
-                    "是调用方传入的合约代码本身，不是接口返回字段"
-                    "（scripts/win_download_capital.py:122-138）",
+            meaning=(
+                "标的代码。与 corporate_actions.symbol 不同：这里 "
+                "get_financial_data(chunk, ...) 是**批量**调用"
+                "（scripts/win_download_capital.py:111-116，chunk 是一批标的"
+                "而非单个），返回值 `data` 本身是按标的建索引的字典——脚本"
+                "用 `data.get(symbol)` 取出这一只标的那一份"
+                "（scripts/win_download_capital.py:122-123）。标的身份是"
+                "响应体自身的结构（字典键），不是脚本凭空回填的入参，与 "
+                "paid_daily.symbol 的 R9 判例同构（值确实来自源，只是载体"
+                "是键不是列），故保留 DIRECT"
+            ),
             lineage=Direct(
                 "qmt.capital", "symbol",
-                note="调用方传入 download_financial_data 的标的代码，脚本按"
-                     "请求时的入参逐行回填",
+                note="get_financial_data 的返回值以标的为字典键，脚本按"
+                     "该键取值（scripts/win_download_capital.py:122-123）；"
+                     "键本身不是一张表里的具名列，故仍在 note 里说明",
             ),
             checks=_SHARE_CAPITAL_CHECKS,
         ),
