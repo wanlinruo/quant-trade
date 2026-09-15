@@ -39,6 +39,15 @@
     "cross_listed_sample": "688235.SH",
     "previous_session_share_samples": ["300803.SZ", "603162.SH"]
   },
+  "final_production_run": {
+    "run_id": "20260915T180410562276",
+    "result_rows": 99,
+    "failed_metric_rows": 2,
+    "blocking_metric_rows": 0,
+    "warning_metric_rows": 2,
+    "warnings": ["D-12", "D-12"]
+  },
+  "d17_deployed_commit": "c61e6254",
   "deployed_commit": "c72da511",
   "node_pre_deploy_stash": "pre-metric-fix-deploy-20260915",
   "temporary_validation_code": "/tmp/qsys-metric-check-fix-20260915/src",
