@@ -50,10 +50,10 @@ def test_fill_scan_ignores_comments_and_docstrings(tmp_path):
     assert rules_valid.scan_fills([tmp_path]) == []
 
 
-def test_feed_fill_null_is_currently_a_warning(ctx):
-    row = _run("C1.no_fill", ctx)
-    assert row["violations"] >= 1
-    assert row["severity"] == "warning"
+def test_feed_no_longer_fills_the_factor():
+    """D-9 结案后，feed.py 不得再次出现未登记填充。"""
+    sites = rules_valid.scan_fills([Path("src/qsys/data")])
+    assert not [site for site in sites if "feed.py" in site.path]
 
 
 def test_pit_join_catches_snapshot_used_off_observation_day(ctx, warehouse):

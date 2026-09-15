@@ -143,3 +143,50 @@ def test_get_requires_as_of_keyword(feed):
 def test_unknown_symbol_returns_empty_frame(feed):
     df = feed.get(["999999.SH"], SESSIONS[0], SESSIONS[-1], as_of=datetime(2024, 1, 5, 15, 0))
     assert df.height == 0
+
+
+def test_missing_factor_produces_null_prices_not_a_plausible_number(
+    warehouse, write_daily_bars
+):
+    """D-9：累计因子有自身锚点，缺失时填 1 会制造看似正常的错价。"""
+    write_daily_bars(warehouse, pl.DataFrame({
+        "symbol": ["000001.SZ"] * 2,
+        "dt": SESSIONS[:2],
+        "open": [10.0, 10.1], "high": [10.5, 10.6],
+        "low": [9.8, 9.9], "close": [10.0, 10.2],
+        "volume": [1000.0, 1000.0], "amount": [10000.0, 10200.0],
+    }))
+    warehouse.write("adj_factors", pa.table({
+        "symbol": ["600036.SH"], "dt": [SESSIONS[0]],
+        "cum_factor": [1.0], "cum_share_factor": [1.0],
+    }, schema=schema.ADJ_FACTORS))
+
+    result = HistoricalFeed(WarehouseQuery(warehouse), CAL).get(
+        ["000001.SZ"], SESSIONS[0], SESSIONS[1],
+        as_of=datetime(2024, 1, 5, 15, 0), adjustment=Adjustment.FORWARD,
+    )
+    assert result.height == 2
+    assert result["close"].null_count() == 2
+    assert result["volume"].null_count() == 2
+
+
+def test_empty_factor_table_also_propagates_null(warehouse, write_daily_bars):
+    """整张因子表为空与某只标的未连接到因子是同一种缺失。"""
+    write_daily_bars(warehouse, pl.DataFrame({
+        "symbol": ["000001.SZ"], "dt": [SESSIONS[0]],
+        "open": [10.0], "high": [10.5], "low": [9.8], "close": [10.0],
+        "volume": [1000.0], "amount": [10000.0],
+    }))
+    result = HistoricalFeed(WarehouseQuery(warehouse), CAL).get(
+        ["000001.SZ"], SESSIONS[0], SESSIONS[0],
+        as_of=datetime(2024, 1, 5, 15, 0), adjustment=Adjustment.FORWARD,
+    )
+    assert result["close"].to_list() == [None]
+
+
+def test_present_factors_still_adjust_normally(feed):
+    result = feed.get(
+        ["600036.SH"], SESSIONS[0], SESSIONS[-1],
+        as_of=datetime(2024, 1, 5, 15, 0), adjustment=Adjustment.FORWARD,
+    )
+    assert result["close"].null_count() == 0

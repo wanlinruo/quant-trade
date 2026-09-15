@@ -243,7 +243,7 @@ Task 9 把 `cum_factor` 从「窗口首日归一」换成「付费源自带锚�
 
 ---
 
-## D-9 `feed.py` 的 `fill_null(1.0)` 在新因子语义下是任意值
+## D-9 `feed.py` 的 `fill_null(1.0)` 在新因子语义下是任意值（已了结）
 
 **事实**：`src/qsys/data/feed.py:85` 有 `pl.col("cum_factor").fill_null(1.0)`。
 
@@ -262,6 +262,24 @@ Task 9 把 `cum_factor` 从「窗口首日归一」换成「付费源自带锚�
 1. 盘清 `feed.py` 的全部消费方对 null 价格的处理；
 2. 把 `fill_null(1.0)` 改为要么 null 传播、要么显式报错，**不保留静默默认值**；
 3. 加测试守住：因子缺失的行不得产出一个看起来正常的价格。
+
+### 2026-09-15 处置
+
+消费方已盘清：生产中只有 `StructuralSelection._history()` 请求
+`Adjustment.FORWARD`；回测引擎、动态 MA5 与普通 `Context` 均使用默认的
+`Adjustment.NONE`，`BACKWARD` 只在测试里显式调用。
+
+修复实际覆盖三处明面默认值，不是最初记录的一处：`cum_factor.fill_null(1.0)`、
+`cum_share_factor.fill_null(1.0)`，以及旧 schema 缺 `cum_share_factor` 时的
+`pl.lit(1.0)`。三者均改为 null 传播；同时移除了“因子查询结果整表为空就直接
+返回原始价格”的隐式兜底。缺因子的股-日仍保留原键，但复权 OHLC 与成交量为
+null，不再生成看似正常的错价。
+
+唯一生产复权消费方 `StructuralSelection` 会在任何必需历史列含 null 时整只
+跳过，并记录 `selection.history_incomplete` 及各列空值数；不在数值比较处崩溃，
+也不通过 `drop_nulls` 悄悄缩短回看窗口。`C1.no_fill` 已把数据与策略源码的
+未登记填充做成常驻扫描，`feed.py` 的回归测试同时覆盖“别的标的有因子”和
+“因子表整张为空”两种缺失形态。
 
 ---
 

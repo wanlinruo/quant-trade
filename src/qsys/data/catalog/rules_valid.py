@@ -175,7 +175,7 @@ register(Check(
     ("strategy.stock_return_10d", "strategy.distance_to_60d_high",
      "adj_factors.cum_factor", "market_regime.index_ma20_slope_5d",
      "daily_flags.prev_close"),
-    ("D-9",), "数据与策略链路不得有未登记的默认值填充", _no_fill,
+    (), "数据与策略链路不得有未登记的默认值填充", _no_fill,
 ))
 
 
