@@ -32,7 +32,13 @@ def _flags(rows, warehouse):
 
 
 def _run(ctx, check_id):
-    return C.run_checks(ctx, "recompute", NOW, only=[C.CHECKS[check_id]]).row(0, named=True)
+    return C.run_checks(
+        ctx,
+        "recompute",
+        NOW,
+        only=[C.CHECKS[check_id]],
+        artifacts=ctx.warehouse.root / "test-artifacts",
+    ).row(0, named=True)
 
 
 def test_module_never_imports_production_calculators():
