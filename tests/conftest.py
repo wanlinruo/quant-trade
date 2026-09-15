@@ -1,14 +1,8 @@
-import sys
 from datetime import date
 from pathlib import Path
 
 import pyarrow.parquet as pq
 import pytest
-
-# Ensure worktree src takes precedence for catalog module development
-worktree_src = Path(__file__).parent.parent / "src"
-if str(worktree_src) not in sys.path:
-    sys.path.insert(0, str(worktree_src))
 
 from qsys.data import schema
 from qsys.data.storage import Warehouse
