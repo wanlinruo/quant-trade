@@ -8,9 +8,14 @@ from qsys.data import schema
 from qsys.data.catalog import (
     OWNED_DATASETS,
     REGISTRY,
+    SOURCES,
+    consumers,
     expected_metric_ids,
     landed,
+    root_sources,
 )
+from qsys.data.catalog.types import Computed, Direct, Uncovered
+from qsys.data.pipeline.tushare_daily import _FROM_BASIC, _FROM_DAILY
 
 
 def test_expected_ids_cover_schema_and_paid_daily():
@@ -65,3 +70,102 @@ def test_frozen_datasets_are_not_writable():
     """
     assert "paid_daily" not in schema.PARTITIONED
     assert "paid_daily" not in schema.UNPARTITIONED
+
+
+def test_every_upstream_reference_resolves():
+    """T2 上半：血缘指向 registry 中真实存在的指标。"""
+    for metric in REGISTRY.values():
+        if isinstance(metric.lineage, Computed):
+            for upstream in metric.lineage.upstream:
+                assert upstream in REGISTRY, (
+                    f"{metric.id} 的上游 {upstream} 不存在"
+                )
+
+
+def test_lineage_graph_is_acyclic_except_self_lookback():
+    """T2 下半：允许跨日自引用，不允许 A→B→A 这种真环。"""
+
+    def walk(metric_id: str, path: tuple[str, ...]) -> None:
+        metric = REGISTRY[metric_id]
+        if isinstance(metric.lineage, Direct):
+            return
+        for upstream in metric.lineage.upstream:
+            if upstream == metric_id:
+                continue
+            assert upstream not in path, (
+                f"血缘成环：{' -> '.join(path + (upstream,))}"
+            )
+            walk(upstream, path + (upstream,))
+
+    for metric_id in REGISTRY:
+        walk(metric_id, (metric_id,))
+
+
+def test_every_direct_metric_points_at_a_registered_source():
+    """T2 补充：直取必须指向 sources.py 中登记过的源。"""
+    for metric in REGISTRY.values():
+        if isinstance(metric.lineage, Direct):
+            assert metric.lineage.source_id in SOURCES, (
+                f"{metric.id} 指向未登记的源 {metric.lineage.source_id}"
+            )
+
+
+def test_tushare_daily_lineage_is_generated_from_the_pipeline_mapping():
+    """T3：字典与生产映射同源，字段名和乘数不能各写一份后漂移。"""
+    for ours, theirs, multiplier in _FROM_DAILY:
+        lineage = REGISTRY[f"tushare_daily.{ours}"].lineage
+        assert lineage == Direct("tushare.daily", theirs, multiplier), ours
+    for ours, theirs, multiplier in _FROM_BASIC:
+        lineage = REGISTRY[f"tushare_daily.{ours}"].lineage
+        assert lineage == Direct("tushare.daily_basic", theirs, multiplier), ours
+
+
+def test_the_pipeline_multipliers_are_pinned_to_measured_values():
+    """T3 的另一半：把已经逐键实测过的单位换算钉死。"""
+    daily = {ours: multiplier for ours, _, multiplier in _FROM_DAILY}
+    basic = {ours: multiplier for ours, _, multiplier in _FROM_BASIC}
+    assert daily["amount"] == 1000.0
+    assert daily["volume"] == 1.0
+    for column in ("total_shares", "circulating_shares", "free_shares"):
+        assert basic[column] == 10000.0
+    for column in ("market_cap", "circulating_market_cap"):
+        assert basic[column] == 10000.0
+    for column in ("pe", "pe_ttm", "pb", "turnover_ratio"):
+        assert basic[column] == 1.0
+
+
+def test_consumers_are_derived_not_declared():
+    """T4：反向关系由血缘推导，不维护第二份手写清单。"""
+    assert "daily_flags.limit_up" in consumers("daily_flags.limit_pct")
+    assert consumers("daily_flags.is_first_board") == () or all(
+        consumer in REGISTRY
+        for consumer in consumers("daily_flags.is_first_board")
+    )
+
+
+def test_root_sources_reach_interface_level():
+    roots = root_sources("daily_flags.is_first_board")
+    assert "tushare.daily.close" in roots
+    assert all("." in root for root in roots)
+
+
+def test_every_metric_is_checked_or_explicitly_uncovered():
+    """T5：没有规则的条目必须明确写出未覆盖理由。"""
+    for metric in REGISTRY.values():
+        assert isinstance(metric.checks, (tuple, Uncovered)), metric.id
+        if isinstance(metric.checks, tuple):
+            assert metric.checks, metric.id
+
+
+def test_every_referenced_check_id_will_be_implemented():
+    """规则引用完备性；Task 11–15 建完规则前故意保持红灯。"""
+    from qsys.data.catalog.checks import CHECKS
+
+    referenced = {
+        check_id
+        for metric in REGISTRY.values()
+        if isinstance(metric.checks, tuple)
+        for check_id in metric.checks
+    }
+    missing = referenced - set(CHECKS)
+    assert not missing, f"字典引用了尚未实现的规则：{sorted(missing)}"
