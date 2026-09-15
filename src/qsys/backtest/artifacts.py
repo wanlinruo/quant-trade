@@ -135,6 +135,9 @@ def write_run(
     decisions: Sequence = (),
     regime: pl.DataFrame | None = None,
     sessions: Sequence[date] = (),
+    benchmark: pl.DataFrame | None = None,
+    strategy_source: str | None = None,
+    log_text: str = "",
 ) -> Path:
     """把一次运行完整落盘。返回运行目录。"""
     run_dir = Path(out_dir)
@@ -149,11 +152,16 @@ def write_run(
     files["daily_buy_details.csv"] = _buy_details(result, tags).write_csv()
     files["closed_lots.csv"] = _lots_frame(lots).write_csv()
     files["rejects.csv"] = _rejects(result).write_csv()
+    files["orders.csv"] = _orders(result).write_csv()
+    files["daily_positions.csv"] = _positions(result).write_csv()
     files["gate_decisions.csv"] = _gate_decisions(decisions).write_csv()
     files["branch_summary.csv"] = _branch_summary(lots).write_csv()
     if regime is not None and regime.height:
         files["regime_daily.csv"] = _regime(regime, start, end).write_csv()
     files["metrics.csv"] = _metrics(metrics or {}).write_csv()
+    files["monthly_returns.csv"] = _monthly_returns(result).write_csv()
+    if benchmark is not None and benchmark.height:
+        files["benchmark_nav.csv"] = benchmark.write_csv()
     files["run_status.csv"] = _status(
         result, strategy, start, end, initial_cash, lots, decisions
     ).write_csv()
@@ -171,6 +179,9 @@ def write_run(
         indent=2,
     )
     files["README.txt"] = _readme(strategy, start, end, initial_cash, result.run_id)
+    if strategy_source is not None:
+        files["strategy.py"] = strategy_source
+    files["run.log"] = log_text
 
     for name, content in files.items():
         (run_dir / name).write_text(content, encoding="utf-8")
@@ -331,6 +342,40 @@ def _rejects(result) -> pl.DataFrame:
         schema={"at": pl.Datetime, "order_id": pl.Utf8, "stock": pl.Utf8,
                 "symbol": pl.Utf8, "side": pl.Utf8, "qty": pl.Int64,
                 "reason": pl.Utf8},
+    )
+
+
+def _orders(result) -> pl.DataFrame:
+    orders = getattr(result, "orders", ())
+    return pl.DataFrame(
+        [{"created_at": o.created_at, "order_id": o.order_id,
+          "stock": to_joinquant_code(str(o.symbol)), "symbol": str(o.symbol),
+          "side": o.side.value, "qty": o.qty, "order_type": o.order_type.value,
+          "limit_price": o.limit_price} for o in orders],
+        schema={"created_at": pl.Datetime, "order_id": pl.Utf8, "stock": pl.Utf8,
+                "symbol": pl.Utf8, "side": pl.Utf8, "qty": pl.Int64,
+                "order_type": pl.Utf8, "limit_price": pl.Float64},
+    )
+
+
+def _positions(result) -> pl.DataFrame:
+    frame = getattr(result, "positions", None)
+    if frame is None:
+        return pl.DataFrame(schema={"date": pl.Date, "symbol": pl.Utf8})
+    return frame.rename({"dt": "date"})
+
+
+def _monthly_returns(result) -> pl.DataFrame:
+    if result.equity.height == 0:
+        return pl.DataFrame(schema={"month": pl.Utf8, "return": pl.Float64})
+    frame = result.equity.sort("dt").with_columns(
+        pl.col("dt").dt.strftime("%Y-%m").alias("month")
+    )
+    return frame.with_columns(
+        (pl.col("total_value") / pl.col("total_value").shift(1) - 1.0)
+        .fill_null(0.0).alias("period_return")
+    ).group_by("month", maintain_order=True).agg(
+        ((pl.col("period_return") + 1.0).product() - 1.0).alias("return")
     )
 
 

@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card"><h2>策略工作台</h2>
+  <p class="muted">策略草稿由工作台托管；发起回测时自动固化不可变源码版本，不修改 Git 工作区。</p>
+  <button onclick="createStrategy()">新建策略</button>
+  {% for name in templates %}<button class="secondary" onclick="importStrategy('{{ name }}')">导入 {{ name }}</button>{% endfor %}
+</div>
+<div class="card"><h2>我的策略</h2>
+{% if strategies %}<table><tr><th>名称</th><th>参数</th><th>更新时间</th></tr>
+{% for s in strategies %}<tr><td><a href="/strategies/{{ s.id }}">{{ s.name }}</a></td><td>{{ s.parameters|length }} 个</td><td class="muted">{{ s.updated_at }}</td></tr>{% endfor %}</table>
+{% else %}<div class="empty">尚无策略，可以新建或导入仓库示例。</div>{% endif %}</div>
+<script>
+async function createStrategy(){
+ const name=prompt('策略名称','MyStrategy'); if(!name)return;
+ const source='from qsys.strategy.base import Strategy\n\nclass MyStrategy(Strategy):\n    def on_bar(self, ctx, bars):\n        pass\n';
+ const r=await fetch('/api/strategies',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,source})});
+ const x=await r.json(); if(!r.ok){alert(x.detail);return} location.href=x.location;
+}
+async function importStrategy(filename){
+ const r=await fetch('/api/strategies/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename})});
+ const x=await r.json(); if(!r.ok){alert(x.detail);return} location.href=x.location;
+}
+</script>
+{% endblock %}

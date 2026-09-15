@@ -87,6 +87,8 @@ def test_ingest_writes_index_bars(warehouse):
     df = WarehouseQuery(warehouse).index_bars(None, date(2024, 1, 1), date(2024, 1, 31))
     assert df.height == 3
     assert df["symbol"].to_list() == ["000300.SH"] * 3
+    assert WarehouseQuery(warehouse).dataset_bounds("index_bars") == (
+        date(2024, 1, 2), date(2024, 1, 4))
 
 
 def test_ingest_is_idempotent(warehouse):

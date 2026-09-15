@@ -21,7 +21,6 @@ def line_chart(
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
         f'viewBox="0 0 {width} {height}" role="img">'
     )
-
     if not values:
         return (
             f"{head}"
@@ -56,3 +55,33 @@ def line_chart(
         f'stroke="#e2e8f0" stroke-width="1" />'
         "</svg>"
     )
+
+
+def multi_line_chart(
+    series: Sequence[tuple[str, Sequence[float], str]], *, width: int = 760,
+    height: int = 240, padding: int = 28,
+) -> str:
+    """共享坐标轴的多序列曲线，供策略/基准/超额报告使用。"""
+    nonempty = [(name, list(values), color) for name, values, color in series if values]
+    if not nonempty:
+        return line_chart([], width=width, height=height, padding=padding)
+    all_values = [v for _, values, _ in nonempty for v in values]
+    lo, hi = min(all_values), max(all_values)
+    span, inner_w, inner_h = hi - lo, width - 2 * padding, height - 2 * padding
+
+    def points(values):
+        return " ".join(
+            f"{padding + inner_w * i / max(len(values) - 1, 1):.2f},"
+            f"{padding + inner_h * (0.5 if span == 0 else 1 - (v - lo) / span):.2f}"
+            for i, v in enumerate(values)
+        )
+    lines = "".join(
+        f'<polyline fill="none" stroke="{color}" stroke-width="2" points="{points(values)}" />'
+        for _, values, color in nonempty
+    )
+    legend = "".join(
+        f'<text x="{padding + i * 130}" y="16" fill="{color}" font-size="11">{name}</text>'
+        for i, (name, _, color) in enumerate(nonempty)
+    )
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
+            f'viewBox="0 0 {width} {height}" role="img">{legend}{lines}</svg>')

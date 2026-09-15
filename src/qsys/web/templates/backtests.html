@@ -2,7 +2,28 @@
 {% block content %}
 <div class="card">
   <h2>回测运行</h2>
-  <p class="muted">每次运行落一个自包含目录，文件名与列名对齐聚宽的研究导出，可直接下载去两边对账。</p>
+  <p class="muted">在策略页编辑并发起历史回测。任务单机串行执行，每次运行固化源码与参数。</p>
+  <a class="button" href="/strategies">新建回测</a>
+</div>
+{% if jobs %}
+<div class="card">
+  <h2>任务队列</h2>
+  <table>
+    <tr><th>任务</th><th>策略</th><th>区间</th><th>状态</th><th class="num">进度</th><th>创建时间</th></tr>
+    {% for j in jobs %}
+    <tr>
+      <td><a href="/backtests/{{ j.id }}">{{ j.id }}</a></td>
+      <td>{{ j.strategy_name }}</td><td>{{ j.config.start }} ~ {{ j.config.end }}</td>
+      <td><span class="pill {{ 'ok' if j.status == 'succeeded' else 'bad' if j.status in ('failed','interrupted') else 'warn' }}">{{ j.status }}</span></td>
+      <td class="num">{{ j.percent }}%</td><td class="muted">{{ j.created_at }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+<div class="card">
+  <h2>成功报告</h2>
+  <p class="muted">历史目录继续兼容；新报告包含源码、基准、持仓、成交和完整下载包。</p>
   {% if runs %}
   <table>
     <tr>
@@ -29,7 +50,7 @@
     {% endfor %}
   </table>
   {% else %}
-  <div class="empty">还没有回测记录。跑一次 <code>scripts/run_structural_backtest.py</code> 就会出现在这里。</div>
+  <div class="empty">还没有成功的回测记录。</div>
   {% endif %}
 </div>
 {% endblock %}

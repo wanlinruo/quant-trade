@@ -72,6 +72,23 @@ class WarehouseQuery:
             return None
         return str(base / pattern)
 
+    def dataset_bounds(
+        self, dataset: str, column: str = "dt", *, partitioned: bool = True
+    ) -> tuple[object, object] | None:
+        """只读元数据聚合，不把整张大表搬进 Python。"""
+        table_schema = schema.ALL.get(dataset)
+        if table_schema is None or column not in table_schema.names:
+            raise ValueError(f"unknown dataset column: {dataset}.{column}")
+        glob = self._glob(dataset, partitioned)
+        if glob is None:
+            return None
+        row = self._con.execute(
+            f"SELECT min({column}), max({column}) FROM {_read(glob)}"
+        ).fetchone()
+        if row is None or row[0] is None:
+            return None
+        return row[0], row[1]
+
     def _dated_query(
         self,
         dataset: str,

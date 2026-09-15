@@ -109,3 +109,24 @@ def test_single_point_curve_is_all_zeros():
 def test_empty_curve_does_not_crash():
     m = compute_metrics(equity([]))
     assert m.total_return == 0.0
+
+
+def test_benchmark_metrics_identify_a_strategy_that_matches_the_index():
+    values = [100.0, 101.0, 100.5, 103.0]
+    m = compute_metrics(equity(values), benchmark_values=values)
+    assert m.benchmark_return == pytest.approx(m.total_return)
+    assert m.excess_return == pytest.approx(0.0)
+    assert m.beta == pytest.approx(1.0)
+    assert m.tracking_error == pytest.approx(0.0)
+
+
+def test_calmar_and_fees_are_included_in_research_metrics():
+    from datetime import datetime
+    from qsys.core.trading import Fill, Side
+    from qsys.core.types import Market, Symbol
+
+    symbol = Symbol("600036", Market.SH)
+    fills = (Fill("a", symbol, Side.BUY, 100, 10.0, 5.0, datetime(2024, 1, 2)),)
+    m = compute_metrics(equity([100.0, 120.0, 110.0]), fills)
+    assert m.calmar != 0.0
+    assert m.fees == 5.0

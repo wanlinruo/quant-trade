@@ -19,3 +19,4 @@ class WebConfig:
     heartbeat_max_age: float = 90.0
     account_key: str = "state:account"
     heartbeat_prefix: str = "state:heartbeat"
+    backtest_timeout_seconds: int = 21_600

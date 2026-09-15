@@ -136,7 +136,8 @@ def test_the_run_directory_holds_the_joinquant_file_set(tmp_path):
 
 def test_our_own_extras_are_written_too(tmp_path):
     names = {p.name for p in _write(tmp_path).glob("*")}
-    assert {"fills.csv", "rejects.csv", "metrics.csv", "config.json"} <= names
+    assert {"fills.csv", "rejects.csv", "orders.csv", "daily_positions.csv",
+            "monthly_returns.csv", "run.log", "metrics.csv", "config.json"} <= names
 
 
 def test_nav_uses_the_joinquant_column_names(tmp_path):

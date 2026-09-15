@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card"><h2>回测任务 {{ job.id }}</h2>
+  <div class="kpis"><div class="kpi"><div class="label">状态</div><div class="value">{{ job.status }}</div></div><div class="kpi"><div class="label">进度</div><div class="value">{{ job.percent }}%</div></div><div class="kpi"><div class="label">当前日期</div><div class="value">{{ job.current_session or '—' }}</div></div></div>
+  <div class="progress"><span style="width:{{ job.percent }}%"></span></div>
+  <p class="muted">{{ job.strategy_name }} · {{ job.config.start }} ~ {{ job.config.end }} · 版本 <code>{{ job.version_id }}</code></p>
+  {% if job.error %}<p class="error">{{ job.error }}</p>{% endif %}
+  {% if job.status in ('queued','running') %}<button onclick="cancelJob()" class="secondary">取消任务</button>{% endif %}
+</div>
+{% if job_log %}<div class="card"><h2>运行日志</h2><pre>{{ job_log }}</pre></div>{% endif %}
+<script>
+async function cancelJob(){const r=await fetch('/api/backtests/{{ job.id }}/cancel',{method:'POST'});if(r.ok)location.reload();else alert((await r.json()).detail)}
+{% if job.status in ('queued','running') %}setTimeout(()=>location.reload(),2000);{% endif %}
+</script>
+{% endblock %}

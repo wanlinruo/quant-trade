@@ -38,6 +38,22 @@ def create(deps):
 `deps` 带 `feed` / `market` / `query` / `calendar` / `params`。
 这些是**构造期**依赖；运行期一律走 `ctx`，PIT 由框架强制。
 
+### 工作台参数表（可选）
+
+网页工作台可从模块级字典生成类型化表单；它由 AST 静态读取，保存草稿时
+不会执行策略代码：
+
+```python
+PARAMETERS = {
+    "window": {"type": "int", "default": 20, "min": 2, "max": 250,
+               "label": "均线窗口", "description": "移动平均周期"},
+    "mode": {"type": "str", "default": "fast", "choices": ["fast", "slow"]},
+}
+```
+
+类型支持 `int`、`float`、`bool`、`str`。声明参数表后，未知参数与越界值会在
+入队前拒绝；不声明则保持 `--param K=V` 的自由键值兼容行为。
+
 ## 二、生命周期钩子
 
 按一个交易日内的发生顺序：
@@ -151,7 +167,23 @@ fills.csv  rejects.csv  metrics.csv  config.json      <- 这几个聚宽没有
 浏览器里在 `/backtests` 可以列出、看净值曲线、逐个下载。
 两个运行目录之间的对账用 `scripts/reconcile.py`。
 
-## 六、几条容易踩的
+## 六、网页回测工作台
+
+监控台启动时会同时启用个人策略工作台：
+
+```bash
+uv run python scripts/run_monitor.py \
+    --warehouse warehouse --runs var/runs --workspace var/workbench
+```
+
+打开 `/strategies` 可新建策略或把 `strategies/*.py` 导入为托管副本。保存只更新
+草稿；点击“保存并运行”才会以源码哈希固化不可变版本并进入单任务后台队列。
+任务页展示交易日进度、日志、失败原因与取消按钮，成功后自动切换为研究报告。
+
+工作台默认仍只监听 `127.0.0.1`，定位是个人私网中的可信代码执行环境。策略
+在独立子进程运行并有超时和取消保护，但它不是面向不可信用户的安全沙箱。
+
+## 七、几条容易踩的
 
 - **逐只取数**：`ctx.data.get([一只])` 放在循环里，回测慢几百倍。批量取。
 - **在 `on_bar` 里用当日 `open` 下单**：可以，但那单是**次日**开盘成交。

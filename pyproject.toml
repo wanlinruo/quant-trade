@@ -44,4 +44,4 @@ testpaths = ["tests"]
 addopts = "-q"
 # 让测试始终跑本 checkout 的 src，不依赖 .venv 里 editable 安装指向哪个副本。
 # 多 checkout / worktree 下这是正确性要求，不是便利设置。
-pythonpath = ["src"]
+pythonpath = [".", "src"]

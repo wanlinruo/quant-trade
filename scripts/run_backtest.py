@@ -23,63 +23,15 @@ import time as _time
 from datetime import date, datetime
 from pathlib import Path
 
-import polars as pl
-
 from qsys.backtest.artifacts import write_run
-from qsys.backtest.corporate import CorporateAction
 from qsys.backtest.engine import BacktestEngine
-from qsys.backtest.fees import AShareFeeModel
 from qsys.backtest.metrics import compute_metrics
-from qsys.backtest.slippage import FixedRateSlippage
+from qsys.backtest.runner import corporate_actions, cost_model
 from qsys.core.types import Symbol
 from qsys.markets.ashare import ashare_pipeline
 from qsys.strategy.deps import build_deps, intraday_quotes
 from qsys.strategy.loader import load_strategy
-
-
-def cost_model(jq_compat: bool):
-    """成本口径。对账时切成聚宽默认值，日常用我们自己的实盘档位。
-
-    实测依据见 `docs/reference/joinquant-alignment.md`：聚宽 86 笔 lot 的
-    `成交价 / 开盘价` 中位数 0.001241，正是 `PriceRelatedSlippage(0.00246)`
-    的单边值。
-    """
-    if jq_compat:
-        return (
-            AShareFeeModel(commission_rate=0.0003, min_commission=5.0,
-                           stamp_duty_rate=0.001, transfer_fee_rate=0.0),
-            FixedRateSlippage(0.00123),
-            "聚宽默认（滑点 0.123% / 印花税 0.1% / 无过户费）",
-        )
-    return (
-        AShareFeeModel(),
-        FixedRateSlippage(0.0005),
-        "qsys 实盘档位（滑点 0.05% / 印花税 0.05% / 含过户费）",
-    )
-
-
-def corporate_actions(query, start: date, end: date):
-    """持仓期间遇到除权，价格会掉，不处理就被当成亏损。"""
-    actions: dict[date, list[CorporateAction]] = {}
-    frame = query.corporate_actions()
-    if frame.height == 0:
-        return actions
-    rows = frame.filter(
-        (pl.col("ex_date") >= start) & (pl.col("ex_date") <= end)
-        & ((pl.col("cash_per_share") > 0) | (pl.col("stock_per_share") > 0))
-    )
-    for row in rows.iter_rows(named=True):
-        actions.setdefault(row["ex_date"], []).append(
-            CorporateAction(
-                symbol=Symbol.parse(row["symbol"]),
-                ex_date=row["ex_date"],
-                cash_per_share=row["cash_per_share"] or 0.0,
-                stock_per_share=row["stock_per_share"] or 0.0,
-            )
-        )
-    return actions
-
-
+from qsys.strategy.parameters import parameter_specs_from_file, validate_parameters
 def main() -> int:
     parser = argparse.ArgumentParser(description="通用回测运行器")
     parser.add_argument("--strategy", required=True, help="策略 .py 的路径")
@@ -98,16 +50,18 @@ def main() -> int:
     args = parser.parse_args()
 
     start, end = date.fromisoformat(args.start), date.fromisoformat(args.end)
-    params: dict[str, str] = {}
+    raw_params: dict[str, str] = {}
     for item in args.param:
         key, _, value = item.partition("=")
-        params[key.strip()] = value.strip()
+        raw_params[key.strip()] = value.strip()
+    strategy_path = Path(args.strategy)
+    params = validate_parameters(parameter_specs_from_file(strategy_path), raw_params)
 
     deps, query, calendar, sessions, universe, boards = build_deps(
         Path(args.warehouse), params
     )
     strategy = load_strategy(
-        Path(args.strategy), deps, name=args.strategy_name
+        strategy_path, deps, name=args.strategy_name
     )
     fees, slippage, cost_label = cost_model(args.jq_compat)
     actions = corporate_actions(query, start, end)

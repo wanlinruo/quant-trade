@@ -1,6 +1,6 @@
-"""只读监控台。
+"""监控台与可选的个人回测工作台。
 
-一期 Web 只读：不提供任何写接口（启停策略、改参数属四期）。
+未启用工作台时监控台仍严格只读；写接口只随显式传入的 WorkbenchStore 注册。
 Web 层不持有业务逻辑——数据全部来自 MonitorService。
 
 页面零外部依赖：内联 CSS、服务端渲染 SVG、约 20 行原生 JS。
@@ -26,8 +26,10 @@ from qsys.web.backtest_views import BacktestService
 from qsys.web.catalog_views import CatalogService, Status
 from qsys.web.config import WebConfig
 from qsys.web.data_views import DataService
-from qsys.web.svg import line_chart
+from qsys.web.svg import line_chart, multi_line_chart
 from qsys.web.views import MonitorService
+from qsys.web.workbench import BacktestQueue, WorkbenchStore
+from qsys.strategy.parameters import validate_parameters
 
 log = structlog.get_logger(__name__)
 
@@ -40,8 +42,20 @@ def create_app(
     data: DataService | None = None,
     backtests: BacktestService | None = None,
     catalog: CatalogService | None = None,
+    workbench: WorkbenchStore | None = None,
+    queue: BacktestQueue | None = None,
+    strategy_templates: Path | None = None,
 ) -> FastAPI:
     app = FastAPI(title=config.title, docs_url=None, redoc_url=None)
+
+    if queue is not None:
+        @app.on_event("startup")
+        def _start_queue():
+            queue.start()
+
+        @app.on_event("shutdown")
+        def _stop_queue():
+            queue.stop()
 
     def _require_session(session: date) -> None:
         if not service.has_session(session):
@@ -191,17 +205,130 @@ def create_app(
             context={
                 "title": config.title, "session": None, "page": "backtests",
                 "runs": backtests.runs(),
+                "jobs": workbench.jobs() if workbench else [],
             },
         )
+
+    @app.get("/strategies", response_class=HTMLResponse)
+    def strategy_index(request: Request):
+        if workbench is None:
+            raise HTTPException(status_code=404, detail="workbench not enabled")
+        templates = []
+        if strategy_templates and strategy_templates.is_dir():
+            templates = sorted(p.name for p in strategy_templates.glob("*.py"))
+        return TEMPLATES.TemplateResponse(
+            request=request, name="strategies.html",
+            context={"title": config.title, "session": None, "page": "strategies",
+                     "strategies": workbench.strategies(), "templates": templates},
+        )
+
+    @app.get("/strategies/{ident}", response_class=HTMLResponse)
+    def strategy_editor(request: Request, ident: str):
+        if workbench is None:
+            raise HTTPException(status_code=404, detail="workbench not enabled")
+        strategy = workbench.strategy(ident)
+        if strategy is None:
+            raise HTTPException(status_code=404, detail="no such strategy")
+        return TEMPLATES.TemplateResponse(
+            request=request, name="strategy_editor.html",
+            context={"title": config.title, "session": None, "page": "strategies",
+                     "strategy": strategy, "versions": workbench.versions(ident)},
+        )
+
+    @app.post("/api/strategies", status_code=201)
+    async def create_strategy(request: Request):
+        if workbench is None:
+            raise HTTPException(status_code=404, detail="workbench not enabled")
+        body = await request.json()
+        try:
+            strategy = workbench.create_strategy(str(body.get("name", "")),
+                                                  str(body.get("source", "")))
+        except (ValueError, SyntaxError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {"id": strategy.id, "location": f"/strategies/{strategy.id}"}
+
+    @app.put("/api/strategies/{ident}")
+    async def save_strategy(ident: str, request: Request):
+        if workbench is None:
+            raise HTTPException(status_code=404, detail="workbench not enabled")
+        body = await request.json()
+        try:
+            strategy = workbench.save_strategy(ident, str(body.get("name", "")),
+                                                str(body.get("source", "")))
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except (ValueError, SyntaxError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {"id": strategy.id, "updated_at": strategy.updated_at}
+
+    @app.post("/api/strategies/import", status_code=201)
+    async def import_strategy(request: Request):
+        if workbench is None or strategy_templates is None:
+            raise HTTPException(status_code=404, detail="strategy import not enabled")
+        body = await request.json()
+        name = str(body.get("filename", ""))
+        if not name or Path(name).name != name or not name.endswith(".py"):
+            raise HTTPException(status_code=422, detail="invalid strategy filename")
+        root = strategy_templates.resolve()
+        target = (root / name).resolve()
+        if root not in target.parents or not target.is_file():
+            raise HTTPException(status_code=404, detail="no such strategy template")
+        strategy = workbench.import_file(target)
+        return {"id": strategy.id, "location": f"/strategies/{strategy.id}"}
+
+    @app.post("/api/backtests", status_code=201)
+    async def enqueue_backtest(request: Request):
+        if workbench is None:
+            raise HTTPException(status_code=404, detail="workbench not enabled")
+        body = await request.json()
+        strategy = workbench.strategy(str(body.get("strategy_id", "")))
+        if strategy is None:
+            raise HTTPException(status_code=404, detail="no such strategy")
+        try:
+            start, end = date.fromisoformat(str(body["start"])), date.fromisoformat(str(body["end"]))
+            cash = float(body.get("cash", 100_000))
+            if start > end or cash <= 0:
+                raise ValueError("日期区间或初始资金无效")
+            params = validate_parameters(strategy.parameters, body.get("params", {}))
+        except (KeyError, TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        job = workbench.enqueue(strategy.id, {
+            "start": str(start), "end": str(end), "cash": cash,
+            "jq_compat": bool(body.get("jq_compat", False)), "params": params,
+        })
+        return {"id": job.id, "location": f"/backtests/{job.id}"}
+
+    @app.post("/api/backtests/{ident}/cancel")
+    def cancel_backtest(ident: str):
+        if workbench is None:
+            raise HTTPException(status_code=404, detail="workbench not enabled")
+        if not workbench.cancel(ident):
+            raise HTTPException(status_code=409, detail="task cannot be cancelled")
+        return {"status": "cancelled"}
 
     @app.get("/backtests/{name}", response_class=HTMLResponse)
     def backtest_detail(request: Request, name: str):
         if backtests is None:
             raise HTTPException(status_code=404, detail="backtest console not enabled")
+        job = workbench.job(name) if workbench else None
         run = backtests.run(name)
+        if run is None and job is not None:
+            return TEMPLATES.TemplateResponse(
+                request=request, name="backtest_job.html",
+                context={"title": config.title, "session": None, "page": "backtests",
+                         "job": job, "job_log": workbench.job_log(job.id) if workbench else ""},
+            )
         if run is None:
             raise HTTPException(status_code=404, detail=f"no run named {name}")
         points = backtests.equity_points(name)
+        benchmark_points = backtests.benchmark_points(name)
+        excess_points = []
+        if points and len(points) == len(benchmark_points):
+            initial = points[0][1]
+            excess_points = [initial * strategy_value / benchmark_value
+                             for (_, strategy_value), (_, benchmark_value)
+                             in zip(points, benchmark_points, strict=True)
+                             if benchmark_value]
         return TEMPLATES.TemplateResponse(
             request=request, name="backtest_detail.html",
             context={
@@ -211,7 +338,17 @@ def create_app(
                 "zip_name": f"{run.name}.zip",
                 "metrics": backtests.metrics(name),
                 "branches": backtests.branch_summary(name),
-                "chart": line_chart([v for _, v in points]) if points else "",
+                "chart": multi_line_chart([
+                    ("策略", [v for _, v in points], "#2563eb"),
+                    ("沪深300", [v for _, v in benchmark_points], "#94a3b8"),
+                    ("超额", excess_points, "#16a34a"),
+                ]) if points else "",
+                "drawdown_chart": line_chart(backtests.drawdown_points(name), stroke="#dc2626"),
+                "months": backtests.rows(name, "monthly_returns.csv"),
+                "positions": backtests.rows(name, "daily_positions.csv", limit=100),
+                "fills": backtests.rows(name, "fills.csv", limit=100),
+                "reject_rows": backtests.rows(name, "rejects.csv", limit=100),
+                "run_log": backtests.text(name, "run.log"),
             },
         )
 
@@ -285,4 +422,11 @@ def create_app(
         label = "正常" if view.is_healthy else "异常"
         return f'<span class="pill {css}">{label}</span>'
 
+    if workbench is None:
+        # 保留监控台的历史只读契约：不仅请求返回 404，路由表里也不能出现
+        # 写方法。既有部署未启用工作台时，攻击面与升级前完全相同。
+        app.router.routes[:] = [
+            route for route in app.router.routes
+            if not getattr(route, "path", "").startswith(("/api/strategies", "/api/backtests"))
+        ]
     return app

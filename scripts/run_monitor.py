@@ -1,4 +1,4 @@
-"""监控台启动入口。
+"""监控台与个人回测工作台启动入口。
 
 默认只监听 127.0.0.1 —— 通过 Tailscale / WireGuard 私有网络访问。
 **绝不要绑到 0.0.0.0 并开放安全组**：这个页面能看到你的全部持仓。
@@ -24,6 +24,7 @@ from qsys.web.catalog_views import CatalogService
 from qsys.web.config import WebConfig
 from qsys.web.data_views import DataService
 from qsys.web.views import MonitorService
+from qsys.web.workbench import BacktestQueue, WorkbenchStore
 
 log = structlog.get_logger("monitor")
 
@@ -34,6 +35,7 @@ def build_app(
     config_path: str | None,
     selection_path: Path | None = None,
     runs_dir: Path | None = None,
+    workspace_dir: Path | None = None,
 ):
     warehouse = Warehouse(warehouse_root)
     journal = SessionJournal(warehouse)
@@ -48,17 +50,23 @@ def build_app(
         # Redis 不可用时监控台仍应能打开——历史数据来自仓库，不依赖 Redis
         log.warning("monitor.redis_unavailable", error=str(exc))
 
+    runs_root = runs_dir or Path("var/runs")
+    workspace = workspace_dir or Path("var/workbench")
+    workbench = WorkbenchStore(workspace / "workbench.sqlite3")
+    queue = BacktestQueue(workbench, warehouse_root, runs_root,
+                          timeout_seconds=config.backtest_timeout_seconds)
     return create_app(
         MonitorService(journal, config=config, transport=transport),
         config,
         DataService(warehouse, selection_path),
-        BacktestService(runs_dir or Path("var/runs")),
+        BacktestService(runs_root),
         CatalogService(warehouse),
+        workbench, queue, Path("strategies"),
     )
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="只读监控台")
+    parser = argparse.ArgumentParser(description="量化监控与回测工作台")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--warehouse", default="warehouse")
@@ -67,6 +75,8 @@ def main() -> int:
         "--selection", default="var/selection_loose.csv",
         help="run_selection.py 产出的选股结果，数据台用它渲染",
     )
+    parser.add_argument("--workspace", default="var/workbench",
+                        help="策略草稿、不可变版本与任务数据库")
     parser.add_argument(
         "--runs", default="var/runs",
         help="回测运行的落盘根目录，回测页用它列出与下载",
@@ -81,7 +91,7 @@ def main() -> int:
 
     config = WebConfig(host=args.host, port=args.port)
     app = build_app(Path(args.warehouse), config, args.config,
-                    Path(args.selection), Path(args.runs))
+                    Path(args.selection), Path(args.runs), Path(args.workspace))
     log.info("monitor.started", host=args.host, port=args.port)
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
     return 0

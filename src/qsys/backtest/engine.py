@@ -22,6 +22,7 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, time
+from typing import Callable
 
 import polars as pl
 import structlog
@@ -52,6 +53,13 @@ class BacktestResult:
     # 策略在 ctx.state 里攒下的东西。落盘要用它还原每笔买入的分支标签——
     # Fill 本身不带标签，那是策略层的概念。
     state: Mapping[str, object] = field(default_factory=dict)
+    orders: tuple[Order, ...] = ()
+    positions: pl.DataFrame = field(default_factory=lambda: pl.DataFrame(schema={
+        "dt": pl.Date, "symbol": pl.Utf8, "qty": pl.Int64,
+        "available_qty": pl.Int64, "avg_cost": pl.Float64,
+        "close": pl.Float64, "market_value": pl.Float64,
+        "weight": pl.Float64, "unrealized_pnl": pl.Float64,
+    }))
 
     @property
     def final_value(self) -> float:
@@ -80,6 +88,8 @@ class BacktestEngine:
         auction_at: time | None = None,
         intraday: object | None = None,
         market: object | None = None,
+        progress: Callable[[int, int, date], None] | None = None,
+        schedule_validator: Callable[[tuple[time, ...], time | None], None] | None = None,
     ) -> None:
         self._strategy = strategy
         self._feed = feed
@@ -101,6 +111,8 @@ class BacktestEngine:
         # intraday(session, at, symbols) -> {symbol: (price, 截至该时刻的成交量)}
         self._intraday = intraday
         self._market = market
+        self._progress = progress
+        self._schedule_validator = schedule_validator
 
     def _run_id(self, start: date, end: date) -> str:
         payload = json.dumps(
@@ -196,7 +208,9 @@ class BacktestEngine:
 
         all_fills: list[Fill] = []
         all_rejects: list[Reject] = []
+        all_orders: list[Order] = []
         equity_rows: list[dict[str, object]] = []
+        position_rows: list[dict[str, object]] = []
         last_close: dict[Symbol, float] = {}
         prev_closes: dict[Symbol, float] = {}
         order_seq = 0
@@ -212,8 +226,10 @@ class BacktestEngine:
             nonlocal order_seq
             for intent in api.drain():
                 order_seq += 1
-                broker.submit(Order(f"o{order_seq}", intent.symbol, intent.side,
-                                    intent.qty, intent.order_type, intent.limit_price, at))
+                order = Order(f"o{order_seq}", intent.symbol, intent.side,
+                              intent.qty, intent.order_type, intent.limit_price, at)
+                all_orders.append(order)
+                broker.submit(order)
 
         def match_at_open(at: datetime) -> None:
             session = at.date()
@@ -244,6 +260,9 @@ class BacktestEngine:
             # 换了调度就是另一次运行——这是对的。
             self._checkpoints = clock.checkpoints
             self._auction_at = clock.auction_at
+
+        if self._schedule_validator is not None:
+            self._schedule_validator(clock.checkpoints, clock.auction_at)
 
         for moment, phase in clock.ticks():
             session = moment.date()
@@ -309,7 +328,20 @@ class BacktestEngine:
                     "market_value": to_cents(market),
                     "total_value": to_cents(portfolio.cash + market),
                 })
+                total = portfolio.cash + market
+                for symbol, held in portfolio.positions.items():
+                    close = last_close.get(symbol, 0.0)
+                    value = to_cents(held.total_qty * close)
+                    position_rows.append({
+                        "dt": session, "symbol": str(symbol), "qty": held.total_qty,
+                        "available_qty": held.available_qty, "avg_cost": held.avg_cost,
+                        "close": close, "market_value": value,
+                        "weight": value / total if total else 0.0,
+                        "unrealized_pnl": to_cents((close - held.avg_cost) * held.total_qty),
+                    })
                 prev_closes = dict(last_close)
+                if self._progress is not None:
+                    self._progress(len(equity_rows), len(sessions), session)
 
         equity = pl.DataFrame(
             equity_rows,
@@ -318,5 +350,12 @@ class BacktestEngine:
         )
         log.info("backtest.finished", sessions=len(sessions), fills=len(all_fills),
                  rejects=len(all_rejects))
+        positions = pl.DataFrame(position_rows, schema={
+            "dt": pl.Date, "symbol": pl.Utf8, "qty": pl.Int64,
+            "available_qty": pl.Int64, "avg_cost": pl.Float64,
+            "close": pl.Float64, "market_value": pl.Float64,
+            "weight": pl.Float64, "unrealized_pnl": pl.Float64,
+        })
         return BacktestResult(equity, tuple(all_fills), tuple(all_rejects),
-                              self._run_id(start, end), self._params, state)
+                              self._run_id(start, end), self._params, state,
+                              tuple(all_orders), positions)

@@ -190,6 +190,33 @@ def test_empty_strategy_keeps_initial_cash():
     assert result.fills == ()
 
 
+def test_orders_and_daily_positions_are_retained_for_reports():
+    result = engine(BuyFirstBar()).run(SESSIONS[0], SESSIONS[-1])
+    assert len(result.orders) == 1
+    assert result.orders[0].qty == 1000
+    assert result.positions["symbol"].unique().to_list() == [str(CMB)]
+    assert result.positions["qty"].to_list() == [1000, 1000, 1000]
+
+
+def test_progress_callback_runs_after_each_completed_session():
+    calls = []
+    result = engine(Strategy(), progress=lambda done, total, day: calls.append(
+        (done, total, day))).run(SESSIONS[0], SESSIONS[-1])
+    assert result.equity.height == 4
+    assert calls == [(i + 1, 4, day) for i, day in enumerate(SESSIONS)]
+
+
+def test_declared_intraday_schedule_is_validated_before_sessions_run():
+    class Intraday(Strategy):
+        def on_init(self, ctx):
+            ctx.schedule.checkpoint("11:25")
+
+    seen = []
+    engine(Intraday(), schedule_validator=lambda checkpoints, auction: seen.append(
+        (checkpoints, auction))).run(SESSIONS[0], SESSIONS[-1])
+    assert seen[0][0][0].isoformat() == "11:25:00"
+
+
 def test_run_id_and_equity_are_pinned():
     """把可复现性钉成自动化断言，而不是每次手工核对。
 

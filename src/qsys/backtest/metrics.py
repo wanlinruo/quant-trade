@@ -32,6 +32,15 @@ class Metrics:
     n_trades: int = 0
     win_rate: float = 0.0
     turnover: float = 0.0
+    calmar: float = 0.0
+    profit_loss_ratio: float = 0.0
+    fees: float = 0.0
+    benchmark_return: float = 0.0
+    excess_return: float = 0.0
+    alpha: float = 0.0
+    beta: float = 0.0
+    tracking_error: float = 0.0
+    information_ratio: float = 0.0
 
 
 def _drawdown(values: Sequence[float]) -> tuple[float, int]:
@@ -50,13 +59,15 @@ def _drawdown(values: Sequence[float]) -> tuple[float, int]:
     return worst, longest
 
 
-def _trade_stats(fills: Sequence[Fill]) -> tuple[int, float, float]:
+def _trade_stats(fills: Sequence[Fill]) -> tuple[int, float, float, float, float]:
     """按先进先出配对买卖，统计笔数、胜率与换手额。"""
     if not fills:
-        return 0, 0.0, 0.0
+        return 0, 0.0, 0.0, 0.0, 0.0
 
     lots: dict[object, list[tuple[int, float]]] = {}
     wins = closed = 0
+    gains: list[float] = []
+    losses: list[float] = []
     turnover = 0.0
 
     for fill in fills:
@@ -72,6 +83,9 @@ def _trade_stats(fills: Sequence[Fill]) -> tuple[int, float, float]:
             closed += 1
             if fill.price > cost:
                 wins += 1
+                gains.append(fill.price / cost - 1.0)
+            elif fill.price < cost:
+                losses.append(1.0 - fill.price / cost)
             remaining -= matched
             if matched == qty:
                 queue.pop(0)
@@ -79,7 +93,8 @@ def _trade_stats(fills: Sequence[Fill]) -> tuple[int, float, float]:
                 queue[0] = (qty - matched, cost)
 
     win_rate = wins / closed if closed else 0.0
-    return len(fills), win_rate, turnover
+    ratio = ((sum(gains) / len(gains)) / (sum(losses) / len(losses))) if gains and losses else 0.0
+    return len(fills), win_rate, turnover, ratio, sum(f.fee for f in fills)
 
 
 def compute_metrics(
@@ -88,15 +103,18 @@ def compute_metrics(
     *,
     periods_per_year: int = _TRADING_DAYS,
     risk_free_rate: float = 0.0,
+    benchmark_values: Sequence[float] = (),
 ) -> Metrics:
-    n_trades, win_rate, turnover = _trade_stats(list(fills))
+    n_trades, win_rate, turnover, pnl_ratio, fees = _trade_stats(list(fills))
 
     if equity.height < 2:
-        return Metrics(n_trades=n_trades, win_rate=win_rate, turnover=turnover)
+        return Metrics(n_trades=n_trades, win_rate=win_rate, turnover=turnover,
+                       profit_loss_ratio=pnl_ratio, fees=fees)
 
     values = equity["total_value"].to_list()
     if values[0] <= 0:
-        return Metrics(n_trades=n_trades, win_rate=win_rate, turnover=turnover)
+        return Metrics(n_trades=n_trades, win_rate=win_rate, turnover=turnover,
+                       profit_loss_ratio=pnl_ratio, fees=fees)
 
     total_return = values[-1] / values[0] - 1.0
     periods = len(values) - 1
@@ -118,6 +136,26 @@ def compute_metrics(
 
     max_dd, dd_days = _drawdown(values)
 
+    benchmark_return = excess_return = alpha = beta = tracking_error = info = 0.0
+    if len(benchmark_values) == len(values) and len(values) >= 2 and benchmark_values[0] > 0:
+        benchmark_return = benchmark_values[-1] / benchmark_values[0] - 1.0
+        excess_return = total_return - benchmark_return
+        br = [benchmark_values[i] / benchmark_values[i - 1] - 1.0
+              for i in range(1, len(benchmark_values)) if benchmark_values[i - 1] > 0]
+        if len(br) == len(returns) and returns:
+            mean_r, mean_b = sum(returns) / len(returns), sum(br) / len(br)
+            var_b = sum((x - mean_b) ** 2 for x in br) / max(len(br) - 1, 1)
+            covariance = sum((x - mean_r) * (y - mean_b)
+                             for x, y in zip(returns, br, strict=True)) / max(len(br) - 1, 1)
+            beta = covariance / var_b if var_b > _MIN_VOLATILITY ** 2 else 0.0
+            alpha = (mean_r * periods_per_year - risk_free_rate) - beta * (
+                mean_b * periods_per_year - risk_free_rate)
+            active = [x - y for x, y in zip(returns, br, strict=True)]
+            active_mean = sum(active) / len(active)
+            active_var = sum((x - active_mean) ** 2 for x in active) / max(len(active) - 1, 1)
+            tracking_error = math.sqrt(active_var) * math.sqrt(periods_per_year)
+            info = active_mean * periods_per_year / tracking_error if tracking_error > _MIN_VOLATILITY else 0.0
+
     return Metrics(
         total_return=total_return,
         annualized_return=annualized,
@@ -128,4 +166,13 @@ def compute_metrics(
         n_trades=n_trades,
         win_rate=win_rate,
         turnover=turnover,
+        calmar=annualized / max_dd if max_dd > 0 else 0.0,
+        profit_loss_ratio=pnl_ratio,
+        fees=fees,
+        benchmark_return=benchmark_return,
+        excess_return=excess_return,
+        alpha=alpha,
+        beta=beta,
+        tracking_error=tracking_error,
+        information_ratio=info,
     )

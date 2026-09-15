@@ -13,6 +13,14 @@ from qsys.strategy.structural.selection import StructuralSelection
 from qsys.strategy.structural.strategy import StructuralStrategy
 
 
+PARAMETERS = {
+    "require_auction_volume": {
+        "type": "bool", "default": True, "label": "要求竞价成交量",
+        "description": "缺少竞价量时是否拒绝候选标的",
+    }
+}
+
+
 def create(deps):
     """`--strategy` 装载时调用。调度由策略自己在 on_init 里声明。"""
     require_auction_volume = (deps.params or {}).get("require_auction_volume", True)

@@ -16,6 +16,13 @@
   <h2>净值</h2>
   {{ chart|safe }}
 </div>
+<div class="card"><h2>回撤</h2>{{ drawdown_chart|safe }}</div>
+{% endif %}
+
+{% if months %}
+<div class="card"><h2>月度收益</h2><table><tr><th>月份</th><th class="num">收益</th></tr>
+{% for row in months %}<tr><td>{{ row.month }}</td><td class="num {{ 'up' if row['return'] > 0 else 'down' }}">{{ "%+.2f"|format(row['return'] * 100) }}%</td></tr>{% endfor %}
+</table></div>
 {% endif %}
 
 <div class="card">
@@ -38,7 +45,7 @@
   <table>
     <tr><th>指标</th><th class="num">值</th></tr>
     {% for name, value in metrics %}
-    <tr><td>{{ name }}</td><td class="num">{{ "%.6g"|format(value) }}</td></tr>
+    <tr><td>{{ {'total_return':'总收益','annualized_return':'年化收益','volatility':'年化波动率','sharpe':'夏普比率','max_drawdown':'最大回撤','max_drawdown_days':'最大回撤天数','n_trades':'成交笔数','win_rate':'胜率','calmar':'Calmar','profit_loss_ratio':'盈亏比','fees':'总费用','benchmark_return':'基准收益','excess_return':'超额收益','alpha':'Alpha','beta':'Beta','tracking_error':'跟踪误差','information_ratio':'信息比率','turnover_rate':'换手率'}.get(name, name) }}</td><td class="num">{{ "%.6g"|format(value) }}</td></tr>
     {% endfor %}
   </table>
 </div>
@@ -63,4 +70,25 @@
   </table>
 </div>
 {% endif %}
+
+{% if positions %}
+<div class="card"><h2>最近持仓（最多 100 行）</h2><table>
+<tr><th>日期</th><th>标的</th><th class="num">数量</th><th class="num">收盘</th><th class="num">市值</th><th class="num">权重</th><th class="num">浮盈亏</th></tr>
+{% for p in positions %}<tr><td>{{ p.date }}</td><td>{{ p.symbol }}</td><td class="num">{{ p.qty }}</td><td class="num">{{ "%.2f"|format(p.close) }}</td><td class="num">{{ "{:,.0f}".format(p.market_value) }}</td><td class="num">{{ "%.1f"|format(p.weight*100) }}%</td><td class="num">{{ "{:,.0f}".format(p.unrealized_pnl) }}</td></tr>{% endfor %}
+</table></div>
+{% endif %}
+
+{% if fills %}
+<div class="card"><h2>最近成交（最多 100 行）</h2><table>
+<tr><th>时间</th><th>标的</th><th>方向</th><th class="num">数量</th><th class="num">价格</th><th class="num">费用</th></tr>
+{% for f in fills %}<tr><td>{{ f.filled_at }}</td><td>{{ f.symbol }}</td><td>{{ f.side }}</td><td class="num">{{ f.qty }}</td><td class="num">{{ f.price }}</td><td class="num">{{ f.fee }}</td></tr>{% endfor %}
+</table></div>
+{% endif %}
+
+{% if reject_rows %}
+<div class="card"><h2>拒单</h2><table><tr><th>时间</th><th>标的</th><th>方向</th><th>原因</th></tr>
+{% for r in reject_rows %}<tr><td>{{ r.at }}</td><td>{{ r.symbol }}</td><td>{{ r.side }}</td><td>{{ r.reason }}</td></tr>{% endfor %}</table></div>
+{% endif %}
+
+{% if run_log %}<div class="card"><h2>运行日志</h2><pre>{{ run_log }}</pre></div>{% endif %}
 {% endblock %}

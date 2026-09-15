@@ -21,13 +21,15 @@ import structlog
 log = structlog.get_logger(__name__)
 
 # 允许下载的扩展名。别的一律不给——runs 目录将来可能混进日志之类。
-_DOWNLOADABLE = {".csv", ".json", ".txt", ".zip"}
+_DOWNLOADABLE = {".csv", ".json", ".txt", ".zip", ".py", ".log"}
 
 _MEDIA = {
     ".csv": "text/csv; charset=utf-8",
     ".json": "application/json; charset=utf-8",
     ".txt": "text/plain; charset=utf-8",
     ".zip": "application/zip",
+    ".py": "text/x-python; charset=utf-8",
+    ".log": "text/plain; charset=utf-8",
 }
 
 
@@ -115,6 +117,16 @@ class BacktestService:
         frame = self._read(name, "branch_summary.csv")
         return [] if frame is None else frame.to_dicts()
 
+    def rows(self, name: str, filename: str, *, limit: int = 500) -> list[dict]:
+        frame = self._read(name, filename)
+        return [] if frame is None else frame.tail(limit).to_dicts()
+
+    def text(self, name: str, filename: str, *, limit: int = 100_000) -> str:
+        found = self.file_bytes(name, filename)
+        if found is None:
+            return ""
+        return found[0][-limit:].decode("utf-8", errors="replace")
+
     def equity_points(self, name: str) -> list[tuple[str, float]]:
         """净值曲线，给 SVG 图用。"""
         frame = self._read(name, "daily_nav.csv")
@@ -126,6 +138,25 @@ class BacktestService:
                 [float(v) for v in frame["total_value"].to_list()],
             )
         )
+
+    def benchmark_points(self, name: str) -> list[tuple[str, float]]:
+        frame = self._read(name, "benchmark_nav.csv")
+        if frame is None or frame.height == 0:
+            return []
+        return list(zip([str(d) for d in frame["date"].to_list()],
+                        [float(v) for v in frame["total_value"].to_list()]))
+
+    def drawdown_points(self, name: str) -> list[float]:
+        frame = self._read(name, "daily_nav.csv")
+        if frame is None or frame.height == 0:
+            return []
+        values = [float(v) for v in frame["total_value"].to_list()]
+        peak = values[0]
+        out = []
+        for value in values:
+            peak = max(peak, value)
+            out.append(value / peak - 1.0 if peak else 0.0)
+        return out
 
     def file_bytes(self, name: str, filename: str) -> tuple[bytes, str] | None:
         """返回 (内容, media type)。越界或类型不允许一律返回 None。"""
