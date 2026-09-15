@@ -46,7 +46,8 @@ Tushare 直连去掉了全部人工环节。
 | 数据集 | 真值源 | 说明 |
 |---|---|---|
 | `tushare_daily` | Tushare `daily` + `daily_basic` + `adj_factor` | 28 列，1990 起 18,224,238 行 |
-| `daily_flags` | 派生自 `tushare_daily` | ST、涨跌停、首板 |
+| `stock_st_daily` | Tushare `stock_st` | 2023 起完整股票日布尔真值 |
+| `daily_flags` | 派生自 Tushare 直取事实 | ST 优先 `stock_st_daily`，涨跌停价优先 `price_limits_daily` |
 | `adj_factors.cum_factor` | **直取** `factor` | 价格反推降级为校验，不得覆盖真值 |
 | `price_limits_daily` | Tushare `stk_limit` | |
 | `suspend_daily` | Tushare `suspend_d` | |
@@ -55,11 +56,11 @@ Tushare 直连去掉了全部人工环节。
 | `name_history` | Tushare `namechange` | 区间表，**有 2006 断层** |
 | `name_snapshots` | Tushare `stock_basic` 每日快照 | 点观测，2026-09-14 起累积 |
 | `limit_list_daily` | Tushare `limit_list_d` | 首板/炸板直取 |
-| `paid_daily` | 百度网盘付费源 | **只读冻结，但不能删**——见下 |
+| `paid_daily` | 百度网盘付费源 | `stock_st` 全量验收前冻结；验收后可按闸门删除 |
 | `bars_daily` | mootdx（已死）| 冻结，入口 `legacy_daily_bars()` |
 | `auction_ticks` | QMT 实时 | **买不到，只能每天自采** |
 
-### `paid_daily` 为什么不能删
+### `paid_daily` 的清理前置条件（2026-09-15 更新）
 
 `daily_flags.is_st` 由名称派生，名称按四级优先级解析（`flags.resolve_names`），
 四个候选**都是直取字段**：
@@ -70,8 +71,12 @@ Tushare 直连去掉了全部人工环节。
 4. `namechange` 区间——公告事件，**2006 断层**
 
 `name_snapshots` 只能向后累积、补不了历史；`namechange` 在 2006-10-08 之后
-大量标的没有后继区间。所以 **2026-09-11 及之前的名称真值只有 `paid_daily`
-一个源**。删了它，867 个首板会重新消失。详见 D-10。
+大量标的没有后继区间。原结论是 **2026-09-11 及之前的名称真值只有
+`paid_daily` 一个源**，直接删除会让 867 个首板重新消失。
+
+现在 5000 积分账户可使用 `stock_st` 每日历史真值，已新增 `stock_st_daily`
+完整布尔表。只有 2023 至今全键覆盖、重建与差异验收通过后才允许删除；操作步骤与
+日志格式见 `docs/reference/tushare-direct-truth-refresh.md`。
 
 ---
 

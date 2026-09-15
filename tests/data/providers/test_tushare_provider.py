@@ -73,10 +73,13 @@ def test_reference_daily_interfaces_use_compact_dates():
     provider = TushareProvider(client)
     provider.stk_limit(day)
     provider.suspend_d(day)
+    provider.stock_st(day)
     provider.limit_list_d(day, "U")
     assert client.calls == [
         ("stk_limit", {"trade_date": "20260911"}, ""),
         ("suspend_d", {"trade_date": "20260911"}, ""),
+        ("stock_st", {"trade_date": "20260911"},
+         "ts_code,name,trade_date,type,type_name"),
         ("limit_list_d", {"trade_date": "20260911", "limit_type": "U"}, ""),
     ]
 

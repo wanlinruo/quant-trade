@@ -10,8 +10,8 @@
 **全表用 polars 表达式算，不逐行 iter_rows**：全市场 4 年约 500 万行，
 每行造一个 dict 会占几个 GB。
 
-**ST 是真值，不是推断**（2026-09-12 起）：`is_st` 由 Tushare `namechange`
-名称区间按股票日展开。此前的三条价格启发式（贴 5% 板 + 回看确认 +
+**ST 是真值，不是推断**：优先使用 Tushare `stock_st` 的完整每日布尔表；
+迁移期仅在该窗口尚未完整回填时使用旧名称链路。此前的三条价格启发式（贴 5% 板 + 回看确认 +
 制度硬否决）已整段删除——它的近窗一致率只有 93.8%，误差会向下游传播
 并伪装成策略问题。拿不到名称就记 null，**不默认成「不是 ST」**：
 默认 False 会让 ST 股按 10% 档算涨停价，首板判定直接错。
@@ -41,7 +41,13 @@ from qsys.markets.ashare import PRICE_LIMITS, board_of
 log = structlog.get_logger(__name__)
 
 _DEFAULT_LIMIT = 0.10
+# **只在没有直取涨跌停价时用来算价格的兜底档位，不是 limit_pct 的答案。**
+# 2026-07-06 起主板 ST 的上限由 5% 改为 10%（实测：07-03 全市场主板 ST
+# 仍是 5%，07-06 起全部 10%，一刀切无过渡），任何写死「ST 一律 5%」的
+# 规则从那天起就是错的。真实档位只能从直取涨停价解码，见 `_decode_tier`。
 ST_LIMIT = 0.05
+# 已知的日涨跌幅档位，用于从涨停价反解实际生效的那一档。
+_KNOWN_TIERS = (0.05, 0.10, 0.20, 0.30)
 # 跨年回看窗口：只为补前收——每年 1 月的第一个交易日需要上一年末的收盘价。
 _LOOKBACK_DAYS = 150
 
@@ -201,6 +207,33 @@ def _limit_expr(cents: pl.Expr, ratio_milli: pl.Expr) -> pl.Expr:
     return (((cents * ratio_milli + 500) // 1000).cast(pl.Float64) / 100.0).round(2)
 
 
+def _decode_tier(cents: pl.Expr, limit_up: pl.Expr) -> pl.Expr:
+    """从直取涨停价反解出当日实际生效的涨跌幅档位。
+
+    涨停价是 `(前收, 档位)` 的量化函数，档位取值稀疏（5/10/20/30%），
+    所以可以逐档试算再比对——**这是可验证的解码，不是猜**：只有精确
+    还原出 `limit_up` 的那一档才算数。
+
+    解不出（无涨跌幅限制的新股首日等）或解出多档（一元以下的低价股上
+    5% 与 10% 会round到同一分）一律记 null。宁可没有，不可编造。
+
+    **不要拿它判 ST。** 2026-07-06 起主板 ST 与普通股同为 10%，档位已经
+    区分不出 ST；ST 只认 `stock_st` 直取名单。
+    """
+    hits = [
+        (tier, _limit_expr(cents, pl.lit(round((1.0 + tier) * 1000))) == limit_up)
+        for tier in _KNOWN_TIERS
+    ]
+    matched = sum(
+        (cond.fill_null(False).cast(pl.Int32) for _, cond in hits),
+        pl.lit(0, dtype=pl.Int32),
+    )
+    decoded = pl.lit(None, dtype=pl.Float64)
+    for tier, cond in reversed(hits):
+        decoded = pl.when(cond.fill_null(False)).then(pl.lit(tier)).otherwise(decoded)
+    return pl.when(matched == 1).then(decoded).otherwise(None)
+
+
 def build_daily_flags(
     warehouse: Warehouse,
     start: date,
@@ -229,18 +262,51 @@ def build_daily_flags(
         if lo > hi:
             continue
 
-        # 取 28 列：name 给 ST 真值，pre_close 给涨跌停基准。
+        # 取 28 列供迁移兼容；ST 和涨跌停优先使用各自的直取事实表。
         bars = query.tushare_daily(None, lo - timedelta(days=_LOOKBACK_DAYS), hi)
         if bars.height == 0:
             continue
         # 付费源只投影三列：全历史 1,800 万行 × 28 列会把节点内存撑爆。
         back = lo - timedelta(days=_LOOKBACK_DAYS)
-        paid_names = query.paid_daily(
-            None, back, hi, columns=["symbol", "dt", "name"],
+        st_truth = query.stock_st(None, back, hi)
+        if st_truth.height:
+            bars = bars.join(
+                st_truth.select(
+                    "symbol", "dt", pl.col("is_st").alias("_direct_is_st")
+                ), on=["symbol", "dt"], how="left",
+            )
+            missing_st = bars["_direct_is_st"].null_count()
+        else:
+            missing_st = bars.height
+
+        if missing_st == 0:
+            bars = bars.with_columns(
+                pl.col("_direct_is_st").alias("is_st"),
+                pl.lit("stock_st").alias("st_source"),
+            ).drop("_direct_is_st")
+        else:
+            if "_direct_is_st" in bars.columns:
+                bars = bars.drop("_direct_is_st")
+            # 迁移兼容：stock_st 全窗口回填并验收后，此分支不再触发，届时
+            # paid_daily 才可物理清理。部分覆盖绝不与旧源逐行混用。
+            paid_names = query.paid_daily(
+                None, back, hi, columns=["symbol", "dt", "name"],
+            )
+            snapshots = query.name_snapshots(None, back, hi)
+            bars = resolve_names(bars, paid_names, name_history, snapshots)
+            _assert_name_coverage(bars)
+            log.warning("daily_flags.stock_st_incomplete", missing_rows=missing_st,
+                        total_rows=bars.height, start=str(back), end=str(hi))
+
+        # 直取涨跌停价优先；尚未回填的历史行保留确定性派生值，便于分段迁移。
+        direct_limits = query.price_limits(None, back, hi).select(
+            "symbol", "dt",
+            pl.col("pre_close").alias("_direct_pre_close"),
+            pl.col("limit_up").alias("_direct_limit_up"),
+            pl.col("limit_down").alias("_direct_limit_down"),
         )
-        snapshots = query.name_snapshots(None, back, hi)
-        bars = resolve_names(bars, paid_names, name_history, snapshots)
-        _assert_name_coverage(bars)
+        if direct_limits.height:
+            bars = bars.join(direct_limits, on=["symbol", "dt"], how="left")
         if boards is not None:
             def _board(s: str) -> str:
                 # 显式判 None，不用 `or`——board 若曾经取值空字符串会被
@@ -304,40 +370,57 @@ def _compute(bars: pl.DataFrame, boards: dict[str, str]) -> pl.DataFrame:
     )
     ratio = board_expr.replace_strict(limits, default=_DEFAULT_LIMIT, return_dtype=pl.Float64)
 
-    # ST 真值：名称含 "ST" 即为 ST（含 *ST）。名称为 null 时 is_st 也为 null,
-    # 不默认成 False——见模块 docstring。
-    is_st = (
-        pl.when(pl.col("name").is_null())
-        .then(None)
-        .otherwise(pl.col("name").str.contains("ST"))
-    )
+    # 完成 stock_st 回填的窗口已有显式布尔真值；迁移期才从名称直取值派生。
+    is_st = (pl.col("is_st") if "is_st" in bars.columns else
+             pl.when(pl.col("name").is_null()).then(None)
+             .otherwise(pl.col("name").str.contains("ST")))
 
     frame = bars.sort(["symbol", "dt"]).with_columns(
         pl.col("close").shift(1).over("symbol").alias("prev_close"),
         # pre_close 直取即除权参考价，非除权日等于前收。
-        pl.col("pre_close").alias("adj_prev_close"),
+        (pl.coalesce("_direct_pre_close", "pre_close")
+         if "_direct_pre_close" in bars.columns else pl.col("pre_close"))
+        .alias("adj_prev_close"),
         ratio.alias("_ratio"),
         is_st.alias("is_st"),
         # 来源随名称走；名称为 null 就没有 ST 真值，来源也为 null——
         # 恒为一个字面量会让 2% 没有名称的行看起来也「有来源」。
-        (pl.col("name_source") if "name_source" in bars.columns
-         else pl.lit(None, dtype=pl.Utf8)).alias("st_source"),
+        (pl.col("st_source") if "st_source" in bars.columns else
+         pl.col("name_source") if "name_source" in bars.columns else
+         pl.lit(None, dtype=pl.Utf8)).alias("st_source"),
     )
 
+    # 兜底档位：**只在没有直取涨跌停价时用来算价格**。它不是 limit_pct
+    # 的答案——见 ST_LIMIT 处关于 2026-07-06 新规的说明。
     frame = frame.with_columns(
         pl.when(pl.col("is_st"))
         .then(pl.lit(ST_LIMIT))
         .otherwise(pl.when(pl.col("is_st").is_null()).then(None).otherwise(pl.col("_ratio")))
-        .alias("limit_pct")
+        .alias("_fallback_pct")
     )
 
     cents = (pl.col("adj_prev_close") * 100).round(0).cast(pl.Int64)
-    up_milli = ((1.0 + pl.col("limit_pct")) * 1000).round(0).cast(pl.Int64)
-    down_milli = ((1.0 - pl.col("limit_pct")) * 1000).round(0).cast(pl.Int64)
+    up_milli = ((1.0 + pl.col("_fallback_pct")) * 1000).round(0).cast(pl.Int64)
+    down_milli = ((1.0 - pl.col("_fallback_pct")) * 1000).round(0).cast(pl.Int64)
 
+    derived_up = _limit_expr(cents, up_milli)
+    derived_down = _limit_expr(cents, down_milli)
+    has_direct = "_direct_limit_up" in frame.columns
     frame = frame.with_columns(
-        _limit_expr(cents, up_milli).alias("limit_up"),
-        _limit_expr(cents, down_milli).alias("limit_down"),
+        (pl.coalesce("_direct_limit_up", derived_up)
+         if has_direct else derived_up).alias("limit_up"),
+        (pl.coalesce("_direct_limit_down", derived_down)
+         if "_direct_limit_down" in frame.columns else derived_down).alias("limit_down"),
+    )
+
+    # limit_pct 是**这一行的 limit_up 实际对应的那一档**，两者恒自洽。
+    # 直取价按解码取档；派生价本就由 _fallback_pct 算出，直接沿用即可，
+    # 走一遍解码反而会在低价股上因档位不可辨而丢掉已知的事实。
+    frame = frame.with_columns(
+        (pl.when(pl.col("_direct_limit_up").is_not_null())
+         .then(_decode_tier(cents, pl.col("limit_up")))
+         .otherwise(pl.col("_fallback_pct"))
+         if has_direct else pl.col("_fallback_pct")).alias("limit_pct")
     )
 
     is_up = (pl.col("close") >= pl.col("limit_up")).fill_null(False)

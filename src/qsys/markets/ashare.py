@@ -37,9 +37,13 @@ def board_of(code: str) -> str:
     return "main"
 
 
-# 日涨跌幅上限。ST 为 5%，不在此表——ST 是股票的状态而非板块属性，
-# 自 2026-09-12 起由 data/pipeline/flags.py 从付费源 name 列直取判定。
-# 本表只登记板块档位。
+# 日涨跌幅上限。本表只登记**板块**档位，且只用于没有直取涨跌停价时的
+# 兜底估算——真实生效的档位由 data/pipeline/flags.py 从 Tushare 直取的
+# 涨停价解码，落在 daily_flags.limit_pct。
+#
+# ST 不在此表：它是股票的状态而非板块属性，由 Tushare `stock_st` 直取。
+# 也**不要**把 ST 当成一个固定档位——2026-07-06 起主板 ST 的上限由 5%
+# 改为 10%，与普通股相同；创业板/科创板 ST 一直是 20%。
 PRICE_LIMITS: dict[str, float] = {
     "main": 0.10,
     "gem": 0.20,

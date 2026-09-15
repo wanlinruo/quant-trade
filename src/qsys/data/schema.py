@@ -143,7 +143,11 @@ DAILY_FLAGS = pa.schema(
         ("touched_limit_up", pa.bool_()),  # 盘中触及涨停（含封住）
         ("is_broken_board", pa.bool_()),  # 炸板：触及但未封住
         ("is_first_board", pa.bool_()),  # 首板：今日涨停且昨日未涨停
-        ("limit_pct", pa.float64()),  # 实际生效的涨跌幅：ST 为 0.05，否则按板块 0.10 / 0.20 / 0.30
+        # 该行 limit_up 实际对应的那一档涨跌幅，由直取涨停价解码得出，
+        # 与同一行的 limit_up 恒自洽；解不出就是 null。
+        # **不能用它判 ST**：2026-07-06 起主板 ST 与普通股同为 0.10，
+        # 而创业板/科创板 ST 一直是 0.20。ST 只认 is_st。
+        ("limit_pct", pa.float64()),
         # ST 真值。由 Tushare namechange 的名称区间按当日展开。
         # 2026-09-12 之前这里是三条价格启发式反推出来的，一致率 93.8%，已删除。
         ("is_st", pa.bool_()),
@@ -321,7 +325,21 @@ SUSPEND_DAILY = pa.schema(
     ]
 )
 
-# limit_list_d 实测自 2020 年起，且不含 ST 股票统计。
+# 每日 ST 真值。Tushare stock_st 返回的是当日 ST 正例列表；落库时与当日
+# tushare_daily 股票全集左连，显式写出 True/False，避免把“接口失败/未回填”
+# 和“当日不是 ST”混为一谈。
+STOCK_ST_DAILY = pa.schema(
+    [
+        ("symbol", pa.string()),
+        ("dt", pa.date32()),
+        ("is_st", pa.bool_()),
+        ("name", pa.string()),
+        ("st_type", pa.string()),
+        ("st_type_name", pa.string()),
+    ]
+)
+
+# limit_list_d 实测自 2020 年起，且不含 ST 股票统计；同步 U 涨停与 Z 炸板。
 LIMIT_LIST_DAILY = pa.schema(
     [
         ("symbol", pa.string()),
@@ -365,6 +383,7 @@ PARTITIONED: dict[str, pa.Schema] = {
     "tushare_daily": TUSHARE_DAILY,
     "price_limits_daily": PRICE_LIMITS_DAILY,
     "suspend_daily": SUSPEND_DAILY,
+    "stock_st_daily": STOCK_ST_DAILY,
     "limit_list_daily": LIMIT_LIST_DAILY,
     "name_snapshots": NAME_SNAPSHOTS,
 }

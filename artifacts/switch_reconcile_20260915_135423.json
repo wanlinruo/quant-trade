@@ -1,0 +1,124 @@
+{
+  "operation": "reconcile_truth_switch",
+  "started_at": "2026-09-15T13:54:23.744724+08:00",
+  "warehouse": "/data/qsys/warehouse",
+  "scratch": "/home/ubuntu/scratch/old_semantics",
+  "old_ref": "96803af",
+  "old_flags_sha256": "cf61788c8fb84071c377b2d47ddcf97cc93bb9b7bde5a2f8c52aee709e7a63d5",
+  "window": {
+    "start": "2023-01-01",
+    "end": "2026-09-14"
+  },
+  "rebuilt": {
+    "daily_flags": 4573249,
+    "market_regime": 897
+  },
+  "flags": {
+    "keys": {
+      "old_rows": 4573249,
+      "new_rows": 4573249,
+      "only_in_old": 0,
+      "only_in_new": 0
+    },
+    "columns": {
+      "prev_close": 0,
+      "adj_prev_close": 0,
+      "limit_up": 41556,
+      "limit_down": 41556,
+      "is_limit_up": 2693,
+      "is_limit_down": 2464,
+      "touched_limit_up": 5867,
+      "is_broken_board": 3438,
+      "is_first_board": 2372,
+      "limit_pct": 4,
+      "is_st": 4
+    },
+    "files": {
+      "switch_st_flips.parquet": {
+        "rows": 4,
+        "sha256": "b289c4f30ec2ab28200ffcc8f4bd81f9098824e973aba0e0fd905575b8654ec4",
+        "bytes": 8358
+      },
+      "switch_first_board_flips.parquet": {
+        "rows": 2372,
+        "sha256": "5026e04b09471611d2b66456c8b1a0c3feda2767cae173d46aa12c4f8c318136",
+        "bytes": 69879
+      },
+      "switch_broken_board_flips.parquet": {
+        "rows": 3438,
+        "sha256": "f5bd4a05abf081ef753b063bbc9eb61c628cbe452f0d5bde4795f4c142cd147b",
+        "bytes": 91137
+      },
+      "switch_limit_price_diffs.parquet": {
+        "rows": 41556,
+        "sha256": "a68c91b4e63ed54ca0294618a25402ed315817d00e60aff0db60cf3ab1b6171f",
+        "bytes": 821446
+      }
+    }
+  },
+  "regime": {
+    "old_rows": 897,
+    "new_rows": 897,
+    "compared_days": 897,
+    "columns": {
+      "limit_up_count": {
+        "rows_differ": 746,
+        "max_abs_diff": 29.0
+      },
+      "limit_down_count": {
+        "rows_differ": 570,
+        "max_abs_diff": 75.0
+      },
+      "limit_up_down_ratio": {
+        "rows_differ": 848,
+        "max_abs_diff": 96.33333333333334
+      },
+      "touched_limit_up_count": {
+        "rows_differ": 869,
+        "max_abs_diff": 48.0
+      },
+      "broken_board_count": {
+        "rows_differ": 780,
+        "max_abs_diff": 28.0
+      },
+      "broken_board_rate": {
+        "rows_differ": 868,
+        "max_abs_diff": 0.16572008113590264
+      },
+      "first_board_count": {
+        "rows_differ": 723,
+        "max_abs_diff": 28.0
+      },
+      "market_advance_ratio": {
+        "rows_differ": 0
+      },
+      "market_median_return_1d": {
+        "rows_differ": 0
+      },
+      "market_total_money": {
+        "rows_differ": 0
+      },
+      "prior_limitup_nextday_return_mean": {
+        "rows_differ": 749,
+        "max_abs_diff": 0.053905012137398386
+      },
+      "prior_limitup_nextday_return_median": {
+        "rows_differ": 655,
+        "max_abs_diff": 0.0365540079435
+      },
+      "valid_stock_count": {
+        "rows_differ": 0
+      },
+      "index_ma20_slope_5d": {
+        "rows_differ": 0
+      }
+    },
+    "file": {
+      "name": "switch_regime_diffs.parquet",
+      "rows": 895,
+      "sha256": "8601c27623dbc51095323f18d3e3e0fafe162f91220dca2873f13b063c38bed4",
+      "bytes": 121068
+    }
+  },
+  "ended_at": "2026-09-15T13:55:35.610908+08:00"
+}

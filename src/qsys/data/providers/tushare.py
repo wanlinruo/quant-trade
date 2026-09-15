@@ -67,6 +67,13 @@ class TushareProvider:
         )
         return pl.DataFrame(rows, infer_schema_length=None) if rows else pl.DataFrame()
 
+    def stock_st(self, trade_date: date) -> pl.DataFrame:
+        rows = self._client.call(
+            "stock_st", {"trade_date": trade_date.strftime("%Y%m%d")},
+            "ts_code,name,trade_date,type,type_name",
+        )
+        return pl.DataFrame(rows, infer_schema_length=None) if rows else pl.DataFrame()
+
     def index_daily(self, ts_code: str, start: date, end: date) -> pl.DataFrame:
         rows = self._client.call(
             "index_daily",

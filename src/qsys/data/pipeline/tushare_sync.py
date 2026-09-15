@@ -51,6 +51,7 @@ def _sync_name_history(provider, warehouse: Warehouse, _days: list[date]) -> int
 _REFERENCE_STEPS: list[tuple[str, Callable[..., int]]] = [
     ("price_limits_daily", reference.ingest_price_limits),
     ("suspend_daily", reference.ingest_suspensions),
+    ("stock_st_daily", reference.ingest_stock_st),
     ("index_bars", _sync_index),
     ("instruments", _sync_instruments),
     ("name_history", _sync_name_history),
@@ -61,6 +62,7 @@ _REFERENCE_STEPS: list[tuple[str, Callable[..., int]]] = [
 _REFERENCE_INGESTS = {
     reference.ingest_price_limits,
     reference.ingest_suspensions,
+    reference.ingest_stock_st,
     reference.ingest_index_daily,
     reference.ingest_instruments,
     reference.ingest_name_history,

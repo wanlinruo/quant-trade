@@ -230,6 +230,15 @@ class WarehouseQuery:
             schema.SUSPEND_DAILY, symbols, start, end,
         )
 
+    def stock_st(
+        self, symbols: Sequence[str] | None, start: date, end: date
+    ) -> pl.DataFrame:
+        """每日 ST 真值；每个有日线的股票日都有显式 True/False。"""
+        return self._dated_query(
+            "stock_st_daily", ", ".join(schema.STOCK_ST_DAILY.names),
+            schema.STOCK_ST_DAILY, symbols, start, end,
+        )
+
     def limit_list(
         self, symbols: Sequence[str] | None, start: date, end: date
     ) -> pl.DataFrame:

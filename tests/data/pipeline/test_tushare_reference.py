@@ -10,6 +10,7 @@ from qsys.data.pipeline.tushare_reference import (
     ingest_name_history,
     ingest_price_limits,
     ingest_suspensions,
+    ingest_stock_st,
     st_on,
 )
 from qsys.data.query import WarehouseQuery
@@ -30,6 +31,10 @@ class FakeProvider:
         self.calls.append(("suspend_d", trade_date))
         return self.tables.get("suspend_d", pl.DataFrame())
 
+    def stock_st(self, trade_date):
+        self.calls.append(("stock_st", trade_date))
+        return self.tables.get("stock_st", pl.DataFrame())
+
     def index_daily(self, ts_code, start, end):
         self.calls.append(("index_daily", ts_code, start, end))
         return self.tables.get("index_daily", pl.DataFrame())
@@ -44,7 +49,8 @@ class FakeProvider:
 
     def limit_list_d(self, trade_date, limit_type):
         self.calls.append(("limit_list_d", trade_date, limit_type))
-        return self.tables.get("limit_list_d", pl.DataFrame())
+        return (self.tables.get("limit_list_d", pl.DataFrame())
+                if limit_type == "U" else pl.DataFrame())
 
 
 def test_price_limits_are_direct_and_idempotent(warehouse):
@@ -96,6 +102,46 @@ def test_suspensions_keep_type_and_nullable_timing(warehouse):
     got = WarehouseQuery(warehouse).suspensions(None, DAY, DAY).sort("symbol")
     assert got["suspend_type"].to_list() == ["S", "R"]
     assert got["suspend_timing"].to_list() == ["盘中停牌", None]
+
+
+def test_stock_st_materializes_true_and_false_for_the_whole_daily_universe(
+    warehouse, write_daily_bars
+):
+    write_daily_bars(warehouse, pl.DataFrame({
+        "symbol": ["000001.SZ", "600000.SH"], "dt": [DAY, DAY],
+        "open": [10.0, 20.0], "high": [10.0, 20.0], "low": [10.0, 20.0],
+        "close": [10.0, 20.0], "volume": [1.0, 1.0], "amount": [1.0, 1.0],
+    }))
+    provider = FakeProvider(stock_st=pl.DataFrame({
+        "ts_code": ["600000.SH"], "name": ["*ST浦发"],
+        "trade_date": ["20260911"], "type": ["ST"],
+        "type_name": ["风险警示板"],
+    }))
+    assert ingest_stock_st(provider, warehouse, [DAY]) == 2
+    got = WarehouseQuery(warehouse).stock_st(None, DAY, DAY).sort("symbol")
+    assert got["is_st"].to_list() == [False, True]
+    assert got["name"].to_list() == [None, "*ST浦发"]
+
+
+def test_empty_stock_st_response_is_explicit_false_not_missing(
+    warehouse, write_daily_bars
+):
+    write_daily_bars(warehouse, pl.DataFrame({
+        "symbol": ["000001.SZ"], "dt": [DAY], "open": [10.0], "high": [10.0],
+        "low": [10.0], "close": [10.0], "volume": [1.0], "amount": [1.0],
+    }))
+    assert ingest_stock_st(FakeProvider(), warehouse, [DAY]) == 1
+    assert WarehouseQuery(warehouse).stock_st(None, DAY, DAY)["is_st"].to_list() == [False]
+
+
+def test_empty_suspension_rerun_removes_a_stale_row(warehouse):
+    provider = FakeProvider(suspend_d=pl.DataFrame({
+        "ts_code": ["000001.SZ"], "trade_date": ["20260911"],
+        "suspend_type": ["S"], "suspend_timing": [None],
+    }))
+    ingest_suspensions(provider, warehouse, [DAY])
+    ingest_suspensions(FakeProvider(), warehouse, [DAY])
+    assert WarehouseQuery(warehouse).suspensions(None, DAY, DAY).is_empty()
 
 
 def _index_frame(volume=120_000_000.0):
