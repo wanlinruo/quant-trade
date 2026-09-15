@@ -114,7 +114,7 @@ def test_credential_expiry_has_a_nonzero_denominator(ctx):
 
 
 def test_all_c_rules_are_validity_category():
-    assert {f"C{i}" for i in range(1, 6)} == {
+    assert {f"C{i}" for i in range(1, 8)} == {
         cid.split(".")[0] for cid in C.CHECKS if cid.startswith("C")
     }
     assert all(check.category is C.Category.VALIDITY

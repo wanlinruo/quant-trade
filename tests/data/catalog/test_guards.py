@@ -169,3 +169,25 @@ def test_every_referenced_check_id_will_be_implemented():
     }
     missing = referenced - set(CHECKS)
     assert not missing, f"字典引用了尚未实现的规则：{sorted(missing)}"
+
+
+def test_no_metric_remains_explicitly_uncovered():
+    """基础数据契约必须覆盖无法做外部交叉真值的字段。"""
+    uncovered = [
+        metric.id for metric in REGISTRY.values()
+        if isinstance(metric.checks, Uncovered)
+    ]
+    assert not uncovered, f"仍未覆盖：{uncovered}"
+
+
+def test_contract_checks_and_metrics_are_bidirectionally_registered():
+    """防止“指标挂了规则、规则却不为指标写结果行”的未验证假象。"""
+    from qsys.data.catalog.checks import CHECKS
+
+    for metric in REGISTRY.values():
+        contract = (
+            f"C6.storage_contract.{metric.dataset}"
+            if metric.landed else "C7.catalog_contract.strategy"
+        )
+        assert contract in metric.checks, metric.id
+        assert metric.id in CHECKS[contract].metrics, metric.id

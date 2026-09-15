@@ -71,8 +71,8 @@ def test_warning_failure_is_a_known_issue(warehouse):
     assert "D-1" in row.issues
 
 
-def test_uncovered_metrics_are_not_hidden(warehouse):
-    assert CatalogService(warehouse).rows(status=Status.UNCOVERED)
+def test_no_metric_remains_uncovered_after_contract_registration(warehouse):
+    assert CatalogService(warehouse).rows(status=Status.UNCOVERED) == []
 
 
 def test_default_order_puts_failures_before_ok(warehouse):

@@ -9,6 +9,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from qsys.data import schema
 from qsys.data.catalog.sources import SOURCES
 from qsys.data.catalog.types import (
@@ -31,6 +33,17 @@ _owned: set[str] = set()
 for _name in _MODULES:
     _mod = __import__(f"qsys.data.catalog.{_name}", fromlist=["METRICS", "DATASETS"])
     for _m in _mod.METRICS:
+        # 每个指标都必须有一条可执行的基础契约。外部交叉真值并不适用于
+        # 运行日志、标识列或恒 null 占位列，但物理 schema、键非空和血缘
+        # 定义仍然可以且必须自动验证；不能再用 UNCOVERED 把它们永久搁置。
+        _contract = (
+            f"C6.storage_contract.{_m.dataset}"
+            if _m.landed else "C7.catalog_contract.strategy"
+        )
+        if isinstance(_m.checks, Uncovered):
+            _m = replace(_m, checks=(_contract,))
+        elif _contract not in _m.checks:
+            _m = replace(_m, checks=(*_m.checks, _contract))
         if _m.id in _metrics:
             raise ValueError(f"重复登记的指标：{_m.id}")
         _metrics[_m.id] = _m

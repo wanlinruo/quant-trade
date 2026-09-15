@@ -151,12 +151,12 @@ def test_limit_type_is_the_callers_query_parameter_not_a_response_field():
     assert m.lineage.upstream == ()
 
 
-def test_unsupported_limit_list_columns_are_marked_unknown():
-    """R11：first_time / fd_amount / limit_amount / float_mv 在 schema.py、
-    pipeline 注释与代码、docs/reference/*.md 里都没有只字片语的支持——
-    写 UNKNOWN 是合规行为，不是失败。"""
+def test_limit_list_meanings_are_supported_by_official_field_definitions():
+    """原待查四列已按 Tushare limit_list_d 官方文档 doc_id=298 补证。"""
     for col in ("first_time", "fd_amount", "limit_amount", "float_mv"):
-        assert BY_ID[f"limit_list_daily.{col}"].meaning is UNKNOWN
+        meaning = BY_ID[f"limit_list_daily.{col}"].meaning
+        assert meaning is not UNKNOWN
+        assert meaning.strip()
 
 
 # --- R14：corporate_actions 的真实源是 QMT，不是草案假定的 akshare -------

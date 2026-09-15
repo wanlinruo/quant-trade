@@ -8,10 +8,9 @@
 原因是逐列核对后发现草案对三件事系统性搞错了（控制器裁决 R11/R13/R14）：
 
 **R11——meaning 不是证据，是待验假设**：草案的 49 条 meaning 未经核实。
-本模块每一条 meaning 只从三处找支持：`schema.py` 注释、`pipeline/*.py`
-的注释或代码、`docs/reference/*.md`；找不到就写 `UNKNOWN`，不编一句
-听起来合理的中文。`limit_list_daily` 的 `first_time` / `fd_amount` /
-`limit_amount` / `float_mv` 四列在这三处都没有只字片语的支持，标 `UNKNOWN`。
+本模块每一条 meaning 都必须有 schema、生产实现、项目参考文档或上游官方
+字段文档支撑。`limit_list_daily` 原先待查的四列已于 2026-09-15 依据 Tushare
+`limit_list_d` 官方文档（doc_id=298）补证，单位再由同日源数据交叉核对。
 
 **R12——`share_capital` 缺了一个源**：它不来自 `qmt.minute`，而是 QMT
 `download_financial_data`（`scripts/win_download_capital.py`）。已在
@@ -67,7 +66,6 @@ from qsys.data.catalog.types import (
     Kind,
     Metric,
     MetricStatus,
-    UNKNOWN,
     Validity,
 )
 
@@ -468,25 +466,34 @@ def _limit_list_daily() -> list[Metric]:
         ),
         Metric(
             id="limit_list_daily.first_time", kind=Kind.DIRECT, validity=Validity.SESSION,
-            status=MetricStatus.ACTIVE, meaning=UNKNOWN,
+            status=MetricStatus.ACTIVE,
+            meaning="首次封板时间；跌停记录无此数据。Tushare limit_list_d "
+                    "官方输出字段定义（doc_id=298）",
             lineage=Direct("tushare.limit_list_d", "first_time"),
             checks=_LIMIT_LIST_CHECKS,
         ),
         Metric(
             id="limit_list_daily.fd_amount", kind=Kind.DIRECT, validity=Validity.SESSION,
-            status=MetricStatus.ACTIVE, meaning=UNKNOWN,
+            status=MetricStatus.ACTIVE,
+            meaning="封单金额（元）：以涨停价买入挂单的资金总量。Tushare "
+                    "limit_list_d 官方输出字段定义（doc_id=298）",
             lineage=Direct("tushare.limit_list_d", "fd_amount"),
             checks=_LIMIT_LIST_CHECKS,
         ),
         Metric(
             id="limit_list_daily.limit_amount", kind=Kind.DIRECT, validity=Validity.SESSION,
-            status=MetricStatus.ACTIVE, meaning=UNKNOWN,
+            status=MetricStatus.ACTIVE,
+            meaning="板上成交金额（元）：以该股票跌停价成交的所有成交额总和；"
+                    "涨停记录无此数据。Tushare limit_list_d 官方输出字段定义"
+                    "（doc_id=298）",
             lineage=Direct("tushare.limit_list_d", "limit_amount"),
             checks=_LIMIT_LIST_CHECKS,
         ),
         Metric(
             id="limit_list_daily.float_mv", kind=Kind.DIRECT, validity=Validity.SESSION,
-            status=MetricStatus.ACTIVE, meaning=UNKNOWN,
+            status=MetricStatus.ACTIVE,
+            meaning="流通市值（元），直取 limit_list_d.float_mv；单位由接口样本"
+                    "与同日 daily_basic.circ_mv（万元）换算交叉核对",
             lineage=Direct("tushare.limit_list_d", "float_mv"),
             checks=_LIMIT_LIST_CHECKS,
         ),
