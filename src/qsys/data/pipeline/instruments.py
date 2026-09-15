@@ -41,6 +41,9 @@ def build_instruments(
         .sort(["symbol", "_info"], descending=[False, True])
         .unique(subset=["symbol"], keep="first", maintain_order=True)
         .drop("_info")
+        # 某些历史退市列表含 T600018.SH 一类来源内部代码。它不是可交易的
+        # 六位证券代码，且不能去掉 T 后冒充现在的 600018.SH。
+        .filter(pl.col("symbol").str.contains(r"^\d{6}\.(SH|SZ|BJ)$"))
         .sort("symbol")
         .select(COLUMNS)
         .with_columns(pl.lit(as_of, dtype=pl.Date).alias("as_of"))

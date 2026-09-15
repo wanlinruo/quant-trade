@@ -9,6 +9,8 @@ from __future__ import annotations
 from datetime import date, datetime, time
 from pathlib import Path
 
+import structlog
+
 from qsys.core.calendar import AShareCalendar
 from qsys.core.types import Symbol
 from qsys.data.feed import HistoricalFeed
@@ -19,6 +21,29 @@ from qsys.strategy.loader import StrategyDeps
 
 # 与原策略 filter_kcbj_stock 一致：4/8 是北交所，68 是科创板
 EXCLUDED_PREFIXES = ("4", "8", "68")
+log = structlog.get_logger(__name__)
+
+
+def build_universe(instruments):
+    """只把核心类型能够准确表达的 A 股代码交给回测引擎。"""
+    universe: list[Symbol] = []
+    boards: dict[str, str] = {}
+    invalid: list[str] = []
+    for row in instruments.iter_rows(named=True):
+        text = str(row["symbol"])
+        try:
+            symbol = Symbol.parse(text)
+        except (TypeError, ValueError):
+            invalid.append(text)
+            continue
+        if symbol.code.startswith(EXCLUDED_PREFIXES):
+            continue
+        universe.append(symbol)
+        boards[text] = row["board"]
+    if invalid:
+        log.warning("strategy.invalid_instruments_skipped", count=len(invalid),
+                    samples=invalid[:10])
+    return universe, boards
 
 
 def build_deps(warehouse_root: Path, params: dict | None = None):
@@ -32,12 +57,7 @@ def build_deps(warehouse_root: Path, params: dict | None = None):
     market = MarketFeed(query, calendar)
 
     instruments = query.instruments()
-    symbols = instruments["symbol"].to_list()
-    universe = [
-        Symbol.parse(s) for s in symbols
-        if not s.split(".")[0].startswith(EXCLUDED_PREFIXES)
-    ]
-    boards = dict(zip(symbols, instruments["board"].to_list()))
+    universe, boards = build_universe(instruments)
 
     deps = StrategyDeps(
         feed=feed, market=market, query=query, calendar=calendar,

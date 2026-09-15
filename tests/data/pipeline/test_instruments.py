@@ -64,6 +64,16 @@ def test_build_keeps_delisted_instruments(warehouse: Warehouse):
     assert delisted["symbol"].to_list() == ["000003.SZ"]
 
 
+def test_build_drops_provider_internal_non_tradable_codes(warehouse: Warehouse):
+    dirty = pl.concat([_frame(), pl.DataFrame({
+        "symbol": ["T600018.SH"], "name": ["上港集箱(退)"], "market": ["SH"],
+        "list_date": [date(2000, 7, 19)], "delist_date": [date(2006, 10, 20)],
+        "board": ["main"],
+    }, schema=_SCHEMA)])
+    build_instruments(FakeProvider(dirty), warehouse, AS_OF)
+    assert "T600018.SH" not in WarehouseQuery(warehouse).instruments()["symbol"].to_list()
+
+
 def test_build_is_idempotent(warehouse: Warehouse):
     build_instruments(FakeProvider(_frame()), warehouse, AS_OF)
     build_instruments(FakeProvider(_frame()), warehouse, AS_OF)
