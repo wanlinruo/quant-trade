@@ -1,4 +1,4 @@
-"""运行时类指标 32 条。
+"""运行时类指标 56 条（会话/采集 32 条，验证结果与证据 24 条）。
 
 这些记录由系统自身写入，多数没有独立外部真值。UNCOVERED 不是免检章：
 理由明确记录验证边界，已有到货规则的关键列仍挂 B4。
@@ -23,6 +23,8 @@ DATASETS = frozenset({
     "live_rejects",
     "live_recon",
     "ingest_log",
+    "metric_checks",
+    "metric_evidence",
 })
 
 _SELF = "qsys.runtime"
@@ -61,6 +63,30 @@ _MEANING = {
     "ingest_log.ok": "本次采集是否成功。空结果不得写成功日志——写了会让"
     "上游故障被当成全市场已完成而永不回补",
     "ingest_log.message": "失败原因或补充说明",
+    "metric_checks.run_id": "同一轮自动验证的唯一运行标识",
+    "metric_checks.checked_at": "本条规则完成并写入结果的时刻，也是分区年份依据",
+    "metric_checks.metric_id": "被验证的指标 id",
+    "metric_checks.check_id": "执行的验证规则 id",
+    "metric_checks.category": "规则类别：truthfulness / completeness / validity",
+    "metric_checks.scope_start": "本次检查覆盖区间起点；不适用时为 null",
+    "metric_checks.scope_end": "本次检查覆盖区间终点；不适用时为 null",
+    "metric_checks.passed": "是否通过；验证器自身崩溃也必须写 false，不能静默缺行",
+    "metric_checks.severity": "实际严重度：blocking / warning；已知问题可降级",
+    "metric_checks.known_issue": "触发降级的 D-x 已知问题编号；没有则为 null",
+    "metric_checks.violations": "违规行数",
+    "metric_checks.checked_rows": "实际检查的总行数，必填；没有分母的违规数不构成信息",
+    "metric_checks.detail": "结果摘要或 runner 错误信息",
+    "metric_checks.sample_path": "大批量违规样本的外部 Parquet 路径",
+    "metric_evidence.metric_id": "人工抽样所验证的指标 id",
+    "metric_evidence.symbol": "样本标的代码",
+    "metric_evidence.dt": "样本对应交易日，也是分区年份依据",
+    "metric_evidence.our_value": "本系统值的原样文本，避免统一数值化丢精度",
+    "metric_evidence.reference_value": "第三方参考值的原样文本",
+    "metric_evidence.reference_source": "人工核对所用参考源",
+    "metric_evidence.verdict": "人工结论：match / mismatch / inconclusive",
+    "metric_evidence.checked_by": "核对人",
+    "metric_evidence.checked_at": "人工核对完成时刻",
+    "metric_evidence.note": "证据说明、口径或已知问题备注",
 }
 
 _CHECKS = {

@@ -196,6 +196,42 @@ INGEST_LOG = pa.schema(
     ]
 )
 
+# --- 数据层盘点：自动验证结果与人工证据物理隔离 ---
+
+METRIC_CHECKS = pa.schema(
+    [
+        ("run_id", pa.string()),
+        ("checked_at", pa.timestamp("us")),
+        ("metric_id", pa.string()),
+        ("check_id", pa.string()),
+        ("category", pa.string()),
+        ("scope_start", pa.date32()),
+        ("scope_end", pa.date32()),
+        ("passed", pa.bool_()),
+        ("severity", pa.string()),
+        ("known_issue", pa.string()),
+        ("violations", pa.int64()),
+        ("checked_rows", pa.int64()),
+        ("detail", pa.string()),
+        ("sample_path", pa.string()),
+    ]
+)
+
+METRIC_EVIDENCE = pa.schema(
+    [
+        ("metric_id", pa.string()),
+        ("symbol", pa.string()),
+        ("dt", pa.date32()),
+        ("our_value", pa.string()),
+        ("reference_value", pa.string()),
+        ("reference_source", pa.string()),
+        ("verdict", pa.string()),
+        ("checked_by", pa.string()),
+        ("checked_at", pa.timestamp("us")),
+        ("note", pa.string()),
+    ]
+)
+
 # --- 实盘会话日志。监控台只读这四张表 ---
 
 LIVE_EQUITY = pa.schema(
@@ -358,6 +394,8 @@ PARTITIONED: dict[str, pa.Schema] = {
     "market_regime": MARKET_REGIME,
     "valuation_snapshot": VALUATION_SNAPSHOT,
     "ingest_log": INGEST_LOG,
+    "metric_checks": METRIC_CHECKS,
+    "metric_evidence": METRIC_EVIDENCE,
     "live_equity": LIVE_EQUITY,
     "live_fills": LIVE_FILLS,
     "live_rejects": LIVE_REJECTS,

@@ -15,6 +15,8 @@ def test_owns_the_five_runtime_datasets():
         "live_rejects",
         "live_recon",
         "ingest_log",
+        "metric_checks",
+        "metric_evidence",
     })
 
 
@@ -25,8 +27,10 @@ def test_registers_all_runtime_columns():
         "live_fills": 8,
         "live_recon": 7,
         "live_rejects": 6,
+        "metric_checks": 14,
+        "metric_evidence": 10,
     }
-    assert len(METRICS) == 32
+    assert len(METRICS) == 56
 
 
 def test_all_are_operational_status():

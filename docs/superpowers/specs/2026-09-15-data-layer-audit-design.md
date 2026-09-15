@@ -12,7 +12,7 @@
 登记在 `docs/reference/deferred-corrections.md` 的 D-1 ~ D-12，统一触发条件是
 「换源完成后一次性处理」——该条件现已满足。
 
-但比那张挂账表更根本的问题是：**这个系统现在有 206 个落盘字段和十几个不落盘的
+但比那张挂账表更根本的问题是：**这个系统现在有 230 个落盘字段和十个不落盘的
 策略因子，没有任何地方说得清每一个是什么、从哪来、算得对不对。**
 
 迁移期间的每一次排查都在重复同一件事：翻 pipeline 代码认血缘、翻文档找口径、
@@ -31,10 +31,10 @@
 
 | 类别 | 数量 | 说明 |
 |---|---:|---|
-| `schema.ALL` 全部字段 | 178 | 22 张表 |
+| `schema.ALL` 全部字段 | 202 | 24 张表 |
 | `PAID_DAILY` 字段 | 28 | 故意不注册进 `PARTITIONED`，但是 2026-09-11 前名称的唯一真值源 |
 | 策略侧不落盘决策量 | 10 | `stock_return_10d`、`distance_to_60d_high`、`avg_inc`、竞价价比/量比、`relative_position_60d`、左压 `zyts` 等 |
-| **合计** | **216** | |
+| **合计** | **240** | |
 
 策略侧这 10 个必须纳入：它们是 S6/S7 Gate 与入场过滤的直接输入，D-4 阈值重标定就靠它们。
 只盘落盘字段会让字典追不到决策。
@@ -204,7 +204,7 @@ reference.py      instruments(7) name_history(6) name_snapshots(3)
                   corporate_actions(6) share_capital(5) adj_factors(4)  约 49 条
 derived.py        daily_flags(14) valuation_snapshot(6)                    20 条
 factors.py        market_regime(15) + 策略侧 10 个                          25 条
-operational.py    live_equity/fills/rejects/recon(25) ingest_log(7)         32 条
+operational.py    会话/采集日志(32) + 验证结果与证据(24)                    56 条
 __init__.py       汇总 REGISTRY: dict[str, Metric]，对外只暴露它与 SOURCES
 ```
 
@@ -215,7 +215,7 @@ __init__.py       汇总 REGISTRY: dict[str, Metric]，对外只暴露它与 SOU
 registry 不腐烂的全部依靠。逐条对应一种真实事故：
 
 **T1 完备性**——registry 的落盘条目集合**恰好等于** `schema.ALL` 展开 + `PAID_DAILY`
-展开（206 条）。缺一个失败，多一个也失败。
+展开（230 条）。缺一个失败，多一个也失败。
 > 拦：往 schema 加列忘登记，页面少一个指标而无人知晓。
 
 **T2 血缘图可解析且无环**——DERIVED/FACTOR 的上游必须是 registry 中真实存在的 id；
@@ -241,7 +241,7 @@ DIRECT **不得**有上游。
 
 ### 5.3 填写纪律
 
-206 条含义逐条写是本项目最重的一块。规矩必须先定死，否则产出一份
+230 条含义逐条写是本项目最重的一块。规矩必须先定死，否则产出一份
 **读起来专业但有一部分是编的**字典——那比没有字典危险。
 
 `meaning` 与 `lineage` 必须来自三种依据之一：
@@ -536,7 +536,7 @@ daily_flags.is_first_board   DERIVED
 
 ## 九、验收标准
 
-1. **T1–T6 六条守护测试全绿**，且 T1 断言的条目数恰为 206。
+1. **T1–T6 六条守护测试全绿**，且 T1 断言的条目数恰为 230。
 2. **策略侧 10 个决策量全部登记**，血缘可追溯到落盘指标。
 3. **`meaning=UNKNOWN` 的条目有明确清单**，数量记录在案（允许非零，但必须可见）。
 4. **`UNCOVERED` 的条目有明确清单**，每条带理由。
@@ -550,7 +550,7 @@ daily_flags.is_first_board   DERIVED
 
 ## 十、风险
 
-**最大风险是 5.3 的填写纪律被稀释。** 206 条含义逐条写、每条都要有依据，
+**最大风险是 5.3 的填写纪律被稀释。** 230 条含义逐条写、每条都要有依据，
 过程枯燥且没有即时反馈，很容易滑向「照着列名编一句通顺的中文」。
 一旦发生，字典会变成一份自带权威感的错误信息源，危害大于没有字典。
 
