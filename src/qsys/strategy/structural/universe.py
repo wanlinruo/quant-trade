@@ -7,10 +7,13 @@
 炸板对应 `get_ever_hl_stock2`（`close != high_limit and high == high_limit`），
 即 `is_broken_board`。
 
-**ST 过滤靠反推**：免费源没有历史 ST 名单，但 `daily_flags.limit_pct`
-记下了每个股-日实际生效的涨跌幅（0.05 即反推出的 ST）。首板候选按定义
-就是收在涨停价上的，若它是 ST 必然被检出——所以对候选池而言这个代理
-是**充分的**，对应原策略的 `filter_st_paused_stock`（原文 L1397）。
+**ST 只认直取名单**：`daily_flags.is_st` 来自 Tushare `stock_st`，是逐日
+布尔真值，对应原策略的 `filter_st_paused_stock`（原文 L1397）。
+
+这里曾经用 `limit_pct == 0.05` 反推 ST。**那条路已经彻底断了**：
+2026-07-06 起主板 ST 的涨跌幅上限由 5% 改为 10%，与普通股完全相同，
+价格档位再也区分不出 ST；何况创业板/科创板 ST 一直是 20%，反推从来
+就漏掉了它们。用价格判 ST 是错的，不是「够用的代理」。
 
 注意生态因子池**不**排 ST（原文 `_s5_relevant_universe` 只排科创与北交），
 两处口径不同，别混用。
@@ -78,11 +81,11 @@ def candidate_pool(
         return listed is not None and listed < cutoff
 
     yesterday = flags.filter(pl.col("dt") == previous)
-    # filter_st_paused_stock：ST 由 limit_pct == 0.05 反推得到
-    if "limit_pct" in yesterday.columns:
-        yesterday = yesterday.filter(
-            pl.col("limit_pct").is_null() | (pl.col("limit_pct") > 0.05 + 1e-9)
-        )
+    # filter_st_paused_stock：ST 读 daily_flags.is_st 这个直取真值。
+    # 不知道是不是 ST 就不放行——与下面 keep() 里「不知道上市日就不放行」
+    # 同一条规矩。
+    if "is_st" in yesterday.columns:
+        yesterday = yesterday.filter(~pl.col("is_st").fill_null(True))
     return PoolResult(
         sorted(
             s

@@ -171,8 +171,8 @@ def test_empty_flags_yield_nothing():
     assert pool.broken_boards == []
 
 
-def flags_with_limit(rows):
-    """rows: [(symbol, dt, is_first_board, limit_pct)]"""
+def flags_with_st(rows):
+    """rows: [(symbol, dt, is_first_board, is_st, limit_pct)]"""
     n = len(rows)
     return pl.DataFrame(
         {
@@ -186,18 +186,19 @@ def flags_with_limit(rows):
             "touched_limit_up": [r[2] for r in rows],
             "is_broken_board": [False] * n,
             "is_first_board": [r[2] for r in rows],
-            "limit_pct": [r[3] for r in rows],
+            "is_st": [r[3] for r in rows],
+            "limit_pct": [r[4] for r in rows],
         }
     )
 
 
 def test_st_stocks_are_excluded_from_the_pool():
-    """对应原策略 filter_st_paused_stock。ST 由 limit_pct == 0.05 反推。"""
+    """对应原策略 filter_st_paused_stock。ST 读直取真值，不再反推。"""
     pool = candidate_pool(
-        flags_with_limit(
+        flags_with_st(
             [
-                ("600001.SH", D[1], True, 0.05),
-                ("600002.SH", D[1], True, 0.10),
+                ("600001.SH", D[1], True, True, 0.05),
+                ("600002.SH", D[1], True, False, 0.10),
             ]
         ),
         listed_since=listed("600001.SH", "600002.SH"),
@@ -207,10 +208,39 @@ def test_st_stocks_are_excluded_from_the_pool():
     assert pool.first_boards == ["600002.SH"]
 
 
-def test_a_null_limit_pct_is_not_treated_as_st():
-    """老分区没有这一列时不该把所有票当成 ST 排掉。"""
+def test_a_gem_st_stock_is_excluded_even_though_its_tier_is_twenty_percent():
+    """这条守的是 D-14 那颗地雷。
+
+    创业板 ST 的真实档位是 0.20。旧实现按 `limit_pct > 0.05` 判「非 ST」，
+    修对 limit_pct（D-13）之后它会把 ST 股静默放进候选池，而且不报错。
+    """
     pool = candidate_pool(
-        flags_with_limit([("600001.SH", D[1], True, None)]),
+        flags_with_st([("300029.SZ", D[1], True, True, 0.20)]),
+        listed_since=listed("300029.SZ"),
+        day=D[2],
+        previous=D[1],
+    )
+    assert pool.first_boards == []
+
+
+def test_unknown_st_status_is_excluded_from_the_pool():
+    """拿不到 ST 真值就不放行——不知道不等于不是。
+
+    与同文件 `keep()` 里「不知道上市日就不放行」同一条规矩。
+    """
+    pool = candidate_pool(
+        flags_with_st([("600001.SH", D[1], True, None, None)]),
+        listed_since=listed("600001.SH"),
+        day=D[2],
+        previous=D[1],
+    )
+    assert pool.first_boards == []
+
+
+def test_flags_without_an_st_column_are_not_filtered():
+    """老分区根本没有这一列时不该把所有票当成 ST 排掉。"""
+    pool = candidate_pool(
+        flags_frame([("600001.SH", D[1], True, True, True)]),
         listed_since=listed("600001.SH"),
         day=D[2],
         previous=D[1],

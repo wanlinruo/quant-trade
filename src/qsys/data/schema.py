@@ -143,7 +143,11 @@ DAILY_FLAGS = pa.schema(
         ("touched_limit_up", pa.bool_()),  # 盘中触及涨停（含封住）
         ("is_broken_board", pa.bool_()),  # 炸板：触及但未封住
         ("is_first_board", pa.bool_()),  # 首板：今日涨停且昨日未涨停
-        ("limit_pct", pa.float64()),  # 实际生效的涨跌幅：ST 为 0.05，否则按板块 0.10 / 0.20 / 0.30
+        # 该行 limit_up 实际对应的那一档涨跌幅，由直取涨停价解码得出，
+        # 与同一行的 limit_up 恒自洽；解不出就是 null。
+        # **不能用它判 ST**：2026-07-06 起主板 ST 与普通股同为 0.10，
+        # 而创业板/科创板 ST 一直是 0.20。ST 只认 is_st。
+        ("limit_pct", pa.float64()),
         # ST 真值。由 Tushare namechange 的名称区间按当日展开。
         # 2026-09-12 之前这里是三条价格启发式反推出来的，一致率 93.8%，已删除。
         ("is_st", pa.bool_()),
