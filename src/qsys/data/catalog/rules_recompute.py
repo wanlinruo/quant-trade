@@ -207,3 +207,134 @@ def _live_total(ctx: CheckContext) -> pl.DataFrame:
 
 
 _add("live_total_value", "live_equity.total_value", _live_total)
+
+
+# ---- market_regime：从日线、flags、因子和指数重新聚合 -----------------
+
+def _breadth_filter(frame: pl.DataFrame, boards: dict[str, str]) -> pl.DataFrame:
+    if frame.height == 0:
+        return frame
+
+    def board(symbol: str) -> str:
+        known = boards.get(symbol)
+        if known is not None:
+            return known
+        code = symbol.split(".")[0]
+        if code.startswith(("688", "689")):
+            return "star"
+        if code.startswith(("300", "301")):
+            return "gem"
+        if code[:2] in ("43", "83", "87", "92"):
+            return "bse"
+        if code[:2] in ("90", "20"):
+            return "bshare"
+        return "main"
+
+    code = pl.col("symbol").str.split(".").list.first()
+    excluded = code.str.starts_with("4") | code.str.starts_with("8") | code.str.starts_with("68")
+    return frame.filter(
+        ~excluded
+        & pl.col("symbol").map_elements(board, return_dtype=pl.Utf8)
+        .is_in(["main", "gem", "star"])
+    )
+
+
+def _expected_regime(ctx: CheckContext) -> pl.DataFrame:
+    start = ctx.start - timedelta(days=40)
+    instruments = ctx.query.instruments()
+    boards = (
+        dict(zip(instruments["symbol"].to_list(), instruments["board"].to_list()))
+        if instruments.height else {}
+    )
+    bars = _breadth_filter(
+        ctx.query.tushare_daily(
+            None, start, ctx.end,
+            columns=["symbol", "dt", "close", "amount"],
+        ), boards,
+    )
+    flags = _breadth_filter(ctx.query.daily_flags(start, ctx.end), boards)
+    if not bars.height or not flags.height:
+        return pl.DataFrame()
+    joined = bars.join(flags, on=["symbol", "dt"], how="inner").sort(["symbol", "dt"])
+    joined = joined.with_columns(
+        pl.col("is_limit_up").shift(1).over("symbol").alias("was_limit_up")
+    )
+    factors = ctx.query.adj_factors()
+    if factors.height:
+        ratios = factors.sort(["symbol", "dt"]).with_columns(
+            (pl.col("cum_factor") / pl.col("cum_factor").shift(1).over("symbol"))
+            .alias("daily_factor")
+        ).select("symbol", "dt", "daily_factor")
+        joined = joined.join(ratios, on=["symbol", "dt"], how="left")
+        ret = (pl.col("close") / pl.col("prev_close")
+               * pl.col("daily_factor").fill_null(1.0) - 1).round(12)
+    else:
+        ret = (pl.col("close") / pl.col("prev_close") - 1).round(12)
+    joined = joined.with_columns(ret.alias("ret_1d"))
+    expected = joined.group_by("dt").agg(
+        pl.col("is_limit_up").sum().cast(pl.Int64).alias("limit_up_count"),
+        pl.col("is_limit_down").sum().cast(pl.Int64).alias("limit_down_count"),
+        pl.col("touched_limit_up").sum().cast(pl.Int64).alias("touched_limit_up_count"),
+        pl.col("is_broken_board").sum().cast(pl.Int64).alias("broken_board_count"),
+        pl.col("is_first_board").sum().cast(pl.Int64).alias("first_board_count"),
+        pl.len().cast(pl.Int64).alias("valid_stock_count"),
+        pl.col("amount").sum().alias("market_total_money"),
+        (pl.col("ret_1d") > 0).sum().alias("up_count"),
+        (pl.col("ret_1d") < 0).sum().alias("down_count"),
+        pl.col("ret_1d").median().alias("market_median_return_1d"),
+        pl.col("ret_1d").filter(pl.col("was_limit_up")).mean()
+        .alias("prior_limitup_nextday_return_mean"),
+        pl.col("ret_1d").filter(pl.col("was_limit_up")).median()
+        .alias("prior_limitup_nextday_return_median"),
+    ).with_columns(
+        (pl.col("limit_up_count") / pl.max_horizontal("limit_down_count", pl.lit(1)))
+        .cast(pl.Float64).alias("limit_up_down_ratio"),
+        pl.when(pl.col("touched_limit_up_count") > 0)
+        .then(pl.col("broken_board_count") / pl.col("touched_limit_up_count"))
+        .otherwise(0.0).alias("broken_board_rate"),
+        (pl.col("up_count") / pl.max_horizontal(pl.col("up_count") + pl.col("down_count"), pl.lit(1)))
+        .cast(pl.Float64).alias("market_advance_ratio"),
+    )
+    index = ctx.query.index_bars(["000300.SH"], ctx.start - timedelta(days=75), ctx.end)
+    if index.height >= 25:
+        slope = index.sort("dt").with_columns(
+            pl.col("close").rolling_mean(20).alias("ma20")
+        ).with_columns(
+            (pl.col("ma20") / pl.col("ma20").shift(5) - 1)
+            .alias("index_ma20_slope_5d")
+        ).select("dt", "index_ma20_slope_5d")
+        expected = expected.join(slope, on="dt", how="left")
+    else:
+        expected = expected.with_columns(
+            pl.lit(None, dtype=pl.Float64).alias("index_ma20_slope_5d")
+        )
+    return expected.filter(pl.col("dt").is_between(ctx.start, ctx.end))
+
+
+def _regime_column(ctx: CheckContext, column: str) -> pl.DataFrame:
+    actual = ctx.query.market_regime(ctx.start, ctx.end).select(
+        "dt", pl.col(column).alias("actual")
+    )
+    expected = _expected_regime(ctx)
+    if not actual.height or not expected.height:
+        return pl.DataFrame({"actual": [], "expected": []},
+                            schema={"actual": pl.Float64, "expected": pl.Float64})
+    return actual.join(
+        expected.select("dt", pl.col(column).alias("expected")), on="dt", how="inner"
+    ).select("actual", "expected")
+
+
+for _regime_name in (
+    "limit_up_count", "limit_down_count", "limit_up_down_ratio",
+    "touched_limit_up_count", "broken_board_count", "broken_board_rate",
+    "first_board_count", "market_advance_ratio", "market_median_return_1d",
+    "market_total_money", "prior_limitup_nextday_return_mean",
+    "prior_limitup_nextday_return_median", "valid_stock_count",
+    "index_ma20_slope_5d",
+):
+    _add(
+        _regime_name,
+        f"market_regime.{_regime_name}",
+        lambda ctx, column=_regime_name: _regime_column(ctx, column),
+        boolean=False,
+    )
