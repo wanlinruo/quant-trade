@@ -23,12 +23,27 @@ A1/A3 等恒等式规则的实现只读 `tushare_daily`，给冻结表挂上这�
 条件分支，但只是标识符的无损规范化，不改变这行指的是哪只证券，不算
 「改数值的逻辑」，因此不必归 DERIVED；但 `Direct.note` 必须写明这条规则，
 否则读者会以为源表头本来就带后缀。
+
+**追加裁决（评审后）**：`tushare_daily.name` 从 DIRECT 改判 DERIVED，
+`lineage=Computed(upstream=(), ...)`。原因见 `_tushare_daily_metrics`
+的函数文档字符串——`compose_daily` 对这一列写的是 null 字面量，不读
+任何源，把它记成 `Direct("tushare.namechange", ...)` 会让
+`root_sources()` 报出一条生产里不存在的名称链路，即使 `note` 里写明了
+真相，结构化字段本身仍在撒谎，这正是 R2 要防的那类错误。
 """
 
 from __future__ import annotations
 
 from qsys.data import schema
-from qsys.data.catalog.types import Direct, Kind, Metric, MetricStatus, Validity
+from qsys.data.catalog.types import (
+    UNCOVERED,
+    Computed,
+    Direct,
+    Kind,
+    Metric,
+    MetricStatus,
+    Validity,
+)
 from qsys.data.pipeline.paid_daily import COLUMNS as _PAID_COLUMNS
 from qsys.data.pipeline.tushare_daily import _FROM_BASIC, _FROM_DAILY
 
@@ -123,7 +138,25 @@ _DAILY_ISSUES = {"factor": ("D-1", "D-2")}
 
 def _tushare_daily_metrics() -> list[Metric]:
     """从 `pipeline.tushare_daily._FROM_DAILY` / `_FROM_BASIC` 生成 24 列，
-    另外 4 列（symbol/dt/factor/name）不在这两张映射表里，显式登记。"""
+    另外 3 列（symbol/dt/factor）不在这两张映射表里，显式登记。
+
+    `name` 单独处理，见下方**控制器裁决**：`compose_daily` 对这一列写的是
+    `pl.lit(None)` 字面量（pipeline/tushare_daily.py:99-100），三个接口
+    （daily/daily_basic/adj_factor）都不返回证券简称，它指不到任何
+    `(source_id, field)`——不满足 DIRECT 的分类判据，只能是 DERIVED，
+    且 `upstream=()`（它确实没有上游）。
+
+    最初把它写成 `Direct("tushare.namechange", "name", note=...)`，note
+    里虽然如实写了「并非真的从 namechange 联表取值」，但
+    `lineage.source_id` 这个**结构化字段**仍然指向 tushare.namechange——
+    `root_sources()` 只读 `Direct.source_id`，不读 `note`，于是
+    `root_sources("daily_flags.is_st")` 会经这一列凭空报出一条生产里
+    根本不存在的 `tushare.namechange.name` 链路，页面的「来源」列也会
+    显示这条假链路。这正是 R2 要防的那类错误——「诚实的文字 + 说谎的
+    结构化字段」，只有点开 note 的人才看得到真相。改成
+    `Computed(upstream=(), ...)` 后 `root_sources` 对这一列返回 `()`，
+    与事实一致。
+    """
     lineage: dict[str, Direct] = {
         ours: Direct("tushare.daily", theirs, mult)
         for ours, theirs, mult in _FROM_DAILY
@@ -137,27 +170,46 @@ def _tushare_daily_metrics() -> list[Metric]:
     lineage["symbol"] = Direct("tushare.daily", "ts_code")
     lineage["dt"] = Direct("tushare.daily", "trade_date")
     lineage["factor"] = Direct("tushare.adj_factor", "adj_factor")
-    lineage["name"] = Direct(
-        "tushare.namechange", "name",
-        note="compose_daily 里这一列恒填 null，并非真的从 namechange 联表"
-             "取值——name 不在 daily/daily_basic/adj_factor 三个接口返回里，"
-             "namechange 单独成表，真正的名称解析发生在下游 daily_flags"
-             "（flags.resolve_names，四级优先级）",
-    )
 
-    return [
-        Metric(
-            id=f"tushare_daily.{col}",
-            kind=Kind.DIRECT,
-            validity=Validity.SESSION,
-            status=MetricStatus.ACTIVE,
-            meaning=_TUSHARE_NAME_MEANING if col == "name" else _MEANING[col],
-            lineage=lineage[col],
-            checks=_DAILY_CHECKS.get(col, _DAILY_DEFAULT_CHECKS),
-            known_issues=_DAILY_ISSUES.get(col, ()),
+    out: list[Metric] = []
+    for col in schema.PAID_DAILY.names:
+        if col == "name":
+            out.append(
+                Metric(
+                    id="tushare_daily.name",
+                    kind=Kind.DERIVED,
+                    validity=Validity.SESSION,
+                    status=MetricStatus.ACTIVE,
+                    meaning=_TUSHARE_NAME_MEANING,
+                    lineage=Computed(
+                        upstream=(),
+                        formula="恒 null——daily / daily_basic / adj_factor 三个"
+                                "接口都不返回证券简称，compose_daily 写 null "
+                                "字面量（pipeline/tushare_daily.py:99-100）。"
+                                "此列没有上游，真值在下游由 flags.resolve_names "
+                                "从 paid_daily / name_snapshots / name_history "
+                                "三个直取源解析。",
+                    ),
+                    checks=UNCOVERED(
+                        "生产恒为 null，没有值可验；名称真值的验证挂在 "
+                        "daily_flags.is_st 上"
+                    ),
+                )
+            )
+            continue
+        out.append(
+            Metric(
+                id=f"tushare_daily.{col}",
+                kind=Kind.DIRECT,
+                validity=Validity.SESSION,
+                status=MetricStatus.ACTIVE,
+                meaning=_MEANING[col],
+                lineage=lineage[col],
+                checks=_DAILY_CHECKS.get(col, _DAILY_DEFAULT_CHECKS),
+                known_issues=_DAILY_ISSUES.get(col, ()),
+            )
         )
-        for col in schema.PAID_DAILY.names
-    ]
+    return out
 
 
 def _paid_daily_metrics() -> list[Metric]:

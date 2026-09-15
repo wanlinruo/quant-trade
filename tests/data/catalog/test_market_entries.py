@@ -115,12 +115,24 @@ def test_auction_quote_columns_record_the_identity():
     assert "虚拟开盘价" in BY_ID["auction_ticks.bid1"].meaning
 
 
-def test_every_entry_is_direct_and_session_or_point():
-    """行情类全是直取。出现 DERIVED 说明归类错了——
-    抽不出 (源, 字段) 的字段本来就不该放在这个模块。"""
+def test_every_entry_is_direct_except_the_one_column_with_no_source():
+    """行情类原则上全是直取。唯一的例外是 tushare_daily.name——
+    三个接口都不返回它，compose_daily 写 null 字面量，所以它指不到任何源字段。
+    把它记成 DIRECT 会让 root_sources 报出一条不存在的名称链路。"""
     for m in METRICS:
+        if m.id == "tushare_daily.name":
+            assert m.kind is Kind.DERIVED
+            assert m.lineage.upstream == ()
+            continue
         assert m.kind is Kind.DIRECT, m.id
         assert m.validity in (Validity.SESSION, Validity.POINT), m.id
+
+
+def test_the_null_name_column_contributes_no_root_source():
+    """回归守护：这一列若记成 DIRECT，root_sources 会凭空多出一条
+    tushare.namechange 的名称链路，而生产里那条链路根本不存在。"""
+    from qsys.data.catalog import root_sources
+    assert root_sources("tushare_daily.name") == ()
 
 
 def test_unknown_meanings_are_listed_not_hidden():
