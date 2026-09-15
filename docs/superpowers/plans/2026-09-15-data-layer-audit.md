@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 建立覆盖 206 个落盘字段与 12 个策略侧决策量的指标字典、可反复重跑的三类验证规则、以及把两者摆出来的数据层页面。
+**Goal:** 建立覆盖 206 个落盘字段与 10 个策略侧决策量的指标字典、可反复重跑的三类验证规则、以及把两者摆出来的数据层页面。
 
 **Architecture:** 字典是代码（`src/qsys/data/catalog/`），不是文档或配置——只有代码能被测试守住「schema 加了列而字典没登记」。验证规则引用字典里的 metric id，结果落 warehouse 两张新表；页面 import 字典、查结果表，两者拼成视图。字典 → 验证 → 页面是单向依赖，没有回边。
 
@@ -37,7 +37,7 @@
 | `src/qsys/data/catalog/market.py` | 行情类 90 条 |
 | `src/qsys/data/catalog/reference.py` | 参考类 49 条 |
 | `src/qsys/data/catalog/derived.py` | 派生类 20 条 |
-| `src/qsys/data/catalog/factors.py` | 因子类 27 条（落盘 15 + 策略侧 12） |
+| `src/qsys/data/catalog/factors.py` | 因子类 25 条（落盘 15 + 策略侧 10） |
 | `src/qsys/data/catalog/operational.py` | 运行时类 32 条 |
 | `src/qsys/data/catalog/__init__.py` | 聚合 `REGISTRY` / `SOURCES`，派生 `consumers` / `root_sources` |
 | `src/qsys/data/catalog/checks.py` | Check 类型、规则注册表、runner |

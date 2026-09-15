@@ -33,10 +33,10 @@
 |---|---:|---|
 | `schema.ALL` 全部字段 | 178 | 22 张表 |
 | `PAID_DAILY` 字段 | 28 | 故意不注册进 `PARTITIONED`，但是 2026-09-11 前名称的唯一真值源 |
-| 策略侧不落盘决策量 | 约 12 | `stock_return_10d`、`distance_to_60d_high`、`avg_inc`、竞价价比/量比、`relative_position_60d`、左压 `zyts` 等 |
-| **合计** | **约 218** | |
+| 策略侧不落盘决策量 | 10 | `stock_return_10d`、`distance_to_60d_high`、`avg_inc`、竞价价比/量比、`relative_position_60d`、左压 `zyts` 等 |
+| **合计** | **216** | |
 
-策略侧那 12 个必须纳入：它们是 S6/S7 Gate 的直接输入，D-4 阈值重标定就靠它们。
+策略侧这 10 个必须纳入：它们是 S6/S7 Gate 与入场过滤的直接输入，D-4 阈值重标定就靠它们。
 只盘落盘字段会让字典追不到决策。
 
 ### 不纳入
@@ -202,7 +202,7 @@ reference.py      instruments(7) name_history(6) name_snapshots(3)
                   price_limits_daily(5) suspend_daily(4) limit_list_daily(9)
                   corporate_actions(6) share_capital(5) adj_factors(4)  约 49 条
 derived.py        daily_flags(14) valuation_snapshot(6)                    20 条
-factors.py        market_regime(15) + 策略侧 12 个                       约 27 条
+factors.py        market_regime(15) + 策略侧 10 个                          25 条
 operational.py    live_equity/fills/rejects/recon(25) ingest_log(7)         32 条
 __init__.py       汇总 REGISTRY: dict[str, Metric]，对外只暴露它与 SOURCES
 ```
@@ -456,7 +456,7 @@ D-4 重标定也需要这条时间线。
 两个 KPI 的定义写死，避免各处口径不一：
 
 - **规则覆盖率** = `挂了规则且最近一轮真的跑出了结果的指标数 ÷ 指标总数`。
-  分母含策略侧 12 个；挂了规则但本轮没跑成的**不计入分子**（对应 7.2 的
+  分母含策略侧 10 个；挂了规则但本轮没跑成的**不计入分子**（对应 7.2 的
   「没跑 ≠ 通过」）。
 - **待处理数** = `失败 + 含义待查 + 未覆盖` 三格之和。**不含**「已知缺陷」——
   后者已挂账有归属，混进来会让这个数永远降不到零而失去意义。
@@ -536,7 +536,7 @@ daily_flags.is_first_board   DERIVED
 ## 九、验收标准
 
 1. **T1–T6 六条守护测试全绿**，且 T1 断言的条目数恰为 206。
-2. **策略侧 12 个决策量全部登记**，血缘可追溯到落盘指标。
+2. **策略侧 10 个决策量全部登记**，血缘可追溯到落盘指标。
 3. **`meaning=UNKNOWN` 的条目有明确清单**，数量记录在案（允许非零，但必须可见）。
 4. **`UNCOVERED` 的条目有明确清单**，每条带理由。
 5. **A/B/C 三类规则至少各有一条在生产数据上实跑出结果**，写入 `metric_checks`。
