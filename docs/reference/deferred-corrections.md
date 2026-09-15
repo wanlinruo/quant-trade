@@ -479,6 +479,12 @@ null，不再生成看似正常的错价。
 
 备份：`warehouse/backups/daily_flags_before_limit_pct_decode`。
 
+**已固化成常驻规则（2026-09-15）**：`A3.limit_pct_reproduces_price`——
+档位必须能精确还原出同一行的涨跌停价，`limit_pct` 为 null 的行不参与。
+这种矛盾不会让任何东西报错，只会让读 `limit_pct` 的下游安静地算错，
+所以必须由常驻规则盯着。生产实跑（2026-09-01~09-14）：52,043 行受检，
+0 违例。
+
 ## D-14 `universe.py` 仍用 `limit_pct == 0.05` 反推 ST（已了结）
 
 **登记日期**：2026-09-15。
