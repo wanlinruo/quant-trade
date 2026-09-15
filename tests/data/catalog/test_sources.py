@@ -20,7 +20,12 @@ def test_covers_all_ten_tushare_apis():
 
 
 def test_registers_every_known_source():
-    """源清单是穷举的。新增源必须同时更新这里，否则字典会指向一个没登记的源。"""
+    """源清单是穷举的。新增源必须同时更新这里，否则字典会指向一个没登记的源。
+
+    23 个：R12/R14 补登 qmt.capital（share_capital 的真实源）与
+    qmt.dividends（corporate_actions 的真实源，草案原先误记成
+    akshare.stock_fhps_detail_em）。Task 8 的 qsys.runtime 会是第 24 个。
+    """
     assert set(SOURCES) == {
         "tushare.daily", "tushare.daily_basic", "tushare.adj_factor",
         "tushare.stk_limit", "tushare.suspend_d", "tushare.limit_list_d",
@@ -29,7 +34,7 @@ def test_registers_every_known_source():
         "akshare.tool_trade_date_hist_sina", "akshare.stock_info_a_code_name",
         "akshare.stock_info_sh_delist", "akshare.stock_info_sz_delist",
         "akshare.stock_zh_a_spot_em", "akshare.stock_fhps_detail_em",
-        "qmt.minute", "qmt.tick",
+        "qmt.minute", "qmt.tick", "qmt.capital", "qmt.dividends",
         "baidupan.daily", "baidupan.minute",
         "mootdx.kline",
     }

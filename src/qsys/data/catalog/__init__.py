@@ -23,7 +23,7 @@ from qsys.data.catalog.types import (
 )
 
 # Task 4-8 逐个接上；每个模块导出 (METRICS, DATASETS) 两个名字。
-_MODULES: list[str] = ["market"]
+_MODULES: list[str] = ["market", "reference"]
 
 _metrics: dict[str, Metric] = {}
 _owned: set[str] = set()

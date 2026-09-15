@@ -94,6 +94,42 @@ _ALL = [
                "撮合完成后的结果，口径对不上，替代会引入前视偏差（D-7）",
     ),
 
+    # ---- QMT 按需全量重跑，2 个（R12/R14：share_capital / corporate_actions
+    # 的真实源，草案原先分别错记成 qmt.minute 与 akshare.stock_fhps_detail_em）----
+    Source(
+        id="qmt.capital", provider="QMT", api="capital",
+        access=Access.REALTIME, status=SourceStatus.ACTIVE,
+        credential="Windows 节点 xtquant", tier="券商账户",
+        acquired="download_financial_data", cadence="按需全量重跑",
+        caveat="scripts/win_download_capital.py 实测：download_financial_data "
+               "0.11 秒/只，全市场约 10 分钟，磁盘约 4 MB；抽样 15 只全部有"
+               "股本变动，且粒度是事件级（增发/解禁/回购注销都有独立记录），"
+               "必须按记录逐条落盘，不能只取季末快照。字段对照：m_timetag"
+               "（生效日）→ dt，m_anntime（公告日）→ ann_date，total_capital "
+               "→ total，circulating_capital → circulating；脚本对 "
+               "total_capital / circulating_capital 用 `... or 0.0` 兜底，"
+               "None 会被折算成 0.0（见 catalog/reference.py 的填充问题记录）",
+    ),
+    Source(
+        id="qmt.dividends", provider="QMT", api="dividends",
+        access=Access.REALTIME, status=SourceStatus.ACTIVE,
+        credential="Windows 节点 xtquant", tier="券商账户",
+        acquired="scripts/win_download_dividends.py 全市场逐标的下载"
+                 "（xtdata.get_divid_factors）",
+        cadence="按需全量重跑",
+        caveat="它**含配股**（allotNum/allotPrice），这正是它存在的原因——"
+               "akshare 的 stock_fhps_detail_em 只有分红送转，做过配股的标的"
+               "复权因子会偏差（spec §12 风险表，pipeline/dividends.py:1-11）。"
+               "字段对照：interest → cash_per_share，stockBonus+stockGift → "
+               "stock_per_share，allotNum → rights_per_share，allotPrice → "
+               "rights_price；dr（单次复权因子）只用于交叉校验，不落库。"
+               "返回值以除权日为 DataFrame 索引，无具名日期列。脚本的 "
+               "_num() 把 None/NaN 一律折算成 0.0（见 "
+               "catalog/reference.py 的填充问题记录）。build_corporate_actions"
+               "（akshare 路径）仅在冷启动脚本 bootstrap_warehouse.py 用到，"
+               "标准增量链路走的是这个源",
+    ),
+
     # ---- 百度网盘付费源，人工转存，已冻结 ----
     Source(
         id="baidupan.daily", provider="百度网盘付费源（余哈哈数据仓库）", api="daily",
