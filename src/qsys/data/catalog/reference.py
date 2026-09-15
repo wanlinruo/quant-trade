@@ -444,7 +444,7 @@ def _limit_list_daily() -> list[Metric]:
                 formula="调用方传入 ingest_limit_list 的 limit_type 查询参数字面量"
                         "（U/D/Z），响应体本身不携带该分类字段",
             ),
-            checks=_LIMIT_LIST_CHECKS, known_issues=("D-11",),
+            checks=_LIMIT_LIST_CHECKS, known_issues=("D-11", "D-12"),
         ),
         Metric(
             id="limit_list_daily.limit_times", kind=Kind.DIRECT, validity=Validity.SESSION,

@@ -49,14 +49,35 @@ def _flags(rows, warehouse):
 
 def test_amount_dimension_accepts_correct_units(ctx, warehouse, tmp_path):
     _daily([{"symbol": "600036.SH", "dt": D[0], "close": 10.0,
+             "low": 9.5, "high": 10.5,
              "volume": 1000.0, "amount": 1_000_000.0}], warehouse)
     assert _run("A1.dimension.amount_vs_volume_close", ctx, tmp_path)["passed"] is True
 
 
 def test_amount_dimension_catches_lost_multiplier(ctx, warehouse, tmp_path):
     _daily([{"symbol": "600036.SH", "dt": D[0], "close": 10.0,
+             "low": 9.5, "high": 10.5,
              "volume": 1000.0, "amount": 1000.0}], warehouse)
     assert _run("A1.dimension.amount_vs_volume_close", ctx, tmp_path)["violations"] == 1
+
+
+def test_amount_dimension_accepts_vwap_far_from_close(ctx, warehouse, tmp_path):
+    _daily([{"symbol": "600036.SH", "dt": D[0], "close": 10.0,
+             "low": 8.0, "high": 10.5,
+             "volume": 1000.0, "amount": 850_000.0}], warehouse)
+    assert _run("A1.dimension.amount_vs_volume_close", ctx, tmp_path)["passed"] is True
+
+
+@pytest.mark.parametrize("field,actual,expected", [
+    ("pct_change", 0.0599, (16.71 / 16.70 - 1) * 100),
+    ("turnover_ratio", 0.2162, 11366.64 * 100 / 525859082 * 100),
+])
+def test_four_decimal_source_fields_accept_rounding(field, actual, expected):
+    frame = pl.DataFrame({"actual": [actual], "expected": [expected]})
+    bad, checked = rules_truth._relative_bad(
+        frame, rules_truth._REL_TOL, rules_truth._FOUR_DECIMAL_ABS_TOL,
+    )
+    assert checked == 1 and bad.height == 0
 
 
 def test_change_identity_catches_bad_pre_close(ctx, warehouse, tmp_path):
@@ -105,13 +126,29 @@ def test_limit_list_allows_only_st_to_be_missing(ctx, warehouse, tmp_path):
 def test_limit_list_reports_non_st_gap(ctx, warehouse, tmp_path):
     _flags([{"dt": D[0], "symbol": "600002.SH",
              "is_limit_up": True, "is_st": False}], warehouse)
-    empty = pl.from_arrow(schema.LIMIT_LIST_DAILY.empty_table())
+    # 另一只股票的记录证明接口当天已经到货；此时缺少 600002 才是真差异。
+    listed = pl.DataFrame([{
+        "symbol": "600003.SH", "dt": D[0], "limit_type": "D",
+        "limit_times": 1, "open_times": 0, "first_time": "09:30",
+        "fd_amount": 0.0, "limit_amount": 0.0, "float_mv": 0.0,
+    }]).select(schema.LIMIT_LIST_DAILY.names)
     warehouse.write(
         "limit_list_daily",
-        empty.to_arrow().cast(schema.LIMIT_LIST_DAILY),
+        listed.to_arrow().cast(schema.LIMIT_LIST_DAILY),
         year=2026,
     )
     assert _run("A3.limit_list_vs_selfcalc", ctx, tmp_path)["violations"] == 1
+
+
+def test_limit_list_comparison_is_not_applicable_before_source_arrives(
+    ctx, warehouse, tmp_path,
+):
+    _flags([{"dt": D[0], "symbol": "600002.SH",
+             "is_limit_up": True, "is_st": False}], warehouse)
+    row = _run("A3.limit_list_vs_selfcalc", ctx, tmp_path)
+    assert row["passed"] is True
+    assert row["checked_rows"] == 0
+    assert "不适用" in row["detail"]
 
 
 def test_limit_price_rule_reports_direct_source_disagreement(ctx, warehouse, tmp_path):

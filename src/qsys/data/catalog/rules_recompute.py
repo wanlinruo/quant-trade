@@ -12,10 +12,15 @@ from qsys.data.catalog.checks import Category, Check, CheckContext, CheckResult,
 _TOL = 1e-6
 
 
-def _compare(frame: pl.DataFrame, *, boolean: bool = False) -> CheckResult:
+def _compare(
+    frame: pl.DataFrame, *, boolean: bool = False, empty_is_not_applicable: bool = False,
+) -> CheckResult:
     usable = frame.drop_nulls(["actual", "expected"])
     if usable.height == 0:
-        return CheckResult(0, 0, "上游有 null 或无可比对的行")
+        return CheckResult(
+            0, 0, "上游有 null 或无可比对的行",
+            applicable=not empty_is_not_applicable,
+        )
     bad = usable.filter(
         pl.col("actual") != pl.col("expected") if boolean else
         (pl.col("actual") - pl.col("expected")).abs() > _TOL
@@ -26,11 +31,14 @@ def _compare(frame: pl.DataFrame, *, boolean: bool = False) -> CheckResult:
 
 
 def _add(column: str, metric: str, build: Callable[[CheckContext], pl.DataFrame],
-         *, boolean: bool = False) -> None:
+         *, boolean: bool = False, empty_is_not_applicable: bool = False) -> None:
     register(Check(
         f"A2.recompute.{column}", Category.TRUTHFULNESS, Scope.INCREMENTAL,
         (metric,), (), f"独立重算 {metric}",
-        lambda ctx: _compare(build(ctx), boolean=boolean),
+        lambda ctx: _compare(
+            build(ctx), boolean=boolean,
+            empty_is_not_applicable=empty_is_not_applicable,
+        ),
     ))
 
 
@@ -283,7 +291,10 @@ def _live_total(ctx: CheckContext) -> pl.DataFrame:
                         (pl.col("cash") + pl.col("market_value")).round(2).alias("expected"))
 
 
-_add("live_total_value", "live_equity.total_value", _live_total)
+_add(
+    "live_total_value", "live_equity.total_value", _live_total,
+    empty_is_not_applicable=True,
+)
 
 
 # ---- market_regime：从日线、flags、因子和指数重新聚合 -----------------

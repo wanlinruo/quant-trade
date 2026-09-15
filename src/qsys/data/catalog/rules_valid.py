@@ -91,6 +91,30 @@ FILL_EXEMPTIONS: dict[tuple[str, str], str] = {
         'touched = (pl.col("high") >= pl.col("limit_up")).fill_null(False)',
     ): "涨停价不可得时不宣称触板；布尔事件列的否定值是保守真值",
     (
+        "src/qsys/data/pipeline/flags.py",
+        '(cond.fill_null(False).cast(pl.Int32) for _, cond in hits),',
+    ): "档位解码中 null 表示该候选档位未命中；按 False 计数是布尔判定本义",
+    (
+        "src/qsys/data/pipeline/flags.py",
+        'decoded = pl.when(cond.fill_null(False)).then(pl.lit(tier)).otherwise(decoded)',
+    ): "档位解码中 null 表示该候选档位未命中，不会据此制造档位值",
+    (
+        "src/qsys/data/catalog/rules_recompute.py",
+        'matched = sum((c.fill_null(False).cast(pl.Int32) for _, c in hits),',
+    ): "独立档位校验中 null 表示候选档位未命中；按 False 只会拒绝解码",
+    (
+        "src/qsys/data/catalog/rules_recompute.py",
+        'decoded = pl.when(cond.fill_null(False)).then(pl.lit(tier)).otherwise(decoded)',
+    ): "独立档位校验中 null 表示候选档位未命中，不会据此制造档位值",
+    (
+        "src/qsys/data/pipeline/tushare_reference.py",
+        'pl.col("_matched").fill_null(False).alias("is_st")',
+    ): "stock_st 只返回正例；与完整日线左连未命中按接口定义就是非 ST",
+    (
+        "src/qsys/strategy/structural/universe.py",
+        'yesterday = yesterday.filter(~pl.col("is_st").fill_null(True))',
+    ): "候选池对未知 ST 状态保守排除；null 按高风险处理只会少选不会误放行",
+    (
         "src/qsys/data/pipeline/paid_minute.py",
         'reason_counts[row["reason"]] = reason_counts.get(row["reason"], 0) + row["len"]',
     ): "计数器未见过某键时其累计次数按定义为 0，不是数据观测值",

@@ -1,0 +1,28 @@
+{
+  "date": "2026-09-15",
+  "branch": "fix/metric-check-anomalies",
+  "scope_start": "2026-09-15",
+  "scope_end": "2026-09-15",
+  "production_data_mutated": false,
+  "before": {
+    "latest_result_rows": 97,
+    "failed_metric_rows": 28,
+    "blocking_metric_rows": 26,
+    "warning_metric_rows": 2
+  },
+  "isolated_rerun": {
+    "affected_check_result_rows": 27,
+    "failed_metric_rows": 5,
+    "blocking_metric_rows": 3,
+    "warning_metric_rows": 2,
+    "remaining_blocking_root_causes": 1
+  },
+  "remaining_blocker": {
+    "id": "D-17",
+    "symbol": "688235.SH",
+    "date": "2026-09-15",
+    "relative_difference": 0.04733649904660513
+  },
+  "temporary_validation_code": "/tmp/qsys-metric-check-fix-20260915/src",
+  "temporary_samples": "/tmp/qsys-check-artifacts-2"
+}

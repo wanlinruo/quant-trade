@@ -12,17 +12,21 @@ from qsys.data.quality.minute_rules import check_minute_bars
 
 _REL_TOL = 1e-4
 _GAP_TOL = 0.005
+_FOUR_DECIMAL_ABS_TOL = 0.0000500001
 
 
-def _relative_bad(frame: pl.DataFrame, tolerance: float) -> tuple[pl.DataFrame, int]:
+def _relative_bad(
+    frame: pl.DataFrame, tolerance: float, absolute_tolerance: float = 0.0,
+) -> tuple[pl.DataFrame, int]:
     comparable = frame.filter(
         pl.col("actual").is_not_null()
         & pl.col("expected").is_not_null()
         & (pl.col("expected").abs() > 0)
     )
+    difference = (pl.col("actual") - pl.col("expected")).abs()
     bad = comparable.filter(
-        (pl.col("actual") - pl.col("expected")).abs()
-        / pl.col("expected").abs() > tolerance
+        (difference > absolute_tolerance)
+        & (difference / pl.col("expected").abs() > tolerance)
     )
     return bad, comparable.height
 
@@ -35,12 +39,13 @@ def _identity(
     description: str,
     *,
     tolerance: float = _REL_TOL,
+    absolute_tolerance: float = 0.0,
 ) -> None:
     def run(ctx: CheckContext) -> CheckResult:
         source = ctx.query.tushare_daily(None, ctx.start, ctx.end, columns=columns)
         if source.height == 0:
             return CheckResult(0, 0, "区间内无日线数据")
-        bad, checked = _relative_bad(build(source), tolerance)
+        bad, checked = _relative_bad(build(source), tolerance, absolute_tolerance)
         return CheckResult(
             bad.height, checked,
             f"{bad.height} / {checked} 行超出相对容差 {tolerance}",
@@ -51,17 +56,38 @@ def _identity(
                    metrics, (), description, run))
 
 
-_identity(
-    "A1.dimension.amount_vs_volume_close",
-    ("tushare_daily.amount", "tushare_daily.volume"),
-    ["symbol", "dt", "close", "volume", "amount"],
-    lambda frame: frame.with_columns(
-        pl.col("amount").alias("actual"),
-        (pl.col("volume") * 100.0 * pl.col("close")).alias("expected"),
-    ),
-    "成交额约等于成交量（手）×100×收盘价",
-    tolerance=0.05,
-)
+def _amount_dimension(ctx: CheckContext) -> CheckResult:
+    """成交均价必须落在当日最低价和最高价之间。
+
+    成交额 / 成交量得到的是 VWAP，不是收盘价。旧规则拿 close 作 5% 近似，
+    会把日内振幅较大的正常股票误报。边界外扩 0.1% 只吸收价格和金额舍入。
+    """
+    frame = ctx.query.tushare_daily(
+        None, ctx.start, ctx.end,
+        columns=["symbol", "dt", "low", "high", "volume", "amount"],
+    ).drop_nulls(["low", "high", "volume", "amount"]).filter(pl.col("volume") > 0)
+    if frame.height == 0:
+        return CheckResult(0, 0, "区间内没有正成交量的可比日线")
+    checked = frame.with_columns(
+        (pl.col("volume") * 100.0 * pl.col("low") * 0.999).alias("lower_bound"),
+        (pl.col("volume") * 100.0 * pl.col("high") * 1.001).alias("upper_bound"),
+    )
+    bad = checked.filter(
+        (pl.col("amount") < pl.col("lower_bound"))
+        | (pl.col("amount") > pl.col("upper_bound"))
+    )
+    return CheckResult(
+        bad.height, checked.height,
+        f"{bad.height} / {checked.height} 行的成交均价超出最低价/最高价区间",
+        bad.head(5000) if bad.height else None,
+    )
+
+
+register(Check(
+    "A1.dimension.amount_vs_volume_close", Category.TRUTHFULNESS, Scope.INCREMENTAL,
+    ("tushare_daily.amount", "tushare_daily.volume"), (),
+    "成交额/成交量所得均价必须落在当日最低价和最高价之间", _amount_dimension,
+))
 _identity(
     "A3.change_identity",
     ("tushare_daily.change", "tushare_daily.pre_close"),
@@ -81,11 +107,12 @@ _identity(
         ((pl.col("close") / pl.col("pre_close") - 1) * 100).alias("expected"),
     ),
     "涨跌幅（%）= (收盘价/前收价−1)×100",
+    absolute_tolerance=_FOUR_DECIMAL_ABS_TOL,
 )
 _identity(
     "A3.market_cap_vs_shares",
     ("tushare_daily.market_cap", "tushare_daily.total_shares",
-     "valuation_snapshot.market_cap", "valuation_snapshot.circulating_market_cap"),
+     "valuation_snapshot.market_cap"),
     ["symbol", "dt", "close", "market_cap", "total_shares"],
     lambda frame: frame.with_columns(
         pl.col("market_cap").alias("actual"),
@@ -103,6 +130,7 @@ _identity(
         (pl.col("volume") * 100 / pl.col("circulating_shares") * 100).alias("expected"),
     ),
     "换手率（%）= 成交量（手）×100/流通股本×100",
+    absolute_tolerance=_FOUR_DECIMAL_ABS_TOL,
 )
 
 
@@ -152,6 +180,11 @@ def _limit_list(ctx: CheckContext) -> CheckResult:
     listed = ctx.query.limit_list(None, ctx.start, ctx.end)
     if flags.height == 0:
         return CheckResult(0, 0, "区间内无 daily_flags")
+    if listed.height == 0:
+        return CheckResult(
+            0, 0, "limit_list_d 尚未到货；到货异常由 B4.zero_limit_up 单独报告",
+            applicable=False,
+        )
     mine = flags.filter(pl.col("is_limit_up")).select("symbol", "dt", "is_st")
     theirs = listed.filter(pl.col("limit_type") == "U").select("symbol", "dt")
     only_mine = mine.join(theirs, on=["symbol", "dt"], how="anti")
@@ -265,6 +298,11 @@ def _minute_vs_daily(ctx: CheckContext) -> CheckResult:
                     })
         day += timedelta(days=1)
     sample = pl.DataFrame(rows) if rows else None
+    if checked == 0:
+        return CheckResult(
+            0, 0, "范围内没有同时到货的 QMT 分钟线与日线",
+            applicable=False,
+        )
     return CheckResult(len(rows), checked, f"{len(rows)} 个分钟/日线跨源差异", sample)
 
 

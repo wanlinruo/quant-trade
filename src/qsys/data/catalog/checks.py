@@ -50,6 +50,7 @@ class CheckResult:
     checked_rows: int
     detail: str = ""
     sample: pl.DataFrame | None = None
+    applicable: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,7 +119,16 @@ def run_checks(
             )
             passed = False
         else:
-            if result.checked_rows <= 0:
+            if not result.applicable:
+                passed = True
+                result = CheckResult(
+                    result.violations,
+                    result.checked_rows,
+                    (result.detail + " | " if result.detail else "") + "本次范围不适用",
+                    result.sample,
+                    applicable=False,
+                )
+            elif result.checked_rows <= 0:
                 passed = False
                 result = CheckResult(
                     result.violations,

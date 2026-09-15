@@ -70,6 +70,15 @@ def test_zero_denominator_is_not_a_pass(ctx):
     assert "没有可检查的行" in out["detail"][0]
 
 
+def test_explicitly_not_applicable_check_is_not_a_failure(ctx):
+    out = C.run_checks(ctx, "r1", NOW, only=[
+        _check("X.na", lambda _: C.CheckResult(0, 0, "当前没有该类事件", applicable=False))
+    ])
+    assert out["passed"][0] is True
+    assert out["checked_rows"][0] == 0
+    assert "本次范围不适用" in out["detail"][0]
+
+
 def test_samples_are_written_outside_result_table(ctx, tmp_path):
     sample = pl.DataFrame({"symbol": ["000430.SZ"], "dt": [D1]})
     check = _check("X.sample", lambda _: C.CheckResult(1, 10, sample=sample))

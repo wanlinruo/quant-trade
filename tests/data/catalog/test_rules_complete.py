@@ -37,6 +37,8 @@ def test_zero_limit_up_is_failure(ctx, warehouse):
     _flags([{"dt": D[0], "symbol": "600036.SH", "is_limit_up": False}], warehouse)
     row = _run("B4.zero_limit_up", ctx)
     assert row["passed"] is False and "零涨停" in row["detail"]
+    assert row["severity"] == "warning"
+    assert row["known_issue"] == "D-12"
 
 def test_calendar_has_a_real_denominator(ctx, warehouse):
     _flags([{"dt": D[0], "symbol": "600036.SH"}], warehouse)

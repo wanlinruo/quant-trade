@@ -56,6 +56,10 @@ def test_feed_no_longer_fills_the_factor():
     assert not [site for site in sites if "feed.py" in site.path]
 
 
+def test_all_production_fill_sites_are_explained():
+    assert rules_valid.scan_fills() == []
+
+
 def test_pit_join_catches_snapshot_used_off_observation_day(ctx, warehouse):
     warehouse.write("name_snapshots", pl.DataFrame({
         "dt": [D[0]], "symbol": ["600036.SH"], "name": ["招商银行"],
