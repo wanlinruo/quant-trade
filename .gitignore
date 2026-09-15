@@ -6,3 +6,5 @@ warehouse/
 config/deploy.local.toml
 var/
 .DS_Store
+.claude/worktrees/
+.superpowers/
