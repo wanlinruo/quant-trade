@@ -95,7 +95,7 @@ _MEANING = {
                     "（旧源曾用 market_cap / close 反算，华虹宏力偏差 1.91 亿股）",
     "circulating_shares": "流通股本（股）",
     "free_shares": "自由流通股本（股）",
-    "market_cap": "总市值（元）",
+    "market_cap": "总市值（元）。A+H/ADR 公司不保证等于 A 股收盘价乘全球总股本",
     "circulating_market_cap": "流通市值（元）",
 }
 
@@ -125,7 +125,8 @@ _DAILY_CHECKS = {
     "market_cap": ("A3.market_cap_vs_shares",),
     "total_shares": ("A3.market_cap_vs_shares",),
     "turnover_ratio": ("A3.turnover_identity",),
-    "circulating_shares": ("A3.turnover_identity",),
+    "circulating_shares": ("A3.turnover_identity", "A3.market_cap_vs_shares"),
+    "circulating_market_cap": ("A3.market_cap_vs_shares",),
     "open": ("A3.minute_vs_daily", "B3.null_rate"),
     "high": ("A3.minute_vs_daily", "B3.null_rate"),
     "low": ("A3.minute_vs_daily", "B3.null_rate"),

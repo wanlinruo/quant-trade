@@ -88,8 +88,39 @@ def test_change_identity_catches_bad_pre_close(ctx, warehouse, tmp_path):
 
 def test_market_cap_identity_catches_bad_shares(ctx, warehouse, tmp_path):
     _daily([{"symbol": "600036.SH", "dt": D[0], "close": 10.0,
-             "market_cap": 1e10, "total_shares": 5e8}], warehouse)
+             "market_cap": 1e10, "total_shares": 5e8,
+             "circulating_market_cap": 4e9, "circulating_shares": 4e8}], warehouse)
     assert _run("A3.market_cap_vs_shares", ctx, tmp_path)["violations"] == 1
+
+
+def test_market_cap_rule_accepts_cross_listed_share_scope(ctx, warehouse, tmp_path):
+    """全球总股本可大于 A 股市值采用的计价股本，不能误报 A+H/ADR。"""
+    _daily([{
+        "symbol": "688235.SH", "dt": D[0], "close": 253.56,
+        "total_shares": 1_542_285_181.0,
+        "market_cap": 372_550_332_528.0,
+        "circulating_shares": 115_055_260.0,
+        "circulating_market_cap": 29_173_421_868.0,
+    }], warehouse)
+    assert _run("A3.market_cap_vs_shares", ctx, tmp_path)["passed"] is True
+
+
+def test_market_cap_rule_accepts_previous_session_share_on_change_day(
+    ctx, warehouse, tmp_path,
+):
+    """daily_basic 的市值在股本变化日可能仍按上一交易日股本计算。"""
+    _daily([
+        {"symbol": "300803.SZ", "dt": D[0], "close": 80.0,
+         "total_shares": 616_500_530.0, "market_cap": 49_320_042_400.0,
+         "circulating_shares": 612_047_797.0,
+         "circulating_market_cap": 48_963_823_760.0},
+        {"symbol": "300803.SZ", "dt": D[1], "close": 77.15,
+         "total_shares": 616_536_061.0,
+         "market_cap": 616_500_530.0 * 77.15,
+         "circulating_shares": 611_879_416.0,
+         "circulating_market_cap": 612_047_797.0 * 77.15},
+    ], warehouse)
+    assert _run("A3.market_cap_vs_shares", ctx, tmp_path)["passed"] is True
 
 
 def test_missed_exdiv_flags_gap_without_factor_jump(ctx, warehouse, tmp_path):

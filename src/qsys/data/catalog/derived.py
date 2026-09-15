@@ -203,7 +203,7 @@ METRICS: tuple[Metric, ...] = (
         "流通市值（亿元）。同 market_cap，直接投影不再反算",
         ("tushare_daily.circulating_market_cap",),
         "circulating_market_cap = tushare_daily.circulating_market_cap / 1e8",
-        ("A2.recompute.circulating_market_cap",),
+        ("A2.recompute.circulating_market_cap", "A3.market_cap_vs_shares"),
     ),
     _m(
         "valuation_snapshot.turnover_ratio",

@@ -30,6 +30,15 @@
     "blocking_metric_rows": 3,
     "warning_metric_rows": 2
   },
+  "d17_resolution": {
+    "classification": "check_formula_invalid_for_cross_listed_and_share-change-day_scope",
+    "source_rows_rewritten": 0,
+    "production_rows_checked": 5548,
+    "violations_after_fix": 0,
+    "affected_metric_rows": 6,
+    "cross_listed_sample": "688235.SH",
+    "previous_session_share_samples": ["300803.SZ", "603162.SH"]
+  },
   "deployed_commit": "c72da511",
   "node_pre_deploy_stash": "pre-metric-fix-deploy-20260915",
   "temporary_validation_code": "/tmp/qsys-metric-check-fix-20260915/src",

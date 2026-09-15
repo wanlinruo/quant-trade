@@ -109,17 +109,73 @@ _identity(
     "涨跌幅（%）= (收盘价/前收价−1)×100",
     absolute_tolerance=_FOUR_DECIMAL_ABS_TOL,
 )
-_identity(
-    "A3.market_cap_vs_shares",
+def _market_cap_share_bounds(ctx: CheckContext) -> CheckResult:
+    """校验市值采用的股本口径边界，不强求跨市场公司满足错误恒等式。
+
+    A+H/ADR 公司的 ``total_share`` 可包含境外股份，而 A 股 ``total_mv`` 的
+    计价股本口径可能更窄；所以 total_mv = A股收盘价 × 全球总股本并非恒等式。
+    始终成立的是：总股本不少于总市值反推的计价股本，后者不少于 A 股流通
+    股本；流通市值则应与 A 股收盘价 × 流通股本一致。
+    """
+    frame = ctx.query.tushare_daily(
+        None, ctx.start - timedelta(days=10), ctx.end,
+        columns=["symbol", "dt", "close", "market_cap", "total_shares",
+                 "circulating_market_cap", "circulating_shares"],
+    ).drop_nulls().sort(["symbol", "dt"]).with_columns(
+        pl.col("total_shares").shift(1).over("symbol").alias("previous_total_shares"),
+        pl.col("circulating_shares").shift(1).over("symbol")
+        .alias("previous_circulating_shares"),
+    ).filter(
+        pl.col("dt").is_between(ctx.start, ctx.end)
+        & (pl.col("close") > 0)
+        & (pl.col("market_cap") > 0)
+        & (pl.col("total_shares") > 0)
+        & (pl.col("circulating_market_cap") > 0)
+        & (pl.col("circulating_shares") > 0)
+    ).with_columns(
+        (pl.col("market_cap") / pl.col("close")).alias("implied_priced_shares"),
+        (pl.col("circulating_market_cap") / pl.col("close"))
+        .alias("implied_circulating_shares"),
+    )
+    if frame.height == 0:
+        return CheckResult(0, 0, "区间内没有完整的市值/股本可比行")
+    tolerance = _REL_TOL
+    total_ceiling = pl.max_horizontal("total_shares", "previous_total_shares")
+    circulating_floor = pl.min_horizontal(
+        "circulating_shares", "previous_circulating_shares"
+    )
+    circulating_error_now = (
+        (pl.col("implied_circulating_shares") - pl.col("circulating_shares")).abs()
+        / pl.col("circulating_shares")
+    )
+    circulating_error_previous = (
+        (pl.col("implied_circulating_shares") - pl.col("previous_circulating_shares")).abs()
+        / pl.col("previous_circulating_shares")
+    )
+    bad = frame.filter(
+        (pl.col("implied_priced_shares") > total_ceiling * (1 + tolerance))
+        | (circulating_floor > pl.col("implied_priced_shares") * (1 + tolerance))
+        | (pl.col("circulating_shares") > pl.col("total_shares") * (1 + tolerance))
+        | ((circulating_error_now > tolerance)
+           & (pl.col("previous_circulating_shares").is_null()
+              | (circulating_error_previous > tolerance)))
+    )
+    return CheckResult(
+        bad.height, frame.height,
+        f"{bad.height} / {frame.height} 行违反市值计价股本边界，或流通市值既不匹配"
+        "当日也不匹配上一交易日股本",
+        bad.head(5000) if bad.height else None,
+    )
+
+
+register(Check(
+    "A3.market_cap_vs_shares", Category.TRUTHFULNESS, Scope.INCREMENTAL,
     ("tushare_daily.market_cap", "tushare_daily.total_shares",
-     "valuation_snapshot.market_cap"),
-    ["symbol", "dt", "close", "market_cap", "total_shares"],
-    lambda frame: frame.with_columns(
-        pl.col("market_cap").alias("actual"),
-        (pl.col("close") * pl.col("total_shares")).alias("expected"),
-    ),
-    "总市值 = 收盘价 × 总股本",
-)
+     "tushare_daily.circulating_market_cap", "tushare_daily.circulating_shares",
+     "valuation_snapshot.market_cap", "valuation_snapshot.circulating_market_cap"),
+    (), "市值计价股本满足包含边界，且流通市值 = 收盘价 × 流通股本",
+    _market_cap_share_bounds,
+))
 _identity(
     "A3.turnover_identity",
     ("tushare_daily.turnover_ratio", "tushare_daily.circulating_shares",
