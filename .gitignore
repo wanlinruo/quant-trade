@@ -8,3 +8,6 @@ var/
 .DS_Store
 .claude/worktrees/
 .superpowers/
+artifacts/metric_checks/
+artifacts/sampling_worklist.csv
+artifacts/frozen_baseline.json

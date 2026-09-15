@@ -234,3 +234,34 @@ register(Check(
      "tushare_daily.open", "tushare_daily.high", "tushare_daily.volume"),
     (), "分钟聚合与独立日线的开盘、最高和成交量一致", _minute_vs_daily,
 ))
+
+
+def sampling_worklist(ctx: CheckContext, limit: int = 200) -> pl.DataFrame:
+    """A4：按可疑度导出待人工核验的因子清单。"""
+    result = _missed_exdiv(ctx)
+    if result.sample is None or result.sample.height == 0:
+        return pl.DataFrame(schema={
+            "metric_id": pl.Utf8,
+            "symbol": pl.Utf8,
+            "dt": pl.Date,
+            "our_value": pl.Utf8,
+            "why": pl.Utf8,
+            "priority": pl.Float64,
+        })
+    return (
+        result.sample.with_columns(
+            pl.lit("tushare_daily.factor").alias("metric_id"),
+            pl.col("factor").cast(pl.Utf8).alias("our_value"),
+            (
+                pl.lit("价格缺口 ")
+                + (pl.col("gap") * 100).round(2).cast(pl.Utf8)
+                + pl.lit(
+                    "% 而 factor 未匹配跳变；去同花顺核对该日是否除权除息"
+                )
+            ).alias("why"),
+            pl.col("gap").alias("priority"),
+        )
+        .select("metric_id", "symbol", "dt", "our_value", "why", "priority")
+        .sort("priority", descending=True)
+        .head(limit)
+    )
