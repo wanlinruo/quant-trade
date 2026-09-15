@@ -40,6 +40,29 @@ def test_zero_limit_up_is_failure(ctx, warehouse):
     assert row["severity"] == "warning"
     assert row["known_issue"] == "D-12"
 
+
+def test_today_zero_limit_is_na_before_release_sla(ctx, warehouse, monkeypatch):
+    today = date(2026, 9, 15)
+    current = C.CheckContext(ctx.query, warehouse, today, today)
+    warehouse.write("limit_list_daily", schema.LIMIT_LIST_DAILY.empty_table(), year=2026)
+    _flags([{"dt": today, "symbol": "600036.SH", "is_limit_up": False}], warehouse)
+    monkeypatch.setattr(rules_complete, "_now", lambda: datetime(2026, 9, 15, 18, 59))
+    row = _run("B4.zero_limit_up", current)
+    assert row["passed"] is True
+    assert row["checked_rows"] == 0
+    assert "19:00" in row["detail"] and "不适用" in row["detail"]
+
+
+def test_today_zero_limit_is_failure_after_release_sla(ctx, warehouse, monkeypatch):
+    today = date(2026, 9, 15)
+    current = C.CheckContext(ctx.query, warehouse, today, today)
+    warehouse.write("limit_list_daily", schema.LIMIT_LIST_DAILY.empty_table(), year=2026)
+    _flags([{"dt": today, "symbol": "600036.SH", "is_limit_up": False}], warehouse)
+    monkeypatch.setattr(rules_complete, "_now", lambda: datetime(2026, 9, 15, 19, 0))
+    row = _run("B4.zero_limit_up", current)
+    assert row["passed"] is False
+    assert row["known_issue"] == "D-12"
+
 def test_calendar_has_a_real_denominator(ctx, warehouse):
     _flags([{"dt": D[0], "symbol": "600036.SH"}], warehouse)
     assert _run("B1.calendar", ctx)["checked_rows"] > 0

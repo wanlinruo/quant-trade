@@ -11,6 +11,12 @@ from qsys.data.quality.daily_rules import find_holes
 
 _ROW_NULL_MAX = .02
 _SYMBOL_NULL_MAX = .005
+_LIMIT_LIST_SLA = time(19, 0)
+
+
+def _now() -> datetime:
+    """单独封装挂钟，保证到货 SLA 边界可测试。"""
+    return datetime.now()
 
 
 def _calendar(ctx: CheckContext) -> CheckResult:
@@ -133,6 +139,17 @@ def _zero_limit(ctx: CheckContext) -> CheckResult:
     if not flags.height:
         return CheckResult(0, 0, "区间内无交易日数据")
     sessions = set(flags["dt"].unique().to_list())
+    now = _now()
+    # limit_list_d 实测到 19:00 才发布。当日 SLA 前缺席不是异常；若本次
+    # 区间只有今天，明确写 N/A，不能提前制造 D-12 告警。
+    if now.time() < _LIMIT_LIST_SLA:
+        sessions.discard(now.date())
+        if not sessions:
+            return CheckResult(
+                0, 0,
+                f"当日 limit_list_d 尚未到 {_LIMIT_LIST_SLA:%H:%M} 发布 SLA",
+                applicable=False,
+            )
     have = set(listed.filter(pl.col("limit_type") == "U")["dt"].unique().to_list())
     empty = sorted(sessions - have)
     return CheckResult(len(empty), len(sessions), f"{len(empty)} 个交易日零涨停：{empty[:10]}",
