@@ -33,7 +33,7 @@
 | 文件 | 职责 |
 |---|---|
 | `src/qsys/data/catalog/types.py` | `Metric` / `Source` / `Direct` / `Computed` 数据类与 5 个枚举 |
-| `src/qsys/data/catalog/sources.py` | 21 个源实体 |
+| `src/qsys/data/catalog/sources.py` | 24 个源实体 |
 | `src/qsys/data/catalog/market.py` | 行情类 90 条 |
 | `src/qsys/data/catalog/reference.py` | 参考类 49 条 |
 | `src/qsys/data/catalog/derived.py` | 派生类 20 条 |

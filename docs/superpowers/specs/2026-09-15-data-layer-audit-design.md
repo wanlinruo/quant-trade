@@ -175,15 +175,16 @@ Source
 DIRECT 指标引用 `source_id`，不再是松散元组。连带好处：T3 对账更干净；
 C5 凭据过期直接查 `acquired`；按源视图成为可能。
 
-### 4.2 全库源清单（21 个）
+### 4.2 全库源清单（24 个）
 
 | provider | 接口 | status | access |
 |---|---|---|---|
 | Tushare Pro | `daily` `daily_basic` `adj_factor` `stk_limit` `suspend_d` `limit_list_d` `index_daily` `stock_basic` `namechange` `trade_cal` | ACTIVE | API |
 | akshare | 交易日历、A股代码名、沪市退市、深市退市、现货快照、分红送转 | ACTIVE | API（免费） |
-| QMT | 分钟线、tick（竞价） | ACTIVE | REALTIME 自采 |
+| QMT | 分钟线、tick（竞价）、股本、分红配股 | ACTIVE | REALTIME 自采 / 按需全量 |
 | 百度网盘付费源 | 日线、分钟 | FROZEN | FILE，人工转存 |
 | mootdx | K 线 | **DEAD**（2026-09-10 起返回空） | API |
+| qsys | runtime（系统自身运行记录） | ACTIVE | API（内部） |
 
 ---
 
@@ -195,7 +196,7 @@ C5 凭据过期直接查 `acquired`；按源视图成为可能。
 
 ```
 types.py          Metric / Source 数据类 + 枚举（Kind / Validity / Status / Access）
-sources.py        21 个源实体
+sources.py        24 个源实体
 market.py         tushare_daily(28) bars_daily(8) paid_daily(28)
                   index_bars(8) minute_bars(8) auction_ticks(10)        约 90 条
 reference.py      instruments(7) name_history(6) name_snapshots(3)

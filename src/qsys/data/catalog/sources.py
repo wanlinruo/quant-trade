@@ -1,4 +1,4 @@
-"""全库 21 个源。
+"""全库 24 个源。
 
 「来源＝Tushare」这种粒度会把真问题盖掉：tushare_daily 那 28 列里 9 列来自
 `daily`、15 列来自 `daily_basic`、1 列来自 `adj_factor`，到货时点也不同
@@ -156,6 +156,16 @@ _ALL = [
         acquired="开源库", cadence="已失效",
         caveat="2026-09-10 起对**全部服务器**返回 None，每次调用等 3.8 秒后返回空表。"
                "不是暂时不稳，是上游失效；bars_daily 因此冻结",
+    ),
+
+    # ---- 系统自身的运行时记录生产者，不是外部数据源 ----
+    Source(
+        id="qsys.runtime", provider="qsys", api="runtime",
+        access=Access.API, status=SourceStatus.ACTIVE,
+        credential=None, tier=None,
+        acquired="系统内建", cadence="随采集与实盘事件写入",
+        caveat="系统自身的运行时记录生产者，不是外部真值源；多数字段无法"
+               "跨源对账，依靠写入侧测试、幂等键和到货规则保证",
     ),
 ]
 
