@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import importlib
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -183,3 +184,17 @@ def write_results(warehouse: Warehouse, frame: pl.DataFrame) -> int:
         )
         written += chunk.height
     return written
+
+
+def load_builtin_checks() -> None:
+    """显式加载内建规则，避免注册表依赖 pytest 的文件收集顺序。"""
+    for module in (
+        "qsys.data.catalog.rules_truth",
+        "qsys.data.catalog.rules_recompute",
+        "qsys.data.catalog.rules_complete",
+        "qsys.data.catalog.rules_valid",
+    ):
+        importlib.import_module(module)
+
+
+load_builtin_checks()

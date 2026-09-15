@@ -200,7 +200,7 @@ METRICS: tuple[Metric, ...] = (
         "close(t)/close(t-10)-1；不足 11 根或 t-10 收盘为 0 时 null",
         (("window", 10),),
         "S6 分类 _classify_low_main",
-        issues=("D-4",),
+        issues=("D-4", "D-9"),
     ),
     _strategy(
         "distance_to_60d_high",
@@ -209,7 +209,7 @@ METRICS: tuple[Metric, ...] = (
         "close(t)/max(high[-60:])-1；不足 60 根或最高价为 0 时 null",
         (("window", 60),),
         "S6 分类 _classify_low_main",
-        issues=("D-4",),
+        issues=("D-4", "D-9"),
     ),
     _strategy(
         "low_relative_position_60d",
