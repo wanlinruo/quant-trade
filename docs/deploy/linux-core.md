@@ -70,12 +70,20 @@ echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
 ### 3. 同步代码（从开发机执行）
 
 ```bash
-rsync -az --delete \
-  --exclude '.venv/' --exclude '__pycache__/' --exclude '.pytest_cache/' \
-  --exclude 'warehouse/' --exclude 'var/' --exclude '*.pyc' \
-  -e "ssh -i ~/.ssh/qmt_bridge_ed25519" \
-  ./ ubuntu@110.42.205.144:/home/ubuntu/qsys/
+# 开发机：把要部署的提交打成 bundle，只传这一份具体文件
+git bundle create /tmp/qsys-deploy.bundle HEAD
+scp -i ~/.ssh/qmt_bridge_ed25519 /tmp/qsys-deploy.bundle \
+  ubuntu@110.42.205.144:/tmp/qsys-deploy.bundle
+
+# 节点：先 fetch 再快进；确认提交后删除临时 bundle
+ssh -i ~/.ssh/qmt_bridge_ed25519 ubuntu@110.42.205.144 \
+  'cd /home/ubuntu/qsys && git fetch /tmp/qsys-deploy.bundle HEAD && \
+   git merge --ff-only FETCH_HEAD && rm /tmp/qsys-deploy.bundle'
 ```
+
+也可以逐文件列出后用 `scp`，但**绝不整目录 rsync，更不能带 `--delete`**。
+`/home/ubuntu/qsys/warehouse` 是指向 `/data/qsys/warehouse` 的软链接，`.venv`
+是节点的 Linux 环境；整目录同步会覆盖或删除两者，这两种事故都发生过。
 
 ### 4. 装依赖并验证
 
@@ -115,7 +123,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/home/ubuntu/qsys
+ReadWritePaths=/home/ubuntu/qsys /data/qsys
 
 [Install]
 WantedBy=multi-user.target
@@ -137,6 +145,23 @@ ssh -N -L 8420:127.0.0.1:8420 -i ~/.ssh/qmt_bridge_ed25519 ubuntu@110.42.205.144
 ```
 
 然后浏览器打开 `http://127.0.0.1:8420`。
+
+### 同步后的指标验证
+
+`qsys-tushare-sync` 在工作日 17:00 与 19:00 两次同步中，只有事实表与派生表
+全部刷新成功后，才自动执行当日增量指标验证。结果追加到
+`warehouse/metric_checks`，通过监控台 `/data/catalog` 查看；违规样本写入
+`artifacts/metric_checks`，可从指标详情页下载。
+
+验证规则失败或验证器自身崩溃**不改变同步任务的退出码**。数据已经成功落盘，
+若因此让 systemd 把同步记成失败，`Persistent=true` 会重补已经完成的数据，
+反而掩盖真正的验证问题。因此不要靠 `systemctl status` 判断指标是否通过；
+应查看数据层页面，或直接查询 `metric_checks`。同步本身失败时不运行验证，避免
+残缺数据产生的大量预期告警淹没同步故障。
+
+若 service 使用 `ProtectSystem=strict`，`ReadWritePaths` 必须同时包含
+`/home/ubuntu/qsys` 与 `/data/qsys`：前者保存验证样本，后者是 warehouse
+软链接的实体位置。只写前者会在首次写验证结果时失败。
 
 **手机访问**：Tailscale 在这台机器上不可行（51 B/s）。备选是自建 WireGuard——
 需要在腾讯云安全组放行一个 UDP 端口。尚未实施。

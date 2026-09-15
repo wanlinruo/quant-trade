@@ -41,6 +41,10 @@ def build(warehouse: Warehouse, write_daily_bars, symbol, closes, highs, lows, a
         "is_st": [False] * n,
         "st_source": ["paid"] * n,
     }, schema=schema.DAILY_FLAGS), year=2024)
+    warehouse.write("adj_factors", pa.table({
+        "symbol": [symbol] * n, "dt": list(DAYS),
+        "cum_factor": [1.0] * n, "cum_share_factor": [1.0] * n,
+    }, schema=schema.ADJ_FACTORS))
 
 
 def write_regime(warehouse, *, slope=-0.5, heat=-0.5, breadth=0.5,
@@ -174,3 +178,23 @@ def test_no_candidates_on_an_empty_warehouse(warehouse):
         HistoricalFeed(query, calendar), MarketFeed(query, calendar), query
     )
     assert sel.select(TODAY, YESTERDAY) == []
+
+
+def test_candidate_with_missing_factors_is_skipped_and_logged(
+    warehouse, write_daily_bars
+):
+    """缺因子传播为 null 后，选股应留痕跳过而不是在数值比较处崩溃。"""
+    from structlog.testing import capture_logs
+
+    low_setup(warehouse, write_daily_bars)
+    warehouse.write("adj_factors", schema.ADJ_FACTORS.empty_table())
+    with capture_logs() as logs:
+        picks = selector(warehouse, require_auction_volume=False).select(
+            TODAY, YESTERDAY
+        )
+    assert picks == []
+    assert any(
+        row.get("event") == "selection.history_incomplete"
+        and row.get("symbol") == "600001.SH"
+        for row in logs
+    )

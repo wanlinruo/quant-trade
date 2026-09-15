@@ -78,14 +78,13 @@ class HistoricalFeed(DataFeed):
             return bars
 
         factors = self._query.adj_factors(symbols)
-        if factors.height == 0:
-            return bars
-
+        # 因子缺失时价格与成交量必须为 null，不能退回原价或填 1。累计因子
+        # 带源自身锚点，1.0 并不是一个中性的可替代观测；见 D-9。
         joined = bars.join(factors, on=["symbol", "dt"], how="left").with_columns(
-            pl.col("cum_factor").fill_null(1.0),
-            pl.col("cum_share_factor").fill_null(1.0)
+            pl.col("cum_factor"),
+            pl.col("cum_share_factor")
             if "cum_share_factor" in factors.columns
-            else pl.lit(1.0).alias("cum_share_factor"),
+            else pl.lit(None, dtype=pl.Float64).alias("cum_share_factor"),
         )
 
         if adjustment is Adjustment.FORWARD:

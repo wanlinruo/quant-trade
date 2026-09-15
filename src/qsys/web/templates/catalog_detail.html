@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2>{{ d.row.id }}</h2>
+  <div style="margin-bottom:10px">
+    <span class="pill {{ d.row.pill }}">{{ d.row.label }}</span>
+    <span class="pill todo">{{ {'direct':'直取','derived':'派生','factor':'因子'}[d.row.kind] }}</span>
+    <span class="pill todo">{{ {'session':'当日','point':'点观测','span':'区间'}[d.row.validity] }}</span>
+    {% for issue in d.row.issues %}<span class="pill warn">{{ issue }}</span>{% endfor %}
+  </div>
+  <p style="margin:0">{{ d.row.meaning }}</p>
+</div>
+
+<div class="card">
+  <h2>血缘</h2>
+  <div style="display:flex;gap:24px;flex-wrap:wrap">
+    <div style="flex:1;min-width:200px">
+      <div style="color:var(--muted);font-size:12px">上游</div>
+      {% if d.upstream %}
+        {% for upstream in d.upstream %}<div><a href="/data/catalog/{{ upstream }}">{{ upstream }}</a></div>{% endfor %}
+      {% else %}<div class="empty">直取，无上游指标</div>{% endif %}
+    </div>
+    <div style="flex:1;min-width:200px">
+      <div style="color:var(--muted);font-size:12px">本指标</div>
+      <div><strong>{{ d.row.id }}</strong></div>
+      <div style="color:var(--muted);font-size:12px;margin-top:4px">{{ d.row.source_label }}</div>
+      {% if d.formula %}<div style="margin-top:6px"><code>{{ d.formula }}</code></div>{% endif %}
+      {% for key, value in d.params %}<div style="font-size:12px">{{ key }} = {{ value }}</div>{% endfor %}
+    </div>
+    <div style="flex:1;min-width:200px">
+      <div style="color:var(--muted);font-size:12px">下游</div>
+      {% for downstream in d.downstream %}<div><a href="/data/catalog/{{ downstream }}">{{ downstream }}</a></div>{% endfor %}
+      {% for consumer in d.ext_consumers %}<div>{{ consumer }}</div>{% endfor %}
+      {% if not d.downstream and not d.ext_consumers %}<div class="empty">无已知消费方</div>{% endif %}
+    </div>
+  </div>
+  {% if d.roots %}
+  <p style="margin:12px 0 0;color:var(--muted);font-size:12px">
+    根源：{{ d.roots|join(" / ") }}
+  </p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>验证规则</h2>
+  {% if d.checks %}
+  <table>
+    <tr><th>规则</th><th>类别</th><th class="num">违规</th><th class="num">检查行数</th><th>说明</th><th>样本</th></tr>
+    {% for check in d.checks %}
+    <tr>
+      <td>{{ check.check_id }}</td><td>{{ check.category }}</td>
+      <td class="num {{ 'down' if check.violations else '' }}">{{ check.violations }}</td>
+      <td class="num">{{ "{:,}".format(check.checked_rows) }}</td>
+      <td style="max-width:320px">{{ check.detail }}</td>
+      <td>{% if check.sample_path %}<a href="/data/catalog/sample?path={{ check.sample_path|urlencode }}">下载</a>{% else %}—{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}<div class="empty">尚未跑过验证，或这条指标未挂任何规则。</div>{% endif %}
+</div>
+
+{% if chart %}
+<div class="card"><h2>违规数走势</h2>{{ chart|safe }}</div>
+{% endif %}
+
+<div class="card">
+  <h2>人工与第三方证据</h2>
+  {% if d.evidence %}
+  <table>
+    <tr><th>标的</th><th>日期</th><th>我们的值</th><th>对照值</th><th>来源</th><th>判定</th><th>验的人</th><th>备注</th></tr>
+    {% for evidence in d.evidence %}
+    <tr>
+      <td>{{ evidence.symbol }}</td><td>{{ evidence.dt }}</td>
+      <td>{{ evidence.our_value }}</td><td>{{ evidence.reference_value }}</td>
+      <td>{{ evidence.reference_source }}</td>
+      <td><span class="pill {{ 'ok' if evidence.verdict == 'match' else 'bad' }}">{{ evidence.verdict }}</span></td>
+      <td>{{ evidence.checked_by }}</td><td>{{ evidence.note }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}<div class="empty">还没有人工验过这条指标。</div>{% endif %}
+</div>
+{% endblock %}

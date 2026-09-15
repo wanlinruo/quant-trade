@@ -20,6 +20,7 @@ from qsys.data.storage import Warehouse
 from qsys.ops.journal import SessionJournal
 from qsys.web.app import create_app
 from qsys.web.backtest_views import BacktestService
+from qsys.web.catalog_views import CatalogService
 from qsys.web.config import WebConfig
 from qsys.web.data_views import DataService
 from qsys.web.views import MonitorService
@@ -52,6 +53,7 @@ def build_app(
         config,
         DataService(warehouse, selection_path),
         BacktestService(runs_dir or Path("var/runs")),
+        CatalogService(warehouse),
     )
 
 

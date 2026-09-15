@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 建立覆盖 206 个落盘字段与 12 个策略侧决策量的指标字典、可反复重跑的三类验证规则、以及把两者摆出来的数据层页面。
+**Goal:** 建立覆盖 230 个落盘字段与 10 个策略侧决策量的指标字典、可反复重跑的三类验证规则、以及把两者摆出来的数据层页面。
 
 **Architecture:** 字典是代码（`src/qsys/data/catalog/`），不是文档或配置——只有代码能被测试守住「schema 加了列而字典没登记」。验证规则引用字典里的 metric id，结果落 warehouse 两张新表；页面 import 字典、查结果表，两者拼成视图。字典 → 验证 → 页面是单向依赖，没有回边。
 
@@ -33,12 +33,12 @@
 | 文件 | 职责 |
 |---|---|
 | `src/qsys/data/catalog/types.py` | `Metric` / `Source` / `Direct` / `Computed` 数据类与 5 个枚举 |
-| `src/qsys/data/catalog/sources.py` | 21 个源实体 |
+| `src/qsys/data/catalog/sources.py` | 24 个源实体 |
 | `src/qsys/data/catalog/market.py` | 行情类 90 条 |
 | `src/qsys/data/catalog/reference.py` | 参考类 49 条 |
 | `src/qsys/data/catalog/derived.py` | 派生类 20 条 |
-| `src/qsys/data/catalog/factors.py` | 因子类 27 条（落盘 15 + 策略侧 12） |
-| `src/qsys/data/catalog/operational.py` | 运行时类 32 条 |
+| `src/qsys/data/catalog/factors.py` | 因子类 25 条（落盘 15 + 策略侧 10） |
+| `src/qsys/data/catalog/operational.py` | 运行时类 56 条（含验证结果与证据 24 条） |
 | `src/qsys/data/catalog/__init__.py` | 聚合 `REGISTRY` / `SOURCES`，派生 `consumers` / `root_sources` |
 | `src/qsys/data/catalog/checks.py` | Check 类型、规则注册表、runner |
 | `src/qsys/data/catalog/rules_truth.py` | A 类规则 |
@@ -2271,7 +2271,7 @@ git commit -m "test(catalog): 装上 T2/T3/T4/T5，单位换算钉到实测值"
   - `WarehouseQuery.latest_metric_checks() -> pl.DataFrame`
     （每个 `(metric_id, check_id)` 的最新一行）
 
-**注意**：加这两张表会让 `expected_metric_ids()` 从 206 变成 206 + 13 + 10 = 229。
+**注意**：加这两张表会让 `expected_metric_ids()` 从 206 变成 206 + 14 + 10 = 230。
 所以本任务**必须同时**给这两张表登记字典条目（放进 `operational.py`），
 否则 Task 3 的完备性测试会红。这是 T1 起作用的第一个实例。
 
@@ -2491,20 +2491,20 @@ METRIC_EVIDENCE = pa.schema(
 
 在 `src/qsys/data/catalog/operational.py` 的 `DATASETS` 加
 `"metric_checks"` 与 `"metric_evidence"`，并在 `_MEANING` 里补 23 条含义
-（13 + 10）。全部 `status=OPERATIONAL`、`kind=DIRECT`、
+（14 + 10）。全部 `status=OPERATIONAL`；除明确计算字段外使用 `kind=DIRECT`、
 `lineage=Direct("qsys.runtime", col)`、`checks=_DEFAULT`，
 但 `metric_checks.checked_rows` 与 `metric_checks.passed` 的含义要写明
 它们的纪律（分母必填、崩溃也要写 `passed=false`）。
 
 同步把 `test_operational_entries.py` 的 `test_registers_thirtytwo_metrics`
-改为 55（32 + 23），`test_owns_the_five_runtime_datasets` 改为七张表。
+改为 56（32 + 24），`test_owns_the_five_runtime_datasets` 改为七张表。
 
 - [ ] **Step 6: 跑全部测试确认通过**
 
 Run: `.venv/bin/python -m pytest tests/data/catalog/ -v`
 Expected: 除 `test_every_referenced_check_id_will_be_implemented` 外全绿。
-`test_expected_ids_cover_schema_and_paid_daily` 的数字要从 206 改成 229
-（178 + 13 + 10 + 28），并同步订正 spec §二的表格。
+`test_expected_ids_cover_schema_and_paid_daily` 的数字要从 206 改成 230
+（178 + 14 + 10 + 28），并同步订正 spec §二的表格。
 
 - [ ] **Step 7: 提交**
 

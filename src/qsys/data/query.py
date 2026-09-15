@@ -393,6 +393,49 @@ class WarehouseQuery:
     def instruments(self) -> pl.DataFrame:
         return self._read_unpartitioned("instruments", schema.INSTRUMENTS)
 
+    def metric_checks(
+        self, metric_id: str | None = None, check_id: str | None = None
+    ) -> pl.DataFrame:
+        """自动验证结果；空仓库也返回带完整 schema 的空表。"""
+        glob = self._glob("metric_checks", partitioned=True)
+        if glob is None:
+            return _empty(schema.METRIC_CHECKS)
+        columns = _projection(self._con, glob, schema.METRIC_CHECKS)
+        sql = f"SELECT {columns} FROM {_read(glob)}"
+        clauses: list[str] = []
+        params: list[object] = []
+        if metric_id is not None:
+            clauses.append("metric_id = ?")
+            params.append(metric_id)
+        if check_id is not None:
+            clauses.append("check_id = ?")
+            params.append(check_id)
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+        return self._con.execute(sql + " ORDER BY checked_at DESC", params).pl()
+
+    def latest_metric_checks(self) -> pl.DataFrame:
+        """每个 (metric_id, check_id) 最新的一次结果。"""
+        frame = self.metric_checks()
+        if frame.height == 0:
+            return frame
+        return frame.sort("checked_at", descending=True).unique(
+            subset=["metric_id", "check_id"], keep="first", maintain_order=True
+        )
+
+    def metric_evidence(self, metric_id: str | None = None) -> pl.DataFrame:
+        """人工或第三方抽样证据；这张表与自动结果物理隔离。"""
+        glob = self._glob("metric_evidence", partitioned=True)
+        if glob is None:
+            return _empty(schema.METRIC_EVIDENCE)
+        columns = _projection(self._con, glob, schema.METRIC_EVIDENCE)
+        sql = f"SELECT {columns} FROM {_read(glob)}"
+        params: list[object] = []
+        if metric_id is not None:
+            sql += " WHERE metric_id = ?"
+            params.append(metric_id)
+        return self._con.execute(sql + " ORDER BY dt DESC, symbol", params).pl()
+
     def name_snapshots(
         self, symbols: Sequence[str] | None, start: date, end: date
     ) -> pl.DataFrame:

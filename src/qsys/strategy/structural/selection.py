@@ -38,6 +38,7 @@ SELECTION_AT = time(9, 30)
 
 # 取历史时向前多留的日历日。101 个交易日约合 145 个日历日，留足余量。
 _HISTORY_CALENDAR_DAYS = 260
+_REQUIRED_HISTORY_COLUMNS = ("open", "high", "low", "close", "volume", "amount")
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,6 +109,21 @@ class StructuralSelection:
             bars = history.get(symbol)
             auction_price = opens.get(symbol)
             if bars is None or bars.height == 0 or auction_price is None:
+                continue
+            missing = {
+                column: bars[column].null_count()
+                for column in _REQUIRED_HISTORY_COLUMNS
+                if bars[column].null_count()
+            }
+            if missing:
+                # D-9 改为 null 传播后，消费方必须显式跳过并留痕。继续做
+                # max/除法会崩；drop_nulls 又会悄悄改变回看窗口，两者都不对。
+                log.warning(
+                    "selection.history_incomplete",
+                    symbol=symbol,
+                    rows=bars.height,
+                    missing=missing,
+                )
                 continue
 
             decided = self._route(
