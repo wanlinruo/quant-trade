@@ -209,9 +209,20 @@ ConnectionError（东财主动断连），与开发机的 ProxyError 是两种�
 `scripts/daily_archive.py` 在 Linux 上编排整条链路，通过 SSH 驱动 Windows：
 
 ```
-日线增量 -> 派生表重算 -> 算出缺哪些股-日 -> 驱动 Windows 下载
+竞价 tick -> 股本 -> 算出缺哪些股-日 -> 驱动 Windows 下载
 -> 回传 parquet -> 导入 -> 跨源校验
 ```
+
+**本脚本只做 QMT 链路。** 日线、指数与四张派生表（`adj_factors` /
+`daily_flags` / `market_regime` / `valuation_snapshot`）自 2026-09-14 起
+归 `qsys-tushare-sync.timer`（每天 17:00 与 19:00），不在这里。
+
+2026-09-15 删掉了这里的 mootdx 日线分支。mootdx 的 K 线接口 2026-09-10 起
+对所有服务器返回空，探针每天如实报出「源失效」、脚本据此 `return 1`——
+于是这个服务从换源那天起天天亮红灯（09-12/09-14/09-15 连续 `exit-code`），
+而它的活其实干得好好的：竞价 tick、股本、分钟线、跨源校验每步都 `step.ok`、
+`issues=0`。**红灯天天亮就不再有信息量**，`issues` 真的不为 0 的那天报的
+还是同一个 exit-code，分辨不出来。现在退出码只反映 `issues`。
 
 **一个编排者、一份日志、一处看失败**——两边各自定时就是把「多系统拼接
 脆弱」这个老毛病请回来。
