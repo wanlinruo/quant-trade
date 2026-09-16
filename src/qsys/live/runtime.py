@@ -24,6 +24,7 @@ from qsys.live.messages import AccountSnapshot, Heartbeat, MarketQuote
 from qsys.live.pricing import protected_limit_price
 from qsys.live.reconcile import reconcile_positions
 from qsys.live.risk import RiskContext, default_ashare_gate
+from qsys.live.shadow_broker import ShadowBroker
 from qsys.live.store import LiveStore
 from qsys.live.transport import Transport
 from qsys.markets.ashare import ashare_pre_trade_pipeline, board_of
@@ -62,6 +63,7 @@ class LiveRuntime:
         local_kill_path: Path = Path("var/KILL"),
         alerts: AlertBus | None = None,
         risk: RiskConfig | None = None,
+        shadow: bool = False,
     ) -> None:
         self.transport, self.streams, self.store = transport, streams, store
         self.calendar, self.params = calendar, dict(params or {})
@@ -82,7 +84,12 @@ class LiveRuntime:
             "max_position_value",
             min(self.enabled_capital, self.day_start_value * risk.max_position_weight),
         )
-        self.kill_switch = KillSwitch(transport, local_path=local_kill_path)
+        self.shadow = shadow
+        self.kill_switch = KillSwitch(
+            transport,
+            key="shadow:control:kill" if shadow else "control:kill",
+            local_path=local_kill_path,
+        )
         self.alerts = alerts or AlertBus([LogAlertSink()])
         self.clock = RealtimeClock()
         self.clock.set(datetime.now())
@@ -110,8 +117,7 @@ class LiveRuntime:
         self.schedule = Schedule()
         self.strategy.on_init(self._context(self.schedule)[0])
 
-        self.broker = LiveBroker(
-            transport, streams,
+        broker_kwargs = dict(
             risk_gate=default_ashare_gate(
                 self.kill_switch, calendar,
                 max_position_weight=risk.max_position_weight,
@@ -124,8 +130,15 @@ class LiveRuntime:
             risk_context_factory=self._risk_context,
             constraints=ashare_pre_trade_pipeline(),
             constraint_context_factory=self._constraint_context,
+        )
+        self.broker = (
+            ShadowBroker(transport, streams, **broker_kwargs)
+            if shadow else LiveBroker(
+                transport, streams,
+                **broker_kwargs,
             strategy_id=str(self.params.get("strategy_id", "structural")),
             command_ttl_seconds=120.0,
+            )
         )
         for order, remaining in self.store.pending_orders():
             self.broker.restore(order, remaining)
@@ -348,10 +361,13 @@ class LiveRuntime:
         self._flush(api, key, moment)
         if phase is Phase.SESSION_END:
             self.broker.cancel_all()
+            if self.shadow:
+                self.store.record_statuses(self.broker.poll_statuses())
         if phase is Phase.SESSION_END:
             remote = self._remote_account()
             result = reconcile_positions(self.portfolio, remote, cash_tolerance=10.0)
-            open_orders = self.store.pending_orders()
+            # 影子意图从未到达券商，cancel_all 后自然没有真实在途委托。
+            open_orders = () if self.shadow else self.store.pending_orders()
             eod_consistent = result.is_consistent and not open_orders
             detail = result.summary()
             if open_orders:

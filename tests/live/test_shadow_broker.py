@@ -91,6 +91,17 @@ def test_shadow_cancel_all_clears_pending(tmp_path):
     b.submit(order())
     b.cancel_all()
     assert b.pending() == ()
+    statuses = b.poll_statuses()
+    assert len(statuses) == 1
+    assert statuses[0].status == "cancelled"
+
+
+def test_shadow_supports_restore_and_remaining(tmp_path):
+    b, _ = make(tmp_path)
+    b.restore(order(), 50)
+    assert b.remaining("o1") == 50
+    assert b.remaining("missing") == 0
+    assert b.poll_statuses() == ()
 
 
 def test_shadow_on_market_data_is_a_no_op(tmp_path):
