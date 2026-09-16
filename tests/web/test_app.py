@@ -48,10 +48,10 @@ def test_healthz_is_always_available(client):
     assert r.json()["status"] == "ok"
 
 
-def test_root_redirects_to_the_latest_session(client):
+def test_root_redirects_to_live_when_market_console_is_not_wired(client):
     r = client.get("/", follow_redirects=False)
     assert r.status_code in (302, 307)
-    assert "2024-01-03" in r.headers["location"]
+    assert r.headers["location"] == "/live"
 
 
 def test_overview_page_renders(client):
@@ -132,4 +132,5 @@ def test_empty_journal_root_shows_a_placeholder(warehouse):
     c = TestClient(create_app(MonitorService(SessionJournal(warehouse), config=cfg), cfg))
     r = c.get("/")
     assert r.status_code == 200
-    assert "暂无" in r.text
+    assert "尚未产生" in r.text
+    assert "行情网关" in r.text

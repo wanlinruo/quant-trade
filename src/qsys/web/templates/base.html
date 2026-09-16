@@ -15,9 +15,13 @@ body { margin:0; background:var(--bg); color:var(--fg); font-size:14px;
 header { background:#172c57; border-bottom:1px solid #203864; min-height:58px; padding:0 24px;
          display:flex; align-items:center; gap:28px; flex-wrap:wrap; color:#fff; }
 header h1 { font-size:18px; margin:0; font-weight:700; letter-spacing:.2px; }
+header h1 a { color:#fff; text-decoration:none; }
 nav a { color:var(--muted); text-decoration:none; margin-right:14px; }
 header nav a { color:#bdc9dc; line-height:58px; display:inline-block; }
 header nav a.active, header nav a:hover { color:#fff; }
+.header-spacer { flex:1; }
+.utility-link { color:#bdc9dc; text-decoration:none; white-space:nowrap; }
+.utility-link.active,.utility-link:hover { color:#fff; }
 main { padding:24px; max-width:1180px; margin:0 auto; }
 main.workbench { max-width:1600px; }
 .card { background:#fff; border:1px solid var(--line); border-radius:8px;
@@ -90,6 +94,7 @@ button:disabled { opacity:.55; cursor:not-allowed; }
 .chart-tooltip { position:fixed; z-index:20; pointer-events:none; background:#172033; color:#fff; padding:8px 10px; border-radius:5px; font-size:12px; display:none; box-shadow:0 8px 20px #0003; }
 .empty-state { text-align:center; color:var(--muted); padding:48px 20px; }
 .mono { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+.muted { color:var(--muted); }
 @media (max-width:760px) {
   header { padding:0 14px; gap:12px; } header nav a { line-height:40px; }
   main,main.workbench { padding:14px; } .filter-bar { grid-template-columns:1fr; }
@@ -100,35 +105,24 @@ button:disabled { opacity:.55; cursor:not-allowed; }
 </head>
 <body>
 <header>
-  <h1>{{ title }}</h1>
-  {% if page in ('strategies', 'backtests', 'paper') %}
+  <h1><a href="/market">{{ title }}</a></h1>
   <nav>
+    <a href="/market" class="{{ 'active' if page == 'market' }}">行情</a>
     <a href="/strategies" class="{{ 'active' if page == 'strategies' }}">策略</a>
     <a href="/backtests" class="{{ 'active' if page == 'backtests' }}">回测</a>
     <a href="/paper" class="{{ 'active' if page == 'paper' }}">模拟交易</a>
-    <a href="/data">数据台</a><a href="/">监控台</a>
+    <a href="/live" class="{{ 'active' if page in ('live','overview','trades','health','report') }}">实盘监控</a>
   </nav>
-  {% elif page and page.startswith('data') %}
-  <nav>
-    <a href="/data" class="{{ 'active' if page == 'data' }}">数据覆盖</a>
-    <a href="/data/catalog" class="{{ 'active' if page == 'data_catalog' }}">数据层</a>
-    <a href="/data/selection" class="{{ 'active' if page == 'data_selection' }}">选股结果</a>
-    <a href="/data/regime" class="{{ 'active' if page == 'data_regime' }}">市场生态</a>
-    <a href="/backtests" class="{{ 'active' if page == 'backtests' }}">回测运行</a>
-    <a href="/" style="margin-left:14px">监控台</a>
-  </nav>
-  {% elif session %}
-  <nav>
-    <a href="/s/{{ session }}" class="{{ 'active' if page == 'overview' }}">总览</a>
-    <a href="/s/{{ session }}/trades" class="{{ 'active' if page == 'trades' }}">成交</a>
-    <a href="/s/{{ session }}/health" class="{{ 'active' if page == 'health' }}">对账与质量</a>
-    <a href="/s/{{ session }}/report" class="{{ 'active' if page == 'report' }}">日报</a>
-  </nav>
-  <span id="status" style="margin-left:auto"></span>
-  {% endif %}
+  <span class="header-spacer"></span>
+  {% if session %}<span id="status"></span>{% endif %}
+  <a class="utility-link {{ 'active' if page and page.startswith('data') }}" href="/data">数据管理</a>
 </header>
 {% if page in ('strategies', 'backtests', 'paper') %}
 <div class="subnav"><a href="/strategies" class="{{ 'active' if page == 'strategies' }}">策略研究</a><a href="/backtests" class="{{ 'active' if page == 'backtests' }}">回测记录</a><a href="/paper" class="{{ 'active' if page == 'paper' }}">模拟交易</a></div>
+{% elif page and page.startswith('data') %}
+<div class="subnav"><a href="/data" class="{{ 'active' if page == 'data' }}">数据表</a><a href="/data/catalog" class="{{ 'active' if page == 'data_catalog' }}">指标字典</a><a href="/data/catalog/sources" class="{{ 'active' if page == 'data_sources' }}">数据源</a></div>
+{% elif session and page in ('live','overview','trades','health','report') %}
+<div class="subnav"><a href="/s/{{ session }}" class="{{ 'active' if page in ('live','overview') }}">总览</a><a href="/s/{{ session }}/trades" class="{{ 'active' if page == 'trades' }}">成交</a><a href="/s/{{ session }}/health" class="{{ 'active' if page == 'health' }}">对账与质量</a><a href="/s/{{ session }}/report" class="{{ 'active' if page == 'report' }}">日报</a></div>
 {% endif %}
 <main class="{{ 'workbench' if page in ('strategies', 'backtests', 'paper') else '' }}">{% block content %}{% endblock %}</main>
 {% if session and not (page and page.startswith('data')) %}

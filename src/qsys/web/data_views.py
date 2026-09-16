@@ -9,34 +9,28 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
-from pathlib import Path
+from datetime import date, datetime
 
 import polars as pl
 
 from qsys.data.coverage import DatasetCoverage, coverage
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
-
-_SELECTION_COLUMNS = ["dt", "symbol", "tag", "state", "reason", "allow"]
+from qsys.live.messages import MarketOverviewSnapshot
+from qsys.live.transport import Transport
 
 
 @dataclass(frozen=True, slots=True)
-class SelectionSummary:
-    total: int
-    allowed: int
-    sessions: int
-    symbols: int
-    by_tag: list[tuple[str, int]]
-    by_year: list[tuple[int, int]]
-    by_state: list[tuple[str, str, int]]
+class LiveMarketView:
+    snapshot: MarketOverviewSnapshot | None
+    stale: bool
+    available: bool
 
 
 class DataService:
-    def __init__(self, warehouse: Warehouse, selection_path: Path | None = None) -> None:
+    def __init__(self, warehouse: Warehouse) -> None:
         self._warehouse = warehouse
         self._query = WarehouseQuery(warehouse)
-        self._selection_path = selection_path
 
     # ---- 数据覆盖 ----
 
@@ -49,76 +43,6 @@ class DataService:
         if not rows:
             return 0, 0
         return sum(c.rows for c in rows), max(c.symbols for c in rows)
-
-    # ---- 选股结果 ----
-
-    def _selections(self) -> pl.DataFrame:
-        empty = pl.DataFrame(
-            schema={
-                "dt": pl.Date, "symbol": pl.Utf8, "tag": pl.Utf8,
-                "state": pl.Utf8, "reason": pl.Utf8, "allow": pl.Boolean,
-            }
-        )
-        path = self._selection_path
-        if path is None or not Path(path).exists():
-            return empty
-        try:
-            frame = pl.read_csv(path, try_parse_dates=True)
-        except Exception:
-            return empty
-        missing = set(_SELECTION_COLUMNS) - set(frame.columns)
-        if missing:
-            return empty
-        return frame.select(_SELECTION_COLUMNS)
-
-    def selection_summary(self) -> SelectionSummary:
-        frame = self._selections()
-        if frame.height == 0:
-            return SelectionSummary(0, 0, 0, 0, [], [], [])
-        allowed = frame.filter(pl.col("allow"))
-        by_tag = [
-            (row["tag"], row["len"])
-            for row in allowed.group_by("tag").len().sort("tag").iter_rows(named=True)
-        ]
-        by_year = [
-            (row["year"], row["len"])
-            for row in allowed.with_columns(pl.col("dt").dt.year().alias("year"))
-            .group_by("year")
-            .len()
-            .sort("year")
-            .iter_rows(named=True)
-        ]
-        by_state = [
-            (row["tag"], row["state"], row["len"])
-            for row in frame.group_by(["tag", "state"])
-            .len()
-            .sort(["tag", "state"])
-            .iter_rows(named=True)
-        ]
-        return SelectionSummary(
-            total=frame.height,
-            allowed=allowed.height,
-            sessions=allowed["dt"].n_unique() if allowed.height else 0,
-            symbols=allowed["symbol"].n_unique() if allowed.height else 0,
-            by_tag=by_tag,
-            by_year=by_year,
-            by_state=by_state,
-        )
-
-    def selections(self, *, tag: str | None = None, limit: int = 200) -> list[dict]:
-        frame = self._selections()
-        if frame.height == 0:
-            return []
-        frame = frame.filter(pl.col("allow"))
-        if tag:
-            frame = frame.filter(pl.col("tag") == tag)
-        return frame.sort("dt", descending=True).head(limit).to_dicts()
-
-    def selection_tags(self) -> list[str]:
-        frame = self._selections()
-        if frame.height == 0:
-            return []
-        return sorted(frame["tag"].unique().to_list())
 
     # ---- 市场生态因子 ----
 
@@ -138,3 +62,37 @@ class DataService:
     def latest_session(self) -> date | None:
         frame = self._query.market_regime()
         return frame["dt"].max() if frame.height else None
+
+
+class MarketService:
+    def __init__(
+        self, warehouse: Warehouse, transport: Transport | None = None, *,
+        snapshot_key: str = "state:market_overview", stale_seconds: float = 45.0,
+    ) -> None:
+        self._data = DataService(warehouse)
+        self._transport = transport
+        self._snapshot_key = snapshot_key
+        self._stale_seconds = stale_seconds
+
+    def live(self, *, now: datetime | None = None) -> LiveMarketView:
+        if self._transport is None:
+            return LiveMarketView(None, True, False)
+        raw = self._transport.get_key(self._snapshot_key)
+        if raw is None:
+            return LiveMarketView(None, True, False)
+        try:
+            snapshot = MarketOverviewSnapshot.model_validate_json(raw)
+        except Exception:
+            return LiveMarketView(None, True, False)
+        age = ((now or datetime.now()) - snapshot.published_at).total_seconds()
+        return LiveMarketView(snapshot, age > self._stale_seconds, True)
+
+    def history(self, limit: int = 60) -> list[dict]:
+        frame = self._data.regime(limit)
+        return frame.sort("dt", descending=True).to_dicts() if frame.height else []
+
+    def series(self, column: str, limit: int = 250) -> list[float]:
+        return self._data.regime_series(column, limit)
+
+    def latest_session(self) -> date | None:
+        return self._data.latest_session()

@@ -46,6 +46,15 @@ def qmt_provider(symbols):
     return out
 
 
+def qmt_market_overview():
+    """Fetch the live A-share breadth universe plus the four headline indices."""
+    from xtquant import xtdata
+
+    symbols = list(xtdata.get_stock_list_in_sector("沪深A股") or [])
+    symbols.extend(("000001.SH", "399001.SZ", "399006.SZ", "000300.SH"))
+    return qmt_provider(sorted(set(symbols)))
+
+
 def _optional_float(item, *names):
     for name in names:
         value = item.get(name)
@@ -58,14 +67,20 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="QMT 只读实时行情网关")
     parser.add_argument("--config", default=None)
     parser.add_argument("--poll", type=float, default=0.1)
+    parser.add_argument("--overview-interval", type=float, default=15.0)
     args = parser.parse_args()
     cfg = load_deploy_config(args.config)
     gateway = MarketGateway(RedisTransport.from_config(cfg), cfg.streams, qmt_provider)
     log.info("market_gateway.started")
+    next_overview = 0.0
     while True:
         try:
             gateway.run_once()
             gateway.beat()
+            now = time.monotonic()
+            if now >= next_overview:
+                next_overview = now + max(5.0, args.overview_interval)
+                gateway.publish_overview(qmt_market_overview())
         except Exception as exc:
             log.error("market_gateway.loop_error", error=str(exc))
         time.sleep(max(0.02, args.poll))

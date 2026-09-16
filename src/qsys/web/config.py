@@ -13,7 +13,7 @@ from dataclasses import dataclass
 class WebConfig:
     host: str = "127.0.0.1"  # 绝不默认 0.0.0.0
     port: int = 8000
-    title: str = "量化监控台"
+    title: str = "量化工作台"
     equity_days: int = 120
     watch_sources: tuple[str, ...] = ("agent", "core")
     heartbeat_max_age: float = 90.0

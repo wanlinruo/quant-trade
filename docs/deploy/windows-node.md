@@ -250,5 +250,7 @@ MiniQMT 和 Redis 可用后运行：
 uv run python scripts/run_market_gateway.py --config config/deploy.local.toml
 ```
 
-进程只消费 `cmd:quote_requests` 并写入 `evt:quote_snapshots`，心跳键为
+进程会消费 `cmd:quote_requests` 并写入 `evt:quote_snapshots`，同时默认
+每 15 秒聚合一次指数与全市场温度，原子更新
+`state:market_overview`。可用 `--overview-interval` 调整间隔，心跳键为
 `state:heartbeat:market`。不要把它替换成 `run_agent.py`；后者属于真实券商链路。

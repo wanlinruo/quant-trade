@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head"><div><h2>实盘监控</h2><p class="muted">当前尚未产生实盘或影子会话。</p></div><span class="pill todo">未启动</span></div>
+<section class="panel"><div class="panel-title">运行依赖</div><div class="table-wrap"><table><thead><tr><th>组件</th><th>状态</th><th>最后心跳</th></tr></thead><tbody>
+{% for item in statuses %}<tr><td>{{ {'agent':'执行代理','core':'策略核心','market':'行情网关'}.get(item.source,item.source) }}</td><td><span class="pill {{ 'ok' if item.alive else 'todo' }}">{{ '正常' if item.alive else '未连接' }}</span></td><td>{{ item.last_beat or '—' }}</td></tr>{% endfor %}
+</tbody></table></div></section>
+<section class="card"><h2>如何产生首个会话</h2><p class="muted">启动策略核心与执行代理后，首条净值、成交或对账记录写入 journal，本页会自动切换为最新会话总览。</p><a class="button secondary" href="/market">返回行情</a></section>
+{% endblock %}

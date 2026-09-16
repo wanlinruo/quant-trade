@@ -25,7 +25,7 @@ from fastapi.templating import Jinja2Templates
 from qsys.web.backtest_views import BacktestService
 from qsys.web.catalog_views import CatalogService, Status
 from qsys.web.config import WebConfig
-from qsys.web.data_views import DataService
+from qsys.web.data_views import DataService, MarketService
 from qsys.web.svg import line_chart, multi_line_chart
 from qsys.web.views import MonitorService
 from qsys.web.workbench import BacktestQueue, WorkbenchStore
@@ -126,6 +126,7 @@ def create_app(
     queue: BacktestQueue | None = None,
     strategy_templates: Path | None = None,
     paper: PaperStore | None = None,
+    market: MarketService | None = None,
 ) -> FastAPI:
     app = FastAPI(title=config.title, docs_url=None, redoc_url=None)
 
@@ -159,41 +160,50 @@ def create_app(
                 "title": config.title, "session": None, "page": "data",
                 "coverage": data.coverage(), "total_rows": rows,
                 "total_symbols": symbols, "latest": data.latest_session(),
+                "catalog_summary": catalog.summary() if catalog else None,
             },
         )
 
-    @app.get("/data/selection", response_class=HTMLResponse)
-    def data_selection(request: Request, tag: str | None = None):
-        if data is None:
-            raise HTTPException(status_code=404, detail="data console not enabled")
-        summary = data.selection_summary()
-        rate = f"{summary.allowed / summary.total * 100:.0f}%" if summary.total else "—"
-        return TEMPLATES.TemplateResponse(
-            request=request, name="data_selection.html",
-            context={
-                "title": config.title, "session": None, "page": "data_selection",
-                "summary": summary, "pass_rate": rate, "tag": tag,
-                "tags": data.selection_tags(),
-                "rows": data.selections(tag=tag),
-            },
-        )
+    @app.get("/data/selection")
+    def retired_data_selection():
+        return RedirectResponse("/backtests", status_code=308)
 
-    @app.get("/data/regime", response_class=HTMLResponse)
-    def data_regime(request: Request):
-        if data is None:
-            raise HTTPException(status_code=404, detail="data console not enabled")
-        limit_up = data.regime_series("limit_up_count")
-        slope = data.regime_series("index_ma20_slope_5d")
+    @app.get("/data/regime")
+    def retired_data_regime():
+        return RedirectResponse("/market", status_code=308)
+
+    @app.get("/market", response_class=HTMLResponse)
+    def market_overview(request: Request):
+        if market is None:
+            raise HTTPException(status_code=404, detail="market console not enabled")
+        live = market.live()
+        rows = market.history()
+        advance = market.series("market_advance_ratio")
+        limits = market.series("limit_up_count")
+        slope = market.series("index_ma20_slope_5d")
         return TEMPLATES.TemplateResponse(
-            request=request, name="data_regime.html",
+            request=request, name="market.html",
             context={
-                "title": config.title, "session": None, "page": "data_regime",
-                "rows": data.regime().sort("dt", descending=True).to_dicts(),
-                "limit_up": limit_up,
-                "limit_up_chart": line_chart(limit_up, stroke="#dc2626"),
+                "title": config.title, "session": None, "page": "market",
+                "live": live, "rows": rows, "latest": market.latest_session(),
+                "advance_chart": line_chart(advance),
+                "limit_chart": line_chart(limits, stroke="#dc2626"),
                 "slope_chart": line_chart(slope),
             },
         )
+
+    @app.get("/api/market/overview")
+    def market_snapshot():
+        if market is None:
+            raise HTTPException(status_code=404, detail="market console not enabled")
+        view = market.live()
+        return {
+            "available": view.available,
+            "stale": view.stale,
+            "snapshot": (
+                view.snapshot.model_dump(mode="json") if view.snapshot else None
+            ),
+        }
 
     @app.get("/data/catalog", response_class=HTMLResponse)
     def catalog_overview(
@@ -238,7 +248,7 @@ def create_app(
             context={
                 "title": config.title,
                 "session": None,
-                "page": "data_catalog",
+                "page": "data_sources",
                 "rows": catalog.sources(),
             },
         )
@@ -563,6 +573,8 @@ def create_app(
                 "zip_name": f"{run.name}.zip",
                 "metrics": backtests.metrics(name),
                 "branches": backtests.branch_summary(name),
+                "gate_summary": backtests.gate_summary(name),
+                "gate_rows": backtests.gate_rows(name),
                 "chart": multi_line_chart([
                     ("策略", [v for _, v in points], "#2563eb"),
                     ("沪深300", [v for _, v in benchmark_points], "#94a3b8"),
@@ -600,18 +612,27 @@ def create_app(
         return {"status": "ok"}
 
     @app.get("/", response_class=HTMLResponse)
-    def root(request: Request):
+    def root():
+        if market is not None:
+            return RedirectResponse("/market")
+        return RedirectResponse("/live")
+
+    @app.get("/live", response_class=HTMLResponse)
+    def live_console(request: Request):
         latest = service.latest_session()
         if latest is None:
-            return HTMLResponse(
-                "<!doctype html><meta charset='utf-8'>"
-                f"<title>{config.title}</title>"
-                "<body style='font-family:sans-serif;padding:40px;color:#475569'>"
-                "<h1 style='font-size:18px'>暂无会话数据</h1>"
-                "<p>实盘或影子会话尚未写入任何记录。</p>"
-                "<p><a href='/data'>查看数据台 →</a></p></body>"
+            statuses = [
+                service.heartbeat_status(source) for source in config.watch_sources
+            ]
+            statuses.append(service.heartbeat_status("market"))
+            return TEMPLATES.TemplateResponse(
+                request=request, name="live_empty.html",
+                context={"title": config.title, "session": None, "page": "live",
+                         "statuses": statuses},
             )
-        return RedirectResponse(f"/s/{latest}")
+        view = service.overview(latest)
+        return _page(request, "overview.html", latest, "live",
+                     view=view, chart=line_chart(view.equity_curve))
 
     @app.get("/s/{session}", response_class=HTMLResponse)
     def overview(request: Request, session: date):

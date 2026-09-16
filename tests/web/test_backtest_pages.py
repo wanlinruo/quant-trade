@@ -32,6 +32,12 @@ def client(warehouse, tmp_path) -> TestClient:
         "date,total_value,available_cash,position_count,daily_return\n"
         "2025-09-10,100000.0,100000.0,0,0.0\n"
         "2025-09-11,101000.0,0.0,1,0.01\n", encoding="utf-8")
+    (run / "gate_decisions.csv").write_text(
+        "date,stock,symbol,strategy_tag,s7_state,reason,real_allow\n"
+        "2025-09-10,600001.XSHG,600001.SH,LOW_MAIN,CLEAN,ok,true\n"
+        "2025-09-11,300001.XSHE,300001.SZ,HIGH_CHINEXT,RISK,weak,false\n",
+        encoding="utf-8",
+    )
     (run / "jq100k.zip").write_bytes(b"PK\x03\x04fake")
 
     cfg = WebConfig()
@@ -51,6 +57,14 @@ def test_the_detail_page_shows_the_headline_and_files(client):
     assert "jq100k.zip" in body
     assert "daily_nav.csv" in body
     assert "<svg" in body   # 净值曲线
+
+
+def test_gate_decisions_belong_to_the_specific_backtest(client):
+    body = client.get("/backtests/jq100k").text
+    assert "候选与 Gate" in body
+    assert "600001.SH" in body
+    assert "HIGH_CHINEXT" in body
+    assert "50.0%" in body
 
 
 def test_a_csv_downloads_as_an_attachment(client):

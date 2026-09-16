@@ -2,7 +2,6 @@
 
 from datetime import date
 
-import polars as pl
 import pyarrow as pa
 import pytest
 
@@ -51,18 +50,6 @@ def seeded(warehouse: Warehouse) -> Warehouse:
     return warehouse
 
 
-def write_selection(tmp_path, rows):
-    path = tmp_path / "selection.csv"
-    pl.DataFrame(
-        {
-            "dt": [r[0] for r in rows], "symbol": [r[1] for r in rows],
-            "tag": [r[2] for r in rows], "state": [r[3] for r in rows],
-            "reason": ["x"] * len(rows), "allow": [r[4] for r in rows],
-        }
-    ).write_csv(path)
-    return path
-
-
 def test_coverage_lists_written_tables(seeded):
     names = {c.dataset for c in DataService(seeded).coverage()}
     assert {"bars_daily", "market_regime"} <= names
@@ -72,73 +59,6 @@ def test_warehouse_totals(seeded):
     rows, symbols = DataService(seeded).warehouse_totals()
     assert rows > 0
     assert symbols >= 1
-
-
-def test_no_selection_file_is_not_an_error(seeded):
-    summary = DataService(seeded).selection_summary()
-    assert summary.total == 0
-    assert summary.allowed == 0
-    assert DataService(seeded).selections() == []
-
-
-def test_a_malformed_selection_file_is_not_an_error(seeded, tmp_path):
-    path = tmp_path / "bad.csv"
-    path.write_text("nope,not,a,selection\n1,2,3,4\n")
-    assert DataService(seeded, path).selection_summary().total == 0
-
-
-def test_selection_summary_counts_only_allowed(seeded, tmp_path):
-    path = write_selection(
-        tmp_path,
-        [
-            (D[0], "600001.SH", "LOW_MAIN", "CLEAN", True),
-            (D[0], "600002.SH", "LOW_MAIN", "RISK", False),
-            (D[1], "300001.SZ", "HIGH_CHINEXT", "FAVORABLE", True),
-        ],
-    )
-    summary = DataService(seeded, path).selection_summary()
-    assert summary.total == 3
-    assert summary.allowed == 2
-    assert summary.sessions == 2
-    assert summary.symbols == 2
-    assert dict(summary.by_tag) == {"LOW_MAIN": 1, "HIGH_CHINEXT": 1}
-
-
-def test_selection_summary_keeps_rejected_states_visible(seeded, tmp_path):
-    """被拒的也要能看到，否则说不清是没选中还是被 Gate 拦了。"""
-    path = write_selection(
-        tmp_path,
-        [
-            (D[0], "600001.SH", "LOW_MAIN", "CLEAN", True),
-            (D[0], "600002.SH", "LOW_MAIN", "RISK", False),
-        ],
-    )
-    states = DataService(seeded, path).selection_summary().by_state
-    assert ("LOW_MAIN", "RISK", 1) in states
-
-
-def test_selections_are_newest_first(seeded, tmp_path):
-    path = write_selection(
-        tmp_path,
-        [
-            (D[0], "600001.SH", "LOW_MAIN", "CLEAN", True),
-            (D[2], "600003.SH", "LOW_MAIN", "CLEAN", True),
-        ],
-    )
-    rows = DataService(seeded, path).selections()
-    assert [r["symbol"] for r in rows] == ["600003.SH", "600001.SH"]
-
-
-def test_selections_can_be_filtered_by_tag(seeded, tmp_path):
-    path = write_selection(
-        tmp_path,
-        [
-            (D[0], "600001.SH", "LOW_MAIN", "CLEAN", True),
-            (D[1], "300001.SZ", "HIGH_CHINEXT", "FAVORABLE", True),
-        ],
-    )
-    rows = DataService(seeded, path).selections(tag="LOW_MAIN")
-    assert [r["symbol"] for r in rows] == ["600001.SH"]
 
 
 def test_regime_returns_the_tail(seeded):

@@ -6,10 +6,27 @@ import time
 import uuid
 from collections.abc import Callable, Sequence
 from datetime import datetime
+from statistics import median
 
 from qsys.live.config import StreamConfig
-from qsys.live.messages import Heartbeat, MarketQuote, QuoteRequest, QuoteSnapshot
+from qsys.live.messages import (
+    Heartbeat,
+    MarketIndexQuote,
+    MarketOverviewSnapshot,
+    MarketQuote,
+    QuoteRequest,
+    QuoteSnapshot,
+)
 from qsys.live.transport import Transport
+from qsys.markets.ashare import board_of
+
+
+MARKET_INDICES = {
+    "000001.SH": "上证指数",
+    "399001.SZ": "深证成指",
+    "399006.SZ": "创业板指",
+    "000300.SH": "沪深300",
+}
 
 
 class QuoteTimeout(TimeoutError):
@@ -99,3 +116,68 @@ class MarketGateway:
             f"{self._s.heartbeat}:market",
             Heartbeat(source="market", at=datetime.now()).model_dump_json(),
         )
+
+    def publish_overview(self, quotes: dict[str, MarketQuote]) -> MarketOverviewSnapshot:
+        snapshot = build_market_overview(quotes)
+        self._t.set_key(self._s.market_snapshot, snapshot.model_dump_json())
+        return snapshot
+
+
+def build_market_overview(
+    quotes: dict[str, MarketQuote], *, now: datetime | None = None,
+) -> MarketOverviewSnapshot:
+    """Aggregate one QMT full-market tick without persisting intraday facts."""
+    published_at = now or datetime.now()
+    indices: list[MarketIndexQuote] = []
+    for symbol, name in MARKET_INDICES.items():
+        quote = quotes.get(symbol)
+        if quote is None or quote.price <= 0 or quote.prev_close <= 0:
+            continue
+        indices.append(MarketIndexQuote(
+            symbol=symbol, name=name, price=quote.price,
+            change_pct=quote.price / quote.prev_close - 1.0,
+            amount=quote.amount,
+        ))
+
+    stocks = []
+    for symbol, quote in quotes.items():
+        if symbol in MARKET_INDICES or quote.suspended:
+            continue
+        code = symbol.partition(".")[0]
+        if board_of(code) not in {"main", "gem"}:
+            continue
+        if quote.price <= 0 or quote.prev_close <= 0:
+            continue
+        stocks.append(quote)
+
+    returns = [q.price / q.prev_close - 1.0 for q in stocks]
+    advance = sum(value > 0 for value in returns)
+    decline = sum(value < 0 for value in returns)
+    flat = len(returns) - advance - decline
+    limit_up = sum(
+        q.upper_limit is not None and q.price >= q.upper_limit - 1e-6 for q in stocks
+    )
+    limit_down = sum(
+        q.lower_limit is not None and q.price <= q.lower_limit + 1e-6 for q in stocks
+    )
+    touched = sum(
+        q.upper_limit is not None and q.high >= q.upper_limit - 1e-6 for q in stocks
+    )
+    broken = sum(
+        q.upper_limit is not None
+        and q.high >= q.upper_limit - 1e-6
+        and q.price < q.upper_limit - 1e-6
+        for q in stocks
+    )
+    directional = advance + decline
+    return MarketOverviewSnapshot(
+        session=published_at.date(), published_at=published_at, indices=indices,
+        valid_stock_count=len(stocks), advance_count=advance,
+        decline_count=decline, flat_count=flat, limit_up_count=limit_up,
+        limit_down_count=limit_down, touched_limit_up_count=touched,
+        broken_board_count=broken,
+        broken_board_rate=broken / touched if touched else 0.0,
+        market_advance_ratio=advance / directional if directional else 0.0,
+        market_median_return_1d=median(returns) if returns else 0.0,
+        market_total_money=sum(q.amount for q in stocks),
+    )

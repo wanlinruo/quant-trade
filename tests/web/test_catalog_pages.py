@@ -31,7 +31,7 @@ def test_overview_links_to_metric_detail(warehouse):
 
 
 def test_navigation_has_data_catalog_tab(warehouse):
-    assert ">数据层<" in _client(warehouse).get("/data/catalog").text
+    assert ">指标字典<" in _client(warehouse).get("/data/catalog").text
 
 
 def test_kind_filter_renders(warehouse):

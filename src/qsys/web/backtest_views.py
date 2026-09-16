@@ -129,6 +129,37 @@ class BacktestService:
         frame = self._read(name, "branch_summary.csv")
         return [] if frame is None else frame.to_dicts()
 
+    def gate_summary(self, name: str) -> dict:
+        frame = self._read(name, "gate_decisions.csv")
+        empty = {"total": 0, "allowed": 0, "rejected": 0, "rate": None,
+                 "by_tag": [], "by_state": []}
+        if frame is None or frame.height == 0 or "real_allow" not in frame.columns:
+            return empty
+        allowed = int(frame["real_allow"].fill_null(False).sum())
+        by_tag = (
+            frame.group_by("strategy_tag").agg(
+                pl.len().alias("total"),
+                pl.col("real_allow").fill_null(False).sum().alias("allowed"),
+            ).sort("strategy_tag").to_dicts()
+            if "strategy_tag" in frame.columns else []
+        )
+        by_state = (
+            frame.group_by("s7_state").len().sort("len", descending=True).to_dicts()
+            if "s7_state" in frame.columns else []
+        )
+        return {"total": frame.height, "allowed": allowed,
+                "rejected": frame.height - allowed,
+                "rate": allowed / frame.height, "by_tag": by_tag,
+                "by_state": by_state}
+
+    def gate_rows(self, name: str, *, limit: int = 200) -> list[dict]:
+        frame = self._read(name, "gate_decisions.csv")
+        if frame is None or frame.height == 0:
+            return []
+        if "date" in frame.columns:
+            frame = frame.sort("date", descending=True)
+        return frame.head(limit).to_dicts()
+
     def rows(self, name: str, filename: str, *, limit: int = 500) -> list[dict]:
         frame = self._read(name, filename)
         return [] if frame is None else frame.tail(limit).to_dicts()

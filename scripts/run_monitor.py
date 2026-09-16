@@ -22,7 +22,7 @@ from qsys.web.app import create_app
 from qsys.web.backtest_views import BacktestService
 from qsys.web.catalog_views import CatalogService
 from qsys.web.config import WebConfig
-from qsys.web.data_views import DataService
+from qsys.web.data_views import DataService, MarketService
 from qsys.web.views import MonitorService
 from qsys.web.workbench import BacktestQueue, WorkbenchStore
 from qsys.paper.store import PaperStore
@@ -34,7 +34,6 @@ def build_app(
     warehouse_root: Path,
     config: WebConfig,
     config_path: str | None,
-    selection_path: Path | None = None,
     runs_dir: Path | None = None,
     workspace_dir: Path | None = None,
 ):
@@ -42,11 +41,14 @@ def build_app(
     journal = SessionJournal(warehouse)
 
     transport = None
+    market_snapshot_key = "state:market_overview"
     try:
         from qsys.live.config import load_deploy_config
         from qsys.live.redis_transport import RedisTransport
 
-        transport = RedisTransport.from_config(load_deploy_config(config_path))
+        deploy = load_deploy_config(config_path)
+        transport = RedisTransport.from_config(deploy)
+        market_snapshot_key = deploy.streams.market_snapshot
     except Exception as exc:
         # Redis 不可用时监控台仍应能打开——历史数据来自仓库，不依赖 Redis
         log.warning("monitor.redis_unavailable", error=str(exc))
@@ -60,10 +62,11 @@ def build_app(
     return create_app(
         MonitorService(journal, config=config, transport=transport),
         config,
-        DataService(warehouse, selection_path),
+        DataService(warehouse),
         BacktestService(runs_root),
         CatalogService(warehouse),
         workbench, queue, Path("strategies"), paper,
+        MarketService(warehouse, transport, snapshot_key=market_snapshot_key),
     )
 
 
@@ -73,10 +76,6 @@ def main() -> int:
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--warehouse", default="warehouse")
     parser.add_argument("--config", default=None)
-    parser.add_argument(
-        "--selection", default="var/selection_loose.csv",
-        help="run_selection.py 产出的选股结果，数据台用它渲染",
-    )
     parser.add_argument("--workspace", default="var/workbench",
                         help="策略草稿、不可变版本与任务数据库")
     parser.add_argument(
@@ -93,7 +92,7 @@ def main() -> int:
 
     config = WebConfig(host=args.host, port=args.port)
     app = build_app(Path(args.warehouse), config, args.config,
-                    Path(args.selection), Path(args.runs), Path(args.workspace))
+                    Path(args.runs), Path(args.workspace))
     log.info("monitor.started", host=args.host, port=args.port)
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
     return 0

@@ -34,6 +34,7 @@ class StreamConfig:
     heartbeat: str = "state:heartbeat"
     quote_requests: str = "cmd:quote_requests"
     quote_snapshots: str = "evt:quote_snapshots"
+    market_snapshot: str = "state:market_overview"
 
 
 @dataclass(frozen=True, slots=True)

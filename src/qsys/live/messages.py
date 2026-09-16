@@ -8,7 +8,7 @@ Redis Stream 的字段值必须是字符串，故整条消息序列化为单个 
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal, Self
 
 from pydantic import BaseModel, model_validator
@@ -120,6 +120,34 @@ class MarketQuote(BaseModel):
         if self.price < 0 or self.volume < 0:
             raise ValueError("quote price and volume must be non-negative")
         return self
+
+
+class MarketIndexQuote(BaseModel):
+    symbol: str
+    name: str
+    price: float
+    change_pct: float
+    amount: float = 0.0
+
+
+class MarketOverviewSnapshot(Message):
+    """Atomic market-wide snapshot published by the read-only QMT gateway."""
+
+    session: date
+    published_at: datetime
+    indices: list[MarketIndexQuote]
+    valid_stock_count: int
+    advance_count: int
+    decline_count: int
+    flat_count: int
+    limit_up_count: int
+    limit_down_count: int
+    touched_limit_up_count: int
+    broken_board_count: int
+    broken_board_rate: float
+    market_advance_ratio: float
+    market_median_return_1d: float
+    market_total_money: float
 
 
 class QuoteSnapshot(Message):

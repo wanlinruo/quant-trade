@@ -11,7 +11,7 @@ from qsys.data.storage import Warehouse
 from qsys.ops.journal import SessionJournal
 from qsys.web.app import create_app
 from qsys.web.config import WebConfig
-from qsys.web.data_views import DataService
+from qsys.web.data_views import DataService, MarketService
 from qsys.web.views import MonitorService
 
 D = [date(2024, 1, d) for d in (2, 3, 4)]
@@ -53,13 +53,14 @@ def seed(warehouse: Warehouse) -> None:
     )
 
 
-def client_for(warehouse, selection_path=None):
+def client_for(warehouse):
     config = WebConfig()
     return TestClient(
         create_app(
             MonitorService(SessionJournal(warehouse), config=config),
             config,
-            DataService(warehouse, selection_path),
+            DataService(warehouse),
+            market=MarketService(warehouse),
         )
     )
 
@@ -80,7 +81,7 @@ def test_data_overview_opens_on_an_empty_warehouse(warehouse):
 
 def test_regime_page_renders_a_chart(warehouse):
     seed(warehouse)
-    response = client_for(warehouse).get("/data/regime")
+    response = client_for(warehouse).get("/market")
     assert response.status_code == 200
     assert "<svg" in response.text
 
@@ -88,52 +89,21 @@ def test_regime_page_renders_a_chart(warehouse):
 def test_regime_page_shows_a_dash_for_missing_index_slope(warehouse):
     """指数因子为 null 的日子显示 —— 而不是 0 或 None。"""
     seed(warehouse)
-    text = client_for(warehouse).get("/data/regime").text
+    text = client_for(warehouse).get("/market").text
     assert "None" not in text
 
 
-def test_selection_page_without_a_file(warehouse):
+def test_old_selection_page_redirects_to_backtests(warehouse):
     seed(warehouse)
-    response = client_for(warehouse).get("/data/selection")
-    assert response.status_code == 200
-    assert "还没有选股结果" in response.text
+    response = client_for(warehouse).get("/data/selection", follow_redirects=False)
+    assert response.status_code == 308
+    assert response.headers["location"] == "/backtests"
 
 
-def test_selection_page_with_results(warehouse, tmp_path):
-    import polars as pl
-
-    seed(warehouse)
-    path = tmp_path / "sel.csv"
-    pl.DataFrame(
-        {
-            "dt": [D[0], D[1]], "symbol": ["600001.SH", "300001.SZ"],
-            "tag": ["LOW_MAIN", "HIGH_CHINEXT"],
-            "state": ["CLEAN", "FAVORABLE"], "reason": ["a", "b"],
-            "allow": [True, True],
-        }
-    ).write_csv(path)
-    response = client_for(warehouse, path).get("/data/selection")
-    assert response.status_code == 200
-    assert "600001.SH" in response.text
-    assert "300001.SZ" in response.text
-
-
-def test_selection_page_filters_by_tag(warehouse, tmp_path):
-    import polars as pl
-
-    seed(warehouse)
-    path = tmp_path / "sel.csv"
-    pl.DataFrame(
-        {
-            "dt": [D[0], D[1]], "symbol": ["600001.SH", "300001.SZ"],
-            "tag": ["LOW_MAIN", "HIGH_CHINEXT"],
-            "state": ["CLEAN", "FAVORABLE"], "reason": ["a", "b"],
-            "allow": [True, True],
-        }
-    ).write_csv(path)
-    text = client_for(warehouse, path).get("/data/selection?tag=LOW_MAIN").text
-    assert "600001.SH" in text
-    assert "300001.SZ" not in text
+def test_old_regime_page_redirects_to_market(warehouse):
+    response = client_for(warehouse).get("/data/regime", follow_redirects=False)
+    assert response.status_code == 308
+    assert response.headers["location"] == "/market"
 
 
 def test_the_data_console_is_absent_when_not_wired(warehouse):
@@ -144,7 +114,7 @@ def test_the_data_console_is_absent_when_not_wired(warehouse):
     assert client.get("/data").status_code == 404
 
 
-def test_the_empty_root_points_at_the_data_console(warehouse):
+def test_the_root_points_at_market(warehouse):
     seed(warehouse)
-    text = client_for(warehouse).get("/").text
-    assert "/data" in text
+    response = client_for(warehouse).get("/", follow_redirects=False)
+    assert response.headers["location"] == "/market"
