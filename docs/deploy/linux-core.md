@@ -67,21 +67,33 @@ ln -sf ~/.uvenv/bin/uvx ~/.local/bin/uvx
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
 ```
 
-### 3. 同步代码（从开发机执行）
+### 3. 同步代码（GitHub 为唯一中转）
+
+日常发布链路固定为：Mac 开发机提交并推送 `main`，Linux 节点使用仓库专用的
+**只读 deploy key** 从 GitHub 快进更新。节点不保存开发者个人私钥，也不能向
+GitHub 推送。
 
 ```bash
-# 开发机：把要部署的提交打成 bundle，只传这一份具体文件
-git bundle create /tmp/qsys-deploy.bundle HEAD
-scp -i ~/.ssh/qmt_bridge_ed25519 /tmp/qsys-deploy.bundle \
-  ubuntu@110.42.205.144:/tmp/qsys-deploy.bundle
+# Mac：确认测试与工作区后推送
+git status --short --branch
+git push origin main
 
-# 节点：先 fetch 再快进；确认提交后删除临时 bundle
+# Linux：只允许 fast-forward，节点有本地改动或历史分叉时立即失败
 ssh -i ~/.ssh/qmt_bridge_ed25519 ubuntu@110.42.205.144 \
-  'cd /home/ubuntu/qsys && git fetch /tmp/qsys-deploy.bundle HEAD && \
-   git merge --ff-only FETCH_HEAD && rm /tmp/qsys-deploy.bundle'
+  'cd /home/ubuntu/qsys && git fetch origin main && \
+   git merge --ff-only origin/main'
 ```
 
-也可以逐文件列出后用 `scp`，但**绝不整目录 rsync，更不能带 `--delete`**。
+节点仓库配置：
+
+```bash
+git remote set-url origin git@github.com:wanlinruo/quant-trade.git
+git config --local core.sshCommand \
+  'ssh -i /home/ubuntu/.ssh/id_ed25519_quant_trade -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=accept-new'
+```
+
+若 GitHub 临时不可达，才使用 `git bundle` 作为应急路径。也可以逐文件列出后用
+`scp`，但**绝不整目录 rsync，更不能带 `--delete`**。
 `/home/ubuntu/qsys/warehouse` 是指向 `/data/qsys/warehouse` 的软链接，`.venv`
 是节点的 Linux 环境；整目录同步会覆盖或删除两者，这两种事故都发生过。
 
