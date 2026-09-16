@@ -31,7 +31,11 @@ class XtQuantAdapter:
         from xtquant.xttrader import XtQuantTrader
         from xtquant.xttype import StockAccount
 
-        self._trader = XtQuantTrader(mini_qmt_path, session_id=int(account_id[-6:]))
+        # Older xtquant releases expose ``session`` only as a positional
+        # argument, while newer releases also document it as ``session_id``.
+        # Passing it positionally works with both APIs and is required by the
+        # MiniQMT version installed on the Windows execution node.
+        self._trader = XtQuantTrader(mini_qmt_path, int(account_id[-6:]))
         self._account = StockAccount(account_id)
         self._trader.start()
         if self._trader.connect() != 0:
