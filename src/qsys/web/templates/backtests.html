@@ -1,56 +1,26 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="card">
-  <h2>回测运行</h2>
-  <p class="muted">在策略页编辑并发起历史回测。任务单机串行执行，每次运行固化源码与参数。</p>
-  <a class="button" href="/strategies">新建回测</a>
-</div>
-{% if jobs %}
-<div class="card">
-  <h2>任务队列</h2>
-  <table>
-    <tr><th>任务</th><th>策略</th><th>区间</th><th>状态</th><th class="num">进度</th><th>创建时间</th></tr>
-    {% for j in jobs %}
-    <tr>
-      <td><a href="/backtests/{{ j.id }}">{{ j.id }}</a></td>
-      <td>{{ j.strategy_name }}</td><td>{{ j.config.start }} ~ {{ j.config.end }}</td>
-      <td><span class="pill {{ 'ok' if j.status == 'succeeded' else 'bad' if j.status in ('failed','interrupted') else 'warn' }}">{{ j.status }}</span></td>
-      <td class="num">{{ j.percent }}%</td><td class="muted">{{ j.created_at }}</td>
-    </tr>
-    {% endfor %}
-  </table>
-</div>
-{% endif %}
-<div class="card">
-  <h2>成功报告</h2>
-  <p class="muted">历史目录继续兼容；新报告包含源码、基准、持仓、成交和完整下载包。</p>
-  {% if runs %}
-  <table>
-    <tr>
-      <th>运行</th><th>区间</th><th>成本口径</th>
-      <th class="num">初始</th><th class="num">最终</th><th class="num">收益</th>
-      <th class="num">买/卖</th><th class="num">平仓</th><th class="num">拒单</th>
-      <th>生成时间</th>
-    </tr>
-    {% for r in runs %}
-    <tr>
-      <td><a href="/backtests/{{ r.name }}">{{ r.name }}</a></td>
-      <td>{{ r.start }} ~ {{ r.end }}</td>
-      <td>{{ r.cost_model or "—" }}</td>
-      <td class="num">{{ "{:,.0f}".format(r.initial_value) }}</td>
-      <td class="num">{{ "{:,.0f}".format(r.total_value) }}</td>
-      <td class="num {{ 'up' if r.return_pct and r.return_pct > 0 else 'down' }}">
-        {% if r.return_pct is not none %}{{ "%+.2f"|format(r.return_pct) }}%{% else %}—{% endif %}
-      </td>
-      <td class="num">{{ r.buys }} / {{ r.sells }}</td>
-      <td class="num">{{ r.closed_lots }}</td>
-      <td class="num">{{ r.rejects }}</td>
-      <td class="muted">{{ r.generated_at }}</td>
-    </tr>
-    {% endfor %}
-  </table>
-  {% else %}
-  <div class="empty">还没有成功的回测记录。</div>
-  {% endif %}
-</div>
+<div class="page-head"><div><h2>回测记录</h2><p class="muted">统一查看排队任务、运行进度和历史报告。</p></div><a class="button" href="/strategies">新建回测</a></div>
+<section class="panel">
+  <form class="filter-bar" method="get">
+    <input name="q" value="{{ query }}" placeholder="搜索策略、任务 ID 或日期">
+    <select name="status"><option value="">全部状态</option><option value="active" {{ 'selected' if selected_status == 'active' }}>进行中</option><option value="succeeded" {{ 'selected' if selected_status == 'succeeded' }}>已完成</option><option value="failed" {{ 'selected' if selected_status == 'failed' }}>失败</option><option value="cancelled" {{ 'selected' if selected_status == 'cancelled' }}>已取消</option><option value="interrupted" {{ 'selected' if selected_status == 'interrupted' }}>已中断</option></select>
+    <select name="sort"><option value="created" {{ 'selected' if selected_sort == 'created' }}>按创建时间</option><option value="return" {{ 'selected' if selected_sort == 'return' }}>按策略收益</option><option value="drawdown" {{ 'selected' if selected_sort == 'drawdown' }}>按最大回撤</option></select>
+    <button type="submit">筛选</button>
+  </form>
+  {% if rows %}<div class="table-wrap"><table class="history-table">
+    <thead><tr><th>策略 / 任务</th><th>创建时间</th><th>回测区间</th><th>耗时</th><th>成本模型</th><th class="num">策略收益</th><th class="num">基准收益</th><th class="num">最大回撤</th><th>状态</th></tr></thead>
+    <tbody>{% for row in rows %}<tr>
+      <td><a class="run-link" href="/backtests/{{ row.id }}">{{ row.strategy }}</a><div class="muted mono small">{{ row.id }}</div></td>
+      <td>{{ row.created_at.replace('T',' ') }}</td><td>{{ row.start }}<br><span class="muted">至 {{ row.end }}</span></td><td>{{ row.duration }}</td><td><span title="{{ row.cost_model }}">{{ row.cost_model[:12] }}{% if row.cost_model|length > 12 %}…{% endif %}</span></td>
+      <td class="num {{ 'up' if row.return_pct is not none and row.return_pct > 0 else 'down' if row.return_pct is not none and row.return_pct < 0 }}">{% if row.return_pct is not none %}{{ '%+.2f'|format(row.return_pct) }}%{% else %}—{% endif %}</td>
+      <td class="num {{ 'up' if row.benchmark_pct is not none and row.benchmark_pct > 0 else 'down' if row.benchmark_pct is not none and row.benchmark_pct < 0 }}">{% if row.benchmark_pct is not none %}{{ '%+.2f'|format(row.benchmark_pct) }}%{% else %}—{% endif %}</td>
+      <td class="num">{% if row.max_drawdown_pct is not none %}{{ '%.2f'|format(row.max_drawdown_pct) }}%{% else %}—{% endif %}</td>
+      <td><span class="pill {{ 'ok' if row.status == 'succeeded' else 'warn' if row.status in ('queued','running') else 'bad' }}">{{ {'queued':'排队中','running':'运行中','succeeded':'已完成','failed':'失败','cancelled':'已取消','interrupted':'已中断'}.get(row.status,row.status) }}</span></td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  <div class="pagination"><span>共 {{ total }} 条 · 第 {{ page_number }} / {{ page_count }} 页</span><div class="toolbar">{% if page_number > 1 %}<a href="{{ request.url.include_query_params(page=page_number-1) }}">上一页</a>{% endif %}{% if page_number < page_count %}<a href="{{ request.url.include_query_params(page=page_number+1) }}">下一页</a>{% endif %}</div></div>
+  {% else %}<div class="empty-state">没有符合条件的回测记录。<br><a href="/strategies">创建一次新回测</a></div>{% endif %}
+</section>
+<style>.history-table{min-width:1120px}.history-table td{vertical-align:middle;padding-top:11px;padding-bottom:11px}.run-link{font-weight:600;text-decoration:none;color:var(--fg)}.run-link:hover{color:var(--primary)}.small{font-size:11px;margin-top:4px}</style>
 {% endblock %}

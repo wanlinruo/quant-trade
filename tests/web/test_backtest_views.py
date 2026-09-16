@@ -35,6 +35,10 @@ def runs(tmp_path):
         "date,total_value,available_cash,position_count,daily_return\n"
         "2025-09-10,100000.0,100000.0,0,0.0\n"
         "2025-09-11,101000.0,0.0,1,0.01\n", encoding="utf-8")
+    (run / "benchmark_nav.csv").write_text(
+        "date,total_value,daily_return\n"
+        "2025-09-10,100000.0,0.0\n"
+        "2025-09-11,100500.0,0.005\n", encoding="utf-8")
     (run / "jq100k.zip").write_bytes(b"PK\x03\x04fake")
     return BacktestService(tmp_path)
 
@@ -80,6 +84,24 @@ def test_metrics_and_branch_summary_come_back_parsed(runs):
 def test_equity_points_feed_the_chart(runs):
     assert runs.equity_points("jq100k") == [
         ("2025-09-10", 100000.0), ("2025-09-11", 101000.0)]
+
+
+def test_interactive_chart_series_are_normalized_and_aligned(runs):
+    points = runs.chart_series("jq100k")
+    assert points[0] == {
+        "date": "2025-09-10", "strategy": 0.0, "benchmark": 0.0,
+        "excess": 0.0, "drawdown": 0.0, "daily_return": 0.0,
+    }
+    assert points[1]["strategy"] == pytest.approx(0.01)
+    assert points[1]["benchmark"] == pytest.approx(0.005)
+    assert points[1]["excess"] == pytest.approx(0.005)
+
+
+def test_a_malformed_metrics_file_degrades_to_an_empty_mapping(runs, tmp_path):
+    (tmp_path / "jq100k" / "metrics.csv").write_text(
+        "wrong,columns\n1,2\n", encoding="utf-8"
+    )
+    assert runs.metric_map("jq100k") == {}
 
 
 def test_a_file_can_be_downloaded_with_the_right_media_type(runs):

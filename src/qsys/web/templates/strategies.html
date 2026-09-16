@@ -1,24 +1,16 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="card"><h2>策略工作台</h2>
-  <p class="muted">策略草稿由工作台托管；发起回测时自动固化不可变源码版本，不修改 Git 工作区。</p>
-  <button onclick="createStrategy()">新建策略</button>
-  {% for name in templates %}<button class="secondary" onclick="importStrategy('{{ name }}')">导入 {{ name }}</button>{% endfor %}
-</div>
-<div class="card"><h2>我的策略</h2>
-{% if strategies %}<table><tr><th>名称</th><th>参数</th><th>更新时间</th></tr>
-{% for s in strategies %}<tr><td><a href="/strategies/{{ s.id }}">{{ s.name }}</a></td><td>{{ s.parameters|length }} 个</td><td class="muted">{{ s.updated_at }}</td></tr>{% endfor %}</table>
-{% else %}<div class="empty">尚无策略，可以新建或导入仓库示例。</div>{% endif %}</div>
+<div class="page-head"><div><h2>策略研究</h2><p class="muted">编辑策略并发起可复现的历史回测。</p></div><button onclick="createStrategy()">新建策略</button></div>
+{% if templates %}<section class="panel template-strip"><div><strong>从仓库导入</strong><span class="muted">将示例复制为可编辑的工作台草稿</span></div><div class="toolbar">{% for name in templates %}<button class="secondary" onclick="importStrategy('{{ name }}')">{{ name }}</button>{% endfor %}</div></section>{% endif %}
+<section class="panel">
+  <div class="panel-title">我的策略 <span class="toolbar-spacer"></span><span class="muted">{{ strategies|length }} 个</span></div>
+  {% if strategies %}<div class="strategy-grid">{% for s in strategies %}<a class="strategy-card" href="/strategies/{{ s.id }}"><div class="strategy-icon">Py</div><div><strong>{{ s.name }}</strong><p>{{ s.parameters|length }} 个可配置参数</p><span>更新于 {{ s.updated_at.replace('T',' ') }}</span></div><b>›</b></a>{% endfor %}</div>
+  {% else %}<div class="empty-state">尚无策略。创建空白策略，或从仓库导入一个示例。</div>{% endif %}
+</section>
+<style>.template-strip{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:14px 16px}.template-strip strong,.template-strip span{display:block}.template-strip span{font-size:12px;margin-top:3px}.strategy-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;padding:16px}.strategy-card{display:grid;grid-template-columns:44px 1fr auto;gap:13px;align-items:center;border:1px solid var(--line);border-radius:7px;padding:15px;text-decoration:none;color:var(--fg)}.strategy-card:hover{border-color:#9ebce6;box-shadow:0 4px 14px #1e3a5f12}.strategy-icon{width:44px;height:44px;border-radius:8px;background:var(--primary-soft);color:var(--primary);display:grid;place-items:center;font-weight:700}.strategy-card p{margin:5px 0;color:var(--muted);font-size:12px}.strategy-card span{color:var(--muted);font-size:11px}.strategy-card b{font-size:24px;color:#a7b0be}@media(max-width:650px){.template-strip{align-items:flex-start;flex-direction:column}.strategy-grid{grid-template-columns:1fr}}
+</style>
 <script>
-async function createStrategy(){
- const name=prompt('策略名称','MyStrategy'); if(!name)return;
- const source='from qsys.strategy.base import Strategy\n\nclass MyStrategy(Strategy):\n    def on_bar(self, ctx, bars):\n        pass\n';
- const r=await fetch('/api/strategies',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,source})});
- const x=await r.json(); if(!r.ok){alert(x.detail);return} location.href=x.location;
-}
-async function importStrategy(filename){
- const r=await fetch('/api/strategies/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename})});
- const x=await r.json(); if(!r.ok){alert(x.detail);return} location.href=x.location;
-}
+async function createStrategy(){const name=prompt('策略名称','MyStrategy');if(!name)return;const source='from qsys.strategy.base import Strategy\n\nclass MyStrategy(Strategy):\n    def on_bar(self, ctx, bars):\n        pass\n';const response=await fetch('/api/strategies',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,source})});const result=await response.json();if(!response.ok){alert(result.detail);return}location.href=result.location}
+async function importStrategy(filename){const response=await fetch('/api/strategies/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename})});const result=await response.json();if(!response.ok){alert(result.detail);return}location.href=result.location}
 </script>
 {% endblock %}

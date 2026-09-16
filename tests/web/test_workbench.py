@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from qsys.ops.journal import SessionJournal
-from qsys.web.app import create_app
+from qsys.web.app import _backtest_rows, create_app
 from qsys.web.backtest_views import BacktestService
 from qsys.web.config import WebConfig
 from qsys.web.views import MonitorService
@@ -84,6 +84,44 @@ def test_strategy_create_edit_enqueue_and_cancel_api(client):
     job_id = run.json()["id"]
     assert client.post(f"/api/backtests/{job_id}/cancel").status_code == 200
     assert "cancelled" in client.get(f"/backtests/{job_id}").text
+
+
+def test_job_status_api_supports_incremental_progress(client, store):
+    ident = client.post("/api/strategies", json={"name": "demo", "source": SOURCE}).json()["id"]
+    job_id = client.post("/api/backtests", json={
+        "strategy_id": ident, "start": "2024-01-01", "end": "2024-01-31",
+        "cash": 100000, "params": {"window": 20},
+    }).json()["id"]
+    store.claim_next()
+    store.progress(job_id, 3, 10, "2024-01-03")
+    payload = client.get(f"/api/backtests/{job_id}").json()
+    assert payload["status"] == "running"
+    assert payload["percent"] == 30
+    assert payload["current_session"] == "2024-01-03"
+    assert payload["report_ready"] is False
+    assert client.get("/api/backtests/missing").status_code == 404
+
+
+def test_history_merges_a_successful_job_with_its_published_report(tmp_path, store):
+    strategy = store.create_strategy("demo", SOURCE)
+    job = store.enqueue(strategy.id, {
+        "start": "2024-01-01", "end": "2024-01-31", "cash": 100_000,
+        "jq_compat": False, "params": {"window": 20},
+    })
+    store.claim_next()
+    store.finish(job.id, "succeeded", run_name=job.id)
+    run = tmp_path / "runs" / job.id
+    run.mkdir(parents=True)
+    (run / "run_status.csv").write_text(
+        "run_id,strategy,start,end,initial_value,total_value,cumulative_return\n"
+        "run-1,Demo,2024-01-01,2024-01-31,100000,110000,0.1\n",
+        encoding="utf-8",
+    )
+    (run / "config.json").write_text('{"cost_model":"qsys"}', encoding="utf-8")
+    rows = _backtest_rows(BacktestService(tmp_path / "runs"), store)
+    assert len(rows) == 1
+    assert rows[0]["id"] == job.id
+    assert rows[0]["return_pct"] == pytest.approx(10.0)
 
 
 def test_bad_source_and_parameters_return_422(client):

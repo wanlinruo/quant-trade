@@ -109,9 +109,21 @@ class BacktestService:
 
     def metrics(self, name: str) -> list[tuple[str, float]]:
         frame = self._read(name, "metrics.csv")
-        if frame is None:
+        if frame is None or not {"metric", "value"} <= set(frame.columns):
             return []
-        return list(zip(frame["metric"].to_list(), frame["value"].to_list()))
+        out: list[tuple[str, float]] = []
+        for key, value in zip(
+            frame["metric"].to_list(), frame["value"].to_list(), strict=True
+        ):
+            try:
+                out.append((str(key), float(value)))
+            except (TypeError, ValueError):
+                continue
+        return out
+
+    def metric_map(self, name: str) -> dict[str, float]:
+        """Return report metrics by name for cards and list summaries."""
+        return {str(key): float(value) for key, value in self.metrics(name)}
 
     def branch_summary(self, name: str) -> list[dict]:
         frame = self._read(name, "branch_summary.csv")
@@ -157,6 +169,62 @@ class BacktestService:
             peak = max(peak, value)
             out.append(value / peak - 1.0 if peak else 0.0)
         return out
+
+    def chart_series(self, name: str) -> list[dict[str, float | str | None]]:
+        """Return normalized, date-aligned series used by the interactive report chart."""
+        nav = self._read(name, "daily_nav.csv")
+        if nav is None or nav.height == 0:
+            return []
+        benchmark = self._read(name, "benchmark_nav.csv")
+        benchmark_by_date: dict[str, float] = {}
+        benchmark_initial = 0.0
+        if benchmark is not None and benchmark.height:
+            benchmark_by_date = {
+                str(day): float(value)
+                for day, value in zip(
+                    benchmark["date"].to_list(),
+                    benchmark["total_value"].to_list(),
+                    strict=True,
+                )
+            }
+            benchmark_initial = float(benchmark["total_value"][0])
+
+        values = [float(value) for value in nav["total_value"].to_list()]
+        initial = values[0]
+        peak = initial
+        rows: list[dict[str, float | str | None]] = []
+        daily_returns = (
+            nav["daily_return"].to_list()
+            if "daily_return" in nav.columns
+            else [0.0] + [
+                values[index] / values[index - 1] - 1.0
+                if values[index - 1] else 0.0
+                for index in range(1, len(values))
+            ]
+        )
+        for day, value, daily_return in zip(
+            nav["date"].to_list(), values, daily_returns, strict=True
+        ):
+            peak = max(peak, value)
+            benchmark_value = benchmark_by_date.get(str(day))
+            strategy_return = value / initial - 1.0 if initial else 0.0
+            benchmark_return = (
+                benchmark_value / benchmark_initial - 1.0
+                if benchmark_value is not None and benchmark_initial
+                else None
+            )
+            rows.append({
+                "date": str(day),
+                "strategy": strategy_return,
+                "benchmark": benchmark_return,
+                "excess": (
+                    strategy_return - benchmark_return
+                    if benchmark_return is not None else None
+                ),
+                "drawdown": value / peak - 1.0 if peak else 0.0,
+                "daily_return": float(daily_return or 0.0),
+            })
+        return rows
 
     def file_bytes(self, name: str, filename: str) -> tuple[bytes, str] | None:
         """返回 (内容, media type)。越界或类型不允许一律返回 None。"""

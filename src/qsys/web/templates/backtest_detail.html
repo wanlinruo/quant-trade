@@ -1,94 +1,56 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="card">
-  <h2>{{ run.name }}</h2>
-  <div class="kpis">
-    <div class="kpi"><div class="label">总收益</div><div class="value {{ 'up' if run.return_pct and run.return_pct > 0 else 'down' }}">{% if run.return_pct is not none %}{{ "%+.2f"|format(run.return_pct) }}%{% else %}—{% endif %}</div></div>
-    <div class="kpi"><div class="label">初始 / 最终</div><div class="value">{{ "{:,.0f}".format(run.initial_value) }} → {{ "{:,.0f}".format(run.total_value) }}</div></div>
-    <div class="kpi"><div class="label">买入 / 卖出</div><div class="value">{{ run.buys }} / {{ run.sells }}</div></div>
-    <div class="kpi"><div class="label">过 Gate / 被拒</div><div class="value">{{ run.gate_allowed }} / {{ run.gate_rejected }}</div></div>
+<div class="page-head"><div><p class="muted" style="margin:0 0 5px"><a href="/backtests">回测记录</a> / {{ run.name }}</p><h2>{{ run.strategy }}</h2></div><div class="toolbar">{% if job %}<a class="button secondary" href="/strategies/{{ job.strategy_id }}">编辑策略</a>{% endif %}<a class="button" href="/backtests/{{ run.name }}/file/{{ zip_name }}">导出报告</a></div></div>
+<section class="panel run-overview">
+  <div class="run-meta"><span class="pill ok">已完成</span><span>{{ run.start }} 至 {{ run.end }}</span><span>初始资金 ¥{{ '{:,.0f}'.format(run.initial_value) }}</span><span title="{{ run.cost_model }}">{{ run.cost_model or '成本模型未知' }}</span><span class="mono">run_id {{ run.run_id }}</span></div>
+</section>
+<div class="metric-grid headline-metrics">
+  <div class="metric"><div class="label">策略收益</div><div class="value {{ 'up' if run.return_pct and run.return_pct > 0 else 'down' }}">{% if run.return_pct is not none %}{{ '%+.2f'|format(run.return_pct) }}%{% else %}—{% endif %}</div></div>
+  <div class="metric"><div class="label">年化收益</div><div class="value">{% if metric_map.get('annualized_return') is not none %}{{ '%+.2f'|format(metric_map.get('annualized_return')*100) }}%{% else %}—{% endif %}</div></div>
+  <div class="metric"><div class="label">基准收益</div><div class="value">{% if metric_map.get('benchmark_return') is not none %}{{ '%+.2f'|format(metric_map.get('benchmark_return')*100) }}%{% else %}—{% endif %}</div></div>
+  <div class="metric"><div class="label">超额收益</div><div class="value">{% if metric_map.get('excess_return') is not none %}{{ '%+.2f'|format(metric_map.get('excess_return')*100) }}%{% else %}—{% endif %}</div></div>
+  <div class="metric"><div class="label">Alpha</div><div class="value">{% if metric_map.get('alpha') is not none %}{{ '%.3f'|format(metric_map.get('alpha')) }}{% else %}—{% endif %}</div></div>
+  <div class="metric"><div class="label">Beta</div><div class="value">{% if metric_map.get('beta') is not none %}{{ '%.3f'|format(metric_map.get('beta')) }}{% else %}—{% endif %}</div></div>
+  <div class="metric"><div class="label">夏普比率</div><div class="value">{% if metric_map.get('sharpe') is not none %}{{ '%.3f'|format(metric_map.get('sharpe')) }}{% else %}—{% endif %}</div></div>
+  <div class="metric"><div class="label">最大回撤</div><div class="value">{% if metric_map.get('max_drawdown') is not none %}{{ '%.2f'|format(metric_map.get('max_drawdown')*100) }}%{% else %}—{% endif %}</div></div>
+  <div class="metric"><div class="label">胜率</div><div class="value">{% if metric_map.get('win_rate') is not none %}{{ '%.1f'|format(metric_map.get('win_rate')*100) }}%{% else %}—{% endif %}</div></div>
+  <div class="metric"><div class="label">盈亏比</div><div class="value">{% if metric_map.get('profit_loss_ratio') is not none %}{{ '%.3f'|format(metric_map.get('profit_loss_ratio')) }}{% else %}—{% endif %}</div></div>
+  <div class="metric"><div class="label">信息比率</div><div class="value">{% if metric_map.get('information_ratio') is not none %}{{ '%.3f'|format(metric_map.get('information_ratio')) }}{% else %}—{% endif %}</div></div>
+  <div class="metric"><div class="label">年化波动率</div><div class="value">{% if metric_map.get('volatility') is not none %}{{ '%.2f'|format(metric_map.get('volatility')*100) }}%{% else %}—{% endif %}</div></div>
+</div>
+
+<section class="panel detail-panel">
+  <div class="tabs" role="tablist"><button class="tab-button active" data-tab="performance">收益分析</button><button class="tab-button" data-tab="trades">成交与拒单</button><button class="tab-button" data-tab="positions">每日持仓</button><button class="tab-button" data-tab="branches">策略分支</button><button class="tab-button" data-tab="logs">日志与源码</button><button class="tab-button" data-tab="files">文件下载</button></div>
+  <div id="performance" class="tab-panel active">
+    {% if chart_data %}<div class="chart-shell"><div class="chart-legend"><strong>累计收益</strong><span class="toolbar-spacer"></span><button class="series-toggle" data-series="strategy"><i class="legend-line" style="background:#2463b5"></i>策略</button><button class="series-toggle" data-series="benchmark"><i class="legend-line" style="background:#dc5a4f"></i>基准</button><button class="series-toggle" data-series="excess"><i class="legend-line" style="background:#f59e42"></i>超额</button><span class="range-buttons"><button data-range="22">1个月</button><button data-range="252">1年</button><button class="active" data-range="all">全部</button></span></div><svg id="return-chart" viewBox="0 0 1000 310" preserveAspectRatio="none" aria-label="累计收益曲线"></svg></div>
+    <div class="chart-shell daily-shell"><strong>每日收益</strong><svg id="daily-chart" viewBox="0 0 1000 130" preserveAspectRatio="none" aria-label="每日收益柱状图"></svg></div><div id="chart-tooltip" class="chart-tooltip"></div>
+    {% else %}<div class="empty-state">本次回测没有可展示的净值数据。</div>{% endif %}
+    {% if months %}<h3>月度收益</h3><div class="month-grid">{% for row in months %}<div><span>{{ row.month }}</span><strong class="{{ 'up' if row['return'] > 0 else 'down' }}">{{ '%+.2f'|format(row['return']*100) }}%</strong></div>{% endfor %}</div>{% endif %}
   </div>
-  <p class="muted">{{ run.strategy }} · {{ run.start }} ~ {{ run.end }} · {{ run.cost_model }} · run_id <code>{{ run.run_id }}</code></p>
-</div>
-
-{% if chart %}
-<div class="card">
-  <h2>净值</h2>
-  {{ chart|safe }}
-</div>
-<div class="card"><h2>回撤</h2>{{ drawdown_chart|safe }}</div>
-{% endif %}
-
-{% if months %}
-<div class="card"><h2>月度收益</h2><table><tr><th>月份</th><th class="num">收益</th></tr>
-{% for row in months %}<tr><td>{{ row.month }}</td><td class="num {{ 'up' if row['return'] > 0 else 'down' }}">{{ "%+.2f"|format(row['return'] * 100) }}%</td></tr>{% endfor %}
-</table></div>
-{% endif %}
-
-<div class="card">
-  <h2>下载</h2>
-  <p class="muted">整包：<a href="/backtests/{{ run.name }}/file/{{ zip_name }}">{{ zip_name }}</a></p>
-  <table>
-    <tr><th>文件</th><th class="num">大小</th></tr>
-    {% for f in files %}
-    <tr>
-      <td><a href="/backtests/{{ run.name }}/file/{{ f.name }}">{{ f.name }}</a></td>
-      <td class="num">{{ "{:,}".format(f.size) }} B</td>
-    </tr>
-    {% endfor %}
-  </table>
-</div>
-
-{% if metrics %}
-<div class="card">
-  <h2>指标</h2>
-  <table>
-    <tr><th>指标</th><th class="num">值</th></tr>
-    {% for name, value in metrics %}
-    <tr><td>{{ {'total_return':'总收益','annualized_return':'年化收益','volatility':'年化波动率','sharpe':'夏普比率','max_drawdown':'最大回撤','max_drawdown_days':'最大回撤天数','n_trades':'成交笔数','win_rate':'胜率','calmar':'Calmar','profit_loss_ratio':'盈亏比','fees':'总费用','benchmark_return':'基准收益','excess_return':'超额收益','alpha':'Alpha','beta':'Beta','tracking_error':'跟踪误差','information_ratio':'信息比率','turnover_rate':'换手率'}.get(name, name) }}</td><td class="num">{{ "%.6g"|format(value) }}</td></tr>
-    {% endfor %}
-  </table>
-</div>
-{% endif %}
-
-{% if branches %}
-<div class="card">
-  <h2>分支</h2>
-  <table>
-    <tr><th>分支</th><th class="num">平仓</th><th class="num">胜率</th><th class="num">均值</th><th class="num">中位</th><th class="num">毛盈亏</th><th class="num">平均持有</th></tr>
-    {% for b in branches %}
-    <tr>
-      <td>{{ b.strategy_tag }}</td>
-      <td class="num">{{ b.closed_lots }}</td>
-      <td class="num">{{ "%.1f"|format((b.win_rate or 0) * 100) }}%</td>
-      <td class="num {{ 'up' if (b.avg_return_pct or 0) > 0 else 'down' }}">{{ "%+.2f"|format(b.avg_return_pct or 0) }}%</td>
-      <td class="num">{{ "%+.2f"|format(b.median_return_pct or 0) }}%</td>
-      <td class="num">{{ "{:,.0f}".format(b.gross_realized_pnl or 0) }}</td>
-      <td class="num">{{ "%.1f"|format(b.avg_holding_trade_days or 0) }}</td>
-    </tr>
-    {% endfor %}
-  </table>
-</div>
-{% endif %}
-
-{% if positions %}
-<div class="card"><h2>最近持仓（最多 100 行）</h2><table>
-<tr><th>日期</th><th>标的</th><th class="num">数量</th><th class="num">收盘</th><th class="num">市值</th><th class="num">权重</th><th class="num">浮盈亏</th></tr>
-{% for p in positions %}<tr><td>{{ p.date }}</td><td>{{ p.symbol }}</td><td class="num">{{ p.qty }}</td><td class="num">{{ "%.2f"|format(p.close) }}</td><td class="num">{{ "{:,.0f}".format(p.market_value) }}</td><td class="num">{{ "%.1f"|format(p.weight*100) }}%</td><td class="num">{{ "{:,.0f}".format(p.unrealized_pnl) }}</td></tr>{% endfor %}
-</table></div>
-{% endif %}
-
-{% if fills %}
-<div class="card"><h2>最近成交（最多 100 行）</h2><table>
-<tr><th>时间</th><th>标的</th><th>方向</th><th class="num">数量</th><th class="num">价格</th><th class="num">费用</th></tr>
-{% for f in fills %}<tr><td>{{ f.filled_at }}</td><td>{{ f.symbol }}</td><td>{{ f.side }}</td><td class="num">{{ f.qty }}</td><td class="num">{{ f.price }}</td><td class="num">{{ f.fee }}</td></tr>{% endfor %}
-</table></div>
-{% endif %}
-
-{% if reject_rows %}
-<div class="card"><h2>拒单</h2><table><tr><th>时间</th><th>标的</th><th>方向</th><th>原因</th></tr>
-{% for r in reject_rows %}<tr><td>{{ r.at }}</td><td>{{ r.symbol }}</td><td>{{ r.side }}</td><td>{{ r.reason }}</td></tr>{% endfor %}</table></div>
-{% endif %}
-
-{% if run_log %}<div class="card"><h2>运行日志</h2><pre>{{ run_log }}</pre></div>{% endif %}
+  <div id="trades" class="tab-panel">
+    {% if fills %}<h3>成交记录</h3><div class="data-table" data-table><div class="table-tools"></div><div class="table-wrap"><table><thead><tr><th>时间</th><th>标的</th><th>方向</th><th class="num">数量</th><th class="num">价格</th><th class="num">费用</th></tr></thead><tbody>{% for f in fills %}<tr><td>{{ f.filled_at }}</td><td>{{ f.symbol }}</td><td>{{ {'buy':'买入','sell':'卖出'}.get(f.side,f.side) }}</td><td class="num">{{ f.qty }}</td><td class="num">{{ '%.2f'|format(f.price) }}</td><td class="num">{{ '%.2f'|format(f.fee) }}</td></tr>{% endfor %}</tbody></table></div></div>{% else %}<div class="empty-state">没有成交记录。</div>{% endif %}
+    {% if reject_rows %}<h3>拒单记录</h3><div class="data-table" data-table><div class="table-tools"></div><div class="table-wrap"><table><thead><tr><th>时间</th><th>标的</th><th>方向</th><th>原因</th></tr></thead><tbody>{% for r in reject_rows %}<tr><td>{{ r.at }}</td><td>{{ r.symbol }}</td><td>{{ r.side }}</td><td>{{ r.reason }}</td></tr>{% endfor %}</tbody></table></div></div>{% endif %}
+  </div>
+  <div id="positions" class="tab-panel">{% if positions %}<div class="data-table" data-table><div class="table-tools"></div><div class="table-wrap"><table><thead><tr><th>日期</th><th>标的</th><th class="num">数量</th><th class="num">收盘</th><th class="num">市值</th><th class="num">权重</th><th class="num">浮盈亏</th></tr></thead><tbody>{% for p in positions %}<tr><td>{{ p.date }}</td><td>{{ p.symbol }}</td><td class="num">{{ p.qty }}</td><td class="num">{{ '%.2f'|format(p.close) }}</td><td class="num">{{ '{:,.0f}'.format(p.market_value) }}</td><td class="num">{{ '%.1f'|format(p.weight*100) }}%</td><td class="num">{{ '{:,.0f}'.format(p.unrealized_pnl) }}</td></tr>{% endfor %}</tbody></table></div></div>{% else %}<div class="empty-state">没有每日持仓记录。</div>{% endif %}</div>
+  <div id="branches" class="tab-panel">{% if branches %}<div class="table-wrap"><table><thead><tr><th>分支</th><th class="num">平仓</th><th class="num">胜率</th><th class="num">平均收益</th><th class="num">中位收益</th><th class="num">毛盈亏</th><th class="num">平均持有</th></tr></thead><tbody>{% for b in branches %}<tr><td>{{ b.strategy_tag }}</td><td class="num">{{ b.closed_lots }}</td><td class="num">{{ '%.1f'|format((b.win_rate or 0)*100) }}%</td><td class="num">{{ '%+.2f'|format(b.avg_return_pct or 0) }}%</td><td class="num">{{ '%+.2f'|format(b.median_return_pct or 0) }}%</td><td class="num">{{ '{:,.0f}'.format(b.gross_realized_pnl or 0) }}</td><td class="num">{{ '%.1f'|format(b.avg_holding_trade_days or 0) }} 天</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty-state">没有策略分支统计。</div>{% endif %}</div>
+  <div id="logs" class="tab-panel"><h3>运行日志</h3><pre>{{ run_log or '没有运行日志。' }}</pre><h3>运行源码</h3><pre>{{ strategy_source or '历史报告未包含策略源码。' }}</pre></div>
+  <div id="files" class="tab-panel"><p><a class="button" href="/backtests/{{ run.name }}/file/{{ zip_name }}">下载完整报告包</a></p><div class="table-wrap"><table><thead><tr><th>文件</th><th class="num">大小</th></tr></thead><tbody>{% for f in files %}<tr><td><a href="/backtests/{{ run.name }}/file/{{ f.name }}">{{ f.name }}</a></td><td class="num">{{ '{:,}'.format(f.size) }} B</td></tr>{% endfor %}</tbody></table></div></div>
+</section>
+<style>.run-overview{margin-bottom:16px}.run-meta{display:flex;gap:20px;align-items:center;flex-wrap:wrap;padding:13px 16px;color:var(--muted)}.headline-metrics{margin-bottom:16px}.detail-panel{padding:0}.tab-panel h3{font-size:14px;margin:22px 0 11px}.tab-panel h3:first-child{margin-top:0}.range-buttons{display:flex;border-left:1px solid var(--line);padding-left:10px}.range-buttons button{background:transparent;color:var(--muted);padding:4px 8px}.range-buttons button.active{background:var(--primary-soft);color:var(--primary)}.daily-shell{margin-top:12px}.daily-shell svg{height:130px;margin-top:8px}.month-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(125px,1fr));border:1px solid var(--line);border-radius:6px;overflow:hidden}.month-grid div{display:flex;justify-content:space-between;padding:9px 11px;border-right:1px solid var(--line);border-bottom:1px solid var(--line)}.month-grid span{color:var(--muted)}.table-tools{display:flex;justify-content:flex-end;margin-bottom:9px}.table-tools input{width:240px}.table-pager{display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:9px;color:var(--muted)}.table-pager button{padding:4px 9px;background:#eef2f7;color:var(--fg)}
+</style>
+{% if chart_data %}<script>
+const chartData={{ chart_data|tojson }},colors={strategy:'#2463b5',benchmark:'#dc5a4f',excess:'#f59e42'},visible={strategy:true,benchmark:true,excess:true};let activeRange='all';
+const svgNS='http://www.w3.org/2000/svg';function node(name,attrs={}){const el=document.createElementNS(svgNS,name);Object.entries(attrs).forEach(([key,value])=>el.setAttribute(key,value));return el}function subset(){const count=activeRange==='all'?chartData.length:Number(activeRange);return chartData.slice(-count)}
+function renderReturns(){const svg=document.getElementById('return-chart'),data=subset(),W=1000,H=310,m={l:56,r:22,t:15,b:32};svg.replaceChildren();const values=[0];data.forEach(row=>Object.keys(visible).forEach(key=>{if(visible[key]&&row[key]!==null)values.push(row[key])}));let min=Math.min(...values),max=Math.max(...values);if(max===min){max+=.01;min-=.01}const pad=(max-min)*.1;min-=pad;max+=pad;const x=i=>m.l+(data.length<2?0:i/(data.length-1))*(W-m.l-m.r),y=value=>m.t+(max-value)/(max-min)*(H-m.t-m.b);
+  for(let i=0;i<6;i++){const value=max-(max-min)*i/5,yy=y(value);svg.append(node('line',{x1:m.l,y1:yy,x2:W-m.r,y2:yy,stroke:'#e5e9f0'}));const label=node('text',{x:m.l-8,y:yy+4,'text-anchor':'end',fill:'#7b8495','font-size':'11'});label.textContent=(value*100).toFixed(0)+'%';svg.append(label)}
+  Object.keys(visible).forEach(key=>{if(!visible[key])return;let d='';data.forEach((row,i)=>{if(row[key]===null)return;d+=(d?' L':'M')+x(i)+' '+y(row[key])});svg.append(node('path',{d,fill:'none',stroke:colors[key],'stroke-width':'2.3','vector-effect':'non-scaling-stroke'}))});
+  const dates=[0,Math.floor((data.length-1)/2),data.length-1];dates.forEach(i=>{if(i<0||!data[i])return;const label=node('text',{x:x(i),y:H-7,'text-anchor':i===0?'start':i===data.length-1?'end':'middle',fill:'#7b8495','font-size':'11'});label.textContent=data[i].date;svg.append(label)});
+  const hover=node('line',{y1:m.t,y2:H-m.b,stroke:'#94a3b8','stroke-dasharray':'3 3',visibility:'hidden'});svg.append(hover);const hit=node('rect',{x:m.l,y:m.t,width:W-m.l-m.r,height:H-m.t-m.b,fill:'transparent'});svg.append(hit);hit.addEventListener('mousemove',event=>{const rect=svg.getBoundingClientRect(),px=(event.clientX-rect.left)/rect.width*W,index=Math.max(0,Math.min(data.length-1,Math.round((px-m.l)/(W-m.l-m.r)*(data.length-1)))),row=data[index];hover.setAttribute('x1',x(index));hover.setAttribute('x2',x(index));hover.setAttribute('visibility','visible');const labels={strategy:'策略',benchmark:'基准',excess:'超额'},tooltip=document.getElementById('chart-tooltip');tooltip.innerHTML='<strong>'+row.date+'</strong>'+Object.keys(visible).filter(key=>visible[key]&&row[key]!==null).map(key=>'<div>'+labels[key]+'：'+(row[key]*100).toFixed(2)+'%</div>').join('');tooltip.style.display='block';tooltip.style.left=(event.clientX+14)+'px';tooltip.style.top=(event.clientY+12)+'px'});hit.addEventListener('mouseleave',()=>{hover.setAttribute('visibility','hidden');document.getElementById('chart-tooltip').style.display='none'});renderDaily(data)}
+function renderDaily(data){const svg=document.getElementById('daily-chart'),W=1000,H=130,m={l:56,r:22,t:8,b:20};svg.replaceChildren();const extent=Math.max(.001,...data.map(row=>Math.abs(row.daily_return))),zero=m.t+(H-m.t-m.b)/2,x=i=>m.l+i/Math.max(data.length,1)*(W-m.l-m.r),bar=Math.max(1,(W-m.l-m.r)/Math.max(data.length,1)*.65),scale=(H-m.t-m.b)/2/extent;svg.append(node('line',{x1:m.l,y1:zero,x2:W-m.r,y2:zero,stroke:'#94a3b8'}));data.forEach((row,i)=>{const height=Math.abs(row.daily_return)*scale;svg.append(node('rect',{x:x(i),y:row.daily_return>=0?zero-height:zero,width:bar,height:Math.max(.5,height),fill:row.daily_return>=0?'#28a7cf':'#e6813a'}))})}
+document.querySelectorAll('.series-toggle').forEach(button=>button.addEventListener('click',()=>{const key=button.dataset.series;visible[key]=!visible[key];button.classList.toggle('off',!visible[key]);renderReturns()}));document.querySelectorAll('[data-range]').forEach(button=>button.addEventListener('click',()=>{activeRange=button.dataset.range;document.querySelectorAll('[data-range]').forEach(item=>item.classList.toggle('active',item===button));renderReturns()}));renderReturns();
+</script>{% endif %}
+<script>
+document.querySelectorAll('.tab-button').forEach(button=>button.addEventListener('click',()=>{document.querySelectorAll('.tab-button').forEach(item=>item.classList.toggle('active',item===button));document.querySelectorAll('.tab-panel').forEach(panel=>panel.classList.toggle('active',panel.id===button.dataset.tab))}));
+document.querySelectorAll('[data-table]').forEach(wrapper=>{const rows=[...wrapper.querySelectorAll('tbody tr')],tools=wrapper.querySelector('.table-tools'),input=document.createElement('input');input.placeholder='搜索当前表格';tools.append(input);const pager=document.createElement('div');pager.className='table-pager';wrapper.append(pager);let page=1;const size=20;function draw(){const filtered=rows.filter(row=>row.textContent.toLowerCase().includes(input.value.toLowerCase())),pages=Math.max(1,Math.ceil(filtered.length/size));page=Math.min(page,pages);rows.forEach(row=>row.style.display='none');filtered.slice((page-1)*size,page*size).forEach(row=>row.style.display='');pager.replaceChildren();const prev=document.createElement('button'),text=document.createElement('span'),next=document.createElement('button');prev.textContent='上一页';next.textContent='下一页';text.textContent=page+' / '+pages+' · '+filtered.length+' 条';prev.disabled=page===1;next.disabled=page===pages;prev.onclick=()=>{page--;draw()};next.onclick=()=>{page++;draw()};pager.append(prev,text,next)}input.addEventListener('input',()=>{page=1;draw()});draw()});
+</script>
 {% endblock %}

@@ -9,11 +9,11 @@ Web 层不持有业务逻辑——数据全部来自 MonitorService。
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import structlog
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import (
     HTMLResponse,
     PlainTextResponse,
@@ -34,6 +34,85 @@ from qsys.strategy.parameters import validate_parameters
 log = structlog.get_logger(__name__)
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+
+
+def _elapsed(started: str, finished: str = "") -> str:
+    if not started:
+        return "—"
+    try:
+        start = datetime.fromisoformat(started)
+        end = datetime.fromisoformat(finished) if finished else datetime.now()
+        seconds = max(0, int((end - start).total_seconds()))
+    except ValueError:
+        return "—"
+    hours, seconds = divmod(seconds, 3600)
+    minutes, seconds = divmod(seconds, 60)
+    if hours:
+        return f"{hours}小时{minutes:02d}分"
+    if minutes:
+        return f"{minutes}分{seconds:02d}秒"
+    return f"{seconds}秒"
+
+
+def _backtest_rows(backtests: BacktestService, workbench: WorkbenchStore | None) -> list[dict]:
+    """Merge queue jobs and published reports into one user-facing history."""
+    runs = {run.name: run for run in backtests.runs()}
+    rows: list[dict] = []
+    seen: set[str] = set()
+    for job in workbench.jobs(limit=500) if workbench else []:
+        run_name = job.run_name or job.id
+        run = runs.get(run_name)
+        metrics = backtests.metric_map(run_name) if run else {}
+        rows.append({
+            "id": job.id,
+            "strategy": job.strategy_name,
+            "strategy_id": job.strategy_id,
+            "start": str(job.config.get("start", "")),
+            "end": str(job.config.get("end", "")),
+            "created_at": job.created_at,
+            "duration": _elapsed(job.started_at, job.finished_at),
+            "status": job.status,
+            "cost_model": run.cost_model if run else (
+                "聚宽兼容" if job.config.get("jq_compat") else "qsys 实盘档位"
+            ),
+            "return_pct": run.return_pct if run else None,
+            "benchmark_pct": (
+                metrics.get("benchmark_return") * 100
+                if "benchmark_return" in metrics else None
+            ),
+            "max_drawdown_pct": (
+                metrics.get("max_drawdown") * 100
+                if "max_drawdown" in metrics else None
+            ),
+            "has_report": run is not None,
+        })
+        seen.add(run_name)
+    for run_name, run in runs.items():
+        if run_name in seen:
+            continue
+        metrics = backtests.metric_map(run_name)
+        rows.append({
+            "id": run.name,
+            "strategy": run.strategy,
+            "strategy_id": "",
+            "start": run.start,
+            "end": run.end,
+            "created_at": run.generated_at,
+            "duration": "—",
+            "status": "succeeded",
+            "cost_model": run.cost_model,
+            "return_pct": run.return_pct,
+            "benchmark_pct": (
+                metrics.get("benchmark_return") * 100
+                if "benchmark_return" in metrics else None
+            ),
+            "max_drawdown_pct": (
+                metrics.get("max_drawdown") * 100
+                if "max_drawdown" in metrics else None
+            ),
+            "has_report": True,
+        })
+    return rows
 
 
 def create_app(
@@ -197,15 +276,43 @@ def create_app(
         )
 
     @app.get("/backtests", response_class=HTMLResponse)
-    def backtest_index(request: Request):
+    def backtest_index(
+        request: Request,
+        q: str = "",
+        status: str = "",
+        sort: str = "created",
+        page_number: int = Query(1, alias="page", ge=1),
+    ):
         if backtests is None:
             raise HTTPException(status_code=404, detail="backtest console not enabled")
+        rows = _backtest_rows(backtests, workbench)
+        query = q.strip().casefold()
+        if query:
+            rows = [row for row in rows if query in (
+                f"{row['id']} {row['strategy']} {row['start']} {row['end']}"
+            ).casefold()]
+        if status == "active":
+            rows = [row for row in rows if row["status"] in ("queued", "running")]
+        elif status in ("succeeded", "failed", "cancelled", "interrupted"):
+            rows = [row for row in rows if row["status"] == status]
+        if sort == "return":
+            rows.sort(key=lambda row: row["return_pct"] if row["return_pct"] is not None else float("-inf"), reverse=True)
+        elif sort == "drawdown":
+            rows.sort(key=lambda row: row["max_drawdown_pct"] if row["max_drawdown_pct"] is not None else float("inf"))
+        else:
+            sort = "created"
+            rows.sort(key=lambda row: row["created_at"], reverse=True)
+        page_size = 25
+        page_count = max(1, (len(rows) + page_size - 1) // page_size)
+        page_number = min(page_number, page_count)
+        page_rows = rows[(page_number - 1) * page_size:page_number * page_size]
         return TEMPLATES.TemplateResponse(
             request=request, name="backtests.html",
             context={
                 "title": config.title, "session": None, "page": "backtests",
-                "runs": backtests.runs(),
-                "jobs": workbench.jobs() if workbench else [],
+                "rows": page_rows, "total": len(rows), "query": q,
+                "selected_status": status, "selected_sort": sort,
+                "page_number": page_number, "page_count": page_count,
             },
         )
 
@@ -306,6 +413,28 @@ def create_app(
             raise HTTPException(status_code=409, detail="task cannot be cancelled")
         return {"status": "cancelled"}
 
+    @app.get("/api/backtests/{ident}")
+    def backtest_status(ident: str):
+        if workbench is None:
+            raise HTTPException(status_code=404, detail="workbench not enabled")
+        job = workbench.job(ident)
+        if job is None:
+            raise HTTPException(status_code=404, detail="no such backtest job")
+        report_name = job.run_name or job.id
+        report_ready = backtests is not None and backtests.run(report_name) is not None
+        return {
+            "id": job.id,
+            "status": job.status,
+            "progress": job.progress,
+            "total": job.total,
+            "percent": job.percent,
+            "current_session": job.current_session,
+            "error": job.error,
+            "log": workbench.job_log(job.id, limit=20_000),
+            "report_ready": report_ready,
+            "location": f"/backtests/{report_name}",
+        }
+
     @app.get("/backtests/{name}", response_class=HTMLResponse)
     def backtest_detail(request: Request, name: str):
         if backtests is None:
@@ -316,7 +445,8 @@ def create_app(
             return TEMPLATES.TemplateResponse(
                 request=request, name="backtest_job.html",
                 context={"title": config.title, "session": None, "page": "backtests",
-                         "job": job, "job_log": workbench.job_log(job.id) if workbench else ""},
+                         "job": job, "strategy": workbench.strategy(job.strategy_id),
+                         "job_log": workbench.job_log(job.id) if workbench else ""},
             )
         if run is None:
             raise HTTPException(status_code=404, detail=f"no run named {name}")
@@ -329,11 +459,13 @@ def create_app(
                              for (_, strategy_value), (_, benchmark_value)
                              in zip(points, benchmark_points, strict=True)
                              if benchmark_value]
+        metrics = backtests.metric_map(name)
+        job = workbench.job(name) if workbench else None
         return TEMPLATES.TemplateResponse(
             request=request, name="backtest_detail.html",
             context={
                 "title": config.title, "session": None, "page": "backtests",
-                "run": run,
+                "run": run, "job": job, "metric_map": metrics,
                 "files": backtests.files(name),
                 "zip_name": f"{run.name}.zip",
                 "metrics": backtests.metrics(name),
@@ -349,6 +481,8 @@ def create_app(
                 "fills": backtests.rows(name, "fills.csv", limit=100),
                 "reject_rows": backtests.rows(name, "rejects.csv", limit=100),
                 "run_log": backtests.text(name, "run.log"),
+                "strategy_source": backtests.text(name, "strategy.py"),
+                "chart_data": backtests.chart_series(name),
             },
         )
 

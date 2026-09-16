@@ -1,15 +1,28 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="card"><h2>回测任务 {{ job.id }}</h2>
-  <div class="kpis"><div class="kpi"><div class="label">状态</div><div class="value">{{ job.status }}</div></div><div class="kpi"><div class="label">进度</div><div class="value">{{ job.percent }}%</div></div><div class="kpi"><div class="label">当前日期</div><div class="value">{{ job.current_session or '—' }}</div></div></div>
-  <div class="progress"><span style="width:{{ job.percent }}%"></span></div>
-  <p class="muted">{{ job.strategy_name }} · {{ job.config.start }} ~ {{ job.config.end }} · 版本 <code>{{ job.version_id }}</code></p>
-  {% if job.error %}<p class="error">{{ job.error }}</p>{% endif %}
-  {% if job.status in ('queued','running') %}<button onclick="cancelJob()" class="secondary">取消任务</button>{% endif %}
-</div>
-{% if job_log %}<div class="card"><h2>运行日志</h2><pre>{{ job_log }}</pre></div>{% endif %}
+<div class="page-head"><div><p class="muted" style="margin:0 0 5px"><a href="/backtests">回测记录</a> / {{ job.id }}</p><h2>{{ job.strategy_name }}</h2></div><div class="toolbar">{% if strategy %}<a class="button secondary" href="/strategies/{{ strategy.id }}">编辑策略</a>{% endif %}<a class="button secondary" href="/backtests">返回列表</a></div></div>
+<section class="panel">
+  <div class="job-summary">
+    <div><div class="status-title"><span id="status-dot" class="status-dot {{ job.status }}"></span><strong id="status-text">{{ {'queued':'等待运行','running':'正在回测','failed':'运行失败','cancelled':'已取消','interrupted':'已中断'}.get(job.status,job.status) }}</strong></div><p id="status-hint" class="muted">{% if job.status == 'queued' %}任务已进入队列，将按创建顺序执行。{% elif job.status == 'running' %}正在处理交易日 {{ job.current_session or '—' }}{% else %}任务没有生成回测报告。{% endif %}</p></div>
+    <div class="job-actions">{% if job.status in ('queued','running') %}<button id="cancel-button" class="secondary" onclick="cancelJob()">取消任务</button>{% endif %}</div>
+  </div>
+  <div class="progress large"><span id="progress-bar" style="width:{{ job.percent }}%"></span></div><div class="progress-meta"><span id="progress-date">{{ job.current_session or '等待开始' }}</span><span id="progress-percent">{{ job.percent }}%</span></div>
+  <div class="config-strip"><div><span>回测区间</span><strong>{{ job.config.start }} 至 {{ job.config.end }}</strong></div><div><span>初始资金</span><strong>¥{{ '{:,.0f}'.format(job.config.cash|float) }}</strong></div><div><span>成本模型</span><strong>{{ '聚宽兼容' if job.config.jq_compat else 'qsys 实盘档位' }}</strong></div><div><span>源码版本</span><strong class="mono">{{ job.version_id }}</strong></div></div>
+  <div id="job-error" class="error">{{ job.error }}</div>
+</section>
+<section class="panel log-panel"><div class="panel-title">运行日志 <span class="toolbar-spacer"></span><span class="muted">自动刷新</span></div><pre id="job-log">{{ job_log or '等待任务输出…' }}</pre></section>
+<style>.job-summary{padding:24px;display:flex;justify-content:space-between;gap:20px}.status-title{display:flex;align-items:center;gap:11px;font-size:19px}.job-summary p{margin:8px 0 0}.progress.large{margin:0 24px;height:10px}.progress-meta{display:flex;justify-content:space-between;padding:8px 24px 20px;color:var(--muted);font-variant-numeric:tabular-nums}.config-strip{border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(4,1fr)}.config-strip div{padding:16px 24px;border-right:1px solid var(--line)}.config-strip div:last-child{border:0}.config-strip span{display:block;color:var(--muted);font-size:12px;margin-bottom:5px}.config-strip strong{font-size:13px}.log-panel pre{margin:0;border-radius:0;min-height:360px;max-height:55vh}#job-error:not(:empty){margin:0 24px 20px;background:#fef2f2;padding:10px;border-radius:5px}@media(max-width:760px){.config-strip{grid-template-columns:1fr 1fr}.config-strip div{border-bottom:1px solid var(--line)}}
+</style>
 <script>
-async function cancelJob(){const r=await fetch('/api/backtests/{{ job.id }}/cancel',{method:'POST'});if(r.ok)location.reload();else alert((await r.json()).detail)}
-{% if job.status in ('queued','running') %}setTimeout(()=>location.reload(),2000);{% endif %}
+const statusLabels={queued:'等待运行',running:'正在回测',succeeded:'已完成',failed:'运行失败',cancelled:'已取消',interrupted:'已中断'};
+async function cancelJob(){const button=document.getElementById('cancel-button');button.disabled=true;const response=await fetch('/api/backtests/{{ job.id }}/cancel',{method:'POST'});if(!response.ok){button.disabled=false;alert((await response.json()).detail);return}poll()}
+async function poll(){
+  try{const response=await fetch('/api/backtests/{{ job.id }}',{cache:'no-store'});if(!response.ok)return;const job=await response.json();
+    if(job.report_ready){location.replace(job.location);return}
+    document.getElementById('status-text').textContent=statusLabels[job.status]||job.status;document.getElementById('status-dot').className='status-dot '+job.status;document.getElementById('progress-bar').style.width=job.percent+'%';document.getElementById('progress-percent').textContent=job.percent+'%';document.getElementById('progress-date').textContent=job.current_session||'等待开始';document.getElementById('status-hint').textContent=job.status==='queued'?'任务已进入队列，将按创建顺序执行。':job.status==='running'?'正在处理交易日 '+(job.current_session||'—'):'任务没有生成回测报告。';document.getElementById('job-error').textContent=job.error||'';if(job.log)document.getElementById('job-log').textContent=job.log;
+    if(['queued','running'].includes(job.status))setTimeout(poll,1500);else{const button=document.getElementById('cancel-button');if(button)button.remove()}
+  }catch(_){setTimeout(poll,3000)}
+}
+{% if job.status in ('queued','running') %}setTimeout(poll,800);{% endif %}
 </script>
 {% endblock %}
