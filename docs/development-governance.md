@@ -284,6 +284,11 @@ Nginx 在 8443 复用 `wanlinruo.cn` 证书，反向代理到 `127.0.0.1:8420`�
 9. 通过 Mac 隧道进行人工验收；
 10. 回写 GitHub deployment 状态。
 
+节点端统一执行 `scripts/deploy_test_linux.sh <完整 commit SHA>`。脚本只接受远程
+`origin/test` 当前指向的 40 位 SHA，且会拒绝错误分支和脏工作区；这保证部署输入不是
+浮动分支名。首次部署使用 `/data/qsys-test/warehouse-current` 指向一个只读数据快照，
+测试服务只有 `/data/qsys-test/var` 的写权限。
+
 ### 9.2 生产环境
 
 触发条件：维护者已完成 `test -> main` PR 自审、CI 全绿、测试环境验收完成且 PR 已合并。

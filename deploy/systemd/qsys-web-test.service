@@ -1,0 +1,30 @@
+[Unit]
+Description=qsys test web application
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/qsys-test
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/home/ubuntu/qsys-test/.venv/bin/python scripts/run_monitor.py \
+          --host 127.0.0.1 \
+          --port 8421 \
+          --warehouse /data/qsys-test/warehouse-current \
+          --workspace /data/qsys-test/var/workbench \
+          --runs /data/qsys-test/var/runs
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadOnlyPaths=/data/qsys-test/warehouse-current
+ReadWritePaths=/data/qsys-test/var
+
+[Install]
+WantedBy=multi-user.target
