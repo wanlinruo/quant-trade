@@ -49,7 +49,7 @@ def test_market_overview_aggregates_the_live_breadth_universe():
     assert snapshot.valid_stock_count == 3
     assert (snapshot.advance_count, snapshot.decline_count, snapshot.flat_count) == (1, 1, 1)
     assert snapshot.limit_up_count == 1
-    assert snapshot.limit_down_count == 1
+    assert snapshot.limit_down_count == 2
     assert snapshot.touched_limit_up_count == 1
     assert snapshot.broken_board_count == 0
     assert snapshot.indices[0].name == "上证指数"
@@ -62,3 +62,14 @@ def test_gateway_publishes_one_atomic_overview_key():
     raw = transport.get_key(streams.market_snapshot)
     assert raw is not None
     assert MarketOverviewSnapshot.model_validate_json(raw).limit_up_count == 1
+
+
+def test_market_overview_falls_back_to_board_limits_when_qmt_omits_them():
+    snapshot = build_market_overview({
+        "600001.SH": _quote("600001.SH", 11, high=11),
+        "300001.SZ": _quote("300001.SZ", 12, high=12),
+        "000001.SZ": _quote("000001.SZ", 10.5, high=11),
+    }, now=datetime(2026, 9, 16, 10, 30))
+    assert snapshot.limit_up_count == 2
+    assert snapshot.touched_limit_up_count == 3
+    assert snapshot.broken_board_count == 1

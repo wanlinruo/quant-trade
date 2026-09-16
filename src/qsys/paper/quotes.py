@@ -6,6 +6,7 @@ import time
 import uuid
 from collections.abc import Callable, Sequence
 from datetime import datetime
+from decimal import Decimal, ROUND_HALF_UP
 from statistics import median
 
 from qsys.live.config import StreamConfig
@@ -18,7 +19,7 @@ from qsys.live.messages import (
     QuoteSnapshot,
 )
 from qsys.live.transport import Transport
-from qsys.markets.ashare import board_of
+from qsys.markets.ashare import PRICE_LIMITS, board_of
 
 
 MARKET_INDICES = {
@@ -154,20 +155,13 @@ def build_market_overview(
     advance = sum(value > 0 for value in returns)
     decline = sum(value < 0 for value in returns)
     flat = len(returns) - advance - decline
-    limit_up = sum(
-        q.upper_limit is not None and q.price >= q.upper_limit - 1e-6 for q in stocks
-    )
-    limit_down = sum(
-        q.lower_limit is not None and q.price <= q.lower_limit + 1e-6 for q in stocks
-    )
-    touched = sum(
-        q.upper_limit is not None and q.high >= q.upper_limit - 1e-6 for q in stocks
-    )
+    limits = [(_live_limits(q), q) for q in stocks]
+    limit_up = sum(q.price >= upper - 1e-6 for (upper, _), q in limits)
+    limit_down = sum(q.price <= lower + 1e-6 for (_, lower), q in limits)
+    touched = sum(q.high >= upper - 1e-6 for (upper, _), q in limits)
     broken = sum(
-        q.upper_limit is not None
-        and q.high >= q.upper_limit - 1e-6
-        and q.price < q.upper_limit - 1e-6
-        for q in stocks
+        q.high >= upper - 1e-6 and q.price < upper - 1e-6
+        for (upper, _), q in limits
     )
     directional = advance + decline
     return MarketOverviewSnapshot(
@@ -181,3 +175,27 @@ def build_market_overview(
         market_median_return_1d=median(returns) if returns else 0.0,
         market_total_money=sum(q.amount for q in stocks),
     )
+
+
+def _live_limits(quote: MarketQuote) -> tuple[float, float]:
+    """Use direct QMT limits when available, otherwise apply board fallback.
+
+    ``get_full_tick`` on the deployed MiniQMT omits limit fields.  The live
+    breadth universe only contains main-board and ChiNext stocks, whose current
+    fallback tiers are defined centrally in ``PRICE_LIMITS``.
+    """
+    board = board_of(quote.symbol.partition(".")[0])
+    rate = Decimal(str(PRICE_LIMITS[board]))
+    previous = Decimal(str(quote.prev_close))
+    cent = Decimal("0.01")
+    upper = quote.upper_limit
+    lower = quote.lower_limit
+    if upper is None:
+        upper = float((previous * (Decimal("1") + rate)).quantize(
+            cent, rounding=ROUND_HALF_UP
+        ))
+    if lower is None:
+        lower = float((previous * (Decimal("1") - rate)).quantize(
+            cent, rounding=ROUND_HALF_UP
+        ))
+    return upper, lower
