@@ -1,0 +1,23 @@
+name: Direct push audit
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Require an associated merged PR
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          python scripts/audit_github_push.py
+          --repo "${{ github.repository }}"
+          --sha "${{ github.sha }}"
+          --ref "${{ github.ref_name }}"

@@ -8,31 +8,31 @@
 ## 1. 不可违反的原则
 
 1. `main` 是唯一生产分支，`main` 的每个提交都必须可部署。
-2. `test` 是唯一集成测试分支，不能承载只存在于服务器上的修改。
-3. 禁止直接 push、force-push 或删除 `main`、`test`；所有变更必须通过 PR。
-4. “只支持 PR”是指日常流程禁止直接推送；PR 经维护者本人逐页自审、确认 CI 后合并。
+2. `test` 是唯一集成测试分支，允许日常直接 push，并自动部署到测试环境。
+3. 禁止直接 push、force-push 或删除 `main`；进入 `main` 的所有变更必须通过 PR。
+4. `main` PR 经维护者本人逐页自审、确认 CI 与测试环境验收后合并。
 5. Mac 是唯一开发环境；GitHub 是唯一代码中转；Linux 只从 GitHub 拉取。
 6. Linux 上禁止手改受 Git 管理的文件。配置、密钥、warehouse 和运行状态不入库。
 7. 生产与测试必须使用独立端口、配置、状态库、锁文件和 Redis namespace。
 8. 测试环境不得连接真实委托流，不得复用生产账户，不得写生产 warehouse。
 9. 所有部署只能快进到已经通过 CI 的精确 commit SHA；禁止部署浮动工作区。
 10. 不允许以“紧急”为由绕过；紧急修复仍走 `fix/*` PR。
-11. GitHub Free 私有仓库无法提供付费的服务端分支保护，因此“强制”由 Mac
-    `pre-push` hook、只读 Linux key、PR/CI 审计和发布脚本共同实现；仓库 Owner
+11. GitHub Free 私有仓库无法提供付费的服务端分支保护，因此 `main` 的“强制”由
+    Mac `pre-push` hook、只读 Linux key、PR/CI 审计和发布脚本共同实现；仓库 Owner
     在 GitHub 网页上的最终权限无法由免费方案彻底消除。
 
 ## 2. 分支模型
 
 | 分支 | 来源 | PR 目标 | 用途 | 生命周期 |
 |---|---|---|---|---|
-| `main` | `test` 或紧急 `fix/*` | — | 生产真值，自动部署生产 | 永久 |
-| `test` | `feat/*`、`fix/*`、同步后的 `main` | `main` | 集成测试，自动部署测试环境 | 永久 |
-| `feat/<slug>` | 最新 `test` | `test` | 新需求、功能开发 | PR 合并后删除 |
-| `fix/<slug>` | 通常最新 `test` | `test` | 普通缺陷修复 | PR 合并后删除 |
+| `main` | `test` 或紧急 `fix/*` PR | — | 生产真值，手工确认后部署生产 | 永久 |
+| `test` | `feat/*`、`fix/*`、同步后的 `main` | `main` | 集成测试，可直接 push，自动部署测试环境 | 永久 |
+| `feat/<slug>` | 最新 `test` | 本地 squash 到 `test` | 新需求、功能开发 | 合入后删除 |
+| `fix/<slug>` | 通常最新 `test` | 本地 squash 到 `test` | 普通缺陷修复 | 合入后删除 |
 | `fix/<slug>` | `main` | `main` | 生产紧急修复 | 合并后必须同步回 `test` |
-| `docs/<slug>` | 最新 `test` | `test` | 纯文档 | PR 合并后删除 |
-| `chore/<slug>` | 最新 `test` | `test` | 工具、依赖、运维维护 | PR 合并后删除 |
-| `refactor/<slug>` | 最新 `test` | `test` | 不改变外部行为的重构 | PR 合并后删除 |
+| `docs/<slug>` | 最新 `test` | 本地 squash 到 `test` | 纯文档 | 合入后删除 |
+| `chore/<slug>` | 最新 `test` | 本地 squash 到 `test` | 工具、依赖、运维维护 | 合入后删除 |
+| `refactor/<slug>` | 最新 `test` | 本地 squash 到 `test` | 不改变外部行为的重构 | 合入后删除 |
 
 Git 分支名不能以 `/` 开头，所以正确名称是 `feat/xxx`、`fix/xxx`，不是
 `/feat/xxx`、`/fix/xxx`。
@@ -62,12 +62,23 @@ uv run pytest
 git push -u origin feat/<slug>
 ```
 
-然后创建 `feat/<slug> -> test` 的 PR。PR 合并并在测试环境验收后，再创建
-`test -> main` 的发布 PR。禁止把 `feat/*` 直接合并到 `main`。
+功能完成后直接集成到 `test`，不创建 PR：
+
+```bash
+git switch test
+git pull --ff-only origin test
+git merge --squash feat/<slug>
+git commit -m "feat(scope): 功能摘要"
+git push origin test
+```
+
+`test` push 后自动运行 CI 并部署测试环境。测试验收通过后，再创建唯一需要人工自审的
+`test -> main` 发布 PR。禁止把 `feat/*` 直接合并到 `main`。
 
 ### 3.2 普通缺陷
 
-从 `test` 创建 `fix/<slug>`，PR 回 `test`，随下一次 `test -> main` 发布。
+从 `test` 创建 `fix/<slug>`，完成后 squash 到 `test` 并直接 push，随下一次
+`test -> main` PR 发布。
 
 ### 3.3 生产紧急修复
 
@@ -78,8 +89,8 @@ git switch -c fix/<slug>
 ```
 
 紧急修复 PR 可以直接指向 `main`，但不得跳过测试、自审或生产发布确认。
-合并后立即创建 `main -> test` 同步 PR；在该同步 PR 合并前，暂停新的发布 PR，
-防止生产修复在下一次发布中被覆盖。
+合并后立即在 Mac 将最新 `main` 合回 `test` 并直接 push；同步完成前暂停新的发布 PR，
+防止生产修复在下一次发布中被覆盖。该同步不要求 PR。
 
 ### 3.4 提交规范
 
@@ -97,7 +108,10 @@ chore(scope): 工程维护
 一次提交只做一类事情。禁止提交密钥、真实账户、`deploy.local.toml`、运行数据库、
 warehouse、临时下载、编辑器文件或无解释的大型二进制文件。
 
-## 4. Pull Request 强制规范
+## 4. `main` Pull Request 强制规范
+
+日常合入 `test` 不要求 PR。以下要求只针对 `test -> main` 发布 PR 和紧急
+`fix/* -> main` PR。
 
 每个 PR 必须包含：
 
@@ -116,10 +130,10 @@ warehouse、临时下载、编辑器文件或无解释的大型二进制文件�
 2. 维护者本人必须在 GitHub `Files changed` 中逐文件检查，而不是只看摘要；
 3. PR 的“自审完成”清单必须勾选，所有 conversation 已解决；
 4. 自审后若又 push 新 commit，必须重新检查变更并重新勾选；
-5. PR head 必须基于目标分支最新版本；
+5. PR head 必须基于最新 `main`；
 6. 禁止未解释的测试跳过、降级或阈值放宽；
 7. 数据或交易路径变更必须给出明确回滚点；
-8. `test -> main` PR 必须附测试环境验收记录。
+8. `test -> main` PR 必须附测试环境验收记录和测试环境 commit SHA。
 
 仓库只启用 **Squash merge**，关闭 merge commit 和 rebase merge。PR 标题就是最终
 提交信息，合并后自动删除源分支，保持线性历史。
@@ -138,11 +152,12 @@ PR 作者也不能给自己的 PR 提供“独立批准”。本项目的 Review
 
 ### 5.2 免费模式的四层保护
 
-1. **Mac 本地硬拦截**：版本化 `.githooks/pre-push`，拒绝向 `main`、`test` 直接
-   push，并通过 `core.hooksPath=.githooks` 安装。功能分支允许推送。
+1. **Mac 本地硬拦截**：版本化 `.githooks/pre-push`，只拒绝向 `main` 直接
+   push，并通过 `core.hooksPath=.githooks` 安装。`test` 和工作分支允许推送。
 2. **Linux 权限隔离**：Linux 使用 GitHub 只读 deploy key，本身不能 push。
-3. **GitHub PR + CI**：所有开发通过 PR 展示 diff 和运行检查；红灯时规范上禁止合并。
-4. **事后审计**：监听 `main`、`test` push，检查提交是否关联已合并 PR；发现直接提交
+3. **GitHub PR + CI**：`test` push 直接运行 CI；只有进入 `main` 的变更通过 PR 展示
+   diff 并运行检查。红灯时规范上禁止合并或部署。
+4. **事后审计**：监听 `main` push，检查提交是否关联已合并 PR；发现直接提交
    立即让 workflow 失败并报警，暂停部署。审计只能发现，不能撤销已经发生的 push。
 
 因为仓库 Owner 始终可以在 GitHub 网页直接操作，这套免费方案的安全边界必须写清：
@@ -153,9 +168,9 @@ PR 作者也不能给自己的 PR 提供“独立批准”。本项目的 Review
 ### 5.3 分支与 PR 策略
 
 - `main` PR 来源只允许 `test`；唯一例外是 `fix/*` 紧急修复。
-- `test` PR 来源允许 `feat/*`、`fix/*`、`docs/*`、`chore/*`、`refactor/*` 和 `main`。
-- 上述规则由 `policy` check 验证；失败时不得手工合并。
-- `main`、`test` 上出现无关联 PR 的提交时，生产/测试部署脚本必须拒绝该 SHA。
+- `test` 不要求 PR；工作分支通过本地 squash commit 集成后直接 push。
+- `main` PR 来源规则由 `policy` check 验证；失败时不得手工合并。
+- `main` 上出现无关联 PR 的提交时，生产部署脚本必须拒绝该 SHA。
 
 ### 5.4 免费可用的仓库设置
 
@@ -176,13 +191,13 @@ GitHub 官方依据：
 
 ## 6. CI 门禁
 
-`.github/workflows/ci.yml` 对所有指向 `main`/`test` 的 PR 运行：
+`.github/workflows/ci.yml` 在每次 push `test`、以及所有指向 `main` 的 PR 上运行：
 
 | Check | 内容 | 失败后 |
 |---|---|---|
 | `policy` | 分支名、PR 来源/目标、PR 标题、变更文件策略 | 红灯，禁止人工合并与部署 |
-| `test` | Python 3.11/3.12、`uv sync --locked`、全量 `pytest` | 红灯，禁止人工合并与部署 |
-| `secret-scan` | gitleaks/同等级工具扫描新增历史 | 红灯，禁止人工合并与部署 |
+| `test` | Python 3.12、`uv sync --locked`、全量 `pytest` | 红灯，禁止人工合并与部署 |
+| `secret-scan` | 无依赖脚本扫描当前受 Git 管理文件中的高风险密钥模式 | 红灯，禁止人工合并与部署 |
 | `package` | 构建 wheel、导入包、检查 lockfile 未漂移 | 红灯，禁止人工合并与部署 |
 
 补充规则：
@@ -256,9 +271,9 @@ Nginx 在 8443 复用 `wanlinruo.cn` 证书，反向代理到 `127.0.0.1:8420`�
 
 ### 9.1 测试环境
 
-触发条件：PR 合并到 `test` 且 CI 全绿。
+触发条件：工作分支 squash 到 `test` 并直接 push，随后 CI 全绿。
 
-1. `test` push workflow 先验证该 SHA 来自已合并 PR，再通过 SSH 调用节点部署脚本；
+1. `test` push workflow 在 CI 全绿后通过 SSH 调用节点部署脚本；
 2. Linux 使用只读 deploy key 执行 `git fetch origin test`；
 3. 校验待部署 SHA 与 GitHub job 的 SHA 完全一致；
 4. 工作区必须干净，执行 `git merge --ff-only origin/test`；
@@ -328,11 +343,12 @@ GitHub 的 key必须是两把不同的密钥。部署用户只能管理 qsys 目
 ## 12. 首次落地顺序
 
 1. 从当前 `main` 创建 `test` 并推送。
-2. 增加 `.githooks/pre-push`、安装脚本，并在 Mac 实测直接 push 被拒绝。
+2. 增加 `.githooks/pre-push`、安装脚本，并在 Mac 实测直接 push `main` 被拒绝、
+   push `test` 被允许。
 3. 增加 CI、PR template、branch-policy 和直接提交审计 workflow。
 4. 配置免费仓库设置：仅 Squash、自动删除 head branch、安全告警。
 5. 建立 `/home/ubuntu/qsys-test`、独立配置和 `qsys-web-test.service`，监听 8421。
-6. 用 Mac 隧道完成一次 `feat/* -> test` PR、自审和部署验收。
+6. 用 Mac 隧道完成一次 `feat/*` squash 到 `test`、直接 push 和部署验收。
 7. 建立手工生产 deployment workflow、确认短语和回滚记录。
 8. 为 8443 配置 Nginx TLS、认证与云安全组；未完成认证不得公网开放。
 9. 用无业务改动的 PR 完成 `test -> main -> production` 全链路演练。
@@ -342,12 +358,12 @@ GitHub 的 key必须是两把不同的密钥。部署用户只能管理 qsys 目
 
 以下条件全部满足，免费单人模式才算生效：
 
-- Mac 直接 push `main` 和 `test` 被 `pre-push` hook 拒绝；
+- Mac 直接 push `main` 被 `pre-push` hook 拒绝，push `test` 正常；
 - Linux deploy key实测无写权限；
 - GitHub 网页直接提交被审计 workflow 识别，并阻断对应 SHA 的部署；
-- 不合规分支名或 PR 来源被 `policy` 阻断；
+- 不合规的 `main` PR 来源被 `policy` 标红；`test` 集成 commit 标题不合规时 CI 标红；
 - 测试失败、secret scan 失败或 lockfile 漂移时不得人工合并，部署脚本也拒绝；
-- PR template 留下维护者逐文件自审记录；
+- `main` PR template 留下维护者逐文件自审记录；
 - `test` 合并后自动更新 8421，生产不变化；
 - `main` 合并后不会自动更新 8420，必须手工输入 SHA 和确认短语触发；
 - 生产可通过 `https://wanlinruo.cn:8443/` 安全访问；
