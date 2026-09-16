@@ -42,6 +42,7 @@ def build_app(
 
     transport = None
     market_snapshot_key = "state:market_overview"
+    market_schedule_key = "state:market_schedule"
     try:
         from qsys.live.config import load_deploy_config
         from qsys.live.redis_transport import RedisTransport
@@ -49,6 +50,7 @@ def build_app(
         deploy = load_deploy_config(config_path)
         transport = RedisTransport.from_config(deploy)
         market_snapshot_key = deploy.streams.market_snapshot
+        market_schedule_key = deploy.streams.market_schedule
     except Exception as exc:
         # Redis 不可用时监控台仍应能打开——历史数据来自仓库，不依赖 Redis
         log.warning("monitor.redis_unavailable", error=str(exc))
@@ -66,7 +68,10 @@ def build_app(
         BacktestService(runs_root),
         CatalogService(warehouse),
         workbench, queue, Path("strategies"), paper,
-        MarketService(warehouse, transport, snapshot_key=market_snapshot_key),
+        MarketService(
+            warehouse, transport, snapshot_key=market_snapshot_key,
+            schedule_key=market_schedule_key,
+        ),
     )
 
 

@@ -9,14 +9,14 @@ from __future__ import annotations
 import argparse
 import sys
 import time
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 import structlog
 
 from qsys.live.config import load_deploy_config
 from qsys.live.messages import MarketQuote
 from qsys.live.redis_transport import RedisTransport
-from qsys.paper.quotes import MarketGateway
+from qsys.paper.quotes import MarketGateway, build_market_schedule
 
 log = structlog.get_logger("market-gateway")
 
@@ -55,6 +55,15 @@ def qmt_market_overview():
     return qmt_provider(sorted(set(symbols)))
 
 
+def qmt_trading_sessions(start: date, end: date) -> list[date]:
+    from xtquant import xtdata
+
+    stamps = xtdata.get_trading_dates(
+        "SH", start.strftime("%Y%m%d"), end.strftime("%Y%m%d")
+    ) or []
+    return [datetime.fromtimestamp(float(stamp) / 1000).date() for stamp in stamps]
+
+
 def _optional_float(item, *names):
     for name in names:
         value = item.get(name)
@@ -73,13 +82,24 @@ def main() -> int:
     gateway = MarketGateway(RedisTransport.from_config(cfg), cfg.streams, qmt_provider)
     log.info("market_gateway.started")
     next_overview = 0.0
+    next_schedule = 0.0
+    calendar_day = None
+    sessions: list[date] = []
     while True:
         try:
             gateway.run_once()
             gateway.beat()
-            now = time.monotonic()
-            if now >= next_overview:
-                next_overview = now + max(5.0, args.overview_interval)
+            wall = datetime.now()
+            if calendar_day != wall.date():
+                sessions = qmt_trading_sessions(wall.date(), wall.date() + timedelta(days=40))
+                calendar_day = wall.date()
+            schedule = build_market_schedule(wall, sessions)
+            monotonic = time.monotonic()
+            if monotonic >= next_schedule:
+                next_schedule = monotonic + 30.0
+                gateway.publish_schedule(schedule)
+            if schedule.is_open and monotonic >= next_overview:
+                next_overview = monotonic + max(5.0, args.overview_interval)
                 gateway.publish_overview(qmt_market_overview())
         except Exception as exc:
             log.error("market_gateway.loop_error", error=str(exc))

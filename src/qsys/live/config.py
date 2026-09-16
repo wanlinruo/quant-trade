@@ -35,6 +35,7 @@ class StreamConfig:
     quote_requests: str = "cmd:quote_requests"
     quote_snapshots: str = "evt:quote_snapshots"
     market_snapshot: str = "state:market_overview"
+    market_schedule: str = "state:market_schedule"
 
 
 @dataclass(frozen=True, slots=True)

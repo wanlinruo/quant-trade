@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 
 from fastapi.testclient import TestClient
 
-from qsys.live.messages import MarketIndexQuote, MarketOverviewSnapshot
+from qsys.live.messages import MarketIndexQuote, MarketOverviewSnapshot, MarketSchedule
 from qsys.live.transport import MemoryTransport
 from qsys.ops.journal import SessionJournal
 from qsys.web.app import create_app
@@ -36,6 +36,9 @@ def test_market_page_and_json_render_live_snapshot(warehouse):
     transport = MemoryTransport()
     snapshot = _snapshot(datetime.now())
     transport.set_key("state:market_overview", snapshot.model_dump_json())
+    transport.set_key("state:market_schedule", MarketSchedule(
+        checked_at=datetime.now(), is_trading_day=True, is_open=True,
+    ).model_dump_json())
     client, _ = _client(warehouse, transport)
     assert client.get("/", follow_redirects=False).headers["location"] == "/market"
     body = client.get("/market").text
@@ -44,6 +47,7 @@ def test_market_page_and_json_render_live_snapshot(warehouse):
     payload = client.get("/api/market/overview").json()
     assert payload["available"] is True
     assert payload["stale"] is False
+    assert payload["market_open"] is True
     assert payload["snapshot"]["limit_up_count"] == 55
 
 
@@ -65,3 +69,16 @@ def test_market_console_survives_a_bad_or_missing_snapshot(warehouse):
     response = client.get("/market")
     assert response.status_code == 200
     assert "无实时快照" in response.text
+
+
+def test_market_page_uses_scheduled_timeout_instead_of_constant_interval(warehouse):
+    transport = MemoryTransport()
+    transport.set_key("state:market_schedule", MarketSchedule(
+        checked_at=datetime(2026, 9, 16, 12), is_trading_day=True,
+        is_open=False, next_open_at=datetime(2026, 9, 16, 13),
+    ).model_dump_json())
+    client, market = _client(warehouse, transport)
+    body = client.get("/market").text
+    assert "setInterval" not in body
+    assert "next_open_at" in body
+    assert market.schedule().next_open_at == datetime(2026, 9, 16, 13)

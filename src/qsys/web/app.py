@@ -177,6 +177,7 @@ def create_app(
         if market is None:
             raise HTTPException(status_code=404, detail="market console not enabled")
         live = market.live()
+        schedule = market.schedule()
         rows = market.history()
         advance = market.series("market_advance_ratio")
         limits = market.series("limit_up_count")
@@ -185,7 +186,8 @@ def create_app(
             request=request, name="market.html",
             context={
                 "title": config.title, "session": None, "page": "market",
-                "live": live, "rows": rows, "latest": market.latest_session(),
+                "live": live, "schedule": schedule, "rows": rows,
+                "latest": market.latest_session(),
                 "advance_chart": line_chart(advance),
                 "limit_chart": line_chart(limits, stroke="#dc2626"),
                 "slope_chart": line_chart(slope),
@@ -197,11 +199,17 @@ def create_app(
         if market is None:
             raise HTTPException(status_code=404, detail="market console not enabled")
         view = market.live()
+        schedule = market.schedule()
         return {
             "available": view.available,
             "stale": view.stale,
             "snapshot": (
                 view.snapshot.model_dump(mode="json") if view.snapshot else None
+            ),
+            "market_open": schedule.is_open if schedule else False,
+            "next_open_at": (
+                schedule.next_open_at.isoformat()
+                if schedule and schedule.next_open_at else None
             ),
         }
 

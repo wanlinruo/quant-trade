@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 import uuid
 from collections.abc import Callable, Sequence
-from datetime import datetime
+from datetime import date, datetime, time as dt_time
 from decimal import Decimal, ROUND_HALF_UP
 from statistics import median
 
@@ -15,6 +15,7 @@ from qsys.live.messages import (
     MarketIndexQuote,
     MarketOverviewSnapshot,
     MarketQuote,
+    MarketSchedule,
     QuoteRequest,
     QuoteSnapshot,
 )
@@ -122,6 +123,39 @@ class MarketGateway:
         snapshot = build_market_overview(quotes)
         self._t.set_key(self._s.market_snapshot, snapshot.model_dump_json())
         return snapshot
+
+    def publish_schedule(self, schedule: MarketSchedule) -> None:
+        self._t.set_key(self._s.market_schedule, schedule.model_dump_json())
+
+
+def build_market_schedule(
+    now: datetime, sessions: Sequence[date],
+) -> MarketSchedule:
+    """Return continuous-auction state and the next time live polling is useful."""
+    trading_days = sorted(set(sessions))
+    today = now.date()
+    is_trading_day = today in trading_days
+    morning = (datetime.combine(today, dt_time(9, 30)),
+               datetime.combine(today, dt_time(11, 30)))
+    afternoon = (datetime.combine(today, dt_time(13, 0)),
+                 datetime.combine(today, dt_time(15, 0)))
+    is_open = is_trading_day and (
+        morning[0] <= now <= morning[1] or afternoon[0] <= now <= afternoon[1]
+    )
+    next_open: datetime | None = None
+    if not is_open:
+        if is_trading_day and now < morning[0]:
+            next_open = morning[0]
+        elif is_trading_day and morning[1] < now < afternoon[0]:
+            next_open = afternoon[0]
+        else:
+            next_day = next((day for day in trading_days if day > today), None)
+            if next_day is not None:
+                next_open = datetime.combine(next_day, dt_time(9, 30))
+    return MarketSchedule(
+        checked_at=now, is_trading_day=is_trading_day,
+        is_open=is_open, next_open_at=next_open,
+    )
 
 
 def build_market_overview(

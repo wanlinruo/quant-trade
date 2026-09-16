@@ -16,7 +16,7 @@ import polars as pl
 from qsys.data.coverage import DatasetCoverage, coverage
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
-from qsys.live.messages import MarketOverviewSnapshot
+from qsys.live.messages import MarketOverviewSnapshot, MarketSchedule
 from qsys.live.transport import Transport
 
 
@@ -68,10 +68,12 @@ class MarketService:
     def __init__(
         self, warehouse: Warehouse, transport: Transport | None = None, *,
         snapshot_key: str = "state:market_overview", stale_seconds: float = 45.0,
+        schedule_key: str = "state:market_schedule",
     ) -> None:
         self._data = DataService(warehouse)
         self._transport = transport
         self._snapshot_key = snapshot_key
+        self._schedule_key = schedule_key
         self._stale_seconds = stale_seconds
 
     def live(self, *, now: datetime | None = None) -> LiveMarketView:
@@ -86,6 +88,17 @@ class MarketService:
             return LiveMarketView(None, True, False)
         age = ((now or datetime.now()) - snapshot.published_at).total_seconds()
         return LiveMarketView(snapshot, age > self._stale_seconds, True)
+
+    def schedule(self) -> MarketSchedule | None:
+        if self._transport is None:
+            return None
+        raw = self._transport.get_key(self._schedule_key)
+        if raw is None:
+            return None
+        try:
+            return MarketSchedule.model_validate_json(raw)
+        except Exception:
+            return None
 
     def history(self, limit: int = 60) -> list[dict]:
         frame = self._data.regime(limit)

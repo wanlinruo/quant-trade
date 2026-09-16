@@ -3,7 +3,7 @@
 {% set snap = live.snapshot %}
 <div class="page-head">
   <div><h2>行情总览</h2><p class="muted">指数与全市场温度，盘中每 15 秒刷新。</p></div>
-  <div><span id="market-status" class="pill {{ 'warn' if live.stale else 'ok' if live.available else 'todo' }}">{{ '已过期' if live.stale and live.available else '实时' if live.available else '无实时快照' }}</span><span id="market-time" class="muted market-time">{{ snap.published_at.strftime('%Y-%m-%d %H:%M:%S') if snap else '最近收盘 ' ~ (latest or '—') }}</span></div>
+  <div><span id="market-status" class="pill {{ 'todo' if schedule and not schedule.is_open else 'warn' if live.stale else 'ok' if live.available else 'todo' }}">{{ '休市 · 最近快照' if schedule and not schedule.is_open and live.available else '已过期' if live.stale and live.available else '实时' if live.available else '无实时快照' }}</span><span id="market-time" class="muted market-time">{{ snap.published_at.strftime('%Y-%m-%d %H:%M:%S') if snap else '最近收盘 ' ~ (latest or '—') }}</span></div>
 </div>
 
 <section class="panel market-section">
@@ -46,14 +46,17 @@
 (function(){
   function render(data){
     const badge=document.getElementById('market-status'),time=document.getElementById('market-time'),snap=data.snapshot;
-    badge.className='pill '+(data.available?(data.stale?'warn':'ok'):'todo');badge.textContent=data.available?(data.stale?'已过期':'实时'):'无实时快照';
+    badge.className='pill '+(data.market_open?(data.available?(data.stale?'warn':'ok'):'todo'):'todo');badge.textContent=data.market_open?(data.available?(data.stale?'已过期':'实时'):'无实时快照'):(data.available?'休市 · 最近快照':'休市');
     if(!snap)return;time.textContent=snap.published_at.replace('T',' ').slice(0,19);
     document.querySelectorAll('[data-field]').forEach(el=>el.textContent=snap[el.dataset.field]);
     document.querySelectorAll('[data-pct]').forEach(el=>el.textContent=(snap[el.dataset.pct]*100).toFixed(el.dataset.pct==='market_median_return_1d'?2:1)+'%');
     document.querySelectorAll('[data-money]').forEach(el=>el.textContent=(snap[el.dataset.money]/100000000).toFixed(0)+' 亿');
     const grid=document.getElementById('index-grid');grid.replaceChildren();snap.indices.forEach(item=>{const card=document.createElement('div');card.className='index-card';const name=document.createElement('span'),price=document.createElement('strong'),change=document.createElement('em');name.textContent=item.name;price.textContent=item.price.toFixed(2);change.textContent=(item.change_pct*100).toFixed(2)+'%';change.className=item.change_pct>=0?'up':'down';card.append(name,price,change);grid.append(card)});
   }
-  function tick(){fetch('/api/market/overview',{cache:'no-store'}).then(r=>r.json()).then(render).catch(()=>{});}setInterval(tick,15000);
+  function delay(data){if(data.market_open)return 15000;if(data.next_open_at){const wait=new Date(data.next_open_at).getTime()-Date.now()+1000;return Math.max(1000,Math.min(wait,1800000));}return 1800000;}
+  function plan(data){setTimeout(tick,delay(data));}
+  function tick(){fetch('/api/market/overview',{cache:'no-store'}).then(r=>r.json()).then(data=>{render(data);plan(data)}).catch(()=>setTimeout(tick,60000));}
+  plan({market_open:{{ 'true' if schedule and schedule.is_open else 'false' }},next_open_at:{{ schedule.next_open_at.isoformat()|tojson if schedule and schedule.next_open_at else 'null' }}});
 })();
 </script>
 {% endblock %}

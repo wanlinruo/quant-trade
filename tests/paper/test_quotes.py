@@ -1,10 +1,15 @@
 import threading
-from datetime import datetime
+from datetime import date, datetime
 
 from qsys.live.config import StreamConfig
 from qsys.live.messages import MarketOverviewSnapshot, MarketQuote
 from qsys.live.transport import MemoryTransport
-from qsys.paper.quotes import MarketGateway, QuoteClient, build_market_overview
+from qsys.paper.quotes import (
+    MarketGateway,
+    QuoteClient,
+    build_market_overview,
+    build_market_schedule,
+)
 
 
 def test_quote_request_round_trip_is_read_only():
@@ -73,3 +78,15 @@ def test_market_overview_falls_back_to_board_limits_when_qmt_omits_them():
     assert snapshot.limit_up_count == 2
     assert snapshot.touched_limit_up_count == 3
     assert snapshot.broken_board_count == 1
+
+
+def test_market_schedule_only_opens_during_continuous_auction():
+    sessions = [date(2026, 9, 16), date(2026, 9, 18)]
+    morning = build_market_schedule(datetime(2026, 9, 16, 10), sessions)
+    lunch = build_market_schedule(datetime(2026, 9, 16, 12), sessions)
+    holiday = build_market_schedule(datetime(2026, 9, 17, 10), sessions)
+    assert morning.is_open is True
+    assert lunch.is_open is False
+    assert lunch.next_open_at == datetime(2026, 9, 16, 13)
+    assert holiday.is_trading_day is False
+    assert holiday.next_open_at == datetime(2026, 9, 18, 9, 30)

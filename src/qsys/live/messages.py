@@ -150,6 +150,13 @@ class MarketOverviewSnapshot(Message):
     market_total_money: float
 
 
+class MarketSchedule(Message):
+    checked_at: datetime
+    is_trading_day: bool
+    is_open: bool
+    next_open_at: datetime | None = None
+
+
 class QuoteSnapshot(Message):
     request_id: str
     published_at: datetime
