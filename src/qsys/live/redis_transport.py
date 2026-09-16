@@ -73,11 +73,33 @@ class RedisTransport(Transport):
     def pending(self, stream: str, group: str) -> list[StreamMessage]:
         # XREADGROUP ... 0 只能读取“当前 consumer 自己”的 PEL，无法恢复崩溃
         # 进程留下的消息。XAUTOCLAIM 才能把旧 consumer 的 pending 转交回来。
-        response = self._r.xautoclaim(
-            stream, group, "recovery", min_idle_time=5_000,
-            start_id="0-0", count=1000,
-        )
-        entries = response[1] if response and len(response) > 1 else []
+        try:
+            response = self._r.xautoclaim(
+                stream, group, "recovery", min_idle_time=5_000,
+                start_id="0-0", count=1000,
+            )
+            entries = response[1] if response and len(response) > 1 else []
+        except Exception as exc:
+            # Redis 5 has Streams and XCLAIM, but XAUTOCLAIM was only added in
+            # Redis 6.2.  The deployed RESP2-compatible server is Redis-5-like.
+            if "unknown command" not in str(exc).lower() or "xautoclaim" not in str(exc).lower():
+                raise
+            pending = self._r.xpending_range(stream, group, "-", "+", 1000)
+            message_ids = []
+            for item in pending:
+                idle = item.get("time_since_delivered", item.get(b"time_since_delivered", 0))
+                if int(idle) < 5_000:
+                    continue
+                message_id = item.get("message_id", item.get(b"message_id"))
+                if message_id is not None:
+                    message_ids.append(message_id)
+            entries = (
+                self._r.xclaim(
+                    stream, group, "recovery", min_idle_time=5_000,
+                    message_ids=message_ids,
+                )
+                if message_ids else []
+            )
         out: list[StreamMessage] = []
         for message_id, fields in entries:
             out.append(StreamMessage(
