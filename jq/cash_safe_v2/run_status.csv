@@ -1,0 +1,2 @@
+﻿available_cash,buy_execution_audit_rows,cash_path_audit_rows,cash_safe_v2_execution_rows,closed_lots,closed_weak_lots,cumulative_return,daily_buy_details,date,gate_allowed,gate_decisions,gate_rejected,initial_value,lifecycle_events,lw_1125_profit_sells,lw_1425_non_limit_exits,lw_limit_up_holds,position_count,regime_daily_rows,total_value,version,weak_branch_disabled
+197749.7723999999,82,241,82,82,0,0.9774977239999989,82,2026-09-08 15:30:00,106,226,120,100000.0,42,20,8,6,0,241,197749.7723999999,STRUCTURAL_STRATEGY_V1_2_FROZEN_FINAL,True

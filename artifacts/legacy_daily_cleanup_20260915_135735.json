@@ -1,0 +1,492 @@
+{
+  "operation": "cleanup_legacy_daily",
+  "mode": "dry-run",
+  "at": "2026-09-15T13:57:35.431808+08:00",
+  "warehouse": "/data/qsys/warehouse",
+  "start": "2023-01-01",
+  "end": "2026-09-14",
+  "stock_st_gate_start": "2022-08-04",
+  "stock_st_gate": {
+    "ok": true,
+    "daily_rows": 5302837,
+    "st_rows": 5302837,
+    "missing": 0,
+    "extra": 0
+  },
+  "targets": [
+    "bars_daily",
+    "paid_daily"
+  ],
+  "files": [
+    {
+      "dataset": "bars_daily",
+      "path": "/data/qsys/warehouse/bars_daily/year=2023/part.parquet",
+      "bytes": 22226092,
+      "sha256": "a0a4cf48664171d4db4c2293cf091fe1f94c3281909d2b41c3111f9e7808982e"
+    },
+    {
+      "dataset": "bars_daily",
+      "path": "/data/qsys/warehouse/bars_daily/year=2024/part.parquet",
+      "bytes": 22694056,
+      "sha256": "82055c1f674978666ea2e0b1b1c65c4cbeac6f2f3cab8260b86eb2c7f1b5776a"
+    },
+    {
+      "dataset": "bars_daily",
+      "path": "/data/qsys/warehouse/bars_daily/year=2025/part.parquet",
+      "bytes": 23531486,
+      "sha256": "7e4cb1a47839c8620ac867e23d851a2521e37268df07f29eaa8551e6ba6b763e"
+    },
+    {
+      "dataset": "bars_daily",
+      "path": "/data/qsys/warehouse/bars_daily/year=2026/part.parquet",
+      "bytes": 16626586,
+      "sha256": "1153f8d84d9d189329168c7ce84f3685a55c3cc0c0b1cb6d7d71ad8be2f0a77e"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=1990/manifest.json",
+      "bytes": 2090,
+      "sha256": "e81a90ea85d993bf95606251567eb0627e5130196579a8d3c40c15b7a73639ba"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=1990/part.parquet",
+      "bytes": 11308,
+      "sha256": "26167c8367cb6231cb8df3e3c18966f791a55b3faab6407d7531cf3310831879"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=1991/manifest.json",
+      "bytes": 34586,
+      "sha256": "79b341bc262a963ef7409ebbe6f9e234068f2e086b1ba22be619924cac95fbd0"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=1991/part.parquet",
+      "bytes": 143798,
+      "sha256": "31e75573049af0e71fd3bebce56df7482c24c89cb1d3eb959f33ef291c531518"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=1992/manifest.json",
+      "bytes": 34586,
+      "sha256": "9e44a29f38bfb38b15a563d189d99de086088b3c2c8d31608311a201dab4459a"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=1992/part.parquet",
+      "bytes": 483237,
+      "sha256": "6b8d946ae989822f125ef859eebd44ea73369099ed19c2a4ae177bd22fc48470"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=1993/manifest.json",
+      "bytes": 34864,
+      "sha256": "9f53986eebfc92dfdf0eef8645fea336047b7242df11bc59f2bbf0cb3a907315"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=1993/part.parquet",
+      "bytes": 1460841,
+      "sha256": "0a8c499bd5381b3b0b39606d4fddc423755dd9ecaf39548e5e8d2342723df5e2"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=1994/manifest.json",
+      "bytes": 34198,
+      "sha256": "d7b62117d8b058986e7535658600849a2ad41aec4eeba5195f65e425ae7943ef"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=1994/part.parquet",
+      "bytes": 4620764,
+      "sha256": "01fe57a7a98cdddd5f429445f474c9c811be40733ef00d133adcde5bff840ead"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=1995/manifest.json",
+      "bytes": 34060,
+      "sha256": "53346c6d6f4a96c3308baefb5dbce5b201ac2f43f4cd29ce8f9071f29e66f99f"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=1995/part.parquet",
+      "bytes": 4881713,
+      "sha256": "740d5c1a40ba1c93cac3da51f9dfc90a5a2a8020fda688431c180b8dc04d898b"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=1996/manifest.json",
+      "bytes": 33532,
+      "sha256": "4e9f8136405d400a5e2d7cd43cb47eb96b749f27ee4bbc9a7d78468530326a80"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=1996/part.parquet",
+      "bytes": 7214365,
+      "sha256": "412c7db378e38c690e6dbbe093b7694e88999d596c561fd6f0013854e7f006e0"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=1997/manifest.json",
+      "bytes": 33007,
+      "sha256": "656a75bd3119a86229b6b6069442086e6612acc280552a77eef103a80c17f081"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=1997/part.parquet",
+      "bytes": 11135352,
+      "sha256": "7feadd687103fbcd5eb70d1df84f3ad108c88cadfc92f3120983ac722c1a5e5f"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=1998/manifest.json",
+      "bytes": 33402,
+      "sha256": "af0d96aebe37e57e0b13f70a21c6732b821e0ed375460dbcad4f37a836b26a61"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=1998/part.parquet",
+      "bytes": 12838179,
+      "sha256": "02fe0e0b0d166f9a77d78aed742ca4b092aee41ea9d13e364e64c653eeb8f46a"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=1999/manifest.json",
+      "bytes": 32477,
+      "sha256": "d4e40182dce484eda7155d3a0ccbf26f5326b708c0ddf131b889d47a00a5448b"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=1999/part.parquet",
+      "bytes": 13983219,
+      "sha256": "46d54d44ae20a51d992d18fa1a9fef8083a633b2959b4a674b7cdd9459049992"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2000/manifest.json",
+      "bytes": 32492,
+      "sha256": "da9149540019574a5f862562f502537cfa952d0fab5a69e567af92f061713418"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2000/part.parquet",
+      "bytes": 16367802,
+      "sha256": "9521956f5e0102edf7812c76fb771afdd3e8ba99352a8482796578bc270a93b1"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2001/manifest.json",
+      "bytes": 32625,
+      "sha256": "7f50a1cd83ec86b3afbad1c3329216e8d40fa62f16ab06902dbfe84f5383785a"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2001/part.parquet",
+      "bytes": 18237026,
+      "sha256": "3b745a668d7fd6af87e0fa96854797d271f2d7d8f932af62c73ceb0c0c79bfac"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2002/manifest.json",
+      "bytes": 32228,
+      "sha256": "239157629e08f656f7ef612ff54b2ca7b9d8eb5de3c7d5ab79f291aada22d7bb"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2002/part.parquet",
+      "bytes": 18331886,
+      "sha256": "89d539ca2c181b98713a09da7922b343f5c79ed6a5a0876638c5481db06a4513"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2003/manifest.json",
+      "bytes": 32756,
+      "sha256": "a37710f755fb0574113db3af2e6e94d229b5d405ed312558687f2ad652d8d0bb"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2003/part.parquet",
+      "bytes": 18752087,
+      "sha256": "9355d895588d352c52b8f0b3c0d5f9f776c5271755b069ac704fc127071f3f28"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2004/manifest.json",
+      "bytes": 33022,
+      "sha256": "98b2104e137d3c45d38c1400ce7d1d7a3e9a3a6e2ef0695bf4f766e6a003384f"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2004/part.parquet",
+      "bytes": 19771175,
+      "sha256": "cd696ea8558500e3d955e6a987b11e5f7914c4bb2c95f627e207fcbb70dd22c3"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2005/manifest.json",
+      "bytes": 32887,
+      "sha256": "d9398dbe7cae5ad0f34b0af6f413a4f30da9ac4914262ca969a01d702e3d846f"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2005/part.parquet",
+      "bytes": 18965900,
+      "sha256": "e6d5f3ad75d381fe8b845aac29c9104f7dc1eccfe850604fd05387158ee2ed56"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2006/manifest.json",
+      "bytes": 32756,
+      "sha256": "b7ffb325ec706a310e1ae2a79fb798f5a5373e69cdc9b0bd0e485c5c84995d9c"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2006/part.parquet",
+      "bytes": 18565052,
+      "sha256": "c8a855d4f2c1e1d8d2256aa675c4f957433dc40d3c8a0819878a2819abdb2ecc"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2007/manifest.json",
+      "bytes": 32875,
+      "sha256": "ee26d4405dafbab80ed16fcd968e8c8f137edde44e08f457e4647c2ab7ae0e26"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2007/part.parquet",
+      "bytes": 23574232,
+      "sha256": "aecb2f710befea03ea74e57e68034ec165a6fa24453825c813fe325c1df39a4e"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2008/manifest.json",
+      "bytes": 33404,
+      "sha256": "8723c0b803673fba1e47301d7f7aae8c9c92204ad0c141b908d7a00579c311e0"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2008/part.parquet",
+      "bytes": 24740523,
+      "sha256": "b2ef1f38164aec4e89d281730d4a8422a182105be17ccc8e34a18247961d689e"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2009/manifest.json",
+      "bytes": 33138,
+      "sha256": "42e8e45af9c97f5970ed181219bb31e9572f1fd8b6f344e36a241fe4c899b0b8"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2009/part.parquet",
+      "bytes": 26549606,
+      "sha256": "f12e7fa2aa1affb3d752f96e98ec9c852a231e9f03934c052ad9fd62a2067594"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2010/manifest.json",
+      "bytes": 32874,
+      "sha256": "ff16993d2e55874d5d2a86b12c0a9a33bcb25c93faa4b01ebf88c13d4dc18960"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2010/part.parquet",
+      "bytes": 29553151,
+      "sha256": "11bdead4e081cb618e1fd5f5ed2eb57b5332ca579dddb641e43ae55353cfa633"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2011/manifest.json",
+      "bytes": 33139,
+      "sha256": "b151455cd7e2df8780f572db2281a5b57ac24b3bddbc42747f1d8befb4a86a65"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2011/part.parquet",
+      "bytes": 33744545,
+      "sha256": "05409009b15defa54e1ea0e534812d6796f5ba73d7b067e22024f89b40a78afb"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2012/manifest.json",
+      "bytes": 33005,
+      "sha256": "8950f35838d5fcb5fbeb316b545eeb93242687b7bdc574aaa4b941310984ce4a"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2012/part.parquet",
+      "bytes": 35057096,
+      "sha256": "e3881254879b2e73baf99489530ad4c8600c640338ba0c4e4a4199154e2f96bd"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2013/manifest.json",
+      "bytes": 32350,
+      "sha256": "0509839721025acdd9b290d9d3752b6bf52cac517dacd5cc46d93ff9e01f17ca"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2013/part.parquet",
+      "bytes": 35870940,
+      "sha256": "97ea9a95d3fa578f3fd3d81c9ff0a06cc760be1cfd7d8292201952aece658580"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2014/manifest.json",
+      "bytes": 33284,
+      "sha256": "77d227db34928581c26acb1453ed032d6c051159ceff54e4f00f0b7a3afb0fe3"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2014/part.parquet",
+      "bytes": 37580757,
+      "sha256": "2bc878795a59a1fe9f30341a92ca4cb555495b6e5196d36269502efb4c28e76a"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2015/manifest.json",
+      "bytes": 33162,
+      "sha256": "21e4e52bd6dfb72fc4c98d30b13ee081f29932be506875b9683930eb405954bc"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2015/part.parquet",
+      "bytes": 41699632,
+      "sha256": "f6f77b12018c88bbd2b156068718ace6280e38c8877dbd818d2f6aad9fbe45f4"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2016/manifest.json",
+      "bytes": 33173,
+      "sha256": "d3bd8fb1af9b1b6a5e197c071da618b2c7c280c04a1f1289056202aa5f6e4bae"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2016/part.parquet",
+      "bytes": 43587204,
+      "sha256": "a3e652388d59a711c5128d89db2f4b25dde93006ca0b2160b9086d6defd23f0d"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2017/manifest.json",
+      "bytes": 33174,
+      "sha256": "71229081759dae2eab7f719c19198bc822d4b01d0dc71e7c06209c00eaba7a48"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2017/part.parquet",
+      "bytes": 47761422,
+      "sha256": "a5b204f610f45698c4dd58b9ee35e74e01680ec4eec26474d743d1237efad5b7"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2018/manifest.json",
+      "bytes": 33030,
+      "sha256": "77e49eac5160b8c90af312352f280dabefb7a5bf5e4cd4b90bcc746efcbccb97"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2018/part.parquet",
+      "bytes": 52092126,
+      "sha256": "1849d45142e8cf01fdfa7cfae54d9daad323ee7227abd6302c77532724935131"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2019/manifest.json",
+      "bytes": 33162,
+      "sha256": "3ac24551ad6f119cbce4f9b92add7acd0e9199f26ab51fc47374bbb8182f5057"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2019/part.parquet",
+      "bytes": 56251981,
+      "sha256": "b04f9ae1b364f96f797045da3be49f24e65c5266986c96e411c99b12087e2c35"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2020/manifest.json",
+      "bytes": 33043,
+      "sha256": "f48015a3d143992340f3bf3d90fd9c789a35bbbb3ecc1035f34b2b7e560b9653"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2020/part.parquet",
+      "bytes": 61977152,
+      "sha256": "edb9e6950584b5f6d860b1542153715db221068d33830ea329b6957db5b16c8a"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2021/manifest.json",
+      "bytes": 33045,
+      "sha256": "e7c0c0e27c9cbdab73e4c281898137f293981cf248f63aecc70dd8a95bddef24"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2021/part.parquet",
+      "bytes": 70258336,
+      "sha256": "639e995bdf765a1ff6b206fd5d26dd974c530e830fdc41739adfb3525d2433da"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2022/manifest.json",
+      "bytes": 32904,
+      "sha256": "1133f522208b7f808a536377cc47d57ce7c2356192f24578db59536227c946f8"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2022/part.parquet",
+      "bytes": 79078528,
+      "sha256": "f9a3f20e31b8747aa8094daa4d69bea7d7948fb5b27ffeacf69504fcd406d6b8"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2023/manifest.json",
+      "bytes": 32876,
+      "sha256": "377fda925818c276e3445aa601328b167467f519dcbb3dc90a4b0174da05f391"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2023/part.parquet",
+      "bytes": 82598618,
+      "sha256": "20974799b3dbb8418f3e7c308606cc3ffd6e7befc51cc37e2b448edf8cd8d61a"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2024/manifest.json",
+      "bytes": 32874,
+      "sha256": "ca759d577f7505bd3e1f6ed824c5fedc58cddec44a08a0efddafad2082c2cf0f"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2024/part.parquet",
+      "bytes": 86970644,
+      "sha256": "a02c4e6836ed4f80685680f9fe0ac6cd83d175268e70ae2974fb5e4766d2c901"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2025/manifest.json",
+      "bytes": 33006,
+      "sha256": "62eb29f2b8f325fb92d98c1871b227fae9c054635dcf6ad99b8b56445e087a17"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2025/part.parquet",
+      "bytes": 89510784,
+      "sha256": "c9defa7f54304e3d3c40ee5f6fb2c50d70594a2aa1b708889a02b46f034aae96"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2026/manifest.json",
+      "bytes": 23248,
+      "sha256": "96791bdd64da6dd0b58dd56a0e9b365e7ea18536c0b12ab72d7db939e90be4f4"
+    },
+    {
+      "dataset": "paid_daily",
+      "path": "/data/qsys/warehouse/paid_daily/year=2026/part.parquet",
+      "bytes": 64473704,
+      "sha256": "ce414ffefc30a47a548138fdeef94ac7995e8d2cd9bb8e8b926b640362674b36"
+    }
+  ],
+  "total_bytes": 1294959239,
+  "status": "ready"
+}

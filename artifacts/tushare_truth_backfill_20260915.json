@@ -1,0 +1,21 @@
+{
+  "operation": "tushare_truth_backfill",
+  "status": "success",
+  "started_at": "2026-09-15T12:56:33.860940+08:00",
+  "ended_at": "2026-09-15T13:39:27.061297+08:00",
+  "warehouse": "/data/qsys/warehouse",
+  "start": "2023-01-01",
+  "end": "2026-09-14",
+  "facts_start": "2022-08-04",
+  "trading_days": 998,
+  "rows": {
+    "price_limits_daily": 5376662,
+    "suspend_daily": 32052,
+    "stock_st_daily": 5302837,
+    "limit_list_daily": 82602,
+    "daily_flags": 4573249,
+    "market_regime": 897,
+    "valuation_snapshot": 4801648
+  },
+  "requests_per_minute": 500
+}

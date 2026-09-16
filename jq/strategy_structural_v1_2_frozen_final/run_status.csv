@@ -1,0 +1,2 @@
+available_cash,closed_lots,closed_weak_lots,cumulative_return,daily_buy_details,date,gate_allowed,gate_decisions,gate_rejected,initial_value,lifecycle_events,lw_1125_profit_sells,lw_1425_non_limit_exits,lw_limit_up_holds,position_count,regime_daily_rows,total_value,version,weak_branch_disabled
+3349681.3729999973,212,0,32.49681372999997,212,2026-09-08 15:30:00,270,582,312,100000.0,87,45,17,8,0,792,3349681.3729999973,STRUCTURAL_STRATEGY_V1_2_FROZEN_FINAL,True

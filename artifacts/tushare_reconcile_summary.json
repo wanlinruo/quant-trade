@@ -1,0 +1,32 @@
+{
+  "tushare_rows": 18224238,
+  "paid_rows": 18224238,
+  "common_rows": 18224238,
+  "only_in_tushare": 0,
+  "only_in_paid": 0,
+  "diff_rows": 4851345,
+  "diff_by_field": {
+    "amount": 3342160,
+    "factor": 1380345,
+    "volume_ratio": 38506,
+    "free_shares": 28903,
+    "free_turnover_ratio": 28795,
+    "circulating_market_cap": 8928,
+    "market_cap": 8212,
+    "pb": 4927,
+    "pe_ttm": 2682,
+    "pe": 2303,
+    "circulating_shares": 1422,
+    "turnover_ratio": 1062,
+    "dividend_yield": 966,
+    "ps_ttm": 773,
+    "total_shares": 765,
+    "ps": 431,
+    "dividend_yield_ttm": 151,
+    "volume": 8,
+    "low": 3,
+    "change": 1,
+    "open": 1,
+    "pct_change": 1
+  }
+}
