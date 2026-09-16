@@ -36,8 +36,13 @@ def trading_calendar(config_path: str | None) -> AShareCalendar:
         "end_date": (today + timedelta(days=370)).strftime("%Y%m%d"),
         "is_open": "1",
     }, "cal_date,is_open")
-    sessions = [datetime.strptime(str(row["cal_date"]), "%Y%m%d").date()
-                for row in rows if str(row.get("is_open", "1")) == "1"]
+    # Tushare currently returns trade_cal rows newest-first.  Do not attach
+    # correctness to provider ordering: the coverage check needs the actual
+    # latest session, and AShareCalendar also benefits from normalized input.
+    sessions = sorted(
+        datetime.strptime(str(row["cal_date"]), "%Y%m%d").date()
+        for row in rows if str(row.get("is_open", "1")) == "1"
+    )
     if not sessions or sessions[-1] < today + timedelta(days=30):
         raise RuntimeError("Tushare 交易日历为空或未来覆盖不足 30 天")
     return AShareCalendar(sessions)
