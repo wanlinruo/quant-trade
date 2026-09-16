@@ -61,7 +61,7 @@ def load_tushare_config(path: str | Path | None = None) -> TushareConfig:
     target = Path(path) if path is not None else DEFAULT_PATH
     if not target.exists():
         raise FileNotFoundError(f"{target} 不存在。Tushare 凭据只写在这里（已 gitignore）。")
-    raw = tomllib.loads(target.read_text())
+    raw = tomllib.loads(target.read_text(encoding="utf-8"))
     section = raw.get("tushare")
     if not section or not section.get("token"):
         # 显式报错而不是给个空 token——空 token 要到网络层才暴露，
@@ -80,7 +80,7 @@ def load_deploy_config(path: str | Path | None = None) -> DeployConfig:
         raise FileNotFoundError(
             f"{target} 不存在。请复制 {EXAMPLE_PATH} 为 {DEFAULT_PATH} 并填入真实地址。"
         )
-    raw = tomllib.loads(target.read_text())
+    raw = tomllib.loads(target.read_text(encoding="utf-8"))
     agent = raw.get("agent", {})
     return DeployConfig(
         redis=RedisConfig(**raw.get("redis", {})),
