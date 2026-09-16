@@ -86,6 +86,7 @@ def run_supervisor(args) -> int:
     workspace = Path(args.workspace)
     store = PaperStore(workspace / "workbench.sqlite3")
     workers: dict[str, subprocess.Popen] = {}
+    heartbeat_failed = False
     log.info("paper_runner.started")
     while True:
         active = {a.id: a for a in store.accounts()
@@ -109,10 +110,21 @@ def run_supervisor(args) -> int:
             workers[ident] = subprocess.Popen(command)
             log.info("paper.worker_started", account_id=ident,
                      pid=workers[ident].pid)
-        transport.set_key(
-            f"{deploy.streams.heartbeat}:paper",
-            Heartbeat(source="paper", at=datetime.now()).model_dump_json(),
-        )
+        try:
+            transport.set_key(
+                f"{deploy.streams.heartbeat}:paper",
+                Heartbeat(source="paper", at=datetime.now()).model_dump_json(),
+            )
+            if heartbeat_failed:
+                log.info("paper.redis_recovered")
+            heartbeat_failed = False
+        except Exception as exc:
+            # An empty supervisor remains useful while Redis/QMT is being
+            # provisioned.  Account workers still fail closed and mark the
+            # affected account as error when quotes are unavailable.
+            if not heartbeat_failed:
+                log.warning("paper.redis_unavailable", error=str(exc))
+            heartbeat_failed = True
         time.sleep(max(0.2, args.poll))
 
 
