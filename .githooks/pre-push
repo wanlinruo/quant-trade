@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+
+# GitHub Free 私有仓库没有服务端保护分支。本 hook 是 Mac 开发机的第一道硬门禁：
+# main 只能由 GitHub PR 合并产生；test 是日常集成分支，允许直接 push。
+while read -r local_ref local_sha remote_ref remote_sha; do
+    case "$remote_ref" in
+        refs/heads/main)
+            echo "拒绝直接推送 main；请先更新 test，再创建 test -> main PR。" >&2
+            exit 1
+            ;;
+    esac
+done
+
+exit 0
