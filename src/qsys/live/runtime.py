@@ -466,6 +466,12 @@ class LiveRuntime:
         symbols = {str(symbol) for symbol in self.portfolio.positions}
         symbols.update(str(order.symbol) for order in self.broker.pending())
         if not symbols:
+            # 空仓也是一个有效账户状态。持续记录现金净值，既让监控台能
+            # 产生首个会话，也避免“没有持仓”被误显示成“核心未启动”。
+            self.journal.record_equity(
+                now.date(), cash=self.portfolio.cash, market_value=0.0
+            )
+            self.store.save(self.portfolio, self.state, self.last_prices, at=now)
             return
         quotes = self.market.get(sorted(symbols))
         self._latest_quotes.update(quotes)

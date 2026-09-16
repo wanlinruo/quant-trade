@@ -50,6 +50,7 @@ def test_live_runtime_executes_event_once_and_recovers(warehouse, tmp_path):
     runtime.tick(moment)
     _, state, _, _ = runtime.store.load()
     assert state["starts"] == 1
+    assert runtime.journal.sessions() == [date.today()]
 
 
 def test_first_stage_rejects_an_oversized_account(warehouse, tmp_path):
