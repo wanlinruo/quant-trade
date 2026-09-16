@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 import argparse
+import ast
+import re
 import sys
 import time
 from pathlib import Path
@@ -27,14 +29,47 @@ POLL_SECONDS = 1.0
 ACCOUNT_PUBLISH_EVERY = 2
 
 
+def _load_qmt_runtime(path: str) -> tuple[str, str]:
+    """Read the two flat QMT fields without adding a YAML dependency.
+
+    Reading the UTF-8 file in Python is important on Windows PowerShell 5,
+    whose default text encoding can corrupt non-ASCII userdata paths.
+    """
+    values: dict[str, str] = {}
+    wanted = {"qmt_account_id", "qmt_userdata_path"}
+    for raw_line in Path(path).read_text(encoding="utf-8-sig").splitlines():
+        match = re.match(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.*?)\s*$", raw_line)
+        if not match or match.group(1) not in wanted:
+            continue
+        value = match.group(2)
+        if value[:1] in {"'", '"'}:
+            value = str(ast.literal_eval(value))
+        values[match.group(1)] = value
+    missing = sorted(wanted - values.keys())
+    if missing:
+        raise ValueError(f"runtime YAML 缺少字段: {', '.join(missing)}")
+    return values["qmt_account_id"], values["qmt_userdata_path"]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Windows 执行代理")
-    parser.add_argument("--account", required=True)
-    parser.add_argument("--qmt", required=True, help="miniQMT userdata 路径")
+    parser.add_argument("--account")
+    parser.add_argument("--qmt", help="miniQMT userdata 路径")
+    parser.add_argument(
+        "--runtime-yaml",
+        help="从已有私有 YAML 的 qmt_account_id/qmt_userdata_path 读取连接参数",
+    )
     parser.add_argument("--config", default=None)
     parser.add_argument("--ledger", default="var/agent-ledger.sqlite3")
     parser.add_argument("--lock", default="var/agent.lock")
     args = parser.parse_args()
+
+    if args.runtime_yaml:
+        if args.account or args.qmt:
+            parser.error("--runtime-yaml 不能与 --account/--qmt 同时使用")
+        args.account, args.qmt = _load_qmt_runtime(args.runtime_yaml)
+    elif not args.account or not args.qmt:
+        parser.error("必须提供 --runtime-yaml，或同时提供 --account 和 --qmt")
 
     from qsys.agent.xtquant_adapter import XtQuantAdapter
 
