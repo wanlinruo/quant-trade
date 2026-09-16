@@ -39,5 +39,7 @@ def test_xtquant_trader_session_is_compatible_with_positional_only_api(
 
     adapter = XtQuantAdapter("123456789", r"C:\\qmt\\userdata_mini")
 
-    assert calls == [(r"C:\\qmt\\userdata_mini", 456789)]
+    assert len(calls) == 1
+    assert calls[0][0] == r"C:\\qmt\\userdata_mini"
+    assert 1 <= calls[0][1] < 2**31
     assert adapter._account.account_id == "123456789"

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from datetime import datetime
 import re
+import secrets
 
 from qsys.agent.adapter import BrokerAccount
 from qsys.agent.fill_tracker import BrokerOrder, BrokerTrade
@@ -33,9 +34,11 @@ class XtQuantAdapter:
 
         # Older xtquant releases expose ``session`` only as a positional
         # argument, while newer releases also document it as ``session_id``.
-        # Passing it positionally works with both APIs and is required by the
-        # MiniQMT version installed on the Windows execution node.
-        self._trader = XtQuantTrader(mini_qmt_path, int(account_id[-6:]))
+        # The session identifies this client connection, not the account, so
+        # generate a fresh value on every process start to avoid collisions
+        # with another gateway or a stale MiniQMT session.
+        session = secrets.randbelow(2**31 - 1) + 1
+        self._trader = XtQuantTrader(mini_qmt_path, session)
         self._account = StockAccount(account_id)
         self._trader.start()
         if self._trader.connect() != 0:
