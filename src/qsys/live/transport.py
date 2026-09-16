@@ -25,7 +25,7 @@ class Transport(ABC):
     def append(self, stream: str, payload: dict[str, str]) -> str: ...
 
     @abstractmethod
-    def ensure_group(self, stream: str, group: str) -> None: ...
+    def ensure_group(self, stream: str, group: str, start_id: str = "$") -> None: ...
 
     @abstractmethod
     def read_group(
@@ -63,12 +63,13 @@ class MemoryTransport(Transport):
         self._streams.setdefault(stream, []).append(message)
         return message.id
 
-    def ensure_group(self, stream: str, group: str) -> None:
+    def ensure_group(self, stream: str, group: str, start_id: str = "$") -> None:
         key = (stream, group)
         if key in self._cursors:
             return
-        # 与 XGROUP CREATE ... $ 一致：新组只看新消息
-        self._cursors[key] = len(self._streams.get(stream, []))
+        self._cursors[key] = (
+            len(self._streams.get(stream, [])) if start_id == "$" else 0
+        )
         self._pending[key] = []
 
     def read_group(

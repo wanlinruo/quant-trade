@@ -30,6 +30,7 @@ class StreamConfig:
     control: str = "cmd:control"
     fills: str = "evt:fills"
     rejects: str = "evt:rejects"
+    order_status: str = "evt:order_status"
     account: str = "state:account"
     heartbeat: str = "state:heartbeat"
     quote_requests: str = "cmd:quote_requests"
@@ -39,9 +40,47 @@ class StreamConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class FeeConfig:
+    commission_rate: float = 0.0003
+    min_commission: float = 5.0
+    stamp_duty_rate: float = 0.0005
+    transfer_fee_rate: float = 0.00001
+
+
+@dataclass(frozen=True, slots=True)
+class SafetyConfig:
+    mode: str = "disabled"
+    orders_enabled: bool = False
+    protected_account_ids: tuple[str, ...] = ()
+    local_kill_path: str = "var/AGENT_KILL"
+
+
+@dataclass(frozen=True, slots=True)
+class AlertConfig:
+    webhook_url: str = field(default="", repr=False)
+    timeout_seconds: float = 5.0
+
+
+@dataclass(frozen=True, slots=True)
+class RiskConfig:
+    enabled_capital: float = 10_000.0
+    max_account_asset: float = 100_000.0
+    max_position_weight: float = 0.05
+    max_gross_exposure: float = 0.10
+    max_order_value: float = 10_000.0
+    max_daily_turnover: float = 1.0
+    max_daily_loss: float = 0.02
+    max_price_deviation: float = 0.02
+
+
+@dataclass(frozen=True, slots=True)
 class DeployConfig:
     redis: RedisConfig = field(default_factory=RedisConfig)
     streams: StreamConfig = field(default_factory=StreamConfig)
+    fees: FeeConfig = field(default_factory=FeeConfig)
+    safety: SafetyConfig = field(default_factory=SafetyConfig)
+    alerts: AlertConfig = field(default_factory=AlertConfig)
+    risk: RiskConfig = field(default_factory=RiskConfig)
     consumer_group: str = "core"
     consumer_name: str = "core-1"
 
@@ -87,6 +126,17 @@ def load_deploy_config(path: str | Path | None = None) -> DeployConfig:
     return DeployConfig(
         redis=RedisConfig(**raw.get("redis", {})),
         streams=StreamConfig(**raw.get("streams", {})),
+        fees=FeeConfig(**raw.get("fees", {})),
+        safety=SafetyConfig(
+            **{
+                **raw.get("safety", {}),
+                "protected_account_ids": tuple(
+                    raw.get("safety", {}).get("protected_account_ids", ())
+                ),
+            }
+        ),
+        alerts=AlertConfig(**raw.get("alerts", {})),
+        risk=RiskConfig(**raw.get("risk", {})),
         consumer_group=agent.get("consumer_group", "core"),
         consumer_name=agent.get("consumer_name", "core-1"),
     )

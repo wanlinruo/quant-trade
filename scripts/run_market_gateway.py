@@ -1,7 +1,7 @@
-"""Windows-side read-only QMT market gateway for paper trading.
+"""Windows-side read-only QMT market gateway for paper and live trading.
 
 This process imports ``xtdata`` only.  It deliberately has no account id,
-trader adapter, or order API, so paper trading cannot reach real funds.
+trader adapter, or order API, so the quote process cannot reach real funds.
 """
 
 from __future__ import annotations
@@ -42,6 +42,11 @@ def qmt_provider(symbols):
             upper_limit=_optional_float(item, "upStopPrice", "upperLimit"),
             lower_limit=_optional_float(item, "downStopPrice", "lowerLimit"),
             suspended=price <= 0,
+            bid1=_level(item, "bidPrice", "bid", index=0),
+            ask1=_level(item, "askPrice", "ask", index=0),
+            bid1_volume=int(_level(item, "bidVol", "bidVolume", index=0)),
+            ask1_volume=int(_level(item, "askVol", "askVolume", index=0)),
+            tick_size=float(item.get("priceTick") or 0.01),
         )
     return out
 
@@ -70,6 +75,16 @@ def _optional_float(item, *names):
         if value not in (None, "", 0):
             return float(value)
     return None
+
+
+def _level(item, *names, index=0):
+    for name in names:
+        value = item.get(name)
+        if isinstance(value, (list, tuple)) and len(value) > index:
+            return float(value[index] or 0)
+        if value not in (None, "") and index == 0:
+            return float(value or 0)
+    return 0.0
 
 
 def main() -> int:

@@ -11,6 +11,7 @@ from qsys.live.messages import (
     AccountSnapshot,
     ControlCommand,
     FillEvent,
+    OrderStatusEvent,
     OrderCommand,
     PositionSnapshot,
     RejectEvent,
@@ -50,6 +51,8 @@ def test_submit_appends_an_order_command(tmp_path):
     assert cmd.symbol == "600036.SH"
     assert cmd.qty == 100
     assert cmd.client_order_id == "o1"
+    assert cmd.session_id == "2024-01-03"
+    assert cmd.expires_at is None
 
 
 def test_order_id_is_used_as_client_order_id(tmp_path):
@@ -107,6 +110,35 @@ def test_fill_clears_the_pending_order(tmp_path):
     assert b.pending() == ()
 
 
+def test_partial_fill_keeps_only_the_remainder_pending(tmp_path):
+    b, t, _ = make(tmp_path)
+    b.submit(order(qty=1000))
+    t.append(STREAMS.fills, FillEvent(
+        client_order_id="o1", symbol="600036.SH", side="buy", qty=300,
+        price=10.5, fee=5.03, filled_at=T, broker_trade_id="T1",
+    ).to_payload())
+    assert b.poll_fills()[0].qty == 300
+    assert b.remaining("o1") == 700
+    assert len(b.pending()) == 1
+
+
+def test_status_before_fill_does_not_double_count_partial_fill(tmp_path):
+    b, t, _ = make(tmp_path)
+    b.submit(order(qty=1000))
+    t.append(STREAMS.order_status, OrderStatusEvent(
+        client_order_id="o1", broker_order_id="B1", symbol="600036.SH",
+        side="buy", ordered_qty=1000, filled_qty=300, remaining_qty=700,
+        status="partially_filled", at=T,
+    ).to_payload())
+    t.append(STREAMS.fills, FillEvent(
+        client_order_id="o1", symbol="600036.SH", side="buy", qty=300,
+        price=10.5, fee=5.0, filled_at=T, broker_trade_id="T-ordering",
+    ).to_payload())
+    b.poll_statuses()
+    b.poll_fills()
+    assert b.remaining("o1") == 700
+
+
 def test_poll_fills_drains(tmp_path):
     b, t, _ = make(tmp_path)
     b.submit(order())
@@ -116,6 +148,39 @@ def test_poll_fills_drains(tmp_path):
     ).to_payload())
     assert len(b.poll_fills()) == 1
     assert b.poll_fills() == ()
+
+
+def test_fill_stream_is_acked_only_after_durable_commit(tmp_path):
+    b, t, _ = make(tmp_path)
+    b.submit(order())
+    t.append(STREAMS.fills, FillEvent(
+        client_order_id="o1", symbol="600036.SH", side="buy", qty=100,
+        price=10.5, fee=0.0, filled_at=T, broker_trade_id="T-durable",
+    ).to_payload())
+    assert len(b.poll_fills()) == 1
+    assert len(t.pending(STREAMS.fills, "core")) == 1
+    b.commit_reports()
+    assert t.pending(STREAMS.fills, "core") == []
+
+
+def test_unacked_fill_is_recovered_by_a_new_broker_process(tmp_path):
+    b, t, _ = make(tmp_path)
+    b.submit(order())
+    t.append(STREAMS.fills, FillEvent(
+        client_order_id="o1", symbol="600036.SH", side="buy", qty=100,
+        price=10.5, fee=0.0, filled_at=T, broker_trade_id="T-recover",
+    ).to_payload())
+    assert len(b.poll_fills()) == 1
+
+    ks = KillSwitch(t, local_path=tmp_path / "K2")
+    recovered = LiveBroker(
+        t, STREAMS, risk_gate=default_ashare_gate(ks, CAL),
+        risk_context_factory=lambda: RiskContext(
+            portfolio=Portfolio(1_000_000.0), now=T, reference_price=10.0,
+            day_start_value=1_000_000.0,
+        ),
+    )
+    assert recovered.poll_fills()[0].broker_trade_id == "T-recover"
 
 
 def test_poll_rejects_reads_the_reject_stream(tmp_path):
@@ -259,5 +324,5 @@ def test_risk_gate_runs_before_constraints(tmp_path):
             portfolio=portfolio, reference_price=10.0
         ),
     )
-    b.submit(order(Side.SELL, 100))
+    b.submit(order(Side.BUY, 100))
     assert "kill_switch" in b.poll_rejects()[0].reason

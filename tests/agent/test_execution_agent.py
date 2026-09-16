@@ -11,6 +11,7 @@ from qsys.live.messages import (
     RejectEvent,
 )
 from qsys.live.transport import MemoryTransport
+from qsys.live.safety import SafetyPolicy, TradingMode
 
 STREAMS = StreamConfig()
 T = datetime(2024, 1, 3, 10, 0)
@@ -48,6 +49,14 @@ def test_agent_publishes_a_fill():
     assert len(fills) == 1
     assert fills[0].client_order_id == "c-1"
     assert fills[0].qty == 100
+    assert fills[0].broker_trade_id == "T1"
+
+
+def test_accepted_but_unfilled_order_does_not_publish_a_fill():
+    agent, t, _ = make(auto_fill=False)
+    t.append(STREAMS.orders, cmd().to_payload())
+    agent.run_once()
+    assert drain(t, STREAMS.fills, FillEvent) == []
 
 
 def test_duplicate_command_does_not_place_twice():
@@ -127,3 +136,19 @@ def test_malformed_command_is_rejected_not_fatal():
     processed = agent.run_once()
     assert processed >= 1
     assert len(adapter.placed) == 1
+
+
+def test_remote_kill_blocks_buy_but_keeps_reducing_path_open(tmp_path):
+    transport = MemoryTransport()
+    adapter = FakeAdapter(auto_fill=False)
+    safety = SafetyPolicy(
+        TradingMode.LIVE, account_id="A1", protected_account_ids=("A1",),
+        orders_enabled=True, local_kill_path=tmp_path / "K",
+    )
+    agent = ExecutionAgent(transport, adapter, STREAMS, safety=safety)
+    transport.set_key("control:kill", "manual")
+    transport.append(STREAMS.orders, cmd("buy").to_payload())
+    sell = cmd("sell").model_copy(update={"side": "sell"})
+    transport.append(STREAMS.orders, sell.to_payload())
+    agent.run_once()
+    assert adapter.placed == [("600036.SH", "sell", 100, "market", None)]

@@ -22,9 +22,9 @@
 避免"按未滑点价用满现金、实际按滑点价成交"导致的透支。详见
 `allocation.py`。
 
-**已知偏差**：退出按**持仓均价**判盈亏，而非每笔买入的入场价。原策略有
-lot 级账本，我们的 `Portfolio` 按标的聚合——同一标的跨分支重复买入时会有
-偏差。lot 级账本归入后续。
+策略状态维护 lot 级账本：每次真实买入成交记录入场价、数量和分支标签，
+退出时逐 lot 判定后汇总卖出量。由旧状态或人工持仓导入、没有 lot 信息的
+仓位仍使用聚合持仓与 `tags` 兼容处理。
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ from datetime import date, time, timedelta
 
 import structlog
 
-from qsys.core.trading import OrderType, Side
+from qsys.core.trading import Fill, OrderType, Side
 from qsys.core.types import Symbol
 from qsys.strategy.base import Strategy
 from qsys.strategy.structural.allocation import allocate
@@ -95,7 +95,8 @@ class StructuralStrategy(Strategy):
         # CASH-SAFE V2 的限价保护价以涨停价封顶，故要取当日涨停价
         limit_ups = ctx.market.limit_up_price(symbols, today)
         budgets = allocate(
-            [(p.symbol, p.tag) for p in picks], ctx.portfolio.cash, opens, limit_ups
+            [(p.symbol, p.tag) for p in picks], ctx.portfolio.cash, opens, limit_ups,
+            max_budget=ctx.params.get("max_position_value"),
         )
         tags = ctx.state.setdefault("tags", {})
         for budget in budgets:
@@ -112,6 +113,29 @@ class StructuralStrategy(Strategy):
                 Symbol.parse(budget.symbol), Side.BUY, budget.qty,
                 OrderType.LIMIT, budget.protect_price,
             )
+
+    def on_fill(self, ctx, fill: Fill) -> None:
+        """用真实成交维护分支 lot；卖出按 FIFO 核销，状态可跨重启恢复。"""
+        key = str(fill.symbol)
+        lots = ctx.state.setdefault("lots", {}).setdefault(key, [])
+        if fill.side is Side.BUY:
+            tag = ctx.state.get("tags", {}).get(key)
+            if tag is None:
+                log.warning("structural.fill_without_tag", symbol=key, qty=fill.qty)
+                return
+            lots.append({
+                "qty": fill.qty, "entry_price": fill.price, "tag": tag,
+                "acquired_on": fill.filled_at.date().isoformat(),
+            })
+            return
+        remaining = fill.qty
+        for lot in lots:
+            if remaining <= 0:
+                break
+            consumed = min(int(lot["qty"]), remaining)
+            lot["qty"] = int(lot["qty"]) - consumed
+            remaining -= consumed
+        ctx.state["lots"][key] = [lot for lot in lots if int(lot["qty"]) > 0]
 
     # ---- 退出 ----
 
@@ -132,7 +156,12 @@ class StructuralStrategy(Strategy):
         for symbol in held:
             key = str(symbol)
             tag = tags.get(key)
-            if tag is None:
+            lots = [
+                lot for lot in ctx.state.get("lots", {}).get(key, [])
+                if int(lot["qty"]) > 0
+                and str(lot.get("acquired_on", "")) < today.isoformat()
+            ]
+            if tag is None and not lots:
                 # 不知道该按哪条规则退，宁可不动
                 continue
             quote = quotes.get(key)
@@ -148,17 +177,35 @@ class StructuralStrategy(Strategy):
                 continue
 
             position = ctx.portfolio.position(symbol)
-            decision = self._decide(
-                ctx, at, tag, key, today, quote.price,
-                limits.get(key), position.avg_cost,
-            )
-            if decision is None or not decision.should_exit:
-                continue
-            ctx.order.submit(symbol, Side.SELL, position.available_qty)
-            log.info(
-                "structural.exit", symbol=key, tag=tag, at=str(at),
-                reason=decision.reason, ret=decision.ret,
-            )
+            if lots:
+                exit_qty = 0
+                reasons = []
+                for lot in lots:
+                    decision = self._decide(
+                        ctx, at, str(lot["tag"]), key, today, quote.price,
+                        limits.get(key), float(lot["entry_price"]),
+                    )
+                    if decision is not None and decision.should_exit:
+                        exit_qty += int(lot["qty"])
+                        reasons.append(decision.reason)
+                exit_qty = min(exit_qty, position.available_qty)
+                if exit_qty <= 0:
+                    continue
+                ctx.order.submit(symbol, Side.SELL, exit_qty)
+                log.info("structural.exit", symbol=key, tag="lot", at=str(at),
+                         reason=",".join(sorted(set(reasons))), qty=exit_qty)
+            else:
+                decision = self._decide(
+                    ctx, at, tag, key, today, quote.price,
+                    limits.get(key), position.avg_cost,
+                )
+                if decision is None or not decision.should_exit:
+                    continue
+                ctx.order.submit(symbol, Side.SELL, position.available_qty)
+                log.info(
+                    "structural.exit", symbol=key, tag=tag, at=str(at),
+                    reason=decision.reason, ret=decision.ret,
+                )
 
     def _decide(self, ctx, at, tag, symbol, today, price, limit_up, entry):
         branch = tag.split("_", 1)[0]

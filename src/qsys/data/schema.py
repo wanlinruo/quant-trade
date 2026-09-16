@@ -251,6 +251,8 @@ LIVE_FILLS = pa.schema(
     [
         ("dt", pa.date32()),
         ("client_order_id", pa.string()),
+        ("broker_order_id", pa.string()),
+        ("broker_trade_id", pa.string()),
         ("symbol", pa.string()),
         ("side", pa.string()),
         ("qty", pa.int64()),

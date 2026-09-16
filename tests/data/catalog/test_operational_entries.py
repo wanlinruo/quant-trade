@@ -24,13 +24,13 @@ def test_registers_all_runtime_columns():
     assert dict(Counter(m.dataset for m in METRICS)) == {
         "ingest_log": 7,
         "live_equity": 4,
-        "live_fills": 8,
+        "live_fills": 10,
         "live_recon": 7,
         "live_rejects": 6,
         "metric_checks": 14,
         "metric_evidence": 10,
     }
-    assert len(METRICS) == 56
+    assert len(METRICS) == 58
 
 
 def test_all_are_operational_status():

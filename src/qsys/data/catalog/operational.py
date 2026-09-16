@@ -36,6 +36,8 @@ _MEANING = {
     "live_equity.total_value": "总资产（元）= cash + market_value，写入前按分取整",
     "live_fills.dt": "成交归属的交易日",
     "live_fills.client_order_id": "本地订单号，也是重复成交回报的幂等键",
+    "live_fills.broker_order_id": "券商委托编号；一笔委托可对应多笔成交",
+    "live_fills.broker_trade_id": "券商成交编号；真实成交回报的幂等键",
     "live_fills.symbol": "成交标的代码",
     "live_fills.side": "成交方向：buy / sell",
     "live_fills.qty": "成交数量（股）",

@@ -17,7 +17,8 @@ def test_live_equity_columns():
 
 def test_live_fills_columns():
     assert [f.name for f in schema.LIVE_FILLS] == [
-        "dt", "client_order_id", "symbol", "side", "qty", "price", "fee", "filled_at",
+        "dt", "client_order_id", "broker_order_id", "broker_trade_id",
+        "symbol", "side", "qty", "price", "fee", "filled_at",
     ]
 
 

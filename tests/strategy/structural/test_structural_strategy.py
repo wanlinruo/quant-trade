@@ -4,7 +4,7 @@ from datetime import date, datetime, time
 
 import pytest
 
-from qsys.core.trading import OrderType, Side
+from qsys.core.trading import Fill, OrderType, Side
 from qsys.core.types import Market, Symbol
 from qsys.strategy.structural.strategy import AUCTION_AT, CHECKPOINTS, StructuralStrategy
 
@@ -150,6 +150,36 @@ def test_the_tag_is_remembered_for_the_exit_side():
     strategy.on_session_start(c)
     strategy.on_auction(c)
     assert state["tags"][str(SYM)] == "HIGH_MAIN"
+
+
+def test_real_buy_fill_creates_a_persistent_lot_and_sell_reduces_it():
+    strategy = StructuralStrategy(FakeSelection())
+    state = {"tags": {str(SYM): "LOW_MAIN"}}
+    ctx = FakeCtx(datetime.combine(DAY, time(10)), state=state)
+    strategy.on_fill(ctx, Fill("b1", SYM, Side.BUY, 500, 10.2, 5.0,
+                               datetime.combine(DAY, time(10))))
+    assert state["lots"][str(SYM)][0]["entry_price"] == 10.2
+    strategy.on_fill(ctx, Fill("s1", SYM, Side.SELL, 200, 11.0, 5.0,
+                               datetime.combine(DAY, time(14))))
+    assert state["lots"][str(SYM)][0]["qty"] == 300
+
+
+def test_exit_is_evaluated_per_lot_entry_price():
+    portfolio = FakePortfolio(positions={str(SYM): FakePosition(1000, 1000, 10.5)})
+    state = {
+        "tags": {str(SYM): "HIGH_MAIN"},
+        "lots": {str(SYM): [
+            {"qty": 400, "entry_price": 9.0, "tag": "HIGH_MAIN", "acquired_on": "2024-01-03"},
+            {"qty": 600, "entry_price": 12.0, "tag": "HIGH_MAIN", "acquired_on": "2024-01-03"},
+        ]},
+    }
+    ctx = FakeCtx(
+        datetime.combine(DAY, time(11, 25)), portfolio=portfolio, state=state,
+        market=FakeMarket(intraday={str(SYM): Quote(10.0)}, limit_up={str(SYM): 12.0}),
+        data=FakeData([10.0] * 4),
+    )
+    StructuralStrategy(FakeSelection()).on_checkpoint(ctx, time(11, 25))
+    assert ctx.order.submitted == [(str(SYM), Side.SELL, 400)]
 
 
 def test_no_open_price_means_no_order():

@@ -21,6 +21,7 @@ from qsys.live.risk import (
 from qsys.live.transport import MemoryTransport
 
 CMB = Symbol("600036", Market.SH)
+EXPENSIVE = Symbol("600000", Market.SH)
 SESSIONS = [date(2024, 1, 3)]
 CAL = AShareCalendar(SESSIONS)
 T = datetime(2024, 1, 3, 9, 45)
@@ -46,12 +47,12 @@ def test_kill_switch_allows_when_disengaged(tmp_path):
     assert KillSwitchRule(ks).check(BUY, ctx()).allowed is True
 
 
-def test_kill_switch_blocks_everything_when_engaged(tmp_path):
+def test_kill_switch_blocks_opening_but_allows_reducing_when_engaged(tmp_path):
     ks = KillSwitch(MemoryTransport(), local_path=tmp_path / "K")
     ks.engage("stop")
     rule = KillSwitchRule(ks)
     assert rule.check(BUY, ctx()).allowed is False
-    assert rule.check(SELL, ctx()).allowed is False
+    assert rule.check(SELL, ctx()).allowed is True
 
 
 def test_kill_switch_reason_is_surfaced(tmp_path):
@@ -76,6 +77,17 @@ def test_position_weight_never_blocks_a_sell():
     """减仓永远放行——风控不能把人锁在仓位里。"""
     r = MaxPositionWeightRule(0.01)
     assert r.check(SELL, ctx(held=5000)).allowed is True
+
+
+def test_portfolio_value_uses_each_positions_own_mark():
+    portfolio = Portfolio(110_000.0)
+    portfolio.apply_fill(Fill("seed", EXPENSIVE, Side.BUY, 1000, 100.0, 0.0, T))
+    context = RiskContext(
+        portfolio=portfolio, now=T, reference_price=5.0, day_start_value=100_000.0,
+        marks={EXPENSIVE: 100.0, CMB: 5.0},
+    )
+    # 新订单 500 元，只占约 0.5%；旧实现会把全部持仓错按 5 元估值。
+    assert MaxPositionWeightRule(0.01).check(BUY, context).allowed is True
 
 
 def test_turnover_allows_within_limit():

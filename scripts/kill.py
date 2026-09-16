@@ -25,13 +25,15 @@ def _switch():
         from qsys.live.config import load_deploy_config
         from qsys.live.redis_transport import RedisTransport
 
-        transport = RedisTransport.from_config(load_deploy_config())
+        cfg = load_deploy_config()
+        transport = RedisTransport.from_config(cfg)
         transport.get_key("control:kill")  # 探活
     except Exception as exc:  # Redis 不可达也必须能停机
         print(f"[warn] Redis 不可用（{exc}），仅使用本地停机标记", file=sys.stderr)
         transport = MemoryTransport()
+        cfg = None
 
-    return KillSwitch(transport, local_path=LOCAL_KILL_FILE)
+    return KillSwitch(transport, local_path=LOCAL_KILL_FILE), transport, cfg
 
 
 def main() -> int:
@@ -40,14 +42,28 @@ def main() -> int:
         return 2
 
     action = sys.argv[1]
-    switch = _switch()
+    switch, transport, cfg = _switch()
 
     if action == "stop":
         reason = sys.argv[2] if len(sys.argv) > 2 else "manual"
         switch.engage(reason)
+        if cfg is not None:
+            from datetime import datetime
+            from qsys.live.messages import ControlCommand
+            transport.append(
+                cfg.streams.control,
+                ControlCommand(action="kill", at=datetime.now(), reason=reason).to_payload(),
+            )
         print(f"已停机: {reason}")
     elif action == "resume":
         switch.release()
+        if cfg is not None:
+            from datetime import datetime
+            from qsys.live.messages import ControlCommand
+            transport.append(
+                cfg.streams.control,
+                ControlCommand(action="resume", at=datetime.now(), reason="manual").to_payload(),
+            )
         print("已恢复")
     else:
         engaged = switch.is_engaged()

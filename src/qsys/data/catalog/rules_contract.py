@@ -35,7 +35,7 @@ _KEYS: dict[str, tuple[str, ...]] = {
     "metric_checks": ("run_id", "checked_at", "metric_id", "check_id"),
     "metric_evidence": ("metric_id", "dt", "checked_at"),
     "live_equity": ("dt",),
-    "live_fills": ("client_order_id", "filled_at"),
+    "live_fills": ("client_order_id", "broker_trade_id", "filled_at"),
     "live_rejects": ("client_order_id", "at"),
     "live_recon": ("dt", "at", "layer"),
 }

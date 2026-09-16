@@ -27,6 +27,9 @@ class Message(BaseModel):
 
 
 class OrderCommand(Message):
+    schema_version: int = 2
+    session_id: str = ""
+    strategy_id: str = ""
     client_order_id: str
     symbol: str
     side: Literal["buy", "sell"]
@@ -34,6 +37,7 @@ class OrderCommand(Message):
     order_type: Literal["market", "limit"]
     limit_price: float | None = None
     created_at: datetime
+    expires_at: datetime | None = None
 
     @model_validator(mode="after")
     def _check(self) -> Self:
@@ -53,6 +57,38 @@ class FillEvent(Message):
     fee: float
     filled_at: datetime
     broker_order_id: str | None = None
+    broker_trade_id: str | None = None
+
+    @model_validator(mode="after")
+    def _check(self) -> Self:
+        if self.qty <= 0 or self.price <= 0 or self.fee < 0:
+            raise ValueError("fill qty/price must be positive and fee non-negative")
+        return self
+
+
+class OrderStatusEvent(Message):
+    """券商委托状态变化；委托受理与成交是两件不同的事。"""
+
+    client_order_id: str
+    broker_order_id: str
+    symbol: str
+    side: Literal["buy", "sell"]
+    ordered_qty: int
+    filled_qty: int
+    remaining_qty: int
+    status: Literal[
+        "accepted", "partially_filled", "filled", "cancelled", "rejected", "unknown"
+    ]
+    at: datetime
+    reason: str = ""
+
+    @model_validator(mode="after")
+    def _check(self) -> Self:
+        if self.ordered_qty <= 0 or not 0 <= self.filled_qty <= self.ordered_qty:
+            raise ValueError("invalid order status quantities")
+        if self.remaining_qty != self.ordered_qty - self.filled_qty:
+            raise ValueError("remaining_qty must equal ordered_qty - filled_qty")
+        return self
 
 
 class RejectEvent(Message):
@@ -60,6 +96,14 @@ class RejectEvent(Message):
     symbol: str
     reason: str
     at: datetime
+    side: Literal["buy", "sell"] | None = None
+    unfilled_qty: int | None = None
+
+    @model_validator(mode="after")
+    def _check(self) -> Self:
+        if self.unfilled_qty is not None and self.unfilled_qty < 0:
+            raise ValueError("unfilled_qty must be non-negative")
+        return self
 
 
 class PositionSnapshot(BaseModel):
@@ -72,6 +116,9 @@ class AccountSnapshot(Message):
     at: datetime
     cash: float
     positions: dict[str, PositionSnapshot]
+    frozen_cash: float = 0.0
+    market_value: float = 0.0
+    total_asset: float | None = None
 
 
 class ControlCommand(Message):
@@ -114,6 +161,11 @@ class MarketQuote(BaseModel):
     upper_limit: float | None = None
     lower_limit: float | None = None
     suspended: bool = False
+    bid1: float = 0.0
+    ask1: float = 0.0
+    bid1_volume: int = 0
+    ask1_volume: int = 0
+    tick_size: float = 0.01
 
     @model_validator(mode="after")
     def _valid_price(self) -> Self:

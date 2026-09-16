@@ -1,0 +1,24 @@
+[Unit]
+Description=qsys live trading core
+After=network-online.target redis.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=qsys
+WorkingDirectory=/opt/qsys
+Environment=PYTHONUNBUFFERED=1
+ExecStartPre=/opt/qsys/.venv/bin/python scripts/live_preflight.py --config config/deploy.local.toml --require-live
+ExecStart=/opt/qsys/.venv/bin/python scripts/run_live.py --config config/deploy.local.toml
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/qsys/var /opt/qsys/warehouse
+
+[Install]
+WantedBy=multi-user.target

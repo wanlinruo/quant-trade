@@ -73,6 +73,7 @@ def allocate(
     cash: float,
     opens: Mapping[str, float],
     limit_ups: Mapping[str, float] | None = None,
+    max_budget: float | None = None,
 ) -> list[Budget]:
     """把可用资金按分支权重分给当日候选，再按 CASH-SAFE V2 定量。"""
     if not candidates:
@@ -87,6 +88,8 @@ def allocate(
     out: list[Budget] = []
     for symbol, tag, weight in weights:
         budget = allocatable * weight / total
+        if max_budget is not None:
+            budget = min(budget, max(0.0, max_budget))
         if allocatable <= 0:
             out.append(Budget(symbol, tag, weight, 0.0, 0, "NO_AVAILABLE_CASH"))
             continue

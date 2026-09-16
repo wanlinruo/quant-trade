@@ -41,9 +41,9 @@ class RedisTransport(Transport):
     def append(self, stream: str, payload: dict[str, str]) -> str:
         return _decode(self._r.xadd(stream, payload))
 
-    def ensure_group(self, stream: str, group: str) -> None:
+    def ensure_group(self, stream: str, group: str, start_id: str = "$") -> None:
         try:
-            self._r.xgroup_create(stream, group, id="$", mkstream=True)
+            self._r.xgroup_create(stream, group, id=start_id, mkstream=True)
         except Exception as exc:  # BUSYGROUP：组已存在，属正常
             if "BUSYGROUP" not in str(exc):
                 raise
@@ -71,9 +71,20 @@ class RedisTransport(Transport):
         self._r.xack(stream, group, message_id)
 
     def pending(self, stream: str, group: str) -> list[StreamMessage]:
-        return self._to_messages(
-            self._r.xreadgroup(group, "recovery", {stream: "0"}, count=1000)
+        # XREADGROUP ... 0 只能读取“当前 consumer 自己”的 PEL，无法恢复崩溃
+        # 进程留下的消息。XAUTOCLAIM 才能把旧 consumer 的 pending 转交回来。
+        response = self._r.xautoclaim(
+            stream, group, "recovery", min_idle_time=5_000,
+            start_id="0-0", count=1000,
         )
+        entries = response[1] if response and len(response) > 1 else []
+        out: list[StreamMessage] = []
+        for message_id, fields in entries:
+            out.append(StreamMessage(
+                _decode(message_id),
+                {_decode(k): _decode(v) for k, v in fields.items()},
+            ))
+        return out
 
     def set_key(self, key: str, value: str) -> None:
         self._r.set(key, value)

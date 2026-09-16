@@ -9,6 +9,7 @@ from qsys.live.messages import (
     Heartbeat,
     OrderCommand,
     PositionSnapshot,
+    OrderStatusEvent,
     RejectEvent,
 )
 
@@ -59,6 +60,29 @@ def test_fill_round_trips():
     fill = FillEvent(client_order_id="c-1", symbol="600036.SH", side="buy", qty=100,
                      price=27.58, fee=5.01, filled_at=NOW, broker_order_id="B123")
     assert FillEvent.from_payload(fill.to_payload()) == fill
+
+
+def test_order_status_round_trips():
+    event = OrderStatusEvent(
+        client_order_id="c-1", broker_order_id="B1", symbol="600036.SH",
+        side="buy", ordered_qty=1000, filled_qty=300, remaining_qty=700,
+        status="partially_filled", at=NOW,
+    )
+    assert OrderStatusEvent.from_payload(event.to_payload()) == event
+
+
+def test_invalid_fill_and_inconsistent_status_are_rejected():
+    with pytest.raises(ValueError):
+        FillEvent(
+            client_order_id="o", symbol="600036.SH", side="buy", qty=0,
+            price=10.0, fee=0.0, filled_at=NOW,
+        )
+    with pytest.raises(ValueError):
+        OrderStatusEvent(
+            client_order_id="o", broker_order_id="b", symbol="600036.SH",
+            side="buy", ordered_qty=100, filled_qty=20, remaining_qty=70,
+            status="partially_filled", at=NOW,
+        )
 
 
 def test_reject_round_trips():

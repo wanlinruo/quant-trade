@@ -19,14 +19,14 @@ from qsys.data.pipeline.tushare_daily import _FROM_BASIC, _FROM_DAILY
 
 
 def test_expected_ids_cover_schema_and_paid_daily():
-    """236 = schema.ALL 的 208 列 + PAID_DAILY 的 28 列。
+    """238 = schema.ALL 的 210 列 + PAID_DAILY 的 28 列。
 
     paid_daily 故意不在 schema.ALL 里（那会让 Warehouse.write 成为可能），
     但它是 2026-09-11 前名称的唯一真值源，必须进字典。
     """
     ids = expected_metric_ids()
-    assert len(ids) == 236, (
-        f"期望 236 条（schema.ALL 的 208 列 + PAID_DAILY 的 28 列），实得 {len(ids)}。"
+    assert len(ids) == 238, (
+        f"期望 238 条（schema.ALL 的 210 列 + PAID_DAILY 的 28 列），实得 {len(ids)}。"
         "schema 若有增删，先确认变动是否预期，再改这个数字。"
     )
 

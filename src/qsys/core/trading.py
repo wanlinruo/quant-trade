@@ -74,6 +74,8 @@ class Fill:
     price: float
     fee: float
     filled_at: datetime
+    broker_order_id: str | None = None
+    broker_trade_id: str | None = None
 
     @property
     def gross(self) -> float:

@@ -135,6 +135,15 @@ def test_no_candidates_yields_nothing():
     assert allocate([], cash=100_000.0, opens={}) == []
 
 
+def test_live_risk_budget_caps_each_candidate_without_redistributing():
+    rows = allocate(
+        [("600036.SH", "HIGH_MAIN")], 10_000.0,
+        {"600036.SH": 10.0}, max_budget=5_000.0,
+    )
+    assert rows[0].budget == 5_000.0
+    assert rows[0].qty == 400
+
+
 def test_every_candidate_gets_a_row_even_when_skipped():
     """跳过的也要留痕，否则说不清是没选中还是买不起。"""
     budgets = allocate(

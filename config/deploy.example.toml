@@ -19,6 +19,7 @@ orders = "cmd:orders"       # 核心 -> Windows：下单指令
 control = "cmd:control"     # 核心 -> Windows：启停 / 撤单 / 查询
 fills = "evt:fills"         # Windows -> 核心：成交回报
 rejects = "evt:rejects"     # Windows -> 核心：拒单回报
+order_status = "evt:order_status" # Windows -> 核心：委托状态变化
 account = "state:account"   # Windows -> 核心：持仓资金快照
 heartbeat = "state:heartbeat"
 quote_requests = "cmd:quote_requests"   # Linux -> Windows：只读行情请求
@@ -29,3 +30,31 @@ market_schedule = "state:market_schedule" # Windows -> Linux：交易日与盘�
 [agent]
 consumer_group = "core"
 consumer_name = "core-1"
+
+[fees]
+commission_rate = 0.0003
+min_commission = 5.0
+stamp_duty_rate = 0.0005
+transfer_fee_rate = 0.00001
+
+[safety]
+# disabled / shadow / live。示例永远保持 disabled，真实值只写 deploy.local.toml。
+mode = "disabled"
+orders_enabled = false
+protected_account_ids = []
+local_kill_path = "var/AGENT_KILL"
+
+[alerts]
+webhook_url = ""
+timeout_seconds = 5.0
+
+[risk]
+# 首期 10 万元账户的 1 万元启用资金：单票 5%，总仓位 10%。
+enabled_capital = 10000.0
+max_account_asset = 100000.0
+max_position_weight = 0.05
+max_gross_exposure = 0.10
+max_order_value = 10000.0
+max_daily_turnover = 1.0
+max_daily_loss = 0.02
+max_price_deviation = 0.02

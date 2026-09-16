@@ -30,7 +30,9 @@ _EQUITY_SCHEMA = {
     "market_value": pl.Float64, "total_value": pl.Float64,
 }
 _FILLS_SCHEMA = {
-    "dt": pl.Date, "client_order_id": pl.Utf8, "symbol": pl.Utf8, "side": pl.Utf8,
+    "dt": pl.Date, "client_order_id": pl.Utf8,
+    "broker_order_id": pl.Utf8, "broker_trade_id": pl.Utf8,
+    "symbol": pl.Utf8, "side": pl.Utf8,
     "qty": pl.Int64, "price": pl.Float64, "fee": pl.Float64,
     "filled_at": pl.Datetime("us"),
 }
@@ -53,14 +55,27 @@ class SessionJournal:
         path = self._wh.path_for(dataset, year)
         if not path.exists():
             return pl.DataFrame(schema=pl_schema)
-        return pl.read_parquet(path)
+        frame = pl.read_parquet(path)
+        missing = [
+            pl.lit(None, dtype=dtype).alias(name)
+            for name, dtype in pl_schema.items() if name not in frame.columns
+        ]
+        return frame.with_columns(missing).select(list(pl_schema)) if missing else frame
 
     def _read_all(self, dataset: str, pl_schema: dict) -> pl.DataFrame:
         base = self._wh.root / dataset
         parts = sorted(base.glob("year=*/part.parquet"))
         if not parts:
             return pl.DataFrame(schema=pl_schema)
-        return pl.concat([pl.read_parquet(p) for p in parts], how="vertical")
+        frames = []
+        for path in parts:
+            frame = pl.read_parquet(path)
+            missing = [
+                pl.lit(None, dtype=dtype).alias(name)
+                for name, dtype in pl_schema.items() if name not in frame.columns
+            ]
+            frames.append(frame.with_columns(missing).select(list(pl_schema)))
+        return pl.concat(frames, how="vertical")
 
     def _merge(
         self, dataset: str, dt: date, fresh: pl.DataFrame, pl_schema: dict,
@@ -107,6 +122,8 @@ class SessionJournal:
             {
                 "dt": [dt] * len(fills),
                 "client_order_id": [f.order_id for f in fills],
+                "broker_order_id": [f.broker_order_id for f in fills],
+                "broker_trade_id": [f.broker_trade_id for f in fills],
                 "symbol": [str(f.symbol) for f in fills],
                 "side": [f.side.value for f in fills],
                 "qty": [f.qty for f in fills],
@@ -117,7 +134,8 @@ class SessionJournal:
             schema=_FILLS_SCHEMA,
         )
         self._merge("live_fills", dt, fresh, _FILLS_SCHEMA, schema.LIVE_FILLS,
-                    ["client_order_id"], list(_FILLS_SCHEMA))
+                    ["client_order_id", "broker_trade_id", "filled_at", "qty", "price"],
+                    list(_FILLS_SCHEMA))
 
     def fills(self, dt: date) -> pl.DataFrame:
         return self._read("live_fills", dt.year, _FILLS_SCHEMA).filter(
