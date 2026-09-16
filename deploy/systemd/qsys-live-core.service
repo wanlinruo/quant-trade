@@ -9,7 +9,7 @@ User=qsys
 WorkingDirectory=/opt/qsys
 Environment=PYTHONUNBUFFERED=1
 ExecStartPre=/opt/qsys/.venv/bin/python scripts/live_preflight.py --config config/deploy.local.toml --require-live
-ExecStart=/opt/qsys/.venv/bin/python scripts/run_live.py --config config/deploy.local.toml
+ExecStart=/opt/qsys/.venv/bin/python -m scripts.run_live --config config/deploy.local.toml
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=20
