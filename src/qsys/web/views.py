@@ -96,6 +96,19 @@ class MonitorService:
             for source in self._cfg.watch_sources
         )
 
+    def heartbeat_status(self, source: str, *, now: datetime | None = None) -> dict:
+        """Health for optional workers without adding them to global live health."""
+        if self._transport is None:
+            return {"source": source, "last_beat": None, "alive": False}
+        monitor = HeartbeatMonitor(self._transport, prefix=self._cfg.heartbeat_prefix)
+        return {
+            "source": source,
+            "last_beat": monitor.last_beat(source),
+            "alive": monitor.is_alive(
+                source, max_age_seconds=self._cfg.heartbeat_max_age, now=now
+            ),
+        }
+
     def _quality_summary(self) -> str:
         if self._quality is None:
             return ""

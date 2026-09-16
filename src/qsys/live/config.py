@@ -32,6 +32,8 @@ class StreamConfig:
     rejects: str = "evt:rejects"
     account: str = "state:account"
     heartbeat: str = "state:heartbeat"
+    quote_requests: str = "cmd:quote_requests"
+    quote_snapshots: str = "evt:quote_snapshots"
 
 
 @dataclass(frozen=True, slots=True)

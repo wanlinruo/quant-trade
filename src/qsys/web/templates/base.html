@@ -101,10 +101,11 @@ button:disabled { opacity:.55; cursor:not-allowed; }
 <body>
 <header>
   <h1>{{ title }}</h1>
-  {% if page in ('strategies', 'backtests') %}
+  {% if page in ('strategies', 'backtests', 'paper') %}
   <nav>
     <a href="/strategies" class="{{ 'active' if page == 'strategies' }}">策略</a>
     <a href="/backtests" class="{{ 'active' if page == 'backtests' }}">回测</a>
+    <a href="/paper" class="{{ 'active' if page == 'paper' }}">模拟交易</a>
     <a href="/data">数据台</a><a href="/">监控台</a>
   </nav>
   {% elif page and page.startswith('data') %}
@@ -126,10 +127,10 @@ button:disabled { opacity:.55; cursor:not-allowed; }
   <span id="status" style="margin-left:auto"></span>
   {% endif %}
 </header>
-{% if page in ('strategies', 'backtests') %}
-<div class="subnav"><a href="/strategies" class="{{ 'active' if page == 'strategies' }}">策略研究</a><a href="/backtests" class="{{ 'active' if page == 'backtests' }}">回测记录</a></div>
+{% if page in ('strategies', 'backtests', 'paper') %}
+<div class="subnav"><a href="/strategies" class="{{ 'active' if page == 'strategies' }}">策略研究</a><a href="/backtests" class="{{ 'active' if page == 'backtests' }}">回测记录</a><a href="/paper" class="{{ 'active' if page == 'paper' }}">模拟交易</a></div>
 {% endif %}
-<main class="{{ 'workbench' if page in ('strategies', 'backtests') else '' }}">{% block content %}{% endblock %}</main>
+<main class="{{ 'workbench' if page in ('strategies', 'backtests', 'paper') else '' }}">{% block content %}{% endblock %}</main>
 {% if session and not (page and page.startswith('data')) %}
 <script>
 // 零外部依赖的自动刷新：每 15 秒拉一次状态片段。

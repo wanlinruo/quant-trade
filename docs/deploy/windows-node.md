@@ -240,3 +240,15 @@ T-90d  2026-06-10      0 笔
 - [ ] 关闭 SSH 密码认证（密钥已可用）
 - [ ] 轮换部署期间在对话中出现过的账号密码
 - [ ] 内存仅 1.0 GB 可用，若后续要在此跑更多任务需扩容
+
+## 模拟交易实时行情网关
+
+模拟盘使用独立的只读 QMT 进程，不需要资金账号，也不会加载下单适配器。
+MiniQMT 和 Redis 可用后运行：
+
+```powershell
+uv run python scripts/run_market_gateway.py --config config/deploy.local.toml
+```
+
+进程只消费 `cmd:quote_requests` 并写入 `evt:quote_snapshots`，心跳键为
+`state:heartbeat:market`。不要把它替换成 `run_agent.py`；后者属于真实券商链路。

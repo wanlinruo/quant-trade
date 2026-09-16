@@ -313,6 +313,21 @@ akshare 的交易日历。
 uv run python scripts/daily_archive.py --only-auction
 ```
 
+## 模拟交易运行器
+
+Web 工作台只创建和控制账户，策略调度由独立进程负责：
+
+```bash
+uv run python scripts/run_paper.py \
+  --warehouse warehouse \
+  --workspace var/workbench \
+  --config config/deploy.local.toml
+```
+
+运行器从 Tushare `trade_cal` 校验未来交易日，从 QMT 只读行情流取价，心跳键为
+`state:heartbeat:paper`。它不构造 `LiveBroker`，也不写真实订单或控制流。生产环境
+应把该命令配置为独立 systemd 服务，并设置 `Restart=always`。
+
 ## 待办
 
 - [ ] 关闭 SSH 密码认证（`PasswordAuthentication no`）——公网 22 端口每天被扫数千次

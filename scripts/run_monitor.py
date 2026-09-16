@@ -25,6 +25,7 @@ from qsys.web.config import WebConfig
 from qsys.web.data_views import DataService
 from qsys.web.views import MonitorService
 from qsys.web.workbench import BacktestQueue, WorkbenchStore
+from qsys.paper.store import PaperStore
 
 log = structlog.get_logger("monitor")
 
@@ -53,6 +54,7 @@ def build_app(
     runs_root = runs_dir or Path("var/runs")
     workspace = workspace_dir or Path("var/workbench")
     workbench = WorkbenchStore(workspace / "workbench.sqlite3")
+    paper = PaperStore(workspace / "workbench.sqlite3")
     queue = BacktestQueue(workbench, warehouse_root, runs_root,
                           timeout_seconds=config.backtest_timeout_seconds)
     return create_app(
@@ -61,7 +63,7 @@ def build_app(
         DataService(warehouse, selection_path),
         BacktestService(runs_root),
         CatalogService(warehouse),
-        workbench, queue, Path("strategies"),
+        workbench, queue, Path("strategies"), paper,
     )
 
 

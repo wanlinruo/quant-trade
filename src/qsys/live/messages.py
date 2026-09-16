@@ -83,3 +83,47 @@ class ControlCommand(Message):
 class Heartbeat(Message):
     source: str
     at: datetime
+
+
+class QuoteRequest(Message):
+    """Core-side request for a fresh, read-only QMT market snapshot."""
+
+    request_id: str
+    symbols: list[str]
+    requested_at: datetime
+
+    @model_validator(mode="after")
+    def _check(self) -> Self:
+        if not self.request_id:
+            raise ValueError("request_id cannot be empty")
+        if not self.symbols:
+            raise ValueError("symbols cannot be empty")
+        return self
+
+
+class MarketQuote(BaseModel):
+    symbol: str
+    at: datetime
+    price: float
+    open: float
+    high: float
+    low: float
+    prev_close: float
+    volume: int = 0  # shares, cumulative for the session
+    amount: float = 0.0
+    upper_limit: float | None = None
+    lower_limit: float | None = None
+    suspended: bool = False
+
+    @model_validator(mode="after")
+    def _valid_price(self) -> Self:
+        if self.price < 0 or self.volume < 0:
+            raise ValueError("quote price and volume must be non-negative")
+        return self
+
+
+class QuoteSnapshot(Message):
+    request_id: str
+    published_at: datetime
+    quotes: dict[str, MarketQuote]
+    error: str = ""

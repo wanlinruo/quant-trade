@@ -21,6 +21,8 @@ fills = "evt:fills"         # Windows -> 核心：成交回报
 rejects = "evt:rejects"     # Windows -> 核心：拒单回报
 account = "state:account"   # Windows -> 核心：持仓资金快照
 heartbeat = "state:heartbeat"
+quote_requests = "cmd:quote_requests"   # Linux -> Windows：只读行情请求
+quote_snapshots = "evt:quote_snapshots" # Windows -> Linux：QMT 行情快照
 
 [agent]
 consumer_group = "core"

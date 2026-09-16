@@ -9,7 +9,7 @@ Web 层不持有业务逻辑——数据全部来自 MonitorService。
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
 import structlog
@@ -30,6 +30,7 @@ from qsys.web.svg import line_chart, multi_line_chart
 from qsys.web.views import MonitorService
 from qsys.web.workbench import BacktestQueue, WorkbenchStore
 from qsys.strategy.parameters import validate_parameters
+from qsys.paper.store import PaperStore
 
 log = structlog.get_logger(__name__)
 
@@ -124,6 +125,7 @@ def create_app(
     workbench: WorkbenchStore | None = None,
     queue: BacktestQueue | None = None,
     strategy_templates: Path | None = None,
+    paper: PaperStore | None = None,
 ) -> FastAPI:
     app = FastAPI(title=config.title, docs_url=None, redoc_url=None)
 
@@ -316,6 +318,97 @@ def create_app(
             },
         )
 
+    @app.get("/paper", response_class=HTMLResponse)
+    def paper_index(request: Request, status: str = ""):
+        if paper is None:
+            raise HTTPException(status_code=404, detail="paper trading not enabled")
+        valid = {"scheduled", "running", "paused", "error", "ended"}
+        selected = status if status in valid else ""
+        rows = []
+        for account in paper.accounts(status=selected):
+            rows.append({"account": account, **paper.summary(account.id)})
+        return TEMPLATES.TemplateResponse(
+            request=request, name="paper_accounts.html",
+            context={"title": config.title, "session": None, "page": "paper",
+                     "rows": rows, "selected_status": selected},
+        )
+
+    @app.get("/paper/{ident}", response_class=HTMLResponse)
+    def paper_detail(request: Request, ident: str):
+        if paper is None:
+            raise HTTPException(status_code=404, detail="paper trading not enabled")
+        account = paper.account(ident)
+        if account is None:
+            raise HTTPException(status_code=404, detail="no such paper account")
+        equity = paper.rows(ident, "equity", limit=10_000)
+        initial = account.initial_cash
+        chart_data = [{
+            "date": row["at"],
+            "strategy": row["total_value"] / initial - 1 if initial else 0,
+            "benchmark": (
+                row["benchmark_value"] / initial - 1
+                if row["benchmark_value"] is not None and initial else None
+            ),
+        } for row in equity]
+        return TEMPLATES.TemplateResponse(
+            request=request, name="paper_detail.html",
+            context={
+                "title": config.title, "session": None, "page": "paper",
+                "account": account, "summary": paper.summary(ident),
+                "positions": paper.rows(ident, "positions"),
+                "orders": paper.rows(ident, "orders"),
+                "fills": paper.rows(ident, "fills"),
+                "rejects": paper.rows(ident, "rejects"),
+                "events": paper.rows(ident, "events", limit=200),
+                "logs": paper.rows(ident, "logs", limit=200),
+                "chart_data": chart_data,
+                "market_health": service.heartbeat_status("market"),
+                "paper_health": service.heartbeat_status("paper"),
+            },
+        )
+
+    @app.post("/api/paper-accounts", status_code=201)
+    async def create_paper_account(request: Request):
+        if paper is None:
+            raise HTTPException(status_code=404, detail="paper trading not enabled")
+        body = await request.json()
+        try:
+            now = datetime.now()
+            activation = _paper_activation(now)
+            account = paper.create(
+                str(body.get("backtest_id", "")), str(body.get("name", "")),
+                float(body.get("cash", 0)), activation,
+            )
+        except LookupError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {"id": account.id, "location": f"/paper/{account.id}"}
+
+    @app.get("/api/paper-accounts/{ident}")
+    def paper_status(ident: str):
+        if paper is None:
+            raise HTTPException(status_code=404, detail="paper trading not enabled")
+        account = paper.account(ident)
+        if account is None:
+            raise HTTPException(status_code=404, detail="no such paper account")
+        return {"id": ident, "status": account.status, "error": account.error,
+                **paper.summary(ident)}
+
+    @app.post("/api/paper-accounts/{ident}/{action}")
+    def control_paper(ident: str, action: str):
+        if paper is None:
+            raise HTTPException(status_code=404, detail="paper trading not enabled")
+        if action not in ("pause", "resume", "end"):
+            raise HTTPException(status_code=404, detail="unknown paper action")
+        try:
+            account = paper.transition(ident, action)
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"id": ident, "status": account.status}
+
     @app.get("/strategies", response_class=HTMLResponse)
     def strategy_index(request: Request):
         if workbench is None:
@@ -483,6 +576,8 @@ def create_app(
                 "run_log": backtests.text(name, "run.log"),
                 "strategy_source": backtests.text(name, "strategy.py"),
                 "chart_data": backtests.chart_series(name),
+                "paper_enabled": paper is not None and job is not None
+                    and job.status == "succeeded",
             },
         )
 
@@ -561,6 +656,24 @@ def create_app(
         # 写方法。既有部署未启用工作台时，攻击面与升级前完全相同。
         app.router.routes[:] = [
             route for route in app.router.routes
-            if not getattr(route, "path", "").startswith(("/api/strategies", "/api/backtests"))
+            if not getattr(route, "path", "").startswith(
+                ("/api/strategies", "/api/backtests", "/api/paper-accounts")
+            )
+        ]
+    elif paper is None:
+        app.router.routes[:] = [
+            route for route in app.router.routes
+            if not getattr(route, "path", "").startswith("/api/paper-accounts")
         ]
     return app
+
+
+def _paper_activation(now: datetime) -> date:
+    """Earliest complete session; the runner validates it against trade_cal."""
+    day = now.date()
+    if now.weekday() < 5 and now.time() < time(9, 15):
+        return day
+    day += timedelta(days=1)
+    while day.weekday() >= 5:
+        day += timedelta(days=1)
+    return day

@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head"><div><h2>模拟交易</h2><p class="muted">使用实时行情运行回测验证过的策略，不连接真实资金账户。</p></div><a class="button secondary" href="/backtests?status=succeeded">从成功回测创建</a></div>
+<section class="panel">
+  <form class="paper-filters" method="get">
+    {% for value,label in [('', '全部'),('scheduled','待生效'),('running','运行中'),('paused','已暂停'),('error','异常'),('ended','已结束')] %}<a class="{{ 'active' if selected_status == value }}" href="/paper{% if value %}?status={{ value }}{% endif %}">{{ label }}</a>{% endfor %}
+  </form>
+  {% if rows %}<div class="table-wrap"><table class="paper-table"><thead><tr><th>账户 / 策略</th><th>状态</th><th>生效日</th><th class="num">总资产</th><th class="num">累计收益</th><th class="num">最大回撤</th><th class="num">持仓</th><th>更新时间</th></tr></thead><tbody>
+  {% for row in rows %}<tr><td><a href="/paper/{{ row.account.id }}"><strong>{{ row.account.name }}</strong></a><div class="muted">{{ row.account.strategy_name }} · <span class="mono">{{ row.account.id }}</span></div></td><td><span class="pill {{ 'ok' if row.account.status == 'running' else 'warn' if row.account.status in ('scheduled','paused') else 'bad' if row.account.status == 'error' else 'todo' }}">{{ {'scheduled':'待生效','running':'运行中','paused':'已暂停','error':'异常','ended':'已结束'}.get(row.account.status,row.account.status) }}</span></td><td>{{ row.account.activation_date }}</td><td class="num">¥{{ '{:,.2f}'.format(row.total_value) }}</td><td class="num {{ 'up' if row.return_pct > 0 else 'down' if row.return_pct < 0 }}">{{ '%+.2f'|format(row.return_pct) }}%</td><td class="num">{{ '%.2f'|format(row.max_drawdown_pct) }}%</td><td class="num">{{ row.position_count }}</td><td>{{ row.account.updated_at.replace('T',' ') }}</td></tr>{% endfor %}
+  </tbody></table></div>{% else %}<div class="empty-state">暂无模拟账户。<br>请从一条成功回测的详情页创建。</div>{% endif %}
+</section>
+<style>.paper-filters{display:flex;gap:22px;padding:0 16px;border-bottom:1px solid var(--line)}.paper-filters a{padding:14px 2px 11px;text-decoration:none;color:var(--muted);border-bottom:3px solid transparent}.paper-filters a.active{color:var(--primary);border-color:var(--primary);font-weight:600}.paper-table{min-width:980px}.paper-table td{padding-top:12px;padding-bottom:12px}.paper-table a{color:var(--fg);text-decoration:none}.paper-table a:hover{color:var(--primary)}</style>
+{% endblock %}
