@@ -277,7 +277,8 @@ Nginx 在 8443 复用 `wanlinruo.cn` 证书，反向代理到 `127.0.0.1:8420`�
 2. Linux 使用只读 deploy key 执行 `git fetch origin test`；
 3. 校验待部署 SHA 与 GitHub job 的 SHA 完全一致；
 4. 工作区必须干净，执行 `git merge --ff-only origin/test`；
-5. `uv sync --locked`；
+5. GitHub CI 执行 `uv sync --locked`；Linux 因使用腾讯云 PyPI 镜像而执行
+   `uv sync --frozen`，精确使用 CI 已验证且入库的 lock，不在节点重写 registry URL；
 6. 运行配置检查与 smoke tests；
 7. 重启 `qsys-web-test.service`；
 8. 检查 `127.0.0.1:8421/healthz`；

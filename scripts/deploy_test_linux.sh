@@ -39,7 +39,10 @@ fi
 git merge --ff-only "$target_sha"
 
 uv_bin=${QSYS_UV_BIN:-/home/ubuntu/.local/bin/uv}
-"$uv_bin" sync --locked
+# GitHub CI 已用官方 PyPI 配置执行 `uv sync --locked`。节点使用腾讯云镜像，
+# `--locked` 会仅因 registry URL 不同而要求重写整份 lock；部署端因此按 CI 已验证的
+# 现有 lock 精确安装，且禁止在节点重新解析或修改 lock。
+"$uv_bin" sync --frozen
 sudo -n systemctl restart qsys-web-test.service
 
 attempt=0
