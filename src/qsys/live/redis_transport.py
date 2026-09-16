@@ -32,6 +32,9 @@ class RedisTransport(Transport):
             ssl=cfg.redis.tls,
             decode_responses=False,
             socket_keepalive=True,
+            # The Windows bridge still runs a RESP2-only Redis-compatible
+            # server.  Redis Streams used here need RESP2, not HELLO/RESP3.
+            protocol=2,
         )
         return cls(client)
 
