@@ -67,37 +67,17 @@ _add("adj_prev_close", "daily_flags.adj_prev_close",
          pl.col("adj_prev_close").alias("actual"), pl.col("pre_close").alias("expected")))
 
 
-def _board_ratio(ctx: CheckContext) -> Callable[[str], float]:
-    """板块档位，独立于生产实现重写一遍号段判断。"""
-    instruments = ctx.query.instruments()
-    boards = dict(zip(instruments["symbol"].to_list(), instruments["board"].to_list()))
+def _nullable(expr: pl.Expr) -> pl.Expr:
+    """把 null 显式编码成可比较的值，使「一边有值、一边为 null」也算违例。
 
-    def ratio(symbol: str) -> float:
-        board = boards.get(symbol)
-        if board is None:
-            code = symbol.split(".")[0]
-            if code.startswith(("688", "689")):
-                board = "star"
-            elif code.startswith(("300", "301")):
-                board = "gem"
-            elif code[:2] in ("43", "83", "87", "92"):
-                board = "bse"
-            elif code[:2] in ("90", "20"):
-                board = "bshare"
-            else:
-                board = "main"
-        return {"main": .10, "gem": .20, "star": .20, "bse": .30, "bshare": .10}.get(board, .10)
-
-    return ratio
+    D-11 之后「没有直取值就必须是 null」本身就是要验的事实；`_compare`
+    默认丢掉含 null 的行，会把自算出来的值整个放过。
+    """
+    return pl.when(expr.is_null()).then(pl.lit("null")).otherwise(expr.cast(pl.Utf8))
 
 
 def _with_direct_limits(ctx: CheckContext) -> pl.DataFrame:
-    """daily_flags 左连当日直取涨跌停价，并带上兜底档位。
-
-    兜底档位只在**没有直取价**的历史行上才是答案——2026-07-06 起主板 ST
-    由 5% 改为 10%，「ST 一律 5%」这条规则从那天起就不再成立，所以它绝不能
-    用来判定已有直取价的那些行。
-    """
+    """daily_flags 左连当日 stk_limit 直取涨跌停价（D-11：只认直取，不留兜底档位）。"""
     frame = ctx.query.daily_flags(ctx.start, ctx.end)
     direct = ctx.query.price_limits(None, ctx.start, ctx.end).select(
         "symbol", "dt",
@@ -105,13 +85,7 @@ def _with_direct_limits(ctx: CheckContext) -> pl.DataFrame:
         pl.col("limit_up").alias("direct_up"),
         pl.col("limit_down").alias("direct_down"),
     )
-    ratio = _board_ratio(ctx)
-    return frame.join(direct, on=["symbol", "dt"], how="left").with_columns(
-        pl.when(pl.col("is_st")).then(.05)
-        .otherwise(pl.when(pl.col("is_st").is_null()).then(None).otherwise(
-            pl.col("symbol").map_elements(ratio, return_dtype=pl.Float64)
-        )).alias("fallback_pct")
-    )
+    return frame.join(direct, on=["symbol", "dt"], how="left")
 
 
 def _price_of(cents: pl.Expr, tier: pl.Expr, sign: int) -> pl.Expr:
@@ -123,7 +97,7 @@ _TIERS = (0.05, 0.10, 0.20, 0.30)
 
 
 def _limit_pct(ctx: CheckContext) -> pl.DataFrame:
-    """有直取价的行按解码取档；没有的行才用兜底档位。
+    """有直取价的行按解码取档；没有直取价的行档位必须为 null。
 
     解码独立于生产的 `_decode_tier` 重写：逐档试算再比对，命中恰好一档
     才算数，零档或多档都记 null。
@@ -138,9 +112,7 @@ def _limit_pct(ctx: CheckContext) -> pl.DataFrame:
         decoded = pl.when(cond.fill_null(False)).then(pl.lit(tier)).otherwise(decoded)
     return frame.with_columns(
         pl.col("limit_pct").alias("actual"),
-        pl.when(pl.col("direct_up").is_not_null())
-        .then(pl.when(matched == 1).then(decoded).otherwise(None))
-        .otherwise(pl.col("fallback_pct")).alias("expected"),
+        pl.when(matched == 1).then(decoded).otherwise(None).alias("expected"),
     )
 
 
@@ -148,25 +120,23 @@ _add("limit_pct", "daily_flags.limit_pct", _limit_pct)
 
 
 def _limit(column: str, sign: int) -> Callable[[CheckContext], pl.DataFrame]:
-    """涨/跌停价：有直取值就该等于直取值，没有才按兜底档位算。
+    """涨/跌停价必须等于 stk_limit 直取值；没有直取值就必须为 null。
 
-    **不拿表里的 limit_pct 来算**——它现在是从这个价格解码出来的，
-    拿它回算就成了同义反复，什么也验不出来。
+    **不拿表里的 limit_pct 来算**——它是从这个价格解码出来的，拿它回算
+    就成了同义反复，什么也验不出来。
     """
     def build(ctx: CheckContext) -> pl.DataFrame:
         frame = _with_direct_limits(ctx)
-        cents = (pl.col("adj_prev_close") * 100).round().cast(pl.Int64)
-        derived = _price_of(cents, pl.col("fallback_pct"), sign)
         direct = pl.col("direct_up" if sign > 0 else "direct_down")
-        return frame.with_columns(
-            pl.col(column).alias("actual"),
-            pl.coalesce(direct, derived).alias("expected"),
+        return frame.select(
+            _nullable(pl.col(column).round(2)).alias("actual"),
+            _nullable(direct.round(2)).alias("expected"),
         )
     return build
 
 
-_add("limit_up", "daily_flags.limit_up", _limit("limit_up", 1))
-_add("limit_down", "daily_flags.limit_down", _limit("limit_down", -1))
+_add("limit_up", "daily_flags.limit_up", _limit("limit_up", 1), boolean=True)
+_add("limit_down", "daily_flags.limit_down", _limit("limit_down", -1), boolean=True)
 _add("is_limit_up", "daily_flags.is_limit_up",
      lambda c: _flags_daily(c, ["close"]).select(
          pl.col("is_limit_up").alias("actual"),
@@ -197,58 +167,23 @@ def _first_board(ctx: CheckContext) -> pl.DataFrame:
 _add("is_first_board", "daily_flags.is_first_board", _first_board, boolean=True)
 
 
-def _names(ctx: CheckContext) -> pl.DataFrame:
-    flags = ctx.query.daily_flags(ctx.start, ctx.end).select(
-        "symbol", "dt", pl.col("is_st").alias("actual_st"),
-        pl.col("st_source").alias("actual_source"))
-    daily = ctx.query.tushare_daily(None, ctx.start, ctx.end,
-                                    columns=["symbol", "dt", "name"])
-    resolved = flags.join(daily, on=["symbol", "dt"], how="left").with_columns(
-        pl.when(pl.col("name").is_not_null()).then(pl.lit("tushare_daily"))
-        .otherwise(None).alias("expected_source"))
-    for other, label in ((ctx.query.paid_daily(None, ctx.start, ctx.end,
-                                                columns=["symbol", "dt", "name"]), "paid_daily"),
-                         (ctx.query.name_snapshots(None, ctx.start, ctx.end), "name_snapshot")):
-        resolved = resolved.join(other.select("symbol", "dt", pl.col("name").alias("_name")),
-                                 on=["symbol", "dt"], how="left").with_columns(
-            pl.when(pl.col("name").is_null() & pl.col("_name").is_not_null()).then(pl.lit(label))
-            .otherwise(pl.col("expected_source")).alias("expected_source"),
-            pl.coalesce("name", "_name").alias("name")).drop("_name")
-    history = ctx.query.name_history().filter(pl.col("start_date").is_not_null()).select(
-        "symbol", pl.col("name").alias("_hist"), "start_date", "end_date").sort(["symbol", "start_date"])
-    if history.height:
-        resolved = resolved.sort(["symbol", "dt"]).join_asof(
-            history, left_on="dt", right_on="start_date", by="symbol", strategy="backward")
-        in_range = pl.col("_hist").is_not_null() & (pl.col("end_date").is_null() | (pl.col("dt") <= pl.col("end_date")))
-        resolved = resolved.with_columns(
-            pl.when(pl.col("name").is_null() & in_range).then(pl.lit("namechange"))
-            .otherwise(pl.col("expected_source")).alias("expected_source"),
-            pl.when(pl.col("name").is_null() & in_range).then(pl.col("_hist"))
-            .otherwise(pl.col("name")).alias("name"))
-    return resolved.with_columns(
-        pl.when(pl.col("name").is_null()).then(None)
-        .otherwise(pl.col("name").str.contains("ST")).alias("expected_st"))
-
-
 def _direct_st(ctx: CheckContext) -> pl.DataFrame:
-    """ST 取 stock_st 直取名单。
-
-    名称链路（`_names`）只在 stock_st 尚未回填的历史窗口上才是答案，
-    生产区间已全量回填，st_source 全窗口为 "stock_st"。
-    """
+    """ST 只认 stock_st（D-11）：有直取行就必须一致，没有就必须为 null。"""
     flags = ctx.query.daily_flags(ctx.start, ctx.end).select(
         "symbol", "dt", pl.col("is_st").alias("actual"),
         pl.col("st_source").alias("actual_source"))
     truth = ctx.query.stock_st(None, ctx.start, ctx.end).select(
         "symbol", "dt", pl.col("is_st").alias("expected"))
-    return flags.join(truth, on=["symbol", "dt"], how="inner")
+    return flags.join(truth, on=["symbol", "dt"], how="left")
 
 
-_add("is_st", "daily_flags.is_st", lambda c: _direct_st(c).select("actual", "expected"),
-     boolean=True)
+_add("is_st", "daily_flags.is_st", lambda c: _direct_st(c).select(
+    _nullable(pl.col("actual")).alias("actual"),
+    _nullable(pl.col("expected")).alias("expected")), boolean=True)
 _add("st_source", "daily_flags.st_source", lambda c: _direct_st(c).select(
-    pl.col("actual_source").alias("actual"),
-    pl.lit("stock_st").alias("expected")), boolean=True)
+    _nullable(pl.col("actual_source")).alias("actual"),
+    _nullable(pl.when(pl.col("expected").is_not_null()).then(pl.lit("stock_st")))
+    .alias("expected")), boolean=True)
 
 
 def _valuation(ctx: CheckContext, column: str) -> pl.DataFrame:

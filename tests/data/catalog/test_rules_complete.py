@@ -71,3 +71,63 @@ def test_all_six_rules_are_registered_as_completeness():
     ids = {cid for cid in C.CHECKS if cid.startswith("B")}
     assert ids == {"B1.calendar", "B2.holes", "B3.null_rate", "B4.arrival", "B4.zero_limit_up", "B5.span"}
     assert all(C.CHECKS[cid].category is C.Category.COMPLETENESS for cid in ids)
+
+
+# --- D-7：竞价 tick 到货 ------------------------------------------------------
+
+BOARD = "600036.SH"
+
+
+def _auction(warehouse, symbol, day):
+    frame = pl.DataFrame({
+        "symbol": [symbol], "dt": [day], "ts": [datetime(day.year, day.month, day.day, 9, 15, 3)],
+        "bid1": [41.07], "ask1": [41.07], "bid_vol1": [100], "ask_vol1": [100],
+        "last_price": [0.0], "volume": [0], "amount": [0.0],
+    })
+    warehouse.write("auction_ticks", frame.to_arrow().cast(schema.AUCTION_TICKS), year=day.year)
+
+
+def _board_then_next_session(warehouse):
+    """D[0] 首板，D[1] 是它的次日——竞价 tick 应在 D[1] 到货。"""
+    _flags([{"dt": D[0], "symbol": BOARD, "is_first_board": True},
+            {"dt": D[1], "symbol": BOARD, "is_first_board": False}], warehouse)
+
+
+def _arrival_misses(row, warehouse):
+    if row["sample_path"] is None:
+        return pl.DataFrame()
+    return pl.read_parquet(row["sample_path"]).filter(pl.col("dataset") == "auction_ticks")
+
+
+def test_arrival_reports_first_board_without_next_day_auction(ctx, warehouse):
+    _board_then_next_session(warehouse)
+    row = _run("B4.arrival", ctx)
+    assert row["passed"] is False
+    missed = _arrival_misses(row, warehouse)
+    assert missed.select("symbol", "dt").rows() == [(BOARD, D[1])]
+
+
+def test_arrival_passes_when_auction_arrived(ctx, warehouse):
+    _board_then_next_session(warehouse)
+    _auction(warehouse, BOARD, D[1])
+    row = _run("B4.arrival", ctx)
+    assert row["passed"] is True
+    assert row["checked_rows"] > 0
+
+
+def test_arrival_does_not_expect_auction_for_suspended_candidate(ctx, warehouse):
+    _board_then_next_session(warehouse)
+    suspended = pl.DataFrame({"symbol": [BOARD], "dt": [D[1]], "suspend_type": ["S"],
+                              "suspend_timing": [None]}, schema_overrides={"suspend_timing": pl.Utf8})
+    warehouse.write("suspend_daily", suspended.to_arrow().cast(schema.SUSPEND_DAILY), year=2026)
+    assert _run("B4.arrival", ctx)["passed"] is True
+
+
+def test_arrival_waits_for_todays_auction_archive(warehouse, monkeypatch):
+    today = D[1]
+    current = C.CheckContext(WarehouseQuery(warehouse), warehouse, today, today)
+    _board_then_next_session(warehouse)
+    monkeypatch.setattr(rules_complete, "_now", lambda: datetime(2026, 9, 11, 15, 59))
+    assert _arrival_misses(_run("B4.arrival", current), warehouse).height == 0
+    monkeypatch.setattr(rules_complete, "_now", lambda: datetime(2026, 9, 11, 16, 0))
+    assert _arrival_misses(_run("B4.arrival", current), warehouse).height == 1

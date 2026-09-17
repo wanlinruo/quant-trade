@@ -22,18 +22,10 @@ def test_nothing_here_claims_to_be_direct():
         assert isinstance(metric.lineage, Computed), metric.id
 
 
-def test_limit_up_prefers_the_direct_price_over_a_band_derivation():
-    """涨停价优先直取交易所公布值；自算只是未回填历史的兜底。
-
-    依赖方向与 2026-09-15 之前相反：那时 limit_up 由 limit_pct 算出，
-    现在 limit_pct 由 limit_up 解码而来。自算兜底仍按除权参考价，
-    不是按普通的上一根收盘。
-    """
+def test_limit_up_is_only_the_direct_price():
+    """D-11：涨停价只认 stk_limit，不再有按档位自算的上游。"""
     metric = BY_ID["daily_flags.limit_up"]
-    assert "price_limits_daily.limit_up" in metric.lineage.upstream
-    assert "daily_flags.adj_prev_close" in metric.lineage.upstream
-    assert "daily_flags.limit_pct" not in metric.lineage.upstream
-    assert "daily_flags.prev_close" not in metric.lineage.upstream
+    assert metric.lineage.upstream == ("price_limits_daily.limit_up",)
 
 
 def test_limit_pct_is_decoded_from_the_price_not_from_st_status():
@@ -54,16 +46,10 @@ def test_first_observation_is_treated_as_not_limit_up_yesterday():
     assert "False" in BY_ID["daily_flags.is_first_board"].lineage.formula
 
 
-def test_is_st_traces_back_to_all_four_name_sources():
-    up = set(BY_ID["daily_flags.is_st"].lineage.upstream)
-    assert {
-        "tushare_daily.name",
-        "paid_daily.name",
-        "name_snapshots.name",
-        "name_history.name",
-    } <= up
-
-
+def test_is_st_traces_back_only_to_stock_st():
+    """D-11：ST 只认 stock_st，名称源不再是 ST 的上游。"""
+    assert BY_ID["daily_flags.is_st"].lineage.upstream == ("stock_st_daily.is_st",)
+    assert BY_ID["daily_flags.st_source"].lineage.upstream == ("stock_st_daily.is_st",)
 def test_st_source_records_which_level_won():
     assert "来源" in BY_ID["daily_flags.st_source"].meaning
 

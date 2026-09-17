@@ -80,18 +80,6 @@ FILL_EXEMPTIONS: dict[tuple[str, str], str] = {
     ): "该上游的公司行动空分项语义是本次事件该项为零，函数只用于事件分项",
     (
         "src/qsys/data/pipeline/flags.py",
-        'is_up = (pl.col("close") >= pl.col("limit_up")).fill_null(False)',
-    ): "涨停价不可得时不宣称涨停；布尔事件列的否定值是保守真值",
-    (
-        "src/qsys/data/pipeline/flags.py",
-        'is_down = (pl.col("close") <= pl.col("limit_down")).fill_null(False)',
-    ): "跌停价不可得时不宣称跌停；布尔事件列的否定值是保守真值",
-    (
-        "src/qsys/data/pipeline/flags.py",
-        'touched = (pl.col("high") >= pl.col("limit_up")).fill_null(False)',
-    ): "涨停价不可得时不宣称触板；布尔事件列的否定值是保守真值",
-    (
-        "src/qsys/data/pipeline/flags.py",
         '(cond.fill_null(False).cast(pl.Int32) for _, cond in hits),',
     ): "档位解码中 null 表示该候选档位未命中；按 False 计数是布尔判定本义",
     (
@@ -112,8 +100,8 @@ FILL_EXEMPTIONS: dict[tuple[str, str], str] = {
     ): "stock_st 只返回正例；与完整日线左连未命中按接口定义就是非 ST",
     (
         "src/qsys/strategy/structural/universe.py",
-        'yesterday = yesterday.filter(~pl.col("is_st").fill_null(True))',
-    ): "候选池对未知 ST 状态保守排除；null 按高风险处理只会少选不会误放行",
+        'broken = (broken.filter(~pl.col("is_st").fill_null(True))',
+    ): "炸板池对未知 ST 状态保守排除（D-11 ST 炸板不进池）；只会少选不会误放行",
     (
         "src/qsys/data/pipeline/paid_minute.py",
         'reason_counts[row["reason"]] = reason_counts.get(row["reason"], 0) + row["len"]',

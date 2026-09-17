@@ -8,34 +8,17 @@ import pytest
 
 from qsys.core.constraints import PriceLimitConstraint
 from qsys.data import schema
-from qsys.data.pipeline.flags import build_daily_flags, limit_prices
+from qsys.data.pipeline.flags import build_daily_flags
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
 
 D = [date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4), date(2024, 1, 5)]
 
 
-def test_main_board_limits_are_ten_percent():
-    up, down = limit_prices(10.00, "main")
-    assert (up, down) == (11.00, 9.00)
-
-
-def test_gem_limits_are_twenty_percent():
-    assert limit_prices(10.00, "gem") == (12.00, 8.00)
-
-
-def test_limits_are_rounded_to_cents():
-    up, down = limit_prices(9.99, "main")
-    assert (up, down) == (10.99, 8.99)
-
-
-def test_unknown_board_falls_back_to_main():
-    assert limit_prices(10.00, "unknown") == (11.00, 9.00)
-
-
-def test_half_cent_rounds_up():
-    """1.65 × 0.9 = 1.485，四舍五入是 1.49，不是 1.48。"""
-    assert limit_prices(1.65, "main")[1] == 1.49
+@pytest.fixture(autouse=True)
+def _direct_truth(write_direct_truth):
+    global _WRITE_TRUTH
+    _WRITE_TRUTH = write_direct_truth
 
 
 def seed(warehouse: Warehouse, write_daily_bars, rows, boards=None) -> None:
@@ -65,8 +48,12 @@ def seed(warehouse: Warehouse, write_daily_bars, rows, boards=None) -> None:
         "volume": [1000.0] * len(rows),
         "amount": [0.0] * len(rows),
     }))
-    uniq = sorted({r[0] for r in rows})
     boards = boards or {}
+    _WRITE_TRUTH(warehouse, pl.DataFrame({
+        "symbol": [r[0] for r in rows], "dt": [r[1] for r in rows], "pre_close": pre_closes,
+    }, schema_overrides={"pre_close": pl.Float64}),
+        tiers={s: 0.20 for s, b in boards.items() if b == "gem"})
+    uniq = sorted({r[0] for r in rows})
     warehouse.write(
         "instruments",
         pa.table(
@@ -133,13 +120,26 @@ def test_first_board_requires_no_limit_up_the_day_before(warehouse, write_daily_
     seed(warehouse, write_daily_bars,
         [
             ("600036.SH", D[0], 10.0, 10.0, 10.0, 10.0),
-            ("600036.SH", D[1], 11.0, 11.0, 11.0, 11.0),
-            ("600036.SH", D[2], 12.1, 12.1, 12.1, 12.1),
+            ("600036.SH", D[1], 10.0, 10.0, 10.0, 10.0),
+            ("600036.SH", D[2], 11.0, 11.0, 11.0, 11.0),
+            ("600036.SH", D[3], 12.1, 12.1, 12.1, 12.1),
         ],
     )
-    build_daily_flags(warehouse, D[0], D[2])
-    assert flags_of(warehouse, "600036.SH", D[1])["is_first_board"] is True
-    assert flags_of(warehouse, "600036.SH", D[2])["is_first_board"] is False
+    build_daily_flags(warehouse, D[0], D[3])
+    assert flags_of(warehouse, "600036.SH", D[2])["is_first_board"] is True
+    assert flags_of(warehouse, "600036.SH", D[3])["is_first_board"] is False
+
+
+def test_first_board_is_unknown_when_the_previous_day_is_unknown(warehouse, write_daily_bars):
+    """前一天没有直取涨停价，就不知道它涨没涨停，今天是不是首板也不知道。"""
+    seed(warehouse, write_daily_bars, [
+        ("600036.SH", D[0], 10.0, 10.0, 10.0, 10.0),
+        ("600036.SH", D[1], 11.0, 11.0, 11.0, 11.0),
+    ])
+    build_daily_flags(warehouse, D[0], D[1])
+    row = flags_of(warehouse, "600036.SH", D[1])
+    assert row["is_limit_up"] is True
+    assert row["is_first_board"] is None
 
 
 def test_first_bar_has_no_prev_close_and_no_flags(warehouse, write_daily_bars):
@@ -147,7 +147,9 @@ def test_first_bar_has_no_prev_close_and_no_flags(warehouse, write_daily_bars):
     build_daily_flags(warehouse, D[0], D[0])
     row = flags_of(warehouse, "600036.SH", D[0])
     assert row["prev_close"] is None
-    assert row["is_limit_up"] is False
+    # 没有直取涨停价：不知道是不是涨停，记 null 而不是 False
+    assert row["limit_up"] is None
+    assert row["is_limit_up"] is None
 
 
 def test_flags_are_computed_per_symbol(warehouse, write_daily_bars):
@@ -179,10 +181,11 @@ def test_board_determines_the_limit(warehouse, write_daily_bars):
     assert row["is_limit_up"] is False
 
 
-def test_vectorized_limits_match_the_scalar_helper(warehouse, write_daily_bars):
-    """整表算的涨跌停价必须与逐笔约束用的那个函数完全一致。
+def test_tier_decoding_matches_the_scalar_helper(warehouse, write_daily_bars):
+    """`_limit_expr` 的整数分运算必须与撮合用的 Decimal 函数逐分一致。
 
-    两者若分头演化，回测撮合与候选池筛选就会对同一天给出不同答案。
+    解码档位就靠它把直取涨停价还原回去；两者若分头演化，limit_pct 会在
+    某些价位上解不出或解错。
     """
     prices = [round(1.0 + i * 0.05, 2) for i in range(60)]
     seeds = []
@@ -196,6 +199,23 @@ def test_vectorized_limits_match_the_scalar_helper(warehouse, write_daily_bars):
     for row in df.iter_rows(named=True):
         expected = PriceLimitConstraint.limit_prices(row["prev_close"], 0.10)
         assert (row["limit_up"], row["limit_down"]) == expected, row["symbol"]
+        assert row["limit_pct"] == pytest.approx(0.10), row["symbol"]
+
+
+def test_missing_direct_limit_price_leaves_every_limit_flag_null(warehouse, write_daily_bars):
+    """D-11：没有 stk_limit 就不自算涨停价，涨停/炸板/首板一律不知道。"""
+    seed(warehouse, write_daily_bars, [
+        ("600036.SH", D[0], 10.0, 10.0, 10.0, 10.0),
+        ("600036.SH", D[1], 11.0, 11.0, 11.0, 11.0),
+    ])
+    warehouse.write("price_limits_daily", schema.PRICE_LIMITS_DAILY.empty_table(), year=2024)
+    build_daily_flags(warehouse, D[0], D[1])
+    row = flags_of(warehouse, "600036.SH", D[1])
+    assert row["limit_up"] is None and row["limit_down"] is None and row["limit_pct"] is None
+    assert row["is_limit_up"] is None
+    assert row["touched_limit_up"] is None
+    assert row["is_broken_board"] is None
+    assert row["is_first_board"] is None
 
 
 def test_rebuild_is_idempotent(warehouse, write_daily_bars):

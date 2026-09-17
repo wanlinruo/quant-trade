@@ -8,6 +8,7 @@ import pytest
 
 from qsys.data import schema
 from qsys.data.coverage import coverage
+from direct_truth import write_direct_truth
 from qsys.data.pipeline.flags import build_daily_flags
 from qsys.data.pipeline.regime import build_market_regime
 from qsys.data.pipeline.universe import ingest_universe
@@ -102,11 +103,13 @@ def rig(warehouse, write_daily_bars):
     # 镜像时补上 pre_close（同股前一行 close）与 name：这两列现在是
     # flags.py 派生涨跌停/ST 的直接输入，legacy_daily_bars 没有它们，
     # 不补的话 is_st 恒为 null、涨跌停价也恒为 null。
+    # 首行没有前一行，参考价给它自己的收盘（平盘），好让它也有直取涨停价。
     bars = bars.sort(["symbol", "dt"]).with_columns(
-        pl.col("close").shift(1).over("symbol").alias("pre_close"),
+        pl.coalesce(pl.col("close").shift(1).over("symbol"), pl.col("close")).alias("pre_close"),
         pl.lit("x").alias("name"),
     )
     write_daily_bars(warehouse, bars)
+    write_direct_truth(warehouse, bars)
     build_daily_flags(warehouse, SESSIONS[0], SESSIONS[-1])
     build_market_regime(warehouse, SESSIONS[0], SESSIONS[-1])
     return warehouse, symbols

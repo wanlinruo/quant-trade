@@ -14,6 +14,7 @@ import pytest
 from qsys.data import schema
 from qsys.data.minute_feed import MinuteFeed
 from qsys.data.pipeline.candidates import candidate_stock_days, write_manifest
+from direct_truth import write_direct_truth
 from qsys.data.pipeline.flags import build_daily_flags
 from qsys.data.pipeline.minutes import import_minute_bars
 from qsys.data.quality.minute_rules import check_minute_bars
@@ -34,7 +35,7 @@ def seed_daily_and_flags(warehouse: Warehouse, write_daily_bars) -> None:
     # pre_close 取前一行 close：非除权日付费源的 pre_close 恒等于前收。
     # name 给个不含 "ST" 的名字——is_st 现在直取自它，缺了这一列
     # is_st/limit_up 都会是 null。
-    pre_closes = [None] + [r[4] for r in rows[:-1]]
+    pre_closes = [rows[0][4]] + [r[4] for r in rows[:-1]]
     write_daily_bars(warehouse, pl.DataFrame({
         "symbol": [SYMBOL] * 3,
         "dt": [r[0] for r in rows],
@@ -62,6 +63,9 @@ def seed_daily_and_flags(warehouse: Warehouse, write_daily_bars) -> None:
             schema=schema.INSTRUMENTS,
         ),
     )
+    write_direct_truth(warehouse, pl.DataFrame({
+        "symbol": [SYMBOL] * 3, "dt": [r[0] for r in rows], "pre_close": pre_closes,
+    }))
     build_daily_flags(warehouse, D[0], D[2])
 
 

@@ -38,3 +38,12 @@ def write_daily_bars():
             pq.write_table(chunk, path)
 
     return write
+
+
+
+@pytest.fixture
+def write_direct_truth():
+    """给测试日线补上 Tushare 直取的 `stk_limit` 与 `stock_st` 行（见 tests/direct_truth.py）。"""
+    from direct_truth import write_direct_truth as write
+
+    return write

@@ -68,13 +68,22 @@ def run(cmd: list[str], *, what: str, timeout: int = 3600) -> str:
     return result.stdout
 
 
-def _archive_auction(args, warehouse, wanted, ssh, key, stamp) -> None:
-    """竞价 tick 归档。失败**不中断**整个归档——日线与分钟线更要紧。"""
+def _exit_code(rc: int, *, auction_ok: bool) -> int:
+    """竞价失败时不中断后续步骤，但最终必须让 systemd 看到失败（D-7）。"""
+    return rc or (0 if auction_ok else 1)
+
+
+def _archive_auction(args, warehouse, wanted, ssh, key, stamp) -> bool:
+    """竞价 tick 归档，返回是否成功。
+
+    失败**不中断**整个归档——分钟线照做；但结果要带回 main 决定退出码。
+    QMT 只留约 20 个交易日，吞掉失败等于让数据悄悄过期。
+    """
     missing = missing_auction_days(warehouse, wanted)
     print(f"竞价 tick：候选 {wanted.height} 组，其中缺 {missing.height} 组")
     if missing.height == 0:
         print("竞价 tick 已齐")
-        return
+        return True
 
     local = Path("var/auction-incoming")
     local.mkdir(parents=True, exist_ok=True)
@@ -99,14 +108,18 @@ def _archive_auction(args, warehouse, wanted, ssh, key, stamp) -> None:
             what="回传竞价 parquet")
     except Exception as exc:
         log.error("archive.auction_failed", error=str(exc))
-        print(f"  [竞价 tick 失败] {exc}——继续做分钟线")
-        return
+        print(f"  [竞价 tick 失败] {exc}——继续做分钟线，最终以失败退出")
+        return False
 
     result = import_auction_ticks(
         warehouse, local, archive_dir=Path("var/auction-done")
     )
     print(f"竞价 tick 导入 {result.files} 文件 / {result.rows:,} 笔 / "
           f"{result.errors} 错误")
+    if result.errors:
+        log.error("archive.auction_import_errors", errors=result.errors)
+        return False
+    return True
 
 
 def main() -> int:
@@ -167,8 +180,9 @@ def main() -> int:
     ssh = ["ssh", "-i", key, "-o", "BatchMode=yes", "-o", "ConnectTimeout=20",
            args.win_host]
     stamp = complete_through.strftime("%Y%m%d")
+    auction_ok = True
     if not args.skip_auction:
-        _archive_auction(
+        auction_ok = _archive_auction(
             args, warehouse,
             candidate_stock_days(warehouse, start, complete_through,
                                  sessions=sessions),
@@ -176,7 +190,7 @@ def main() -> int:
         )
     if args.only_auction:
         print(f"=== 只做竞价 tick，完成，耗时 {(time.time()-started)/60:.1f} 分钟 ===")
-        return 0
+        return _exit_code(0, auction_ok=auction_ok)
 
     # --- 3b. 股本与估值 ---
     if not args.skip_capital:
@@ -210,7 +224,7 @@ def main() -> int:
     if args.skip_minutes:
         print("按要求跳过分钟线")
         print(f"=== 完成，耗时 {(time.time()-started)/60:.1f} 分钟 ===")
-        return 0
+        return _exit_code(0, auction_ok=auction_ok)
 
     # --- 5. 算出还缺哪些股-日的分钟线 ---
     missing = missing_stock_days(warehouse, wanted)
@@ -221,7 +235,7 @@ def main() -> int:
         # 收盘后那次同步的结果——候选为空是正常的「已齐」，不是算不出来。
         print("分钟线已齐，无需下载")
         print(f"=== 完成，耗时 {(time.time()-started)/60:.1f} 分钟 ===")
-        return 0
+        return _exit_code(0, auction_ok=auction_ok)
 
     local_dir = Path("var/minutes-incoming")
     local_dir.mkdir(parents=True, exist_ok=True)
@@ -272,7 +286,7 @@ def main() -> int:
     print(f"=== 完成，耗时 {(time.time()-started)/60:.1f} 分钟 ===")
     log.info("archive.done", days=len(days), rows=result.rows, issues=issues,
              minutes=round((time.time()-started)/60, 1))
-    return 1 if issues else 0
+    return _exit_code(1 if issues else 0, auction_ok=auction_ok)
 
 
 if __name__ == "__main__":

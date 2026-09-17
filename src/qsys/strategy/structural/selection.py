@@ -89,6 +89,7 @@ class StructuralSelection:
             self._listing_dates(),
             day=day,
             previous=previous,
+            delisting=self._query.delisting_symbols(day, announced_by=previous),
         )
         suspended = market.suspended_symbols(pool.first_boards, day)
         if suspended:

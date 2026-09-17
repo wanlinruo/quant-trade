@@ -32,13 +32,6 @@ def _m(
     )
 
 
-_NAME_SOURCES = (
-    "tushare_daily.name",
-    "paid_daily.name",
-    "name_snapshots.name",
-    "name_history.name",
-)
-
 METRICS: tuple[Metric, ...] = (
     _m(
         "daily_flags.dt",
@@ -72,48 +65,40 @@ METRICS: tuple[Metric, ...] = (
     ),
     _m(
         "daily_flags.limit_up",
-        "涨停价（元）。**优先直取 stk_limit 的交易所公布值**；未回填的历史行"
-        "才按兜底档位自算并四舍五入到分。自算那条路已知会错：兜底档位来自"
-        "「ST 一律 5%」，而创业板/科创板 ST 实为 20%、2026-07-06 起主板 ST "
-        "实为 10%",
-        ("price_limits_daily.limit_up", "daily_flags.adj_prev_close",
-         "daily_flags.is_st", "instruments.board"),
-        "coalesce(price_limits_daily.limit_up, 自算)；自算 = "
-        "cents=round(adj_prev_close*100)，"
-        "round(((cents*round((1+兜底档位)*1000)+500)//1000)/100, 2)",
+        "涨停价（元），**只认 stk_limit 的交易所公布值**（D-11）。没有直取行"
+        "就是 null，不按板块档位或 ST 档位自算",
+        ("price_limits_daily.limit_up",),
+        "price_limits_daily.limit_up 按 (symbol, dt) 左连透传；缺行为 null",
         ("A2.recompute.limit_up", "A3.limit_price_vs_selfcalc",
          "A3.limit_pct_reproduces_price"),
     ),
     _m(
         "daily_flags.limit_down",
-        "跌停价（元）。与 limit_up 同源同法：优先直取，未回填才自算",
-        ("price_limits_daily.limit_down", "daily_flags.adj_prev_close",
-         "daily_flags.is_st", "instruments.board"),
-        "coalesce(price_limits_daily.limit_down, 自算)；自算 = "
-        "cents=round(adj_prev_close*100)，"
-        "round(((cents*round((1-兜底档位)*1000)+500)//1000)/100, 2)",
+        "跌停价（元）。与 limit_up 同源同法：只认 stk_limit 直取值，缺行为 null",
+        ("price_limits_daily.limit_down",),
+        "price_limits_daily.limit_down 按 (symbol, dt) 左连透传；缺行为 null",
         ("A2.recompute.limit_down", "A3.limit_price_vs_selfcalc",
          "A3.limit_pct_reproduces_price"),
     ),
     _m(
         "daily_flags.is_limit_up",
-        "收盘封住涨停；比较所需值缺失时生产实现记 False",
+        "收盘封住涨停；涨跌停价缺失时为 null（不知道就不宣称是或否）",
         ("tushare_daily.close", "daily_flags.limit_up"),
-        "(close >= limit_up).fill_null(False)",
+        "close >= limit_up；任一侧为 null 则 null",
         ("A2.recompute.is_limit_up", "A3.limit_list_vs_selfcalc"),
     ),
     _m(
         "daily_flags.is_limit_down",
-        "收盘封住跌停；比较所需值缺失时生产实现记 False",
+        "收盘封住跌停；涨跌停价缺失时为 null（不知道就不宣称是或否）",
         ("tushare_daily.close", "daily_flags.limit_down"),
-        "(close <= limit_down).fill_null(False)",
+        "close <= limit_down；任一侧为 null 则 null",
         ("A2.recompute.is_limit_down",),
     ),
     _m(
         "daily_flags.touched_limit_up",
-        "盘中触及涨停（含封住）；比较所需值缺失时生产实现记 False",
+        "盘中触及涨停（含封住）；涨跌停价缺失时为 null（不知道就不宣称是或否）",
         ("tushare_daily.high", "daily_flags.limit_up"),
-        "(high >= limit_up).fill_null(False)",
+        "high >= limit_up；任一侧为 null 则 null",
         ("A2.recompute.touched_limit_up",),
     ),
     _m(
@@ -128,7 +113,7 @@ METRICS: tuple[Metric, ...] = (
         "首板：今日涨停且昨日未涨停",
         ("daily_flags.is_limit_up",),
         "is_limit_up(t) and not is_limit_up(昨日)；"
-        "每只标的没有昨日观测时 shift(fill_value=False)",
+        "窗口内首根没有昨日观测时 shift(fill_value=False)；昨日为 null 则为 null",
         ("A2.recompute.is_first_board", "A3.limit_list_vs_selfcalc"),
     ),
     _m(
@@ -138,34 +123,27 @@ METRICS: tuple[Metric, ...] = (
         "初期无涨跌幅限制时 stk_limit 返回 up_limit=1,000,000，实测 2,283 行）。"
         "**不能用它判 ST**：2026-07-06 起主板 ST 与普通股同为 0.10，"
         "创业板/科创板 ST 一直是 0.20（D-13/D-14）",
-        ("daily_flags.limit_up", "daily_flags.adj_prev_close",
-         "daily_flags.is_st", "instruments.board"),
-        "有直取价：逐档试 {0.05,0.10,0.20,0.30}，取能精确还原 limit_up 的"
-        "那一档，命中零档或多档记 null；无直取价：沿用自算时所用的兜底档位"
-        "（is_st=True ? 0.05；is_st=null ? null；否则按板块取）",
+        ("daily_flags.limit_up", "daily_flags.adj_prev_close"),
+        "逐档试 {0.05,0.10,0.20,0.30}，取能精确还原 limit_up 的那一档，"
+        "命中零档或多档记 null；limit_up 为 null 则 null",
         ("A2.recompute.limit_pct", "A3.limit_pct_reproduces_price"),
         ("D-13",),
     ),
     _m(
         "daily_flags.is_st",
-        "ST 真值，**直取 stock_st_daily**。2026-09-15 起生产区间全量回填，"
-        "st_source 全窗口为 stock_st。仅当整窗口 ST 键覆盖不完整时才退回"
-        "名称链路——部分覆盖绝不与旧源逐行拼接",
-        ("stock_st_daily.is_st",) + _NAME_SOURCES,
-        "整窗口 stock_st 覆盖完整则 is_st = stock_st_daily.is_st；否则退回"
-        "name=coalesce(tushare_daily.name, paid_daily.name[精确日], "
-        "name_snapshots.name[精确日], name_history.name[区间覆盖])，"
-        "name 为 null 则 null，否则 name.contains('ST')",
+        "ST 真值，**只认 stock_st_daily**（D-11，用户 2026-09-17 定）。"
+        "缺行为 null，不从名称推断、不默认为非 ST",
+        ("stock_st_daily.is_st",),
+        "stock_st_daily.is_st 按 (symbol, dt) 左连透传；缺行为 null",
         ("A2.recompute.is_st", "B3.null_rate"),
-        ("D-10", "D-15"),
+        ("D-15",),
     ),
     _m(
         "daily_flags.st_source",
-        "该行 ST 真值的来源。直取路径恒为 \"stock_st\"；迁移期的名称链路"
-        "记下实际命中的那一级，名称全缺则 null",
-        ("stock_st_daily.is_st",) + _NAME_SOURCES,
-        "直取路径写字面量 \"stock_st\"；名称路径依四级优先级记录首个非 null "
-        "候选的来源标签，全部缺失则 null",
+        "该行 ST 真值的来源：有 stock_st 行为 \"stock_st\"，否则 null。"
+        "覆盖率可直接从本列查出",
+        ("stock_st_daily.is_st",),
+        "stock_st_daily 有该行则字面量 \"stock_st\"，否则 null",
         ("A2.recompute.st_source",),
     ),
     _m(

@@ -11,7 +11,6 @@ from qsys.data.pipeline.tushare_reference import (
     ingest_price_limits,
     ingest_suspensions,
     ingest_stock_st,
-    st_on,
 )
 from qsys.data.query import WarehouseQuery
 
@@ -123,15 +122,19 @@ def test_stock_st_materializes_true_and_false_for_the_whole_daily_universe(
     assert got["name"].to_list() == [None, "*ST浦发"]
 
 
-def test_empty_stock_st_response_is_explicit_false_not_missing(
+def test_empty_stock_st_response_refuses_to_mark_the_market_non_st(
     warehouse, write_daily_bars
 ):
+    """D-11：空正例名单不等于全市场非 ST。拒写，而不是写一整天的 False。"""
+    import pytest
+
     write_daily_bars(warehouse, pl.DataFrame({
         "symbol": ["000001.SZ"], "dt": [DAY], "open": [10.0], "high": [10.0],
         "low": [10.0], "close": [10.0], "volume": [1.0], "amount": [1.0],
     }))
-    assert ingest_stock_st(FakeProvider(), warehouse, [DAY]) == 1
-    assert WarehouseQuery(warehouse).stock_st(None, DAY, DAY)["is_st"].to_list() == [False]
+    with pytest.raises(RuntimeError, match="stock_st"):
+        ingest_stock_st(FakeProvider(), warehouse, [DAY])
+    assert WarehouseQuery(warehouse).stock_st(None, DAY, DAY).height == 0
 
 
 def test_empty_suspension_rerun_removes_a_stale_row(warehouse):
@@ -203,24 +206,13 @@ def _name_history_raw():
     })
 
 
-def test_name_history_and_st_interval_semantics(warehouse):
+def test_name_history_keeps_the_announced_intervals(warehouse):
     assert ingest_name_history(FakeProvider(namechange=_name_history_raw()), warehouse) == 2
     history = WarehouseQuery(warehouse).name_history(["000010.SZ"])
-    before = st_on(history, date(2026, 4, 29))
-    after = st_on(history, date(2026, 4, 30))
-    assert before.select("is_st", "name").row(0) == (False, "美丽生态")
-    assert after.select("is_st", "name").row(0) == (True, "*ST美丽")
-    assert st_on(history, date(2019, 1, 1)).height == 0
-
-
-def test_st_detection_is_prefix_only():
-    history = pl.DataFrame({
-        "symbol": ["000078.SZ", "000079.SZ"],
-        "name": ["ST海王", "BEST公司"],
-        "start_date": [DAY, DAY], "end_date": [None, None],
-        "ann_date": [DAY, DAY], "change_reason": ["ST", "更名"],
-    })
-    assert st_on(history, DAY)["is_st"].to_list() == [True, False]
+    assert history.select("name", "start_date", "end_date", "change_reason").rows() == [
+        ("美丽生态", date(2020, 7, 22), date(2026, 4, 29), "撤销*ST"),
+        ("*ST美丽", date(2026, 4, 30), None, "*ST"),
+    ]
 
 
 def test_limit_list_keeps_direct_board_statistics(warehouse):
@@ -238,6 +230,32 @@ def test_limit_list_keeps_direct_board_statistics(warehouse):
     assert got["open_times"].to_list() == [0, 2]
     assert got["limit_type"].to_list() == ["U", "U"]
 
+
+
+def _limit_frame(codes):
+    return pl.DataFrame({
+        "ts_code": codes, "trade_date": ["20260911"] * len(codes),
+        "limit_times": [1] * len(codes), "open_times": [0] * len(codes),
+        "first_time": ["09:31:00"] * len(codes), "fd_amount": [1.0e8] * len(codes),
+        "limit_amount": [5.0e8] * len(codes), "float_mv": [1.0e10] * len(codes),
+    })
+
+
+def test_limit_list_empty_response_keeps_the_stored_day(warehouse):
+    """D-12：接口临时返回空不是「当天没有涨停」，不得抹掉已入库的名单。"""
+    ingest_limit_list(FakeProvider(limit_list_d=_limit_frame(["000001.SZ", "600000.SH"])),
+                      warehouse, [DAY])
+    assert ingest_limit_list(FakeProvider(), warehouse, [DAY]) == 0
+    assert WarehouseQuery(warehouse).limit_list(None, DAY, DAY).height == 2
+
+
+def test_limit_list_non_empty_response_still_replaces_the_day(warehouse):
+    """上游撤销的行仍要从本地消失——保护只针对整天空响应。"""
+    ingest_limit_list(FakeProvider(limit_list_d=_limit_frame(["000001.SZ", "600000.SH"])),
+                      warehouse, [DAY])
+    ingest_limit_list(FakeProvider(limit_list_d=_limit_frame(["000001.SZ"])), warehouse, [DAY])
+    got = WarehouseQuery(warehouse).limit_list(None, DAY, DAY)
+    assert got["symbol"].to_list() == ["000001.SZ"]
 
 # --- 名称快照（2026-09-14）-------------------------------------------------
 #

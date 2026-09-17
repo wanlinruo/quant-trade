@@ -185,3 +185,58 @@ def test_refresh_derived_wires_every_production_consumer(warehouse, monkeypatch)
                    "valuation_snapshot": 4}
     assert [call[0] for call in calls] == ["factors", "flags", "regime", "valuation"]
     assert calls[-1][2:] == (DAY, DAY)
+
+
+# --- D-12：limit_list_d 19:00 仍未发布时，后续同步要自动补回 -----------------
+
+SESSIONS = [date(2026, 9, d) for d in (4, 7, 8, 9, 10, 11)]
+
+
+class LimitListProvider:
+    def __init__(self):
+        self.calls: list[tuple[date, str]] = []
+
+    def limit_list_d(self, trade_date, limit_type):
+        self.calls.append((trade_date, limit_type))
+        return pl.DataFrame()
+
+
+def _seed_sessions(warehouse, write_daily_bars, listed_days):
+    write_daily_bars(warehouse, pl.DataFrame({
+        "symbol": ["000001.SZ"] * len(SESSIONS), "dt": SESSIONS,
+    }))
+    from qsys.data import schema
+    rows = pl.DataFrame({
+        "symbol": ["000001.SZ"] * len(listed_days), "dt": listed_days,
+        "limit_type": ["U"] * len(listed_days),
+    })
+    rows = rows.with_columns([
+        pl.lit(None).alias(n) for n in schema.LIMIT_LIST_DAILY.names if n not in rows.columns
+    ]).select(schema.LIMIT_LIST_DAILY.names)
+    warehouse.write("limit_list_daily", rows.to_arrow().cast(schema.LIMIT_LIST_DAILY), year=2026)
+
+
+def _requested_days(provider):
+    return sorted({day for day, _ in provider.calls})
+
+
+def test_limit_list_step_refetches_recent_sessions_that_are_still_empty(
+    warehouse, write_daily_bars
+):
+    # 09-09 那天 19:00 也没取到；其余近日已入库
+    _seed_sessions(warehouse, write_daily_bars, [date(2026, 9, 7), date(2026, 9, 8),
+                                                 date(2026, 9, 10)])
+    provider = LimitListProvider()
+    tushare_sync._sync_limit_list(provider, warehouse, [DAY])
+    assert _requested_days(provider) == [date(2026, 9, 9), DAY]
+
+
+def test_limit_list_step_only_looks_back_a_bounded_number_of_sessions(
+    warehouse, write_daily_bars
+):
+    # 09-04 缺失但已超出回看窗口：交给 B4.zero_limit_up 告警，不无限回补
+    _seed_sessions(warehouse, write_daily_bars, [date(2026, 9, 7), date(2026, 9, 8),
+                                                 date(2026, 9, 9), date(2026, 9, 10)])
+    provider = LimitListProvider()
+    tushare_sync._sync_limit_list(provider, warehouse, [DAY])
+    assert _requested_days(provider) == [DAY]

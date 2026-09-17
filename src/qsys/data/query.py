@@ -467,6 +467,25 @@ class WarehouseQuery:
         frame = self._read_unpartitioned("name_history", schema.NAME_HISTORY, symbols)
         return frame.sort(["symbol", "start_date"])
 
+    def delisting_symbols(self, day: date, *, announced_by: date) -> set[str]:
+        """`day` 当天处于退市整理期、且在 `announced_by` 及以前已公告的标的。
+
+        只认 Tushare `namechange` 的结构化字段 `change_reason='退市整理期'`，
+        不从名称里找「退」字（D-11）。`announced_by` 取 T-1：T 日开盘前能看到
+        的只有此前公告的事件，回测与实盘同一口径。公告日缺失的记录按已知
+        处理——候选池宁可漏、不可错。
+        """
+        history = self.name_history()
+        if history.height == 0:
+            return set()
+        hit = history.filter(
+            (pl.col("change_reason") == "退市整理期")
+            & (pl.col("start_date") <= day)
+            & (pl.col("end_date").is_null() | (pl.col("end_date") >= day))
+            & (pl.col("ann_date").is_null() | (pl.col("ann_date") <= announced_by))
+        )
+        return set(hit["symbol"].to_list())
+
     def corporate_actions(self, symbols: Sequence[str] | None = None) -> pl.DataFrame:
         return self._read_unpartitioned(
             "corporate_actions", schema.CORPORATE_ACTIONS, symbols

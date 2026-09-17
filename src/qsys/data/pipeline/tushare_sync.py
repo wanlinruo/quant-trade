@@ -46,6 +46,30 @@ def _sync_name_history(provider, warehouse: Warehouse, _days: list[date]) -> int
     return reference.ingest_name_history(provider, warehouse)
 
 
+def _sync_limit_list(provider, warehouse: Warehouse, days: list[date]) -> int:
+    """当日名单 + 最近几个交易日里仍为空的名单（D-12）。
+
+    `limit_list_d` 实测晚于 17:00 发布，19:00 那次若也没取到，下一次同步
+    只看新交易日，前一天就永远空着。这里重新直取，不做任何推断；仍取不到
+    就继续空着，由 B4.zero_limit_up 报告。
+    """
+    from qsys.data.query import WarehouseQuery
+
+    query = WarehouseQuery(warehouse)
+    end = max(days)
+    sessions = query.tushare_daily(
+        None, end - _LIMIT_LIST_CALENDAR_SPAN, end, columns=["dt"]
+    )["dt"].unique().sort().to_list()
+    recent = [day for day in sessions if day < min(days)][-_LIMIT_LIST_LOOKBACK:]
+    listed = (set(query.limit_list(None, recent[0], recent[-1])["dt"].to_list())
+              if recent else set())
+    retry = [day for day in recent if day not in listed]
+    if retry:
+        log.warning("limit_list.refetch_empty_sessions",
+                    days=[str(day) for day in retry])
+    return reference.ingest_limit_list(provider, warehouse, sorted({*retry, *days}))
+
+
 # 每日任务的统一签名是 fn(provider, warehouse, [day])。指数与无分区主表的
 # 原始 ingest 签名不同，故用三个显式适配器；不要用 partial 隐藏参数语义。
 _REFERENCE_STEPS: list[tuple[str, Callable[..., int]]] = [
@@ -55,7 +79,7 @@ _REFERENCE_STEPS: list[tuple[str, Callable[..., int]]] = [
     ("index_bars", _sync_index),
     ("instruments", _sync_instruments),
     ("name_history", _sync_name_history),
-    ("limit_list_daily", reference.ingest_limit_list),
+    ("limit_list_daily", _sync_limit_list),
 ]
 
 # 接线守卫检查的是实际公开 ingest，而不是适配器函数名。
@@ -68,6 +92,10 @@ _REFERENCE_INGESTS = {
     reference.ingest_name_history,
     reference.ingest_limit_list,
 }
+
+# D-12 回补：只回看最近 4 个交易日（加上当日共 5 天）。更早的缺口交给告警
+_LIMIT_LIST_LOOKBACK = 4
+_LIMIT_LIST_CALENDAR_SPAN = timedelta(days=30)
 
 _PRODUCTION_BOARDS = {"main", "gem", "star"}
 _DERIVED_LOOKBACK_DAYS = 150

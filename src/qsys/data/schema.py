@@ -148,11 +148,10 @@ DAILY_FLAGS = pa.schema(
         # **不能用它判 ST**：2026-07-06 起主板 ST 与普通股同为 0.10，
         # 而创业板/科创板 ST 一直是 0.20。ST 只认 is_st。
         ("limit_pct", pa.float64()),
-        # ST 真值。由 Tushare namechange 的名称区间按当日展开。
+        # ST 真值，只认 Tushare stock_st（D-11）；缺行为 null，不从名称推断。
         # 2026-09-12 之前这里是三条价格启发式反推出来的，一致率 93.8%，已删除。
         ("is_st", pa.bool_()),
-        # 该行 ST 值的来源。生产换源后恒为 "tushare"；兜底路径会写
-        # "carried_from_<日期>"，届时消费方必须能区分。
+        # 该行 ST 值的来源：有 stock_st 行为 "stock_st"，否则 null。
         ("st_source", pa.string()),
     ]
 )

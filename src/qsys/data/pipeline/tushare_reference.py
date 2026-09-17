@@ -133,20 +133,20 @@ def ingest_stock_st(provider, warehouse: Warehouse, days: Sequence[date]) -> int
         if universe.height == 0:
             raise RuntimeError(f"{day:%Y%m%d} 没有 tushare_daily，不能判定 ST 完整性")
         raw = provider.stock_st(day)
-        if raw.height:
-            positives = raw.select(
-                pl.col("ts_code").alias("symbol"),
-                pl.col("name").cast(pl.Utf8),
-                pl.col("type").cast(pl.Utf8).alias("st_type"),
-                pl.col("type_name").cast(pl.Utf8).alias("st_type_name"),
-                pl.lit(True).alias("_matched"),
-            ).unique(subset=["symbol"], keep="last")
-        else:
-            positives = pl.DataFrame(schema={
-                "symbol": pl.Utf8, "name": pl.Utf8,
-                "st_type": pl.Utf8, "st_type_name": pl.Utf8,
-                "_matched": pl.Boolean,
-            })
+        if raw.height == 0:
+            # 正例名单为空不是「全市场没有 ST」——A 股每天都有上百只风险警示股。
+            # 按空名单展开会把全市场静默写成 False（D-11），所以整批拒写。
+            raise RuntimeError(
+                f"Tushare stock_st 在 {day:%Y%m%d} 返回 0 行；不能据此判定全市场非 ST，"
+                "不写入 stock_st_daily"
+            )
+        positives = raw.select(
+            pl.col("ts_code").alias("symbol"),
+            pl.col("name").cast(pl.Utf8),
+            pl.col("type").cast(pl.Utf8).alias("st_type"),
+            pl.col("type_name").cast(pl.Utf8).alias("st_type_name"),
+            pl.lit(True).alias("_matched"),
+        ).unique(subset=["symbol"], keep="last")
         frames.append(universe.join(positives, on="symbol", how="left").with_columns(
             pl.col("_matched").fill_null(False).alias("is_st")
         ).select(schema.STOCK_ST_DAILY.names))
@@ -246,27 +246,6 @@ def ingest_name_history(provider, warehouse: Warehouse) -> int:
     return out.height
 
 
-def st_on(name_history: pl.DataFrame, day: date) -> pl.DataFrame:
-    empty = pl.DataFrame(schema={"symbol": pl.Utf8, "is_st": pl.Boolean, "name": pl.Utf8})
-    if not name_history.height:
-        return empty
-    covering = name_history.filter(
-        (pl.col("start_date") <= day)
-        & (pl.col("end_date").is_null() | (pl.col("end_date") >= day))
-    )
-    if not covering.height:
-        return empty
-    latest = covering.sort(["symbol", "start_date"]).group_by(
-        "symbol", maintain_order=True
-    ).last()
-    return latest.select(
-        "symbol",
-        (pl.col("name").str.starts_with("ST")
-         | pl.col("name").str.starts_with("*ST")).alias("is_st"),
-        "name",
-    ).sort("symbol")
-
-
 def ingest_limit_list(provider, warehouse: Warehouse, days: Sequence[date],
                       limit_types: Sequence[str] = ("U", "Z")) -> int:
     """直取涨停与炸板列表；接口自 2020 年起且不含 ST 股票统计。"""
@@ -289,8 +268,19 @@ def ingest_limit_list(provider, warehouse: Warehouse, days: Sequence[date],
     query = WarehouseQuery(warehouse)
     incoming = (pl.concat(frames) if frames
                 else pl.from_arrow(schema.LIMIT_LIST_DAILY.empty_table()))
+    # D-12：整天空响应只说明「这次没取到」（发布前或接口抖动），不说明当天
+    # 没有涨停。已入库的名单不得被它抹掉；非空响应照常整天替换。
+    answered = set(incoming["dt"].to_list())
+    silent = [day for day in days if day not in answered]
+    stored = (set(query.limit_list(None, min(silent), max(silent))["dt"].to_list())
+              if silent else set())
+    kept = sorted(day for day in silent if day in stored)
+    if kept:
+        log.warning("limit_list.empty_response_kept_stored",
+                    days=[str(day) for day in kept])
     written = _replace_days(
-        warehouse, "limit_list_daily", incoming, schema.LIMIT_LIST_DAILY, days,
+        warehouse, "limit_list_daily", incoming, schema.LIMIT_LIST_DAILY,
+        [day for day in days if day not in kept],
         lambda lo, hi: query.limit_list(None, lo, hi),
     )
     log.info("limit_list.ingested", rows=written, days=len(days),
