@@ -9,6 +9,7 @@ Web 层不持有业务逻辑——数据全部来自 MonitorService。
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
@@ -30,6 +31,8 @@ from qsys.web.svg import line_chart, multi_line_chart
 from qsys.web.views import MonitorService
 from qsys.web.workbench import BacktestQueue, WorkbenchStore
 from qsys.strategy.parameters import validate_parameters
+from qsys.core.calendar import AShareCalendar
+from qsys.paper.calendar import first_complete_session
 from qsys.paper.store import PaperStore
 
 log = structlog.get_logger(__name__)
@@ -127,6 +130,7 @@ def create_app(
     strategy_templates: Path | None = None,
     paper: PaperStore | None = None,
     market: MarketService | None = None,
+    paper_calendar: Callable[[], AShareCalendar] | None = None,
 ) -> FastAPI:
     app = FastAPI(title=config.title, docs_url=None, redoc_url=None)
 
@@ -390,9 +394,8 @@ def create_app(
         if paper is None:
             raise HTTPException(status_code=404, detail="paper trading not enabled")
         body = await request.json()
+        activation = _paper_activation(datetime.now(), paper_calendar)
         try:
-            now = datetime.now()
-            activation = _paper_activation(now)
             account = paper.create(
                 str(body.get("backtest_id", "")), str(body.get("name", "")),
                 float(body.get("cash", 0)), activation,
@@ -411,7 +414,7 @@ def create_app(
         if account is None:
             raise HTTPException(status_code=404, detail="no such paper account")
         return {"id": ident, "status": account.status, "error": account.error,
-                **paper.summary(ident)}
+                "activation_date": account.activation_date, **paper.summary(ident)}
 
     @app.post("/api/paper-accounts/{ident}/{action}")
     def control_paper(ident: str, action: str):
@@ -419,8 +422,10 @@ def create_app(
             raise HTTPException(status_code=404, detail="paper trading not enabled")
         if action not in ("pause", "resume", "end"):
             raise HTTPException(status_code=404, detail="unknown paper action")
+        activation = (_paper_activation(datetime.now(), paper_calendar)
+                      if action == "resume" else None)
         try:
-            account = paper.transition(ident, action)
+            account = paper.transition(ident, action, activation=activation)
         except LookupError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except ValueError as exc:
@@ -697,11 +702,21 @@ def create_app(
     return app
 
 
-def _paper_activation(now: datetime) -> date:
-    """Earliest complete session; the runner validates it against trade_cal."""
-    day = now.date()
-    if now.weekday() < 5 and now.time() < time(9, 15):
-        return day
+def _paper_activation(
+    now: datetime, calendar: Callable[[], AShareCalendar] | None,
+) -> date:
+    """第一个完整交易日，按 Tushare trade_cal 算（paper.calendar）。
+
+    拿不到交易日历就拒绝创建/恢复，不退回「周一到周五」去猜。
+    """
+    try:
+        if calendar is None:
+            raise RuntimeError("未配置交易日历")
+        return first_complete_session(now, calendar())
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503, detail=f"交易日历不可用，暂不能确定生效日：{exc}"
+        ) from exc
     day += timedelta(days=1)
     while day.weekday() >= 5:
         day += timedelta(days=1)

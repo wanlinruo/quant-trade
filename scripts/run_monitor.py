@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from datetime import date
 from pathlib import Path
 
 import structlog
@@ -72,7 +73,24 @@ def build_app(
             warehouse, transport, snapshot_key=market_snapshot_key,
             schedule_key=market_schedule_key,
         ),
+        paper_calendar=_daily_trading_calendar(config_path),
     )
+
+
+def _daily_trading_calendar(config_path: str | None):
+    """每个自然日向 Tushare 取一次交易日历；取不到就抛错，由页面报 503。"""
+    from qsys.paper.calendar import load_trading_calendar
+
+    cache: dict[date, object] = {}
+
+    def get():
+        today = date.today()
+        if today not in cache:
+            cache.clear()
+            cache[today] = load_trading_calendar(config_path)
+        return cache[today]
+
+    return get
 
 
 def main() -> int:

@@ -148,7 +148,35 @@ curl -s http://127.0.0.1:8420/healthz
 
 ## 访问监控台
 
-**只监听回环**——这个页面能看到全部持仓，绝不上公网。
+应用**只监听回环** `127.0.0.1:8420`，公网只经 Nginx 8443 进入，并且必须带认证。
+
+### 公网入口 `https://wanlinruo.cn:8443/`（2026-09-17 开通）
+
+| 项 | 实况 |
+|---|---|
+| 站点文件 | `/etc/nginx/conf.d/qsys-8443.conf`（独立文件，不改 443 的 `site.conf`） |
+| 证书 | 复用 `/etc/letsencrypt/live/wanlinruo.cn/`；仅 TLS 1.2 / 1.3 |
+| 认证 | Nginx Basic Auth，用户 `qsys`，口令文件 `/etc/nginx/.htpasswd-qsys`（`root:www-data 640`） |
+| 限流 | 每 IP 20 r/s、burst 60（`limit_req_zone qsys_8443`）——只限总频率，挡不住慢速猜口令 |
+| 日志 | `/var/log/nginx/qsys-8443.{access,error}.log` |
+| 响应头 | HSTS、`X-Frame-Options DENY`、`nosniff` |
+| 云安全组 | TCP 8443 已放行（用户在腾讯云控制台操作） |
+| 开通前备份 | `~/qsys-code-backups/nginx-before-8443-20260917.tar.gz` |
+
+开通时外网实测：不带或错误口令 401；正确口令 `/healthz` 正常、首页 307 → `/market` 200，
+跳转保持 https 与 8443；原 443 站点仍 302；8420 / 8421 公网不可达；TLS 1.1 握手被拒。
+
+改口令（`htpasswd` 来自 `apache2-utils`，节点默认未装）：
+
+```bash
+PW=$(openssl rand -base64 36 | tr -dc A-Za-z0-9 | head -c 24)
+printf "qsys:%s\n" "$(openssl passwd -apr1 "$PW")" | sudo tee /etc/nginx/.htpasswd-qsys >/dev/null
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+改 Nginx 任何配置前先 `sudo nginx -t`；443 上挂着企业微信回调，不能动 `site.conf`。
+
+### SSH 隧道（不经公网）
 
 从开发机开 SSH 隧道：
 
@@ -338,10 +366,24 @@ uv run python scripts/run_paper.py \
 
 运行器从 Tushare `trade_cal` 校验未来交易日，从 QMT 只读行情流取价，心跳键为
 `state:heartbeat:paper`。它不构造 `LiveBroker`，也不写真实订单或控制流。生产环境
-应把该命令配置为独立 systemd 服务，并设置 `Restart=always`。
+由 `qsys-paper.service` 守护。
+
+**行情不可用时的行为**（2026-09-17 起）：
+
+- 行情刷新与盘中权益只在交易日 09:15 ~ 15:30 进行；盘外不请求 QMT、不写权益。
+- 网关超时或回报错误（`QuoteUnavailable`）先记 warning 并从库里重建 runtime 重试；
+  **连续 3 分钟**仍不可用才把账户标为 `error`。其他任何异常仍立即标 `error`。
+- 账户 `error` 后 supervisor 不会自动拉起，需在页面或
+  `POST /api/paper-accounts/{id}/resume` 恢复。生效日按 `trade_cal` 取第一个完整交易日：
+  09:15 前恢复当天生效，之后恢复顺延到下一个交易日（跳过节假日）。取不到交易日历时
+  创建与恢复返回 503。
+- 不要在盘中让同一台 QMT 批量下载历史 tick：2026-09-17 00:49 的超时与那次批量补采
+  时间重合（未证实因果）。
 
 ## 待办
 
+- [ ] **Web 应用层登录（TOTP）替换 Nginx Basic Auth**，并按用户做登录失败限流
+- [ ] 证书到期监控与续期演练（8443 复用 `wanlinruo.cn` 证书）
 - [ ] 关闭 SSH 密码认证（`PasswordAuthentication no`）——公网 22 端口每天被扫数千次
 - [ ] 轮换部署期间在对话中出现过的账号密码
 - [ ] 内存扩容或为全 A 回测设计分批方案

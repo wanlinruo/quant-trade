@@ -27,6 +27,11 @@ from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
 
 
+# 行情刷新与盘中权益只在这段时间有意义：开盘事件 09:15 到收盘结算事件 15:30。
+# 窗口外刷新既拿不到新价格，又把账户挂在 QMT 可用性上（2026-09-17 00:49 的事故）。
+QUOTE_WINDOW = (time(9, 15), time(15, 30))
+
+
 class RealtimeClock:
     def __init__(self) -> None:
         self._now: datetime | None = None
@@ -186,7 +191,8 @@ class PaperRuntime:
                 self.store.finish_event(self.id, key, detail="进程恢复时事件已过期，未补跑")
                 continue
             self._run_event(key, moment, phase, skip_strategy=late)
-        self._refresh_quotes(now)
+        if QUOTE_WINDOW[0] <= now.time() <= QUOTE_WINDOW[1]:
+            self._refresh_quotes(now)
 
     def _run_event(self, key: str, moment: datetime, phase: Phase,
                    *, skip_strategy: bool = False) -> None:

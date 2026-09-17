@@ -6,7 +6,7 @@ import json
 import sqlite3
 import uuid
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -159,7 +159,10 @@ class PaperStore:
                 ).fetchall()
         return [self._account(row) for row in rows]
 
-    def transition(self, ident: str, action: str) -> PaperAccount:
+    def transition(
+        self, ident: str, action: str, *, activation: date | None = None,
+    ) -> PaperAccount:
+        """`resume` 的生效日由调用方按交易日历算好传入（见 paper.calendar）。"""
         targets = {
             "pause": ({"scheduled", "running", "error"}, "paused"),
             "resume": ({"paused", "error"}, "scheduled"),
@@ -193,7 +196,8 @@ class PaperStore:
                     (now, ident),
                 )
             if action == "resume":
-                activation = _next_complete_session(datetime.now())
+                if activation is None:
+                    raise ValueError("恢复模拟账户需要按交易日历给出生效日")
                 con.execute(
                     "UPDATE paper_accounts SET status=?,activation_date=?,error='',"
                     "updated_at=?,ended_at='' WHERE id=?",
@@ -214,6 +218,13 @@ class PaperStore:
                 (_now(), ident, str(date.today())),
             )
         return cur.rowcount == 1
+
+    def log(self, ident: str, level: str, message: str) -> None:
+        with self._connect() as con:
+            con.execute(
+                "INSERT INTO paper_logs(account_id,at,level,message) VALUES (?,?,?,?)",
+                (ident, _now(), level, message),
+            )
 
     def mark_error(self, ident: str, error: str) -> None:
         with self._connect() as con:
@@ -468,13 +479,3 @@ def _decode(value: Any) -> Any:
 
 def _now() -> str:
     return datetime.now().isoformat(timespec="seconds")
-
-
-def _next_complete_session(now: datetime) -> date:
-    day = now.date()
-    if now.weekday() < 5 and now.time() < time(9, 15):
-        return day
-    day += timedelta(days=1)
-    while day.weekday() >= 5:
-        day += timedelta(days=1)
-    return day

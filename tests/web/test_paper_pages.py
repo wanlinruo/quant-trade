@@ -1,7 +1,9 @@
+from datetime import date, timedelta
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from qsys.core.calendar import AShareCalendar
 from qsys.ops.journal import SessionJournal
 from qsys.paper.store import PaperStore
 from qsys.web.app import create_app
@@ -18,7 +20,12 @@ class Demo(Strategy):
 """
 
 
-def make_client(warehouse, tmp_path: Path):
+def _calendar():
+    today = date.today()
+    return AShareCalendar([today + timedelta(days=d) for d in range(-5, 60) if d % 7 not in (3, 4)])
+
+
+def make_client(warehouse, tmp_path: Path, paper_calendar=_calendar):
     path = tmp_path / "workbench.sqlite3"
     workbench, paper = WorkbenchStore(path), PaperStore(path)
     strategy = workbench.create_strategy("demo", SOURCE)
@@ -43,7 +50,7 @@ def make_client(warehouse, tmp_path: Path):
     app = create_app(
         MonitorService(SessionJournal(warehouse), config=cfg), cfg,
         backtests=BacktestService(tmp_path / "runs"), workbench=workbench,
-        paper=paper,
+        paper=paper, paper_calendar=paper_calendar,
     )
     return TestClient(app), job
 
@@ -69,3 +76,25 @@ def test_paper_api_rejects_unknown_or_unsuccessful_backtest(warehouse, tmp_path)
         "backtest_id": "missing", "name": "bad", "cash": 100_000,
     })
     assert response.status_code == 409
+
+
+def test_paper_activation_follows_the_trading_calendar(warehouse, tmp_path):
+    """C：生效日取交易日历里第一个完整交易日，不按星期几猜。"""
+    client, job = make_client(warehouse, tmp_path)
+    ident = client.post("/api/paper-accounts", json={
+        "backtest_id": job.id, "name": "日历", "cash": 100_000,
+    }).json()["id"]
+    activation = date.fromisoformat(client.get(f"/api/paper-accounts/{ident}").json()["activation_date"])
+    assert _calendar().is_trading_day(activation)
+
+
+def test_paper_create_and_resume_refuse_without_a_calendar(warehouse, tmp_path):
+    def unavailable():
+        raise RuntimeError("Tushare 交易日历不可用")
+
+    client, job = make_client(warehouse, tmp_path, paper_calendar=unavailable)
+    response = client.post("/api/paper-accounts", json={
+        "backtest_id": job.id, "name": "无日历", "cash": 100_000,
+    })
+    assert response.status_code == 503
+    assert "交易日历" in response.json()["detail"]
