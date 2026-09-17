@@ -5,21 +5,18 @@
 因此任何约束都不得依赖「当前在回测中」这类信息。
 
 core 不认识「涨跌停 10%」这条规则，只认识「涨跌停」这个概念——
-具体数值由 markets/ 注入。
+涨跌停价是当日交易所公布的直取值（Tushare stk_limit），由调用方放进上下文，
+这里不按前收与板块档位自算（D-19）。
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
-from decimal import ROUND_HALF_UP, Decimal
 
 from qsys.core.portfolio import Portfolio
 from qsys.core.trading import OrderIntent, Side, to_cents
-
-_CENT = Decimal("0.01")
-
 
 @dataclass(frozen=True, slots=True)
 class Verdict:
@@ -35,7 +32,9 @@ class Verdict:
 class ConstraintContext:
     portfolio: Portfolio
     reference_price: float  # 该订单预计成交价
-    prev_close: float | None = None  # 涨跌停判定基准
+    # 当日直取涨跌停价（stk_limit）。None 表示拿不到：买单拒绝、卖单放行
+    limit_up: float | None = None
+    limit_down: float | None = None
     board: str = "main"
     is_suspended: bool = False
 
@@ -149,47 +148,28 @@ class SuspensionConstraint(Constraint):
 
 
 class PriceLimitConstraint(Constraint):
-    """涨跌停约束。
+    """涨跌停约束，只认当日直取涨跌停价。
 
     方向性是最容易写反的地方：
       涨停 —— 买单排队买不到，卖单成交得掉 -> 拒买、放行卖
       跌停 —— 卖单排队卖不掉，买单成交得到 -> 拒卖、放行买
+
+    拿不到直取价（用户 2026-09-17 定）：**买单拒绝、卖单放行**。不按前收与
+    板块档位自算——那条路不认 ST（2026-07-06 前主板 ST 为 5%），会让封在
+    5% 涨停的 ST 股在回测里照常买进。
     """
 
     name = "price_limit"
 
-    def __init__(self, limits: Mapping[str, float], default_limit: float = 0.10) -> None:
-        self._limits = dict(limits)
-        self._default = default_limit
-
-    @staticmethod
-    def limit_prices(prev_close: float, limit: float) -> tuple[float, float]:
-        """返回 (涨停价, 跌停价)，均四舍五入到分。
-
-        乘法在 Decimal 里做，不能先用 float 算再取整：前收 1.65 的跌停价
-        真值是 1.485，四舍五入应为 1.49，而 float 的 1.65*0.9 是
-        1.4849999999999999，其最短表示已经低于半分，取整会得到 1.48。
-        实测 0.01~499.99 元区间内有 1.6% 的价格踩中这个坑，全在跌停一侧。
-        """
-        base = Decimal(str(prev_close))
-        ratio = Decimal(str(limit))
-        up = (base * (Decimal(1) + ratio)).quantize(_CENT, rounding=ROUND_HALF_UP)
-        down = (base * (Decimal(1) - ratio)).quantize(_CENT, rounding=ROUND_HALF_UP)
-        return float(up), float(down)
-
     def apply(self, intent: OrderIntent, ctx: ConstraintContext) -> Verdict:
-        if ctx.prev_close is None or ctx.prev_close <= 0:
-            # 上市首日等无前收的情形不判定，交由其它约束处理
-            return Verdict(intent.qty)
-
-        limit = self._limits.get(ctx.board, self._default)
-        up, down = self.limit_prices(ctx.prev_close, limit)
         price = to_cents(ctx.reference_price)
-
-        if intent.side is Side.BUY and price >= up:
-            return Verdict(0, f"limit up at {up:.2f}: buy cannot fill")
-        if intent.side is Side.SELL and price <= down:
-            return Verdict(0, f"limit down at {down:.2f}: sell cannot fill")
+        if intent.side is Side.BUY:
+            if ctx.limit_up is None:
+                return Verdict(0, "no direct limit-up price: buy refused")
+            if price >= ctx.limit_up:
+                return Verdict(0, f"limit up at {ctx.limit_up:.2f}: buy cannot fill")
+        elif ctx.limit_down is not None and price <= ctx.limit_down:
+            return Verdict(0, f"limit down at {ctx.limit_down:.2f}: sell cannot fill")
         return Verdict(intent.qty)
 
 

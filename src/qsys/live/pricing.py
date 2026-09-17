@@ -20,10 +20,17 @@ def protected_limit_price(
     quote: MarketQuote,
     side: Side,
     *,
+    limits: tuple[float, float] | None,
     now: datetime | None = None,
     max_age_seconds: float = 3.0,
     protection: float = 0.002,
 ) -> float:
+    """保护价以当日直取涨跌停价封顶/托底。
+
+    `limits` 是 price_limits_daily 里的 stk_limit (up, down)。QMT get_full_tick
+    不给涨跌停价，`quote.upper_limit` 恒为空，不再读它（D-19）。缺价时买单拒绝、
+    卖单不设跌停托底照常定价——真实跌停由交易所拦截。
+    """
     moment = now or datetime.now()
     age = (moment - quote.at).total_seconds()
     if age < -1.0 or age > max_age_seconds:
@@ -33,16 +40,19 @@ def protected_limit_price(
     opponent = quote.ask1 if side is Side.BUY else quote.bid1
     if opponent <= 0:
         raise QuoteError("NO_OPPONENT", "没有有效对手价")
-    if side is Side.BUY and quote.upper_limit and opponent >= quote.upper_limit:
+    upper, lower = limits or (None, None)
+    if side is Side.BUY and upper is None:
+        raise QuoteError("NO_PRICE_LIMIT", "缺当日直取涨跌停价，拒绝买入")
+    if side is Side.BUY and opponent >= upper:
         raise QuoteError("LIMIT_UP", "涨停买单无法保证成交")
-    if side is Side.SELL and quote.lower_limit and opponent <= quote.lower_limit:
+    if side is Side.SELL and lower is not None and opponent <= lower:
         raise QuoteError("LIMIT_DOWN", "跌停卖单无法保证成交")
 
     raw = opponent * (1 + protection if side is Side.BUY else 1 - protection)
-    if side is Side.BUY and quote.upper_limit:
-        raw = min(raw, quote.upper_limit)
-    if side is Side.SELL and quote.lower_limit:
-        raw = max(raw, quote.lower_limit)
+    if side is Side.BUY:
+        raw = min(raw, upper)
+    if side is Side.SELL and lower is not None:
+        raw = max(raw, lower)
     tick = quote.tick_size if quote.tick_size > 0 else 0.01
     units = math.floor(raw / tick + 1e-9) if side is Side.BUY else math.ceil(
         raw / tick - 1e-9

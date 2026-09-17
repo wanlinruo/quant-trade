@@ -254,3 +254,26 @@ uv run python scripts/run_market_gateway.py --config config/deploy.local.toml
 每 15 秒聚合一次指数与全市场温度，原子更新
 `state:market_overview`。可用 `--overview-interval` 调整间隔，心跳键为
 `state:heartbeat:market`。不要把它替换成 `run_agent.py`；后者属于真实券商链路。
+
+### 部署实况与更新步骤（2026-09-17）
+
+- 代码目录 `C:\qsys\paper_app`：**手工拷贝的源码快照，没有 git**，`PYTHONPATH=src`；
+  配置 `config\deploy.local.toml` 不入库。
+- 由计划任务 `\qsys-market-gateway` 启动 `run_market_gateway.cmd`，日志追加到 `market_gateway.log`。
+- 网关每个交易日在 Linux 盘前任务发布 `state:price_limits:YYYYMMDD` 后，分批（500 只/批）
+  用 `get_instrument_detail` 与 Tushare stk_limit 逐只核对，结果写
+  `state:price_limits_check:YYYYMMDD`，行情页「涨跌停价核对」展示（D-19）。
+
+更新网关代码时按这个顺序，不要只替换个别文件：
+
+1. **先核对本地修改**：把 `src/`、`scripts/` 打包取回，按文件与 git 历史比对（忽略 CRLF）。
+   任何文件对不上某个提交就停下，先把那份本地修改弄清楚。
+2. **暂存验证**：`git archive <SHA> src scripts/run_market_gateway.py` 解压到
+   `C:\qsys\daily\gateway_stage_<sha>`，用 venv 的 python 以暂存目录为 `sys.path` 导入
+   `qsys.paper.quotes` 与网关脚本，确认本次改动的接口确实存在。
+3. **替换**：`schtasks /end /tn qsys-market-gateway`，确认没有残留的 `run_market_gateway`
+   python 进程；`src` 重命名为 `src.bak-<时间戳>`，网关脚本另存 `.bak-<时间戳>`；拷入暂存版本。
+4. **重启与验证**：`schtasks /run /tn qsys-market-gateway`；在 Linux 侧确认
+   `state:heartbeat:market` 刷新、`state:market_overview` 新发布、行情请求往返正常。
+
+盘中重启会有数秒无行情；模拟盘可容忍 3 分钟内的断流（`run_paper.QUOTE_OUTAGE_LIMIT`）。

@@ -7,7 +7,7 @@ MarketSnapshot 是引擎在每个交易日交给 Broker 的市场状态。
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 
 from qsys.core.trading import Side
@@ -20,6 +20,8 @@ class MarketSnapshot:
     bars: Mapping[Symbol, Bar]
     prev_closes: Mapping[Symbol, float]
     boards: Mapping[Symbol, str]
+    # 当日直取涨跌停价 (limit_up, limit_down)，来自 stk_limit；缺某只就是拿不到（D-19）
+    limits: Mapping[Symbol, tuple[float, float]] = field(default_factory=dict)
 
     @property
     def symbols(self) -> frozenset[Symbol]:
@@ -33,6 +35,9 @@ class MarketSnapshot:
 
     def prev_close_of(self, symbol: Symbol) -> float | None:
         return self.prev_closes.get(symbol)
+
+    def limit_of(self, symbol: Symbol) -> tuple[float, float] | None:
+        return self.limits.get(symbol)
 
     def board_of(self, symbol: Symbol) -> str:
         return self.boards.get(symbol, "main")

@@ -23,6 +23,7 @@ from qsys.backtest.corporate import CorporateAction
 from qsys.backtest.engine import BacktestEngine
 from qsys.backtest.fees import AShareFeeModel
 from qsys.backtest.metrics import compute_metrics
+from qsys.backtest.runner import price_limit_loader
 from qsys.backtest.slippage import FixedRateSlippage
 from qsys.core.calendar import AShareCalendar
 from qsys.core.types import Symbol
@@ -151,7 +152,7 @@ def main() -> int:
     engine = BacktestEngine(
         strategy,
         feed=feed, calendar=calendar, universe=universe,
-        initial_cash=args.cash, pipeline=ashare_pipeline(),
+        initial_cash=args.cash, pipeline=ashare_pipeline(), price_limits=price_limit_loader(query),
         fees=fees, slippage=slippage,
         checkpoints=CHECKPOINTS, auction_at=AUCTION_AT,
         intraday=intraday, market=market,

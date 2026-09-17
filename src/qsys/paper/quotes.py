@@ -92,6 +92,9 @@ class MarketGateway:
         self._t, self._s, self._provider = transport, streams, provider
         self._group, self._consumer = group, consumer
         self._t.ensure_group(streams.quote_requests, group)
+        # 当日 stk_limit 与 QMT 的核对进度：(交易日, 待核对标的, 已核对结果)
+        self._limit_check: tuple[date, list[str], list[dict]] | None = None
+        self._limit_checked: date | None = None
 
     def run_once(self) -> int:
         handled = 0
@@ -116,6 +119,47 @@ class MarketGateway:
             finally:
                 self._t.ack(self._s.quote_requests, self._group, message.id)
         return handled
+
+    def check_limits_step(
+        self, detail: Callable[[Sequence[str]], Mapping[str, tuple]], day: date,
+        *, batch: int = 500,
+    ) -> bool:
+        """把盘前发布的 Tushare stk_limit 与 QMT 合约详情逐只核对，每次只做一批。
+
+        分批是为了不卡住行情请求：`get_instrument_detail` 实测约 0.6 ms/只，
+        全市场一次做完约 3 秒，逼近模拟盘的 5 秒行情超时。QMT 只作核对，
+        不替代直取价（D-19）。返回当日核对是否已完成。
+        """
+        if self._limit_checked == day:
+            return True
+        if self._limit_check is None or self._limit_check[0] != day:
+            raw = self._t.get_key(f"{self._s.price_limits}:{day:%Y%m%d}")
+            if not raw:
+                return False
+            published = json.loads(raw)
+            self._limit_check = (day, sorted(published), [])
+            self._limit_published = published
+        _, pending, results = self._limit_check
+        chunk, pending[:] = pending[:batch], pending[batch:]
+        qmt = detail(chunk)
+        for symbol in chunk:
+            up, down = self._limit_published[symbol]
+            got = qmt.get(symbol)
+            results.append({"symbol": symbol, "tushare": [up, down],
+                            "qmt": list(got) if got else None})
+        if pending:
+            return False
+        missing = [r for r in results if r["qmt"] is None or None in r["qmt"]]
+        mismatched = [
+            r for r in results if r not in missing
+            and (abs(r["qmt"][0] - r["tushare"][0]) > 1e-6 or abs(r["qmt"][1] - r["tushare"][1]) > 1e-6)
+        ]
+        report = {"session": str(day), "checked_at": datetime.now().isoformat(timespec="seconds"),
+                  "checked": len(results), "missing_in_qmt": len(missing),
+                  "mismatched": len(mismatched), "samples": mismatched[:20]}
+        self._t.set_key(f"{self._s.price_limits}_check:{day:%Y%m%d}", json.dumps(report))
+        self._limit_checked, self._limit_check = day, None
+        return True
 
     def beat(self) -> None:
         self._t.set_key(

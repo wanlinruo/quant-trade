@@ -97,10 +97,12 @@ class SimBroker(Broker):
             return
 
         price = self._slippage.adjust(order.side, bar.open)
+        limit_up, limit_down = snapshot.limit_of(order.symbol) or (None, None)
         ctx = ConstraintContext(
             portfolio=self._portfolio,
             reference_price=price,
-            prev_close=snapshot.prev_close_of(order.symbol),
+            limit_up=limit_up,
+            limit_down=limit_down,
             board=snapshot.board_of(order.symbol),
             is_suspended=False,
         )

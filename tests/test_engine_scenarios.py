@@ -18,6 +18,7 @@ from qsys.core.trading import Side
 from qsys.core.types import Market, Symbol
 from qsys.markets.ashare import ashare_pipeline
 from qsys.strategy.base import Strategy
+from direct_truth import limits_from_closes
 
 CMB = Symbol("600036", Market.SH)
 
@@ -58,6 +59,8 @@ def build(strategy, sessions, rows, *, cash=100_000.0, fees=None, actions=None,
         initial_cash=cash, pipeline=ashare_pipeline(),
         fees=fees or ZeroFeeModel(), slippage=NoSlippage(),
         volume_cap=volume_cap, corporate_actions=actions,
+        price_limits=limits_from_closes(
+            {d: (o, c) for d, (o, h, l, c, v) in rows.items()}, [CMB]),
     ).run(sessions[0], sessions[-1])
 
 

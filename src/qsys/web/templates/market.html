@@ -27,6 +27,16 @@
   <div class="metric" title="缺当日直取涨跌停价（Tushare stk_limit）的标的不计入涨停、跌停、触板、炸板"><div class="label">缺涨跌停价</div><div class="value" data-field="limit_price_missing_count">{{ snap.limit_price_missing_count if snap else '—' }}</div></div>
 </div>
 
+<section class="panel market-section">
+  <div class="panel-title">涨跌停价核对（Tushare stk_limit × QMT）</div>
+  {% if limit_check %}
+  <p class="{{ 'down' if limit_check.mismatched or limit_check.missing_in_qmt else 'muted' }}">
+    {{ limit_check.session }} 核对 {{ limit_check.checked }} 只：不一致 {{ limit_check.mismatched }} 只，QMT 缺失 {{ limit_check.missing_in_qmt }} 只
+  </p>
+  {% for item in limit_check.samples %}<div class="muted">{{ item.symbol }} Tushare {{ item.tushare }} / QMT {{ item.qmt }}</div>{% endfor %}
+  {% else %}<p class="muted">今日未核对：盘前 stk_limit 尚未发布或行情网关未运行。</p>{% endif %}
+</section>
+
 <div class="market-charts">
   <section class="card"><h2>上涨占比</h2>{{ advance_chart|safe }}</section>
   <section class="card"><h2>涨停家数</h2>{{ limit_chart|safe }}</section>

@@ -23,6 +23,25 @@ from qsys.strategy.loader import load_strategy
 from qsys.strategy.parameters import parameter_specs_from_file, validate_parameters
 
 
+def price_limit_loader(query) -> Callable[[date, date], dict[date, dict[Symbol, tuple[float, float]]]]:
+    """回测撮合用的当日直取涨跌停价（price_limits_daily，Tushare stk_limit）。
+
+    缺行的股-日不出现在结果里，撮合按「买单拒绝、卖单放行」处理（D-19）。
+    """
+    def load(start: date, end: date) -> dict[date, dict[Symbol, tuple[float, float]]]:
+        frame = query.price_limits(None, start, end).filter(
+            pl.col("limit_up").is_not_null() & pl.col("limit_down").is_not_null()
+        )
+        out: dict[date, dict[Symbol, tuple[float, float]]] = {}
+        for row in frame.iter_rows(named=True):
+            out.setdefault(row["dt"], {})[Symbol.parse(row["symbol"])] = (
+                float(row["limit_up"]), float(row["limit_down"])
+            )
+        return out
+
+    return load
+
+
 def execute_backtest(
     strategy_file: Path, *, start: date, end: date, cash: float,
     warehouse: Path, out_dir: Path, params: Mapping[str, object] | None = None,
@@ -58,6 +77,7 @@ def execute_backtest(
     result = BacktestEngine(
         strategy, feed=deps.feed, calendar=calendar, universe=universe,
         initial_cash=cash, pipeline=ashare_pipeline(), fees=fees, slippage=slippage,
+        price_limits=price_limit_loader(query),
         intraday=intraday_quotes(deps.market), market=deps.market,
         corporate_actions=corporate_actions(query, start, end),
         boards={Symbol.parse(k): v for k, v in boards.items()},

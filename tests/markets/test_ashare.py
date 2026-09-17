@@ -44,13 +44,13 @@ def test_pipeline_order_puts_lot_size_last():
 def test_pipeline_enforces_t_plus_one():
     p = Portfolio(100_000.0)
     p.apply_fill(Fill("o", CMB, Side.BUY, 500, 10.0, 0.0, NOW))
-    ctx = ConstraintContext(portfolio=p, reference_price=10.0, prev_close=10.0)
+    ctx = ConstraintContext(portfolio=p, reference_price=10.0, limit_up=11.0, limit_down=9.0)
     assert ashare_pipeline().apply(OrderIntent(CMB, Side.SELL, 500), ctx).is_rejected
 
 
 def test_pipeline_enforces_lot_size():
     ctx = ConstraintContext(
-        portfolio=Portfolio(100_000.0), reference_price=10.0, prev_close=10.0
+        portfolio=Portfolio(100_000.0), reference_price=10.0, limit_up=11.0, limit_down=9.0
     )
     r = ashare_pipeline().apply(OrderIntent(CMB, Side.BUY, 250), ctx)
     assert r.allowed_qty == 200
@@ -58,14 +58,14 @@ def test_pipeline_enforces_lot_size():
 
 def test_pipeline_enforces_gem_wider_band():
     ctx = ConstraintContext(
-        portfolio=Portfolio(100_000.0), reference_price=11.5, prev_close=10.0, board="gem"
+        portfolio=Portfolio(100_000.0), reference_price=11.5, limit_up=12.0, limit_down=8.0, board="gem"
     )
     assert ashare_pipeline().apply(OrderIntent(CMB, Side.BUY, 100), ctx).allowed_qty == 100
 
 
 def test_fee_buffer_is_configurable():
     ctx = ConstraintContext(
-        portfolio=Portfolio(1000.0), reference_price=10.0, prev_close=10.0
+        portfolio=Portfolio(1000.0), reference_price=10.0, limit_up=11.0, limit_down=9.0
     )
     assert ashare_pipeline(fee_buffer=0.0).apply(OrderIntent(CMB, Side.BUY, 500), ctx).allowed_qty == 100
 

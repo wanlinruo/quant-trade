@@ -64,7 +64,7 @@ def ashare_pipeline(*, fee_buffer: float = 0.001) -> ConstraintPipeline:
     return ConstraintPipeline(
         [
             SuspensionConstraint(),
-            PriceLimitConstraint(PRICE_LIMITS),
+            PriceLimitConstraint(),
             NoShortConstraint(),
             SettlementConstraint(),
             CashConstraint(fee_buffer=fee_buffer),

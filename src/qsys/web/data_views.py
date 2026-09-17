@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+import json
+
 from dataclasses import dataclass
 from datetime import date, datetime
 
@@ -69,11 +71,13 @@ class MarketService:
         self, warehouse: Warehouse, transport: Transport | None = None, *,
         snapshot_key: str = "state:market_overview", stale_seconds: float = 45.0,
         schedule_key: str = "state:market_schedule",
+        limit_check_prefix: str = "state:price_limits_check",
     ) -> None:
         self._data = DataService(warehouse)
         self._transport = transport
         self._snapshot_key = snapshot_key
         self._schedule_key = schedule_key
+        self._limit_check_prefix = limit_check_prefix
         self._stale_seconds = stale_seconds
 
     def live(self, *, now: datetime | None = None) -> LiveMarketView:
@@ -98,6 +102,19 @@ class MarketService:
         try:
             return MarketSchedule.model_validate_json(raw)
         except Exception:
+            return None
+
+    def limit_check(self, day: date | None = None) -> dict | None:
+        """当日 Tushare stk_limit 与 QMT 合约详情的核对结果（行情网关发布，D-19）。"""
+        if self._transport is None:
+            return None
+        raw = self._transport.get_key(
+            f"{self._limit_check_prefix}:{(day or date.today()):%Y%m%d}")
+        if raw is None:
+            return None
+        try:
+            return json.loads(raw)
+        except ValueError:
             return None
 
     def history(self, limit: int = 60) -> list[dict]:
