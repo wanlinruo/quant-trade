@@ -18,6 +18,7 @@ from qsys.core.calendar import AShareCalendar
 from qsys.ops.service_checks import parse_step_name
 from qsys.ops.services import (
     FAILED,
+    REPAIRED,
     RUNNING,
     SERVICE_BY_ID,
     SERVICES,
@@ -37,7 +38,7 @@ _SYSTEMD_PROPS = ("ActiveState", "SubState", "Result", "ExecMainStatus",
 
 # 看板格子：css 类与中文标签
 CELL_LABELS = {
-    "ok": "成功", "warn": "有警告", "bad": "失败", "running": "运行中",
+    "ok": "成功", "warn": "有警告", "bad": "失败", "running": "运行中", "fixed": "已修复",
     "qcbad": "质检未过", "qcwarn": "质检警告",
     "missed": "未运行", "pending": "未到时间", "closed": "休市", "none": "无记录",
 }
@@ -145,9 +146,11 @@ class ServiceConsole:
             last = meaningful[-1]
             if last == RUNNING:
                 return "running"
+            if last == REPAIRED:
+                return "fixed"
             if last == SUCCEEDED:
                 # 当天先失败、后补跑成功：结果可用，但要让人看到有过失败
-                return "warn" if any(s in (FAILED, "interrupted") for s in meaningful) else "ok"
+                return "fixed" if any(s in (FAILED, "interrupted") for s in meaningful) else "ok"
             if last == WARNING:
                 return "warn"
             return "bad"
@@ -222,14 +225,23 @@ def _checks_by_day(runs: list[dict]) -> dict[tuple[str, str], list[dict]]:
 
 
 def _with_checks(state: str, checks: list[dict]) -> str:
-    """任务本身成功但质检不过，格子要显示出来；任务失败/未运行时保持原状态。"""
-    if state not in ("ok", "warn") or not checks:
+    """任务本身成功但质检不过，格子要显示出来；任务失败时保持原状态。
+
+    任务未运行、但它该产出的数据质检已通过（后续补上了），显示「已修复」。
+    """
+    if not checks:
         return state
     statuses = {c.get("status") for c in checks}
+    if state == "missed":
+        return state if FAILED in statuses else "fixed"
+    if state not in ("ok", "warn", "fixed"):
+        return state
     if FAILED in statuses:
         return "qcbad"
     if WARNING in statuses and state == "ok":
         return "qcwarn"
+    if REPAIRED in statuses and state == "ok":
+        return "fixed"
     return state
 
 

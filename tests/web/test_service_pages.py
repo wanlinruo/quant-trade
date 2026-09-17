@@ -55,7 +55,7 @@ def test_board_states(tmp_path, monkeypatch):
     record(tmp_path, "premarket-limits", datetime(2026, 9, 17, 8, 58), monkeypatch=monkeypatch)
     got = states(console(tmp_path).board(14), "tushare-sync")
     assert got[date(2026, 9, 14)] == "ok"
-    assert got[date(2026, 9, 15)] == "warn"      # 17:00 失败、19:00 补跑成功
+    assert got[date(2026, 9, 15)] == "fixed"     # 17:00 失败、19:00 补跑成功
     assert got[date(2026, 9, 16)] == "bad"
     assert got[date(2026, 9, 17)] == "missed"    # 截止 19:30 已过仍无记录
     assert got[date(2026, 9, 13)] == "none"      # 运行记录启用前
@@ -139,3 +139,35 @@ def test_failed_checks_turn_a_successful_run_red_and_show_on_detail(tmp_path, wa
     sync_id = next(p for p in root.rglob("tushare-sync-*.json")).stem
     page = client(root, warehouse).get(f"/services/runs/2026-09-16/{sync_id}")
     assert "涨停列表到货" in page.text and "0 行" in page.text
+
+
+def check_run(session, *steps):
+    def fill(run):
+        run.session = session
+        for name, status in steps:
+            with run.step(name) as step:
+                step.status = status
+    return fill
+
+
+def test_repaired_checks_show_fixed_and_missed_service_with_passing_data_shows_fixed(
+        tmp_path, monkeypatch):
+    day = date(2026, 9, 17)
+    record(tmp_path, "daily-archive", datetime(2026, 9, 17, 23, 8), monkeypatch=monkeypatch)
+    record(tmp_path, "service-checks", datetime(2026, 9, 17, 20, 0), check_run(
+        day, ("daily-archive｜分钟线到货", "failed"),
+        ("premarket-limits｜开盘前取到当日涨跌停价", "failed")), monkeypatch)
+    record(tmp_path, "service-checks", datetime(2026, 9, 17, 23, 10), check_run(
+        day, ("daily-archive｜分钟线到货", "repaired"),
+        ("premarket-limits｜开盘前取到当日涨跌停价", "repaired")), monkeypatch)
+    board = console(tmp_path).board(14)
+    assert states(board, "daily-archive")[day] == "fixed"
+    assert states(board, "premarket-limits")[day] == "fixed"     # 没执行，但数据核对已通过
+    assert states(board, "service-checks")[day] == "fixed"       # 20:00 失败、23:10 已修复
+
+
+def test_missed_service_stays_missed_while_its_data_check_fails(tmp_path, monkeypatch):
+    day = date(2026, 9, 17)
+    record(tmp_path, "service-checks", datetime(2026, 9, 17, 20, 0), check_run(
+        day, ("premarket-limits｜开盘前取到当日涨跌停价", "failed")), monkeypatch)
+    assert states(console(tmp_path).board(14), "premarket-limits")[day] == "missed"

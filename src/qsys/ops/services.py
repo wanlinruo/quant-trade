@@ -25,6 +25,8 @@ import structlog
 log = structlog.get_logger(__name__)
 
 SUCCEEDED, FAILED, WARNING, SKIPPED, RUNNING = "succeeded", "failed", "warning", "skipped", "running"
+# 质检专用：同一交易日早先的质检未通过，修复后重跑质检通过
+REPAIRED = "repaired"
 
 
 @dataclass(frozen=True, slots=True)
@@ -229,7 +231,8 @@ class ServiceRun:
         elif self.status != SKIPPED:
             statuses = {s.status for s in self.steps}
             self.status = (FAILED if FAILED in statuses
-                           else WARNING if WARNING in statuses else SUCCEEDED)
+                           else WARNING if WARNING in statuses
+                           else REPAIRED if REPAIRED in statuses else SUCCEEDED)
         self._save()
 
     def as_dict(self) -> dict:
