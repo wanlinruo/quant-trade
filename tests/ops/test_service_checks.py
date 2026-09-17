@@ -47,6 +47,10 @@ class FakeQuery:
         return self.frames.get("history", pl.DataFrame(schema={
             "symbol": pl.Utf8, "change_reason": pl.Utf8, "start_date": pl.Date, "end_date": pl.Date}))
 
+    def instruments(self):
+        return self.frames.get("instruments", pl.DataFrame(
+            schema={"symbol": pl.Utf8, "delist_date": pl.Date}))
+
     def delisting_pool(self, start, end):
         return self._dated("pool", start)
 
@@ -190,6 +194,10 @@ def test_delisting_pool_is_recomputed_independently_from_namechange():
         "end_date": [None, date(2026, 9, 10), None],
     })
     good = FakeQuery(history=history, pool=daily(DAY, ["300344.SZ"]))
+    # 早已退市、namechange 没登记结束日的不算在池里
+    stale = pl.DataFrame({"symbol": ["300344.SZ"], "delist_date": [date(2026, 9, 1)]})
+    assert sc._delisting_pool(ctx(FakeQuery(history=history, instruments=stale,
+                                            pool=daily(DAY, [])))).status == sc.OK
     assert sc._delisting_pool(ctx(good)).status == sc.OK
     bad = FakeQuery(history=history, pool=daily(DAY, ["600001.SH"]))
     got = sc._delisting_pool(ctx(bad))

@@ -6,6 +6,10 @@
 的区间，交易日取自 `tushare_daily`，外加调用方给出的下一个交易日——T 日开盘前
 选股要用到 T 日的池子，而 T 日日线当晚才有。不从名称里找「退」字（D-11）。
 
+namechange 对已经摘牌的股票往往不登记整理期结束日（2026-09-17 实测池中 153 只
+全是早已退市的），所以再用 `instruments.delist_date`（Tushare stock_basic 直取）
+剔除当天之前已经退市的标的。退市日早于当天是当天已知的事实，没有前视。
+
 池子只存在整理期的标的，某天 0 行可能是真没有；因此每个年分区在 Parquet
 元数据里记录实际构建过的交易日区间，查询据此区分「没有」与「没建」。
 """
@@ -27,17 +31,21 @@ log = structlog.get_logger(__name__)
 DELISTING_REASON = "退市整理期"
 
 
-def delisting_rows(history: pl.DataFrame, sessions: Sequence[date]) -> pl.DataFrame:
+def delisting_rows(history: pl.DataFrame, sessions: Sequence[date],
+                   instruments: pl.DataFrame) -> pl.DataFrame:
     """`sessions` 每天处于退市整理期的 (dt, symbol, name, start_date, end_date, ann_date)。"""
-    periods = history.filter(pl.col("change_reason") == DELISTING_REASON).select(
-        "symbol", "name", "start_date", "end_date", "ann_date")
+    delisted = instruments.select("symbol", "delist_date")
+    periods = (history.filter(pl.col("change_reason") == DELISTING_REASON)
+               .select("symbol", "name", "start_date", "end_date", "ann_date")
+               .join(delisted, on="symbol", how="left"))
     if periods.height == 0 or not sessions:
         return pl.from_arrow(schema.DELISTING_POOL.empty_table())
     days = pl.DataFrame({"dt": list(sessions)}, schema={"dt": pl.Date})
     return (
         days.join(periods, how="cross")
         .filter((pl.col("start_date") <= pl.col("dt"))
-                & (pl.col("end_date").is_null() | (pl.col("end_date") >= pl.col("dt"))))
+                & (pl.col("end_date").is_null() | (pl.col("end_date") >= pl.col("dt")))
+                & (pl.col("delist_date").is_null() | (pl.col("delist_date") >= pl.col("dt"))))
         .select(schema.DELISTING_POOL.names)
         .unique(subset=["dt", "symbol"], keep="first", maintain_order=True)
         .sort(["dt", "symbol"])
@@ -56,7 +64,7 @@ def build_delisting_pool(warehouse: Warehouse, start: date, end: date, *,
     if not sessions:
         log.warning("delisting_pool.no_sessions", start=str(start), end=str(end))
         return 0
-    fresh = delisting_rows(query.name_history(), sessions)
+    fresh = delisting_rows(query.name_history(), sessions, query.instruments())
     for year in sorted({day.year for day in sessions}):
         built = [d for d in sessions if d.year == year]
         previous = query.delisting_pool_coverage(year)
