@@ -85,3 +85,14 @@ def test_auction_volume_falls_back_to_auction_ticks(warehouse):
         "last_price": [0.0, 10.0], "volume": [0, 73743], "amount": [0.0, 737430.0],
     }, schema=schema.AUCTION_TICKS), year=2026)
     assert _market(warehouse, datetime(2026, 9, 16, 9, 30)).auction_volume([SYM], PAID_DAY) == {SYM: 73743}
+
+
+def test_intraday_coverage_spans_paid_and_qmt(warehouse):
+    """回测前的覆盖检查要把付费分钟算进去，否则付费区间的回测会被直接拒绝。"""
+    _paid(warehouse, date(2026, 1, 5), [time(9, 31)], [10.0], [100])
+    _qmt(warehouse, QMT_DAY, [time(9, 31)], [9.9], [1])
+    assert WarehouseQuery(warehouse).intraday_bounds() == (date(2026, 1, 5), QMT_DAY)
+
+
+def test_intraday_coverage_is_none_without_minute_data(warehouse):
+    assert WarehouseQuery(warehouse).intraday_bounds() is None

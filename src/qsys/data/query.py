@@ -312,6 +312,20 @@ class WarehouseQuery:
                 )
         return covered
 
+    def intraday_bounds(self) -> tuple[date, date] | None:
+        """检查点可用分钟线的最早与最晚交易日：已发布付费分钟与 QMT 分钟线的并集。"""
+        days: list[date] = []
+        base = self._wh.root / "paid_minute_bars"
+        years = sorted(int(p.name.split("=", 1)[1]) for p in base.glob("year=*")) if base.exists() else []
+        if years:
+            covered = self.paid_minute_days(date(years[0], 1, 1), date(years[-1], 12, 31))
+            if covered:
+                days += [min(covered), max(covered)]
+        qmt = self.dataset_bounds("minute_bars")
+        if qmt is not None:
+            days += [v.date() if isinstance(v, datetime) else v for v in qmt]
+        return (min(days), max(days)) if days else None
+
     def intraday_bars(self, symbols: Sequence[str], day: date) -> pl.DataFrame:
         """检查点报价用的当日分钟线，统一契约（D-20）。
 

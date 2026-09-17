@@ -62,12 +62,11 @@ def execute_backtest(
     def validate_schedule(checkpoints, auction_at):
         if not checkpoints:
             return
-        bounds = query.dataset_bounds("minute_bars")
+        # 付费分钟与 QMT 分钟线的并集（D-20），检查点按交易日选源
+        bounds = query.intraday_bounds()
         if bounds is None:
             raise ValueError("策略声明了盘中检查点，但仓库没有分钟行情")
-        first, last = bounds
-        first_day = first.date() if hasattr(first, "date") else first
-        last_day = last.date() if hasattr(last, "date") else last
+        first_day, last_day = bounds
         if start < first_day or end > last_day:
             raise ValueError(
                 f"分钟行情仅覆盖 {first_day} ~ {last_day}，不能精确回测所选区间"
