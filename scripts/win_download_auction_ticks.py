@@ -83,6 +83,15 @@ def load_manifest(path: Path) -> dict[str, list[str]]:
     return {s: sorted(set(d)) for s, d in grouped.items()}
 
 
+def ledger_key(code: str, stamps: list[str]) -> str:
+    """续传账本的键：标的 + 本次要的全部日期。
+
+    只记标的会出错：同一输出目录里先做过「09-16 那一天」的标的，重跑补
+    更早日期时被当成已完成跳过，竞价数据就此过期（D-7）。
+    """
+    return f"{code}:{'|'.join(stamps)}"
+
+
 def fetch(xtdata, code: str, stamps: list[str]) -> list[dict]:
     """下这只标的这几天的 tick，只留竞价段。"""
     lo, hi = stamps[0], stamps[-1]
@@ -120,78 +129,99 @@ def fetch(xtdata, code: str, stamps: list[str]) -> list[dict]:
     return rows
 
 
+def read_done(path: Path) -> set[str]:
+    if not path.exists():
+        return set()
+    return {line.strip() for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()}
+
+
+def _next_file_index(out: Path) -> int:
+    """接着目录里已有的文件编号写。从 0 开始会覆盖上次崩溃前已落盘、尚未回传的文件。"""
+    taken = [int(p.stem.split("_")[1]) for p in out.glob("auction_*.parquet")
+             if p.stem.split("_")[1].isdigit()]
+    return max(taken, default=-1) + 1
+
+
+def run_batch(fetch_one, grouped: dict[str, list[str]], todo: list[str], out: Path,
+              *, flush_every: int = 50, sleep: float = 0.0) -> dict[str, int]:
+    """逐只下载，每 `flush_every` 只落盘一次，**落盘之后**才把这批记进 done.csv。
+
+    2026-09-17 补采时进程在第 717 只后整体退出：旧实现先记账、攒到 20 万笔才写盘，
+    结果 692 只被记成已完成、数据却一笔没落盘，重跑还会跳过它们（D-7）。
+    """
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    out.mkdir(parents=True, exist_ok=True)
+    done_path = out / "done.csv"
+    stats = {"ok": 0, "failed": 0, "written": 0, "files": 0}
+    buffer: list[dict] = []
+    pending: list[str] = []
+    index = _next_file_index(out)
+    started = time.time()
+
+    def flush() -> None:
+        nonlocal buffer, pending, index
+        if buffer:
+            path = out / f"auction_{index:05d}.parquet"
+            table = pa.table({name: [row[name] for row in buffer] for name in COLUMNS},
+                             schema=_arrow_schema())
+            pq.write_table(table, str(path))
+            print(f"  写出 {path.name}  {len(buffer):,} 笔")
+            stats["written"] += len(buffer)
+            stats["files"] += 1
+            index += 1
+        if pending:
+            with done_path.open("a", encoding="utf-8") as ledger:
+                ledger.writelines(key + "\n" for key in pending)
+        buffer, pending = [], []
+
+    for n, code in enumerate(todo, 1):
+        try:
+            rows = fetch_one(code, grouped[code])
+        except Exception as exc:  # 单只失败不中断整批，也不记账
+            stats["failed"] += 1
+            print(f"  [失败] {code}: {exc}")
+            continue
+        stats["ok"] += 1
+        buffer.extend(rows)
+        pending.append(ledger_key(code, grouped[code]))
+        if n % flush_every == 0:
+            flush()
+            print(f"  {n}/{len(todo)}  累计 {stats['written']:,} 笔  "
+                  f"{time.time() - started:.0f}s")
+        if sleep:
+            time.sleep(sleep)
+    flush()
+    return stats
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="下载集合竞价 tick")
     parser.add_argument("--manifest", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--limit", type=int, default=0, help="只做前 N 只，用于试跑")
-    parser.add_argument("--flush-rows", type=int, default=200_000)
+    parser.add_argument("--flush-every", type=int, default=50,
+                        help="每做完这么多只落盘并记账一次")
     parser.add_argument("--sleep", type=float, default=0.0)
     args = parser.parse_args()
 
-    import pyarrow.parquet as pq
     from xtquant import xtdata
 
     out = Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
-    done_path = out / "done.csv"
-    done = set()
-    if done_path.exists():
-        done = {
-            line.strip()
-            for line in done_path.read_text(encoding="utf-8").splitlines()
-            if line.strip()
-        }
-
+    done = read_done(out / "done.csv")
     grouped = load_manifest(Path(args.manifest))
-    todo = [s for s in sorted(grouped) if s not in done]
+    todo = [s for s in sorted(grouped) if ledger_key(s, grouped[s]) not in done]
     if args.limit:
         todo = todo[: args.limit]
     print(f"清单 {len(grouped)} 只 / 已完成 {len(done)} 只 / 待做 {len(todo)} 只")
 
-    buffer: list[dict] = []
-    written = files = failed = 0
     started = time.time()
-
-    def flush() -> None:
-        nonlocal buffer, written, files
-        if not buffer:
-            return
-        import pyarrow as pa
-
-        path = out / f"auction_{files:05d}.parquet"
-        table = pa.table(
-            {name: [row[name] for row in buffer] for name in COLUMNS},
-            schema=_arrow_schema(),
-        )
-        pq.write_table(table, str(path))
-        print(f"  写出 {path.name}  {len(buffer):,} 笔")
-        written += len(buffer)
-        files += 1
-        buffer = []
-
-    with done_path.open("a", encoding="utf-8") as ledger:
-        for n, code in enumerate(todo, 1):
-            try:
-                rows = fetch(xtdata, code, grouped[code])
-            except Exception as exc:  # 单只失败不中断整批
-                failed += 1
-                print(f"  [失败] {code}: {exc}")
-                continue
-            buffer.extend(rows)
-            ledger.write(code + "\n")
-            ledger.flush()
-            if n % 50 == 0:
-                print(f"  {n}/{len(todo)}  累计 {written + len(buffer):,} 笔  "
-                      f"{time.time() - started:.0f}s")
-            if len(buffer) >= args.flush_rows:
-                flush()
-            if args.sleep:
-                time.sleep(args.sleep)
-    flush()
-
-    print(f"完成：成功 {len(todo) - failed} 只 / 失败 {failed} 只 / "
-          f"{written:,} 笔 / {files} 个文件")
+    stats = run_batch(lambda code, stamps: fetch(xtdata, code, stamps), grouped, todo, out,
+                      flush_every=args.flush_every, sleep=args.sleep)
+    print(f"完成：成功 {stats['ok']} 只 / 失败 {stats['failed']} 只 / "
+          f"{stats['written']:,} 笔 / {stats['files']} 个文件")
     print(f"耗时 {(time.time() - started) / 60:.1f} 分钟")
     return 0
 

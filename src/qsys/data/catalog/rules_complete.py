@@ -2,16 +2,22 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 
 import polars as pl
 
 from qsys.data.catalog.checks import Category, Check, CheckContext, CheckResult, Scope, register
+from qsys.data.pipeline.auction import missing_auction_days
+from qsys.data.pipeline.candidates import candidate_stock_days
 from qsys.data.quality.daily_rules import find_holes
 
 _ROW_NULL_MAX = .02
 _SYMBOL_NULL_MAX = .005
 _LIMIT_LIST_SLA = time(19, 0)
+# qsys-daily-archive 工作日 15:40 采当日竞价 tick，正常 1 分钟内完成
+_AUCTION_SLA = time(16, 0)
+# 候选由前一交易日首板推出；回看要跨过春节这类长假才能找到前一交易日
+_CANDIDATE_LOOKBACK = timedelta(days=30)
 
 
 def _now() -> datetime:
@@ -94,6 +100,29 @@ register(Check("B3.null_rate", Category.COMPLETENESS, Scope.INCREMENTAL,
                "空值率同时按行和受影响标的统计", _null_rate))
 
 
+def _auction_misses(ctx: CheckContext) -> tuple[list[dict[str, object]], int]:
+    """首板次日应有竞价 tick（D-7）。QMT 只留约 20 个交易日，缺了就永久缺。
+
+    期望集合与 daily_archive 的下载清单同源（``candidate_stock_days``），
+    只扣掉当日直取停牌的标的——停牌没有竞价，不是缺货。
+    """
+    wanted = candidate_stock_days(ctx.warehouse, ctx.start - _CANDIDATE_LOOKBACK, ctx.end)
+    wanted = wanted.filter(pl.col("dt").is_between(ctx.start, ctx.end))
+    now = _now()
+    if now.time() < _AUCTION_SLA:
+        wanted = wanted.filter(pl.col("dt") != now.date())
+    if not wanted.height:
+        return [], 0
+    suspended = (ctx.query.suspensions(None, ctx.start, ctx.end)
+                 .filter(pl.col("suspend_type") == "S").select(["symbol", "dt"]).unique())
+    trading = wanted.join(suspended, on=["symbol", "dt"], how="anti")
+    missed = missing_auction_days(ctx.warehouse, trading)
+    # 停牌候选也逐个核对过（结论是豁免），计入分母
+    return ([{"dataset": "auction_ticks", "symbol": row["symbol"], "dt": row["dt"],
+              "reason": "首板次日未到货"} for row in missed.iter_rows(named=True)],
+            wanted.height)
+
+
 def _arrival(ctx: CheckContext) -> CheckResult:
     daily = ctx.query.tushare_daily(None, ctx.start, ctx.end, columns=["symbol", "dt"])
     sessions = set(daily["dt"].unique().to_list()) if daily.height else set()
@@ -120,7 +149,9 @@ def _arrival(ctx: CheckContext) -> CheckResult:
         failed = recon.filter(pl.col("dt").is_between(ctx.start, ctx.end) & ~pl.col("is_consistent"))
         missing.extend({"dataset": "live_recon", "dt": row["dt"], "reason": row["layer"]}
                        for row in failed.iter_rows(named=True))
-    checked = (len(sessions) * 2 + (1 if sessions else 0)
+    auction_missed, auction_checked = _auction_misses(ctx)
+    missing.extend(auction_missed)
+    checked = (len(sessions) * 2 + (1 if sessions else 0) + auction_checked
                + (logs.height if logs.height else 0) + (recon.height if recon.height else 0))
     return CheckResult(len(missing), checked, f"到货或采集失败 {len(missing)} 项",
                        pl.DataFrame(missing) if missing else None)

@@ -88,14 +88,12 @@ def test_an_undecodable_limit_price_records_null_not_a_guess(warehouse, write_da
     assert got["limit_pct"].to_list() == [None]
 
 
-def test_without_a_direct_price_the_board_tier_still_stands(warehouse, write_daily_bars):
-    """没有直取价时走派生路径，limit_pct 仍是板块档位。
-
-    这条守的是修法本身：解码不能把「没有直取价」也一并变成 null。
-    """
+def test_without_a_direct_price_nothing_is_derived(warehouse, write_daily_bars):
+    """D-11：没有 stk_limit 直取价就不按板块档位自算，涨停价与档位都是 null。"""
     _bars(write_daily_bars, warehouse, "600519.SH", 10.00, 11.00)
     _st(warehouse, "600519.SH", False)
 
     got = _built(warehouse)
-    assert got["limit_up"].to_list() == [11.00]
-    assert got["limit_pct"].to_list() == [0.10]
+    assert got["limit_up"].to_list() == [None]
+    assert got["limit_pct"].to_list() == [None]
+    assert got["is_limit_up"].to_list() == [None]

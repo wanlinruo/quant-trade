@@ -253,8 +253,8 @@ def _name_history() -> list[Metric]:
         Metric(
             id="name_history.name", kind=Kind.DIRECT, validity=Validity.SPAN,
             status=MetricStatus.ACTIVE,
-            meaning="该区间内的证券简称，直取 namechange.name。ST 状态由区间"
-                    "覆盖关系纯派生（schema.py NAME_HISTORY 注释）",
+            meaning="该区间内的证券简称，直取 namechange.name。不用于判 ST"
+                    "（D-11：ST 只认 stock_st）；退市整理期读 change_reason",
             lineage=Direct("tushare.namechange", "name"),
             checks=_NAME_HISTORY_CHECKS, known_issues=_D10,
         ),

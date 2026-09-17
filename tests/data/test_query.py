@@ -228,3 +228,52 @@ def test_a_partition_written_before_a_column_was_added_still_reads(warehouse: Wa
     assert df.columns == list(schema.MARKET_REGIME.names)
     assert df.height == 1
     assert df["index_ma20_slope_5d"].to_list() == [None]
+
+
+# --- D-11：退市整理期只认 namechange 的结构化状态 -------------------------
+
+def _name_history(warehouse, rows):
+    """rows: [(symbol, name, start, end, ann, reason)]"""
+    warehouse.write("name_history", pa.table({
+        "symbol": [r[0] for r in rows], "name": [r[1] for r in rows],
+        "start_date": [r[2] for r in rows], "end_date": [r[3] for r in rows],
+        "ann_date": [r[4] for r in rows], "change_reason": [r[5] for r in rows],
+    }, schema=schema.NAME_HISTORY))
+
+
+def test_delisting_symbols_cover_the_period_announced_in_time(warehouse):
+    _name_history(warehouse, [
+        ("600532.SH", "退市未来", date(2023, 5, 30), None, date(2023, 5, 29), "退市整理期"),
+        ("600532.SH", "*ST未来", date(2022, 7, 1), date(2023, 5, 29), date(2022, 6, 30), "*ST"),
+        ("002417.SZ", "深南退", date(2023, 6, 1), date(2023, 6, 20), date(2023, 5, 31), "退市整理期"),
+    ])
+    q = WarehouseQuery(warehouse)
+    assert q.delisting_symbols(date(2023, 6, 16), announced_by=date(2023, 6, 15)) == {
+        "600532.SH", "002417.SZ"}
+    # 区间外、以及只有 *ST 的日子都不算
+    assert q.delisting_symbols(date(2023, 5, 29), announced_by=date(2023, 5, 26)) == set()
+    assert q.delisting_symbols(date(2023, 6, 21), announced_by=date(2023, 6, 20)) == {"600532.SH"}
+
+
+def test_delisting_announced_after_the_cutoff_is_not_visible_yet(warehouse):
+    """T 日开盘前只能用到 T-1 及以前公告的事件——回测与实盘同一口径。"""
+    _name_history(warehouse, [
+        ("600781.SH", "退市辅仁", date(2023, 5, 31), None, date(2023, 5, 31), "退市整理期"),
+    ])
+    q = WarehouseQuery(warehouse)
+    assert q.delisting_symbols(date(2023, 5, 31), announced_by=date(2023, 5, 30)) == set()
+    assert q.delisting_symbols(date(2023, 6, 1), announced_by=date(2023, 5, 31)) == {"600781.SH"}
+
+
+def test_delisting_without_announcement_date_is_treated_as_known(warehouse):
+    """公告日缺失时无法证明开盘前不可知；候选池宁可漏、不可错，按已知处理。"""
+    _name_history(warehouse, [
+        ("000606.SZ", "顺利退", date(2023, 6, 1), None, None, "退市整理期"),
+    ])
+    assert WarehouseQuery(warehouse).delisting_symbols(
+        date(2023, 6, 15), announced_by=date(2023, 6, 14)) == {"000606.SZ"}
+
+
+def test_delisting_symbols_on_an_empty_warehouse(warehouse):
+    assert WarehouseQuery(warehouse).delisting_symbols(
+        date(2023, 6, 15), announced_by=date(2023, 6, 14)) == set()

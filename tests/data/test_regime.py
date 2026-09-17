@@ -7,6 +7,7 @@ import pyarrow as pa
 import pytest
 
 from qsys.data import schema
+from direct_truth import write_direct_truth
 from qsys.data.pipeline.flags import build_daily_flags
 from qsys.data.pipeline.regime import build_market_regime
 from qsys.data.query import WarehouseQuery
@@ -26,7 +27,8 @@ def seed(warehouse: Warehouse, write_daily_bars, rows) -> None:
     last_close: dict[str, float] = {}
     pre_closes: list[float | None] = []
     for r in rows:
-        pre_closes.append(last_close.get(r[0]))
+        # 首行给一个平盘的参考价，好让它也有直取涨停价——否则次日是否首板无从判定
+        pre_closes.append(last_close.get(r[0], r[5]))
         last_close[r[0]] = r[5]
     write_daily_bars(warehouse, pl.DataFrame({
         "symbol": [r[0] for r in rows],
@@ -55,6 +57,9 @@ def seed(warehouse: Warehouse, write_daily_bars, rows) -> None:
             schema=schema.INSTRUMENTS,
         ),
     )
+    write_direct_truth(warehouse, pl.DataFrame({
+        "symbol": [r[0] for r in rows], "dt": [r[1] for r in rows], "pre_close": pre_closes,
+    }))
     build_daily_flags(warehouse, min(r[1] for r in rows), max(r[1] for r in rows))
 
 

@@ -102,14 +102,13 @@ _MEANING = {
 _TUSHARE_NAME_MEANING = (
     "当日证券简称。**生产恒为 null**——daily/daily_basic/adj_factor 三个"
     "接口都不给，compose_daily 把这一列留给 namechange 单独成表（见 "
-    "pipeline/tushare_daily.py 顶部注释）；真值由 flags.resolve_names 按"
-    "四级优先级从 namechange / paid_daily / name_snapshots 解析"
+    "pipeline/tushare_daily.py 顶部注释）。ST 不再读名称（D-11，只认 stock_st）"
 )
 _PAID_NAME_MEANING = (
     "当日证券简称，**逐日观测到的真实值**（区别于 tushare_daily.name "
-    "恒为空）。覆盖 1990 至 2026-09-11，是这段历史名称的唯一真值源——"
-    "flags.resolve_names 的四级优先级里排第二，删了会让 867 个首板重新"
-    "消失（见 catalog/sources.py 的 baidupan.daily caveat、D-10）"
+    "恒为空）。覆盖 1990 至 2026-09-11，是这段历史名称的唯一真值源，"
+    "冻结保留（见 catalog/sources.py 的 baidupan.daily caveat、D-10）。"
+    "2026-09-17 起 daily_flags 不再用它判 ST（D-11）"
 )
 
 # 生产链路上这些列参与哪些规则（仅 tushare_daily；R2：paid_daily 冻结只挂
@@ -188,9 +187,8 @@ def _tushare_daily_metrics() -> list[Metric]:
                         formula="恒 null——daily / daily_basic / adj_factor 三个"
                                 "接口都不返回证券简称，compose_daily 写 null "
                                 "字面量（pipeline/tushare_daily.py:99-100）。"
-                                "此列没有上游，真值在下游由 flags.resolve_names "
-                                "从 paid_daily / name_snapshots / name_history "
-                                "三个直取源解析。",
+                                "此列没有上游；名称真值在 paid_daily / "
+                                "name_snapshots / name_history 三个直取源。",
                     ),
                     checks=UNCOVERED(
                         "生产恒为 null，没有值可验；名称真值的验证挂在 "

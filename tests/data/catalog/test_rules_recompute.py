@@ -66,17 +66,26 @@ def test_module_never_imports_production_calculators():
     assert "build_daily_flags" not in source
 
 
-def test_limit_up_accepts_correct_row(ctx, warehouse):
-    """没有直取价时走兜底档位。is_st 必须给——不知道是不是 ST 就定不出档位。"""
+def test_limit_up_without_a_direct_price_must_be_null(ctx, warehouse):
+    """D-11：没有 stk_limit 就没有涨停价。表里若有值，一定是自算出来的。"""
     _flags([{"dt": D[0], "symbol": "600036.SH", "adj_prev_close": 10.0,
              "limit_pct": .10, "limit_up": 11.0, "is_st": False}], warehouse)
-    assert _run(ctx, "A2.recompute.limit_up")["passed"] is True
+    row = _run(ctx, "A2.recompute.limit_up")
+    assert row["violations"] == 1 and row["checked_rows"] == 1
 
 
-def test_limit_up_reports_wrong_st_band(ctx, warehouse):
-    """迁移期（无直取价）的主板 ST 仍是 5% 档，11.0 对不上 10.5。"""
-    _flags([{"dt": D[0], "symbol": "600001.SH", "adj_prev_close": 10.0,
-             "limit_pct": .05, "limit_up": 11.0, "is_st": True}], warehouse)
+def test_null_limit_up_without_a_direct_price_is_correct(ctx, warehouse):
+    _flags([{"dt": D[0], "symbol": "600036.SH", "adj_prev_close": 10.0,
+             "limit_pct": None, "limit_up": None, "is_st": True}], warehouse)
+    row = _run(ctx, "A2.recompute.limit_up")
+    assert row["passed"] is True and row["checked_rows"] == 1
+
+
+def test_limit_up_missing_while_a_direct_price_exists_is_reported(ctx, warehouse):
+    _flags([{"dt": D[0], "symbol": "600036.SH", "adj_prev_close": 10.0,
+             "limit_up": None}], warehouse)
+    _limits([{"symbol": "600036.SH", "dt": D[0], "pre_close": 10.0,
+              "limit_up": 11.0, "limit_down": 9.0}], warehouse)
     assert _run(ctx, "A2.recompute.limit_up")["violations"] == 1
 
 
@@ -87,13 +96,6 @@ def test_first_board_uses_previous_session(ctx, warehouse):
     ], warehouse)
     row = _run(ctx, "A2.recompute.is_first_board")
     assert row["passed"] is True and row["checked_rows"] == 2
-
-
-def test_missing_upstream_is_excluded_not_filled(ctx, warehouse):
-    _flags([{"dt": D[0], "symbol": "600036.SH", "adj_prev_close": None,
-             "limit_pct": .10, "limit_up": 11.0}], warehouse)
-    row = _run(ctx, "A2.recompute.limit_up")
-    assert row["checked_rows"] == 0 and row["passed"] is False
 
 
 def test_regime_count_is_rebuilt_from_daily_flags(ctx, warehouse):
@@ -202,3 +204,19 @@ def test_is_st_reports_a_row_the_direct_table_contradicts(ctx, warehouse):
     _daily([{"symbol": "600001.SH", "dt": D[0], "close": 10.0}], warehouse)
     _stock_st([{"symbol": "600001.SH", "dt": D[0], "is_st": False}], warehouse)
     assert _run(ctx, "A2.recompute.is_st")["violations"] == 1
+
+
+def test_is_st_without_a_stock_st_row_must_be_null(ctx, warehouse):
+    """D-11：stock_st 缺行时 is_st 只能是 null——有值就说明从别处推断了。"""
+    _flags([{"dt": D[0], "symbol": "600001.SH", "is_st": True,
+             "st_source": "stock_st"}], warehouse)
+    _stock_st([{"symbol": "600002.SH", "dt": D[0], "is_st": False}], warehouse)
+    assert _run(ctx, "A2.recompute.is_st")["violations"] == 1
+    assert _run(ctx, "A2.recompute.st_source")["violations"] == 1
+
+
+def test_null_st_where_stock_st_has_no_row_is_correct(ctx, warehouse):
+    _flags([{"dt": D[0], "symbol": "600001.SH", "is_st": None, "st_source": None}], warehouse)
+    _stock_st([{"symbol": "600002.SH", "dt": D[0], "is_st": False}], warehouse)
+    assert _run(ctx, "A2.recompute.is_st")["passed"] is True
+    assert _run(ctx, "A2.recompute.st_source")["passed"] is True
