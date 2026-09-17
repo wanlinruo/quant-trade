@@ -84,7 +84,9 @@ def build_app(
         paper_calendar=trading_calendar,
         services=ServiceConsole(
             service_runs_dir or Path("var/service-runs"),
-            calendar=trading_calendar, heartbeat=monitor.heartbeat_status,
+            calendar=trading_calendar,
+            # 没有 Redis 时不判心跳（显示未知），不能把「查不到」当成「进程已死」
+            heartbeat=monitor.heartbeat_status if transport is not None else None,
         ),
     )
 

@@ -77,7 +77,7 @@ SERVICES: tuple[ServiceSpec, ...] = (
     ServiceSpec(
         "paper", "模拟交易", "resident", "Linux", "qsys-paper", "常驻",
         ("Redis 行情", "price_limits_daily"), ("workbench.sqlite3",),
-        "按实时行情运行模拟账户",
+        "按实时行情运行模拟账户", heartbeat="paper",
     ),
     ServiceSpec(
         "shadow-core", "影子盘策略核心", "resident", "Linux", "qsys-shadow-core", "常驻",
