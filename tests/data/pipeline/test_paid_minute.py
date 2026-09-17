@@ -192,3 +192,65 @@ def test_unmatched_zero_trade_flat_day_is_quarantined_without_repair(tmp_path):
     assert evidence.height == 241
     assert evidence["reason"].unique().to_list() == ["ZERO_TRADE_FLAT_NO_DAILY_RECORD"]
     assert pl.read_parquet(shard).height == 0
+
+
+# --- D-20：2026 年按交易日的全市场文件 ------------------------------------
+
+from qsys.data.pipeline.paid_minute import finalize_day_staging, ingest_day_file  # noqa: E402
+
+
+def make_day_csv(path: Path, day: str = "20260916", *, extra: str = "") -> Path:
+    stamp = f"{day[:4]}-{day[4:6]}-{day[6:]}"
+    path.write_text(
+        "﻿" + HEADER
+        + f"000001.SZ,{day},{stamp} 09:30:00,11.8,11.84,11.79,11.8,347600.0,4103507.0,139.008\n"
+        + f"000001.SZ,{day},{stamp} 09:31:00,11.79,11.83,11.79,11.82,1189600.0,14049730.0,139.008\n"
+        + f"600000.SH,{day},{stamp} 09:30:00,9.1,9.12,9.08,9.1,10000.0,91000.0,20.1\n"
+        + extra,
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_day_file_is_staged_resumably_under_its_trading_day(tmp_path):
+    source = make_day_csv(tmp_path / "20260916_A股1分钟K线@余哈哈的数据仓库 原创整理.csv")
+    warehouse = tmp_path / "warehouse"
+    first = ingest_day_file(source, warehouse, date(2026, 9, 16))
+    assert (first["rows"], first["symbols"]) == (3, 2)
+    part = warehouse / "paid_minute_bars_staging/year=2026/date=20260916/part.parquet"
+    frame = pl.read_parquet(part)
+    assert frame.columns == SCHEMA.names and frame["volume"].to_list() == [347600, 1189600, 10000]
+    receipt = json.loads((part.parent / "manifest.json").read_text())
+    assert receipt["source_sha256"] and receipt["rows"] == 3
+    assert ingest_day_file(source, warehouse, date(2026, 9, 16)) == first  # 已校验，跳过
+
+
+def test_day_file_with_rows_from_another_day_is_rejected(tmp_path):
+    source = make_day_csv(tmp_path / "d.csv",
+                          extra="600000.SH,20260915,2026-09-15 09:31:00,9.1,9.12,9.08,9.1,100,910,20.1\n")
+    with pytest.raises(ValueError, match="2026-09-16"):
+        ingest_day_file(source, tmp_path / "warehouse", date(2026, 9, 16))
+
+
+def test_day_staging_validates_against_tushare_daily_and_publishes(tmp_path):
+    warehouse = tmp_path / "warehouse"
+    ingest_day_file(make_day_csv(tmp_path / "d.csv"), warehouse, date(2026, 9, 16))
+    manifest = finalize_day_staging(warehouse, 2026)
+    assert manifest["rows"] == 3 and manifest["days"] == 1 and manifest["status"] == "STAGED"
+
+    daily = warehouse / "tushare_daily/year=2026"
+    daily.mkdir(parents=True)
+    pl.DataFrame({
+        "symbol": ["000001.SZ", "600000.SH"], "dt": [date(2026, 9, 16)] * 2,
+        "open": [11.8, 9.1], "high": [11.84, 9.12], "low": [11.79, 9.08], "close": [11.82, 9.1],
+        "volume": [15372.0, 100.0], "amount": [18153237.0, 91000.0], "factor": [139.008, 20.1],
+    }).write_parquet(daily / "part.parquet")
+    summary = validate_year(warehouse, 2026, daily_dataset="tushare_daily")
+    assert summary["structural"]["row_count"] == 3
+    assert summary["daily_comparison"]["matched_paid_days"] == 2
+    assert summary["daily_comparison"]["ohlc_mismatch_days"] == 0
+    assert summary["daily_comparison"]["volume_mismatch_days"] == 0
+
+    publish_year(warehouse, 2026)
+    got = query_paid_minute(warehouse, ["000001.SZ"], datetime(2026, 9, 16, 9, 30), datetime(2026, 9, 16, 9, 31))
+    assert got.height == 2

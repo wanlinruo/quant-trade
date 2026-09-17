@@ -15,7 +15,7 @@ import re
 import zipfile
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 import polars as pl
@@ -161,6 +161,20 @@ def read_member(
             try_parse_dates=False,
             encoding="utf8",
         )
+    return _normalize(raw, decoded, year, quarantine_dir=quarantine_dir,
+                      quarantine_name=f"{file_symbol}.parquet", file_symbol=file_symbol)
+
+
+def _normalize(
+    raw: pl.DataFrame,
+    decoded: str,
+    year: int,
+    *,
+    quarantine_dir: Path | None,
+    quarantine_name: str,
+    file_symbol: str | None,
+) -> pl.DataFrame:
+    """源 CSV 字段的格式标准化与约束检查；`file_symbol` 为 None 表示一个文件含多只证券。"""
     raw.columns = [name.lstrip("\ufeff") for name in raw.columns]
     if raw.columns not in HEADER_VARIANTS:
         raise ValueError(f"{decoded}: 表头不符 {raw.columns}")
@@ -178,7 +192,7 @@ def read_member(
             raise ValueError(f"{decoded}: 核心字段存在空值")
         _write_quarantine(
             bad_nulls,
-            quarantine_dir / "null-core" / f"{file_symbol}.parquet",
+            quarantine_dir / "null-core" / quarantine_name,
             decoded,
             "CORE_FIELD_NULL",
         )
@@ -212,8 +226,11 @@ def read_member(
         pl.col("成交额").cast(pl.Float64, strict=True).alias("amount"),
         pl.col("复权因子").cast(pl.Float64, strict=True).alias("factor"),
     )
-    if frame["symbol"].unique().to_list() != [file_symbol] or not _SYMBOL.fullmatch(file_symbol):
-        raise ValueError(f"{decoded}: 文件名与证券代码不一致")
+    if file_symbol is not None:
+        if frame["symbol"].unique().to_list() != [file_symbol] or not _SYMBOL.fullmatch(file_symbol):
+            raise ValueError(f"{decoded}: 文件名与证券代码不一致")
+    elif not frame["symbol"].str.contains(_SYMBOL.pattern).all():
+        raise ValueError(f"{decoded}: 存在不合规证券代码")
     if frame.filter(pl.col("trade_date") != pl.col("dt").dt.date()).height:
         raise ValueError(f"{decoded}: 交易日期与分钟时间日期不一致")
     if frame["dt"].dt.year().unique().to_list() != [year]:
@@ -236,7 +253,7 @@ def read_member(
             raise ValueError(f"{decoded}: {invalid.height} 行违反价格/非负/因子约束")
         _write_quarantine(
             raw.join(invalid.select("source_row"), on="source_row", how="semi"),
-            quarantine_dir / "invalid-values" / f"{file_symbol}.parquet",
+            quarantine_dir / "invalid-values" / quarantine_name,
             decoded,
             "VALUE_CONSTRAINT",
         )
@@ -452,6 +469,64 @@ def ingest_year(zip_path: Path, warehouse: Path, year: int, *, shard_members: in
         "status": "STAGED",
     })
     return result
+
+
+def ingest_day_file(csv_path: Path, warehouse: Path, day: date) -> dict:
+    """把「按交易日」的全市场 1min CSV 写入暂存 `year=YYYY/date=YYYYMMDD`（D-20）。
+
+    与年度 ZIP 走同一套字段标准化与约束检查；另要求文件内每一行都属于 `day`。
+    源文件哈希记入回执，同一文件重跑时校验通过即跳过。
+    """
+    csv_path = Path(csv_path)
+    staging = warehouse / "paid_minute_bars_staging" / f"year={day.year}"
+    target = staging / f"date={day:%Y%m%d}" / "part.parquet"
+    receipt_path = target.parent / "manifest.json"
+    source_hash = sha256_file(csv_path)
+    if target.exists() and receipt_path.exists():
+        old = json.loads(receipt_path.read_text())
+        if old.get("source_sha256") == source_hash and old.get("parquet_sha256") == sha256_file(target):
+            return old
+    raw = pl.read_csv(
+        csv_path, schema_overrides={name: pl.String for name in HEADERS},
+        infer_schema=False, try_parse_dates=False, encoding="utf8",
+    )
+    quarantine = warehouse / "paid_minute_quarantine" / f"year={day.year}"
+    frame = _normalize(raw, csv_path.name, day.year, quarantine_dir=quarantine,
+                       quarantine_name=f"date={day:%Y%m%d}.parquet", file_symbol=None)
+    others = sorted({str(d) for d in frame["dt"].dt.date().unique().to_list()} - {str(day)})
+    if others:
+        raise ValueError(f"{csv_path.name}: 文件应只含 {day}，混入 {others}")
+    frame = frame.sort(["symbol", "dt"])
+    target.parent.mkdir(parents=True, exist_ok=True)
+    parquet_hash = _write_shard(frame, target)
+    record = {
+        "date": str(day), "source": str(csv_path), "source_sha256": source_hash,
+        "source_bytes": csv_path.stat().st_size, "parquet_sha256": parquet_hash,
+        "rows": frame.height, "symbols": frame["symbol"].n_unique(),
+        "start": str(frame["dt"].min()) if frame.height else None,
+        "end": str(frame["dt"].max()) if frame.height else None,
+    }
+    _atomic_json(receipt_path, record)
+    return record
+
+
+def finalize_day_staging(warehouse: Path, year: int) -> dict:
+    """汇总按日暂存的回执为年度清单（status=STAGED），供 validate_year / publish_year 使用。"""
+    staging = warehouse / "paid_minute_bars_staging" / f"year={year}"
+    receipts = [json.loads(p.read_text()) for p in sorted(staging.glob("date=*/manifest.json"))]
+    if not receipts:
+        raise ValueError(f"{year} 没有按日暂存的数据")
+    symbols = pl.scan_parquet(sorted(str(p) for p in staging.glob("date=*/part.parquet"))) \
+        .select(pl.col("symbol").n_unique()).collect().item()
+    manifest = {
+        "year": year, "layout": "date", "days": len(receipts),
+        "rows": sum(int(r["rows"]) for r in receipts), "symbols": int(symbols),
+        "start": min(r["start"] for r in receipts if r["start"]),
+        "end": max(r["end"] for r in receipts if r["end"]),
+        "schema": SCHEMA.to_string(), "day_inventory": receipts, "status": "STAGED",
+    }
+    _atomic_json(staging / "manifest.json", manifest)
+    return manifest
 
 
 def publish_year(warehouse: Path, year: int) -> Path:
@@ -691,17 +766,19 @@ def quarantine_unmatched_zero_trade_days(warehouse: Path, year: int) -> dict:
     }
 
 
-def validate_year(warehouse: Path, year: int) -> dict:
+def validate_year(warehouse: Path, year: int, *, daily_dataset: str = "paid_daily") -> dict:
     """生成年度质量报告；所有聚合仅用于核验，不写回事实表。"""
     staging = warehouse / "paid_minute_bars_staging" / f"year={year}"
     manifest_path = staging / "manifest.json"
     if not manifest_path.exists():
         raise ValueError(f"{year} 暂存清单不存在")
     manifest = json.loads(manifest_path.read_text())
-    minute_glob = str(staging / "shard=*/part.parquet").replace("'", "''")
-    daily_path = warehouse / "paid_daily" / f"year={year}" / "part.parquet"
+    layout = "date=*" if manifest.get("layout") == "date" else "shard=*"
+    minute_glob = str(staging / f"{layout}/part.parquet").replace("'", "''")
+    # ≤2025 对付费日线；2026 起付费日线已冻结（止于 2026-09-11），对同源的 Tushare 日线
+    daily_path = warehouse / daily_dataset / f"year={year}" / "part.parquet"
     if not daily_path.exists():
-        raise ValueError(f"{year} 付费日线不存在")
+        raise ValueError(f"{year} 日线 {daily_dataset} 不存在")
     daily_sql_path = str(daily_path).replace("'", "''")
     quality = warehouse / "paid_minute_quality" / f"year={year}"
     quality.mkdir(parents=True, exist_ok=True)
@@ -893,7 +970,9 @@ def query_paid_minute(
         return pl.from_arrow(SCHEMA.empty_table())
     files = []
     for year in range(start.year, end.year + 1):
-        files.extend(sorted((warehouse / "paid_minute_bars" / f"year={year}").glob("shard=*/part.parquet")))
+        year_dir = warehouse / "paid_minute_bars" / f"year={year}"
+        files.extend(sorted(year_dir.glob("shard=*/part.parquet")))
+        files.extend(sorted(year_dir.glob("date=*/part.parquet")))
     if not files:
         return pl.from_arrow(SCHEMA.empty_table())
     query = pl.scan_parquet(files, hive_partitioning=False).select(SCHEMA.names).filter(
