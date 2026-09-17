@@ -167,11 +167,17 @@ def _valuation_covers_daily(ctx: CheckContext) -> CheckResult:
 def _delisting_pool(ctx: CheckContext) -> CheckResult:
     """独立重算：不调用 pipeline.delisting，直接按 namechange 区间判当天。"""
     history = ctx.query.name_history()
+    instruments = ctx.query.instruments()
+    delisted_before = {
+        row["symbol"] for row in instruments.iter_rows(named=True)
+        if row["delist_date"] is not None and row["delist_date"] < ctx.day
+    } if instruments.height else set()
     expected = {
         row["symbol"] for row in history.iter_rows(named=True)
         if row["change_reason"] == "退市整理期" and row["start_date"] is not None
         and row["start_date"] <= ctx.day
         and (row["end_date"] is None or row["end_date"] >= ctx.day)
+        and row["symbol"] not in delisted_before
     }
     pool = ctx.query.delisting_pool(ctx.day, ctx.day)
     actual = set(pool["symbol"].to_list())

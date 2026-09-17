@@ -37,7 +37,8 @@ _POOL_CHECKS = UNCOVERED(
     "每日服务质检按 name_history 独立重算当日池子并逐只核对（scripts/service_checks.py）"
 )
 _POOL_FORMULA = ("name_history 中 change_reason='退市整理期' 且 start_date <= dt <= end_date"
-                 "（end_date 为空视为未结束）的区间，与 tushare_daily 交易日交叉")
+                 "（end_date 为空视为未结束）的区间，与 tushare_daily 交易日交叉；"
+                 "剔除 instruments.delist_date 早于 dt 的已退市标的")
 
 
 def _pool(column: str, meaning: str, upstream: str) -> Metric:

@@ -36,6 +36,20 @@ def test_pool_rows_follow_the_namechange_period_only(warehouse, write_daily_bars
     assert WarehouseQuery(warehouse).delisting_pool_coverage(2026) == (D1, D3)
 
 
+def test_stocks_delisted_before_the_day_leave_the_pool(warehouse):
+    """namechange 常不登记已摘牌股票的整理期结束日；退市日早于当天就不在池里。"""
+    import polars as pl
+
+    history(warehouse, [("600001.SH", "某某退", D1, None, D1, "退市整理期")])
+    warehouse.write("instruments", pl.DataFrame({
+        "symbol": ["600001.SH"], "name": ["某某退"], "market": ["SH"],
+        "list_date": [date(2000, 1, 1)], "delist_date": [D2], "board": ["main"],
+        "as_of": [D3]}).to_arrow().cast(schema.INSTRUMENTS))
+    build_delisting_pool(warehouse, D1, D3, extra_sessions=[D1, D2, D3])
+    got = WarehouseQuery(warehouse).delisting_pool(D1, D3)
+    assert sorted(got["dt"].to_list()) == [D1, D2]   # 退市日当天仍在，之后离开
+
+
 def test_rebuild_keeps_other_days_and_widens_coverage(warehouse):
     history(warehouse, [("300344.SZ", "立方退", D1, None, None, "退市整理期")])
     build_delisting_pool(warehouse, D1, D1, extra_sessions=[D1])
