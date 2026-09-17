@@ -6,7 +6,7 @@ import polars as pl
 import pyarrow as pa
 import pytest
 
-from qsys.core.constraints import PriceLimitConstraint
+from direct_truth import exchange_limit_prices
 from qsys.data import schema
 from qsys.data.pipeline.flags import build_daily_flags
 from qsys.data.query import WarehouseQuery
@@ -182,7 +182,7 @@ def test_board_determines_the_limit(warehouse, write_daily_bars):
 
 
 def test_tier_decoding_matches_the_scalar_helper(warehouse, write_daily_bars):
-    """`_limit_expr` 的整数分运算必须与撮合用的 Decimal 函数逐分一致。
+    """`_limit_expr` 的整数分运算必须与交易所的 Decimal 四舍五入逐分一致。
 
     解码档位就靠它把直取涨停价还原回去；两者若分头演化，limit_pct 会在
     某些价位上解不出或解错。
@@ -197,7 +197,7 @@ def test_tier_decoding_matches_the_scalar_helper(warehouse, write_daily_bars):
 
     df = WarehouseQuery(warehouse).daily_flags(start=D[1], end=D[1])
     for row in df.iter_rows(named=True):
-        expected = PriceLimitConstraint.limit_prices(row["prev_close"], 0.10)
+        expected = exchange_limit_prices(row["prev_close"], 0.10)
         assert (row["limit_up"], row["limit_down"]) == expected, row["symbol"]
         assert row["limit_pct"] == pytest.approx(0.10), row["symbol"]
 

@@ -118,3 +118,17 @@ def test_realtime_limit_up_comes_from_the_warehouse_not_the_qmt_tick(warehouse, 
     }, schema=schema.PRICE_LIMITS_DAILY), year=today.year)
     bound = runtime.market.bind(datetime.combine(today, time(11, 25)))
     assert bound.limit_up_price(["600036.SH", "000001.SZ"], today) == {"600036.SH": 44.0}
+
+
+def test_runtime_limits_reload_until_the_premarket_job_has_written_today(warehouse, tmp_path):
+    """盘前任务晚到时，模拟撮合不能把「当日空表」缓存一整天。"""
+    import pyarrow as pa
+    from qsys.data import schema
+
+    runtime, store, ident, today = _runtime(warehouse, tmp_path, CountingQuotes())
+    assert runtime._limits_on(today) == {}
+    warehouse.write("price_limits_daily", pa.table({
+        "symbol": ["600036.SH"], "dt": [today], "pre_close": [None],
+        "limit_up": [44.0], "limit_down": [36.0],
+    }, schema=schema.PRICE_LIMITS_DAILY), year=today.year)
+    assert runtime._limits_on(today) == {"600036.SH": (44.0, 36.0)}

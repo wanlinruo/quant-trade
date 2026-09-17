@@ -82,9 +82,14 @@ class PaperBroker(Broker):
                 prev_close=snapshot.prev_close_of(symbol) or 0.0,
                 volume=max(0, int(bar.volume * 100)), amount=bar.amount,
                 suspended=False,
-            ), board=snapshot.board_of(symbol))
+            ), limits=snapshot.limit_of(symbol), board=snapshot.board_of(symbol))
 
-    def on_quote(self, quote: MarketQuote, *, board: str = "main") -> None:
+    def on_quote(
+        self, quote: MarketQuote, *, limits: tuple[float, float] | None,
+        board: str = "main",
+    ) -> None:
+        """`limits`：当日直取涨跌停价 (up, down)；None 表示拿不到——买单拒绝、卖单放行（D-19）。"""
+        limit_up, limit_down = limits or (None, None)
         previous = self._last_volume.get(quote.symbol)
         delta = quote.volume if previous is None else max(0, quote.volume - previous)
         self._last_volume[quote.symbol] = max(quote.volume, previous or 0)
@@ -106,7 +111,7 @@ class PaperBroker(Broker):
                             order.limit_price),
                 ConstraintContext(
                     portfolio=self.portfolio, reference_price=price,
-                    prev_close=quote.prev_close or None, board=board,
+                    limit_up=limit_up, limit_down=limit_down, board=board,
                     is_suspended=quote.suspended,
                 ),
             )

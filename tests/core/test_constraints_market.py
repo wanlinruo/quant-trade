@@ -75,72 +75,64 @@ def test_suspension_passes_when_trading():
     assert SuspensionConstraint().apply(OrderIntent(CMB, Side.BUY, 100), c).allowed_qty == 100
 
 
-# --- PriceLimitConstraint ---
+# --- PriceLimitConstraint：只认当日直取涨跌停价（D-19） ---
 
 
-def test_limit_prices_are_rounded_to_cents():
-    up, down = PriceLimitConstraint.limit_prices(9.99, 0.10)
-    assert up == 10.99
-    assert down == 8.99
-
-
-def test_limit_prices_on_round_number():
-    up, down = PriceLimitConstraint.limit_prices(10.00, 0.10)
-    assert up == 11.00
-    assert down == 9.00
+def ctx(price, *, up=11.00, down=9.00, held=(0, 0)):
+    return ConstraintContext(portfolio=holding(*held), reference_price=price,
+                             limit_up=up, limit_down=down)
 
 
 def test_price_limit_rejects_buy_at_limit_up():
     """涨停时买不到。"""
-    c = ConstraintContext(portfolio=holding(0, 0), reference_price=11.00, prev_close=10.00)
-    v = PriceLimitConstraint(LIMITS).apply(OrderIntent(CMB, Side.BUY, 100), c)
+    v = PriceLimitConstraint().apply(OrderIntent(CMB, Side.BUY, 100), ctx(11.00))
     assert v.is_rejected
     assert "limit up" in v.reason
 
 
 def test_price_limit_allows_sell_at_limit_up():
     """涨停时卖得掉。"""
-    c = ConstraintContext(portfolio=holding(300, 300), reference_price=11.00, prev_close=10.00)
-    assert PriceLimitConstraint(LIMITS).apply(OrderIntent(CMB, Side.SELL, 100), c).allowed_qty == 100
+    assert PriceLimitConstraint().apply(
+        OrderIntent(CMB, Side.SELL, 100), ctx(11.00, held=(300, 300))).allowed_qty == 100
 
 
 def test_price_limit_rejects_sell_at_limit_down():
     """跌停时卖不掉。"""
-    c = ConstraintContext(portfolio=holding(300, 300), reference_price=9.00, prev_close=10.00)
-    v = PriceLimitConstraint(LIMITS).apply(OrderIntent(CMB, Side.SELL, 100), c)
+    v = PriceLimitConstraint().apply(OrderIntent(CMB, Side.SELL, 100), ctx(9.00, held=(300, 300)))
     assert v.is_rejected
     assert "limit down" in v.reason
 
 
 def test_price_limit_allows_buy_at_limit_down():
     """跌停时买得到。"""
-    c = ConstraintContext(portfolio=holding(0, 0), reference_price=9.00, prev_close=10.00)
-    assert PriceLimitConstraint(LIMITS).apply(OrderIntent(CMB, Side.BUY, 100), c).allowed_qty == 100
+    assert PriceLimitConstraint().apply(OrderIntent(CMB, Side.BUY, 100), ctx(9.00)).allowed_qty == 100
 
 
 def test_price_limit_passes_inside_the_band():
-    c = ConstraintContext(portfolio=holding(300, 300), reference_price=10.50, prev_close=10.00)
-    con = PriceLimitConstraint(LIMITS)
-    assert con.apply(OrderIntent(CMB, Side.BUY, 100), c).allowed_qty == 100
-    assert con.apply(OrderIntent(CMB, Side.SELL, 100), c).allowed_qty == 100
+    con = PriceLimitConstraint()
+    assert con.apply(OrderIntent(CMB, Side.BUY, 100), ctx(10.50)).allowed_qty == 100
+    assert con.apply(OrderIntent(CMB, Side.SELL, 100), ctx(10.50, held=(300, 300))).allowed_qty == 100
 
 
-def test_price_limit_uses_board_specific_width():
-    """创业板 20%：10.00 -> 12.00 才是涨停，11.00 仍可买入。"""
-    c = ConstraintContext(
-        portfolio=holding(0, 0), reference_price=11.00, prev_close=10.00, board="gem"
-    )
-    assert PriceLimitConstraint(LIMITS).apply(OrderIntent(CMB, Side.BUY, 100), c).allowed_qty == 100
+def test_an_st_stock_sealed_at_its_five_percent_limit_cannot_be_bought():
+    """2026-07-06 前主板 ST 为 5% 档。按板块 10% 自算时 10.50 不算涨停、买单照成交。"""
+    v = PriceLimitConstraint().apply(OrderIntent(CMB, Side.BUY, 100), ctx(10.50, up=10.50, down=9.50))
+    assert v.is_rejected
 
 
-def test_price_limit_falls_back_to_default_for_unknown_board():
-    c = ConstraintContext(
-        portfolio=holding(0, 0), reference_price=11.00, prev_close=10.00, board="unknown"
-    )
-    assert PriceLimitConstraint(LIMITS).apply(OrderIntent(CMB, Side.BUY, 100), c).is_rejected
+def test_without_a_direct_limit_price_buys_are_refused():
+    """用户 2026-09-17 定：缺直取涨跌停价时买单拒绝——不按板块档位自算。"""
+    v = PriceLimitConstraint().apply(OrderIntent(CMB, Side.BUY, 100), ctx(10.00, up=None, down=None))
+    assert v.is_rejected
+    assert "no direct" in v.reason
 
 
-def test_price_limit_passes_when_prev_close_unknown():
-    """无前收（如上市首日）时不判定，交由其它约束处理。"""
-    c = ConstraintContext(portfolio=holding(0, 0), reference_price=11.00, prev_close=None)
-    assert PriceLimitConstraint(LIMITS).apply(OrderIntent(CMB, Side.BUY, 100), c).allowed_qty == 100
+def test_without_a_direct_limit_price_sells_pass():
+    """缺价时卖单放行：持仓照常能退出，真实跌停由交易所拦截。"""
+    assert PriceLimitConstraint().apply(
+        OrderIntent(CMB, Side.SELL, 100), ctx(10.00, up=None, down=None, held=(300, 300))
+    ).allowed_qty == 100
+
+
+def test_board_tier_derivation_is_gone():
+    assert not hasattr(PriceLimitConstraint, "limit_prices")

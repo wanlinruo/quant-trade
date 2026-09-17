@@ -75,6 +75,28 @@ git push origin test
 `test` push 后自动运行 CI 并部署测试环境。测试验收通过后，再创建唯一需要人工自审的
 `test -> main` 发布 PR。禁止把 `feat/*` 直接合并到 `main`。
 
+### 3.1.1 发布合并后把 `main` 同步回 `test`
+
+仓库只允许 squash merge，`test -> main` 合并会在 `main` 上生成一个新提交，内容与
+`test` 相同但历史分叉。合并后立即对齐，否则下一次集成无法快进、节点部署脚本也会拒绝：
+
+```bash
+git fetch origin
+git diff --quiet origin/test origin/main   # 必须无差异，否则先查清楚
+git switch test && git reset --hard origin/main
+git push --force-with-lease=test:<合并前 origin/test 的 SHA> origin test
+```
+
+`test` 是集成分支，允许在内容一致的前提下强推对齐；`main` 永远禁止强推。
+紧急 `fix/* -> main` 合并后 `test` 通常可直接 `git merge --ff-only origin/main`。
+测试节点 `/home/ubuntu/qsys-test` 同步后按 `origin/test` 对齐再部署。
+
+### 3.1.2 部署时的重启范围
+
+移动或重命名模块时，**所有**入口脚本都可能受影响，不只本次改动直接涉及的服务。
+`tests/scripts/test_scripts_import.py` 导入全部生产入口脚本；新增入口脚本必须加进它的清单。
+部署后逐个确认 `systemctl is-active` 与启动日志，不以「本次只改了 paper」为由跳过其他服务。
+
 ### 3.2 普通缺陷
 
 从 `test` 创建 `fix/<slug>`，完成后 squash 到 `test` 并直接 push，随下一次
@@ -175,7 +197,8 @@ PR 作者也不能给自己的 PR 提供“独立批准”。本项目的 Review
 ### 5.4 免费可用的仓库设置
 
 - Default branch：`main`
-- 开启自动删除 head branches
+- **关闭**自动删除 head branches：发布 PR 的 head 就是长期分支 `test`，开启后每次合并都会把
+  `test` 删掉（2026-09-17 实际发生过）。`feat/*`、`fix/*` 在 squash 进 `test` 后手工删除
 - 关闭直接 merge commit
 - 关闭 rebase merge
 - 开启 squash merge

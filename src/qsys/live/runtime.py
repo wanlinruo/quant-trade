@@ -29,7 +29,7 @@ from qsys.live.store import LiveStore
 from qsys.live.transport import Transport
 from qsys.markets.ashare import ashare_pre_trade_pipeline, board_of
 from qsys.paper.quotes import QuoteClient
-from qsys.paper.runtime import RealtimeClock, RealtimeMarketFeed, _bar
+from qsys.paper.runtime import DirectLimitCache, RealtimeClock, RealtimeMarketFeed, _bar
 from qsys.strategy.context import Context, PortfolioView
 from qsys.strategy.deps import StrategyDeps, build_universe
 from qsys.strategy.loader import load_strategy
@@ -114,6 +114,7 @@ class LiveRuntime:
         )
         self.strategy = load_strategy(strategy_file, deps)
         self.feed, self.query = feed, query
+        self._limits = DirectLimitCache(query)
         self.schedule = Schedule()
         self.strategy.on_init(self._context(self.schedule)[0])
 
@@ -395,7 +396,10 @@ class LiveRuntime:
         orders = []
         for intent in api.drain():
             quote = self._quote(intent.symbol)
-            protected = protected_limit_price(quote, intent.side, now=datetime.now())
+            protected = protected_limit_price(
+                quote, intent.side, limits=self._limits.on(moment.date()).get(str(intent.symbol)),
+                now=datetime.now(),
+            )
             if intent.limit_price is not None:
                 protected = (
                     min(protected, intent.limit_price) if intent.side is Side.BUY

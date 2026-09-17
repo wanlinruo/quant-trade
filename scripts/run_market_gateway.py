@@ -51,6 +51,19 @@ def qmt_provider(symbols):
     return out
 
 
+def qmt_limit_detail(symbols):
+    """QMT 合约详情里的当日涨跌停价，仅用于与 Tushare stk_limit 核对。"""
+    from xtquant import xtdata
+
+    out = {}
+    for symbol in symbols:
+        item = xtdata.get_instrument_detail(symbol) or {}
+        up, down = item.get("UpStopPrice"), item.get("DownStopPrice")
+        if up is not None and down is not None:
+            out[symbol] = (float(up), float(down))
+    return out
+
+
 def qmt_market_overview():
     """Fetch the live A-share breadth universe plus the four headline indices."""
     from xtquant import xtdata
@@ -99,13 +112,19 @@ def main() -> int:
     next_overview = 0.0
     next_schedule = 0.0
     calendar_day = None
+    limit_check_done = False
     sessions: list[date] = []
     while True:
         try:
             gateway.run_once()
             gateway.beat()
+            if not limit_check_done:
+                limit_check_done = gateway.check_limits_step(qmt_limit_detail, datetime.now().date())
+                if limit_check_done:
+                    log.info("market_gateway.limit_check_done")
             wall = datetime.now()
             if calendar_day != wall.date():
+                limit_check_done = False
                 sessions = qmt_trading_sessions(wall.date(), wall.date() + timedelta(days=40))
                 calendar_day = wall.date()
             schedule = build_market_schedule(wall, sessions)

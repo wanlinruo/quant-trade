@@ -67,7 +67,7 @@ _FLAG_COLUMNS = [
 def _limit_expr(cents: pl.Expr, ratio_milli: pl.Expr) -> pl.Expr:
     """整数分运算的涨/跌停价。
 
-    `PriceLimitConstraint.limit_prices` 用 Decimal 精确乘法后四舍五入；
+    交易所按 Decimal 精确乘法后四舍五入（测试辅助 `exchange_limit_prices`）；
     价格本就是两位小数，用「分 × 千分比 + 半分再整除」可得到完全相同的
     结果（0.01~499.99 元 × 四档涨跌幅共 20 万组已逐一比对）。
     tests/data/test_flags.py 里有一条测试守着这个等价关系。

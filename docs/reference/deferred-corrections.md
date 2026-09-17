@@ -840,3 +840,22 @@ ST 股，回测认为未涨停、买单照常成交——**回测系统性偏乐
 
 **第二步（未做）**：回测/模拟/实盘撮合约束改用直取价（缺价买拒卖放）、实盘报价封顶
 `live/pricing.py`、盘前与 QMT `get_instrument_detail` 逐只核对告警、重跑回测对比。
+
+### 2026-09-17 第二步：撮合约束只认直取涨跌停价
+
+**实现**：
+
+- `core.constraints.PriceLimitConstraint` 不再按 `prev_close × 板块档位` 自算，只读上下文里的
+  `limit_up` / `limit_down`（当日 stk_limit）。缺涨停价时买单拒绝（`no direct limit-up price`），
+  卖单仅在有跌停价且触及时拒绝。`ConstraintContext.prev_close` 删除；自算函数
+  `limit_prices` 从生产代码删除，测试用的换算挪到 `tests/direct_truth.py`。
+- 回测：`MarketSnapshot.limits`；`BacktestEngine(price_limits=...)` **必传**，由
+  `backtest.runner.price_limit_loader(query)` 读 `price_limits_daily`；开盘与盘中检查点撮合都用它。
+- 模拟盘：`PaperBroker.on_quote(quote, limits=...)` 必传；`PaperRuntime` 与 `LiveRuntime` 共用
+  `DirectLimitCache`（当日空表时每次重读，盘前任务晚到也能接上）。
+- 实盘：`live.pricing.protected_limit_price(..., limits=...)` 必传，不再读恒为空的
+  `quote.upper_limit`；缺价时买入报 `NO_PRICE_LIMIT`，卖出不设跌停托底。
+- 行情网关分批核对 Tushare stk_limit 与 QMT `get_instrument_detail`，结果发布并在行情页展示。
+
+**边界**：`price_limits_daily` 最早到 2022-08-04。回测区间早于此日期时所有买单都会因缺价被拒，
+需要更早的回测时先回填 stk_limit 历史，不得退回档位自算。

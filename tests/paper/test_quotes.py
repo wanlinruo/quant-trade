@@ -100,3 +100,39 @@ def test_market_schedule_only_opens_during_continuous_auction():
     assert lunch.next_open_at == datetime(2026, 9, 16, 13)
     assert holiday.is_trading_day is False
     assert holiday.next_open_at == datetime(2026, 9, 18, 9, 30)
+
+
+# --- D-19：盘前 Tushare stk_limit 与 QMT get_instrument_detail 逐只核对 -------
+
+def test_limit_check_runs_in_batches_and_publishes_once_complete():
+    import json
+
+    transport, streams = MemoryTransport(), StreamConfig()
+    day = date(2026, 9, 17)
+    transport.set_key(publish_key(streams, day), json.dumps({
+        "600000.SH": [10.01, 8.19], "000010.SZ": [1.73, 1.41], "300001.SZ": [12.0, 8.0],
+    }))
+    qmt = {"600000.SH": (10.01, 8.19), "000010.SZ": (1.74, 1.41)}  # 300001.SZ QMT 无数据
+    calls = []
+
+    def detail(symbols):
+        calls.append(list(symbols))
+        return {s: qmt[s] for s in symbols if s in qmt}
+
+    gateway = MarketGateway(transport, streams, lambda symbols: {})
+    assert gateway.check_limits_step(detail, day, batch=2) is False
+    assert transport.get_key(f"{streams.price_limits}_check:20260917") is None
+    assert gateway.check_limits_step(detail, day, batch=2) is True
+    report = json.loads(transport.get_key(f"{streams.price_limits}_check:20260917"))
+    assert report["checked"] == 3
+    assert report["mismatched"] == 1 and report["missing_in_qmt"] == 1
+    assert report["samples"][0]["symbol"] == "000010.SZ"
+    # 当日核对完成后不再重复调用 QMT
+    assert gateway.check_limits_step(detail, day, batch=2) is True
+    assert len(calls) == 2
+
+
+def test_limit_check_waits_until_tushare_limits_are_published():
+    transport, streams = MemoryTransport(), StreamConfig()
+    gateway = MarketGateway(transport, streams, lambda symbols: {})
+    assert gateway.check_limits_step(lambda s: {}, date(2026, 9, 17)) is False

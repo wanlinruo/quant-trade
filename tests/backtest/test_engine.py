@@ -12,6 +12,7 @@ from qsys.core.trading import Side
 from qsys.core.types import Market, Symbol
 from qsys.markets.ashare import ashare_pipeline
 from qsys.strategy.base import Strategy
+from direct_truth import limits_from_closes
 
 CMB = Symbol("600036", Market.SH)
 SESSIONS = [date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4), date(2024, 1, 5)]
@@ -63,8 +64,17 @@ def engine(strategy: Strategy, **kw) -> BacktestEngine:
         pipeline=ashare_pipeline(),
         fees=ZeroFeeModel(),
         slippage=NoSlippage(),
+        price_limits=limits_from_closes({d: (o, c) for d, (o, h, l, c) in PRICES.items()}, [CMB]),
     )
     return BacktestEngine(strategy, **{**defaults, **kw})
+
+
+def test_engine_requires_a_direct_price_limit_source():
+    """D-19：不接涨跌停价就不能构造引擎——漏接会让买单全部被静默拒绝。"""
+    with pytest.raises(TypeError):
+        BacktestEngine(BuyFirstBar(), feed=StubFeed(), calendar=CAL, universe=[CMB],
+                       initial_cash=100_000.0, pipeline=ashare_pipeline(),
+                       fees=ZeroFeeModel(), slippage=NoSlippage())
 
 
 class BuyFirstBar(Strategy):

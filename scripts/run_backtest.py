@@ -26,7 +26,7 @@ from pathlib import Path
 from qsys.backtest.artifacts import write_run
 from qsys.backtest.engine import BacktestEngine
 from qsys.backtest.metrics import compute_metrics
-from qsys.backtest.runner import corporate_actions, cost_model
+from qsys.backtest.runner import corporate_actions, cost_model, price_limit_loader
 from qsys.core.types import Symbol
 from qsys.markets.ashare import ashare_pipeline
 from qsys.strategy.deps import build_deps, intraday_quotes
@@ -73,7 +73,7 @@ def main() -> int:
     engine = BacktestEngine(
         strategy,
         feed=deps.feed, calendar=calendar, universe=universe,
-        initial_cash=args.cash, pipeline=ashare_pipeline(),
+        initial_cash=args.cash, pipeline=ashare_pipeline(), price_limits=price_limit_loader(query),
         fees=fees, slippage=slippage,
         intraday=intraday_quotes(deps.market), market=deps.market,
         corporate_actions=actions,

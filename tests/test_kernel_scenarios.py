@@ -22,8 +22,12 @@ PIPE = ashare_pipeline()
 
 
 def ctx(p: Portfolio, price: float, prev_close: float | None = None, **kw):
+    """测试数据：主板 10% 档下交易所会公布的涨跌停价，作为当日直取值放进上下文。"""
+    up = down = None
+    if prev_close is not None:
+        up, down = round(prev_close * 1.10, 2), round(prev_close * 0.90, 2)
     return ConstraintContext(
-        portfolio=p, reference_price=price, prev_close=prev_close, **kw
+        portfolio=p, reference_price=price, limit_up=up, limit_down=down, **kw
     )
 
 

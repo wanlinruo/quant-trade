@@ -191,6 +191,7 @@ def create_app(
             context={
                 "title": config.title, "session": None, "page": "market",
                 "live": live, "schedule": schedule, "rows": rows,
+                "limit_check": market.limit_check(),
                 "latest": market.latest_session(),
                 "advance_chart": line_chart(advance),
                 "limit_chart": line_chart(limits, stroke="#dc2626"),

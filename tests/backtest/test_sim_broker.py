@@ -25,10 +25,14 @@ def bar(open_: float, volume: int = 1_000_000) -> Bar:
 
 
 def snapshot(open_: float, *, prev_close: float = 10.0, volume: int = 1_000_000,
-             suspended: bool = False) -> MarketSnapshot:
+             suspended: bool = False, limits="derive") -> MarketSnapshot:
+    """`limits`：当日直取涨跌停价。默认按主板 10% 造测试数据；None 表示缺价。"""
     bars = {} if suspended else {CMB: bar(open_, volume)}
+    if limits == "derive":
+        limits = (round(prev_close * 1.1, 2), round(prev_close * 0.9, 2))
     return MarketSnapshot(session=D, bars=bars, prev_closes={CMB: prev_close},
-                          boards={CMB: "main"})
+                          boards={CMB: "main"},
+                          limits={} if limits is None else {CMB: limits})
 
 
 def broker(portfolio: Portfolio, **kw) -> SimBroker:
@@ -101,6 +105,33 @@ def test_limit_up_rejects_buy():
     b.on_market_data(snapshot(11.00, prev_close=10.00))
     assert b.poll_fills() == ()
     assert "limit up" in b.poll_rejects()[0].reason
+
+
+def test_an_st_limit_up_at_five_percent_rejects_the_buy():
+    """D-19：2026-07-06 前主板 ST 为 5%。直取涨停 10.50 时开盘 10.50 买不进。"""
+    b = broker(Portfolio(100_000.0))
+    b.submit(order(Side.BUY, 100))
+    b.on_market_data(snapshot(10.50, prev_close=10.00, limits=(10.50, 9.50)))
+    assert b.poll_fills() == ()
+    assert "limit up" in b.poll_rejects()[0].reason
+
+
+def test_a_buy_without_a_direct_limit_price_is_rejected():
+    b = broker(Portfolio(100_000.0))
+    b.submit(order(Side.BUY, 100))
+    b.on_market_data(snapshot(10.20, limits=None))
+    assert b.poll_fills() == ()
+    assert "no direct" in b.poll_rejects()[0].reason
+
+
+def test_a_sell_without_a_direct_limit_price_still_fills():
+    p = Portfolio(100_000.0)
+    p.apply_fill(Fill("f", CMB, Side.BUY, 100, 10.0, 0.0, T))
+    p.unfreeze()
+    b = broker(p)
+    b.submit(order(Side.SELL, 100))
+    b.on_market_data(snapshot(10.20, limits=None))
+    assert len(b.poll_fills()) == 1
 
 
 def test_volume_cap_clamps_the_fill():

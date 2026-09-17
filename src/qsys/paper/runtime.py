@@ -32,6 +32,27 @@ from qsys.data.storage import Warehouse
 QUOTE_WINDOW = (time(9, 15), time(15, 30))
 
 
+class DirectLimitCache:
+    """当日直取涨跌停价（price_limits_daily，盘前写入的 Tushare stk_limit）。
+
+    模拟盘与实盘共用。盘前任务可能晚到：当日还是空表时每次都重读，读到后缓存到换日。
+    """
+
+    def __init__(self, query: WarehouseQuery) -> None:
+        self._query = query
+        self._cached: tuple[date, dict[str, tuple[float, float]]] | None = None
+
+    def on(self, day: date) -> dict[str, tuple[float, float]]:
+        if self._cached is None or self._cached[0] != day or not self._cached[1]:
+            frame = self._query.price_limits(None, day, day)
+            self._cached = (day, {
+                row["symbol"]: (float(row["limit_up"]), float(row["limit_down"]))
+                for row in frame.iter_rows(named=True)
+                if row["limit_up"] is not None and row["limit_down"] is not None
+            })
+        return self._cached[1]
+
+
 class RealtimeClock:
     def __init__(self) -> None:
         self._now: datetime | None = None
@@ -150,6 +171,7 @@ class PaperRuntime:
             for row in store.rows(account_id, "positions")
         }
         self.order_seq: dict[str, int] = {}
+        self._limits = DirectLimitCache(query)
         self.actions = corporate_actions(query, date.today(), date.today())
         schedule = Schedule()
         self.clock.set(datetime.now())
@@ -257,11 +279,15 @@ class PaperRuntime:
         if not symbols:
             return
         quotes = self.market.get(sorted(symbols))
+        limits = self._limits_on(now.date())
         for symbol, quote in quotes.items():
             if quote.price > 0:
                 parsed = Symbol.parse(symbol)
                 self.last_prices[parsed] = quote.price
-                self.broker.on_quote(quote, board=self.boards.get(parsed, board_of(parsed.code)))
+                self.broker.on_quote(
+                    quote, limits=limits.get(symbol),
+                    board=self.boards.get(parsed, board_of(parsed.code)),
+                )
         self._record_results()
         benchmark = quotes.get("000300.SH")
         benchmark_value = None
@@ -269,6 +295,9 @@ class PaperRuntime:
         if benchmark and benchmark.prev_close > 0:
             benchmark_value = account.initial_cash * benchmark.price / benchmark.prev_close
         self._save(now, benchmark_value)
+
+    def _limits_on(self, day: date) -> dict[str, tuple[float, float]]:
+        return self._limits.on(day)
 
     def _record_results(self) -> None:
         fills, rejects = self.broker.poll_fills(), self.broker.poll_rejects()

@@ -80,6 +80,7 @@ class BacktestEngine:
         pipeline: ConstraintPipeline,
         fees: FeeModel,
         slippage: SlippageModel,
+        price_limits: Callable[[date, date], Mapping[date, Mapping[Symbol, tuple[float, float]]]],
         volume_cap: float = 0.05,
         corporate_actions: Mapping[date, Sequence[CorporateAction]] | None = None,
         params: Mapping[str, object] | None = None,
@@ -99,6 +100,8 @@ class BacktestEngine:
         self._pipeline = pipeline
         self._fees = fees
         self._slippage = slippage
+        # 当日直取涨跌停价（stk_limit）。必传：漏接会让买单全被「缺价」拒绝（D-19）
+        self._price_limits = price_limits
         self._volume_cap = volume_cap
         self._actions = dict(corporate_actions or {})
         self._params = dict(params or {})
@@ -166,7 +169,7 @@ class BacktestEngine:
             return {}
         return dict(self._intraday(session, at, held) or {})
 
-    def _checkpoint_snapshot(self, session, quotes, prev_closes) -> MarketSnapshot:
+    def _checkpoint_snapshot(self, session, quotes, prev_closes, limits) -> MarketSnapshot:
         """把检查点报价包成快照。
 
         SimBroker 按 `bar.open` 撮合，故此处把该时刻的价格放进 open——
@@ -181,7 +184,7 @@ class BacktestEngine:
         }
         return MarketSnapshot(
             session=session, bars=bars, prev_closes=dict(prev_closes),
-            boards=self._boards,
+            boards=self._boards, limits=limits,
         )
 
     def run(self, start: date, end: date) -> BacktestResult:
@@ -198,6 +201,7 @@ class BacktestEngine:
             )
 
         bars_by_session = self._load_bars(start, end)
+        limits_by_session = self._price_limits(start, end)
         portfolio = Portfolio(self._initial_cash)
         broker = SimBroker(portfolio, self._pipeline, self._fees, self._slippage,
                            volume_cap=self._volume_cap)
@@ -236,6 +240,7 @@ class BacktestEngine:
             snapshot = MarketSnapshot(
                 session=session, bars=bars_by_session.get(session, {}),
                 prev_closes=dict(prev_closes), boards=self._boards,
+                limits=limits_by_session.get(session, {}),
             )
             broker.on_market_data(snapshot)
             all_rejects.extend(broker.poll_rejects())
@@ -299,7 +304,9 @@ class BacktestEngine:
                 flush(api, moment)
 
                 broker.on_market_data(
-                    self._checkpoint_snapshot(session, quotes, prev_closes), moment
+                    self._checkpoint_snapshot(
+                        session, quotes, prev_closes, limits_by_session.get(session, {})
+                    ), moment
                 )
                 all_rejects.extend(broker.poll_rejects())
                 for fill in broker.poll_fills():

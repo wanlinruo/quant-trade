@@ -16,10 +16,14 @@ from qsys.core.types import Symbol
 from qsys.markets.ashare import ashare_pipeline
 from qsys.strategy.base import Strategy
 from qsys.core.trading import Side
+from direct_truth import limits_from_closes
 
 SESSIONS = [date(2024, 1, d) for d in (2, 3, 4, 5)]
 SYMBOL = "600001.SH"
 CHECKPOINTS = (time(11, 25), time(14, 25), time(14, 50))
+# 平坦行情下交易所公布的涨跌停价（测试数据）；检查点报价 11/12/13 都在 20% 以内时才会成交，
+# 这里按主板 10% 给出，与原先按板块自算的撮合结果一致。
+LIMITS = limits_from_closes({d: (10.0, 10.0) for d in SESSIONS}, [Symbol.parse(SYMBOL)])
 
 
 class StubFeed:
@@ -56,6 +60,7 @@ def engine_for(strategy, *, checkpoints=(), intraday=None):
         pipeline=ashare_pipeline(),
         fees=ZeroFeeModel(),
         slippage=NoSlippage(),
+        price_limits=LIMITS,
         checkpoints=checkpoints,
         intraday=intraday,
     )
@@ -225,7 +230,7 @@ def test_configuring_an_auction_phase_changes_the_run_id():
         DoNothing(), feed=StubFeed(), calendar=AShareCalendar(SESSIONS),
         universe=[Symbol.parse(SYMBOL)], initial_cash=1_000_000.0,
         pipeline=ashare_pipeline(), fees=ZeroFeeModel(), slippage=NoSlippage(),
-        auction_at=time(9, 30),
+        price_limits=LIMITS, auction_at=time(9, 30),
     ).run(SESSIONS[0], SESSIONS[-1])
     assert plain.run_id != with_auction.run_id
 
@@ -235,7 +240,7 @@ def auction_engine(strategy):
         strategy, feed=StubFeed(), calendar=AShareCalendar(SESSIONS),
         universe=[Symbol.parse(SYMBOL)], initial_cash=1_000_000.0,
         pipeline=ashare_pipeline(), fees=ZeroFeeModel(), slippage=NoSlippage(),
-        auction_at=time(9, 30),
+        price_limits=LIMITS, auction_at=time(9, 30),
     )
 
 

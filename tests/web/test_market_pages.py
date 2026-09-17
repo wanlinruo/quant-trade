@@ -82,3 +82,26 @@ def test_market_page_uses_scheduled_timeout_instead_of_constant_interval(warehou
     assert "setInterval" not in body
     assert "next_open_at" in body
     assert market.schedule().next_open_at == datetime(2026, 9, 16, 13)
+
+
+def test_market_page_shows_the_qmt_limit_check_result(warehouse):
+    """D-19：Tushare stk_limit 与 QMT 核对不一致必须在页面上看得见，不能只躺在 Redis 里。"""
+    import json
+
+    transport = MemoryTransport()
+    today = datetime.now().date()
+    transport.set_key(f"state:price_limits_check:{today:%Y%m%d}", json.dumps({
+        "session": str(today), "checked": 5218, "missing_in_qmt": 2, "mismatched": 1,
+        "samples": [{"symbol": "000010.SZ", "tushare": [1.73, 1.41], "qmt": [1.74, 1.41]}],
+    }))
+    client, market = _client(warehouse, transport)
+    check = market.limit_check()
+    assert check["mismatched"] == 1
+    body = client.get("/market").text
+    assert "涨跌停价核对" in body and "000010.SZ" in body
+
+
+def test_market_page_says_when_the_limit_check_has_not_run(warehouse):
+    client, market = _client(warehouse, MemoryTransport())
+    assert market.limit_check() is None
+    assert "未核对" in client.get("/market").text
