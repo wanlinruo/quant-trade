@@ -197,12 +197,12 @@ def _name_snapshots() -> list[Metric]:
     return [
         Metric(
             id="name_snapshots.dt", kind=Kind.DERIVED, validity=Validity.POINT,
-            status=MetricStatus.ACTIVE,
+            status=MetricStatus.FROZEN,
             meaning=(
                 "观测日，即取 stock_basic 的那一天——与同一次同步产出的 "
                 "instruments.as_of 是同一个字面量，不是独立观测"
                 "（pipeline/tushare_reference.py:160-163）。**这是点观测不是"
-                "区间**——转成区间要推断端点"
+                "区间**——转成区间要推断端点。2026-09-17 起停写，已有数据保留"
             ),
             lineage=Computed(
                 upstream=("instruments.as_of",),
@@ -212,14 +212,14 @@ def _name_snapshots() -> list[Metric]:
         ),
         Metric(
             id="name_snapshots.symbol", kind=Kind.DIRECT, validity=Validity.POINT,
-            status=MetricStatus.ACTIVE,
+            status=MetricStatus.FROZEN,
             meaning="标的代码，直取 stock_basic.ts_code",
             lineage=Direct("tushare.stock_basic", "ts_code"),
             checks=_NAME_SNAPSHOTS_CHECKS,
         ),
         Metric(
             id="name_snapshots.name", kind=Kind.DIRECT, validity=Validity.POINT,
-            status=MetricStatus.ACTIVE,
+            status=MetricStatus.FROZEN,
             meaning=(
                 "观测日的证券简称，直取 stock_basic.name。按 (symbol, dt) "
                 "**精确连接**，只对它实际有行的那一天生效，不向前后蔓延"

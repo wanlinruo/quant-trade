@@ -20,6 +20,18 @@
   <p style="margin:12px 0 0"><a href="/data/catalog">查看指标字典 →</a></p>
 </div>{% endif %}
 <div class="card">
+  <h2>退市整理期池{% if pool_day %}（{{ pool_day }}，{{ pool|length }} 只）{% endif %}</h2>
+  <p class="muted" style="margin:0 0 10px;font-size:12px">来自 Tushare namechange 的「退市整理期」记录（剔除已退市标的），每晚同步后刷新到下一个交易日。候选池剔除只读这张表（按前一交易日已公告过滤）。</p>
+  {% if pool %}
+  <table>
+    <tr><th>代码</th><th>简称</th><th>整理期开始</th><th>结束</th><th>公告日</th></tr>
+    {% for r in pool %}<tr><td class="mono">{{ r.symbol }}</td><td>{{ r.name or "—" }}</td><td>{{ r.start_date }}</td><td>{{ r.end_date or "未登记" }}</td><td>{{ r.ann_date or "—" }}</td></tr>{% endfor %}
+  </table>
+  {% elif pool_day is none %}<div class="empty">还没有生成退市整理期池。</div>
+  {% else %}<div class="empty">{{ pool_day }} 没有处于退市整理期的标的。</div>
+  {% endif %}
+</div>
+<div class="card">
   <h2>表覆盖</h2>
   {% if coverage %}
   <table>

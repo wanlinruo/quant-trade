@@ -164,6 +164,34 @@ def _valuation_covers_daily(ctx: CheckContext) -> CheckResult:
     return _covers(ctx, ctx.query.valuation(ctx.day, ctx.day), "估值")
 
 
+def _delisting_pool(ctx: CheckContext) -> CheckResult:
+    """独立重算：不调用 pipeline.delisting，直接按 namechange 区间判当天。"""
+    history = ctx.query.name_history()
+    instruments = ctx.query.instruments()
+    delisted_before = {
+        row["symbol"] for row in instruments.iter_rows(named=True)
+        if row["delist_date"] is not None and row["delist_date"] < ctx.day
+    } if instruments.height else set()
+    expected = {
+        row["symbol"] for row in history.iter_rows(named=True)
+        if row["change_reason"] == "退市整理期" and row["start_date"] is not None
+        and row["start_date"] <= ctx.day
+        and (row["end_date"] is None or row["end_date"] >= ctx.day)
+        and row["symbol"] not in delisted_before
+    }
+    pool = ctx.query.delisting_pool(ctx.day, ctx.day)
+    actual = set(pool["symbol"].to_list())
+    missing, extra = expected - actual, actual - expected
+    text = f"{len(actual)} 只" + (f"：{_samples(actual)}" if actual else "")
+    if missing or extra:
+        detail = "；".join(part for part in (
+            f"池中缺 {_samples(missing)}" if missing else "",
+            f"池中多出 {_samples(extra)}" if extra else "") if part)
+        return CheckResult(BAD, f"与 namechange 重算一致（{len(expected)} 只）", text, detail,
+                           rows=len(actual))
+    return CheckResult(OK, f"与 namechange 重算一致（{len(expected)} 只）", text, rows=len(actual))
+
+
 def _metric_checks(ctx: CheckContext) -> CheckResult:
     frame = ctx.query.metric_checks()
     if frame.height == 0:
@@ -287,6 +315,7 @@ CHECKS: tuple[ServiceCheck, ...] = (
     ServiceCheck("tushare-sync", "派生标记覆盖日线", "daily_flags", _flags_cover_daily),
     ServiceCheck("tushare-sync", "市场广度到货", "market_regime", _regime_arrived),
     ServiceCheck("tushare-sync", "估值覆盖日线", "valuation_snapshot", _valuation_covers_daily),
+    ServiceCheck("tushare-sync", "退市整理期池与 namechange 一致", "delisting_pool", _delisting_pool),
     ServiceCheck("tushare-sync", "增量质检阻断项", "metric_checks", _metric_checks),
 )
 

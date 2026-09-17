@@ -462,28 +462,54 @@ class WarehouseQuery:
             schema.NAME_SNAPSHOTS, symbols, start, end,
         )
 
+    def delisting_pool(self, start: date, end: date) -> pl.DataFrame:
+        """每日退市整理期池（派生自 namechange，见 pipeline.delisting）。"""
+        return self._dated_query(
+            "delisting_pool", ", ".join(schema.DELISTING_POOL.names),
+            schema.DELISTING_POOL, None, start, end,
+        )
+
     def name_history(self, symbols: Sequence[str] | None = None) -> pl.DataFrame:
         """曾用名区间表；ST 状态由区间覆盖关系派生。"""
         frame = self._read_unpartitioned("name_history", schema.NAME_HISTORY, symbols)
         return frame.sort(["symbol", "start_date"])
 
+    def delisting_pool_coverage(self, year: int) -> tuple[date, date] | None:
+        """该年池子文件实际构建过的交易日区间（写入时记在 Parquet 元数据里）。
+
+        池子只存「在整理期的标的」，某天 0 行既可能是当天确实没有、也可能是没建。
+        所以覆盖范围单独记录，不能拿行的最小最大日期代替。
+        """
+        path = self._wh.path_for("delisting_pool", year)
+        if not path.exists():
+            return None
+        import pyarrow.parquet as pq
+
+        meta = pq.read_schema(path).metadata or {}
+        if b"built_from" not in meta or b"built_through" not in meta:
+            return None
+        return (date.fromisoformat(meta[b"built_from"].decode()),
+                date.fromisoformat(meta[b"built_through"].decode()))
+
     def delisting_symbols(self, day: date, *, announced_by: date) -> set[str]:
         """`day` 当天处于退市整理期、且在 `announced_by` 及以前已公告的标的。
 
-        只认 Tushare `namechange` 的结构化字段 `change_reason='退市整理期'`，
-        不从名称里找「退」字（D-11）。`announced_by` 取 T-1：T 日开盘前能看到
-        的只有此前公告的事件，回测与实盘同一口径。公告日缺失的记录按已知
-        处理——候选池宁可漏、不可错。
+        **唯一出处是退市整理期池** `delisting_pool`（派生自 Tushare namechange 的
+        `change_reason='退市整理期'`，见 pipeline.delisting），不从名称里找「退」字（D-11），
+        也不在这里另写一份区间判断。`announced_by` 取 T-1：T 日开盘前能看到的只有
+        此前公告的事件，回测与实盘同一口径。公告日缺失的记录按已知处理——
+        候选池宁可漏、不可错。
+
+        池子没有覆盖 `day` 时**显式报错**：返回空集会让整理期标的静默进入候选池。
         """
-        history = self.name_history()
-        if history.height == 0:
-            return set()
-        hit = history.filter(
-            (pl.col("change_reason") == "退市整理期")
-            & (pl.col("start_date") <= day)
-            & (pl.col("end_date").is_null() | (pl.col("end_date") >= day))
-            & (pl.col("ann_date").is_null() | (pl.col("ann_date") <= announced_by))
-        )
+        coverage = self.delisting_pool_coverage(day.year)
+        if coverage is None or not coverage[0] <= day <= coverage[1]:
+            raise RuntimeError(
+                f"退市整理期池未覆盖 {day}（已构建 {coverage or '无'}）。"
+                "先运行 scripts/build_delisting_pool.py 或等每晚同步刷新"
+            )
+        pool = self.delisting_pool(day, day)
+        hit = pool.filter(pl.col("ann_date").is_null() | (pl.col("ann_date") <= announced_by))
         return set(hit["symbol"].to_list())
 
     def corporate_actions(self, symbols: Sequence[str] | None = None) -> pl.DataFrame:

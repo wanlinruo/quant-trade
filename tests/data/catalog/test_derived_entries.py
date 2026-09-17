@@ -6,12 +6,18 @@ from qsys.data.catalog.types import Computed, Kind, Validity
 BY_ID = {m.id: m for m in METRICS}
 
 
-def test_owns_two_derived_datasets():
-    assert DATASETS == frozenset({"daily_flags", "valuation_snapshot"})
+def test_owns_three_derived_datasets():
+    assert DATASETS == frozenset({"daily_flags", "valuation_snapshot", "delisting_pool"})
 
 
-def test_registers_twenty_metrics():
-    assert len(METRICS) == 20
+def test_registers_twenty_six_metrics():
+    assert len(METRICS) == 26
+
+
+def test_delisting_pool_derives_only_from_namechange():
+    for metric in METRICS:
+        if metric.dataset == "delisting_pool" and metric.id != "delisting_pool.dt":
+            assert all(u.startswith("name_history.") for u in metric.lineage.upstream), metric.id
 
 
 def test_nothing_here_claims_to_be_direct():
