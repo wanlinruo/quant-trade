@@ -27,11 +27,13 @@ from qsys.web.backtest_views import BacktestService
 from qsys.web.catalog_views import CatalogService, Status
 from qsys.web.config import WebConfig
 from qsys.web.data_views import DataService, MarketService
+from qsys.web.service_views import ServiceConsole
 from qsys.web.svg import line_chart, multi_line_chart
 from qsys.web.views import MonitorService
 from qsys.web.workbench import BacktestQueue, WorkbenchStore
 from qsys.strategy.parameters import validate_parameters
 from qsys.core.calendar import AShareCalendar
+from qsys.ops.services import SERVICE_BY_ID
 from qsys.paper.calendar import first_complete_session
 from qsys.paper.store import PaperStore
 
@@ -131,6 +133,7 @@ def create_app(
     paper: PaperStore | None = None,
     market: MarketService | None = None,
     paper_calendar: Callable[[], AShareCalendar] | None = None,
+    services: ServiceConsole | None = None,
 ) -> FastAPI:
     app = FastAPI(title=config.title, docs_url=None, redoc_url=None)
 
@@ -166,6 +169,49 @@ def create_app(
                 "total_symbols": symbols, "latest": data.latest_session(),
                 "catalog_summary": catalog.summary() if catalog else None,
             },
+        )
+
+    def _services() -> ServiceConsole:
+        if services is None:
+            raise HTTPException(status_code=404, detail="service console not enabled")
+        return services
+
+    @app.get("/services", response_class=HTMLResponse)
+    def service_overview(request: Request, days: int = Query(14, ge=7, le=60)):
+        console = _services()
+        columns, rows, has_calendar = console.board(days)
+        return TEMPLATES.TemplateResponse(
+            request=request, name="services.html",
+            context={"title": config.title, "session": None, "page": "services",
+                     "columns": columns, "rows": rows, "has_calendar": has_calendar,
+                     "processes": console.process_status(),
+                     "timers": console.services("timer"),
+                     "residents": console.services("resident")},
+        )
+
+    @app.get("/services/runs/{day}/{run_id}", response_class=HTMLResponse)
+    def service_run(request: Request, day: date, run_id: str):
+        console = _services()
+        run = console.run(day, run_id)
+        if run is None or run["spec"] is None:
+            raise HTTPException(status_code=404, detail="run not found")
+        return TEMPLATES.TemplateResponse(
+            request=request, name="service_detail.html",
+            context={"title": config.title, "session": None, "page": "services_run",
+                     "spec": run["spec"], "run": run,
+                     "recent": console.recent_runs(run["service"])},
+        )
+
+    @app.get("/services/{service_id}", response_class=HTMLResponse)
+    def service_detail(request: Request, service_id: str):
+        console = _services()
+        spec = SERVICE_BY_ID.get(service_id)
+        if spec is None:
+            raise HTTPException(status_code=404, detail="unknown service")
+        return TEMPLATES.TemplateResponse(
+            request=request, name="service_detail.html",
+            context={"title": config.title, "session": None, "page": "services_detail",
+                     "spec": spec, "run": None, "recent": console.recent_runs(service_id)},
         )
 
     @app.get("/data/selection")

@@ -93,6 +93,16 @@ button:disabled { opacity:.55; cursor:not-allowed; }
 .legend-line { width:16px; height:3px; display:inline-block; margin-right:5px; vertical-align:middle; }
 .chart-tooltip { position:fixed; z-index:20; pointer-events:none; background:#172033; color:#fff; padding:8px 10px; border-radius:5px; font-size:12px; display:none; box-shadow:0 8px 20px #0003; }
 .empty-state { text-align:center; color:var(--muted); padding:48px 20px; }
+.board { border-collapse:separate; border-spacing:3px; width:auto; }
+.board th, .board td { border:0; padding:0; text-align:center; }
+.board th.svc { text-align:left; padding-right:12px; white-space:nowrap; font-size:13px; color:var(--fg); }
+.board th.day { font-size:11px; min-width:44px; }
+.cell { display:block; min-width:44px; height:30px; line-height:30px; border-radius:4px; font-size:11px; text-decoration:none; color:#fff; }
+.cell.ok { background:var(--ok); } .cell.warn { background:var(--warn); } .cell.bad { background:var(--bad); }
+.cell.missed { background:#7f1d1d; } .cell.running { background:#3b82f6; }
+.cell.pending { background:#e2e8f0; color:#64748b; } .cell.closed { background:#f1f5f9; color:#94a3b8; }
+.cell.none { background:#f8fafc; color:#cbd5e1; border:1px dashed #e2e8f0; }
+.tags span { display:inline-block; background:#f1f5f9; border-radius:4px; padding:1px 6px; margin:1px 2px; font-size:12px; }
 .mono { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
 .muted { color:var(--muted); }
 @media (max-width:760px) {
@@ -116,6 +126,7 @@ button:disabled { opacity:.55; cursor:not-allowed; }
   <span class="header-spacer"></span>
   {% if session %}<span id="status"></span>{% endif %}
   <a class="utility-link {{ 'active' if page and page.startswith('data') }}" href="/data">数据管理</a>
+  <a class="utility-link {{ 'active' if page and page.startswith('services') }}" href="/services">服务管理</a>
 </header>
 {% if page in ('strategies', 'backtests', 'paper') %}
 <div class="subnav"><a href="/strategies" class="{{ 'active' if page == 'strategies' }}">策略研究</a><a href="/backtests" class="{{ 'active' if page == 'backtests' }}">回测记录</a><a href="/paper" class="{{ 'active' if page == 'paper' }}">模拟交易</a></div>

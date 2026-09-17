@@ -37,7 +37,7 @@ from pathlib import Path
 import polars as pl
 import structlog
 
-from qsys.core.calendar import AShareCalendar, last_closed_session
+from qsys.core.calendar import last_closed_session
 from qsys.data.pipeline.auction import (
     import_auction_ticks,
     missing_auction_days,
@@ -45,10 +45,11 @@ from qsys.data.pipeline.auction import (
 from qsys.data.pipeline.candidates import candidate_stock_days, write_manifest
 from qsys.data.pipeline.capital import import_share_capital
 from qsys.data.pipeline.minutes import import_minute_bars, missing_stock_days
-from qsys.data.providers.akshare_provider import AkshareProvider
 from qsys.data.quality.minute_rules import check_minute_bars
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
+from qsys.ops.services import FAILED, SKIPPED, SUCCEEDED, ServiceRun
+from qsys.paper.calendar import load_trading_calendar
 
 log = structlog.get_logger("daily_archive")
 
@@ -141,21 +142,32 @@ def main() -> int:
     parser.add_argument("--win-python", default=r"C:\qsys\.venv\Scripts\python.exe")
     parser.add_argument("--win-script", default=r"C:\qsys\win_download_minutes.py")
     parser.add_argument("--win-root", default="C:/qsys/daily")
+    parser.add_argument("--config", default="config/deploy.local.toml")
+    parser.add_argument("--service-runs", default="var/service-runs",
+                        help="运行记录目录（服务管理页读取）")
     args = parser.parse_args()
 
+    with ServiceRun.open(Path(args.service_runs), "daily-archive") as service_run:
+        return _archive(args, service_run)
+
+
+def _archive(args, service_run: ServiceRun) -> int:
     warehouse = Warehouse(Path(args.warehouse))
-    reference = AkshareProvider()
     today = date.today()
     started = time.time()
 
-    # --- 1. 交易日历，确定采到哪天 ---
-    sessions = reference.fetch_sessions(today - timedelta(days=90), today)
-    calendar = AShareCalendar(sessions)
-    complete_through = last_closed_session(calendar, datetime.now())
+    # --- 1. 交易日历，确定采到哪天。与其他任务同源：Tushare trade_cal ---
+    with service_run.step("确定交易日", interface="Tushare trade_cal") as step:
+        calendar = load_trading_calendar(args.config)
+        sessions = calendar.sessions_in_range(today - timedelta(days=90), today)
+        complete_through = last_closed_session(calendar, datetime.now())
+        step.detail = f"归档至 {complete_through}" if complete_through else "没有已收盘的交易日"
     if complete_through is None:
         log.warning("archive.no_closed_session")
+        service_run.skip("没有已收盘的交易日")
         print("没有已收盘的交易日，退出")
         return 0
+    service_run.session = complete_through
     start = complete_through - timedelta(days=args.lookback_days)
     print(f"=== 归档至 {complete_through}（回看 {args.lookback_days} 天）===")
 
@@ -182,12 +194,16 @@ def main() -> int:
     stamp = complete_through.strftime("%Y%m%d")
     auction_ok = True
     if not args.skip_auction:
-        auction_ok = _archive_auction(
-            args, warehouse,
-            candidate_stock_days(warehouse, start, complete_through,
-                                 sessions=sessions),
-            ssh, key, stamp,
-        )
+        with service_run.step("竞价逐笔（首板次日）", interface="QMT 竞价逐笔（Windows）",
+                              table="auction_ticks") as step:
+            auction_ok = _archive_auction(
+                args, warehouse,
+                candidate_stock_days(warehouse, start, complete_through,
+                                     sessions=sessions),
+                ssh, key, stamp,
+            )
+            if not auction_ok:
+                step.fail("竞价采集或导入失败；QMT 只留约 20 个交易日，需尽快补采")
     if args.only_auction:
         print(f"=== 只做竞价 tick，完成，耗时 {(time.time()-started)/60:.1f} 分钟 ===")
         return _exit_code(0, auction_ok=auction_ok)
@@ -222,6 +238,7 @@ def main() -> int:
     wanted = candidate_stock_days(warehouse, start, complete_through)
 
     if args.skip_minutes:
+        service_run.add_step("分钟线", status=SKIPPED, detail="按参数跳过")
         print("按要求跳过分钟线")
         print(f"=== 完成，耗时 {(time.time()-started)/60:.1f} 分钟 ===")
         return _exit_code(0, auction_ok=auction_ok)
@@ -229,7 +246,11 @@ def main() -> int:
     # --- 5. 算出还缺哪些股-日的分钟线 ---
     missing = missing_stock_days(warehouse, wanted)
     print(f"候选 {wanted.height} 组，其中缺分钟线 {missing.height} 组")
+    minutes_started = datetime.now()
     if missing.height == 0:
+        service_run.add_step("分钟线（候选与持仓）", status=SUCCEEDED,
+                             interface="QMT 1 分钟线（Windows）", table="minute_bars", rows=0,
+                             detail=f"候选 {wanted.height} 组，均已到货")
         # 候选由 daily_flags 的首板推出，而 daily_flags 现在由 tushare_sync
         # 维护。本脚本 15:41 跑、同步 17:00 才跑，所以这里读到的是**昨日**
         # 收盘后那次同步的结果——候选为空是正常的「已齐」，不是算不出来。
@@ -270,6 +291,13 @@ def main() -> int:
         warehouse, local_dir, archive_dir=Path("var/minutes-done")
     )
     print(f"导入 {result.files} 文件 / {result.rows:,} 行 / {result.errors} 错误")
+    service_run.add_step(
+        "分钟线（候选与持仓）", status=FAILED if result.errors else SUCCEEDED,
+        interface="QMT 1 分钟线（Windows）", table="minute_bars", rows=result.rows,
+        started_at=minutes_started,
+        detail=f"候选 {wanted.height} 组，缺 {missing.height} 组；导入 {result.files} 个文件、"
+               f"{result.errors} 个坏文件",
+    )
     if result.errors:
         log.warning("archive.import_errors", errors=result.errors)
 
@@ -282,6 +310,9 @@ def main() -> int:
         for issue in found[:3]:
             print(f"  [质量] {day} {issue.symbol} {issue.rule}: {issue.detail}")
     print(f"跨源校验 {len(days)} 天，问题 {issues} 个")
+    service_run.add_step("分钟线校验", status=FAILED if issues else SUCCEEDED,
+                         interface="仓库内规则", table="minute_bars",
+                         detail=f"校验 {len(days)} 天，问题 {issues} 个")
 
     print(f"=== 完成，耗时 {(time.time()-started)/60:.1f} 分钟 ===")
     log.info("archive.done", days=len(days), rows=result.rows, issues=issues,

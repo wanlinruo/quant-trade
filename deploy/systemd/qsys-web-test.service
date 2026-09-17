@@ -14,7 +14,9 @@ ExecStart=/home/ubuntu/qsys-test/.venv/bin/python scripts/run_monitor.py \
           --port 8421 \
           --warehouse /data/qsys-test/warehouse-current \
           --workspace /data/qsys-test/var/workbench \
-          --runs /data/qsys-test/var/runs
+          --runs /data/qsys-test/var/runs \
+          --service-runs /data/qsys-test/var/service-runs \
+          --tushare-config /data/qsys-test/var/tushare-only.toml
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
