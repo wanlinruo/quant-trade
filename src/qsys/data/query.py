@@ -340,6 +340,16 @@ class WarehouseQuery:
             pl.lit("qmt").alias("source"), pl.col("dt").alias("visible_at"),
         ).cast(columns)
 
+    def minute_stock_days(self, start: date, end: date) -> pl.DataFrame:
+        """已有 QMT 分钟线的 (symbol, dt) 组合，只在 DuckDB 里去重，不搬整张分钟表。"""
+        files = self._minute_files(start, end)
+        if not files:
+            return pl.DataFrame(schema={"symbol": pl.Utf8, "dt": pl.Date})
+        return self._con.execute(
+            f"SELECT DISTINCT symbol, CAST(dt AS DATE) AS dt FROM {_read(files)} "
+            "WHERE CAST(dt AS DATE) BETWEEN ? AND ?", [start, end],
+        ).pl()
+
     def minute_bars(
         self,
         symbols: Sequence[str] | None,

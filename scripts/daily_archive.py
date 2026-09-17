@@ -42,7 +42,11 @@ from qsys.data.pipeline.auction import (
     import_auction_ticks,
     missing_auction_days,
 )
-from qsys.data.pipeline.candidates import candidate_stock_days, write_manifest
+from qsys.data.pipeline.candidates import (
+    candidate_stock_days,
+    full_market_stock_days,
+    write_manifest,
+)
 from qsys.data.pipeline.capital import import_share_capital
 from qsys.data.pipeline.minutes import import_minute_bars, missing_stock_days
 from qsys.data.providers.akshare_provider import AkshareProvider
@@ -129,6 +133,10 @@ def main() -> int:
                         help="日线与候选各回看几个日历日，用于补缺口")
     parser.add_argument("--boards", default="main,gem,star")
     parser.add_argument("--skip-minutes", action="store_true")
+    parser.add_argument(
+        "--full-market-since", type=date.fromisoformat, default=None,
+        help="从该交易日起采全市场分钟线（D-20；付费分钟覆盖到 2026-09-16）；不给则只采候选",
+    )
     parser.add_argument("--skip-auction", action="store_true")
     parser.add_argument("--only-auction", action="store_true",
                         help="只做竞价 tick。窗口只有 20 天，出问题要能单独重试")
@@ -220,6 +228,12 @@ def main() -> int:
               f"{cap_result.errors} 错误")
 
     wanted = candidate_stock_days(warehouse, start, complete_through)
+    if args.full_market_since is not None:
+        # 候选照旧（全市场起点之前的补缺仍靠它），再并上起点之后的全市场股-日
+        wanted = pl.concat([wanted, full_market_stock_days(
+            symbols, calendar.sessions_in_range(start, complete_through),
+            since=args.full_market_since,
+        )]).unique().sort(["dt", "symbol"])
 
     if args.skip_minutes:
         print("按要求跳过分钟线")
@@ -255,8 +269,9 @@ def main() -> int:
     download = (
         f'$env:PYTHONIOENCODING="utf-8"; {args.win_python} -u {args.win_script} '
         f'--manifest {win_dir}\\manifest.csv --out {win_dir} '
-        f'--window-start {lo.strftime("%Y%m%d")} --window-end {hi.strftime("%Y%m%d")} '
-        f'--sleep 0.1'
+        f'--window-start {lo.strftime("%Y%m%d")} --window-end {hi.strftime("%Y%m%d")}'
+        # 全市场按日批量下载后逐只取数只读本地缓存，不需要再歇；候选模式保留 0.1s 让路
+        + (' --batch --sleep 0' if args.full_market_since is not None else ' --sleep 0.1')
     )
     output = run(ssh + [download], what="Windows 下载分钟线", timeout=7200)
     for line in output.strip().splitlines()[-4:]:

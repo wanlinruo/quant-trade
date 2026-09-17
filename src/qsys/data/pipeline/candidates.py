@@ -86,6 +86,23 @@ def candidate_stock_days(
     )
 
 
+def full_market_stock_days(
+    symbols: Sequence[str], sessions: Sequence[date], *, since: date,
+) -> pl.DataFrame:
+    """全市场分钟线清单：`symbols` × `since` 起的交易日（D-20）。
+
+    付费分钟数据覆盖到 2026-09-16，QMT 从其后开始采全市场；此前的交易日不进清单。
+    """
+    days = sorted(d for d in set(sessions) if d >= since)
+    if not days or not symbols:
+        return pl.DataFrame(schema=_SCHEMA)
+    return pl.DataFrame(
+        {"symbol": [s for _ in days for s in symbols],
+         "dt": [d for d in days for _ in symbols]},
+        schema=_SCHEMA,
+    )
+
+
 def write_manifest(frame: pl.DataFrame, path: Path) -> int:
     """写出 Windows 下载脚本的输入清单。返回行数。"""
     path = Path(path)

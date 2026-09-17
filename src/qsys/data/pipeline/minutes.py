@@ -152,19 +152,7 @@ def missing_stock_days(warehouse: Warehouse, candidates: pl.DataFrame) -> pl.Dat
         return candidates
 
     days = candidates["dt"].to_list()
-    have = WarehouseQuery(warehouse).minute_bars(
-        None,
-        datetime.combine(min(days), time(0, 0)),
-        datetime.combine(max(days), time(23, 59, 59)),
-    )
-    if have.height == 0:
+    owned = WarehouseQuery(warehouse).minute_stock_days(min(days), max(days))
+    if owned.height == 0:
         return candidates
-
-    owned = (
-        have.select(
-            pl.col("symbol"),
-            pl.col("dt").dt.date().alias("dt"),
-        )
-        .unique()
-    )
     return candidates.join(owned, on=["symbol", "dt"], how="anti").sort(["dt", "symbol"])
