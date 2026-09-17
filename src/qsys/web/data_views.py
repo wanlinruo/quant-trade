@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 
 import polars as pl
 
@@ -49,15 +49,19 @@ class DataService:
     # ---- 退市整理期池 ----
 
     def delisting_pool(self) -> tuple[date | None, pl.DataFrame]:
-        """最近一个有池子记录的交易日及当天的池子（候选池剔除用的就是这份口径）。"""
-        latest = self.latest_session()
-        if latest is None:
-            return None, pl.DataFrame()
-        frame = self._query.delisting_pool(latest - timedelta(days=30), latest)
-        if frame.height == 0:
-            return None, frame
-        day = frame["dt"].max()
-        return day, frame.filter(pl.col("dt") == day).sort("symbol")
+        """池子已构建到的最后一个交易日（通常是下一个交易日）及当天的池子。
+
+        当天 0 行是「当天没有整理期标的」；从未构建返回 (None, 空表)。
+        """
+        years = sorted((int(p.name.split("=")[1])
+                        for p in (self._warehouse.root / "delisting_pool").glob("year=*")),
+                       reverse=True)
+        for year in years:
+            coverage = self._query.delisting_pool_coverage(year)
+            if coverage is not None:
+                day = coverage[1]
+                return day, self._query.delisting_pool(day, day).sort("symbol")
+        return None, pl.DataFrame()
 
     # ---- 市场生态因子 ----
 

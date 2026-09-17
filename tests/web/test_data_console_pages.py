@@ -118,3 +118,15 @@ def test_the_root_points_at_market(warehouse):
     seed(warehouse)
     response = client_for(warehouse).get("/", follow_redirects=False)
     assert response.headers["location"] == "/market"
+
+
+def test_data_overview_lists_the_delisting_pool(warehouse):
+    from qsys.data.pipeline.delisting import build_delisting_pool
+
+    warehouse.write("name_history", pa.table({
+        "symbol": ["300344.SZ"], "name": ["立方退"], "start_date": [date(2024, 1, 3)],
+        "end_date": [None], "ann_date": [date(2024, 1, 2)], "change_reason": ["退市整理期"],
+    }, schema=schema.NAME_HISTORY))
+    build_delisting_pool(warehouse, D[0], D[-1], extra_sessions=D)
+    page = client_for(warehouse).get("/data")
+    assert "立方退" in page.text and "2024-01-04" in page.text
