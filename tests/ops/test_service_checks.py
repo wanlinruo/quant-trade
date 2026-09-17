@@ -106,7 +106,6 @@ def sync_run(status="succeeded", *, with_step=True, error=""):
 
 def test_suspend_arrival_is_judged_by_the_sync_record_not_by_rows():
     query = FakeQuery()
-    assert sc._suspend_receipt(ctx(query)).status == sc.BAD
     assert sc._suspend_receipt(ctx(query, [sync_run(with_step=False)])).status == sc.BAD
     failed = sc._suspend_receipt(ctx(query, [sync_run("failed", error="超时")]))
     assert failed.status == sc.BAD and "超时" in failed.detail
@@ -126,8 +125,39 @@ def test_blocking_metric_checks_warn():
     assert sc._metric_checks(ctx(FakeQuery())).status == sc.BAD
 
 
+def test_unrun_sync_passes_on_suspend_rows_but_not_on_an_empty_table():
+    empty = sc._suspend_receipt(ctx(FakeQuery()))
+    assert empty.status == sc.BAD and "服务未执行" in empty.actual
+    suspend = pl.DataFrame({"symbol": ["000001.SZ"], "dt": [DAY], "suspend_type": ["S"]})
+    got = sc._suspend_receipt(ctx(FakeQuery(suspend=suspend)))
+    assert got.status == sc.OK and got.detail == sc.NOT_RUN_NOTE and "1 只" in got.actual
+
+
+def test_premarket_without_run_record_passes_when_limits_cover_daily():
+    names = symbols(3)
+    query = FakeQuery(daily=daily(DAY, names), limits=daily(DAY, names))
+    got = sc._premarket_rows(ctx(query))
+    assert got.status == sc.OK and got.detail == sc.NOT_RUN_NOTE
+    assert "服务未执行" in got.actual and got.rows == 3
+
+
+def test_premarket_without_run_record_fails_when_limits_are_incomplete():
+    names = symbols(3)
+    query = FakeQuery(daily=daily(DAY, names), limits=daily(DAY, names[:2]))
+    got = sc._premarket_rows(ctx(query))
+    assert got.status == sc.BAD and names[2] in got.detail
+
+
+def test_premarket_failed_run_stays_failed_even_if_limits_arrived_later():
+    names = symbols(3)
+    query = FakeQuery(daily=daily(DAY, names), limits=daily(DAY, names))
+    run = {"service": "premarket-limits", "session": DAY.isoformat(), "error": "",
+           "steps": [{"table": "price_limits_daily", "status": "failed", "rows": 0,
+                      "finished_at": "2026-09-17T09:25:00", "detail": "09:25 仍未取到"}]}
+    assert sc._premarket_rows(ctx(query, [run])).status == sc.BAD
+
+
 def test_premarket_reads_its_own_run_record():
-    assert sc._premarket_rows(ctx(FakeQuery())).status == sc.BAD
     run = {"service": "premarket-limits", "session": DAY.isoformat(), "error": "",
            "steps": [{"table": "price_limits_daily", "status": "succeeded", "rows": 5644,
                       "finished_at": "2026-09-17T09:01:02", "detail": ""}]}
@@ -202,3 +232,27 @@ def test_delisting_pool_is_recomputed_independently_from_namechange():
     bad = FakeQuery(history=history, pool=daily(DAY, ["600001.SH"]))
     got = sc._delisting_pool(ctx(bad))
     assert got.status == sc.BAD and "缺 300344.SZ" in got.detail and "多出 600001.SH" in got.detail
+
+
+def checks_run(started, steps):
+    return {"service": "service-checks", "session": DAY.isoformat(), "started_at": started,
+            "run_id": f"service-checks-{started[11:13]}", "steps": steps}
+
+
+def test_earlier_failure_turns_a_passing_check_into_repaired():
+    name = "daily-archive｜分钟线到货"
+    runs = [checks_run("2026-09-17T20:00:01", [
+                {"name": name, "status": "failed", "detail": "期望：候选 79 只；实际：缺 79 只"},
+                {"name": "tushare-sync｜日线到货", "status": "succeeded", "detail": ""}]),
+            checks_run("2026-09-17T23:10:00", [
+                {"name": name, "status": "repaired", "detail": "…"}])]
+    failures = sc.earlier_failures(runs, DAY)
+    assert set(failures) == {name}
+    ok = sc.CheckResult(sc.OK, "候选 79 只", "缺 0 只", rows=79)
+    got = sc.mark_repaired(ok, failures.get(name))
+    assert got.status == sc.REPAIRED and "20:00" in got.detail and "缺 79 只" in got.detail
+    assert sc.mark_repaired(ok, None) == ok
+    bad = sc.CheckResult(sc.BAD, "候选 79 只", "缺 3 只")
+    assert sc.mark_repaired(bad, failures[name]) == bad
+    other_day = [{**runs[0], "session": "2026-09-16"}]
+    assert sc.earlier_failures(other_day, DAY) == {}

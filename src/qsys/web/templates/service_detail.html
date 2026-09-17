@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-{% set labels = {"succeeded": ("ok", "成功"), "failed": ("bad", "失败"), "warning": ("warn", "警告"), "skipped": ("todo", "跳过"), "running": ("todo", "运行中"), "interrupted": ("bad", "已中断")} %}
+{% set labels = {"succeeded": ("ok", "成功"), "failed": ("bad", "失败"), "warning": ("warn", "警告"), "repaired": ("fixed", "已修复"), "skipped": ("todo", "跳过"), "running": ("todo", "运行中"), "interrupted": ("bad", "已中断")} %}
 <div class="page-head"><div><h2>{{ spec.name }}</h2>
 <p class="muted">{{ spec.purpose }}</p></div><a class="button secondary" href="/services">← 服务管理</a></div>
 

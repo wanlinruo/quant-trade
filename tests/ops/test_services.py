@@ -59,6 +59,21 @@ def test_warning_step_makes_run_warning(tmp_path):
     assert _only_run(tmp_path)["status"] == "warning"
 
 
+def test_repaired_step_makes_run_repaired_unless_something_still_fails(tmp_path):
+    with ServiceRun.open(tmp_path / "a", "service-checks") as run:
+        with run.step("x") as step:
+            step.status = services.REPAIRED
+        with run.step("y"):
+            pass
+    assert _only_run(tmp_path / "a")["status"] == services.REPAIRED
+    with ServiceRun.open(tmp_path / "b", "service-checks") as run:
+        with run.step("x") as step:
+            step.status = services.REPAIRED
+        with run.step("y") as step:
+            step.fail("缺")
+    assert _only_run(tmp_path / "b")["status"] == services.FAILED
+
+
 def test_skipped_run(tmp_path):
     with ServiceRun.open(tmp_path, "premarket-limits") as run:
         run.skip("2026-09-19 不是交易日")

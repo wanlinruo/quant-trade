@@ -6,6 +6,9 @@
 期望值只取直取源或运行记录，不做推断：
 - 日线标的集合来自 Tushare daily；涨跌停价、ST、估值、flags 都应覆盖它；
 - 停牌表当天可以真的为空，所以只认 Tushare 同步运行记录里「停牌」这一步成功；
+- 服务当天**没有运行记录**（没按时执行）时，改验它该产出的数据：数据到齐且核对通过
+  即判成功，备注「数据质检成功，但服务未执行」；执行了但失败的，仍判失败；
+- 同一交易日早先的质检未通过、修复后重跑通过的，记「已修复」并保留当时的失败原因。
 - 分钟线与竞价的应到集合与每日归档的下载清单同源（首板次日候选），扣掉直取停牌。
 """
 
@@ -22,7 +25,7 @@ from qsys.data.pipeline.candidates import candidate_stock_days
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
 from qsys.markets.ashare import board_of
-from qsys.ops.services import FAILED, SKIPPED, SUCCEEDED, WARNING
+from qsys.ops.services import FAILED, REPAIRED, SKIPPED, SUCCEEDED, WARNING
 
 OK, BAD, WARN, SKIP = SUCCEEDED, FAILED, WARNING, SKIPPED
 
@@ -32,6 +35,7 @@ MINUTE_BARS_PER_DAY = 241
 VOLUME_TOLERANCE_LOTS = 1.0
 PRODUCTION_BOARDS = {"main", "gem", "star"}
 SAMPLE_LIMIT = 20
+NOT_RUN_NOTE = "数据质检成功，但服务未执行"
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,6 +95,14 @@ def _covers(ctx: CheckContext, frame: pl.DataFrame, what: str, *,
     return CheckResult(OK, f"覆盖日线 {len(daily)} 只", f"{len(have)} 只，全覆盖", rows=len(have))
 
 
+def _judge_data_without_run(expected: str, data: CheckResult) -> CheckResult:
+    """服务当天没有运行记录：以它该产出的数据为准，并注明服务未执行。"""
+    actual = f"服务未执行；数据 {data.actual}"
+    if data.status == OK:
+        return CheckResult(OK, expected, actual, NOT_RUN_NOTE, rows=data.rows)
+    return CheckResult(BAD, expected, actual, data.detail, rows=data.rows)
+
+
 # ---- Tushare 收盘同步 ----
 
 def _daily_arrived(ctx: CheckContext) -> CheckResult:
@@ -117,7 +129,12 @@ def _st_covers_daily(ctx: CheckContext) -> CheckResult:
 def _suspend_receipt(ctx: CheckContext) -> CheckResult:
     run = ctx.last_run("tushare-sync")
     if run is None:
-        return CheckResult(BAD, "当日同步记录里「停牌」成功", "当日没有 Tushare 同步运行记录")
+        rows = ctx.query.suspensions(None, ctx.day, ctx.day).height
+        # 停牌可以真的为 0 只：空表分不清「无停牌」与「没采」，不能算验证通过
+        data = (CheckResult(OK, "", f"当日停牌 {rows} 只", rows=rows) if rows else
+                CheckResult(BAD, "", "停牌表为空", "没有同步记录时，空表无法区分无停牌与未采集",
+                            rows=0))
+        return _judge_data_without_run("当日同步记录里「停牌」成功", data)
     step = next((s for s in run.get("steps", []) if s.get("table") == "suspend_daily"), None)
     if step is None:
         return CheckResult(BAD, "当日同步记录里「停牌」成功", "同步未执行到停牌这一步",
@@ -214,7 +231,8 @@ def _metric_checks(ctx: CheckContext) -> CheckResult:
 def _premarket_rows(ctx: CheckContext) -> CheckResult:
     run = ctx.last_run("premarket-limits")
     if run is None:
-        return CheckResult(BAD, "开盘前取到当日涨跌停价", "当日没有盘前运行记录")
+        # 盘前没执行时，收盘同步会补上当日 stk_limit；覆盖全部日线即视为数据到齐
+        return _judge_data_without_run("开盘前取到当日涨跌停价", _limits_cover_daily(ctx))
     step = next((s for s in run.get("steps", []) if s.get("table") == "price_limits_daily"), None)
     if step is None or step.get("status") != SUCCEEDED:
         return CheckResult(BAD, "开盘前取到当日涨跌停价",
@@ -328,3 +346,24 @@ def step_name(check: ServiceCheck) -> str:
 def parse_step_name(name: str) -> tuple[str, str] | None:
     service, sep, check = name.partition("｜")
     return (service, check) if sep else None
+
+
+def earlier_failures(runs: list[dict], day: date) -> dict[str, str]:
+    """同一交易日早先各次质检里未通过的检查：步骤名 → 「HH:MM 质检未通过：原因」（取最近一次）。"""
+    failures: dict[str, str] = {}
+    for run in runs:  # load_runs 已按开始时间排序
+        if run.get("service") != "service-checks" or run.get("session") != day.isoformat():
+            continue
+        for step in run.get("steps", []):
+            if step.get("status") == FAILED:
+                failures[step["name"]] = (f"{(run.get('started_at') or '')[11:16]} 质检未通过："
+                                          f"{step.get('detail', '')}")
+    return failures
+
+
+def mark_repaired(result: CheckResult, failure: str | None) -> CheckResult:
+    """本次通过、而早先未通过：记「已修复」，保留当时的失败原因。"""
+    if failure is None or result.status != OK:
+        return result
+    detail = "；".join(part for part in (result.detail, f"已修复（{failure}）") if part)
+    return CheckResult(REPAIRED, result.expected, result.actual, detail, rows=result.rows)
