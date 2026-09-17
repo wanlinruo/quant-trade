@@ -15,8 +15,8 @@ from qsys.live.redis_transport import RedisTransport
 from qsys.live.runtime import LiveRuntime
 from qsys.live.store import LiveStore
 from qsys.ops.alerts import AlertBus, LogAlertSink, WebhookAlertSink
+from qsys.paper.calendar import load_trading_calendar
 from qsys.paper.quotes import QuoteClient
-from scripts.run_paper import trading_calendar
 
 log = structlog.get_logger("shadow-core")
 
@@ -43,7 +43,7 @@ def main() -> int:
             config.alerts.webhook_url, timeout=config.alerts.timeout_seconds
         ))
     runtime = LiveRuntime(
-        Path(args.strategy), Path(args.warehouse), trading_calendar(args.config),
+        Path(args.strategy), Path(args.warehouse), load_trading_calendar(args.config),
         QuoteClient(transport, config.streams, consumer="shadow-core"),
         transport, config.streams, LiveStore(args.state),
         local_kill_path=Path("var/SHADOW_KILL"),
