@@ -1,7 +1,7 @@
 """Windows 侧：按清单下载分钟线并导出 parquet。
 
-**只在 Windows 上运行**（依赖 xtquant）。可中断可续传：已完成的标的记入
-done.csv，重跑跳过。
+**只在 Windows 上运行**（依赖 xtquant）。可中断可续传：每批落盘之后才把
+「标的 + 日期」记入 done.csv，重跑跳过（D-18）。
 
 策略依据 2026-09-09 的实测：
   · 按标的整年下载 0.69s/只，比按股-日（0.60s/组）**看起来**更快
@@ -73,6 +73,11 @@ def read_done(path: str) -> set[str]:
         return {line.strip() for line in handle if line.strip()}
 
 
+def ledger_key(symbol: str, stamps: list[str]) -> str:
+    """续传账本的键：标的 + 本次要的全部日期（D-18：只按标的记会跳过同标的的其他日期）。"""
+    return f"{symbol}:{'|'.join(sorted(stamps))}"
+
+
 def to_rows(symbol: str, data: dict, stamps: list[str]) -> list[tuple]:
     """把 xtdata 的 {字段: DataFrame} 摊平成行。"""
     closes = data.get("close")
@@ -116,6 +121,66 @@ def flush(rows: list[tuple], out_dir: str, index: int) -> str:
     return path
 
 
+def _next_index(out_dir: str) -> int:
+    taken = [int(name[8:13]) for name in os.listdir(out_dir)
+             if name.startswith("minutes_") and name.endswith(".parquet") and name[8:13].isdigit()]
+    return max(taken, default=-1) + 1
+
+
+def run_batch(fetch_one, wanted: dict[str, list[str]], todo: list[str], out_dir: str,
+              *, flush_every: int = 100, sleep: float = 0.0) -> dict[str, int]:
+    """逐只下载，每 `flush_every` 只落盘一次，**落盘之后**才把这批记进 done.csv（D-18）。
+
+    空数据（停牌整段、该日无数据）也记账，重跑不再请求；失败不记账，留给重跑。
+    """
+    os.makedirs(out_dir, exist_ok=True)
+    done_path = os.path.join(out_dir, "done.csv")
+    failed_path = os.path.join(out_dir, "failed.csv")
+    stats = {"ok": 0, "empty": 0, "failed": 0, "rows": 0, "files": 0}
+    buffer: list[tuple] = []
+    pending: list[str] = []
+    index = _next_index(out_dir)
+    started = time.time()
+
+    def commit() -> None:
+        nonlocal buffer, pending, index
+        if buffer:
+            path = flush(buffer, out_dir, index)
+            print(f"  写出 {os.path.basename(path)}  {len(buffer):,} 行", flush=True)
+            stats["rows"] += len(buffer)
+            stats["files"] += 1
+            index += 1
+        if pending:
+            with open(done_path, "a", encoding="utf-8") as handle:
+                handle.writelines(key + "\n" for key in pending)
+        buffer, pending = [], []
+
+    for position, symbol in enumerate(todo, 1):
+        stamps = wanted[symbol]
+        try:
+            rows = fetch_one(symbol, stamps)
+        except Exception as exc:  # 单只失败不中断整轮，也不记账
+            stats["failed"] += 1
+            with open(failed_path, "a", encoding="utf-8") as handle:
+                handle.write(f"{symbol},{type(exc).__name__},{exc}\n")
+            print(f"  [失败] {symbol}: {type(exc).__name__}: {exc}", flush=True)
+            continue
+        stats["ok" if rows else "empty"] += 1
+        buffer.extend(rows)
+        pending.append(ledger_key(symbol, stamps))
+        if position % flush_every == 0:
+            commit()
+            elapsed = time.time() - started
+            rate = position / elapsed if elapsed else 0
+            left = (len(todo) - position) / rate if rate else 0
+            print(f"  {position}/{len(todo)}  有数据 {stats['ok']} 空 {stats['empty']} "
+                  f"失败 {stats['failed']}  {rate:.1f} 只/秒  剩余约 {left/60:.0f} 分钟", flush=True)
+        if sleep:
+            time.sleep(sleep)
+    commit()
+    return stats
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="按清单下载分钟线")
     parser.add_argument("--manifest", required=True)
@@ -123,8 +188,10 @@ def main() -> int:
     parser.add_argument("--window-start", required=True, help="YYYYMMDD")
     parser.add_argument("--window-end", required=True, help="YYYYMMDD")
     parser.add_argument("--limit", type=int, default=0, help="只做前 N 只，用于试跑")
-    parser.add_argument("--flush-rows", type=int, default=200_000,
-                        help="攒够多少行写一个 parquet")
+    parser.add_argument("--flush-every", type=int, default=100,
+                        help="每做完这么多只落盘并记账一次")
+    parser.add_argument("--batch", action="store_true",
+                        help="按日先用 download_history_data2 批量下载整批标的（全市场采集）")
     parser.add_argument("--sleep", type=float, default=0.0,
                         help="每只之间歇多久，给同机的其它进程让路")
     parser.add_argument("--whole-window", action="store_true",
@@ -135,30 +202,27 @@ def main() -> int:
     from xtquant import xtdata
 
     os.makedirs(args.out, exist_ok=True)
-    done_path = os.path.join(args.out, "done.csv")
-    failed_path = os.path.join(args.out, "failed.csv")
-
     wanted = read_manifest(args.manifest)
-    done = read_done(done_path)
-    todo = [s for s in sorted(wanted) if s not in done]
+    done = read_done(os.path.join(args.out, "done.csv"))
+    todo = [s for s in sorted(wanted) if ledger_key(s, wanted[s]) not in done]
     if args.limit:
         todo = todo[: args.limit]
-
     print(f"清单 {len(wanted)} 只 / 已完成 {len(done)} 只 / 本次 {len(todo)} 只")
     if not todo:
         print("没有要做的")
         return 0
 
-    buffer: list[tuple] = []
-    file_index = len(
-        [f for f in os.listdir(args.out) if f.endswith(".parquet")]
-    )
-    started = time.time()
-    ok = failed = empty = 0
+    if args.batch:
+        # 按日批量：先让 QMT 一次性下好整批标的，再逐只取数（D-20 全市场）
+        days = sorted({stamp for symbol in todo for stamp in wanted[symbol]})
+        for stamp in days:
+            chunk = [s for s in todo if stamp in wanted[s]]
+            started = time.time()
+            xtdata.download_history_data2(chunk, period="1m", start_time=stamp, end_time=stamp)
+            print(f"  批量下载 {stamp} {len(chunk)} 只 {time.time()-started:.1f}s", flush=True)
 
-    for position, symbol in enumerate(todo, 1):
-        stamps = wanted[symbol]
-        try:
+    def fetch_one(symbol: str, stamps: list[str]) -> list[tuple]:
+        if not args.batch:
             if args.whole_window:
                 xtdata.download_history_data(
                     symbol, period="1m",
@@ -171,52 +235,18 @@ def main() -> int:
                     xtdata.download_history_data(
                         symbol, period="1m", start_time=stamp, end_time=stamp
                     )
-            data = xtdata.get_market_data(
-                field_list=[], stock_list=[symbol], period="1m",
-                start_time=min(stamps), end_time=max(stamps),
-                dividend_type="none",
-            )
-            rows = to_rows(symbol, data, stamps) if isinstance(data, dict) else []
-        except Exception as exc:  # 单只失败不中断整轮
-            failed += 1
-            with open(failed_path, "a", encoding="utf-8") as handle:
-                handle.write(f"{symbol},{type(exc).__name__},{exc}\n")
-            print(f"  [失败] {symbol}: {type(exc).__name__}: {exc}", flush=True)
-            continue
+        data = xtdata.get_market_data(
+            field_list=[], stock_list=[symbol], period="1m",
+            start_time=min(stamps), end_time=max(stamps),
+            dividend_type="none",
+        )
+        return to_rows(symbol, data, stamps) if isinstance(data, dict) else []
 
-        if rows:
-            buffer.extend(rows)
-            ok += 1
-        else:
-            empty += 1  # 停牌整段或该日无数据，不是失败
-
-        with open(done_path, "a", encoding="utf-8") as handle:
-            handle.write(symbol + "\n")
-
-        if len(buffer) >= args.flush_rows:
-            path = flush(buffer, args.out, file_index)
-            print(f"  写出 {os.path.basename(path)}  {len(buffer):,} 行", flush=True)
-            file_index += 1
-            buffer = []
-
-        if position % 100 == 0:
-            elapsed = time.time() - started
-            rate = position / elapsed
-            left = (len(todo) - position) / rate if rate else 0
-            print(
-                f"  {position}/{len(todo)}  有数据 {ok} 空 {empty} 失败 {failed}  "
-                f"{rate:.1f} 只/秒  剩余约 {left/60:.0f} 分钟",
-                flush=True,
-            )
-
-        if args.sleep:
-            time.sleep(args.sleep)
-
-    if buffer:
-        path = flush(buffer, args.out, file_index)
-        print(f"  写出 {os.path.basename(path)}  {len(buffer):,} 行")
-
-    print(f"完成：有数据 {ok} 只 / 空 {empty} 只 / 失败 {failed} 只")
+    started = time.time()
+    stats = run_batch(fetch_one, wanted, todo, args.out, flush_every=args.flush_every,
+                      sleep=args.sleep)
+    print(f"完成：有数据 {stats['ok']} 只 / 空 {stats['empty']} 只 / 失败 {stats['failed']} 只 / "
+          f"{stats['rows']:,} 行 / {stats['files']} 个文件")
     print(f"耗时 {(time.time()-started)/60:.1f} 分钟")
     return 0
 
