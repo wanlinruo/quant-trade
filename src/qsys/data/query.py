@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import date, datetime
+import json
+from datetime import date, datetime, time, timedelta
 
 import duckdb
 import polars as pl
@@ -11,6 +12,9 @@ import pyarrow as pa
 
 from qsys.data import schema
 from qsys.data.storage import Warehouse
+
+# 付费分钟 bar 边界比 QMT 晚几秒（2026-09-15 45 只逐分钟比对），检查点保守地晚一分钟可见（D-20）
+PAID_MINUTE_VISIBILITY_LAG = timedelta(minutes=1)
 
 
 def _empty(arrow_schema: pa.Schema) -> pl.DataFrame:
@@ -286,6 +290,55 @@ class WarehouseQuery:
             elif (year_dir / "part.parquet").exists():
                 files.append(str(year_dir / "part.parquet"))
         return files
+
+    def paid_minute_days(self, start: date, end: date) -> set[date]:
+        """已发布的付费分钟数据覆盖的交易日（按日分区的日期，或按分片年度清单的起止）。"""
+        base = self._wh.root / "paid_minute_bars"
+        covered: set[date] = set()
+        for year in range(start.year, end.year + 1):
+            year_dir = base / f"year={year}"
+            for path in year_dir.glob("date=*/part.parquet"):
+                day = datetime.strptime(path.parent.name.split("=", 1)[1], "%Y%m%d").date()
+                if start <= day <= end:
+                    covered.add(day)
+            manifest = year_dir / "manifest.json"
+            if manifest.exists() and any(year_dir.glob("shard=*/part.parquet")):
+                meta = json.loads(manifest.read_text())
+                lo = datetime.fromisoformat(str(meta["start"])).date()
+                hi = datetime.fromisoformat(str(meta["end"])).date()
+                covered.update(
+                    d for d in (lo + timedelta(days=i) for i in range((hi - lo).days + 1))
+                    if start <= d <= end
+                )
+        return covered
+
+    def intraday_bars(self, symbols: Sequence[str], day: date) -> pl.DataFrame:
+        """检查点报价用的当日分钟线，统一契约（D-20）。
+
+        付费分钟数据覆盖当日就只读付费，否则只读 QMT，同一天不混源。
+        列：symbol, dt（收盘时刻标签）, close, volume（手，付费股数 / 100 不取整）,
+        source, visible_at。付费 bar 边界比 QMT 晚几秒（2026-09-15 实测），保守地
+        晚 `PAID_MINUTE_VISIBILITY_LAG` 可见，检查点绝不读到其后的成交。
+        """
+        columns = {"symbol": pl.Utf8, "dt": pl.Datetime("us"), "close": pl.Float64,
+                   "volume": pl.Float64, "source": pl.Utf8, "visible_at": pl.Datetime("us")}
+        if not symbols:
+            return pl.DataFrame(schema=columns)
+        lo, hi = datetime.combine(day, time(0, 0)), datetime.combine(day, time(23, 59, 59))
+        if day in self.paid_minute_days(day, day):
+            from qsys.data.pipeline.paid_minute import query_paid_minute
+
+            frame = query_paid_minute(self._wh.root, list(symbols), lo, hi)
+            return frame.select(
+                "symbol", "dt", "close", (pl.col("volume") / 100).alias("volume"),
+                pl.lit("paid").alias("source"),
+                (pl.col("dt") + PAID_MINUTE_VISIBILITY_LAG).alias("visible_at"),
+            ).cast(columns)
+        frame = self.minute_bars(list(symbols), lo, hi)
+        return frame.select(
+            "symbol", "dt", "close", pl.col("volume").cast(pl.Float64),
+            pl.lit("qmt").alias("source"), pl.col("dt").alias("visible_at"),
+        ).cast(columns)
 
     def minute_bars(
         self,

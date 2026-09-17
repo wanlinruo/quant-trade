@@ -97,8 +97,9 @@ class BoundMarket:
         moment = datetime.combine(day, at)
         if moment > self._as_of:
             return {}
-        bars = self._query.minute_bars(
-            list(symbols), datetime.combine(day, time(0, 0)), moment
+        # 付费日读付费、否则读 QMT；按各源的可见时刻截断（D-20）
+        bars = self._query.intraday_bars(list(symbols), day).filter(
+            pl.col("visible_at") <= moment
         )
         if bars.height == 0:
             return {}
@@ -111,6 +112,7 @@ class BoundMarket:
             )
         )
         return {
+            # 付费源换算成手可能带小数；向下取整只会让成交量上限更保守
             row["symbol"]: IntradayQuote(float(row["price"]), int(row["volume"]))
             for row in latest.iter_rows(named=True)
         }
@@ -140,14 +142,23 @@ class BoundMarket:
         return set(rows.filter(pl.col("suspend_type") == "S")["symbol"].to_list())
 
     def auction_volume(self, symbols: Sequence[str], day: date) -> dict[str, int]:
-        """集合竞价成交量，取自分钟线 09:30 那根。取不到返回空。"""
+        """集合竞价成交量（手）。取不到返回空。
+
+        只认 QMT：分钟线 09:30 那根（纯开盘集合竞价），缺则取竞价逐笔撮合后的首笔累计量——
+        两者实测 1,182/1,182 一致。付费分钟 09:30 根合并了开盘后成交，拆不出竞价量，不读（D-20）。
+        """
         if not self._open_is_visible(day):
             return {}
         moment = datetime.combine(day, AUCTION_AT)
         bars = self._query.minute_bars(list(symbols), moment, moment)
-        if bars.height == 0:
-            return {}
-        return dict(zip(bars["symbol"].to_list(), bars["volume"].to_list()))
+        out = dict(zip(bars["symbol"].to_list(), bars["volume"].to_list()))
+        rest = [s for s in symbols if s not in out]
+        if rest:
+            ticks = self._query.auction_ticks(rest, day, day).filter(pl.col("volume") > 0)
+            if ticks.height:
+                first = ticks.sort("ts").group_by("symbol", maintain_order=True).first()
+                out.update(zip(first["symbol"].to_list(), first["volume"].to_list()))
+        return out
 
 
 class MarketFeed:
