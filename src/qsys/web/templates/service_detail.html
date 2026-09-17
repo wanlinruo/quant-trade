@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block content %}
+{% set labels = {"succeeded": ("ok", "成功"), "failed": ("bad", "失败"), "warning": ("warn", "警告"), "skipped": ("todo", "跳过"), "running": ("todo", "运行中"), "interrupted": ("bad", "已中断")} %}
+<div class="page-head"><div><h2>{{ spec.name }}</h2>
+<p class="muted">{{ spec.purpose }}</p></div><a class="button secondary" href="/services">← 服务管理</a></div>
+
+{% if run %}
+<div class="card">
+  <h2>运行明细 <span class="mono" style="font-weight:400">{{ run.run_id }}</span></h2>
+  {% set st = labels.get(run.effective_status, ("bad", run.effective_status)) %}
+  <div class="kpis">
+    <div class="kpi"><div class="label">结果</div><div class="value"><span class="pill {{ st[0] }}">{{ st[1] }}</span></div></div>
+    <div class="kpi"><div class="label">处理交易日</div><div class="value" style="font-size:16px">{{ run.session or "—" }}</div></div>
+    <div class="kpi"><div class="label">开始</div><div class="value" style="font-size:14px">{{ run.started_at }}</div></div>
+    <div class="kpi"><div class="label">结束</div><div class="value" style="font-size:14px">{{ run.finished_at or "—" }}</div></div>
+  </div>
+  {% if run.note %}<p>{{ run.note }}</p>{% endif %}
+  {% if run.error %}<pre>{{ run.error }}</pre>{% endif %}
+  <table style="margin-top:12px">
+    <tr><th>步骤</th><th>接口</th><th>写入表</th><th class="num">行数</th><th>结果</th><th>说明</th><th>开始—结束</th></tr>
+    {% for step in run.steps %}{% set ss = labels.get(step.status, ("bad", step.status)) %}
+    <tr>
+      <td>{{ step.name }}</td><td style="font-size:12px">{{ step.interface or "—" }}</td>
+      <td class="mono" style="font-size:12px">{{ step.table or "—" }}</td>
+      <td class="num">{{ "{:,}".format(step.rows) if step.rows is not none else "—" }}</td>
+      <td><span class="pill {{ ss[0] }}">{{ ss[1] }}</span></td>
+      <td style="font-size:12px">{{ step.detail }}{% if step.error %}<div class="error">{{ step.error }}</div>{% endif %}</td>
+      <td class="muted" style="font-size:12px;white-space:nowrap">{{ (step.started_at or "")[11:] }}—{{ (step.finished_at or "")[11:] }}</td>
+    </tr>{% else %}<tr><td colspan="7" class="empty">没有步骤记录</td></tr>{% endfor %}
+  </table>
+</div>
+{% if run.service != "service-checks" %}
+<div class="card">
+  <h2>当晚质检（{{ run.session or "—" }}）</h2>
+  {% if run.checks %}
+  <table>
+    <tr><th>检查</th><th>表</th><th>结果</th><th>期望与实际</th></tr>
+    {% for c in run.checks %}{% set cs = labels.get(c.status, ("bad", c.status)) %}
+    <tr><td>{{ c.check }}</td><td class="mono" style="font-size:12px">{{ c.table }}</td>
+      <td><span class="pill {{ cs[0] }}">{{ cs[1] }}</span></td>
+      <td style="font-size:12px">{{ c.detail }}{% if c.error %}<div class="error">{{ c.error }}</div>{% endif %}</td></tr>
+    {% endfor %}
+  </table>
+  <p class="muted" style="font-size:12px;margin:8px 0 0">来自 <a href="/services/runs/{{ run.checks[0].check_started_at[:10] }}/{{ run.checks[0].check_run_id }}">{{ run.checks[0].check_started_at }} 的服务质检</a></p>
+  {% else %}<div class="empty">这个交易日还没有质检结果（每日 20:00 执行）。</div>{% endif %}
+</div>
+{% endif %}
+{% endif %}
+
+<div class="card">
+  <h2>最近执行</h2>
+  <table>
+    <tr><th>开始</th><th>处理交易日</th><th>结果</th><th>步骤</th><th>说明</th></tr>
+    {% for r in recent %}{% set rs = labels.get(r.effective_status, ("bad", r.effective_status)) %}
+    <tr>
+      <td><a href="/services/runs/{{ r.started_at[:10] }}/{{ r.run_id }}">{{ r.started_at }}</a></td>
+      <td>{{ r.session or "—" }}</td><td><span class="pill {{ rs[0] }}">{{ rs[1] }}</span></td>
+      <td>{{ r.steps|length }}</td><td style="font-size:12px">{{ r.note or r.error }}</td>
+    </tr>{% else %}<tr><td colspan="5" class="empty">还没有运行记录{% if spec.kind == "resident" %}（常驻服务不写运行记录，看进程状态）{% endif %}</td></tr>{% endfor %}
+  </table>
+</div>
+{% endblock %}

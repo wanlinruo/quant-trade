@@ -25,6 +25,7 @@ from qsys.data.pipeline.flags import build_daily_flags
 from qsys.data.pipeline.regime import build_market_regime
 from qsys.data.pipeline.valuation import build_valuation
 from qsys.data.storage import Warehouse
+from qsys.ops.services import ServiceRun, record_step
 
 log = structlog.get_logger(__name__)
 
@@ -82,6 +83,19 @@ _REFERENCE_STEPS: list[tuple[str, Callable[..., int]]] = [
     ("limit_list_daily", _sync_limit_list),
 ]
 
+# 服务管理页显示的「接口 → 表」。键与 _REFERENCE_STEPS 的名字一一对应（守卫测试）。
+STEP_SOURCES: dict[str, tuple[str, str, str]] = {  # 名字 → (步骤, 接口, 写入表)
+    "tushare_daily": ("日线（含股本估值、复权因子）", "Tushare daily / daily_basic / adj_factor",
+                      "tushare_daily"),
+    "price_limits_daily": ("涨跌停价", "Tushare stk_limit", "price_limits_daily"),
+    "suspend_daily": ("停牌", "Tushare suspend_d", "suspend_daily"),
+    "stock_st_daily": ("ST 名单", "Tushare stock_st", "stock_st_daily"),
+    "index_bars": ("沪深300 指数", "Tushare index_daily", "index_bars"),
+    "instruments": ("标的主表与名称快照", "Tushare stock_basic", "instruments / name_snapshots"),
+    "name_history": ("改名与退市整理期记录", "Tushare namechange", "name_history"),
+    "limit_list_daily": ("涨停列表", "Tushare limit_list_d", "limit_list_daily"),
+}
+
 # 接线守卫检查的是实际公开 ingest，而不是适配器函数名。
 _REFERENCE_INGESTS = {
     reference.ingest_price_limits,
@@ -125,40 +139,49 @@ def completed_calendar_end(now: datetime) -> date:
     return now.date() if now.time() >= time(16, 0) else now.date() - timedelta(days=1)
 
 
-def sync(provider, warehouse: Warehouse, day: date) -> dict[str, int]:
+def sync(provider, warehouse: Warehouse, day: date, *,
+         run: ServiceRun | None = None) -> dict[str, int]:
     """同步一个交易日。返回 {数据集: 写入行数}。
 
     日线为空直接抛错，**且在抛错之前不写任何表**——半张表比没有表更难查。
     """
-    daily = provider.daily(day)
-    if daily.height == 0:
-        # 非交易日由调用方用 trade_cal 提前排除；走到这里就是该有数据却没有。
-        raise RuntimeError(
-            f"Tushare daily 在 {day:%Y%m%d} 返回 0 行——该交易日应有数据。"
-            f"不写入任何表，退出。"
-        )
+    label, interface, table = STEP_SOURCES["tushare_daily"]
+    with record_step(run, label, interface=interface, table=table) as step:
+        daily = provider.daily(day)
+        if daily.height == 0:
+            # 非交易日由调用方用 trade_cal 提前排除；走到这里就是该有数据却没有。
+            raise RuntimeError(
+                f"Tushare daily 在 {day:%Y%m%d} 返回 0 行——该交易日应有数据。"
+                f"不写入任何表，退出。"
+            )
 
-    frame = compose_daily(daily, provider.daily_basic(day), provider.adj_factor(day))
-    counts = {"tushare_daily": write_year(warehouse, frame, day.year)}
+        frame = compose_daily(daily, provider.daily_basic(day), provider.adj_factor(day))
+        counts = {"tushare_daily": write_year(warehouse, frame, day.year)}
+        step.rows = counts["tushare_daily"]
     for name, ingest in _REFERENCE_STEPS:
-        counts[name] = ingest(provider, warehouse, [day])
+        label, interface, table = STEP_SOURCES.get(name, (name, None, name))
+        with record_step(run, label, interface=interface, table=table) as step:
+            counts[name] = step.rows = ingest(provider, warehouse, [day])
 
     log.info("tushare_sync.done", day=str(day), **counts)
     return counts
 
 
-def refresh_derived(warehouse: Warehouse, day: date) -> dict[str, int]:
+def refresh_derived(warehouse: Warehouse, day: date, *,
+                    run: ServiceRun | None = None) -> dict[str, int]:
     """事实表成功后刷新所有生产消费者，避免价格与因子/flags 跨日断层。"""
     start = day - timedelta(days=_DERIVED_LOOKBACK_DAYS)
-    counts = {
-        "adj_factors": build_adj_factors(warehouse),
-        "daily_flags": build_daily_flags(
-            warehouse, start, day, boards=_PRODUCTION_BOARDS
-        ),
-        "market_regime": build_market_regime(
-            warehouse, start, day, boards=_PRODUCTION_BOARDS
-        ),
-        "valuation_snapshot": build_valuation(warehouse, day, day),
-    }
+    builders: list[tuple[str, str, Callable[[], int]]] = [
+        ("adj_factors", "复权因子", lambda: build_adj_factors(warehouse)),
+        ("daily_flags", "首板与 ST 等标记", lambda: build_daily_flags(
+            warehouse, start, day, boards=_PRODUCTION_BOARDS)),
+        ("market_regime", "市场广度", lambda: build_market_regime(
+            warehouse, start, day, boards=_PRODUCTION_BOARDS)),
+        ("valuation_snapshot", "估值快照", lambda: build_valuation(warehouse, day, day)),
+    ]
+    counts: dict[str, int] = {}
+    for name, label, build in builders:
+        with record_step(run, f"派生：{label}", interface="仓库内计算", table=name) as step:
+            counts[name] = step.rows = build()
     log.info("tushare_sync.derived_refreshed", day=str(day), **counts)
     return counts

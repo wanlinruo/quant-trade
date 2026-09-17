@@ -24,6 +24,7 @@ from qsys.web.backtest_views import BacktestService
 from qsys.web.catalog_views import CatalogService
 from qsys.web.config import WebConfig
 from qsys.web.data_views import DataService, MarketService
+from qsys.web.service_views import ServiceConsole
 from qsys.web.views import MonitorService
 from qsys.web.workbench import BacktestQueue, WorkbenchStore
 from qsys.paper.store import PaperStore
@@ -37,6 +38,8 @@ def build_app(
     config_path: str | None,
     runs_dir: Path | None = None,
     workspace_dir: Path | None = None,
+    service_runs_dir: Path | None = None,
+    tushare_config_path: str | None = None,
 ):
     warehouse = Warehouse(warehouse_root)
     journal = SessionJournal(warehouse)
@@ -64,8 +67,10 @@ def build_app(
     paper = PaperStore(workspace / "workbench.sqlite3")
     queue = BacktestQueue(workbench, warehouse_root, runs_root,
                           timeout_seconds=config.backtest_timeout_seconds)
+    monitor = MonitorService(journal, config=config, transport=transport)
+    trading_calendar = _daily_trading_calendar(tushare_config_path or config_path)
     return create_app(
-        MonitorService(journal, config=config, transport=transport),
+        monitor,
         config,
         DataService(warehouse),
         BacktestService(runs_root),
@@ -76,7 +81,13 @@ def build_app(
             schedule_key=market_schedule_key,
             limit_check_prefix=f"{limits_prefix}_check",
         ),
-        paper_calendar=_daily_trading_calendar(config_path),
+        paper_calendar=trading_calendar,
+        services=ServiceConsole(
+            service_runs_dir or Path("var/service-runs"),
+            calendar=trading_calendar,
+            # 没有 Redis 时不判心跳（显示未知），不能把「查不到」当成「进程已死」
+            heartbeat=monitor.heartbeat_status if transport is not None else None,
+        ),
     )
 
 
@@ -108,6 +119,11 @@ def main() -> int:
         "--runs", default="var/runs",
         help="回测运行的落盘根目录，回测页用它列出与下载",
     )
+    parser.add_argument("--service-runs", default="var/service-runs",
+                        help="定时任务运行记录目录，服务管理页只读")
+    parser.add_argument("--tushare-config", default=None,
+                        help="只取 [tushare] 凭据查交易日历；不给则用 --config。"
+                             "测试环境用它避免连到生产 Redis")
     args = parser.parse_args()
 
     if args.host == "0.0.0.0":  # noqa: S104 - 刻意检查
@@ -118,7 +134,8 @@ def main() -> int:
 
     config = WebConfig(host=args.host, port=args.port)
     app = build_app(Path(args.warehouse), config, args.config,
-                    Path(args.runs), Path(args.workspace))
+                    Path(args.runs), Path(args.workspace), Path(args.service_runs),
+                    args.tushare_config)
     log.info("monitor.started", host=args.host, port=args.port)
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
     return 0

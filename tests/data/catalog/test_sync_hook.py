@@ -52,19 +52,21 @@ def test_main_calls_hook_after_facts_and_derived_refresh(monkeypatch, tmp_path):
     monkeypatch.setattr(tushare_daily_sync, "TushareProvider", lambda client: object())
     monkeypatch.setattr(
         tushare_daily_sync, "sync",
-        lambda provider, warehouse, day: events.append("facts") or {"facts": 1},
+        lambda provider, warehouse, day, run=None: events.append("facts") or {"facts": 1},
     )
     monkeypatch.setattr(
         tushare_daily_sync, "refresh_derived",
-        lambda warehouse, day: events.append("derived") or {"derived": 1},
+        lambda warehouse, day, run=None: events.append("derived") or {"derived": 1},
     )
     monkeypatch.setattr(
         tushare_daily_sync, "after_sync",
-        lambda warehouse, day, ok: events.append(("verify", ok)),
+        lambda warehouse, day, ok, run=None: events.append(("verify", ok)),
     )
     monkeypatch.setattr(
         "sys.argv",
-        ["tushare_daily_sync.py", "--warehouse", str(tmp_path), "--day", str(D)],
+        ["tushare_daily_sync.py", "--warehouse", str(tmp_path), "--day", str(D),
+         "--service-runs", str(tmp_path / "runs")],
     )
     assert tushare_daily_sync.main() == 0
     assert events == ["facts", "derived", ("verify", True)]
+    assert len(list((tmp_path / "runs").rglob("*.json"))) == 1

@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head"><div><h2>服务管理</h2>
+<p class="muted">每天的定时任务是否按时执行、每一步访问了哪个接口、写了哪张表。运行记录由任务自己写入，页面只读。</p></div></div>
+
+<div class="card">
+  <h2>每日执行看板（近 {{ columns|length }} 天）</h2>
+  {% if not has_calendar %}<p class="muted">交易日历暂不可用：看板不判定「未运行」和「休市」。</p>{% endif %}
+  <div class="table-wrap">
+  <table class="board">
+    <tr><th></th>{% for day in columns %}<th class="day">{{ day.strftime("%m-%d") }}<br>{{ "一二三四五六日"[day.weekday()] }}</th>{% endfor %}</tr>
+    {% for spec, cells in rows %}
+    <tr><th class="svc">{{ spec.name }}<br><span class="muted" style="font-size:11px;font-weight:400">{{ spec.schedule }}</span></th>
+      {% for cell in cells %}<td>
+        {% if cell.runs %}<a class="cell {{ cell.state }}" href="/services/runs/{{ cell.day }}/{{ cell.runs[-1].run_id }}" title="{{ cell.runs|length }} 次执行{% if cell.checks %}，质检 {{ cell.checks|length }} 项{% endif %}">{{ cell.label }}{% if cell.runs|length > 1 %}×{{ cell.runs|length }}{% endif %}</a>
+        {% else %}<span class="cell {{ cell.state }}">{{ cell.label }}</span>{% endif %}
+      </td>{% endfor %}
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  <p class="muted" style="margin:10px 0 0;font-size:12px">成功＝全部步骤成功且当晚质检通过；质检未过＝任务跑完了但产出不对（缺数据、数量不符）；有警告＝结果可用但有步骤报警或当天有过失败后补跑成功；未运行＝交易日到了应完成的时间仍无记录；无记录＝运行记录启用之前。点格子看当天最后一次执行的明细。</p>
+</div>
+
+<div class="card">
+  <h2>进程状态</h2>
+  <table>
+    <tr><th>服务</th><th>类型</th><th>主机</th><th>状态</th><th>说明</th></tr>
+    {% for row in processes %}{% set s = row.systemd %}
+    <tr>
+      <td><a href="/services/{{ row.spec.id }}">{{ row.spec.name }}</a></td>
+      <td>{{ "定时任务" if row.spec.kind == "timer" else "常驻服务" }}</td>
+      <td>{{ row.spec.host }}</td>
+      <td>{% if row.state == "ok" %}<span class="pill ok">正常</span>{% elif row.state == "bad" %}<span class="pill bad">异常</span>{% else %}<span class="pill todo">未知</span>{% endif %}</td>
+      <td class="muted" style="font-size:12px">
+        {% if row.spec.kind == "timer" %}
+          {% if s.LastTriggerUSec %}上次触发 {{ s.LastTriggerUSec }}；{% endif %}
+          {% if s.NextElapseUSecRealtime %}下次 {{ s.NextElapseUSecRealtime }}；{% endif %}
+          {% if row.last_exit and row.last_exit.Result %}上次结果 {{ row.last_exit.Result }}（退出码 {{ row.last_exit.ExecMainStatus or "—" }}）{% endif %}
+        {% else %}
+          {% if row.heartbeat %}心跳 {{ row.heartbeat.last_beat or "无" }}；{% endif %}
+          {% if s.ActiveState %}{{ s.ActiveState }}/{{ s.SubState }}{% if s.ActiveEnterTimestamp %}，自 {{ s.ActiveEnterTimestamp }}{% endif %}{% endif %}
+        {% endif %}
+      </td>
+    </tr>{% endfor %}
+  </table>
+</div>
+
+<div class="card">
+  <h2>服务清单</h2>
+  <table>
+    <tr><th>服务</th><th>执行时间</th><th>访问接口</th><th>写入表</th><th>作用</th></tr>
+    {% for spec in timers + residents %}
+    <tr>
+      <td style="white-space:nowrap"><a href="/services/{{ spec.id }}">{{ spec.name }}</a>{% if spec.unit %}<br><span class="mono muted" style="font-size:11px">{{ spec.unit }}</span>{% endif %}</td>
+      <td style="font-size:12px">{{ spec.schedule }}</td>
+      <td class="tags">{% for i in spec.interfaces %}<span>{{ i }}</span>{% endfor %}</td>
+      <td class="tags mono">{% for t in spec.writes %}<span>{{ t }}</span>{% else %}<span class="muted">—</span>{% endfor %}</td>
+      <td style="font-size:12px">{{ spec.purpose }}</td>
+    </tr>{% endfor %}
+  </table>
+</div>
+{% endblock %}

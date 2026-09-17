@@ -1,0 +1,11 @@
+[Unit]
+Description=Check every scheduled job's outputs after the evening sync
+
+[Timer]
+# Tushare 同步 17:00 与 19:00 两次；20:00 检查当日各任务的产出。
+# 非交易日由脚本查 trade_cal 后记为跳过。
+OnCalendar=Mon..Fri 20:00 Asia/Shanghai
+Persistent=true
+
+[Install]
+WantedBy=timers.target

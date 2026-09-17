@@ -1,0 +1,21 @@
+[Unit]
+Description=qsys daily service checks (arrival and counts per scheduled job)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/qsys
+ExecStart=/home/ubuntu/qsys/.venv/bin/python -u scripts/service_checks.py --warehouse /home/ubuntu/qsys/warehouse
+TimeoutStartSec=1800
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+# 只读仓库；只写运行记录
+ReadWritePaths=/home/ubuntu/qsys/var
+
+[Install]
+WantedBy=multi-user.target

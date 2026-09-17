@@ -92,9 +92,6 @@ _MEANING = {
 }
 
 _CHECKS = {
-    "ingest_log.dataset": ("B4.arrival",),
-    "ingest_log.dt": ("B4.arrival",),
-    "ingest_log.ok": ("B4.arrival",),
     "live_recon.is_consistent": ("B4.arrival",),
 }
 _DEFAULT = UNCOVERED(

@@ -758,6 +758,13 @@ Tushare `total_share` 可包含境外股份，而 `total_mv` 的计价股本范�
 
 ## D-18 `B4.arrival` 名义覆盖、实际未检查的到货项
 
+**状态：2026-09-17 处置中（分支 `feat/service-management`）。** 用户决定到货检查归服务管理：
+各定时任务写运行记录，交易日 20:00 的每日服务质检核对产出，详见
+`docs/reference/service-management.md`。`B4.arrival` 撤下 ingest_log / name_snapshots /
+suspend_daily / minute_bars 的名义覆盖、不再读空转的 ingest_log；停牌到货以同步运行记录为准；
+分钟线下载脚本续传键已在 D-20 分支修为「标的 + 日期」。质检首日即查出每日归档当天候选分钟线
+要拖到次日才下载（未传交易日历），已一并修复。名称快照停写与退市整理期池在第 3 步。
+
 **登记日期**：2026-09-17。由 D-7 处理时查出。
 
 **事实**：`B4.arrival` 在目录里登记覆盖了下列指标，但 `_arrival` 的实现并没有检查它们：

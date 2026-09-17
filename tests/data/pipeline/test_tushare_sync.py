@@ -240,3 +240,29 @@ def test_limit_list_step_only_looks_back_a_bounded_number_of_sessions(
     provider = LimitListProvider()
     tushare_sync._sync_limit_list(provider, warehouse, [DAY])
     assert _requested_days(provider) == [DAY]
+
+
+def test_every_reference_step_has_an_interface_for_the_service_page():
+    assert {name for name, _ in tushare_sync._REFERENCE_STEPS} <= set(tushare_sync.STEP_SOURCES)
+
+
+def test_sync_records_each_step_in_the_run(warehouse, monkeypatch, tmp_path):
+    from qsys.ops.services import ServiceRun
+
+    monkeypatch.setattr(tushare_sync, "_REFERENCE_STEPS",
+                        [("suspend_daily", lambda provider, wh, days: 0)])
+    with ServiceRun.open(tmp_path / "runs", "tushare-sync") as run:
+        sync(FakeProvider(), warehouse, DAY, run=run)
+    steps = [(s.name, s.interface, s.table, s.rows, s.status) for s in run.steps]
+    assert steps[0][1:3] == ("Tushare daily / daily_basic / adj_factor", "tushare_daily")
+    assert steps[1] == ("停牌", "Tushare suspend_d", "suspend_daily", 0, "succeeded")
+
+
+def test_failed_daily_is_recorded_before_raising(warehouse, monkeypatch, tmp_path):
+    from qsys.ops.services import ServiceRun
+
+    monkeypatch.setattr(tushare_sync, "_REFERENCE_STEPS", [])
+    with pytest.raises(RuntimeError):
+        with ServiceRun.open(tmp_path / "runs", "tushare-sync") as run:
+            sync(FakeProvider(daily_rows=0), warehouse, DAY, run=run)
+    assert run.status == "failed" and run.steps[0].status == "failed"
