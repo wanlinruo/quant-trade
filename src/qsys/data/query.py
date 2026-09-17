@@ -22,8 +22,11 @@ def _empty(arrow_schema: pa.Schema) -> pl.DataFrame:
 _UNION = "union_by_name=true"
 
 
-def _read(glob: str) -> str:
-    return f"read_parquet('{glob}', {_UNION})"
+def _read(glob: str | Sequence[str]) -> str:
+    if isinstance(glob, str):
+        return f"read_parquet('{glob}', {_UNION})"
+    files = ", ".join(f"'{path}'" for path in glob)
+    return f"read_parquet([{files}], {_UNION})"
 
 
 def _projection(con, glob: str, arrow_schema: pa.Schema) -> str:
@@ -79,7 +82,8 @@ class WarehouseQuery:
         table_schema = schema.ALL.get(dataset)
         if table_schema is None or column not in table_schema.names:
             raise ValueError(f"unknown dataset column: {dataset}.{column}")
-        glob = self._glob(dataset, partitioned)
+        glob = (self._minute_files(None, None) or None) if dataset == "minute_bars" \
+            else self._glob(dataset, partitioned)
         if glob is None:
             return None
         row = self._con.execute(
@@ -265,6 +269,24 @@ class WarehouseQuery:
             schema.LIMIT_LIST_DAILY, symbols, start, end,
         )
 
+    def _minute_files(self, start: date | None, end: date | None) -> list[str]:
+        """QMT 分钟线文件：按交易日分区优先；某年尚无日分区时读旧的整年文件（D-20 迁移期）。"""
+        base = self._wh.root / "minute_bars"
+        files: list[str] = []
+        for year_dir in sorted(base.glob("year=*")):
+            year = int(year_dir.name.split("=", 1)[1])
+            if (start is not None and year < start.year) or (end is not None and year > end.year):
+                continue
+            days = sorted(year_dir.glob("date=*/part.parquet"))
+            if days:
+                for path in days:
+                    day = datetime.strptime(path.parent.name.split("=", 1)[1], "%Y%m%d").date()
+                    if (start is None or day >= start) and (end is None or day <= end):
+                        files.append(str(path))
+            elif (year_dir / "part.parquet").exists():
+                files.append(str(year_dir / "part.parquet"))
+        return files
+
     def minute_bars(
         self,
         symbols: Sequence[str] | None,
@@ -273,8 +295,8 @@ class WarehouseQuery:
     ) -> pl.DataFrame:
         if symbols is not None and len(symbols) == 0:
             return _empty(schema.MINUTE_BARS)
-        glob = self._glob("minute_bars", partitioned=True)
-        if glob is None:
+        glob = self._minute_files(start.date(), end.date())
+        if not glob:
             return _empty(schema.MINUTE_BARS)
 
         columns = _projection(self._con, glob, schema.MINUTE_BARS)

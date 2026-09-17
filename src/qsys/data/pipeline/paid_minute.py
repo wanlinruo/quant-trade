@@ -817,10 +817,14 @@ def validate_year(warehouse: Path, year: int) -> dict:
     )
     os.replace(discrepancies_tmp, discrepancies)
 
-    qmt_path = warehouse / "minute_bars" / f"year={year}" / "part.parquet"
-    qmt: dict[str, object] = {"available": qmt_path.exists()}
-    if qmt_path.exists():
-        qmt_source = f"read_parquet('{str(qmt_path).replace(chr(39), chr(39)*2)}')"
+    # QMT 分钟线可能已按交易日分区（D-20），也可能仍是整年文件；两种布局都认
+    qmt_dir = warehouse / "minute_bars" / f"year={year}"
+    qmt_files = sorted(qmt_dir.glob("date=*/part.parquet")) or (
+        [qmt_dir / "part.parquet"] if (qmt_dir / "part.parquet").exists() else [])
+    qmt: dict[str, object] = {"available": bool(qmt_files)}
+    if qmt_files:
+        listed = ", ".join("'" + str(f).replace(chr(39), chr(39) * 2) + "'" for f in qmt_files)
+        qmt_source = f"read_parquet([{listed}])"
         qmt_query = f"""
             SELECT count(*)::BIGINT qmt_rows,
                    count(p.symbol)::BIGINT exact_key_overlap,

@@ -9,9 +9,10 @@ Windows 侧把 parquet 丢进一个目录，这里从目录导入。**传输方�
 
 from __future__ import annotations
 
+import os
 import shutil
 from dataclasses import dataclass
-from datetime import datetime, time
+from datetime import date, datetime, time
 from pathlib import Path
 
 import polars as pl
@@ -93,22 +94,52 @@ def _free_name(archive: Path, name: str) -> Path:
 
 
 def _write_by_year(warehouse: Warehouse, fresh: pl.DataFrame) -> int:
-    query = WarehouseQuery(warehouse)
+    """按交易日合并写（D-20）。名字保留以免调用方改动；只重写涉及的那几天。"""
     written = 0
-    for year in sorted({t.year for t in fresh["dt"].to_list()}):
-        lo = datetime(year, 1, 1)
-        hi = datetime(year, 12, 31, 23, 59, 59)
-        incoming = fresh.filter(pl.col("dt").is_between(lo, hi))
+    fresh = fresh.with_columns(pl.col("dt").dt.date().alias("_day"))
+    for day in sorted(set(fresh["_day"].to_list())):
+        incoming = fresh.filter(pl.col("_day") == day).drop("_day")
+        existing = _read_day(warehouse, day)
         merged = (
-            pl.concat([query.minute_bars(None, lo, hi), incoming], how="vertical")
+            pl.concat([existing, incoming], how="vertical")
             # 重复导入覆盖旧值；maintain_order 让「保留最后一条」有确定语义
             .unique(subset=["symbol", "dt"], keep="last", maintain_order=True)
             .sort(["symbol", "dt"])
             .select(_COLUMNS)
         )
-        warehouse.write(_DATASET, merged.to_arrow().cast(schema.MINUTE_BARS), year=year)
+        warehouse.write_day(_DATASET, merged.to_arrow().cast(schema.MINUTE_BARS), day=day)
         written += incoming.height
     return written
+
+
+def _read_day(warehouse: Warehouse, day: date) -> pl.DataFrame:
+    """当日已有的行：日分区优先，否则从尚未拆分的整年文件里取这一天。"""
+    path = warehouse.day_path(_DATASET, day)
+    if path.exists():
+        return pl.read_parquet(path).select(_COLUMNS)
+    return WarehouseQuery(warehouse).minute_bars(
+        None, datetime.combine(day, time(0, 0)), datetime.combine(day, time(23, 59, 59))
+    ).select(_COLUMNS)
+
+
+def split_minute_year(warehouse: Warehouse, year: int, *, backup_dir: Path) -> dict[str, int]:
+    """把旧的整年文件拆成交易日分区，逐日核对后把原文件移入备份目录（不删除）。"""
+    legacy = warehouse.path_for(_DATASET, year)
+    if not legacy.exists():
+        return {"year": year, "days": 0, "rows": 0}
+    frame = pl.read_parquet(legacy).select(_COLUMNS).with_columns(pl.col("dt").dt.date().alias("_day"))
+    days = sorted(set(frame["_day"].to_list()))
+    for day in days:
+        chunk = frame.filter(pl.col("_day") == day).drop("_day").sort(["symbol", "dt"])
+        warehouse.write_day(_DATASET, chunk.to_arrow().cast(schema.MINUTE_BARS), day=day)
+        back = pl.read_parquet(warehouse.day_path(_DATASET, day)).select(_COLUMNS)
+        if not back.equals(chunk):
+            raise RuntimeError(f"minute_bars {day} 拆分后回读不一致，保留原整年文件")
+    backup = Path(backup_dir)
+    backup.mkdir(parents=True, exist_ok=True)
+    os.replace(legacy, backup / f"{_DATASET}_year={year}.parquet")
+    log.info("minutes.year_split", year=year, days=len(days), rows=frame.height)
+    return {"year": year, "days": len(days), "rows": frame.height}
 
 
 def missing_stock_days(warehouse: Warehouse, candidates: pl.DataFrame) -> pl.DataFrame:
