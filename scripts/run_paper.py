@@ -10,42 +10,21 @@ import argparse
 import subprocess
 import sys
 import time
-from datetime import date, datetime, timedelta
+from collections.abc import Callable
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import structlog
 
-from qsys.core.calendar import AShareCalendar
-from qsys.data.providers.tushare_client import TushareClient
-from qsys.live.config import load_deploy_config, load_tushare_config
+from qsys.live.config import load_deploy_config
 from qsys.live.messages import Heartbeat
 from qsys.live.redis_transport import RedisTransport
-from qsys.paper.quotes import QuoteClient
+from qsys.paper.calendar import load_trading_calendar
+from qsys.paper.quotes import QuoteClient, QuoteUnavailable
 from qsys.paper.runtime import PaperRuntime
 from qsys.paper.store import PaperStore
 
 log = structlog.get_logger("paper-runner")
-
-
-def trading_calendar(config_path: str | None) -> AShareCalendar:
-    cfg = load_tushare_config(config_path)
-    today = date.today()
-    rows = TushareClient(cfg.token).call("trade_cal", {
-        "exchange": "SSE",
-        "start_date": (today - timedelta(days=370)).strftime("%Y%m%d"),
-        "end_date": (today + timedelta(days=370)).strftime("%Y%m%d"),
-        "is_open": "1",
-    }, "cal_date,is_open")
-    # Tushare currently returns trade_cal rows newest-first.  Do not attach
-    # correctness to provider ordering: the coverage check needs the actual
-    # latest session, and AShareCalendar also benefits from normalized input.
-    sessions = sorted(
-        datetime.strptime(str(row["cal_date"]), "%Y%m%d").date()
-        for row in rows if str(row.get("is_open", "1")) == "1"
-    )
-    if not sessions or sessions[-1] < today + timedelta(days=30):
-        raise RuntimeError("Tushare 交易日历为空或未来覆盖不足 30 天")
-    return AShareCalendar(sessions)
 
 
 def main() -> int:
@@ -62,26 +41,72 @@ def main() -> int:
     return run_supervisor(args)
 
 
+# 行情连续不可用超过这么久才判定账户失败。偶发一次超时（网关忙、网络抖动）
+# 不该让账户永久停下；持续不可用仍要失败关闭，不能无限重试掩盖故障。
+QUOTE_OUTAGE_LIMIT = timedelta(minutes=3)
+
+
+def run_account_loop(
+    store: PaperStore, ident: str, build_runtime: Callable[[], object], *,
+    poll: float, outage_limit: timedelta = QUOTE_OUTAGE_LIMIT,
+    now: Callable[[], datetime] = datetime.now,
+    sleep: Callable[[float], None] = time.sleep,
+) -> int:
+    """驱动单个模拟账户，直到它不再处于 scheduled/running。返回进程退出码。
+
+    行情暂不可用（`QuoteUnavailable`）时记 warning、**从库里重建 runtime**
+    再重试：事件跑到一半失败，策略的内存状态可能已被改了一部分，不能带着
+    它继续。连续不可用超过 `outage_limit`，或出现任何其他异常，账户标为 error。
+    """
+    outage_since: datetime | None = None
+    try:
+        runtime = build_runtime()
+        while True:
+            account = store.account(ident)
+            if account is None or account.status not in ("scheduled", "running"):
+                return 0
+            try:
+                runtime.tick()
+            except QuoteUnavailable as exc:
+                moment = now()
+                if outage_since is None:
+                    outage_since = moment
+                    store.log(ident, "warning", f"行情暂不可用，稍后重试：{exc}")
+                    log.warning("paper.quote_unavailable", account_id=ident, error=str(exc))
+                if moment - outage_since >= outage_limit:
+                    raise
+                runtime = build_runtime()
+            else:
+                if outage_since is not None:
+                    store.log(ident, "info",
+                              f"行情已恢复，中断 {(now() - outage_since).total_seconds():.0f} 秒")
+                    outage_since = None
+            sleep(max(0.2, poll))
+    except Exception as exc:
+        log.error("paper.account_failed", account_id=ident, error=str(exc))
+        store.mark_error(ident, str(exc))
+        return 1
+
+
 def run_worker(args) -> int:
     deploy = load_deploy_config(args.config)
     workspace = Path(args.workspace)
     store = PaperStore(workspace / "workbench.sqlite3")
     try:
-        runtime = PaperRuntime(
-            args.account, store, Path(args.warehouse), trading_calendar(args.config),
-            QuoteClient(RedisTransport.from_config(deploy), deploy.streams,
-                        consumer=f"paper-{args.account}"), workspace,
-        )
-        while True:
-            account = store.account(args.account)
-            if account is None or account.status not in ("scheduled", "running"):
-                return 0
-            runtime.tick()
-            time.sleep(max(0.2, args.poll))
+        calendar = load_trading_calendar(args.config)
+        client = QuoteClient(RedisTransport.from_config(deploy), deploy.streams,
+                             consumer=f"paper-{args.account}")
     except Exception as exc:
+        # 与运行期异常同一处理：失败关闭，避免 supervisor 每个轮询周期重启一次
         log.error("paper.account_failed", account_id=args.account, error=str(exc))
         store.mark_error(args.account, str(exc))
         return 1
+    return run_account_loop(
+        store, args.account,
+        lambda: PaperRuntime(args.account, store, Path(args.warehouse), calendar,
+                             client, workspace),
+        poll=args.poll,
+    )
 
 
 def run_supervisor(args) -> int:

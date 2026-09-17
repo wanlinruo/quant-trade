@@ -54,10 +54,10 @@ def test_lifecycle_is_validated_and_end_does_not_clear_account(tmp_path):
     store, job = seeded(tmp_path)
     account = store.create(job.id, "模拟", 100_000, date.today())
     assert store.transition(account.id, "pause").status == "paused"
-    assert store.transition(account.id, "resume").status == "scheduled"
+    assert store.transition(account.id, "resume", activation=date.today()).status == "scheduled"
     assert store.transition(account.id, "end").status == "ended"
     with pytest.raises(ValueError):
-        store.transition(account.id, "resume")
+        store.transition(account.id, "resume", activation=date.today())
 
 
 def test_pause_cancels_pending_virtual_orders(tmp_path):
@@ -70,3 +70,20 @@ def test_pause_cancels_pending_virtual_orders(tmp_path):
     store.transition(account.id, "pause")
     assert store.rows(account.id, "orders")[0]["status"] == "cancelled"
     assert store.rows(account.id, "rejects")[0]["reason"] == "paper account paused"
+
+
+def test_resume_uses_the_activation_the_caller_resolved_from_the_calendar(tmp_path):
+    """C：生效日由调用方按交易日历算好传进来，存储层不再按星期几猜。"""
+    store, job = seeded(tmp_path)
+    account = store.create(job.id, "模拟", 100_000, date(2026, 9, 17))
+    store.transition(account.id, "pause")
+    resumed = store.transition(account.id, "resume", activation=date(2026, 10, 8))
+    assert resumed.activation_date == "2026-10-08"
+
+
+def test_resume_without_an_activation_is_refused(tmp_path):
+    store, job = seeded(tmp_path)
+    account = store.create(job.id, "模拟", 100_000, date(2026, 9, 17))
+    store.transition(account.id, "pause")
+    with pytest.raises(ValueError, match="生效日"):
+        store.transition(account.id, "resume")

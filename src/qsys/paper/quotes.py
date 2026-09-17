@@ -31,7 +31,11 @@ MARKET_INDICES = {
 }
 
 
-class QuoteTimeout(TimeoutError):
+class QuoteUnavailable(RuntimeError):
+    """QMT 行情暂时拿不到：网关超时或网关回报错误。调用方可重试。"""
+
+
+class QuoteTimeout(QuoteUnavailable, TimeoutError):
     pass
 
 
@@ -73,7 +77,7 @@ class QuoteClient:
     @staticmethod
     def _unwrap(snapshot: QuoteSnapshot) -> dict[str, MarketQuote]:
         if snapshot.error:
-            raise RuntimeError(f"QMT 行情错误: {snapshot.error}")
+            raise QuoteUnavailable(f"QMT 行情错误: {snapshot.error}")
         return snapshot.quotes
 
 

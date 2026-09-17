@@ -47,3 +47,57 @@ def test_runtime_executes_each_scheduled_event_once_and_recovers_state(warehouse
     events = store.rows(account.id, "events")
     assert len(events) == 1
     assert events[0]["status"] == "completed"
+
+
+class CountingQuotes(Quotes):
+    def __init__(self):
+        self.calls = 0
+
+    def request(self, symbols):
+        self.calls += 1
+        return super().request(symbols)
+
+
+def _runtime(warehouse, tmp_path, quotes):
+    db = tmp_path / "workbench.sqlite3"
+    workbench = WorkbenchStore(db)
+    strategy = workbench.create_strategy("demo", SOURCE)
+    job = workbench.enqueue(strategy.id, {
+        "start": "2026-01-01", "end": "2026-02-01", "cash": 100_000,
+        "params": {}, "jq_compat": False,
+    })
+    workbench.claim_next()
+    workbench.finish(job.id, "succeeded", run_name=job.id)
+    store = PaperStore(db)
+    today = date.today()
+    account = store.create(job.id, "paper", 100_000, today)
+    runtime = PaperRuntime(account.id, store, warehouse.root,
+                           AShareCalendar([today]), quotes, tmp_path)
+    return runtime, store, account.id, today
+
+
+def test_no_quotes_or_equity_rows_outside_the_session_window(warehouse, tmp_path):
+    """B：2026-09-17 00:00 ~ 00:49 每秒请求一次行情、写一条权益，共 2,704 条，
+    最后一次超时把账户打成 error。盘外不该碰 QMT。"""
+    quotes = CountingQuotes()
+    runtime, store, ident, today = _runtime(warehouse, tmp_path, quotes)
+    for moment in (time(0, 49, 53), time(9, 14, 59)):
+        runtime.tick(datetime.combine(today, moment))
+    assert quotes.calls == 0
+    assert store.rows(ident, "equity") == []
+
+    # 收盘结算事件之后：事件本身的提交会记账，但此后的空转 tick 不再碰行情
+    runtime.tick(datetime.combine(today, time(15, 30, 30)))
+    calls, rows = quotes.calls, len(store.rows(ident, "equity"))
+    for moment in (time(15, 31), time(20, 0), time(23, 59, 59)):
+        runtime.tick(datetime.combine(today, moment))
+    assert quotes.calls == calls
+    assert len(store.rows(ident, "equity")) == rows
+
+
+def test_quotes_refresh_inside_the_session_window(warehouse, tmp_path):
+    quotes = CountingQuotes()
+    runtime, store, ident, today = _runtime(warehouse, tmp_path, quotes)
+    runtime.tick(datetime.combine(today, time(9, 31)))
+    assert quotes.calls >= 1
+    assert len(store.rows(ident, "equity")) >= 1
