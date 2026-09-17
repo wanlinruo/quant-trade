@@ -12,8 +12,9 @@
 - **ST 首板进入候选池**；ST 炸板不进。ST 只认 `daily_flags.is_st`——
   Tushare `stock_st` 的逐日直取真值，取首板当日（T-1）那一行：T 日名单
   要到 T 日 17:00 才同步，开盘前拿不到。炸板 ST 状态未知就不放行。
-- **退市整理期**由调用方给出（`delisting`），只认 `namechange` 的
-  `change_reason='退市整理期'` 区间，不从名称里找「退」字。原文的
+- **退市整理期**由调用方给出（`delisting`），唯一出处是退市整理期池
+  `delisting_pool`（派生自 `namechange` 的 `change_reason='退市整理期'` 区间），
+  不从名称里找「退」字。原文的
   `'退' in name` 在 2023 年以来的 51 个首板上与该结构化状态逐只一致。
 - 停牌由 `selection` 用 `suspend_daily` 直取剔除。
 
@@ -75,7 +76,7 @@ def candidate_pool(
     """昨日首板与昨日炸板，已施加板块、新股、ST 炸板与退市整理期过滤。
 
     `delisting` 是 `day` 当天处于退市整理期、且开盘前已公告的标的
-    （`WarehouseQuery.delisting_symbols`）。必传：漏传会静默放行。
+    （`WarehouseQuery.delisting_symbols`，读退市整理期池）。必传：漏传会静默放行。
     """
     if flags.height == 0:
         return PoolResult([], [])

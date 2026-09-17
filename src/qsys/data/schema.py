@@ -404,6 +404,21 @@ NAME_HISTORY = pa.schema(
 )
 
 
+# 退市整理期池：每个交易日处于退市整理期的标的，纯派生自 name_history 中
+# change_reason='退市整理期' 的区间（Tushare namechange 直取）。保留公告日，
+# 使用方按「T-1 已公告」自行过滤；不从名称里找「退」字（D-11）。
+DELISTING_POOL = pa.schema(
+    [
+        ("dt", pa.date32()),
+        ("symbol", pa.string()),
+        ("name", pa.string()),
+        ("start_date", pa.date32()),
+        ("end_date", pa.date32()),
+        ("ann_date", pa.date32()),
+    ]
+)
+
+
 PARTITIONED: dict[str, pa.Schema] = {
     "bars_daily": BARS_DAILY,
     "index_bars": INDEX_BARS,
@@ -425,6 +440,7 @@ PARTITIONED: dict[str, pa.Schema] = {
     "stock_st_daily": STOCK_ST_DAILY,
     "limit_list_daily": LIMIT_LIST_DAILY,
     "name_snapshots": NAME_SNAPSHOTS,
+    "delisting_pool": DELISTING_POOL,
 }
 
 UNPARTITIONED: dict[str, pa.Schema] = {

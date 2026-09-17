@@ -161,9 +161,11 @@ def create_app(
         if data is None:
             raise HTTPException(status_code=404, detail="data console not enabled")
         rows, symbols = data.warehouse_totals()
+        pool_day, pool = data.delisting_pool()
         return TEMPLATES.TemplateResponse(
             request=request, name="data_overview.html",
             context={
+                "pool_day": pool_day, "pool": pool.to_dicts() if pool.height else [],
                 "title": config.title, "session": None, "page": "data",
                 "coverage": data.coverage(), "total_rows": rows,
                 "total_symbols": symbols, "latest": data.latest_session(),

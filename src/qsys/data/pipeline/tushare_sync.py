@@ -21,6 +21,7 @@ from qsys.data.pipeline.index_bars import CSI300
 from qsys.data.pipeline.tushare_daily import compose_daily, write_year
 from qsys.data.pipeline import tushare_reference as reference
 from qsys.data.pipeline.adjust import build_adj_factors
+from qsys.data.pipeline.delisting import build_delisting_pool
 from qsys.data.pipeline.flags import build_daily_flags
 from qsys.data.pipeline.regime import build_market_regime
 from qsys.data.pipeline.valuation import build_valuation
@@ -91,7 +92,7 @@ STEP_SOURCES: dict[str, tuple[str, str, str]] = {  # 名字 → (步骤, 接口,
     "suspend_daily": ("停牌", "Tushare suspend_d", "suspend_daily"),
     "stock_st_daily": ("ST 名单", "Tushare stock_st", "stock_st_daily"),
     "index_bars": ("沪深300 指数", "Tushare index_daily", "index_bars"),
-    "instruments": ("标的主表与名称快照", "Tushare stock_basic", "instruments / name_snapshots"),
+    "instruments": ("标的主表", "Tushare stock_basic", "instruments"),
     "name_history": ("改名与退市整理期记录", "Tushare namechange", "name_history"),
     "limit_list_daily": ("涨停列表", "Tushare limit_list_d", "limit_list_daily"),
 }
@@ -134,6 +135,20 @@ def last_open_day(client, today: date) -> date | None:
     return date(int(stamp[:4]), int(stamp[4:6]), int(stamp[6:]))
 
 
+def next_open_day(client, day: date) -> date | None:
+    """`day` 之后的第一个交易日（trade_cal）。退市整理期池要提前建好 T+1 的那天。"""
+    rows = client.call("trade_cal", {
+        "exchange": "SSE",
+        "start_date": (day + timedelta(days=1)).strftime("%Y%m%d"),
+        "end_date": (day + timedelta(days=30)).strftime("%Y%m%d"), "is_open": "1",
+    })
+    days = sorted(r["cal_date"] for r in rows)
+    if not days:
+        return None
+    stamp = days[0]
+    return date(int(stamp[:4]), int(stamp[4:6]), int(stamp[6:]))
+
+
 def completed_calendar_end(now: datetime) -> date:
     """自动同步允许查询到的最后自然日；16:00 前不选择当日。"""
     return now.date() if now.time() >= time(16, 0) else now.date() - timedelta(days=1)
@@ -168,7 +183,8 @@ def sync(provider, warehouse: Warehouse, day: date, *,
 
 
 def refresh_derived(warehouse: Warehouse, day: date, *,
-                    run: ServiceRun | None = None) -> dict[str, int]:
+                    run: ServiceRun | None = None,
+                    next_session: date | None = None) -> dict[str, int]:
     """事实表成功后刷新所有生产消费者，避免价格与因子/flags 跨日断层。"""
     start = day - timedelta(days=_DERIVED_LOOKBACK_DAYS)
     builders: list[tuple[str, str, Callable[[], int]]] = [
@@ -178,6 +194,8 @@ def refresh_derived(warehouse: Warehouse, day: date, *,
         ("market_regime", "市场广度", lambda: build_market_regime(
             warehouse, start, day, boards=_PRODUCTION_BOARDS)),
         ("valuation_snapshot", "估值快照", lambda: build_valuation(warehouse, day, day)),
+        ("delisting_pool", "退市整理期池", lambda: build_delisting_pool(
+            warehouse, start, day, extra_sessions=[next_session] if next_session else [])),
     ]
     counts: dict[str, int] = {}
     for name, label, build in builders:

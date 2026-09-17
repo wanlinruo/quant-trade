@@ -17,6 +17,7 @@ import structlog
 from qsys.data.pipeline.tushare_sync import (
     completed_calendar_end,
     last_open_day,
+    next_open_day,
     refresh_derived,
     sync,
 )
@@ -66,7 +67,7 @@ def after_sync(warehouse: Warehouse, day: date, *, ok: bool,
             return
         log.info("verify.after_sync_done", day=str(day), blocking=blocking)
         if blocking:
-            step.warn(f"阻断级规则未通过 {blocking} 项，详见数据管理 → 指标字典")
+            step.warn(f"阻断级指标结果未通过 {blocking} 条，详见服务质检与数据管理 → 指标字典")
 
 
 def main() -> int:
@@ -95,7 +96,9 @@ def main() -> int:
 
         warehouse = Warehouse(args.warehouse)
         counts = sync(TushareProvider(client), warehouse, day, run=run)
-        counts.update(refresh_derived(warehouse, day, run=run))
+        # 次日开盘前选股要用次日的退市整理期池，今晚一并建好
+        next_session = next_open_day(client, day)
+        counts.update(refresh_derived(warehouse, day, run=run, next_session=next_session))
         after_sync(warehouse, day, ok=True, run=run)
     print(f"=== {day} ===")
     for name, rows in counts.items():

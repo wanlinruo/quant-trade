@@ -180,11 +180,17 @@ def test_refresh_derived_wires_every_production_consumer(warehouse, monkeypatch)
     monkeypatch.setattr(tushare_sync, "build_valuation",
                         lambda wh, start, end: calls.append(
                             ("valuation", wh, start, end)) or 4)
-    got = refresh_derived(warehouse, DAY)
+    monkeypatch.setattr(tushare_sync, "build_delisting_pool",
+                        lambda wh, start, end, extra_sessions: calls.append(
+                            ("delisting", wh, start, end, extra_sessions)) or 5)
+    nxt = date(2026, 9, 14)
+    got = refresh_derived(warehouse, DAY, next_session=nxt)
     assert got == {"adj_factors": 1, "daily_flags": 2, "market_regime": 3,
-                   "valuation_snapshot": 4}
-    assert [call[0] for call in calls] == ["factors", "flags", "regime", "valuation"]
-    assert calls[-1][2:] == (DAY, DAY)
+                   "valuation_snapshot": 4, "delisting_pool": 5}
+    assert [call[0] for call in calls] == ["factors", "flags", "regime", "valuation", "delisting"]
+    assert calls[3][2:] == (DAY, DAY)
+    # 次日开盘前选股要用次日的池子
+    assert calls[4][3:] == (DAY, [nxt])
 
 
 # --- D-12：limit_list_d 19:00 仍未发布时，后续同步要自动补回 -----------------

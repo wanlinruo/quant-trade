@@ -276,29 +276,8 @@ def test_instruments_record_the_snapshot_date(warehouse):
     assert got["as_of"].to_list() == [date(2026, 9, 14)]
 
 
-def test_name_snapshots_accumulate_across_days(warehouse):
-    """两天的快照都要留下——单张覆盖写的表只够用一天。
-
-    daily_flags 每次同步都重建近 150 天，只有一天的快照解决不了问题。
-    """
+def test_instruments_no_longer_write_name_snapshots(warehouse):
+    """2026-09-17 起停写名称快照：标的按代码认，退市整理期由 namechange 派生的池子承担。"""
     provider = FakeProvider(stock_basic_L=_basic_frame(["300750.SZ"], "L"))
-    ingest_instruments(provider, warehouse, date(2026, 9, 14))
-    ingest_instruments(provider, warehouse, date(2026, 9, 15))
-
-    got = WarehouseQuery(warehouse).name_snapshots(
-        None, date(2026, 9, 1), date(2026, 9, 30)
-    ).sort("dt")
-    assert got["dt"].to_list() == [date(2026, 9, 14), date(2026, 9, 15)]
-    assert got["symbol"].to_list() == ["300750.SZ"] * 2
-
-
-def test_name_snapshot_rerun_on_the_same_day_is_idempotent(warehouse):
-    """同一天重跑不能产生两行——双触发定时器每天会跑两次。"""
-    provider = FakeProvider(stock_basic_L=_basic_frame(["300750.SZ"], "L"))
-    ingest_instruments(provider, warehouse, date(2026, 9, 14))
-    ingest_instruments(provider, warehouse, date(2026, 9, 14))
-
-    got = WarehouseQuery(warehouse).name_snapshots(
-        None, date(2026, 9, 14), date(2026, 9, 14)
-    )
-    assert got.height == 1
+    ingest_instruments(provider, warehouse, date(2026, 9, 18))
+    assert not (warehouse.root / "name_snapshots").exists()

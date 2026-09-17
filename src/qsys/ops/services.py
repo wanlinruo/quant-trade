@@ -69,9 +69,10 @@ SERVICES: tuple[ServiceSpec, ...] = (
          "Tushare stk_limit", "Tushare suspend_d", "Tushare stock_st", "Tushare index_daily",
          "Tushare stock_basic", "Tushare namechange", "Tushare limit_list_d"),
         ("tushare_daily", "price_limits_daily", "suspend_daily", "stock_st_daily",
-         "index_bars", "instruments", "name_snapshots", "name_history", "limit_list_daily",
-         "adj_factors", "daily_flags", "market_regime", "valuation_snapshot", "metric_checks"),
-        "收盘后同步日线、涨跌停价、停牌、ST、指数、名称与涨停列表，再计算派生表并跑增量质检",
+         "index_bars", "instruments", "name_history", "limit_list_daily",
+         "adj_factors", "daily_flags", "market_regime", "valuation_snapshot", "delisting_pool",
+         "metric_checks"),
+        "收盘后同步日线、涨跌停价、停牌、ST、指数、标的与改名记录、涨停列表，再计算派生表（含退市整理期池）并跑增量质检",
         due="19:30", max_runtime=timedelta(hours=2),
     ),
     ServiceSpec(
