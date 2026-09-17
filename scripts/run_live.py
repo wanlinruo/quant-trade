@@ -16,7 +16,7 @@ from qsys.live.store import LiveStore
 from qsys.agent.locking import single_instance
 from qsys.paper.quotes import QuoteClient
 from qsys.ops.alerts import AlertBus, LogAlertSink, WebhookAlertSink
-from scripts.run_paper import trading_calendar
+from qsys.paper.calendar import load_trading_calendar
 
 log = structlog.get_logger("live-core")
 
@@ -41,7 +41,7 @@ def main() -> int:
             config.alerts.webhook_url, timeout=config.alerts.timeout_seconds
         ))
     runtime = LiveRuntime(
-        Path(args.strategy), Path(args.warehouse), trading_calendar(args.config),
+        Path(args.strategy), Path(args.warehouse), load_trading_calendar(args.config),
         QuoteClient(transport, config.streams, consumer="live-core"),
         transport, config.streams, LiveStore(args.state),
         alerts=AlertBus(sinks),
