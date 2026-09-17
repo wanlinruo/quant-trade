@@ -111,7 +111,7 @@ def test_blocking_metric_checks_warn():
     frame = pl.DataFrame({"run_id": ["a", "a"], "scope_end": [DAY, DAY], "passed": [False, True],
                           "severity": ["blocking", "blocking"], "check_id": ["A1.x", "A2.y"]})
     got = sc._metric_checks(ctx(FakeQuery(metric_checks=frame)))
-    assert got.status == sc.WARN and "A1.x" in got.detail
+    assert got.status == sc.WARN and "A1.x" in got.detail and "1 条规则" in got.actual
     assert sc._metric_checks(ctx(FakeQuery())).status == sc.BAD
 
 

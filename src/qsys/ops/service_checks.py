@@ -174,8 +174,10 @@ def _metric_checks(ctx: CheckContext) -> CheckResult:
     latest = today.filter(pl.col("run_id") == today["run_id"].max())
     blocking = latest.filter(~pl.col("passed") & (pl.col("severity") == "blocking"))
     if blocking.height:
-        return CheckResult(WARN, "阻断级规则全部通过", f"{blocking.height} 项未通过",
-                           _samples(set(blocking["check_id"].to_list())), rows=latest.height)
+        rules = set(blocking["check_id"].to_list())
+        return CheckResult(WARN, "阻断级规则全部通过",
+                           f"{len(rules)} 条规则未通过（{blocking.height} 条指标结果）",
+                           _samples(rules), rows=latest.height)
     return CheckResult(OK, "阻断级规则全部通过", f"{latest.height} 项全部通过", rows=latest.height)
 
 
