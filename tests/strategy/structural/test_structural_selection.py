@@ -10,6 +10,7 @@ from qsys.core.calendar import AShareCalendar
 from qsys.data import schema
 from qsys.data.feed import HistoricalFeed
 from qsys.data.market_feed import MarketFeed
+from qsys.data.pipeline.delisting import build_delisting_pool
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
 from qsys.strategy.structural.selection import StructuralSelection
@@ -99,6 +100,8 @@ def low_setup(warehouse, write_daily_bars, symbol="600001.SH", today_open=9.6):
 
 
 def selector(warehouse, **kw):
+    # 候选池剔除只读退市整理期池，与生产一样先建好（此处没有整理期标的）
+    build_delisting_pool(warehouse, DAYS[0], DAYS[-1], extra_sessions=DAYS)
     query = WarehouseQuery(warehouse)
     calendar = AShareCalendar(DAYS)
     return StructuralSelection(
@@ -172,6 +175,7 @@ def test_a_non_first_board_is_not_a_candidate(warehouse, write_daily_bars):
 
 
 def test_no_candidates_on_an_empty_warehouse(warehouse):
+    build_delisting_pool(warehouse, DAYS[0], DAYS[-1], extra_sessions=DAYS)
     query = WarehouseQuery(warehouse)
     calendar = AShareCalendar(DAYS)
     sel = StructuralSelection(

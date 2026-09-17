@@ -56,12 +56,13 @@ def test_main_calls_hook_after_facts_and_derived_refresh(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         tushare_daily_sync, "refresh_derived",
-        lambda warehouse, day, run=None: events.append("derived") or {"derived": 1},
+        lambda warehouse, day, run=None, next_session=None: events.append("derived") or {"derived": 1},
     )
     monkeypatch.setattr(
         tushare_daily_sync, "after_sync",
         lambda warehouse, day, ok, run=None: events.append(("verify", ok)),
     )
+    monkeypatch.setattr(tushare_daily_sync, "next_open_day", lambda client, day: None)
     monkeypatch.setattr(
         "sys.argv",
         ["tushare_daily_sync.py", "--warehouse", str(tmp_path), "--day", str(D),

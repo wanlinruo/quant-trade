@@ -1,4 +1,4 @@
-"""派生类指标 20 条。
+"""派生类指标 26 条。
 
 每条 ``formula`` 是 A2「独立重算」的规格书：规则实现必须另写计算路径，
 不能调用这里描述的生产函数。血缘以每日生产调度实际调用的路径为准；
@@ -7,9 +7,9 @@
 
 from __future__ import annotations
 
-from qsys.data.catalog.types import Computed, Kind, Metric, MetricStatus, Validity
+from qsys.data.catalog.types import UNCOVERED, Computed, Kind, Metric, MetricStatus, Validity
 
-DATASETS = frozenset({"daily_flags", "valuation_snapshot"})
+DATASETS = frozenset({"daily_flags", "valuation_snapshot", "delisting_pool"})
 
 
 def _m(
@@ -29,6 +29,22 @@ def _m(
         lineage=Computed(upstream=upstream, formula=formula),
         checks=checks,
         known_issues=issues,
+    )
+
+
+# 退市整理期池：到货与一致性由每日服务质检独立重算 namechange 核对，指标规则不重复
+_POOL_CHECKS = UNCOVERED(
+    "每日服务质检按 name_history 独立重算当日池子并逐只核对（scripts/service_checks.py）"
+)
+_POOL_FORMULA = ("name_history 中 change_reason='退市整理期' 且 start_date <= dt <= end_date"
+                 "（end_date 为空视为未结束）的区间，与 tushare_daily 交易日交叉")
+
+
+def _pool(column: str, meaning: str, upstream: str) -> Metric:
+    return Metric(
+        id=f"delisting_pool.{column}", kind=Kind.DERIVED, validity=Validity.SESSION,
+        status=MetricStatus.ACTIVE, meaning=meaning,
+        lineage=Computed(upstream=(upstream,), formula=_POOL_FORMULA), checks=_POOL_CHECKS,
     )
 
 
@@ -191,4 +207,10 @@ METRICS: tuple[Metric, ...] = (
         "turnover_ratio = tushare_daily.turnover_ratio（原样透传）",
         ("A2.recompute.turnover_ratio", "A3.turnover_identity"),
     ),
+    _pool("dt", "交易日，取自 tushare_daily", "tushare_daily.dt"),
+    _pool("symbol", "当日处于退市整理期的标的", "name_history.symbol"),
+    _pool("name", "namechange 登记的整理期简称（如「立方退」）", "name_history.name"),
+    _pool("start_date", "整理期开始日", "name_history.start_date"),
+    _pool("end_date", "整理期结束日；为空表示 namechange 尚未登记结束", "name_history.end_date"),
+    _pool("ann_date", "公告日；使用方按 T-1 已公告过滤，为空按已知处理", "name_history.ann_date"),
 )
