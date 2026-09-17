@@ -15,6 +15,7 @@ from pathlib import Path
 import structlog
 
 from qsys.core.calendar import AShareCalendar
+from qsys.ops.service_checks import parse_step_name
 from qsys.ops.services import (
     FAILED,
     RUNNING,
@@ -37,6 +38,7 @@ _SYSTEMD_PROPS = ("ActiveState", "SubState", "Result", "ExecMainStatus",
 # 看板格子：css 类与中文标签
 CELL_LABELS = {
     "ok": "成功", "warn": "有警告", "bad": "失败", "running": "运行中",
+    "qcbad": "质检未过", "qcwarn": "质检警告",
     "missed": "未运行", "pending": "未到时间", "closed": "休市", "none": "无记录",
 }
 
@@ -61,6 +63,7 @@ class Cell:
     day: date
     state: str
     runs: list[dict]
+    checks: list[dict] = ()
 
     @property
     def label(self) -> str:
@@ -108,14 +111,17 @@ class ServiceConsole:
         runs = load_runs(self._root, start, end)
         trading = self._trading_days(start, end)
         first_record = self._first_record_day()
+        checks = _checks_by_day(runs)
         rows = []
         for spec in self.services("timer"):
             mine = [r for r in runs if r.get("service") == spec.id]
             cells = []
             for day in columns:
                 today_runs = [r for r in mine if r["started_at"][:10] == day.isoformat()]
-                cells.append(Cell(day, self._cell_state(spec, day, today_runs, trading,
-                                                        first_record, now), today_runs))
+                found = checks.get((spec.id, day.isoformat()), [])
+                state = _with_checks(self._cell_state(spec, day, today_runs, trading,
+                                                      first_record, now), found)
+                cells.append(Cell(day, state, today_runs, found))
             rows.append((spec, cells))
         return columns, rows, trading is not None
 
@@ -159,8 +165,13 @@ class ServiceConsole:
     def run(self, day: date, run_id: str) -> dict | None:
         for run in load_runs(self._root, day, day):
             if run.get("run_id") == run_id:
+                checks = []
+                if run.get("session"):
+                    session = date.fromisoformat(run["session"])
+                    later = load_runs(self._root, session, session + timedelta(days=1))
+                    checks = _checks_by_day(later).get((run.get("service"), run["session"]), [])
                 return {**run, "effective_status": effective_status(run, now=self._now()),
-                        "spec": SERVICE_BY_ID.get(run.get("service", ""))}
+                        "spec": SERVICE_BY_ID.get(run.get("service", "")), "checks": checks}
         return None
 
     def recent_runs(self, service: str, limit: int = 20) -> list[dict]:
@@ -190,6 +201,36 @@ class ServiceConsole:
             row["state"] = _process_state(spec, row)
             rows.append(row)
         return rows
+
+
+def _checks_by_day(runs: list[dict]) -> dict[tuple[str, str], list[dict]]:
+    """(服务, 交易日) → 该交易日最后一次服务质检里属于这个服务的检查。"""
+    latest: dict[str, dict] = {}
+    for run in runs:
+        if run.get("service") == "service-checks" and run.get("session"):
+            latest[run["session"]] = run  # runs 已按开始时间排序，后者覆盖前者
+    out: dict[tuple[str, str], list[dict]] = {}
+    for session, run in latest.items():
+        for step in run.get("steps", []):
+            parsed = parse_step_name(step.get("name", ""))
+            if parsed:
+                service, name = parsed
+                out.setdefault((service, session), []).append(
+                    {**step, "check": name, "check_run_id": run["run_id"],
+                     "check_started_at": run["started_at"]})
+    return out
+
+
+def _with_checks(state: str, checks: list[dict]) -> str:
+    """任务本身成功但质检不过，格子要显示出来；任务失败/未运行时保持原状态。"""
+    if state not in ("ok", "warn") or not checks:
+        return state
+    statuses = {c.get("status") for c in checks}
+    if FAILED in statuses:
+        return "qcbad"
+    if WARNING in statuses and state == "ok":
+        return "qcwarn"
+    return state
 
 
 def _process_state(spec: ServiceSpec, row: dict) -> str:

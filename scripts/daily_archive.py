@@ -235,7 +235,9 @@ def _archive(args, service_run: ServiceRun) -> int:
         print(f"股本 {cap_result.files} 文件 / {cap_result.rows:,} 行 / "
               f"{cap_result.errors} 错误")
 
-    wanted = candidate_stock_days(warehouse, start, complete_through)
+    # 与竞价同样显式传入交易日历：15:40 时 daily_flags 还没有今天，不传的话
+    # 昨日首板找不到「下一个交易日」，今天的候选分钟线要拖到明天才下（服务质检发现）
+    wanted = candidate_stock_days(warehouse, start, complete_through, sessions=sessions)
 
     if args.skip_minutes:
         service_run.add_step("分钟线", status=SKIPPED, detail="按参数跳过")
@@ -248,7 +250,7 @@ def _archive(args, service_run: ServiceRun) -> int:
     print(f"候选 {wanted.height} 组，其中缺分钟线 {missing.height} 组")
     minutes_started = datetime.now()
     if missing.height == 0:
-        service_run.add_step("分钟线（候选与持仓）", status=SUCCEEDED,
+        service_run.add_step("分钟线（首板次日候选）", status=SUCCEEDED,
                              interface="QMT 1 分钟线（Windows）", table="minute_bars", rows=0,
                              detail=f"候选 {wanted.height} 组，均已到货")
         # 候选由 daily_flags 的首板推出，而 daily_flags 现在由 tushare_sync
@@ -292,7 +294,7 @@ def _archive(args, service_run: ServiceRun) -> int:
     )
     print(f"导入 {result.files} 文件 / {result.rows:,} 行 / {result.errors} 错误")
     service_run.add_step(
-        "分钟线（候选与持仓）", status=FAILED if result.errors else SUCCEEDED,
+        "分钟线（首板次日候选）", status=FAILED if result.errors else SUCCEEDED,
         interface="QMT 1 分钟线（Windows）", table="minute_bars", rows=result.rows,
         started_at=minutes_started,
         detail=f"候选 {wanted.height} 组，缺 {missing.height} 组；导入 {result.files} 个文件、"

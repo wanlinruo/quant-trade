@@ -309,7 +309,7 @@ METRICS: tuple[Metric, ...] = tuple(
     + _simple("index_bars", "tushare.index_daily", _INDEX_MEANING,
               MetricStatus.ACTIVE, ("B1.calendar", "B5.span"))
     + _simple("minute_bars", "qmt.minute", _MINUTE_MEANING,
-              MetricStatus.ACTIVE, ("A3.minute_vs_daily", "B4.arrival"))
+              MetricStatus.ACTIVE, ("A3.minute_vs_daily",))
     + _simple("auction_ticks", "qmt.tick", _AUCTION_MEANING,
               MetricStatus.ACTIVE, ("B4.arrival",))
     + _simple("bars_daily", "mootdx.kline", _BARS_MEANING,

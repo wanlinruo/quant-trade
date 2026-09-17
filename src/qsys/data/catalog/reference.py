@@ -190,7 +190,7 @@ def _instruments() -> list[Metric]:
 # name_snapshots（点观测，3 列）
 # ---------------------------------------------------------------------------
 
-_NAME_SNAPSHOTS_CHECKS = ("C2.pit_join", "B4.arrival")
+_NAME_SNAPSHOTS_CHECKS = ("C2.pit_join",)
 
 
 def _name_snapshots() -> list[Metric]:
@@ -356,7 +356,11 @@ def _price_limits_daily() -> list[Metric]:
 # pipeline/tushare_reference.py:78-101。
 # ---------------------------------------------------------------------------
 
-_SUSPEND_CHECKS = ("B4.arrival",)
+# 停牌表当天可以真的为空，按表判不出「没采到」。到货改由服务管理的每日服务质检
+# 核对 Tushare 同步运行记录里「停牌」这一步是否成功（D-18）。
+_SUSPEND_CHECKS = UNCOVERED(
+    "到货由每日服务质检核对同步运行记录（scripts/service_checks.py），指标规则不重复检查"
+)
 
 
 def _suspend_daily() -> list[Metric]:

@@ -137,12 +137,6 @@ def _arrival(ctx: CheckContext) -> CheckResult:
                            for day in sorted(sessions - have))
         if ctx.query.instruments().height == 0:
             missing.append({"dataset": "instruments", "dt": ctx.end, "reason": "空表"})
-    log_parts = sorted((ctx.warehouse.root / "ingest_log").glob("year=*/part.parquet"))
-    logs = pl.concat([pl.read_parquet(path) for path in log_parts]) if log_parts else pl.DataFrame()
-    if logs.height:
-        failed = logs.filter(pl.col("dt").is_between(ctx.start, ctx.end) & ~pl.col("ok"))
-        missing.extend({"dataset": row["dataset"], "dt": row["dt"], "reason": "采集失败"}
-                       for row in failed.iter_rows(named=True))
     recon_parts = sorted((ctx.warehouse.root / "live_recon").glob("year=*/part.parquet"))
     recon = pl.concat([pl.read_parquet(path) for path in recon_parts]) if recon_parts else pl.DataFrame()
     if recon.height:
@@ -152,16 +146,17 @@ def _arrival(ctx: CheckContext) -> CheckResult:
     auction_missed, auction_checked = _auction_misses(ctx)
     missing.extend(auction_missed)
     checked = (len(sessions) * 2 + (1 if sessions else 0) + auction_checked
-               + (logs.height if logs.height else 0) + (recon.height if recon.height else 0))
+               + (recon.height if recon.height else 0))
     return CheckResult(len(missing), checked, f"到货或采集失败 {len(missing)} 项",
                        pl.DataFrame(missing) if missing else None)
 
 
+# D-18：原先还登记了 ingest_log / name_snapshots / suspend_daily / minute_bars，
+# 实现却从未检查（ingest_log 自换源后已不再写入）。这些到货检查改由服务管理的
+# 每日服务质检承担（scripts/service_checks.py），这里只保留真正检查的项。
 register(Check("B4.arrival", Category.COMPLETENESS, Scope.INCREMENTAL,
-               ("ingest_log.dataset", "ingest_log.dt", "ingest_log.ok",
-                "live_recon.is_consistent", "instruments.symbol", "name_snapshots.dt",
-                "suspend_daily.dt", "minute_bars.dt", "auction_ticks.dt"), (),
-               "事实表到货后派生消费者也必须到货，采集日志不得失败", _arrival))
+               ("live_recon.is_consistent", "instruments.symbol", "auction_ticks.dt"), (),
+               "事实表到货后派生消费者也必须到货，实盘对账不得不一致", _arrival))
 
 
 def _zero_limit(ctx: CheckContext) -> CheckResult:

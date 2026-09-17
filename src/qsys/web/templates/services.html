@@ -12,14 +12,14 @@
     {% for spec, cells in rows %}
     <tr><th class="svc">{{ spec.name }}<br><span class="muted" style="font-size:11px;font-weight:400">{{ spec.schedule }}</span></th>
       {% for cell in cells %}<td>
-        {% if cell.runs %}<a class="cell {{ cell.state }}" href="/services/runs/{{ cell.day }}/{{ cell.runs[-1].run_id }}" title="{{ cell.runs|length }} 次执行">{{ cell.label }}{% if cell.runs|length > 1 %}×{{ cell.runs|length }}{% endif %}</a>
+        {% if cell.runs %}<a class="cell {{ cell.state }}" href="/services/runs/{{ cell.day }}/{{ cell.runs[-1].run_id }}" title="{{ cell.runs|length }} 次执行{% if cell.checks %}，质检 {{ cell.checks|length }} 项{% endif %}">{{ cell.label }}{% if cell.runs|length > 1 %}×{{ cell.runs|length }}{% endif %}</a>
         {% else %}<span class="cell {{ cell.state }}">{{ cell.label }}</span>{% endif %}
       </td>{% endfor %}
     </tr>
     {% endfor %}
   </table>
   </div>
-  <p class="muted" style="margin:10px 0 0;font-size:12px">成功＝全部步骤成功；有警告＝结果可用但有步骤报警或当天有过失败后补跑成功；未运行＝交易日到了应完成的时间仍无记录；无记录＝运行记录启用之前。点格子看当天最后一次执行的明细。</p>
+  <p class="muted" style="margin:10px 0 0;font-size:12px">成功＝全部步骤成功且当晚质检通过；质检未过＝任务跑完了但产出不对（缺数据、数量不符）；有警告＝结果可用但有步骤报警或当天有过失败后补跑成功；未运行＝交易日到了应完成的时间仍无记录；无记录＝运行记录启用之前。点格子看当天最后一次执行的明细。</p>
 </div>
 
 <div class="card">

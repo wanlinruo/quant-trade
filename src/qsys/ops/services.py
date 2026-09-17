@@ -59,7 +59,7 @@ SERVICES: tuple[ServiceSpec, ...] = (
         "交易日 15:40",
         ("Tushare trade_cal", "QMT 竞价逐笔", "QMT 1 分钟线"),
         ("auction_ticks", "minute_bars"),
-        "收盘后采集 QMT 独有、会滚动过期的数据：首板次日竞价、候选与持仓分钟线",
+        "收盘后采集 QMT 独有、会滚动过期的数据：首板次日候选的竞价逐笔与分钟线",
         due="17:00", max_runtime=timedelta(hours=2),
     ),
     ServiceSpec(
@@ -73,6 +73,13 @@ SERVICES: tuple[ServiceSpec, ...] = (
          "adj_factors", "daily_flags", "market_regime", "valuation_snapshot", "metric_checks"),
         "收盘后同步日线、涨跌停价、停牌、ST、指数、名称与涨停列表，再计算派生表并跑增量质检",
         due="19:30", max_runtime=timedelta(hours=2),
+    ),
+    ServiceSpec(
+        "service-checks", "每日服务质检", "timer", "Linux", "qsys-service-checks",
+        "交易日 20:00",
+        ("仓库只读", "运行记录"), ("var/service-runs（只写质检结果）",),
+        "检查上面每个任务当天该写的表是否到齐、数量是否正确，结果挂回各任务的看板格子",
+        due="21:00", max_runtime=timedelta(minutes=30),
     ),
     ServiceSpec(
         "paper", "模拟交易", "resident", "Linux", "qsys-paper", "常驻",

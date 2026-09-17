@@ -29,6 +29,22 @@
     </tr>{% else %}<tr><td colspan="7" class="empty">没有步骤记录</td></tr>{% endfor %}
   </table>
 </div>
+{% if run.service != "service-checks" %}
+<div class="card">
+  <h2>当晚质检（{{ run.session or "—" }}）</h2>
+  {% if run.checks %}
+  <table>
+    <tr><th>检查</th><th>表</th><th>结果</th><th>期望与实际</th></tr>
+    {% for c in run.checks %}{% set cs = labels.get(c.status, ("bad", c.status)) %}
+    <tr><td>{{ c.check }}</td><td class="mono" style="font-size:12px">{{ c.table }}</td>
+      <td><span class="pill {{ cs[0] }}">{{ cs[1] }}</span></td>
+      <td style="font-size:12px">{{ c.detail }}{% if c.error %}<div class="error">{{ c.error }}</div>{% endif %}</td></tr>
+    {% endfor %}
+  </table>
+  <p class="muted" style="font-size:12px;margin:8px 0 0">来自 <a href="/services/runs/{{ run.checks[0].check_started_at[:10] }}/{{ run.checks[0].check_run_id }}">{{ run.checks[0].check_started_at }} 的服务质检</a></p>
+  {% else %}<div class="empty">这个交易日还没有质检结果（每日 20:00 执行）。</div>{% endif %}
+</div>
+{% endif %}
 {% endif %}
 
 <div class="card">

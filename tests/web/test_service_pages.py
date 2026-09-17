@@ -20,6 +20,8 @@ SESSIONS = [date(2026, 9, d) for d in (10, 11, 14, 15, 16, 17)]
 def record(root, service, started, status_fn=None, monkeypatch=None):
     monkeypatch.setattr(services, "_now", lambda: started)
     with ServiceRun.open(root, service) as run:
+        if service != "service-checks":
+            run.session = started.date()
         if status_fn:
             status_fn(run)
 
@@ -120,3 +122,20 @@ def test_services_route_is_404_when_not_enabled(warehouse):
     config = WebConfig()
     http = TestClient(create_app(MonitorService(SessionJournal(warehouse), config=config), config))
     assert http.get("/services").status_code == 404
+
+
+def test_failed_checks_turn_a_successful_run_red_and_show_on_detail(tmp_path, warehouse, monkeypatch):
+    root = tmp_path / "runs"
+    record(root, "tushare-sync", datetime(2026, 9, 16, 17, 0), monkeypatch=monkeypatch)
+
+    def checks(run):
+        run.session = date(2026, 9, 16)
+        with run.step("tushare-sync｜涨停列表到货", table="limit_list_daily") as step:
+            step.fail("期望：当日涨停/炸板列表非空；实际：0 行")
+
+    record(root, "service-checks", datetime(2026, 9, 16, 20, 0), checks, monkeypatch)
+    got = states(console(root).board(14), "tushare-sync")
+    assert got[date(2026, 9, 16)] == "qcbad"
+    sync_id = next(p for p in root.rglob("tushare-sync-*.json")).stem
+    page = client(root, warehouse).get(f"/services/runs/2026-09-16/{sync_id}")
+    assert "涨停列表到货" in page.text and "0 行" in page.text
