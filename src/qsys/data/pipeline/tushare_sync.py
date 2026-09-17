@@ -84,15 +84,16 @@ _REFERENCE_STEPS: list[tuple[str, Callable[..., int]]] = [
 ]
 
 # 服务管理页显示的「接口 → 表」。键与 _REFERENCE_STEPS 的名字一一对应（守卫测试）。
-STEP_SOURCES: dict[str, tuple[str, str]] = {
-    "tushare_daily": ("Tushare daily / daily_basic / adj_factor", "tushare_daily"),
-    "price_limits_daily": ("Tushare stk_limit", "price_limits_daily"),
-    "suspend_daily": ("Tushare suspend_d", "suspend_daily"),
-    "stock_st_daily": ("Tushare stock_st", "stock_st_daily"),
-    "index_bars": ("Tushare index_daily", "index_bars"),
-    "instruments": ("Tushare stock_basic", "instruments / name_snapshots"),
-    "name_history": ("Tushare namechange", "name_history"),
-    "limit_list_daily": ("Tushare limit_list_d", "limit_list_daily"),
+STEP_SOURCES: dict[str, tuple[str, str, str]] = {  # 名字 → (步骤, 接口, 写入表)
+    "tushare_daily": ("日线（含股本估值、复权因子）", "Tushare daily / daily_basic / adj_factor",
+                      "tushare_daily"),
+    "price_limits_daily": ("涨跌停价", "Tushare stk_limit", "price_limits_daily"),
+    "suspend_daily": ("停牌", "Tushare suspend_d", "suspend_daily"),
+    "stock_st_daily": ("ST 名单", "Tushare stock_st", "stock_st_daily"),
+    "index_bars": ("沪深300 指数", "Tushare index_daily", "index_bars"),
+    "instruments": ("标的主表与名称快照", "Tushare stock_basic", "instruments / name_snapshots"),
+    "name_history": ("改名与退市整理期记录", "Tushare namechange", "name_history"),
+    "limit_list_daily": ("涨停列表", "Tushare limit_list_d", "limit_list_daily"),
 }
 
 # 接线守卫检查的是实际公开 ingest，而不是适配器函数名。
@@ -144,8 +145,8 @@ def sync(provider, warehouse: Warehouse, day: date, *,
 
     日线为空直接抛错，**且在抛错之前不写任何表**——半张表比没有表更难查。
     """
-    interface, table = STEP_SOURCES["tushare_daily"]
-    with record_step(run, "日线", interface=interface, table=table) as step:
+    label, interface, table = STEP_SOURCES["tushare_daily"]
+    with record_step(run, label, interface=interface, table=table) as step:
         daily = provider.daily(day)
         if daily.height == 0:
             # 非交易日由调用方用 trade_cal 提前排除；走到这里就是该有数据却没有。
@@ -158,8 +159,8 @@ def sync(provider, warehouse: Warehouse, day: date, *,
         counts = {"tushare_daily": write_year(warehouse, frame, day.year)}
         step.rows = counts["tushare_daily"]
     for name, ingest in _REFERENCE_STEPS:
-        interface, table = STEP_SOURCES.get(name, (None, name))
-        with record_step(run, name, interface=interface, table=table) as step:
+        label, interface, table = STEP_SOURCES.get(name, (name, None, name))
+        with record_step(run, label, interface=interface, table=table) as step:
             counts[name] = step.rows = ingest(provider, warehouse, [day])
 
     log.info("tushare_sync.done", day=str(day), **counts)
@@ -170,17 +171,17 @@ def refresh_derived(warehouse: Warehouse, day: date, *,
                     run: ServiceRun | None = None) -> dict[str, int]:
     """事实表成功后刷新所有生产消费者，避免价格与因子/flags 跨日断层。"""
     start = day - timedelta(days=_DERIVED_LOOKBACK_DAYS)
-    builders: list[tuple[str, Callable[[], int]]] = [
-        ("adj_factors", lambda: build_adj_factors(warehouse)),
-        ("daily_flags", lambda: build_daily_flags(
+    builders: list[tuple[str, str, Callable[[], int]]] = [
+        ("adj_factors", "复权因子", lambda: build_adj_factors(warehouse)),
+        ("daily_flags", "首板与 ST 等标记", lambda: build_daily_flags(
             warehouse, start, day, boards=_PRODUCTION_BOARDS)),
-        ("market_regime", lambda: build_market_regime(
+        ("market_regime", "市场广度", lambda: build_market_regime(
             warehouse, start, day, boards=_PRODUCTION_BOARDS)),
-        ("valuation_snapshot", lambda: build_valuation(warehouse, day, day)),
+        ("valuation_snapshot", "估值快照", lambda: build_valuation(warehouse, day, day)),
     ]
     counts: dict[str, int] = {}
-    for name, build in builders:
-        with record_step(run, f"派生 {name}", interface="仓库内计算", table=name) as step:
+    for name, label, build in builders:
+        with record_step(run, f"派生：{label}", interface="仓库内计算", table=name) as step:
             counts[name] = step.rows = build()
     log.info("tushare_sync.derived_refreshed", day=str(day), **counts)
     return counts

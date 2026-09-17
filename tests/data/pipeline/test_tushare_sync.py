@@ -254,8 +254,8 @@ def test_sync_records_each_step_in_the_run(warehouse, monkeypatch, tmp_path):
     with ServiceRun.open(tmp_path / "runs", "tushare-sync") as run:
         sync(FakeProvider(), warehouse, DAY, run=run)
     steps = [(s.name, s.interface, s.table, s.rows, s.status) for s in run.steps]
-    assert steps[0][:3] == ("日线", "Tushare daily / daily_basic / adj_factor", "tushare_daily")
-    assert steps[1] == ("suspend_daily", "Tushare suspend_d", "suspend_daily", 0, "succeeded")
+    assert steps[0][1:3] == ("Tushare daily / daily_basic / adj_factor", "tushare_daily")
+    assert steps[1] == ("停牌", "Tushare suspend_d", "suspend_daily", 0, "succeeded")
 
 
 def test_failed_daily_is_recorded_before_raising(warehouse, monkeypatch, tmp_path):
