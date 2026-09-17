@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import time
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import date, datetime, time as dt_time
-from decimal import Decimal, ROUND_HALF_UP
 from statistics import median
 
 from qsys.live.config import StreamConfig
@@ -20,7 +20,7 @@ from qsys.live.messages import (
     QuoteSnapshot,
 )
 from qsys.live.transport import Transport
-from qsys.markets.ashare import PRICE_LIMITS, board_of
+from qsys.markets.ashare import board_of
 
 
 MARKET_INDICES = {
@@ -123,8 +123,13 @@ class MarketGateway:
             Heartbeat(source="market", at=datetime.now()).model_dump_json(),
         )
 
-    def publish_overview(self, quotes: dict[str, MarketQuote]) -> MarketOverviewSnapshot:
-        snapshot = build_market_overview(quotes)
+    def publish_overview(
+        self, quotes: dict[str, MarketQuote], *, now: datetime | None = None,
+    ) -> MarketOverviewSnapshot:
+        moment = now or datetime.now()
+        raw = self._t.get_key(f"{self._s.price_limits}:{moment:%Y%m%d}")
+        limits = json.loads(raw) if raw else {}
+        snapshot = build_market_overview(quotes, limits=limits, now=moment)
         self._t.set_key(self._s.market_snapshot, snapshot.model_dump_json())
         return snapshot
 
@@ -163,10 +168,18 @@ def build_market_schedule(
 
 
 def build_market_overview(
-    quotes: dict[str, MarketQuote], *, now: datetime | None = None,
+    quotes: dict[str, MarketQuote], *,
+    limits: Mapping[str, Sequence[float]] | None = None,
+    now: datetime | None = None,
 ) -> MarketOverviewSnapshot:
-    """Aggregate one QMT full-market tick without persisting intraday facts."""
+    """Aggregate one QMT full-market tick without persisting intraday facts.
+
+    涨跌停价只认 `limits`——盘前发布的当日 Tushare stk_limit（D-19）。
+    QMT get_full_tick 不给涨跌停价；缺直取价的标的不计入涨停/跌停/触板/炸板，
+    只计入 `limit_price_missing_count`，不按板块档位自算。
+    """
     published_at = now or datetime.now()
+    limits = limits or {}
     indices: list[MarketIndexQuote] = []
     for symbol, name in MARKET_INDICES.items():
         quote = quotes.get(symbol)
@@ -193,13 +206,14 @@ def build_market_overview(
     advance = sum(value > 0 for value in returns)
     decline = sum(value < 0 for value in returns)
     flat = len(returns) - advance - decline
-    limits = [(_live_limits(q), q) for q in stocks]
-    limit_up = sum(q.price >= upper - 1e-6 for (upper, _), q in limits)
-    limit_down = sum(q.price <= lower + 1e-6 for (_, lower), q in limits)
-    touched = sum(q.high >= upper - 1e-6 for (upper, _), q in limits)
+    priced = [((float(limits[q.symbol][0]), float(limits[q.symbol][1])), q)
+              for q in stocks if q.symbol in limits]
+    limit_up = sum(q.price >= upper - 1e-6 for (upper, _), q in priced)
+    limit_down = sum(q.price <= lower + 1e-6 for (_, lower), q in priced)
+    touched = sum(q.high >= upper - 1e-6 for (upper, _), q in priced)
     broken = sum(
         q.high >= upper - 1e-6 and q.price < upper - 1e-6
-        for (upper, _), q in limits
+        for (upper, _), q in priced
     )
     directional = advance + decline
     return MarketOverviewSnapshot(
@@ -212,28 +226,5 @@ def build_market_overview(
         market_advance_ratio=advance / directional if directional else 0.0,
         market_median_return_1d=median(returns) if returns else 0.0,
         market_total_money=sum(q.amount for q in stocks),
+        limit_price_missing_count=len(stocks) - len(priced),
     )
-
-
-def _live_limits(quote: MarketQuote) -> tuple[float, float]:
-    """Use direct QMT limits when available, otherwise apply board fallback.
-
-    ``get_full_tick`` on the deployed MiniQMT omits limit fields.  The live
-    breadth universe only contains main-board and ChiNext stocks, whose current
-    fallback tiers are defined centrally in ``PRICE_LIMITS``.
-    """
-    board = board_of(quote.symbol.partition(".")[0])
-    rate = Decimal(str(PRICE_LIMITS[board]))
-    previous = Decimal(str(quote.prev_close))
-    cent = Decimal("0.01")
-    upper = quote.upper_limit
-    lower = quote.lower_limit
-    if upper is None:
-        upper = float((previous * (Decimal("1") + rate)).quantize(
-            cent, rounding=ROUND_HALF_UP
-        ))
-    if lower is None:
-        lower = float((previous * (Decimal("1") - rate)).quantize(
-            cent, rounding=ROUND_HALF_UP
-        ))
-    return upper, lower

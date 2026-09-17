@@ -37,6 +37,8 @@ class StreamConfig:
     quote_snapshots: str = "evt:quote_snapshots"
     market_snapshot: str = "state:market_overview"
     market_schedule: str = "state:market_schedule"
+    # 盘前发布的当日 stk_limit，键后缀 YYYYMMDD（data.pipeline.premarket）
+    price_limits: str = "state:price_limits"
 
 
 @dataclass(frozen=True, slots=True)

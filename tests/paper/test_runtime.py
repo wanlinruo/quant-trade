@@ -101,3 +101,20 @@ def test_quotes_refresh_inside_the_session_window(warehouse, tmp_path):
     runtime.tick(datetime.combine(today, time(9, 31)))
     assert quotes.calls >= 1
     assert len(store.rows(ident, "equity")) >= 1
+
+
+def test_realtime_limit_up_comes_from_the_warehouse_not_the_qmt_tick(warehouse, tmp_path):
+    """D-19：QMT get_full_tick 不给涨停价，盘中退出据此永远判「未涨停」、封板也卖。
+
+    盘中涨停价与回测同源：price_limits_daily（Tushare stk_limit，盘前写入）。
+    """
+    import pyarrow as pa
+    from qsys.data import schema
+
+    runtime, store, ident, today = _runtime(warehouse, tmp_path, CountingQuotes())
+    warehouse.write("price_limits_daily", pa.table({
+        "symbol": ["600036.SH"], "dt": [today], "pre_close": [None],
+        "limit_up": [44.0], "limit_down": [36.0],
+    }, schema=schema.PRICE_LIMITS_DAILY), year=today.year)
+    bound = runtime.market.bind(datetime.combine(today, time(11, 25)))
+    assert bound.limit_up_price(["600036.SH", "000001.SZ"], today) == {"600036.SH": 44.0}

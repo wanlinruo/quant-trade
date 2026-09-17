@@ -1,0 +1,21 @@
+[Unit]
+Description=qsys premarket Tushare stk_limit for intraday processes (D-19)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/qsys
+ExecStart=/home/ubuntu/qsys/.venv/bin/python -u scripts/tushare_premarket_limits.py --warehouse /home/ubuntu/qsys/warehouse
+# 脚本自己重试到 09:25；这里只给超时兜底
+TimeoutStartSec=2400
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/ubuntu/qsys /data/qsys
+
+[Install]
+WantedBy=multi-user.target

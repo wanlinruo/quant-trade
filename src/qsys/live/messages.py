@@ -200,6 +200,8 @@ class MarketOverviewSnapshot(Message):
     market_advance_ratio: float
     market_median_return_1d: float
     market_total_money: float
+    # 缺当日直取涨跌停价、未计入涨停类统计的标的数（D-19）
+    limit_price_missing_count: int = 0
 
 
 class MarketSchedule(Message):
