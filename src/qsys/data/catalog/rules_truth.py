@@ -109,6 +109,12 @@ _identity(
     "涨跌幅（%）= (收盘价/前收价−1)×100",
     absolute_tolerance=_FOUR_DECIMAL_ABS_TOL,
 )
+# daily_basic 的 total_mv/circ_mv 在股本变化后常仍按旧股本计价若干个交易日：
+# 生产 2026 年 95 只出现过，窗口放到 5 个交易日后只剩 9 只，均为数十天不跟上
+# 或流通股本量级错误（CDR）的真异常。
+MARKET_CAP_SHARE_LAG_SESSIONS = 5
+
+
 def _market_cap_share_bounds(ctx: CheckContext) -> CheckResult:
     """校验市值采用的股本口径边界，不强求跨市场公司满足错误恒等式。
 
@@ -116,15 +122,29 @@ def _market_cap_share_bounds(ctx: CheckContext) -> CheckResult:
     计价股本口径可能更窄；所以 total_mv = A股收盘价 × 全球总股本并非恒等式。
     始终成立的是：总股本不少于总市值反推的计价股本，后者不少于 A 股流通
     股本；流通市值则应与 A 股收盘价 × 流通股本一致。
+
+    源的市值会滞后股本变化，所以股本取「当日及前
+    ``MARKET_CAP_SHARE_LAG_SESSIONS`` 个交易日」实际发布过的值，不做任何反推。
     """
+    lag = MARKET_CAP_SHARE_LAG_SESSIONS
     frame = ctx.query.tushare_daily(
-        None, ctx.start - timedelta(days=10), ctx.end,
+        None, ctx.start - timedelta(days=lag * 2 + 20), ctx.end,
         columns=["symbol", "dt", "close", "market_cap", "total_shares",
                  "circulating_market_cap", "circulating_shares"],
-    ).drop_nulls().sort(["symbol", "dt"]).with_columns(
-        pl.col("total_shares").shift(1).over("symbol").alias("previous_total_shares"),
-        pl.col("circulating_shares").shift(1).over("symbol")
-        .alias("previous_circulating_shares"),
+    ).drop_nulls().sort(["symbol", "dt"])
+    recent_total = [pl.col("total_shares").shift(k).over("symbol") for k in range(lag + 1)]
+    recent_circulating = [pl.col("circulating_shares").shift(k).over("symbol")
+                          for k in range(lag + 1)]
+    frame = frame.with_columns(
+        pl.max_horizontal(recent_total).alias("recent_max_total_shares"),
+        pl.min_horizontal(recent_circulating).alias("recent_min_circulating_shares"),
+        pl.any_horizontal([
+            # 前面没有那么多交易日时 share 为空：记为不匹配（Kleene 与：False & null = False）
+            share.is_not_null()
+            & ((pl.col("circulating_market_cap") / pl.col("close") - share).abs() / share
+               <= _REL_TOL)
+            for share in recent_circulating
+        ]).alias("circulating_matches_recent"),
     ).filter(
         pl.col("dt").is_between(ctx.start, ctx.end)
         & (pl.col("close") > 0)
@@ -140,30 +160,17 @@ def _market_cap_share_bounds(ctx: CheckContext) -> CheckResult:
     if frame.height == 0:
         return CheckResult(0, 0, "区间内没有完整的市值/股本可比行")
     tolerance = _REL_TOL
-    total_ceiling = pl.max_horizontal("total_shares", "previous_total_shares")
-    circulating_floor = pl.min_horizontal(
-        "circulating_shares", "previous_circulating_shares"
-    )
-    circulating_error_now = (
-        (pl.col("implied_circulating_shares") - pl.col("circulating_shares")).abs()
-        / pl.col("circulating_shares")
-    )
-    circulating_error_previous = (
-        (pl.col("implied_circulating_shares") - pl.col("previous_circulating_shares")).abs()
-        / pl.col("previous_circulating_shares")
-    )
     bad = frame.filter(
-        (pl.col("implied_priced_shares") > total_ceiling * (1 + tolerance))
-        | (circulating_floor > pl.col("implied_priced_shares") * (1 + tolerance))
+        (pl.col("implied_priced_shares") > pl.col("recent_max_total_shares") * (1 + tolerance))
+        | (pl.col("recent_min_circulating_shares")
+           > pl.col("implied_priced_shares") * (1 + tolerance))
         | (pl.col("circulating_shares") > pl.col("total_shares") * (1 + tolerance))
-        | ((circulating_error_now > tolerance)
-           & (pl.col("previous_circulating_shares").is_null()
-              | (circulating_error_previous > tolerance)))
+        | ~pl.col("circulating_matches_recent")
     )
     return CheckResult(
         bad.height, frame.height,
-        f"{bad.height} / {frame.height} 行违反市值计价股本边界，或流通市值既不匹配"
-        "当日也不匹配上一交易日股本",
+        f"{bad.height} / {frame.height} 行违反市值计价股本边界，或流通市值不匹配"
+        f"当日及前 {lag} 个交易日发布过的任一流通股本",
         bad.head(5000) if bad.height else None,
     )
 

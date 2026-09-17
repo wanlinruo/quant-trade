@@ -123,6 +123,32 @@ def test_market_cap_rule_accepts_previous_session_share_on_change_day(
     assert _run("A3.market_cap_vs_shares", ctx, tmp_path)["passed"] is True
 
 
+def _stale_market_cap_rows(stale_sessions):
+    """股本在第 1 个交易日切新值，此后 `stale_sessions` 天市值仍按旧股本计价。"""
+    days = [date(2026, 8, 24 + i) for i in range(5)] + [date(2026, 8, 31)] + [date(2026, 9, 1 + i) for i in range(4)]
+    old, new = (616_500_530.0, 612_047_797.0), (616_536_061.0, 611_879_416.0)
+    rows = [{"symbol": "300803.SZ", "dt": days[0], "close": 80.0,
+             "total_shares": old[0], "market_cap": old[0] * 80.0,
+             "circulating_shares": old[1], "circulating_market_cap": old[1] * 80.0}]
+    for day in days[1:1 + stale_sessions]:
+        rows.append({"symbol": "300803.SZ", "dt": day, "close": 77.15,
+                     "total_shares": new[0], "market_cap": old[0] * 77.15,
+                     "circulating_shares": new[1], "circulating_market_cap": old[1] * 77.15})
+    return rows
+
+
+@pytest.mark.parametrize("stale_sessions,passed", [(5, True), (6, False)])
+def test_market_cap_rule_tolerates_source_lag_up_to_the_window(
+    warehouse, tmp_path, stale_sessions, passed,
+):
+    """生产 2026：daily_basic 市值滞后股本变化常达 3~5 个交易日；更久的仍要报。"""
+    rows = _stale_market_cap_rows(stale_sessions)
+    _daily(rows, warehouse)
+    last = rows[-1]["dt"]
+    ctx = C.CheckContext(WarehouseQuery(warehouse), warehouse, last, last)
+    assert _run("A3.market_cap_vs_shares", ctx, tmp_path)["passed"] is passed
+
+
 def test_missed_exdiv_flags_gap_without_factor_jump(ctx, warehouse, tmp_path):
     _daily([
         {"symbol": "000430.SZ", "dt": D[0], "close": 10.0, "pre_close": 10.0, "factor": 2.0},
