@@ -36,7 +36,9 @@ DAY_BUDGET = timedelta(minutes=30)  # 单日下载预算；开始前要保证这
 
 def run(cmd: list[str], *, timeout: float = 3600, tries: int = 3) -> str:
     for attempt in range(1, tries + 1):
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        # Windows 控制台输出可能是 GBK，解码失败不能让已完成的步骤报错
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
+                                errors="replace", timeout=timeout)
         if result.returncode == 0:
             return result.stdout
         log.warning("step.retry", attempt=attempt, rc=result.returncode,
@@ -137,7 +139,7 @@ def main() -> int:
         (day_work / "verify.json").write_text(json.dumps(report, ensure_ascii=False, indent=1, default=str))
         # 数据已在 Linux 入库并完成校验：清理 Windows 临时导出与这批标的的 QMT 1 分钟缓存
         run(scp + [str(manifest), f"{args.win_host}:{day_root}/symbols.csv"])
-        cleared = run(ssh + [f'{args.win_python} {args.win_clear} --symbols {day_root}/symbols.csv'])
+        cleared = run(ssh + [f'$env:PYTHONIOENCODING="utf-8"; {args.win_python} {args.win_clear} --symbols {day_root}/symbols.csv'])
         run(ssh + [f"Remove-Item -Recurse -Force {day_root}"])
         state[str(day)] = {
             "status": "done", "rows": report["rows"], "symbols": report["symbols_with_bars"],

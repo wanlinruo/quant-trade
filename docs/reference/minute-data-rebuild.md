@@ -148,3 +148,26 @@ Windows C 盘剩余约 10.3 GB，`C:\self` 已占 13.4 GB。推算逐只模式�
 
 结论：入库如实保留源值，唯一的改动是按既定规则隔离停牌占位行。缺根、13:00 标签、成交量舍入均为
 卖家 2026 年分钟文件本身的特征；同一卖家 2025 年批次（年度 ZIP）无此问题（非 241 根股-日为 0）。
+
+### 用户决定（2026-09-17 16:10）
+
+1. 2026 付费分钟源有缺陷，**2026 年全市场分钟线改由 QMT 采集**；网盘 2026 暂存保留、不发布。
+2. Windows **不扩容**：QMT 只做采集，数据回传 Linux 存储，入库校验后删除 Windows 临时导出与 QMT 缓存。
+3. QMT 完整补回 2026 年后再重跑 D-11 口径回测。
+
+### QMT 缓存删除实测
+
+- 1 分钟缓存位置：`C:\self\…\userdata_mini\datadir\{SH,SZ,BJ}\60\<代码>.DAT`（盘点时 SZ 4.1 GB、SH 488 MB）。
+- 600036.SH：QMT 运行中删除成功（无文件锁）；重下后数据与删除前逐位一致；行情网关无异常。
+- 结论：按「每日校验通过后删除当日这批标的的 `60\*.DAT`」控制磁盘，峰值只占一天的缓存（约 130 MB）。
+
+### QMT 回补 2026 编排（`2b80d51`）
+
+- `scripts/qmt_minute_backfill.py`（Linux 运行）逐交易日：Tushare 日线当日标的 → Windows 逐只下载
+  （不用批量模式）→ scp 回 Linux → 按交易日分区导入 → `verify_day` 校验（覆盖、241 根、全天成交量对日线
+  容差 1 手）→ 缺标的换账本重下一轮 → 删除 Windows 当日目录与这批标的 QMT 1 分钟缓存
+  （`scripts/win_clear_minute_cache.py`）。
+- 交易日 08:50–15:50 自动等待；`state.json` 记录每日结果，中断后续跑。
+- 目标仓库 `/data/qsys/qmt-minute-2026/warehouse`（非生产）；日线只读生产仓库。
+  工作与报告目录 `/home/ubuntu/qsys/var/minute-rebuild/qmt_2026/<YYYYMMDD>/`（manifest、verify.json）。
+- 16:40 试跑 2026-01-05 一天。
