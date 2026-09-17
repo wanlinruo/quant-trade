@@ -811,3 +811,32 @@ ST 股，回测认为未涨停、买单照常成交——**回测系统性偏乐
    QMT 给了 `upper_limit` 时二者须一致并告警差异。
 3. `_live_limits` 同源改造；取不到的标的不计入涨停统计并显式计数。
 4. 修完后重跑 D-11 口径下的回测，对比 2026-07-06 前后 ST 首板的成交差异。
+
+### 2026-09-17 第一步：盘中涨停价改为直取（撮合约束留待第二步）
+
+**排查补充的事实**：
+
+- 行情网关用的 QMT `get_full_tick` **没有任何涨跌停字段**（实测），`MarketQuote.upper_limit` 恒为空。
+  `RealtimeBoundMarket.limit_up_price` 读它，模拟盘、影子盘、实盘盘中**永远拿不到涨停价**。
+- 结构策略退出 `_is_limit_up(price, None)` 恒为 False：HIGH 分支现价高于成本即止盈、
+  **封死涨停也卖**；LOW 分支 11:25 / 14:25 同样识别不出「涨停持有」。
+  CASH-SAFE V2 入场保护价的涨停封顶也失效。回测读仓库，口径与盘中不一致。
+- QMT `get_instrument_detail` 的 `UpStopPrice/DownStopPrice` 与 Tushare `stk_limit` 抽查一致
+  （600000.SH 10.01/8.19，*ST 000010.SZ 1.73/1.41），但按用户决定只作核对，不作来源。
+- Tushare 文档（doc_id=183）：stk_limit「每个交易日 9 点左右更新当日股票涨跌停价格」；
+  2026-09-17 09:42 实测当日 5,644 行已可取。
+
+**用户决定（2026-09-17）**：缺直取涨跌停价时**买单拒绝、卖单放行**；先修盘中涨停价，再修撮合。
+
+**第一步实现**：
+
+- `data.pipeline.premarket` + `scripts/tushare_premarket_limits.py` + `qsys-premarket-limits.timer`
+  （交易日 08:58，每分钟重试到 09:25）：条数不低于上一交易日 90% 才视为完整，写入
+  `price_limits_daily`（`pre_close` 盘前为 null，17:00 同步覆盖）并发布 Redis
+  `state:price_limits:YYYYMMDD`；到点仍不完整则非零退出。
+- `RealtimeBoundMarket.limit_up_price` 改读仓库 `price_limits_daily`，与回测同源。
+- 行情概览 `build_market_overview` 只认 Redis 上的当日直取价；删除 `_live_limits`；缺价标的
+  不计入涨停类统计，计入新字段 `limit_price_missing_count` 并在行情页展示。
+
+**第二步（未做）**：回测/模拟/实盘撮合约束改用直取价（缺价买拒卖放）、实盘报价封顶
+`live/pricing.py`、盘前与 QMT `get_instrument_detail` 逐只核对告警、重跑回测对比。

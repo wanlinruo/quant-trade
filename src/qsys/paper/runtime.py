@@ -93,8 +93,12 @@ class RealtimeBoundMarket:
                 for s, q in self._today(symbols, day).items() if q.price > 0}
 
     def limit_up_price(self, symbols, day):
-        return {s: q.upper_limit for s, q in self._today(symbols, day).items()
-                if q.upper_limit is not None}
+        """当日涨停价读仓库 price_limits_daily（盘前写入的 Tushare stk_limit），与回测同源。
+
+        QMT get_full_tick 不给涨停价：早先读 quote.upper_limit，盘中永远为空，
+        退出逻辑因此把封死涨停的持仓也当成「未涨停」卖掉（D-19）。
+        """
+        return self._historical.limit_up_price(symbols, day)
 
     def suspended_symbols(self, symbols, day):
         return {s for s, q in self._today(symbols, day).items() if q.suspended}

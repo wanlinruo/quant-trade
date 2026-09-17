@@ -4,6 +4,7 @@ from datetime import date, datetime
 from qsys.live.config import StreamConfig
 from qsys.live.messages import MarketOverviewSnapshot, MarketQuote
 from qsys.live.transport import MemoryTransport
+from qsys.data.pipeline.premarket import publish_key
 from qsys.paper.quotes import (
     MarketGateway,
     QuoteClient,
@@ -45,39 +46,48 @@ def test_market_overview_aggregates_the_live_breadth_universe():
     now = datetime(2026, 9, 16, 10, 30)
     snapshot = build_market_overview({
         "000001.SH": _quote("000001.SH", 3300, 3270),
-        "600001.SH": _quote("600001.SH", 11, high=11, upper=11),
-        "000001.SZ": _quote("000001.SZ", 9, high=10.5, upper=11),
-        "300001.SZ": _quote("300001.SZ", 10, lower=10),
+        "600001.SH": _quote("600001.SH", 11, high=11),
+        "000001.SZ": _quote("000001.SZ", 9, high=10.5),
+        "300001.SZ": _quote("300001.SZ", 10),
         "688001.SH": _quote("688001.SH", 12),  # 与日频广度口径一致：排除科创
         "600002.SH": _quote("600002.SH", 0, suspended=True),
-    }, now=now)
+    }, limits={"600001.SH": (11, 9), "000001.SZ": (11, 9), "300001.SZ": (12, 10)}, now=now)
     assert snapshot.valid_stock_count == 3
     assert (snapshot.advance_count, snapshot.decline_count, snapshot.flat_count) == (1, 1, 1)
     assert snapshot.limit_up_count == 1
     assert snapshot.limit_down_count == 2
     assert snapshot.touched_limit_up_count == 1
     assert snapshot.broken_board_count == 0
+    assert snapshot.limit_price_missing_count == 0
     assert snapshot.indices[0].name == "上证指数"
 
 
 def test_gateway_publishes_one_atomic_overview_key():
     transport, streams = MemoryTransport(), StreamConfig()
+    transport.set_key(publish_key(streams, date(2026, 9, 16)), '{"600001.SH": [11, 9]}')
     gateway = MarketGateway(transport, streams, lambda symbols: {})
-    gateway.publish_overview({"600001.SH": _quote("600001.SH", 11, upper=11)})
+    gateway.publish_overview({"600001.SH": _quote("600001.SH", 11)},
+                             now=datetime(2026, 9, 16, 10, 30))
     raw = transport.get_key(streams.market_snapshot)
     assert raw is not None
     assert MarketOverviewSnapshot.model_validate_json(raw).limit_up_count == 1
 
 
-def test_market_overview_falls_back_to_board_limits_when_qmt_omits_them():
+def test_market_overview_uses_direct_limits_and_never_derives_them():
+    """D-19：QMT get_full_tick 不给涨跌停价。只认盘前发布的 stk_limit，缺价不计入并计数。
+
+    主板 ST 在 2026-07-06 前是 5% 档：按板块 10% 自算会把封在 5% 涨停的票算成未涨停。
+    """
     snapshot = build_market_overview({
-        "600001.SH": _quote("600001.SH", 11, high=11),
-        "300001.SZ": _quote("300001.SZ", 12, high=12),
+        "600001.SH": _quote("600001.SH", 10.5, high=10.5),   # ST，直取涨停 10.50
+        "300001.SZ": _quote("300001.SZ", 12, high=12),       # 无直取价
         "000001.SZ": _quote("000001.SZ", 10.5, high=11),
-    }, now=datetime(2026, 9, 16, 10, 30))
-    assert snapshot.limit_up_count == 2
-    assert snapshot.touched_limit_up_count == 3
+    }, limits={"600001.SH": (10.5, 9.5), "000001.SZ": (11, 9)},
+        now=datetime(2026, 9, 16, 10, 30))
+    assert snapshot.limit_up_count == 1
+    assert snapshot.touched_limit_up_count == 2
     assert snapshot.broken_board_count == 1
+    assert snapshot.limit_price_missing_count == 1
 
 
 def test_market_schedule_only_opens_during_continuous_auction():

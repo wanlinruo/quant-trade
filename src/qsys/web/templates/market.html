@@ -24,6 +24,7 @@
   <div class="metric"><div class="label">中位涨幅</div><div class="value" data-pct="market_median_return_1d">{{ '%+.2f%%'|format(snap.market_median_return_1d*100) if snap else '—' }}</div></div>
   <div class="metric"><div class="label">全市场成交额</div><div class="value" data-money="market_total_money">{% if snap %}{{ '%.0f'|format(snap.market_total_money/100000000) }} 亿{% else %}—{% endif %}</div></div>
   <div class="metric"><div class="label">有效标的</div><div class="value" data-field="valid_stock_count">{{ snap.valid_stock_count if snap else '—' }}</div></div>
+  <div class="metric" title="缺当日直取涨跌停价（Tushare stk_limit）的标的不计入涨停、跌停、触板、炸板"><div class="label">缺涨跌停价</div><div class="value" data-field="limit_price_missing_count">{{ snap.limit_price_missing_count if snap else '—' }}</div></div>
 </div>
 
 <div class="market-charts">
