@@ -81,3 +81,15 @@ D-11 口径下 2025-09-10 ~ 2026-09-16 首板次日 15,578 个，QMT 分钟线�
 - 14:40 节点开始下载网盘 2026 年 1min 按交易日 172 个文件至
   `/data/qsys/baidupan/A股分钟行情/2026-1min-按交易日`，清单
   `var/minute-rebuild/baidupan_2026_1min_inventory_20260917.json`，日志 `baidupan_2026_download.log`。
+- 14:37 `0be5e2b` QMT `minute_bars` 改为按交易日分区（`year=YYYY/date=YYYYMMDD`）；查询对尚无
+  日分区的年份仍读整年文件；`split_minute_year` 拆分后逐日回读核对，原文件移入备份目录。
+- 14:42 `652fdb7` 付费分钟按日文件入库：`ingest_day_file` / `finalize_day_staging`；
+  `validate_year(daily_dataset="tushare_daily")`（付费日线冻结于 2026-09-11）。
+  真实文件 2026-09-16 实测：1,337,550 行、5,550 只、5.6 秒、峰值约 1 GB、Parquet 16 MB。
+- 14:47 `d641c2b` 统一检查点读取 `WarehouseQuery.intraday_bars`：付费覆盖日读付费、否则读 QMT，
+  不混源；成交量统一为手；付费 `visible_at = dt + 1 分钟`；竞价量只取 QMT 09:30 根或竞价逐笔。
+- 14:48 节点以功能分支 worktree（`/home/ubuntu/scratch/wt_minute_rebuild`）对已下载的文件开始暂存。
+  **暂存根目录不在生产 warehouse**：`/data/qsys/minute-rebuild/warehouse`，其中 `tushare_daily`
+  为指向生产的只读软链接，仅用于校验；合并到 `main` 后才由生产代码发布进正式仓库。
+  日志 `var/minute-rebuild/stage_2026_days.log`。
+  观察：每日证券数不一（01-20 5,464 只、01-21 5,104 只），待与 Tushare 日线逐只核对后定性。
