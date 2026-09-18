@@ -14,6 +14,7 @@ from qsys.core.events import Reject
 from qsys.core.portfolio import Portfolio, Position
 from qsys.core.trading import Fill, Order
 from qsys.core.types import Symbol
+from qsys.ops.strategy_log import RUN_COLUMNS, RunRecord, decode_run, run_values
 
 
 ACTIVE = ("scheduled", "running", "paused", "error")
@@ -114,7 +115,51 @@ class PaperStore:
                     id INTEGER PRIMARY KEY AUTOINCREMENT, account_id TEXT NOT NULL,
                     at TEXT NOT NULL, level TEXT NOT NULL, message TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS paper_strategy_runs (
+                    account_id TEXT NOT NULL, event_key TEXT NOT NULL,
+                    session TEXT NOT NULL, phase TEXT NOT NULL,
+                    started_at TEXT NOT NULL, finished_at TEXT NOT NULL,
+                    duration_ms INTEGER NOT NULL, cash REAL NOT NULL,
+                    market_value REAL NOT NULL, total_value REAL NOT NULL,
+                    position_count INTEGER NOT NULL, candidates INTEGER,
+                    passed INTEGER, orders INTEGER NOT NULL, rejects INTEGER NOT NULL,
+                    summary TEXT NOT NULL, reasons_json TEXT NOT NULL DEFAULT '{}',
+                    note TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT '',
+                    PRIMARY KEY(account_id, event_key)
+                );
+                CREATE INDEX IF NOT EXISTS paper_runs_session
+                    ON paper_strategy_runs(account_id, session, started_at);
             """)
+
+    def record_run(self, ident: str, record: RunRecord) -> None:
+        columns = ("account_id", *RUN_COLUMNS)
+        placeholders = ",".join("?" for _ in columns)
+        with self._connect() as con:
+            con.execute(
+                f"INSERT OR REPLACE INTO paper_strategy_runs "
+                f"({','.join(columns)}) VALUES ({placeholders})",
+                (ident, *run_values(record)),
+            )
+
+    def strategy_runs(
+        self, ident: str, session: date
+    ) -> list[dict[str, Any]]:
+        with self._connect() as con:
+            rows = con.execute(
+                "SELECT * FROM paper_strategy_runs "
+                "WHERE account_id=? AND session=? ORDER BY started_at",
+                (ident, session.isoformat()),
+            ).fetchall()
+        return [decode_run(row) for row in rows]
+
+    def run_sessions(self, ident: str, limit: int = 60) -> list[date]:
+        with self._connect() as con:
+            rows = con.execute(
+                "SELECT DISTINCT session FROM paper_strategy_runs "
+                "WHERE account_id=? ORDER BY session DESC LIMIT ?",
+                (ident, limit),
+            ).fetchall()
+        return [date.fromisoformat(row["session"]) for row in rows]
 
     def create(self, backtest_id: str, name: str, cash: float, activation: date) -> PaperAccount:
         name = name.strip()

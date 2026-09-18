@@ -34,6 +34,7 @@ from qsys.web.workbench import BacktestQueue, WorkbenchStore
 from qsys.strategy.parameters import validate_parameters
 from qsys.core.calendar import AShareCalendar
 from qsys.ops.services import SERVICE_BY_ID
+from qsys.ops.strategy_log import PHASE_LABELS
 from qsys.paper.calendar import first_complete_session
 from qsys.paper.store import PaperStore
 
@@ -153,7 +154,13 @@ def create_app(
     def _page(request: Request, template: str, session: date, page: str, **ctx):
         return TEMPLATES.TemplateResponse(
             request=request, name=template,
-            context={"title": config.title, "session": session, "page": page, **ctx},
+            context={
+                "title": config.title,
+                "session": session,
+                "page": page,
+                "phase_labels": PHASE_LABELS,
+                **ctx,
+            },
         )
 
     @app.get("/data", response_class=HTMLResponse)
@@ -405,7 +412,9 @@ def create_app(
         )
 
     @app.get("/paper/{ident}", response_class=HTMLResponse)
-    def paper_detail(request: Request, ident: str):
+    def paper_detail(
+        request: Request, ident: str, run_session: date | None = None
+    ):
         if paper is None:
             raise HTTPException(status_code=404, detail="paper trading not enabled")
         account = paper.account(ident)
@@ -421,6 +430,10 @@ def create_app(
                 if row["benchmark_value"] is not None and initial else None
             ),
         } for row in equity]
+        run_sessions = paper.run_sessions(ident)
+        selected_run_session = run_session or (
+            run_sessions[0] if run_sessions else date.today()
+        )
         return TEMPLATES.TemplateResponse(
             request=request, name="paper_detail.html",
             context={
@@ -435,6 +448,10 @@ def create_app(
                 "chart_data": chart_data,
                 "market_health": service.heartbeat_status("market"),
                 "paper_health": service.heartbeat_status("paper"),
+                "runs": paper.strategy_runs(ident, selected_run_session),
+                "run_sessions": run_sessions,
+                "selected_run_session": selected_run_session,
+                "phase_labels": PHASE_LABELS,
             },
         )
 
@@ -720,6 +737,18 @@ def create_app(
         _require_session(session)
         return _page(request, "report.html", session, "report",
                      report_text=service.report(session).as_text())
+
+    @app.get("/s/{session}/runs", response_class=HTMLResponse)
+    def strategy_runs(request: Request, session: date):
+        _require_session(session)
+        return _page(
+            request,
+            "strategy_runs.html",
+            session,
+            "runs",
+            runs=service.strategy_runs(session),
+            run_sessions=service.run_sessions(),
+        )
 
     @app.get("/s/{session}/report.txt", response_class=PlainTextResponse)
     def report_text(session: date) -> str:

@@ -83,10 +83,17 @@ class StructuralStrategy(Strategy):
         today = ctx.now.date()
         previous = ctx.state.get("previous_session")
         if previous is None:
-            # 没有前一交易日就无从选股
+            ctx.report(note="没有上一交易日，无从选股")
             return
 
         picks = self._selection.select(today, previous)
+        funnel = getattr(self._selection, "funnel", None)
+        if funnel is not None:
+            ctx.report(
+                candidates=funnel.pool,
+                passed=funnel.allowed,
+                reasons=funnel.reasons,
+            )
         if not picks:
             return
 
@@ -104,6 +111,7 @@ class StructuralStrategy(Strategy):
                 log.info(
                     "structural.skip", symbol=budget.symbol, status=budget.status
                 )
+                ctx.report(reasons={f"预算不足（{budget.status}）": 1})
                 continue
             tags[budget.symbol] = budget.tag
             # 限价单而非市价单：原策略 `order(..., LimitOrderStyle(protect_price))`。

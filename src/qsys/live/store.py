@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -13,6 +13,7 @@ from qsys.core.portfolio import Portfolio, Position
 from qsys.core.trading import Fill, Order
 from qsys.core.types import Symbol
 from qsys.live.messages import AccountSnapshot, OrderStatusEvent
+from qsys.ops.strategy_log import RUN_COLUMNS, RunRecord, decode_run, run_values
 from qsys.paper.store import _decode, _encode
 
 
@@ -63,6 +64,19 @@ class LiveStore:
                     reason TEXT NOT NULL, at TEXT NOT NULL,
                     UNIQUE(order_id, at, reason)
                 );
+                CREATE TABLE IF NOT EXISTS live_strategy_runs (
+                    event_key TEXT PRIMARY KEY, session TEXT NOT NULL,
+                    phase TEXT NOT NULL, started_at TEXT NOT NULL,
+                    finished_at TEXT NOT NULL, duration_ms INTEGER NOT NULL,
+                    cash REAL NOT NULL, market_value REAL NOT NULL,
+                    total_value REAL NOT NULL, position_count INTEGER NOT NULL,
+                    candidates INTEGER, passed INTEGER,
+                    orders INTEGER NOT NULL, rejects INTEGER NOT NULL,
+                    summary TEXT NOT NULL, reasons_json TEXT NOT NULL DEFAULT '{}',
+                    note TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT ''
+                );
+                CREATE INDEX IF NOT EXISTS live_runs_session
+                    ON live_strategy_runs(session, started_at);
             """)
             columns = {row[1] for row in con.execute("PRAGMA table_info(live_runtime_fills)")}
             if "broker_order_id" not in columns:
@@ -83,6 +97,32 @@ class LiveStore:
     def exists(self) -> bool:
         with self._connect() as con:
             return con.execute("SELECT 1 FROM live_state WHERE id=1").fetchone() is not None
+
+    def record_run(self, record: RunRecord) -> None:
+        placeholders = ",".join("?" for _ in RUN_COLUMNS)
+        with self._connect() as con:
+            con.execute(
+                f"INSERT OR REPLACE INTO live_strategy_runs "
+                f"({','.join(RUN_COLUMNS)}) VALUES ({placeholders})",
+                run_values(record),
+            )
+
+    def strategy_runs(self, session: date) -> list[dict[str, Any]]:
+        with self._connect() as con:
+            rows = con.execute(
+                "SELECT * FROM live_strategy_runs WHERE session=? ORDER BY started_at",
+                (session.isoformat(),),
+            ).fetchall()
+        return [decode_run(row) for row in rows]
+
+    def run_sessions(self, limit: int = 60) -> list[date]:
+        with self._connect() as con:
+            rows = con.execute(
+                "SELECT DISTINCT session FROM live_strategy_runs "
+                "ORDER BY session DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [date.fromisoformat(row["session"]) for row in rows]
 
     def initialize(self, remote: AccountSnapshot) -> None:
         if self.exists():

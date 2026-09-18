@@ -6,6 +6,8 @@ from dataclasses import replace
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
+import structlog
+
 from qsys.backtest.runner import corporate_actions
 from qsys.core.clock import Phase
 from qsys.core.constraints import ConstraintContext
@@ -38,6 +40,10 @@ from qsys.strategy.schedule import Schedule
 from qsys.ops.alerts import AlertBus, LogAlertSink
 from qsys.ops.daily_report import build_daily_report
 from qsys.ops.journal import SessionJournal
+from qsys.ops.strategy_log import RunReport, build_record
+
+
+log = structlog.get_logger(__name__)
 
 
 class LivePreflightError(RuntimeError):
@@ -249,7 +255,7 @@ class LiveRuntime:
             is_suspended=quote.suspended,
         )
 
-    def _context(self, schedule=None):
+    def _context(self, schedule=None, report=None):
         view = PortfolioView.of(self.portfolio, self.last_prices)
         deployed = sum(
             position.total_qty * self.last_prices.get(symbol, position.avg_cost)
@@ -262,7 +268,7 @@ class LiveRuntime:
         api = OrderApi(view, self.last_prices)
         return Context(
             self.clock, self.feed, view, api, params=self.params,
-            state=self.state, market=self.market, schedule=schedule,
+            state=self.state, market=self.market, schedule=schedule, report=report,
         ), api
 
     def _events(self):
@@ -296,6 +302,12 @@ class LiveRuntime:
                     key, self.portfolio, self.state, self.last_prices, at=now,
                     detail="事件已过期，未补跑",
                 )
+                expired = RunReport()
+                expired.report(note="事件已过期，未补跑")
+                self._record_run(
+                    key, moment, phase, expired, datetime.now(),
+                    orders=0, rejects=0, error="",
+                )
                 continue
             self._run_event(key, moment, phase, skip_strategy=late)
         self._refresh_quotes(now)
@@ -303,96 +315,156 @@ class LiveRuntime:
     def _run_event(
         self, key: str, moment: datetime, phase: Phase, *, skip_strategy: bool
     ) -> None:
+        started = datetime.now()
+        report = RunReport()
         self.clock.set(moment)
-        if phase is Phase.SESSION_START:
-            self.turnover_today = 0.0
-            self.order_times.clear()
-            self.consecutive_rejects = 0
-            remote = self._remote_account()
-            self.day_start_value = float(remote.total_asset or self.day_start_value)
-            self.enabled_capital = min(
-                self.risk_config.enabled_capital, self.day_start_value
-            )
-            if not self._fixed_position_budget:
-                self.params["max_position_value"] = min(
-                    self.enabled_capital,
-                    self.day_start_value * self.risk_config.max_position_weight,
+        try:
+            if phase is Phase.SESSION_START:
+                self.turnover_today = 0.0
+                self.order_times.clear()
+                self.consecutive_rejects = 0
+                remote = self._remote_account()
+                self.day_start_value = float(remote.total_asset or self.day_start_value)
+                self.enabled_capital = min(
+                    self.risk_config.enabled_capital, self.day_start_value
                 )
-            self.store.set_day_start_value(self.day_start_value, at=moment)
-            settled = self.state.setdefault("live_settled_sessions", [])
-            session_key = moment.date().isoformat()
-            if session_key not in settled:
-                self.portfolio.unfreeze()
-                actions = corporate_actions(self.query, moment.date(), moment.date())
-                if moment.date() in actions:
-                    from qsys.backtest.corporate import apply_corporate_actions
-                    apply_corporate_actions(self.portfolio, actions[moment.date()])
-                settled.append(session_key)
-                # 券商盘前已完成除权除息；先把同样结算持久化，再做账户对账。
-                # 事件若因对账失败重试，也不会重复应用公司行动。
-                self.store.save(
-                    self.portfolio, self.state, self.last_prices, at=moment,
+                if not self._fixed_position_budget:
+                    self.params["max_position_value"] = min(
+                        self.enabled_capital,
+                        self.day_start_value * self.risk_config.max_position_weight,
+                    )
+                self.store.set_day_start_value(self.day_start_value, at=moment)
+                settled = self.state.setdefault("live_settled_sessions", [])
+                session_key = moment.date().isoformat()
+                if session_key not in settled:
+                    self.portfolio.unfreeze()
+                    actions = corporate_actions(self.query, moment.date(), moment.date())
+                    if moment.date() in actions:
+                        from qsys.backtest.corporate import apply_corporate_actions
+
+                        apply_corporate_actions(self.portfolio, actions[moment.date()])
+                    settled.append(session_key)
+                    # 事件若因对账失败重试，也不会重复应用公司行动。
+                    self.store.save(
+                        self.portfolio, self.state, self.last_prices, at=moment,
+                    )
+            self._preflight(require_market=not skip_strategy)
+            if skip_strategy:
+                report.report(note="仅完成日初结算；策略事件未补跑")
+                self.store.commit_event(
+                    key, self.portfolio, self.state, self.last_prices, at=moment,
+                    detail=report.note,
                 )
-        self._preflight(require_market=not skip_strategy)
-        if skip_strategy:
+                self._record_run(
+                    key, moment, phase, report, started,
+                    orders=0, rejects=0, error="",
+                )
+                return
+            ctx, api = self._context(report=report)
+            if phase is Phase.SESSION_START:
+                self.strategy.on_session_start(ctx)
+            elif phase is Phase.AUCTION:
+                self.strategy.on_auction(ctx)
+            elif phase is Phase.CHECKPOINT:
+                self.strategy.on_checkpoint(ctx, moment.time())
+            elif phase is Phase.BAR:
+                quotes = self.market.get([str(s) for s in self.universe])
+                bars = {
+                    Symbol.parse(symbol): _bar(quote, moment.date())
+                    for symbol, quote in quotes.items()
+                    if quote.price > 0 and not quote.suspended
+                }
+                for symbol, bar in bars.items():
+                    self.last_prices[symbol] = bar.close
+                self.strategy.on_bar(ctx, bars)
+            else:
+                self.strategy.on_session_end(ctx)
+            orders = self._flush(api, key, moment)
+            rejects = self._record_results()
+            if phase is Phase.SESSION_END:
+                self.broker.cancel_all()
+                if self.shadow:
+                    self.store.record_statuses(self.broker.poll_statuses())
+                remote = self._remote_account()
+                result = reconcile_positions(self.portfolio, remote, cash_tolerance=10.0)
+                # 影子意图从未到达券商，cancel_all 后自然没有真实在途委托。
+                open_orders = () if self.shadow else self.store.pending_orders()
+                eod_consistent = result.is_consistent and not open_orders
+                detail = result.summary()
+                if open_orders:
+                    detail += (
+                        f"; {len(open_orders)} orders still non-terminal after cancel request"
+                    )
+                self.journal.record_reconciliation(
+                    moment.date(), "eod", is_consistent=eod_consistent,
+                    cash_diff=result.cash_diff, n_mismatches=len(result.mismatches),
+                    detail=detail, at=remote.at,
+                )
+                market_value = sum(
+                    position.total_qty
+                    * self.last_prices.get(symbol, position.avg_cost)
+                    for symbol, position in self.portfolio.positions.items()
+                )
+                self.journal.record_equity(
+                    moment.date(), cash=self.portfolio.cash, market_value=market_value,
+                )
+                daily_report = build_daily_report(self.journal, moment.date())
+                publish = (
+                    self.alerts.info if daily_report.is_healthy else self.alerts.critical
+                )
+                publish(daily_report.headline, daily_report.as_text())
             self.store.commit_event(
-                key, self.portfolio, self.state, self.last_prices, at=moment,
-                detail="仅完成日初结算；策略事件未补跑",
+                key, self.portfolio, self.state, self.last_prices, at=moment
             )
-            return
-        ctx, api = self._context()
-        if phase is Phase.SESSION_START:
-            self.strategy.on_session_start(ctx)
-        elif phase is Phase.AUCTION:
-            self.strategy.on_auction(ctx)
-        elif phase is Phase.CHECKPOINT:
-            self.strategy.on_checkpoint(ctx, moment.time())
-        elif phase is Phase.BAR:
-            quotes = self.market.get([str(s) for s in self.universe])
-            bars = {
-                Symbol.parse(symbol): _bar(quote, moment.date())
-                for symbol, quote in quotes.items()
-                if quote.price > 0 and not quote.suspended
-            }
-            for symbol, bar in bars.items():
-                self.last_prices[symbol] = bar.close
-            self.strategy.on_bar(ctx, bars)
-        else:
-            self.strategy.on_session_end(ctx)
-        self._flush(api, key, moment)
-        if phase is Phase.SESSION_END:
-            self.broker.cancel_all()
-            if self.shadow:
-                self.store.record_statuses(self.broker.poll_statuses())
-        if phase is Phase.SESSION_END:
-            remote = self._remote_account()
-            result = reconcile_positions(self.portfolio, remote, cash_tolerance=10.0)
-            # 影子意图从未到达券商，cancel_all 后自然没有真实在途委托。
-            open_orders = () if self.shadow else self.store.pending_orders()
-            eod_consistent = result.is_consistent and not open_orders
-            detail = result.summary()
-            if open_orders:
-                detail += f"; {len(open_orders)} orders still non-terminal after cancel request"
-            self.journal.record_reconciliation(
-                moment.date(), "eod", is_consistent=eod_consistent,
-                cash_diff=result.cash_diff, n_mismatches=len(result.mismatches),
-                detail=detail, at=remote.at,
+            self._record_run(
+                key, moment, phase, report, started,
+                orders=orders, rejects=rejects, error="",
             )
+        except Exception as exc:
+            self._record_run(
+                key, moment, phase, report, started,
+                orders=0, rejects=0, error=str(exc),
+            )
+            raise
+
+    def _record_run(
+        self,
+        key: str,
+        moment: datetime,
+        phase: Phase,
+        report: RunReport,
+        started: datetime,
+        *,
+        orders: int,
+        rejects: int,
+        error: str,
+    ) -> None:
+        """写运行记录；记录失败只能告警，不能影响交易。"""
+        try:
             market_value = sum(
                 position.total_qty * self.last_prices.get(symbol, position.avg_cost)
                 for symbol, position in self.portfolio.positions.items()
             )
-            self.journal.record_equity(
-                moment.date(), cash=self.portfolio.cash, market_value=market_value,
+            self.store.record_run(
+                build_record(
+                    report,
+                    event_key=key,
+                    session=moment.date(),
+                    phase=phase.value,
+                    started_at=started,
+                    finished_at=datetime.now(),
+                    cash=self.portfolio.cash,
+                    market_value=market_value,
+                    position_count=len(self.portfolio.positions),
+                    orders=orders,
+                    rejects=rejects,
+                    error=error,
+                )
             )
-            report = build_daily_report(self.journal, moment.date())
-            publish = self.alerts.info if report.is_healthy else self.alerts.critical
-            publish(report.headline, report.as_text())
-        self.store.commit_event(
-            key, self.portfolio, self.state, self.last_prices, at=moment
-        )
+        except Exception as exc:
+            log.warning("strategy_run.record_failed", event_key=key, error=str(exc))
 
-    def _flush(self, api: OrderApi, event_key: str, moment: datetime) -> None:
+    def _flush(self, api: OrderApi, event_key: str, moment: datetime) -> int:
         orders = []
         for intent in api.drain():
             quote = self._quote(intent.symbol)
@@ -427,8 +499,9 @@ class LiveRuntime:
             event_key, orders,
             sent_ids=frozenset(order.order_id for order in self.broker.pending()),
         )
+        return len(orders)
 
-    def _record_results(self) -> None:
+    def _record_results(self) -> int:
         statuses = self.broker.poll_statuses()
         received_fills = self.broker.poll_fills()
         fills = tuple(fill for fill in received_fills if not self.store.fill_recorded(fill))
@@ -465,6 +538,7 @@ class LiveRuntime:
                 self.alerts.critical("实盘连续拒单熔断", reason)
         if fills:
             self.consecutive_rejects = 0
+        return len(rejects)
 
     def _refresh_quotes(self, now: datetime) -> None:
         symbols = {str(symbol) for symbol in self.portfolio.positions}
