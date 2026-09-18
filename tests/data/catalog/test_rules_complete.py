@@ -131,3 +131,31 @@ def test_arrival_waits_for_todays_auction_archive(warehouse, monkeypatch):
     assert _arrival_misses(_run("B4.arrival", current), warehouse).height == 0
     monkeypatch.setattr(rules_complete, "_now", lambda: datetime(2026, 9, 11, 16, 0))
     assert _arrival_misses(_run("B4.arrival", current), warehouse).height == 1
+
+
+def _write(dataset, arrow_schema, rows, warehouse):
+    frame = pl.DataFrame(rows)
+    frame = frame.with_columns([pl.lit(None).alias(n) for n in arrow_schema.names
+                                if n not in frame.columns])
+    warehouse.write(dataset, frame.select(arrow_schema.names).to_arrow().cast(arrow_schema),
+                    year=2026)
+
+
+def test_holes_explained_by_direct_suspension_are_not_reported(warehouse):
+    """2026 年生产 1593 个「空洞」全部是 suspend_d 有记录的停牌日，不是缺数据。"""
+    days = [date(2026, 9, d) for d in (7, 8, 9, 10)]
+    daily = [{"symbol": s, "dt": d, "close": 10.0} for s in ("000001.SZ", "000002.SZ")
+             for d in days]
+    # 000001 停牌 09-08（有直取记录）；000002 缺 09-09 却没有停牌记录
+    daily = [r for r in daily if (r["symbol"], r["dt"]) not in {
+        ("000001.SZ", days[1]), ("000002.SZ", days[2])}]
+    _write("tushare_daily", schema.TUSHARE_DAILY, daily, warehouse)
+    _write("suspend_daily", schema.SUSPEND_DAILY, [
+        {"symbol": "000001.SZ", "dt": days[1], "suspend_type": "S"},
+        {"symbol": "000002.SZ", "dt": days[2], "suspend_type": "R"},   # 复牌记录不能解释缺 bar
+    ], warehouse)
+    result = C.CHECKS["B2.holes"].run(C.CheckContext(WarehouseQuery(warehouse), warehouse,
+                                                    days[0], days[-1]))
+    assert result.violations == 1
+    assert result.sample.to_dicts() == [{"symbol": "000002.SZ", "dt": days[2]}]
+    assert "停牌" in result.detail

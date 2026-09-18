@@ -63,14 +63,23 @@ def _holes(ctx: CheckContext) -> CheckResult:
     daily = ctx.query.tushare_daily(None, ctx.start, ctx.end, columns=["symbol", "dt"])
     sessions = sorted(daily["dt"].unique().to_list()) if daily.height else []
     report = find_holes(ctx.warehouse, ctx.start, ctx.end, sessions=sessions or None)
-    checked = daily.height
-    return CheckResult(report.total, checked, f"发现 {report.total} 个内部股-日空洞",
-                       report.stock_days.head(5000) if report.total else None)
+    # 停牌日本来就没有日线：suspend_d 直取记录为 S（停牌）的股-日不算空洞。
+    # 复牌 R 不能解释缺 bar；suspend_daily 从 2022-08-04 起才有，更早的空洞照实报。
+    suspended = ctx.query.suspensions(None, ctx.start, ctx.end).filter(
+        pl.col("suspend_type") == "S"
+    ).select("symbol", "dt").unique()
+    holes = report.stock_days.join(suspended, on=["symbol", "dt"], how="anti")
+    explained = report.total - holes.height
+    return CheckResult(
+        holes.height, daily.height,
+        f"发现 {holes.height} 个无法解释的内部股-日空洞（另有 {explained} 个为直取停牌日，已扣除）",
+        holes.head(5000) if holes.height else None,
+    )
 
 
 register(Check("B2.holes", Category.COMPLETENESS, Scope.FULL,
                ("tushare_daily.dt", "tushare_daily.symbol"), (),
-               "每只标的首末记录之间不应有无法解释的交易日空洞", _holes))
+               "每只标的首末记录之间不应有无法解释的交易日空洞（直取停牌日除外）", _holes))
 
 
 def _null_rate(ctx: CheckContext) -> CheckResult:
