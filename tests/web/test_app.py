@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -7,8 +7,10 @@ from qsys.core.events import Reject
 from qsys.core.trading import Fill, Side
 from qsys.core.types import Market, Symbol
 from qsys.live.messages import AccountSnapshot, PositionSnapshot
+from qsys.live.store import LiveStore
 from qsys.live.transport import MemoryTransport
 from qsys.ops.journal import SessionJournal
+from qsys.ops.strategy_log import RunReport, build_record
 from qsys.web.app import create_app
 from qsys.web.config import WebConfig
 from qsys.web.views import MonitorService
@@ -134,3 +136,44 @@ def test_empty_journal_root_shows_a_placeholder(warehouse):
     assert r.status_code == 200
     assert "尚未产生" in r.text
     assert "行情网关" in r.text
+
+
+def test_run_log_page_lists_events_and_reasons(warehouse, tmp_path):
+    journal = SessionJournal(warehouse)
+    journal.record_equity(D, cash=50_000.0, market_value=0.0)
+    store = LiveStore(tmp_path / "live.sqlite3")
+    run_report = RunReport()
+    run_report.report(candidates=37, passed=2, reasons={"高开超过阈值": 12})
+    store.record_run(
+        build_record(
+            run_report,
+            event_key=f"{D}:auction:09:30:00",
+            session=D,
+            phase="auction",
+            started_at=datetime.combine(D, time(9, 30)),
+            finished_at=datetime.combine(D, time(9, 30, 1)),
+            cash=50_000.0,
+            market_value=0.0,
+            position_count=0,
+            orders=2,
+            rejects=0,
+        )
+    )
+    cfg = WebConfig()
+    web = TestClient(
+        create_app(MonitorService(journal, config=cfg, store=store), cfg)
+    )
+
+    page = web.get(f"/s/{D}/runs")
+
+    assert page.status_code == 200
+    assert "运行日志" in page.text
+    assert "候选 37 只 → 通过 2 只 → 下单 2 笔" in page.text
+    assert "高开超过阈值" in page.text and "12" in page.text
+    assert "竞价选股" in page.text
+
+
+def test_run_log_page_says_when_there_is_nothing(client):
+    page = client.get(f"/s/{D}/runs")
+    assert page.status_code == 200
+    assert "当日没有运行记录" in page.text

@@ -1,10 +1,11 @@
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
 from qsys.core.calendar import AShareCalendar
 from qsys.ops.journal import SessionJournal
+from qsys.ops.strategy_log import RunReport, build_record
 from qsys.paper.store import PaperStore
 from qsys.web.app import create_app
 from qsys.web.backtest_views import BacktestService
@@ -98,3 +99,59 @@ def test_paper_create_and_resume_refuse_without_a_calendar(warehouse, tmp_path):
     })
     assert response.status_code == 503
     assert "交易日历" in response.json()["detail"]
+
+
+def _account_with_run(warehouse, tmp_path, *, reasons, candidates, passed):
+    client, job = make_client(warehouse, tmp_path)
+    ident = client.post(
+        "/api/paper-accounts",
+        json={"backtest_id": job.id, "name": "运行日志", "cash": 100_000},
+    ).json()["id"]
+    if candidates is None:
+        return client, ident
+    day = date.today()
+    report = RunReport()
+    report.report(candidates=candidates, passed=passed, reasons=reasons)
+    PaperStore(tmp_path / "workbench.sqlite3").record_run(
+        ident,
+        build_record(
+            report,
+            event_key=f"{day}:auction:09:30:00",
+            session=day,
+            phase="auction",
+            started_at=datetime.combine(day, time(9, 30)),
+            finished_at=datetime.combine(day, time(9, 30, 1)),
+            cash=100_000.0,
+            market_value=0.0,
+            position_count=0,
+            orders=0,
+            rejects=0,
+        ),
+    )
+    return client, ident
+
+
+def test_paper_detail_shows_the_run_log(warehouse, tmp_path):
+    client, ident = _account_with_run(
+        warehouse,
+        tmp_path,
+        candidates=12,
+        passed=0,
+        reasons={"估值不达标": 12},
+    )
+
+    page = client.get(f"/paper/{ident}")
+
+    assert "运行日志" in page.text
+    assert "候选 12 只 → 通过 0 只，未下单" in page.text
+    assert "估值不达标" in page.text
+
+
+def test_paper_detail_run_log_empty_state(warehouse, tmp_path):
+    client, ident = _account_with_run(
+        warehouse, tmp_path, candidates=None, passed=None, reasons=None
+    )
+
+    page = client.get(f"/paper/{ident}")
+
+    assert "当日没有运行记录" in page.text

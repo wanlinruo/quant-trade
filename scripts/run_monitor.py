@@ -19,6 +19,7 @@ import uvicorn
 
 from qsys.data.storage import Warehouse
 from qsys.ops.journal import SessionJournal
+from qsys.live.store import LiveStore
 from qsys.web.app import create_app
 from qsys.web.backtest_views import BacktestService
 from qsys.web.catalog_views import CatalogService
@@ -40,6 +41,7 @@ def build_app(
     workspace_dir: Path | None = None,
     service_runs_dir: Path | None = None,
     tushare_config_path: str | None = None,
+    state_path: Path | None = None,
 ):
     warehouse = Warehouse(warehouse_root)
     journal = SessionJournal(warehouse)
@@ -67,7 +69,12 @@ def build_app(
     paper = PaperStore(workspace / "workbench.sqlite3")
     queue = BacktestQueue(workbench, warehouse_root, runs_root,
                           timeout_seconds=config.backtest_timeout_seconds)
-    monitor = MonitorService(journal, config=config, transport=transport)
+    monitor = MonitorService(
+        journal,
+        config=config,
+        transport=transport,
+        store=LiveStore(state_path or Path("var/shadow-state.sqlite3")),
+    )
     trading_calendar = _daily_trading_calendar(tushare_config_path or config_path)
     return create_app(
         monitor,
@@ -121,6 +128,11 @@ def main() -> int:
     )
     parser.add_argument("--service-runs", default="var/service-runs",
                         help="定时任务运行记录目录，服务管理页只读")
+    parser.add_argument(
+        "--state",
+        default="var/shadow-state.sqlite3",
+        help="影子盘状态库，实盘运行日志页面只读",
+    )
     parser.add_argument("--tushare-config", default=None,
                         help="只取 [tushare] 凭据查交易日历；不给则用 --config。"
                              "测试环境用它避免连到生产 Redis")
@@ -133,9 +145,11 @@ def main() -> int:
         )
 
     config = WebConfig(host=args.host, port=args.port)
-    app = build_app(Path(args.warehouse), config, args.config,
-                    Path(args.runs), Path(args.workspace), Path(args.service_runs),
-                    args.tushare_config)
+    app = build_app(
+        Path(args.warehouse), config, args.config,
+        Path(args.runs), Path(args.workspace), Path(args.service_runs),
+        args.tushare_config, Path(args.state),
+    )
     log.info("monitor.started", host=args.host, port=args.port)
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
     return 0
