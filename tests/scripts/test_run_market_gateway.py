@@ -1,5 +1,8 @@
+import sys
 from datetime import date, datetime
+from types import SimpleNamespace
 
+from scripts import run_market_gateway
 from scripts.run_market_gateway import TradingSessionCache
 
 
@@ -44,3 +47,24 @@ def test_calendar_clears_previous_day_before_refreshing_the_new_day():
     assert cache.refresh_if_due(
         datetime(2026, 9, 19, 0), 36_000, lambda *_: []
     ) == []
+
+
+def test_market_overview_requests_the_qmt_full_a_share_sector(monkeypatch):
+    sectors = []
+    xtdata = SimpleNamespace(
+        get_stock_list_in_sector=lambda name: sectors.append(name) or [
+            "600001.SH", "688001.SH", "920001.BJ",
+        ]
+    )
+    monkeypatch.setitem(sys.modules, "xtquant", SimpleNamespace(xtdata=xtdata))
+    requested = []
+    monkeypatch.setattr(
+        run_market_gateway, "qmt_provider",
+        lambda symbols: requested.extend(symbols) or {},
+    )
+
+    run_market_gateway.qmt_market_overview()
+
+    assert sectors == ["沪深京A股"]
+    assert "688001.SH" in requested
+    assert "920001.BJ" in requested
