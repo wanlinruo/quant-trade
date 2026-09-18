@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 
 from qsys.live.messages import AccountSnapshot, PositionSnapshot
 from qsys.live.store import LiveStore
@@ -67,3 +67,50 @@ def test_locally_rejected_order_never_gets_a_sent_transition(tmp_path):
     )
     store.record_orders("auction", [order], sent_ids=frozenset())
     assert store.order_transitions("blocked") == ("created",)
+
+
+def test_strategy_runs_round_trip_and_rerun_overwrites(tmp_path):
+    from qsys.ops.strategy_log import RunReport, build_record
+
+    store = LiveStore(tmp_path / "state.sqlite3")
+    day = date(2026, 9, 18)
+    report = RunReport()
+    report.report(candidates=37, passed=2, reasons={"高开超过阈值": 12})
+    base = dict(
+        event_key=f"{day}:auction:09:30:00",
+        session=day,
+        phase="auction",
+        started_at=datetime(2026, 9, 18, 9, 30),
+        cash=50_000.0,
+        market_value=0.0,
+        position_count=0,
+        rejects=0,
+    )
+    store.record_run(
+        build_record(
+            report,
+            finished_at=datetime(2026, 9, 18, 9, 30, 1),
+            orders=2,
+            **base,
+        )
+    )
+
+    rows = store.strategy_runs(day)
+    assert len(rows) == 1
+    assert rows[0]["summary"] == "候选 37 只 → 通过 2 只 → 下单 2 笔"
+    assert rows[0]["reasons"] == {"高开超过阈值": 12}
+    assert rows[0]["candidates"] == 37 and rows[0]["phase"] == "auction"
+
+    store.record_run(
+        build_record(
+            RunReport(),
+            finished_at=datetime(2026, 9, 18, 9, 30, 2),
+            orders=0,
+            **base,
+        )
+    )
+    rows = store.strategy_runs(day)
+    assert len(rows) == 1 and rows[0]["orders"] == 0
+    assert rows[0]["candidates"] is None
+    assert store.run_sessions() == [day]
+    assert store.strategy_runs(date(2026, 9, 17)) == []

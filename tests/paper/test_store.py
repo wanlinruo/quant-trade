@@ -87,3 +87,33 @@ def test_resume_without_an_activation_is_refused(tmp_path):
     store.transition(account.id, "pause")
     with pytest.raises(ValueError, match="生效日"):
         store.transition(account.id, "resume")
+
+
+def test_strategy_runs_are_per_account(tmp_path):
+    from qsys.ops.strategy_log import RunReport, build_record
+
+    store = PaperStore(tmp_path / "workbench.sqlite3")
+    day = date(2026, 9, 18)
+    report = RunReport()
+    report.report(candidates=12, passed=0, reasons={"估值不达标": 12})
+    record = build_record(
+        report,
+        event_key=f"{day}:auction:09:30:00",
+        session=day,
+        phase="auction",
+        started_at=datetime(2026, 9, 18, 9, 30),
+        finished_at=datetime(2026, 9, 18, 9, 30, 1),
+        cash=100_000.0,
+        market_value=0.0,
+        position_count=0,
+        orders=0,
+        rejects=0,
+    )
+    store.record_run("acct-a", record)
+
+    rows = store.strategy_runs("acct-a", day)
+    assert len(rows) == 1
+    assert rows[0]["summary"] == "候选 12 只 → 通过 0 只，未下单"
+    assert rows[0]["reasons"] == {"估值不达标": 12}
+    assert store.strategy_runs("acct-b", day) == []
+    assert store.run_sessions("acct-a") == [day]
