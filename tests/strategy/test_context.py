@@ -147,6 +147,21 @@ def test_schedule_is_there_when_the_engine_passes_one():
     assert ctx.schedule.declared is True
 
 
+def test_report_reaches_the_injected_run_report():
+    from qsys.ops.strategy_log import RunReport
+
+    report = RunReport()
+    ctx = Context(_Clock(), None, None, None, params={}, state={}, report=report)
+    ctx.report(candidates=37, passed=2, reasons={"高开超过阈值": 12})
+    assert report.candidates == 37 and report.passed == 2
+    assert report.reasons == {"高开超过阈值": 12}
+
+
+def test_report_without_injection_is_a_no_op():
+    ctx = Context(_Clock(), None, None, None, params={}, state={})
+    ctx.report(note="回测与单测里没有记录器，也不能崩")
+
+
 class _Clock:
     @property
     def now(self):
