@@ -20,6 +20,9 @@ from datetime import date, datetime, time
 
 import polars as pl
 
+from qsys.data.catalog import REGISTRY
+from qsys.data.catalog.checks import CHECKS as CATALOG_CHECKS
+from qsys.data.catalog.checks import Scope
 from qsys.data.pipeline.auction import missing_auction_days
 from qsys.data.pipeline.candidates import candidate_stock_days
 from qsys.data.query import WarehouseQuery
@@ -34,6 +37,11 @@ DAILY_MIN_RATIO = 0.98
 MINUTE_BARS_PER_DAY = 241
 VOLUME_TOLERANCE_LOTS = 1.0
 PRODUCTION_BOARDS = {"main", "gem", "star"}
+# 指标字典应当全部被验证；全量规则必须真的跑过，不能悄悄退回成只跑增量
+EXPECTED_METRIC_IDS = frozenset(REGISTRY)
+FULL_SCOPE_CHECK_IDS = frozenset(
+    check.id for check in CATALOG_CHECKS.values() if check.scope is Scope.FULL
+)
 SAMPLE_LIMIT = 20
 NOT_RUN_NOTE = "数据质检成功，但服务未执行"
 
@@ -226,6 +234,74 @@ def _metric_checks(ctx: CheckContext) -> CheckResult:
     return CheckResult(OK, "阻断级规则全部通过", f"{latest.height} 项全部通过", rows=latest.height)
 
 
+def _today_results(ctx: CheckContext) -> pl.DataFrame:
+    """当日最后一次验证写下的全部结果。"""
+    frame = ctx.query.metric_checks()
+    if frame.height == 0:
+        return frame
+    today = frame.filter(pl.col("scope_end") == ctx.day)
+    if today.height == 0:
+        return today
+    return today.filter(pl.col("run_id") == today["run_id"].max())
+
+
+def _catalog_verify_ran(ctx: CheckContext) -> CheckResult:
+    """没有运行记录时改验它该产出的结果，与其他任务同一口径。"""
+    run = ctx.last_run("catalog-verify")
+    if run is None:
+        results = _today_results(ctx)
+        data = (CheckResult(OK, "", f"当日 {results.height} 条结果", rows=results.height)
+                if results.height else
+                CheckResult(BAD, "", "当日没有验证结果", rows=0))
+        return _judge_data_without_run("当日跑过指标字典验证", data)
+    step = next((s for s in run.get("steps", []) if s.get("table") == "metric_checks"), None)
+    if step is None or step.get("status") not in (SUCCEEDED, SKIPPED):
+        return CheckResult(BAD, "当日跑过指标字典验证",
+                           "未执行" if step is None else f"步骤 {step.get('status')}",
+                           (step or {}).get("detail", "") or run.get("error", ""))
+    if step.get("status") == SKIPPED:
+        # 与同步撞车时会主动跳过；结果得由同步那次的增量补上，否则不算数
+        results = _today_results(ctx)
+        return _judge_data_without_run(
+            "当日跑过指标字典验证",
+            CheckResult(OK, "", f"验证跳过（{step.get('detail', '')}），"
+                        f"当日另有 {results.height} 条结果", rows=results.height)
+            if results.height else CheckResult(BAD, "", "验证跳过且当日没有结果", rows=0),
+        )
+    rows = step.get("rows") or 0
+    return CheckResult(OK, "当日跑过指标字典验证",
+                       f"{step.get('finished_at', '')[11:]} 完成，{rows} 条结果", rows=rows)
+
+
+def _catalog_verify_covers_metrics(ctx: CheckContext) -> CheckResult:
+    results = _today_results(ctx)
+    if results.height == 0:
+        return CheckResult(BAD, f"覆盖字典里 {len(EXPECTED_METRIC_IDS)} 个指标",
+                           "当日没有验证结果", rows=0)
+    covered = set(results["metric_id"].to_list())
+    missing = EXPECTED_METRIC_IDS - covered
+    if missing:
+        return CheckResult(BAD, f"覆盖字典里 {len(EXPECTED_METRIC_IDS)} 个指标",
+                           f"缺 {len(missing)} 个", _samples(missing), rows=len(covered))
+    return CheckResult(OK, f"覆盖字典里 {len(EXPECTED_METRIC_IDS)} 个指标",
+                       f"{len(covered)} 个，全覆盖", rows=len(covered))
+
+
+def _catalog_verify_ran_full_scope(ctx: CheckContext) -> CheckResult:
+    """全量规则从 2026-09-18 起才纳入每日执行，退回只跑增量必须能被发现。"""
+    results = _today_results(ctx)
+    if results.height == 0:
+        return CheckResult(BAD, f"{len(FULL_SCOPE_CHECK_IDS)} 条全量规则都执行",
+                           "当日没有验证结果", rows=0)
+    ran = set(results["check_id"].to_list()) & FULL_SCOPE_CHECK_IDS
+    missing = FULL_SCOPE_CHECK_IDS - ran
+    if missing:
+        return CheckResult(BAD, f"{len(FULL_SCOPE_CHECK_IDS)} 条全量规则都执行",
+                           f"缺 {len(missing)} 条", _samples(missing), rows=len(ran))
+    return CheckResult(OK, f"{len(FULL_SCOPE_CHECK_IDS)} 条全量规则都执行",
+                       f"{len(ran)} 条，全部执行", rows=len(ran))
+
+
 # ---- 盘前涨跌停价 ----
 
 def _premarket_rows(ctx: CheckContext) -> CheckResult:
@@ -334,7 +410,12 @@ CHECKS: tuple[ServiceCheck, ...] = (
     ServiceCheck("tushare-sync", "市场广度到货", "market_regime", _regime_arrived),
     ServiceCheck("tushare-sync", "估值覆盖日线", "valuation_snapshot", _valuation_covers_daily),
     ServiceCheck("tushare-sync", "退市整理期池与 namechange 一致", "delisting_pool", _delisting_pool),
-    ServiceCheck("tushare-sync", "增量质检阻断项", "metric_checks", _metric_checks),
+    ServiceCheck("catalog-verify", "当日验证已执行", "metric_checks", _catalog_verify_ran),
+    ServiceCheck("catalog-verify", "覆盖全部指标", "metric_checks",
+                 _catalog_verify_covers_metrics),
+    ServiceCheck("catalog-verify", "全量规则已执行", "metric_checks",
+                 _catalog_verify_ran_full_scope),
+    ServiceCheck("catalog-verify", "阻断级规则全部通过", "metric_checks", _metric_checks),
 )
 
 

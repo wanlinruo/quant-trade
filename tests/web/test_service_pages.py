@@ -171,3 +171,19 @@ def test_missed_service_stays_missed_while_its_data_check_fails(tmp_path, monkey
     record(tmp_path, "service-checks", datetime(2026, 9, 17, 20, 0), check_run(
         day, ("premarket-limits｜开盘前取到当日涨跌停价", "failed")), monkeypatch)
     assert states(console(tmp_path).board(14), "premarket-limits")[day] == "missed"
+
+
+def test_runs_land_on_the_session_they_checked_not_the_day_they_started(
+        tmp_path, monkeypatch):
+    """09-18 早上补跑的是 09-17 那天的活，格子必须记在 09-17。"""
+    session = date(2026, 9, 17)
+    record(tmp_path, "daily-archive", datetime(2026, 9, 17, 15, 40), fail_step, monkeypatch)
+    record(tmp_path, "daily-archive", datetime(2026, 9, 18, 9, 43),
+           lambda run: setattr(run, "session", session), monkeypatch)
+    next_morning = ServiceConsole(
+        tmp_path, calendar=lambda: AShareCalendar(SESSIONS),
+        systemd=lambda unit: {}, now=lambda: datetime(2026, 9, 18, 12, 0),
+    )
+    got = states(next_morning.board(14), "daily-archive")
+    assert got[session] == "fixed"                 # 当天失败、次日补跑成功
+    assert got[date(2026, 9, 18)] == "closed"      # 补跑那天不是交易日，没有它自己的活

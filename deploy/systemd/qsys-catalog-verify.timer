@@ -1,0 +1,11 @@
+[Unit]
+Description=Verify the metric catalog after the evening sync
+
+[Timer]
+# Tushare 同步 19:00 补跑实测 19:04 结束；19:40 验证，20:00 服务质检读它的结果。
+# 非交易日由脚本查 trade_cal 后记为跳过。
+OnCalendar=Mon..Fri 19:40 Asia/Shanghai
+Persistent=true
+
+[Install]
+WantedBy=timers.target
