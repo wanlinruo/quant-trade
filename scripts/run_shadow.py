@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 import structlog
@@ -14,6 +15,7 @@ from qsys.live.config import load_deploy_config
 from qsys.live.redis_transport import RedisTransport
 from qsys.live.runtime import LiveRuntime
 from qsys.live.store import LiveStore
+from qsys.live.tick_guard import TickFailureGuard
 from qsys.ops.alerts import AlertBus, LogAlertSink, WebhookAlertSink
 from qsys.paper.calendar import load_trading_calendar
 from qsys.paper.quotes import QuoteClient
@@ -42,20 +44,27 @@ def main() -> int:
         sinks.append(WebhookAlertSink(
             config.alerts.webhook_url, timeout=config.alerts.timeout_seconds
         ))
+    alerts = AlertBus(sinks)
     runtime = LiveRuntime(
         Path(args.strategy), Path(args.warehouse), load_trading_calendar(args.config),
         QuoteClient(transport, config.streams, consumer="shadow-core"),
         transport, config.streams, LiveStore(args.state),
         local_kill_path=Path("var/SHADOW_KILL"),
-        alerts=AlertBus(sinks), risk=config.risk, shadow=True,
+        alerts=alerts, risk=config.risk, shadow=True,
     )
+    guard = TickFailureGuard(alerts)
     with single_instance(args.lock):
         log.info("shadow_core.started", strategy=args.strategy)
         while True:
             try:
                 runtime.tick()
             except Exception as exc:
-                log.error("shadow_core.tick_failed", error=str(exc))
+                # 每秒重复同一条错误会把日志淹掉（2026-09-18 刷了 2 万条）：
+                # 降频打印，持续失败由 guard 报一次告警。
+                if guard.failed(str(exc), now=datetime.now()):
+                    log.error("shadow_core.tick_failed", error=str(exc))
+            else:
+                guard.succeeded(now=datetime.now())
             time.sleep(max(0.2, args.poll))
 
 
