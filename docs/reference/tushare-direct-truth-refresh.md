@@ -13,6 +13,7 @@ ST 真值。策略生产区间从 2023-01-01 开始，因此可以完整替代
 |---|---|---|
 | ST 状态 | `stock_st_daily.is_st` | `paid_daily.name` / `namechange` |
 | 涨跌停价 | `price_limits_daily` (`stk_limit`) | `daily_flags` 计算值 |
+| 收盘封板／炸板 | 非 ST：`limit_list_daily` (`limit_list_d` U/Z)；ST：价格口径 | 仅凭 OHLC 判断 |
 | 停牌 | `suspend_daily` (`suspend_d`) | 无显式策略过滤 |
 | 市值、流通市值、换手率 | `tushare_daily` (`daily_basic`) | 收盘价 × QMT 股本反算 |
 
@@ -57,7 +58,8 @@ uv run python scripts/cleanup_legacy_daily.py \
 
 1. 每个 `tushare_daily(symbol, dt)` 都有一个 `stock_st_daily` 键。
 2. `daily_flags.st_source` 在新覆盖区间全部为 `stock_st`。
-3. 涨跌停价优先来自 `price_limits_daily`；停牌标的在选股前剔除。
+3. 涨跌停价来自 `price_limits_daily`；非 ST 封板／炸板优先来自
+   `limit_list_daily` 的 U/Z，不能只凭 `close == limit_up` 宣称封板；停牌标的在选股前剔除。
 4. 估值与 `daily_basic` 只有元到亿元的 `1e8` 单位差，不允许股本反算。
 5. ST、首板、炸板和生态因子差异形成逐键报告后才清理旧源。
 6. 清理日志保存文件路径、字节数和 SHA256；闸门失败不删除任何目录。

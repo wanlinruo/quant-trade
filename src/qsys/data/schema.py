@@ -138,7 +138,7 @@ DAILY_FLAGS = pa.schema(
         ("adj_prev_close", pa.float64()),
         ("limit_up", pa.float64()),
         ("limit_down", pa.float64()),
-        ("is_limit_up", pa.bool_()),
+        ("is_limit_up", pa.bool_()),  # 封板：非 ST 优先取 limit_list_d 的 U/Z
         ("is_limit_down", pa.bool_()),
         ("touched_limit_up", pa.bool_()),  # 盘中触及涨停（含封住）
         ("is_broken_board", pa.bool_()),  # 炸板：触及但未封住

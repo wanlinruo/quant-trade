@@ -11,15 +11,9 @@
 `prior_limitup_nextday_return` 要看昨日的涨停状态，跨年那一天没有回看
 就会算空。
 
-股票池有两层过滤。第一层 `_in_breadth_universe` 固定排除科创板与北交所，
-沿用原策略 `filter_kcbj_stock` 的 4/8/68 前缀口径；第二层 `_keep_boards`
-按调用方传入的 `boards` 进一步取交集。第二层还堵住了原前缀表漏掉的 920
-号段（北交所 2023 年启用）。`boards` 不能把第一层已经排除的板块加回来，
-即便包含 `star`，科创板仍然不会进入广度股票池。
-
-原前缀口径不排 B 股（900/200），而生产调用默认 `boards=main,gem,star`
-又会把 `bshare` 排除，两层语义并不完全一致。2026-09-09 实测新旧生产
-日线中 B 股均为 0，只记录为未来数据源扩容风险，不在本次合并两层口径。
+生产口径是全 A 股：主板、创业板、科创板、北交所与 ST 均纳入。策略候选池
+是否可交易由 `strategy.structural.universe` 独立判断，不能反向裁剪市场因子。
+`boards` 仅保留给研究或对账时显式构建子市场口径，生产调用不传。
 
 `index_ma20_slope_5d` 取自沪深 300 指数日线（`index_bars`）：
 MA20 相对 5 个交易日前的 MA20 的变化率。**没有指数数据时留空而不是填 0**——
@@ -46,9 +40,6 @@ _LOOKBACK_DAYS = 30
 # 日收益取整位数。见 _ret_1d 的说明。
 _RET_PRECISION = 12
 
-# 与原策略 filter_kcbj_stock 一致：4/8 开头是北交所，68 开头是科创板
-EXCLUDED_CODE_PREFIXES = ("4", "8", "68")
-
 _REGIME_COLUMNS = [
     "dt",
     "limit_up_count",
@@ -69,12 +60,7 @@ _REGIME_COLUMNS = [
 
 
 def _keep_boards(frame: pl.DataFrame, boards: set[str] | None) -> pl.DataFrame:
-    """在固定广度股票池之上按板块取交集。
-
-    广度因子的分母就是这个池子。付费源比旧表多 343 只北交所，不过滤会让
-    market_advance_ratio 在换源当天静默跳变而没有任何地方报错。此函数只会
-    进一步缩小股票池，不能恢复 `_in_breadth_universe` 已排除的板块。
-    """
+    """研究或对账时按板块取子集；生产不传，保持全 A 股。"""
     if boards is None or frame.height == 0:
         return frame
     return frame.filter(
@@ -137,14 +123,11 @@ def build_market_regime(
 
 
 def _in_breadth_universe(frame: pl.DataFrame) -> pl.DataFrame:
-    """剔除科创板与北交所。"""
+    """保留全部 A 股板块，仅排除外币计价的沪深 B 股。"""
     if frame.height == 0:
         return frame
     code = pl.col("symbol").str.split(".").list.first()
-    excluded = code.str.starts_with(EXCLUDED_CODE_PREFIXES[0])
-    for prefix in EXCLUDED_CODE_PREFIXES[1:]:
-        excluded = excluded | code.str.starts_with(prefix)
-    return frame.filter(~excluded)
+    return frame.filter(~code.str.starts_with("900") & ~code.str.starts_with("200"))
 
 
 def _aggregate(

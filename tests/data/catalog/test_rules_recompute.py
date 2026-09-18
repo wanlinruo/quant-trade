@@ -91,9 +91,23 @@ def test_limit_up_missing_while_a_direct_price_exists_is_reported(ctx, warehouse
 
 def test_first_board_uses_previous_session(ctx, warehouse):
     _flags([
-        {"dt": D[0], "symbol": "600036.SH", "is_limit_up": False, "is_first_board": False},
-        {"dt": D[1], "symbol": "600036.SH", "is_limit_up": True, "is_first_board": True},
+        {"dt": D[0], "symbol": "600036.SH", "limit_up": 11.0, "is_st": False,
+         "is_limit_up": False, "is_first_board": False},
+        {"dt": D[1], "symbol": "600036.SH", "limit_up": 11.0, "is_st": False,
+         "is_limit_up": True, "is_first_board": True},
     ], warehouse)
+    _daily([
+        {"dt": D[0], "symbol": "600036.SH", "high": 10.0, "close": 10.0},
+        {"dt": D[1], "symbol": "600036.SH", "high": 11.0, "close": 11.0},
+    ], warehouse)
+    listed = pl.DataFrame([{
+        "symbol": "600036.SH", "dt": D[1], "limit_type": "U",
+        "limit_times": 1, "open_times": 0, "first_time": "09:30",
+        "fd_amount": 0.0, "limit_amount": 0.0, "float_mv": 0.0,
+    }]).select(schema.LIMIT_LIST_DAILY.names)
+    warehouse.write(
+        "limit_list_daily", listed.to_arrow().cast(schema.LIMIT_LIST_DAILY), year=2026
+    )
     row = _run(ctx, "A2.recompute.is_first_board")
     assert row["passed"] is True and row["checked_rows"] == 2
 

@@ -20,9 +20,6 @@ from qsys.live.messages import (
     QuoteSnapshot,
 )
 from qsys.live.transport import Transport
-from qsys.markets.ashare import board_of
-
-
 MARKET_INDICES = {
     "000001.SH": "上证指数",
     "399001.SZ": "深证成指",
@@ -242,9 +239,6 @@ def build_market_overview(
     for symbol, quote in quotes.items():
         if symbol in MARKET_INDICES or quote.suspended:
             continue
-        code = symbol.partition(".")[0]
-        if board_of(code) not in {"main", "gem"}:
-            continue
         if quote.price <= 0 or quote.prev_close <= 0:
             continue
         stocks.append(quote)
@@ -255,12 +249,19 @@ def build_market_overview(
     flat = len(returns) - advance - decline
     priced = [((float(limits[q.symbol][0]), float(limits[q.symbol][1])), q)
               for q in stocks if q.symbol in limits]
-    limit_up = sum(q.price >= upper - 1e-6 for (upper, _), q in priced)
-    limit_down = sum(q.price <= lower + 1e-6 for (_, lower), q in priced)
+    # 价格落在涨停价但卖一仍有余量，不是封板（002631.SZ 2026-09-18）。
+    # QMT 未提供盘口量时字段默认 0，此时仍退化为价格口径；一旦有五档数据，
+    # 封板必须同时满足卖一无待成交量。跌停对称要求买一无待成交量。
+    sealed_up = [q.price >= upper - 1e-6 and q.ask1_volume <= 0
+                 for (upper, _), q in priced]
+    sealed_down = [q.price <= lower + 1e-6 and q.bid1_volume <= 0
+                   for (_, lower), q in priced]
+    limit_up = sum(sealed_up)
+    limit_down = sum(sealed_down)
     touched = sum(q.high >= upper - 1e-6 for (upper, _), q in priced)
     broken = sum(
-        q.high >= upper - 1e-6 and q.price < upper - 1e-6
-        for (upper, _), q in priced
+        q.high >= upper - 1e-6 and not is_sealed
+        for ((upper, _), q), is_sealed in zip(priced, sealed_up, strict=True)
     )
     directional = advance + decline
     return MarketOverviewSnapshot(

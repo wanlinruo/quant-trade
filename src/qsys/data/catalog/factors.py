@@ -1,7 +1,8 @@
 """因子类指标：market_regime 15 条和策略侧 10 个不落盘决策量。
 
-因子与普通派生的边界是自由参数或口径选择。尤其是广度股票池必须成为
-结构化参数：D-3 的公式没有错，错的是分母池子，单验公式发现不了它。
+因子与普通派生的边界是自由参数或口径选择。尤其是市场股票池必须成为
+结构化参数：当前生产口径覆盖主板、创业板、科创板、北交所与 ST；策略
+可交易范围由下游独立筛选。
 """
 
 from __future__ import annotations
@@ -10,9 +11,9 @@ from qsys.data.catalog.types import Computed, Kind, Metric, MetricStatus, Validi
 
 DATASETS = frozenset({"market_regime"})
 
-_BREADTH = "先排除代码前缀 4/8/68，再与 boards=main,gem,star 取交集"
+_BREADTH = "全 A 股：主板、创业板、科创板、北交所与 ST；排除沪深 B 股"
 _BREADTH_PARAMS = (("universe", _BREADTH), ("return_precision", 12))
-_BREADTH_ISSUES = ("D-3", "D-5")
+_BREADTH_ISSUES: tuple[str, ...] = ()
 _GATE_CONSUMERS = ("S6 分类", "S7 Gate")
 
 
@@ -142,6 +143,7 @@ METRICS: tuple[Metric, ...] = (
         "上涨数 / max(上涨+下跌, 1)；平盘与 null 均不进分母；"
         "ret_1d=round(close/prev_close*日因子-1, 12)",
         ("A2.recompute.market_advance_ratio",),
+        issues=("D-2",),
         gate_input=True,
     ),
     _regime(
@@ -151,6 +153,7 @@ METRICS: tuple[Metric, ...] = (
         "median(round(close/prev_close*(cum_factor(t)/cum_factor(t-1))-1, 12))；"
         "没有因子记录时日因子按 1",
         ("A2.recompute.market_median_return_1d",),
+        issues=("D-2",),
         gate_input=True,
     ),
     _regime(
@@ -166,6 +169,7 @@ METRICS: tuple[Metric, ...] = (
         ("daily_flags.is_limit_up",) + _RETURN_UPSTREAM,
         "每只标的取昨日 is_limit_up；筛出 True 后对今日 ret_1d 求均值",
         ("A2.recompute.prior_limitup_nextday_return_mean",),
+        issues=("D-2",),
         gate_input=True,
     ),
     _regime(
@@ -174,6 +178,7 @@ METRICS: tuple[Metric, ...] = (
         ("daily_flags.is_limit_up",) + _RETURN_UPSTREAM,
         "每只标的取昨日 is_limit_up；筛出 True 后对今日 ret_1d 求中位数",
         ("A2.recompute.prior_limitup_nextday_return_median",),
+        issues=("D-2",),
     ),
     _regime(
         "valid_stock_count",

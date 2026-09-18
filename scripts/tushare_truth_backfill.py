@@ -94,10 +94,10 @@ def main() -> int:
 
     if not args.skip_derived and days:
         totals["daily_flags"] = build_daily_flags(
-            warehouse, args.start, args.end, boards={"main", "gem", "star"}
+            warehouse, args.start, args.end, boards=None
         )
         totals["market_regime"] = build_market_regime(
-            warehouse, args.start, args.end, boards={"main", "gem", "star"}
+            warehouse, args.start, args.end, boards=None
         )
         totals["valuation_snapshot"] = build_valuation(
             warehouse, args.start, args.end
