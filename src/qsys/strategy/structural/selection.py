@@ -13,6 +13,7 @@ continue 用于固定生命周期语义。`LOW_MAIN` 的竞价量过滤没过时
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, time
@@ -152,15 +153,14 @@ class StructuralSelection:
             self.decisions.append(decided)
             if decided.allow:
                 picks.append(decided)
-        rejected: dict[str, int] = {}
-        for decision in self.decisions:
-            if not decision.allow:
-                rejected[decision.reason] = rejected.get(decision.reason, 0) + 1
+        rejected = Counter(
+            decision.reason for decision in self.decisions if not decision.allow
+        )
         self.funnel = SelectionFunnel(
             pool=len(pool.first_boards),
             routed=len(self.decisions),
             allowed=len(picks),
-            reasons=rejected,
+            reasons=dict(rejected),
         )
         return picks
 
