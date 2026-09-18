@@ -7,11 +7,12 @@ trader adapter, or order API, so the quote process cannot reach real funds.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import time
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
-from typing import Callable
+from typing import Callable, Sequence
 
 import structlog
 
@@ -103,15 +104,24 @@ def qmt_limit_detail(symbols):
     return out
 
 
-def qmt_market_overview():
+def qmt_market_overview(extra_symbols: Sequence[str] = ()):
     """Fetch the live A-share breadth universe plus the four headline indices."""
     from xtquant import xtdata
 
     # QMT 的全 A 股权威集合名是「沪深京A股」；「沪深A股」不含北交所，
     # 「北交所」不是有效集合名（2026-09-19 节点实测分别为 5218 / 0 只）。
+    # 板块成分缓存可能滞后于新股上市（920298.BJ 上市三天后仍未入集合），
+    # 因此与盘前 Tushare stk_limit 的全市场代码取并集；价格仍全部读取 QMT。
     symbols = list(xtdata.get_stock_list_in_sector("沪深京A股") or [])
+    symbols.extend(extra_symbols)
     symbols.extend(("000001.SH", "399001.SZ", "399006.SZ", "000300.SH"))
     return qmt_provider(sorted(set(symbols)))
+
+
+def published_limit_symbols(transport, streams, day: date) -> list[str]:
+    """Return the current session's authoritative A-share symbol universe."""
+    raw = transport.get_key(f"{streams.price_limits}:{day:%Y%m%d}")
+    return sorted(json.loads(raw)) if raw else []
 
 
 def qmt_trading_sessions(start: date, end: date) -> list[date]:
@@ -149,7 +159,8 @@ def main() -> int:
     parser.add_argument("--calendar-refresh-interval", type=float, default=300.0)
     args = parser.parse_args()
     cfg = load_deploy_config(args.config)
-    gateway = MarketGateway(RedisTransport.from_config(cfg), cfg.streams, qmt_provider)
+    transport = RedisTransport.from_config(cfg)
+    gateway = MarketGateway(transport, cfg.streams, qmt_provider)
     log.info("market_gateway.started")
     next_overview = 0.0
     next_schedule = 0.0
@@ -174,7 +185,9 @@ def main() -> int:
                 gateway.publish_schedule(schedule)
             if schedule.is_open and monotonic >= next_overview:
                 next_overview = monotonic + max(5.0, args.overview_interval)
-                gateway.publish_overview(qmt_market_overview())
+                gateway.publish_overview(qmt_market_overview(
+                    published_limit_symbols(transport, cfg.streams, wall.date())
+                ))
         except Exception as exc:
             log.error("market_gateway.loop_error", error=str(exc))
         time.sleep(max(0.02, args.poll))
