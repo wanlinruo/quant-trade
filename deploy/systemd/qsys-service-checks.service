@@ -14,9 +14,8 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-# 运行记录、指标验证结果（warehouse/metric_checks）与样本（artifacts/）。
-# warehouse 是指向数据盘的软链接，故两处都要放开；到货检查本身仍然只读。
-ReadWritePaths=/home/ubuntu/qsys /data/qsys
+# 只读仓库；只写运行记录。指标验证已拆成 qsys-catalog-verify（19:40）。
+ReadWritePaths=/home/ubuntu/qsys/var
 
 [Install]
 WantedBy=multi-user.target

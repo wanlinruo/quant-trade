@@ -256,3 +256,57 @@ def test_earlier_failure_turns_a_passing_check_into_repaired():
     assert sc.mark_repaired(bad, failures[name]) == bad
     other_day = [{**runs[0], "session": "2026-09-16"}]
     assert sc.earlier_failures(other_day, DAY) == {}
+
+
+def verify_run(status="succeeded", *, session=DAY, rows=364):
+    return {"service": "catalog-verify", "session": session.isoformat(), "error": "",
+            "run_id": "catalog-verify-194000-1", "started_at": "2026-09-17T19:40:00",
+            "steps": [{"name": "指标字典验证", "table": "metric_checks", "status": status,
+                       "rows": rows, "finished_at": "2026-09-17T19:41:30", "detail": ""}]}
+
+
+def _metric_frame(rows):
+    return pl.DataFrame(rows, orient="row", schema={"metric_id": pl.Utf8, "check_id": pl.Utf8,
+                                      "scope_end": pl.Date, "run_id": pl.Utf8,
+                                      "passed": pl.Boolean, "severity": pl.Utf8})
+
+
+def test_catalog_verify_arrival_reads_its_run_record():
+    query = FakeQuery(metric_checks=_metric_frame([
+        ("tushare_daily.close", "A3.pct_change_identity", DAY, "r", True, "blocking")]))
+    got = sc._catalog_verify_ran(ctx(query, [verify_run()]))
+    assert got.status == sc.OK and "364" in got.actual
+    assert sc._catalog_verify_ran(ctx(query, [verify_run("failed")])).status == sc.BAD
+    # 没有运行记录：改验它该产出的结果（完整性由「覆盖全部指标」单独判）
+    unrun = sc._catalog_verify_ran(ctx(query))
+    assert unrun.status == sc.OK and unrun.detail == sc.NOT_RUN_NOTE
+    assert sc._catalog_verify_ran(ctx(FakeQuery())).status == sc.BAD
+
+
+def test_catalog_verify_skipped_for_memory_needs_the_sync_results_to_count():
+    """与同步撞车时主动跳过：同步那次的增量结果得补上，否则不算数。"""
+    query = FakeQuery(metric_checks=_metric_frame([
+        ("tushare_daily.close", "A3.pct_change_identity", DAY, "r", True, "blocking")]))
+    got = sc._catalog_verify_ran(ctx(query, [verify_run("skipped")]))
+    assert got.status == sc.OK and "验证跳过" in got.actual
+    assert sc._catalog_verify_ran(ctx(FakeQuery(), [verify_run("skipped")])).status == sc.BAD
+
+
+def test_catalog_verify_counts_metrics_and_requires_the_full_scope_rules(monkeypatch):
+    monkeypatch.setattr(sc, "EXPECTED_METRIC_IDS", {"a.x", "b.y"})
+    monkeypatch.setattr(sc, "FULL_SCOPE_CHECK_IDS", {"B2.holes"})
+    partial = FakeQuery(metric_checks=_metric_frame([
+        ("a.x", "B2.holes", DAY, "r", True, "blocking")]))
+    missing = sc._catalog_verify_covers_metrics(ctx(partial))
+    assert missing.status == sc.BAD and "b.y" in missing.detail
+
+    full = FakeQuery(metric_checks=_metric_frame([
+        ("a.x", "B2.holes", DAY, "r", True, "blocking"),
+        ("b.y", "A3.pct_change_identity", DAY, "r", True, "blocking")]))
+    assert sc._catalog_verify_covers_metrics(ctx(full)).status == sc.OK
+    assert sc._catalog_verify_ran_full_scope(ctx(full)).status == sc.OK
+
+    incremental_only = FakeQuery(metric_checks=_metric_frame([
+        ("a.x", "A3.pct_change_identity", DAY, "r", True, "blocking")]))
+    only = sc._catalog_verify_ran_full_scope(ctx(incremental_only))
+    assert only.status == sc.BAD and "B2.holes" in only.detail

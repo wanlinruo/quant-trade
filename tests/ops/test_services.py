@@ -137,3 +137,12 @@ def test_every_timer_has_a_unit_and_due_time():
     for spec in SERVICES:
         if spec.kind == "timer":
             assert spec.unit and spec.due and spec.interfaces and spec.writes
+
+
+def test_catalog_verify_is_registered_between_sync_and_checks():
+    """指标字典验证是自己的定时任务：19:40 跑，20:00 的质检读它的结果。"""
+    spec = services.SERVICE_BY_ID["catalog-verify"]
+    assert spec.kind == "timer" and spec.unit == "qsys-catalog-verify"
+    assert "metric_checks" in spec.writes
+    order = [s.id for s in SERVICES if s.kind == "timer"]
+    assert order.index("tushare-sync") < order.index("catalog-verify") < order.index("service-checks")

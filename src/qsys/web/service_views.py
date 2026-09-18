@@ -118,7 +118,7 @@ class ServiceConsole:
             mine = [r for r in runs if r.get("service") == spec.id]
             cells = []
             for day in columns:
-                today_runs = [r for r in mine if r["started_at"][:10] == day.isoformat()]
+                today_runs = [r for r in mine if _run_session(r) == day.isoformat()]
                 found = checks.get((spec.id, day.isoformat()), [])
                 state = _with_checks(self._cell_state(spec, day, today_runs, trading,
                                                       first_record, now), found)
@@ -204,6 +204,15 @@ class ServiceConsole:
             row["state"] = _process_state(spec, row)
             rows.append(row)
         return rows
+
+
+def _run_session(run: dict) -> str:
+    """这次执行算在哪个交易日：任务自己记的 `session`。
+
+    没记 session 的（非交易日跳过、刚起步就崩）退回启动日期——次日补跑的活
+    属于它检查的那个交易日，不属于启动那天。
+    """
+    return run.get("session") or (run.get("started_at") or "")[:10]
 
 
 def _checks_by_day(runs: list[dict]) -> dict[tuple[str, str], list[dict]]:

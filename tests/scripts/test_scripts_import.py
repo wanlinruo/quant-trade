@@ -15,7 +15,7 @@ import pytest
 SCRIPTS = [
     "daily_archive", "kill", "live_preflight", "run_agent", "run_backtest",
     "run_live", "run_market_gateway", "run_monitor", "run_paper", "run_shadow",
-    "tushare_daily_sync", "tushare_premarket_limits", "verify_metrics",
+    "catalog_verify", "tushare_daily_sync", "tushare_premarket_limits", "verify_metrics",
 ]
 
 

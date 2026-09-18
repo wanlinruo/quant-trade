@@ -129,16 +129,25 @@ A 类 4 只中 3 只、59 只中 19 只的首个分歧日落在 12 月，事件�
 | `A3.missed_exdiv` | 2026 年 2 个 | 1 个是**规则缺陷**（因子舍入容差，见 D-1 补记的 `689009.SH`），1 个是**数据事实**（`300091.SZ`，归入 D-1） |
 | `C3.span_gaps` | 351 个 | **已登记的源限制**：正是 D-10 描述的 namechange 2006 断层，按已知缺陷报警告，取名称的生产路径早已改走三个直取源 |
 
-**处置**：新增 `qsys.data.catalog.verification.verify_session`，在 20:00 的每日
-服务质检里先跑「当日增量 + 当年至今全量」并写入 `metric_checks`，再做各任务的
-到货检查。这样规则改动当晚即生效，同步失败的日子也留得下结果。
+**处置**：新增 `qsys.data.catalog.verification.verify_session`，跑「当日增量 +
+当年至今全量」并写入 `metric_checks`。这样规则改动当晚即生效，同步失败的日子也
+留得下结果。
+
+2026-09-18 当天改为**独立任务** `catalog-verify`（`scripts/catalog_verify.py`，
+`qsys-catalog-verify.timer`，交易日 19:40），而不是塞在服务质检里的一个步骤：
+它每天定时执行、会写生产数据，就该和其他任务一样在服务管理页有自己的行与运行
+记录，失败时可单独重跑，也不会把整个质检拖成失败。20:00 的服务质检只读它的结果，
+并新增三条检查挂在它名下：当日验证已执行（没有运行记录时改验结果，与其他任务
+同一口径）、覆盖字典里全部指标、全量规则都执行过（防止悄悄退回成只跑增量）。
+原挂在 `tushare-sync` 名下的「增量质检阻断项」随之移到 `catalog-verify`，改名
+「阻断级规则全部通过」——写结果的任务变了，代价是看板上这一项与更早的历史记录断开。
 
 **只查当年至今**：2020~2024 年的存量问题分别挂在 D-1、D-10 名下，天天重报会把
 当年的新问题淹掉。全历史仍走手工 `scripts/verify_metrics.py run --scope full`。
 
-`qsys-service-checks.service` 因此从「只读仓库」改为可写 `/home/ubuntu/qsys` 与
-`/data/qsys`：要写 `metric_checks`、样本 `artifacts/` 与 `C4` 的冻结基线。
-到货检查本身仍然只读。
+写权限落在 `qsys-catalog-verify.service`（`/home/ubuntu/qsys` 与 `/data/qsys`：
+`metric_checks`、样本 `artifacts/` 与 `C4` 冻结基线）；`qsys-service-checks.service`
+维持「只读仓库、只写运行记录」。
 
 **内存**：实测验证一轮峰值约 5 GB（大头是原有的 `A2.recompute.*` 市场广度重算，
 不是新增的全量规则），与 19:00 同步的实测峰值 5.0 GB 相当，而节点只有 7.5 GB。

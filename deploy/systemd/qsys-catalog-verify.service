@@ -1,0 +1,21 @@
+[Unit]
+Description=qsys catalog verification (incremental + year-to-date full rules)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/qsys
+ExecStart=/home/ubuntu/qsys/.venv/bin/python -u scripts/catalog_verify.py --warehouse /home/ubuntu/qsys/warehouse
+TimeoutStartSec=1800
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+# 写 metric_checks（warehouse 是指向数据盘的软链接）、样本 artifacts/ 与 C4 冻结基线。
+ReadWritePaths=/home/ubuntu/qsys /data/qsys
+
+[Install]
+WantedBy=multi-user.target
