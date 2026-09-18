@@ -7,11 +7,12 @@ LiveBroker or writes to the real order/control streams.
 from __future__ import annotations
 
 import argparse
+import sqlite3
 import subprocess
 import sys
 import time
 from collections.abc import Callable
-from datetime import datetime, timedelta
+from datetime import datetime, time as wall_time, timedelta
 from pathlib import Path
 
 import structlog
@@ -44,44 +45,100 @@ def main() -> int:
 # 行情连续不可用超过这么久才判定账户失败。偶发一次超时（网关忙、网络抖动）
 # 不该让账户永久停下；持续不可用仍要失败关闭，不能无限重试掩盖故障。
 QUOTE_OUTAGE_LIMIT = timedelta(minutes=3)
+STORAGE_OUTAGE_LIMIT = timedelta(minutes=3)
+IDLE_POLL_SECONDS = 60.0
+
+
+def _transient_storage_error(exc: BaseException) -> bool:
+    """SQLite 的短暂文件/锁故障不应永久停掉模拟账户。"""
+    if not isinstance(exc, sqlite3.OperationalError):
+        return False
+    message = str(exc).lower()
+    return "unable to open database file" in message or "database is locked" in message
+
+
+def _poll_delay(moment: datetime, poll: float) -> float:
+    """盘中及时驱动事件；盘前、午休和收盘后降低空转频率。"""
+    active = (wall_time(9, 15) <= moment.time() <= wall_time(11, 30)
+              or wall_time(13, 0) <= moment.time() <= wall_time(15, 30))
+    return max(0.2, poll) if active else max(IDLE_POLL_SECONDS, poll)
+
+
+def _best_effort_account_log(store: PaperStore, ident: str, level: str,
+                             message: str) -> None:
+    """诊断日志写失败不能盖过原故障，更不能因此永久停号。"""
+    try:
+        store.log(ident, level, message)
+    except sqlite3.OperationalError as exc:
+        if not _transient_storage_error(exc):
+            raise
+        log.warning("paper.account_log_deferred", account_id=ident,
+                    level=level, message=message, error=str(exc))
 
 
 def run_account_loop(
     store: PaperStore, ident: str, build_runtime: Callable[[], object], *,
     poll: float, outage_limit: timedelta = QUOTE_OUTAGE_LIMIT,
+    storage_outage_limit: timedelta = STORAGE_OUTAGE_LIMIT,
     now: Callable[[], datetime] = datetime.now,
     sleep: Callable[[float], None] = time.sleep,
 ) -> int:
     """驱动单个模拟账户，直到它不再处于 scheduled/running。返回进程退出码。
 
-    行情暂不可用（`QuoteUnavailable`）时记 warning、**从库里重建 runtime**
-    再重试：事件跑到一半失败，策略的内存状态可能已被改了一部分，不能带着
-    它继续。连续不可用超过 `outage_limit`，或出现任何其他异常，账户标为 error。
+    行情或 SQLite 暂不可用时，**从库里重建 runtime** 再有限重试：事件跑到
+    一半失败，策略的内存状态可能已被改了一部分，不能带着它继续。连续不可用
+    超过各自时限，或出现其他异常，账户才标为 error。
     """
     outage_since: datetime | None = None
+    storage_outage_since: datetime | None = None
+    runtime = None
     try:
-        runtime = build_runtime()
         while True:
-            account = store.account(ident)
-            if account is None or account.status not in ("scheduled", "running"):
-                return 0
             try:
+                if runtime is None:
+                    runtime = build_runtime()
+                account = store.account(ident)
+                if account is None or account.status not in ("scheduled", "running"):
+                    return 0
                 runtime.tick()
             except QuoteUnavailable as exc:
                 moment = now()
                 if outage_since is None:
                     outage_since = moment
-                    store.log(ident, "warning", f"行情暂不可用，稍后重试：{exc}")
+                    _best_effort_account_log(
+                        store, ident, "warning", f"行情暂不可用，稍后重试：{exc}"
+                    )
                     log.warning("paper.quote_unavailable", account_id=ident, error=str(exc))
                 if moment - outage_since >= outage_limit:
                     raise
-                runtime = build_runtime()
+                runtime = None
+            except sqlite3.OperationalError as exc:
+                if not _transient_storage_error(exc):
+                    raise
+                moment = now()
+                if storage_outage_since is None:
+                    storage_outage_since = moment
+                    log.warning("paper.storage_unavailable", account_id=ident,
+                                error=str(exc))
+                if moment - storage_outage_since >= storage_outage_limit:
+                    raise
+                # 连接恢复后必须从持久化状态重建，不能沿用可能只执行了一半的内存状态。
+                runtime = None
             else:
                 if outage_since is not None:
-                    store.log(ident, "info",
-                              f"行情已恢复，中断 {(now() - outage_since).total_seconds():.0f} 秒")
+                    _best_effort_account_log(
+                        store, ident, "info",
+                        f"行情已恢复，中断 {(now() - outage_since).total_seconds():.0f} 秒",
+                    )
                     outage_since = None
-            sleep(max(0.2, poll))
+                if storage_outage_since is not None:
+                    _best_effort_account_log(
+                        store, ident, "info",
+                        f"账户存储已恢复，中断 {(now() - storage_outage_since).total_seconds():.0f} 秒",
+                    )
+                    log.info("paper.storage_recovered", account_id=ident)
+                    storage_outage_since = None
+            sleep(_poll_delay(now(), poll))
     except Exception as exc:
         log.error("paper.account_failed", account_id=ident, error=str(exc))
         store.mark_error(ident, str(exc))
