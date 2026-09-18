@@ -49,7 +49,7 @@ def test_calendar_clears_previous_day_before_refreshing_the_new_day():
     ) == []
 
 
-def test_market_overview_unions_qmt_sector_with_premarket_universe(monkeypatch):
+def test_market_overview_prefers_authoritative_premarket_universe(monkeypatch):
     sectors = []
     xtdata = SimpleNamespace(
         get_stock_list_in_sector=lambda name: sectors.append(name) or [
@@ -63,12 +63,29 @@ def test_market_overview_unions_qmt_sector_with_premarket_universe(monkeypatch):
         lambda symbols: requested.extend(symbols) or {},
     )
 
-    run_market_gateway.qmt_market_overview(["920298.BJ"])
+    run_market_gateway.qmt_market_overview(["600001.SH", "688001.SH", "920298.BJ"])
+
+    assert sectors == []
+    assert "688001.SH" in requested
+    assert "920298.BJ" in requested
+
+
+def test_market_overview_falls_back_to_qmt_sector_before_premarket_publish(monkeypatch):
+    sectors = []
+    xtdata = SimpleNamespace(
+        get_stock_list_in_sector=lambda name: sectors.append(name) or ["920001.BJ"]
+    )
+    monkeypatch.setitem(sys.modules, "xtquant", SimpleNamespace(xtdata=xtdata))
+    requested = []
+    monkeypatch.setattr(
+        run_market_gateway, "qmt_provider",
+        lambda symbols: requested.extend(symbols) or {},
+    )
+
+    run_market_gateway.qmt_market_overview()
 
     assert sectors == ["沪深京A股"]
-    assert "688001.SH" in requested
     assert "920001.BJ" in requested
-    assert "920298.BJ" in requested
 
 
 def test_published_limit_symbols_supply_new_listings_missing_from_qmt_sector():

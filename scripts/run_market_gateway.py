@@ -111,9 +111,11 @@ def qmt_market_overview(extra_symbols: Sequence[str] = ()):
     # QMT 的全 A 股权威集合名是「沪深京A股」；「沪深A股」不含北交所，
     # 「北交所」不是有效集合名（2026-09-19 节点实测分别为 5218 / 0 只）。
     # 板块成分缓存可能滞后于新股上市（920298.BJ 上市三天后仍未入集合），
-    # 因此与盘前 Tushare stk_limit 的全市场代码取并集；价格仍全部读取 QMT。
-    symbols = list(xtdata.get_stock_list_in_sector("沪深京A股") or [])
-    symbols.extend(extra_symbols)
+    # 还会混入 81/82/89/91 开头的指数或发行代码。因此当盘前 Tushare
+    # stk_limit 已发布时，以它的全市场股票代码为准；价格仍全部读取 QMT。
+    symbols = list(extra_symbols)
+    if not symbols:
+        symbols = list(xtdata.get_stock_list_in_sector("沪深京A股") or [])
     symbols.extend(("000001.SH", "399001.SZ", "399006.SZ", "000300.SH"))
     return qmt_provider(sorted(set(symbols)))
 
