@@ -1,5 +1,6 @@
 """A：行情偶发不可用不能让模拟账户永久停下；持续不可用或其他异常仍须失败关闭。"""
 
+import sqlite3
 from datetime import date, datetime, timedelta
 
 import pytest
@@ -92,6 +93,67 @@ def test_a_non_quote_failure_still_fails_closed_immediately(account):
     assert code == 1
     assert got.status == "error" and got.error == "策略代码错误"
     assert builds == 1
+
+
+def test_a_transient_sqlite_open_failure_does_not_stop_the_account(account):
+    store, ident = account
+    clock, calls = Clock(), 0
+
+    class FlakyStore:
+        def account(self, account_id):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise sqlite3.OperationalError("unable to open database file")
+            return store.account(account_id)
+
+        def __getattr__(self, name):
+            return getattr(store, name)
+
+    class Runtime:
+        def tick(self):
+            store.transition(ident, "end")
+
+    code = run_account_loop(FlakyStore(), ident, Runtime, poll=1.0,
+                            now=clock, sleep=clock.sleep)
+    got = store.account(ident)
+    assert code == 0
+    assert got.status == "ended" and got.error == ""
+    assert any("账户存储已恢复" in row["message"]
+               for row in store.rows(ident, "logs"))
+
+
+def test_a_persistent_sqlite_open_failure_eventually_fails_closed(account):
+    store, ident = account
+    clock = Clock()
+
+    class BrokenStore:
+        def account(self, account_id):
+            raise sqlite3.OperationalError("unable to open database file")
+
+        def __getattr__(self, name):
+            return getattr(store, name)
+
+    class Runtime:
+        def tick(self):
+            raise AssertionError("account lookup should fail first")
+
+    code = run_account_loop(
+        BrokenStore(), ident, Runtime, poll=1.0,
+        storage_outage_limit=timedelta(seconds=120),
+        now=clock, sleep=clock.sleep,
+    )
+    got = store.account(ident)
+    assert code == 1
+    assert got.status == "error" and "unable to open database file" in got.error
+
+
+def test_worker_polls_slowly_outside_continuous_trading():
+    from scripts.run_paper import _poll_delay
+
+    assert _poll_delay(datetime(2026, 9, 18, 9, 31), 1.0) == 1.0
+    assert _poll_delay(datetime(2026, 9, 18, 12, 0), 1.0) == 60.0
+    assert _poll_delay(datetime(2026, 9, 18, 23, 31), 1.0) == 60.0
 
 
 def test_gateway_errors_and_timeouts_are_both_quote_unavailable():
