@@ -137,10 +137,59 @@ def _limit(column: str, sign: int) -> Callable[[CheckContext], pl.DataFrame]:
 
 _add("limit_up", "daily_flags.limit_up", _limit("limit_up", 1), boolean=True)
 _add("limit_down", "daily_flags.limit_down", _limit("limit_down", -1), boolean=True)
+def _limit_status(ctx: CheckContext, start=None) -> pl.DataFrame:
+    """独立按日线、ST 真值与 U/Z 名单重算封板和炸板状态。"""
+    lo = start or ctx.start
+    flags = ctx.query.daily_flags(lo, ctx.end)
+    daily = ctx.query.tushare_daily(
+        None, lo, ctx.end, columns=["symbol", "dt", "close", "high"]
+    )
+    listed = ctx.query.limit_list(None, lo, ctx.end)
+    frame = flags.join(daily, on=["symbol", "dt"], how="inner")
+    if listed.height:
+        classifications = listed.select(
+            "symbol", "dt", pl.col("limit_type").alias("_limit_type")
+        )
+        availability = listed.select("dt").unique().with_columns(
+            pl.lit(True).alias("_limit_list_available")
+        )
+        frame = frame.join(classifications, on=["symbol", "dt"], how="left")
+        frame = frame.join(availability, on="dt", how="left")
+    else:
+        frame = frame.with_columns(
+            pl.lit(None, dtype=pl.Utf8).alias("_limit_type"),
+            pl.lit(False).alias("_limit_list_available"),
+        )
+    frame = frame.with_columns(
+        (pl.col("high") >= pl.col("limit_up")).alias("expected_touched"),
+    )
+    price_at_limit = pl.col("close") >= pl.col("limit_up")
+    frame = frame.with_columns(
+        pl.when(pl.col("limit_up").is_null())
+        .then(None)
+        .when(pl.col("_limit_type") == "U")
+        .then(True)
+        .when(pl.col("_limit_type") == "Z")
+        .then(False)
+        .when(pl.col("is_st") == True)  # noqa: E712 - polars expression
+        .then(price_at_limit)
+        .when(pl.col("_limit_list_available").is_null() | ~pl.col("_limit_list_available"))
+        .then(price_at_limit)
+        .when(~pl.col("expected_touched"))
+        .then(False)
+        .otherwise(None)
+        .alias("expected_limit_up")
+    )
+    return frame.with_columns(
+        (pl.col("expected_touched") & ~pl.col("expected_limit_up"))
+        .alias("expected_broken_board")
+    )
+
+
 _add("is_limit_up", "daily_flags.is_limit_up",
-     lambda c: _flags_daily(c, ["close"]).select(
+     lambda c: _limit_status(c).select(
          pl.col("is_limit_up").alias("actual"),
-         (pl.col("close") >= pl.col("limit_up")).alias("expected")), boolean=True)
+         pl.col("expected_limit_up").alias("expected")), boolean=True)
 _add("is_limit_down", "daily_flags.is_limit_down",
      lambda c: _flags_daily(c, ["close"]).select(
          pl.col("is_limit_down").alias("actual"),
@@ -150,16 +199,17 @@ _add("touched_limit_up", "daily_flags.touched_limit_up",
          pl.col("touched_limit_up").alias("actual"),
          (pl.col("high") >= pl.col("limit_up")).alias("expected")), boolean=True)
 _add("is_broken_board", "daily_flags.is_broken_board",
-     lambda c: c.query.daily_flags(c.start, c.end).select(
+     lambda c: _limit_status(c).select(
          pl.col("is_broken_board").alias("actual"),
-         (pl.col("touched_limit_up") & ~pl.col("is_limit_up")).alias("expected")), boolean=True)
+         pl.col("expected_broken_board").alias("expected")), boolean=True)
 
 
 def _first_board(ctx: CheckContext) -> pl.DataFrame:
-    frame = ctx.query.daily_flags(ctx.start - timedelta(days=10), ctx.end).sort(["symbol", "dt"])
+    frame = _limit_status(ctx, ctx.start - timedelta(days=10)).sort(["symbol", "dt"])
     return frame.with_columns(
         pl.col("is_first_board").alias("actual"),
-        (pl.col("is_limit_up") & ~pl.col("is_limit_up").shift(1, fill_value=False).over("symbol"))
+        (pl.col("expected_limit_up")
+         & ~pl.col("expected_limit_up").shift(1, fill_value=False).over("symbol"))
         .alias("expected"),
     ).filter(pl.col("dt").is_between(ctx.start, ctx.end))
 
@@ -234,48 +284,17 @@ _add(
 
 # ---- market_regime：从日线、flags、因子和指数重新聚合 -----------------
 
-def _breadth_filter(frame: pl.DataFrame, boards: dict[str, str]) -> pl.DataFrame:
-    if frame.height == 0:
-        return frame
-
-    def board(symbol: str) -> str:
-        known = boards.get(symbol)
-        if known is not None:
-            return known
-        code = symbol.split(".")[0]
-        if code.startswith(("688", "689")):
-            return "star"
-        if code.startswith(("300", "301")):
-            return "gem"
-        if code[:2] in ("43", "83", "87", "92"):
-            return "bse"
-        if code[:2] in ("90", "20"):
-            return "bshare"
-        return "main"
-
-    code = pl.col("symbol").str.split(".").list.first()
-    excluded = code.str.starts_with("4") | code.str.starts_with("8") | code.str.starts_with("68")
-    return frame.filter(
-        ~excluded
-        & pl.col("symbol").map_elements(board, return_dtype=pl.Utf8)
-        .is_in(["main", "gem", "star"])
-    )
-
-
 def _expected_regime(ctx: CheckContext) -> pl.DataFrame:
     start = ctx.start - timedelta(days=40)
-    instruments = ctx.query.instruments()
-    boards = (
-        dict(zip(instruments["symbol"].to_list(), instruments["board"].to_list()))
-        if instruments.height else {}
+    bars = ctx.query.tushare_daily(
+        None, start, ctx.end,
+        columns=["symbol", "dt", "close", "amount"],
     )
-    bars = _breadth_filter(
-        ctx.query.tushare_daily(
-            None, start, ctx.end,
-            columns=["symbol", "dt", "close", "amount"],
-        ), boards,
-    )
-    flags = _breadth_filter(ctx.query.daily_flags(start, ctx.end), boards)
+    flags = ctx.query.daily_flags(start, ctx.end)
+    # 全 A 股口径只排除外币计价的 900/200 B 股；板块与 ST 均保留。
+    code = pl.col("symbol").str.split(".").list.first()
+    bars = bars.filter(~code.str.starts_with("900") & ~code.str.starts_with("200"))
+    flags = flags.filter(~code.str.starts_with("900") & ~code.str.starts_with("200"))
     if not bars.height or not flags.height:
         return pl.DataFrame()
     joined = bars.join(flags, on=["symbol", "dt"], how="inner").sort(["symbol", "dt"])

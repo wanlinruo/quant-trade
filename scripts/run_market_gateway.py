@@ -107,7 +107,9 @@ def qmt_market_overview():
     """Fetch the live A-share breadth universe plus the four headline indices."""
     from xtquant import xtdata
 
-    symbols = list(xtdata.get_stock_list_in_sector("沪深A股") or [])
+    symbols = []
+    for sector in ("沪深A股", "北交所"):
+        symbols.extend(xtdata.get_stock_list_in_sector(sector) or [])
     symbols.extend(("000001.SH", "399001.SZ", "399006.SZ", "000300.SH"))
     return qmt_provider(sorted(set(symbols)))
 

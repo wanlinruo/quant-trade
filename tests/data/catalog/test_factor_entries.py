@@ -38,8 +38,8 @@ def test_strategy_inventory_is_exact_and_unlanded():
 def test_breadth_factors_record_their_universe_choice():
     metric = BY_ID["market_regime.market_advance_ratio"]
     assert metric.kind is Kind.FACTOR
-    assert "universe" in dict(metric.lineage.params)
-    assert "D-3" in metric.known_issues
+    assert "全 A 股" in dict(metric.lineage.params)["universe"]
+    assert "D-3" not in metric.known_issues
 
 
 def test_index_slope_records_both_windows():

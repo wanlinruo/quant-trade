@@ -112,7 +112,6 @@ _REFERENCE_INGESTS = {
 _LIMIT_LIST_LOOKBACK = 4
 _LIMIT_LIST_CALENDAR_SPAN = timedelta(days=30)
 
-_PRODUCTION_BOARDS = {"main", "gem", "star"}
 _DERIVED_LOOKBACK_DAYS = 150
 
 
@@ -190,9 +189,9 @@ def refresh_derived(warehouse: Warehouse, day: date, *,
     builders: list[tuple[str, str, Callable[[], int]]] = [
         ("adj_factors", "复权因子", lambda: build_adj_factors(warehouse)),
         ("daily_flags", "首板与 ST 等标记", lambda: build_daily_flags(
-            warehouse, start, day, boards=_PRODUCTION_BOARDS)),
+            warehouse, start, day, boards=None)),
         ("market_regime", "市场广度", lambda: build_market_regime(
-            warehouse, start, day, boards=_PRODUCTION_BOARDS)),
+            warehouse, start, day, boards=None)),
         ("valuation_snapshot", "估值快照", lambda: build_valuation(warehouse, day, day)),
         ("delisting_pool", "退市整理期池", lambda: build_delisting_pool(
             warehouse, start, day, extra_sessions=[next_session] if next_session else [])),

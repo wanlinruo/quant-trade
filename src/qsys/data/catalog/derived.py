@@ -100,8 +100,10 @@ METRICS: tuple[Metric, ...] = (
     _m(
         "daily_flags.is_limit_up",
         "收盘封住涨停；涨跌停价缺失时为 null（不知道就不宣称是或否）",
-        ("tushare_daily.close", "daily_flags.limit_up"),
-        "close >= limit_up；任一侧为 null 则 null",
+        ("limit_list_daily.limit_type", "tushare_daily.close", "daily_flags.limit_up",
+         "daily_flags.is_st"),
+        "非 ST 优先以 limit_list_d 的 U/Z 判封板/炸板；ST 或整日名单尚未到货时"
+        "暂用 close >= limit_up；触板但名单缺行且非 ST 时为 null",
         ("A2.recompute.is_limit_up", "A3.limit_list_vs_selfcalc"),
     ),
     _m(
@@ -120,7 +122,7 @@ METRICS: tuple[Metric, ...] = (
     ),
     _m(
         "daily_flags.is_broken_board",
-        "炸板：盘中触及涨停但收盘未封住",
+        "炸板：盘中触及涨停但收盘盘口未封住",
         ("daily_flags.touched_limit_up", "daily_flags.is_limit_up"),
         "touched_limit_up and not is_limit_up",
         ("A2.recompute.is_broken_board",),
