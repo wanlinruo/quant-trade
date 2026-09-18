@@ -187,3 +187,15 @@ def test_runs_land_on_the_session_they_checked_not_the_day_they_started(
     got = states(next_morning.board(14), "daily-archive")
     assert got[session] == "fixed"                 # 当天失败、次日补跑成功
     assert got[date(2026, 9, 18)] == "closed"      # 补跑那天不是交易日，没有它自己的活
+
+
+def test_resident_services_show_their_check_results_on_the_board(tmp_path, monkeypatch):
+    """影子盘与模拟盘没有运行记录，格子只反映当晚质检的结论。"""
+    day = date(2026, 9, 17)
+    record(tmp_path, "service-checks", datetime(2026, 9, 17, 20, 0), check_run(
+        day, ("shadow-core｜当日策略事件已执行", "failed"),
+        ("paper｜当日策略事件已执行", "succeeded")), monkeypatch)
+    board = console(tmp_path).board(14)
+    assert states(board, "shadow-core")[day] == "qcbad"
+    assert states(board, "paper")[day] == "ok"
+    assert states(board, "shadow-core")[date(2026, 9, 16)] == "none"   # 没质检就不判

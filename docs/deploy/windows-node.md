@@ -241,6 +241,33 @@ T-90d  2026-06-10      0 笔
 - [ ] 轮换部署期间在对话中出现过的账号密码
 - [ ] 内存仅 1.0 GB 可用，若后续要在此跑更多任务需扩容
 
+## 进程看门狗（2026-09-18）
+
+影子执行代理 `qsys-agent-shadow` 与行情网关 `qsys-market-gateway` 的计划任务都是
+**「登录时触发」**：进程崩了不会自己起来。2026-09-18 05:06:47 代理以 0xC0000409
+崩溃，无人登录，任务一直停在 Ready，Linux 侧影子核心因此 5.5 小时取不到券商账户
+快照，当日 09:30 的竞价事件过期未跑。
+
+`deploy/windows/qsys_watchdog.ps1` 每 5 分钟按命令行特征检查这两个进程，不在就
+`schtasks /run` 触发对应任务；只启动、不杀进程，也不区分盘中盘后。它写
+`C:\qsys\live_app\var\watchdog.log`，只在真的触发时写行。
+
+安装（脚本拷到 `C:\qsys\live_app\` 之后）：
+
+```powershell
+schtasks /create /tn qsys-watchdog /tr "powershell -NoProfile -ExecutionPolicy Bypass -File C:\qsys\live_app\qsys_watchdog.ps1" /sc minute /mo 5 /ru SYSTEM /rl HIGHEST /f
+```
+
+**脚本必须是 UTF-8 with BOM + CRLF**：Windows PowerShell 5.1 在没有 BOM 时按 GBK
+读文件，中文注释会被读乱并导致解析失败（实测 EXIT=1）。
+
+计划任务 XML 不入库：`schtasks /xml` 只接受 UTF-16 编码的文件，仓库里放 UTF-16
+既不可读也容易在编辑时损坏，所以改用上面这条命令行创建。
+
+Linux 侧的兜底：每日服务质检新增 `shadow-core｜当日策略事件已执行` 与
+`paper｜当日策略事件已执行`，直接读两边状态库，事件缺失或被记成「已过期，未补跑」
+都会在服务管理页报出来。影子核心还会在连续失败 5 分钟后报一次告警，不再每秒刷屏。
+
 ## 模拟交易实时行情网关
 
 模拟盘使用独立的只读 QMT 进程，不需要资金账号，也不会加载下单适配器。

@@ -114,14 +114,17 @@ class ServiceConsole:
         first_record = self._first_record_day()
         checks = _checks_by_day(runs)
         rows = []
-        for spec in self.services("timer"):
+        # 常驻服务不写运行记录，但当晚质检会给出结论；它们也该出现在看板上。
+        for spec in (*self.services("timer"), *self.services("resident")):
             mine = [r for r in runs if r.get("service") == spec.id]
             cells = []
             for day in columns:
                 today_runs = [r for r in mine if _run_session(r) == day.isoformat()]
                 found = checks.get((spec.id, day.isoformat()), [])
-                state = _with_checks(self._cell_state(spec, day, today_runs, trading,
-                                                      first_record, now), found)
+                state = _with_checks(
+                    self._cell_state(spec, day, today_runs, trading, first_record, now),
+                    found, resident=spec.kind == "resident",
+                )
                 cells.append(Cell(day, state, today_runs, found))
             rows.append((spec, cells))
         return columns, rows, trading is not None
@@ -138,6 +141,9 @@ class ServiceConsole:
     def _cell_state(self, spec: ServiceSpec, day: date, runs: list[dict],
                     trading: set[date] | None, first_record: date | None,
                     now: datetime) -> str:
+        if spec.kind == "resident":
+            # 常驻服务没有「本次执行」，状态完全由质检结论决定（见 _with_checks）
+            return "ok"
         if runs:
             statuses = [effective_status(r, now=now) for r in runs]
             meaningful = [s for s in statuses if s != SKIPPED]
@@ -233,13 +239,13 @@ def _checks_by_day(runs: list[dict]) -> dict[tuple[str, str], list[dict]]:
     return out
 
 
-def _with_checks(state: str, checks: list[dict]) -> str:
+def _with_checks(state: str, checks: list[dict], *, resident: bool = False) -> str:
     """任务本身成功但质检不过，格子要显示出来；任务失败时保持原状态。
 
     任务未运行、但它该产出的数据质检已通过（后续补上了），显示「已修复」。
     """
     if not checks:
-        return state
+        return "none" if resident else state
     statuses = {c.get("status") for c in checks}
     if state == "missed":
         return state if FAILED in statuses else "fixed"

@@ -68,8 +68,9 @@ def daily(day, symbols, volume=100.0):
                          "volume": [volume] * len(symbols)})
 
 
-def ctx(query, runs=()):
-    return CheckContext(None, query, DAY, PREV, SESSIONS, list(runs))
+def ctx(query, runs=(), *, shadow_state=None, workbench=None):
+    return CheckContext(None, query, DAY, PREV, SESSIONS, list(runs),
+                        shadow_state=shadow_state, workbench=workbench)
 
 
 def symbols(n, suffix="SZ", start=1):
@@ -212,7 +213,7 @@ def test_step_names_round_trip_and_every_check_belongs_to_a_timer():
 
     for check in sc.CHECKS:
         assert sc.parse_step_name(sc.step_name(check)) == (check.service, check.name)
-        assert SERVICE_BY_ID[check.service].kind == "timer"
+        assert check.service in SERVICE_BY_ID
     assert sc.parse_step_name("日线") is None
 
 
@@ -310,3 +311,74 @@ def test_catalog_verify_counts_metrics_and_requires_the_full_scope_rules(monkeyp
         ("a.x", "A3.pct_change_identity", DAY, "r", True, "blocking")]))
     only = sc._catalog_verify_ran_full_scope(ctx(incremental_only))
     assert only.status == sc.BAD and "B2.holes" in only.detail
+
+
+def _live_state(path, rows):
+    import sqlite3
+    con = sqlite3.connect(path)
+    con.execute("CREATE TABLE live_events (event_key TEXT, scheduled_at TEXT, phase TEXT,"
+                " status TEXT, detail TEXT DEFAULT '', completed_at TEXT DEFAULT '')")
+    con.executemany("INSERT INTO live_events VALUES (?,?,?,?,?,?)", rows)
+    con.commit(); con.close()
+    return path
+
+
+def test_shadow_events_flag_expired_and_unfinished_events(tmp_path):
+    path = _live_state(tmp_path / "shadow.sqlite3", [
+        (f"{DAY}:session_start:09:15:00", f"{DAY}T09:15:00", "session_start",
+         "completed", "", f"{DAY}T09:15:00"),
+        (f"{DAY}:auction:09:30:00", f"{DAY}T09:30:00", "auction",
+         "completed", "事件已过期，未补跑", f"{DAY}T10:42:45"),
+    ])
+    got = sc._shadow_events(ctx(FakeQuery(), shadow_state=path))
+    assert got.status == sc.BAD and "auction" in got.detail and "已过期" in got.detail
+
+    ok = _live_state(tmp_path / "ok.sqlite3", [
+        (f"{DAY}:session_start:09:15:00", f"{DAY}T09:15:00", "session_start",
+         "completed", "", f"{DAY}T09:15:00"),
+        (f"{DAY}:auction:09:30:00", f"{DAY}T09:30:00", "auction",
+         "completed", "", f"{DAY}T09:30:01"),
+    ])
+    assert sc._shadow_events(ctx(FakeQuery(), shadow_state=ok)).status == sc.OK
+
+
+def test_shadow_events_need_the_session_to_have_started(tmp_path):
+    empty = _live_state(tmp_path / "empty.sqlite3", [])
+    assert sc._shadow_events(ctx(FakeQuery(), shadow_state=empty)).status == sc.BAD
+    missing = tmp_path / "nope.sqlite3"
+    assert sc._shadow_events(ctx(FakeQuery(), shadow_state=missing)).status == sc.BAD
+
+
+def test_shadow_events_skip_when_no_state_configured():
+    assert sc._shadow_events(ctx(FakeQuery())).status == sc.SKIP
+
+
+def _workbench(path, accounts, events):
+    import sqlite3
+    con = sqlite3.connect(path)
+    con.execute("CREATE TABLE paper_accounts (id TEXT, name TEXT, status TEXT)")
+    con.execute("CREATE TABLE paper_events (account_id TEXT, event_key TEXT,"
+                " scheduled_at TEXT, phase TEXT, status TEXT, detail TEXT DEFAULT '')")
+    con.executemany("INSERT INTO paper_accounts VALUES (?,?,?)", accounts)
+    con.executemany("INSERT INTO paper_events VALUES (?,?,?,?,?,?)", events)
+    con.commit(); con.close()
+    return path
+
+
+def test_paper_events_only_cover_running_accounts(tmp_path):
+    path = _workbench(
+        tmp_path / "wb.sqlite3",
+        [("acct-run", "跑着的", "running"), ("acct-done", "已结束的", "finished")],
+        [("acct-run", f"{DAY}:auction:09:30:00", f"{DAY}T09:30:00", "auction",
+          "completed", "")],
+    )
+    assert sc._paper_events(ctx(FakeQuery(), workbench=path)).status == sc.OK
+
+    idle = _workbench(tmp_path / "idle.sqlite3",
+                      [("acct-run", "跑着的", "running")], [])
+    got = sc._paper_events(ctx(FakeQuery(), workbench=idle))
+    assert got.status == sc.BAD and "跑着的" in got.detail
+
+    nobody = _workbench(tmp_path / "none.sqlite3",
+                        [("acct-done", "已结束的", "finished")], [])
+    assert sc._paper_events(ctx(FakeQuery(), workbench=nobody)).status == sc.SKIP

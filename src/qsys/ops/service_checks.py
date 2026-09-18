@@ -14,9 +14,11 @@
 
 from __future__ import annotations
 
+import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, time
+from pathlib import Path
 
 import polars as pl
 
@@ -54,6 +56,10 @@ class CheckContext:
     previous: date | None
     sessions: list[date]
     runs: list[dict]  # 当天所有服务的运行记录
+    # 常驻服务自己的状态库：影子盘 var/shadow-state.sqlite3、
+    # 模拟盘 var/workbench/workbench.sqlite3；不给则相关检查跳过
+    shadow_state: Path | None = None
+    workbench: Path | None = None
 
     def daily(self, day: date | None = None) -> pl.DataFrame:
         target = day or self.day
@@ -302,6 +308,68 @@ def _catalog_verify_ran_full_scope(ctx: CheckContext) -> CheckResult:
                        f"{len(ran)} 条，全部执行", rows=len(ran))
 
 
+def _shadow_events(ctx: CheckContext) -> CheckResult:
+    """影子盘当日的策略事件都真的跑了。
+
+    2026-09-18：Windows 执行代理崩溃后核心取不到账户快照，09:30 的竞价事件
+    被记成「事件已过期，未补跑」——心跳正常、页面看不出，直到人工发现。
+    """
+    expected = "当日策略事件都已执行"
+    if ctx.shadow_state is None:
+        return CheckResult(SKIP, expected, "未配置影子盘状态库")
+    path = Path(ctx.shadow_state)
+    if not path.exists():
+        return CheckResult(BAD, expected, f"找不到状态库 {path}")
+    with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as con:
+        con.row_factory = sqlite3.Row
+        rows = [dict(row) for row in con.execute(
+            "SELECT event_key, phase, status, detail FROM live_events "
+            "WHERE event_key LIKE ?", (f"{ctx.day}:%",),
+        )]
+    if not rows:
+        return CheckResult(BAD, expected, "当日没有任何策略事件", rows=0)
+    bad = [r for r in rows if r["status"] != "completed" or r["detail"]]
+    if bad:
+        return CheckResult(
+            BAD, expected, f"{len(bad)} / {len(rows)} 个事件未正常执行",
+            _samples(f"{r['phase']}（{r['detail'] or r['status']}）" for r in bad),
+            rows=len(rows),
+        )
+    return CheckResult(OK, expected, f"{len(rows)} 个事件全部完成", rows=len(rows))
+
+
+def _paper_events(ctx: CheckContext) -> CheckResult:
+    """每个运行中的模拟账户当日都跑过策略事件。"""
+    expected = "运行中的账户当日都有策略事件"
+    if ctx.workbench is None:
+        return CheckResult(SKIP, expected, "未配置模拟盘工作台")
+    path = Path(ctx.workbench)
+    if not path.exists():
+        return CheckResult(BAD, expected, f"找不到工作台 {path}")
+    with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as con:
+        con.row_factory = sqlite3.Row
+        accounts = {row["id"]: row["name"] for row in con.execute(
+            "SELECT id, name FROM paper_accounts WHERE status='running'")}
+        if not accounts:
+            return CheckResult(SKIP, expected, "当前没有运行中的模拟账户")
+        rows = [dict(row) for row in con.execute(
+            "SELECT account_id, phase, status, detail FROM paper_events "
+            "WHERE event_key LIKE ?", (f"{ctx.day}:%",))]
+    ran = {row["account_id"] for row in rows}
+    silent = {name for ident, name in accounts.items() if ident not in ran}
+    bad = [r for r in rows if r["status"] != "completed" or r["detail"]]
+    if silent or bad:
+        problems = [f"{accounts.get(r['account_id'], r['account_id'])}："
+                    f"{r['phase']}（{r['detail'] or r['status']}）" for r in bad]
+        problems += [f"{name}：当日没有任何策略事件" for name in sorted(silent)]
+        return CheckResult(BAD, expected,
+                           f"{len(silent)} 个账户无事件，{len(bad)} 个事件未正常执行",
+                           _samples(problems), rows=len(rows))
+    return CheckResult(OK, expected,
+                       f"{len(accounts)} 个账户共 {len(rows)} 个事件全部完成",
+                       rows=len(rows))
+
+
 # ---- 盘前涨跌停价 ----
 
 def _premarket_rows(ctx: CheckContext) -> CheckResult:
@@ -410,6 +478,8 @@ CHECKS: tuple[ServiceCheck, ...] = (
     ServiceCheck("tushare-sync", "市场广度到货", "market_regime", _regime_arrived),
     ServiceCheck("tushare-sync", "估值覆盖日线", "valuation_snapshot", _valuation_covers_daily),
     ServiceCheck("tushare-sync", "退市整理期池与 namechange 一致", "delisting_pool", _delisting_pool),
+    ServiceCheck("shadow-core", "当日策略事件已执行", "live_events", _shadow_events),
+    ServiceCheck("paper", "当日策略事件已执行", "paper_events", _paper_events),
     ServiceCheck("catalog-verify", "当日验证已执行", "metric_checks", _catalog_verify_ran),
     ServiceCheck("catalog-verify", "覆盖全部指标", "metric_checks",
                  _catalog_verify_covers_metrics),
