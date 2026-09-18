@@ -36,7 +36,7 @@
   - `build_record(report: RunReport, *, event_key: str, session: date, phase: str, started_at: datetime, finished_at: datetime, cash: float, market_value: float, position_count: int, orders: int, rejects: int, error: str = "") -> RunRecord`
   - `PHASE_LABELS: dict[str, str]`，把 `session_start`/`auction`/`checkpoint`/`bar`/`session_end` 映射成「日初结算」/「竞价选股」/「检查点」/「收盘撮合」/「收盘对账」
 
-- [ ] **Step 1: 写失败的测试**
+- [x] **Step 1: 写失败的测试**
 
 ```python
 """策略运行记录：空仓也要说得清卡在哪，报错也要留痕。"""
@@ -117,12 +117,12 @@ def test_phase_labels_cover_every_phase():
     }
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `uv run pytest tests/ops/test_strategy_log.py -v`
 Expected: FAIL，`ModuleNotFoundError: No module named 'qsys.ops.strategy_log'`
 
-- [ ] **Step 3: 写最小实现**
+- [x] **Step 3: 写最小实现**
 
 ```python
 """策略运行记录：一个事件一条，说清跑了什么、为什么没动作。
@@ -260,12 +260,12 @@ def build_record(
     )
 ```
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `uv run pytest tests/ops/test_strategy_log.py -v`
 Expected: PASS（7 个用例）
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/qsys/ops/strategy_log.py tests/ops/test_strategy_log.py
@@ -288,7 +288,7 @@ git commit -m "feat(ops): accumulate and summarise one strategy run record per e
   - `LiveStore.run_sessions(limit: int = 60) -> list[date]`（有记录的交易日，倒序）
   - `PaperStore.record_run(ident: str, record: RunRecord) -> None`；`PaperStore.strategy_runs(ident: str, session: date) -> list[dict]`；`PaperStore.run_sessions(ident: str, limit: int = 60) -> list[date]`
 
-- [ ] **Step 1: 写失败的测试（影子盘）**
+- [x] **Step 1: 写失败的测试（影子盘）**
 
 在 `tests/live/test_live_store.py` 末尾追加：
 
@@ -327,12 +327,12 @@ def test_strategy_runs_round_trip_and_rerun_overwrites(tmp_path):
     assert store.strategy_runs(date(2026, 9, 17)) == []
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `uv run pytest tests/live/test_live_store.py -k strategy_runs -v`
 Expected: FAIL，`AttributeError: 'LiveStore' object has no attribute 'record_run'`
 
-- [ ] **Step 3: 实现影子盘存储**
+- [x] **Step 3: 实现影子盘存储**
 
 在 `src/qsys/live/store.py` 建表的 `executescript` 里追加（与 `live_events` 同一处）：
 
@@ -418,12 +418,12 @@ def decode_run(row) -> dict:
 `strategy_log.py` 顶部加 `import json`；`live/store.py` 顶部加
 `from qsys.ops.strategy_log import RUN_COLUMNS, RunRecord, decode_run, run_values`。
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `uv run pytest tests/live/test_live_store.py -k strategy_runs -v`
 Expected: PASS
 
-- [ ] **Step 5: 写失败的测试（模拟盘）**
+- [x] **Step 5: 写失败的测试（模拟盘）**
 
 在 `tests/paper/test_paper_store.py` 末尾追加：
 
@@ -453,75 +453,45 @@ def test_strategy_runs_are_per_account(tmp_path):
     assert store.run_sessions("acct-a") == [day]
 ```
 
-- [ ] **Step 6: 运行测试确认失败**
+- [x] **Step 6: 运行测试确认失败**
 
-Run: `uv run pytest tests/paper/test_paper_store.py -k strategy_runs -v`
-Expected: FAIL，`AttributeError: 'PaperStore' object has no attribute 'record_run'`
+Run: `uv run pytest tests/web/test_paper_pages.py -k run_log -v`
+Expected: FAIL，账户详情页尚未传入或渲染运行记录。
 
-- [ ] **Step 7: 实现模拟盘存储**
+- [x] **Step 7: 实现模拟盘页面**
 
-`src/qsys/paper/store.py` 建表处追加（注意主键含 `account_id`）：
+账户详情路由读取该账户最近 60 个有记录的交易日，默认选择最近一天，并传入：
 
-```sql
-                CREATE TABLE IF NOT EXISTS paper_strategy_runs (
-                    account_id TEXT NOT NULL, event_key TEXT NOT NULL,
-                    session TEXT NOT NULL, phase TEXT NOT NULL,
-                    started_at TEXT NOT NULL, finished_at TEXT NOT NULL,
-                    duration_ms INTEGER NOT NULL, cash REAL NOT NULL,
-                    market_value REAL NOT NULL, total_value REAL NOT NULL,
-                    position_count INTEGER NOT NULL, candidates INTEGER,
-                    passed INTEGER, orders INTEGER NOT NULL, rejects INTEGER NOT NULL,
-                    summary TEXT NOT NULL, reasons_json TEXT NOT NULL DEFAULT '{}',
-                    note TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT '',
-                    PRIMARY KEY(account_id, event_key)
-                );
-                CREATE INDEX IF NOT EXISTS paper_runs_session
-                    ON paper_strategy_runs(account_id, session, started_at);
-```
+- `runs = paper.strategy_runs(ident, selected_run_session)`
+- `run_sessions = paper.run_sessions(ident)`
+- `selected_run_session`
+- `phase_labels = PHASE_LABELS`
 
-方法与影子盘同构，SQL 多一个 `account_id` 参数：
+`paper_detail.html` 新增「运行日志」标签和交易日选择，内容复用
+`_strategy_runs.html`；原有事件表改名为「调度记录」，避免两种记录混淆。
+
+监控进程同时接入影子盘状态库：
 
 ```python
-    def record_run(self, ident: str, record: RunRecord) -> None:
-        columns = ("account_id", *RUN_COLUMNS)
-        with self._connect() as con:
-            con.execute(
-                f"INSERT OR REPLACE INTO paper_strategy_runs "
-                f"({','.join(columns)}) VALUES ({','.join('?' * len(columns))})",
-                (ident, *run_values(record)),
-            )
-
-    def strategy_runs(self, ident: str, session: date) -> list[dict]:
-        with self._connect() as con:
-            rows = con.execute(
-                "SELECT * FROM paper_strategy_runs WHERE account_id=? AND session=? "
-                "ORDER BY started_at", (ident, session.isoformat()),
-            ).fetchall()
-        return [decode_run(row) for row in rows]
-
-    def run_sessions(self, ident: str, limit: int = 60) -> list[date]:
-        with self._connect() as con:
-            rows = con.execute(
-                "SELECT DISTINCT session FROM paper_strategy_runs WHERE account_id=? "
-                "ORDER BY session DESC LIMIT ?", (ident, limit),
-            ).fetchall()
-        return [date.fromisoformat(row["session"]) for row in rows]
+parser.add_argument("--state", default="var/shadow-state.sqlite3")
+monitor = MonitorService(
+    journal, config=config, transport=transport, store=LiveStore(Path(args.state))
+)
 ```
 
-`paper/store.py` 顶部同样导入 `RUN_COLUMNS, RunRecord, decode_run, run_values`；
-`decode_run` 对模拟盘的行会一并带出 `account_id`，页面不使用该列但不必特殊处理。
+systemd 单元同步传入 `--state /data/qsys-test/var/shadow-state.sqlite3`。
 
-- [ ] **Step 8: 运行测试确认通过**
+- [x] **Step 8: 运行测试确认通过**
 
-Run: `uv run pytest tests/live/test_live_store.py tests/paper/test_paper_store.py -k strategy_runs -v`
-Expected: PASS（2 个用例）
+Run: `uv run pytest tests/web -v`
+Expected: PASS（包含影子盘、模拟盘运行日志和空态用例）
 
-- [ ] **Step 9: 提交**
+- [x] **Step 9: 提交**
 
 ```bash
-git add src/qsys/live/store.py src/qsys/paper/store.py src/qsys/ops/strategy_log.py \
-        tests/live/test_live_store.py tests/paper/test_paper_store.py
-git commit -m "feat(live,paper): persist one strategy run row per event"
+git add src/qsys/web scripts/run_monitor.py deploy/systemd/qsys-web-test.service \
+        tests/web/test_app.py tests/web/test_paper_pages.py
+git commit -m "feat(web): show strategy run logs for shadow and paper trading"
 ```
 
 ---
@@ -536,7 +506,7 @@ git commit -m "feat(live,paper): persist one strategy run row per event"
 - Consumes: Task 1 的 `RunReport`
 - Produces: `Context(..., report=None)` 新增关键字参数；`ctx.report(candidates=..., passed=..., reasons=..., note=...)` 可调用；未注入时也可调用（落在一个丢弃式 `RunReport` 上，回测与单测不必改）
 
-- [ ] **Step 1: 写失败的测试**
+- [x] **Step 1: 写失败的测试**
 
 在 `tests/strategy/test_context.py` 末尾追加（若该文件不存在则新建，并照抄本文件已有 fixture 的构造方式）：
 
@@ -556,12 +526,12 @@ def test_report_without_injection_is_a_no_op():
     ctx.report(note="回测与单测里没有记录器，也不能崩")
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `uv run pytest tests/strategy/test_context.py -k report -v`
 Expected: FAIL，`TypeError: Context.__init__() got an unexpected keyword argument 'report'`
 
-- [ ] **Step 3: 写最小实现**
+- [x] **Step 3: 写最小实现**
 
 `src/qsys/strategy/context.py`：构造函数签名加 `report: RunReport | None = None`，函数体加
 `self._report = report if report is not None else RunReport()`，并新增方法：
@@ -584,12 +554,12 @@ Expected: FAIL，`TypeError: Context.__init__() got an unexpected keyword argume
 
 顶部加 `from collections.abc import Mapping` 与 `from qsys.ops.strategy_log import RunReport`。
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `uv run pytest tests/strategy -v`
 Expected: PASS（含原有用例）
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/qsys/strategy/context.py tests/strategy/test_context.py
@@ -608,7 +578,7 @@ git commit -m "feat(strategy): let strategies report their funnel through ctx.re
 - Consumes: Task 1 `RunReport`/`build_record`，Task 2 `LiveStore.record_run`，Task 3 `Context(report=...)`
 - Produces: 每个事件结束后 `live_strategy_runs` 多一行；失败与过期同样有行
 
-- [ ] **Step 1: 写失败的测试**
+- [x] **Step 1: 写失败的测试**
 
 在 `tests/live/test_live_runtime.py` 末尾追加（构造方式照抄本文件
 `test_live_runtime_executes_event_once_and_recovers`，它是内联构造，没有夹具）：
@@ -664,12 +634,12 @@ def test_a_failing_recorder_never_breaks_the_event(warehouse, tmp_path, monkeypa
     assert store.strategy_runs(moment.date()) == []
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `uv run pytest tests/live/test_live_runtime.py -k "run_row or failing_recorder" -v`
 Expected: FAIL，`AssertionError: [] == ['session_start']`（表已由 Task 2 建好，但没有行）
 
-- [ ] **Step 3: 写最小实现**
+- [x] **Step 3: 写最小实现**
 
 `_context` 增参：
 
@@ -731,12 +701,12 @@ Expected: FAIL，`AssertionError: [] == ['session_start']`（表已由 Task 2 �
 `_run_event` 的异常出口：用 `try/except Exception as exc:` 包住策略调用段，在 `except` 里
 先写 `error=str(exc)` 的记录再 `raise`，保证失败也留痕。
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `uv run pytest tests/live -v`
 Expected: PASS
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/qsys/live/runtime.py src/qsys/live/store.py tests/live/test_live_runtime.py
@@ -760,7 +730,7 @@ git commit -m "feat(live): record a strategy run row for every shadow event"
   - `StructuralSelection.funnel: SelectionFunnel | None`，每次 `select()` 后被赋值
   - 模拟盘每个事件在 `paper_strategy_runs` 留一行
 
-- [ ] **Step 1: 写失败的测试（选股漏斗）**
+- [x] **Step 1: 写失败的测试（选股漏斗）**
 
 在 `tests/strategy/structural/test_structural_selection.py` 末尾追加。`selector`、
 `low_setup`、`TODAY`、`YESTERDAY` 都是本文件已有的辅助：
@@ -795,12 +765,12 @@ def test_funnel_does_not_accumulate_across_calls(warehouse, write_daily_bars):
     assert len(selection.decisions) == first.routed
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `uv run pytest tests/strategy/structural/test_structural_selection.py -k funnel -v`
 Expected: FAIL，`AttributeError: 'StructuralSelection' object has no attribute 'funnel'`
 
-- [ ] **Step 3: 实现漏斗暴露**
+- [x] **Step 3: 实现漏斗暴露**
 
 `selection.py` 在 `Selection` 之后新增：
 
@@ -844,12 +814,12 @@ class SelectionFunnel:
         )
 ```
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `uv run pytest tests/strategy/structural -v`
 Expected: PASS（含原有用例；若有用例依赖 `decisions` 跨调用累加，改成按次断言并在提交信息里说明）
 
-- [ ] **Step 5: 写失败的测试（策略上报）**
+- [x] **Step 5: 写失败的测试（策略上报）**
 
 在 `tests/strategy/structural/test_structural_strategy.py` 里，先给本文件的
 `FakeSelection` 加 `funnel`（真实 `StructuralSelection` 现在有这个属性，假实现必须
@@ -915,12 +885,12 @@ def test_auction_without_a_previous_session_says_so():
     assert report.note == "没有上一交易日，无从选股"
 ```
 
-- [ ] **Step 6: 运行测试确认失败**
+- [x] **Step 6: 运行测试确认失败**
 
 Run: `uv run pytest tests/strategy/structural/test_structural_strategy.py -k "reports_the_funnel or without_a_previous" -v`
 Expected: FAIL，`AssertionError`（report 仍为空）
 
-- [ ] **Step 7: 实现策略上报**
+- [x] **Step 7: 实现策略上报**
 
 `structural/strategy.py` 的 `on_auction`：
 
@@ -949,12 +919,12 @@ Expected: FAIL，`AssertionError`（report 仍为空）
                 continue
 ```
 
-- [ ] **Step 8: 运行测试确认通过**
+- [x] **Step 8: 运行测试确认通过**
 
 Run: `uv run pytest tests/strategy -v`
 Expected: PASS
 
-- [ ] **Step 9: 写失败的测试（模拟盘运行时）**
+- [x] **Step 9: 写失败的测试（模拟盘运行时）**
 
 在 `tests/paper/test_runtime.py` 末尾追加。`_runtime(warehouse, tmp_path, quotes)`
 是本文件已有的辅助，返回 `runtime, store, account_id, today`；`quotes` 用本文件
@@ -990,12 +960,12 @@ def test_paper_recorder_failure_does_not_break_the_event(
     assert store.strategy_runs(ident, today) == []
 ```
 
-- [ ] **Step 10: 运行测试确认失败**
+- [x] **Step 10: 运行测试确认失败**
 
 Run: `uv run pytest tests/paper/test_runtime.py -k "run_rows or recorder_failure" -v`
 Expected: FAIL，`AssertionError: [] == ['session_start']`
 
-- [ ] **Step 11: 实现模拟盘写入**
+- [x] **Step 11: 实现模拟盘写入**
 
 `_context` 增参（与 Task 4 同形）：
 
@@ -1056,12 +1026,12 @@ Expected: FAIL，`AssertionError: [] == ['session_start']`
 策略调用段用 `try/except Exception as exc:` 包住，`except` 里先写 `error=str(exc)`
 的记录再 `raise`，保证失败也留痕。
 
-- [ ] **Step 12: 运行测试确认通过**
+- [x] **Step 12: 运行测试确认通过**
 
 Run: `uv run pytest tests/paper tests/strategy tests/live -v`
 Expected: PASS
 
-- [ ] **Step 13: 提交**
+- [x] **Step 13: 提交**
 
 ```bash
 git add src/qsys/paper/runtime.py src/qsys/strategy/structural/selection.py \
@@ -1088,7 +1058,7 @@ git commit -m "feat(paper,strategy): report the selection funnel and record pape
 - Consumes: Task 2 的 `LiveStore.strategy_runs/run_sessions`、`PaperStore.strategy_runs/run_sessions`
 - Produces: `/s/{session}/runs` 页面；模拟账户详情页新增区块；两者共用片段 `_strategy_runs.html`，上下文变量 `runs`（list[dict]）与 `run_sessions`（list[date]）
 
-- [ ] **Step 1: 写失败的测试（影子盘页面）**
+- [x] **Step 1: 写失败的测试（影子盘页面）**
 
 在 `tests/web/test_app.py` 末尾追加。本文件的 `client` 夹具用
 `MonitorService(journal, config=cfg, transport=transport, ...)` 构造，本任务给
@@ -1134,12 +1104,12 @@ def test_run_log_page_says_when_there_is_nothing(client):
 （`D`、`time`、`datetime`、`WebConfig`、`create_app`、`MonitorService`、
 `SessionJournal`、`TestClient` 本文件已导入；`time` 若未导入则补 `from datetime import time`。）
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `uv run pytest tests/web/test_app.py -k run_log -v`
 Expected: FAIL，`TypeError: MonitorService.__init__() got an unexpected keyword argument 'store'`
 
-- [ ] **Step 3: 实现视图与页面**
+- [x] **Step 3: 实现视图与页面**
 
 `views.py` 加：
 
@@ -1208,12 +1178,12 @@ Expected: FAIL，`TypeError: MonitorService.__init__() got an unexpected keyword
 `phase_labels` 由 `_page` 统一注入：在 `app.py` 的 `_page` 里加
 `"phase_labels": PHASE_LABELS`（从 `qsys.ops.strategy_log` 导入）。
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `uv run pytest tests/web/test_app.py -k run_log -v`
 Expected: PASS
 
-- [ ] **Step 5: 写失败的测试（模拟盘页面）**
+- [x] **Step 5: 写失败的测试（模拟盘页面）**
 
 在 `tests/web/test_paper_pages.py` 末尾追加。`make_client(warehouse, tmp_path)` 是
 本文件已有的辅助（返回 `client, job`），账户通过 `POST /api/paper-accounts` 建，
@@ -1263,12 +1233,12 @@ def test_paper_detail_run_log_empty_state(warehouse, tmp_path):
     assert "当日没有运行记录" in page.text
 ```
 
-- [ ] **Step 6: 运行测试确认失败**
+- [x] **Step 6: 运行测试确认失败**
 
 Run: `uv run pytest tests/paper/test_paper_store.py -k strategy_runs -v`
 Expected: FAIL，`AttributeError: 'PaperStore' object has no attribute 'record_run'`
 
-- [ ] **Step 7: 实现模拟盘存储**
+- [x] **Step 7: 实现模拟盘存储**
 
 `src/qsys/paper/store.py` 建表处追加（注意主键含 `account_id`）：
 
@@ -1321,12 +1291,12 @@ Expected: FAIL，`AttributeError: 'PaperStore' object has no attribute 'record_r
 `paper/store.py` 顶部同样导入 `RUN_COLUMNS, RunRecord, decode_run, run_values`；
 `decode_run` 对模拟盘的行会一并带出 `account_id`，页面不使用该列但不必特殊处理。
 
-- [ ] **Step 8: 运行测试确认通过**
+- [x] **Step 8: 运行测试确认通过**
 
 Run: `uv run pytest tests/live/test_live_store.py tests/paper/test_paper_store.py -k strategy_runs -v`
 Expected: PASS（2 个用例）
 
-- [ ] **Step 9: 提交**
+- [x] **Step 9: 提交**
 
 ```bash
 git add src/qsys/live/store.py src/qsys/paper/store.py src/qsys/ops/strategy_log.py \
