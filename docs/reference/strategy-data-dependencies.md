@@ -33,7 +33,7 @@ WEAK 家族在 S7 Gate 之前整体删除（`_v12_keep_non_weak`），炸板池�
 | `attribute_history('000300.XSHG', 80, '1d')` | `index_ma20_slope_5d` | `index_bars`（Tushare 已回填至 2026-09-11） | `index_daily` | 2000 积分 |
 | `get_trade_days` | 交易日历 | `AShareCalendar`（akshare） | `trade_cal` | 120 积分 |
 | `cur[s].is_st` / `'退' in cur[s].name` | ST 与退市过滤 | `name_history` / `WarehouseQuery.name_history()`，按区间展开 | `namechange` | 2000 积分 |
-| `get_hl_stock` / `get_ever_hl_stock2` | 昨日首板 / 昨日炸板 | `limit_list_daily` / `WarehouseQuery.limit_list()`；`daily_flags` 保留派生 | `limit_list_d` 的 `limit_times` / `open_times` | 5000 积分 |
+| `get_hl_stock` / `get_ever_hl_stock2` | 昨日首板 / 昨日炸板 | `daily_flags`：非 ST 优先采用 `limit_list_daily` 的 U/Z，ST 暂用价格口径 | `limit_list_d` 的 `limit_times` / `open_times` | 5000 积分 |
 | `get_current_data().last_price` | 盘中检查点（11:25/14:25/14:50） | `minute_bars` | — （实盘走 QMT） | — |
 
 ## 三、竞价逐笔是唯一买不到的东西
@@ -92,16 +92,14 @@ def filter_kcbj_stock(initial_list):
 自研系统的 `qsys.markets.ashare.board_of` 把 `43/83/87/92` 一律判为 `bse`，
 不存在这个漏洞。
 
-### B 股口径的未来风险（2026-09-13）
+### 全市场因子与策略交易池（2026-09-18 修订）
 
-`market_regime` 先沿用原策略的 4/8/68 前缀过滤，再按调用方的 `boards`
-取交集。前一层不排 B 股（900/200），生产默认的后一层
-`main,gem,star` 则会排除 `bshare`，两层语义并不完全一致。
+`daily_flags`、`market_regime` 和实时行情总览采用全 A 股口径，包含主板、创业板、
+科创板、北交所与 ST。策略候选池仍在 `strategy.structural.universe` 独立排除
+科创板与北交所；市场因子的统计范围不再被策略可交易范围反向裁剪。
 
-当前不合并这两层：实测 2026-09-09 的付费源全市场 5,550 只和旧表中，
-900/200 开头均为 0 只，因此不会影响现有派生结果。若未来数据源开始包含
-B 股，必须先明确广度股票池是否纳入外币计价标的，再统一过滤口径并重新
-评估 S6/S7 阈值；不能让两层过滤的偶然交集替代口径决策。
+当前 Tushare/QMT 的 A 股集合不含 B 股。若未来数据源把 900/200 号段纳入同一集合，
+必须先明确是否把外币计价标的加入市场统计，再更新口径，不能静默混入。
 
 ## 六、09:24 早单的资金占用
 

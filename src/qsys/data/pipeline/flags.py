@@ -1,8 +1,8 @@
 """涨跌停与首板判定。
 
 策略的候选池完全建立在这上面：
-  涨停   close >= limit_up
-  炸板   high >= limit_up 但 close < limit_up
+  涨停   非 ST 以 limit_list_d 的 U 分类为准；ST 暂以收盘价到涨停价为准
+  炸板   非 ST 以 limit_list_d 的 Z 分类为准；ST 以触板但未收在涨停价为准
   首板   今日涨停且昨日未涨停（连板不是首板）
 
 派生自 tushare_daily + instruments.board，可完全重算——重算必须得到相同结果。
@@ -17,6 +17,10 @@
 
 **涨跌停价只认 Tushare `stk_limit`**：没有直取价的行，涨跌停价、档位与
 涨停/炸板/首板标记全部为 null，不按板块档位或 ST 档位自算。
+
+**封板与炸板优先认 Tushare `limit_list_d`**：日线 OHLC 没有收盘盘口，
+`close == limit_up` 仍可能没有封单并被官方归为 Z（炸板）。该接口不统计 ST，
+因此 ST 暂保留价格口径；接口整日尚未到货时也保留价格口径，等补采后重建。
 
 **涨跌停基准直取 `pre_close`**：Tushare 的 `pre_close` 就是除权参考价
 本身（3980 个除权日实测，与因子折算值中位差 0.000154），不再用
@@ -151,6 +155,21 @@ def build_daily_flags(
             pl.col("limit_down").alias("_direct_limit_down"),
         )
         bars = bars.join(direct_limits, on=["symbol", "dt"], how="left")
+        limit_list = query.limit_list(None, back, hi)
+        if limit_list.height:
+            classifications = limit_list.select(
+                "symbol", "dt", pl.col("limit_type").alias("_limit_type")
+            )
+            available_days = limit_list.select("dt").unique().with_columns(
+                pl.lit(True).alias("_limit_list_available")
+            )
+            bars = bars.join(classifications, on=["symbol", "dt"], how="left")
+            bars = bars.join(available_days, on="dt", how="left")
+        else:
+            bars = bars.with_columns(
+                pl.lit(None, dtype=pl.Utf8).alias("_limit_type"),
+                pl.lit(False).alias("_limit_list_available"),
+            )
         if boards is not None:
             def _board(s: str) -> str:
                 # 显式判 None，不用 `or`——board 若曾经取值空字符串会被
@@ -216,9 +235,27 @@ def _compute(bars: pl.DataFrame) -> pl.DataFrame:
     # limit_pct 是**这一行的 limit_up 实际对应的那一档**，由直取价解码，两者恒自洽。
     frame = frame.with_columns(
         _decode_tier(cents, pl.col("limit_up")).alias("limit_pct"),
-        (pl.col("close") >= pl.col("limit_up")).alias("is_limit_up"),
         (pl.col("close") <= pl.col("limit_down")).alias("is_limit_down"),
         (pl.col("high") >= pl.col("limit_up")).alias("touched_limit_up"),
+    )
+    price_at_limit = pl.col("close") >= pl.col("limit_up")
+    # U/Z 是收盘盘口状态；仅凭收盘价无法区分「封单」和「卖一仍有余量」。
+    # stock_st 不在 limit_list_d 统计范围内，只能暂时沿用价格口径。
+    frame = frame.with_columns(
+        pl.when(pl.col("limit_up").is_null())
+        .then(None)
+        .when(pl.col("_limit_type") == "U")
+        .then(True)
+        .when(pl.col("_limit_type") == "Z")
+        .then(False)
+        .when(pl.col("is_st") == True)  # noqa: E712 - polars expression
+        .then(price_at_limit)
+        .when(pl.col("_limit_list_available").is_null() | ~pl.col("_limit_list_available"))
+        .then(price_at_limit)
+        .when(~pl.col("touched_limit_up"))
+        .then(False)
+        .otherwise(None)
+        .alias("is_limit_up")
     )
     # 没有直取涨跌停价的行，上面三个标记自然为 null——不知道就是不知道。
     return frame.with_columns(

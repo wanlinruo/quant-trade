@@ -35,28 +35,31 @@ def test_quote_request_round_trip_is_read_only():
 
 
 def _quote(symbol, price, previous=10, *, high=None, upper=None, lower=None,
-           amount=100, suspended=False):
+           amount=100, suspended=False, bid1_volume=0, ask1_volume=0):
     return MarketQuote(symbol=symbol, at=datetime(2026, 9, 16, 10), price=price,
                        open=previous, high=high or price, low=price,
                        prev_close=previous, amount=amount, upper_limit=upper,
-                       lower_limit=lower, suspended=suspended)
+                       lower_limit=lower, suspended=suspended,
+                       bid1_volume=bid1_volume, ask1_volume=ask1_volume)
 
 
-def test_market_overview_aggregates_the_live_breadth_universe():
+def test_market_overview_aggregates_all_a_share_boards():
     now = datetime(2026, 9, 16, 10, 30)
     snapshot = build_market_overview({
         "000001.SH": _quote("000001.SH", 3300, 3270),
         "600001.SH": _quote("600001.SH", 11, high=11),
         "000001.SZ": _quote("000001.SZ", 9, high=10.5),
         "300001.SZ": _quote("300001.SZ", 10),
-        "688001.SH": _quote("688001.SH", 12),  # 与日频广度口径一致：排除科创
+        "688001.SH": _quote("688001.SH", 12),
+        "920001.BJ": _quote("920001.BJ", 13),
         "600002.SH": _quote("600002.SH", 0, suspended=True),
-    }, limits={"600001.SH": (11, 9), "000001.SZ": (11, 9), "300001.SZ": (12, 10)}, now=now)
-    assert snapshot.valid_stock_count == 3
-    assert (snapshot.advance_count, snapshot.decline_count, snapshot.flat_count) == (1, 1, 1)
-    assert snapshot.limit_up_count == 1
+    }, limits={"600001.SH": (11, 9), "000001.SZ": (11, 9), "300001.SZ": (12, 10),
+               "688001.SH": (12, 8), "920001.BJ": (13, 7)}, now=now)
+    assert snapshot.valid_stock_count == 5
+    assert (snapshot.advance_count, snapshot.decline_count, snapshot.flat_count) == (3, 1, 1)
+    assert snapshot.limit_up_count == 3
     assert snapshot.limit_down_count == 2
-    assert snapshot.touched_limit_up_count == 1
+    assert snapshot.touched_limit_up_count == 3
     assert snapshot.broken_board_count == 0
     assert snapshot.limit_price_missing_count == 0
     assert snapshot.indices[0].name == "上证指数"
@@ -71,6 +74,20 @@ def test_gateway_publishes_one_atomic_overview_key():
     raw = transport.get_key(streams.market_snapshot)
     assert raw is not None
     assert MarketOverviewSnapshot.model_validate_json(raw).limit_up_count == 1
+
+
+def test_market_overview_treats_limit_price_with_remaining_ask_as_broken():
+    snapshot = build_market_overview({
+        "002631.SZ": _quote(
+            "002631.SZ", 13.23, previous=12.03, high=13.23,
+            ask1_volume=2_830_000,
+        ),
+    }, limits={"002631.SZ": (13.23, 10.83)},
+        now=datetime(2026, 9, 18, 15, 30))
+
+    assert snapshot.limit_up_count == 0
+    assert snapshot.touched_limit_up_count == 1
+    assert snapshot.broken_board_count == 1
 
 
 def test_market_overview_uses_direct_limits_and_never_derives_them():

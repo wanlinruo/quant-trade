@@ -4,8 +4,9 @@
 
 原策略用 `get_hl_stock(initial, yesterday, 1)` 取昨日涨停，再剔除前日也
 涨停的——那正是 `daily_flags.is_first_board` 的定义，2-1a 已实测一致。
-炸板对应 `get_ever_hl_stock2`（`close != high_limit and high == high_limit`），
-即 `is_broken_board`。
+炸板对应 `get_ever_hl_stock2`。`daily_flags.is_broken_board` 对非 ST 优先采用
+`limit_list_d` 的 Z 分类，避免把“收盘价在涨停价但卖一仍有余量”误当成封板；
+ST 因该接口不统计，暂用触板后未收在涨停价的价格口径。
 
 **与原文 `filter_st_paused_stock` 的有意偏离（D-11，用户 2026-09-17 定）**：
 

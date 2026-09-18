@@ -188,6 +188,8 @@ def test_refresh_derived_wires_every_production_consumer(warehouse, monkeypatch)
     assert got == {"adj_factors": 1, "daily_flags": 2, "market_regime": 3,
                    "valuation_snapshot": 4, "delisting_pool": 5}
     assert [call[0] for call in calls] == ["factors", "flags", "regime", "valuation", "delisting"]
+    assert calls[1][4] is None  # 行情 flags 是全市场；策略池不能在这里裁剪
+    assert calls[2][4] is None  # 市场生态同样是全市场口径
     assert calls[3][2:] == (DAY, DAY)
     # 次日开盘前选股要用次日的池子
     assert calls[4][3:] == (DAY, [nxt])

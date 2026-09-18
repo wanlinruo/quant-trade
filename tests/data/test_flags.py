@@ -49,10 +49,11 @@ def seed(warehouse: Warehouse, write_daily_bars, rows, boards=None) -> None:
         "amount": [0.0] * len(rows),
     }))
     boards = boards or {}
+    tiers = {"gem": 0.20, "star": 0.20, "bse": 0.30}
     _WRITE_TRUTH(warehouse, pl.DataFrame({
         "symbol": [r[0] for r in rows], "dt": [r[1] for r in rows], "pre_close": pre_closes,
     }, schema_overrides={"pre_close": pl.Float64}),
-        tiers={s: 0.20 for s, b in boards.items() if b == "gem"})
+        tiers={s: tiers[b] for s, b in boards.items() if b in tiers})
     uniq = sorted({r[0] for r in rows})
     warehouse.write(
         "instruments",
@@ -102,6 +103,74 @@ def test_broken_board_is_touched_but_not_closed_at_limit(warehouse, write_daily_
     assert row["touched_limit_up"] is True
     assert row["is_limit_up"] is False
     assert row["is_broken_board"] is True
+
+
+def test_limit_list_z_overrides_a_close_at_the_limit(
+    warehouse, write_daily_bars,
+):
+    """收盘价落在涨停价不等于封板；官方 Z 分类代表收盘时仍是炸板。"""
+    seed(warehouse, write_daily_bars, [
+        ("002631.SZ", D[0], 12.03, 12.03, 12.03, 12.03),
+        ("002631.SZ", D[1], 12.15, 13.23, 12.00, 13.23),
+    ])
+    listed = pl.DataFrame({
+        "symbol": ["002631.SZ"],
+        "dt": [D[1]],
+        "limit_type": ["Z"],
+        "limit_times": [None],
+        "open_times": [6],
+        "first_time": ["13:00:12"],
+        "fd_amount": [None],
+        "limit_amount": [None],
+        "float_mv": [None],
+    })
+    warehouse.write(
+        "limit_list_daily",
+        listed.to_arrow().cast(schema.LIMIT_LIST_DAILY),
+        year=2024,
+    )
+
+    build_daily_flags(warehouse, D[0], D[1])
+
+    row = flags_of(warehouse, "002631.SZ", D[1])
+    assert row["touched_limit_up"] is True
+    assert row["is_limit_up"] is False
+    assert row["is_broken_board"] is True
+    assert row["is_first_board"] is False
+
+
+def test_limit_list_u_includes_beijing_in_full_market_flags(
+    warehouse, write_daily_bars,
+):
+    """行情因子默认覆盖全市场；策略交易池是否排除北交所是下游职责。"""
+    seed(warehouse, write_daily_bars, [
+        ("920298.BJ", D[0], 69.60, 69.60, 69.60, 69.60),
+        ("920298.BJ", D[1], 69.60, 69.60, 69.60, 69.60),
+        ("920298.BJ", D[2], 90.48, 90.48, 90.48, 90.48),
+    ], boards={"920298.BJ": "bse"})
+    listed = pl.DataFrame({
+        "symbol": ["920298.BJ"],
+        "dt": [D[2]],
+        "limit_type": ["U"],
+        "limit_times": [1],
+        "open_times": [0],
+        "first_time": ["09:30:00"],
+        "fd_amount": [None],
+        "limit_amount": [None],
+        "float_mv": [None],
+    })
+    warehouse.write(
+        "limit_list_daily",
+        listed.to_arrow().cast(schema.LIMIT_LIST_DAILY),
+        year=2024,
+    )
+
+    build_daily_flags(warehouse, D[0], D[2])
+
+    row = flags_of(warehouse, "920298.BJ", D[2])
+    assert row["limit_pct"] == pytest.approx(0.30)
+    assert row["is_limit_up"] is True
+    assert row["is_first_board"] is True
 
 
 def test_limit_down_is_detected(warehouse, write_daily_bars):
@@ -324,6 +393,4 @@ def test_a_normal_stock_keeps_the_board_limit(warehouse, write_daily_bars):
     row = flags_of(warehouse, "600036.SH", D[1])
     assert row["limit_pct"] == pytest.approx(0.10)
     assert row["is_limit_up"] is True
-
-
 

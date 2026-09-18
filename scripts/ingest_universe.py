@@ -43,8 +43,8 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=0, help="只采前 N 只，用于试跑")
     parser.add_argument(
         "--boards",
-        default="main,gem,star",
-        help="逗号分隔；默认排除北交所与 B 股",
+        default="main,gem,star,bse",
+        help="逗号分隔；默认覆盖全部 A 股板块，仅排除 B 股",
     )
     parser.add_argument("--skip-valuation", action="store_true")
     args = parser.parse_args()
