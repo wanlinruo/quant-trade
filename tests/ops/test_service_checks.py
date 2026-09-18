@@ -356,10 +356,11 @@ def test_shadow_events_skip_when_no_state_configured():
 def _workbench(path, accounts, events):
     import sqlite3
     con = sqlite3.connect(path)
-    con.execute("CREATE TABLE paper_accounts (id TEXT, name TEXT, status TEXT)")
+    con.execute("CREATE TABLE paper_accounts (id TEXT, name TEXT, status TEXT,"
+                " activation_date TEXT)")
     con.execute("CREATE TABLE paper_events (account_id TEXT, event_key TEXT,"
                 " scheduled_at TEXT, phase TEXT, status TEXT, detail TEXT DEFAULT '')")
-    con.executemany("INSERT INTO paper_accounts VALUES (?,?,?)", accounts)
+    con.executemany("INSERT INTO paper_accounts VALUES (?,?,?,?)", accounts)
     con.executemany("INSERT INTO paper_events VALUES (?,?,?,?,?,?)", events)
     con.commit(); con.close()
     return path
@@ -368,17 +369,25 @@ def _workbench(path, accounts, events):
 def test_paper_events_only_cover_running_accounts(tmp_path):
     path = _workbench(
         tmp_path / "wb.sqlite3",
-        [("acct-run", "跑着的", "running"), ("acct-done", "已结束的", "finished")],
+        [("acct-run", "跑着的", "running", "2026-09-01"),
+         ("acct-done", "已结束的", "finished", "2026-09-01")],
         [("acct-run", f"{DAY}:auction:09:30:00", f"{DAY}T09:30:00", "auction",
           "completed", "")],
     )
     assert sc._paper_events(ctx(FakeQuery(), workbench=path)).status == sc.OK
 
     idle = _workbench(tmp_path / "idle.sqlite3",
-                      [("acct-run", "跑着的", "running")], [])
+                      [("acct-run", "跑着的", "running", "2026-09-01")], [])
     got = sc._paper_events(ctx(FakeQuery(), workbench=idle))
     assert got.status == sc.BAD and "跑着的" in got.detail
 
     nobody = _workbench(tmp_path / "none.sqlite3",
-                        [("acct-done", "已结束的", "finished")], [])
+                        [("acct-done", "已结束的", "finished", "2026-09-01")], [])
     assert sc._paper_events(ctx(FakeQuery(), workbench=nobody)).status == sc.SKIP
+
+
+def test_paper_events_ignore_accounts_that_were_not_live_yet(tmp_path):
+    """生产 2026-09-18 起效的账户，在 09-17 本来就不该有事件（本条检查曾误报）。"""
+    path = _workbench(tmp_path / "future.sqlite3",
+                      [("acct-new", "明天才生效的", "running", "2026-09-18")], [])
+    assert sc._paper_events(ctx(FakeQuery(), workbench=path)).status == sc.SKIP

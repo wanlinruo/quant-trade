@@ -348,10 +348,12 @@ def _paper_events(ctx: CheckContext) -> CheckResult:
         return CheckResult(BAD, expected, f"找不到工作台 {path}")
     with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as con:
         con.row_factory = sqlite3.Row
+        # 生效日之后才该有事件：账户当天还没上线，没有事件是正常的
         accounts = {row["id"]: row["name"] for row in con.execute(
-            "SELECT id, name FROM paper_accounts WHERE status='running'")}
+            "SELECT id, name FROM paper_accounts "
+            "WHERE status='running' AND activation_date <= ?", (ctx.day.isoformat(),))}
         if not accounts:
-            return CheckResult(SKIP, expected, "当前没有运行中的模拟账户")
+            return CheckResult(SKIP, expected, "当日没有已生效且运行中的模拟账户")
         rows = [dict(row) for row in con.execute(
             "SELECT account_id, phase, status, detail FROM paper_events "
             "WHERE event_key LIKE ?", (f"{ctx.day}:%",))]
