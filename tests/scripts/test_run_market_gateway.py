@@ -49,7 +49,7 @@ def test_calendar_clears_previous_day_before_refreshing_the_new_day():
     ) == []
 
 
-def test_market_overview_requests_the_qmt_full_a_share_sector(monkeypatch):
+def test_market_overview_unions_qmt_sector_with_premarket_universe(monkeypatch):
     sectors = []
     xtdata = SimpleNamespace(
         get_stock_list_in_sector=lambda name: sectors.append(name) or [
@@ -63,8 +63,18 @@ def test_market_overview_requests_the_qmt_full_a_share_sector(monkeypatch):
         lambda symbols: requested.extend(symbols) or {},
     )
 
-    run_market_gateway.qmt_market_overview()
+    run_market_gateway.qmt_market_overview(["920298.BJ"])
 
     assert sectors == ["沪深京A股"]
     assert "688001.SH" in requested
     assert "920001.BJ" in requested
+    assert "920298.BJ" in requested
+
+
+def test_published_limit_symbols_supply_new_listings_missing_from_qmt_sector():
+    transport = SimpleNamespace(get_key=lambda key: '{"920298.BJ": [90.48, 48.72]}')
+    streams = SimpleNamespace(price_limits="state:price_limits")
+
+    assert run_market_gateway.published_limit_symbols(
+        transport, streams, date(2026, 9, 18)
+    ) == ["920298.BJ"]
