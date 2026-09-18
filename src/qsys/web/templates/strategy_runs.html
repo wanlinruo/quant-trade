@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div><h2>运行日志</h2><p class="muted">查看每个策略事件做了什么，以及为什么没有动作。</p></div>
+  {% if run_sessions %}
+  <select onchange="location.href='/s/'+this.value+'/runs'">
+    {% for day in run_sessions %}<option value="{{ day }}" {{ 'selected' if day == session }}>{{ day }}</option>{% endfor %}
+  </select>
+  {% endif %}
+</div>
+<section class="card">{% include "_strategy_runs.html" %}</section>
+{% endblock %}

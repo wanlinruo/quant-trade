@@ -202,3 +202,35 @@ def test_candidate_with_missing_factors_is_skipped_and_logged(
         and row.get("symbol") == "600001.SH"
         for row in logs
     )
+
+
+def test_select_exposes_the_funnel_it_already_computed(
+    warehouse, write_daily_bars
+):
+    low_setup(warehouse, write_daily_bars)
+    selection = selector(warehouse, require_auction_volume=False)
+
+    picks = selection.select(TODAY, YESTERDAY)
+
+    funnel = selection.funnel
+    assert funnel is not None
+    assert funnel.allowed == len(picks)
+    assert funnel.routed == len(selection.decisions)
+    assert funnel.pool >= funnel.routed
+    rejected = [decision for decision in selection.decisions if not decision.allow]
+    assert sum(funnel.reasons.values()) == len(rejected)
+    for decision in rejected:
+        assert decision.reason in funnel.reasons
+
+
+def test_funnel_does_not_accumulate_across_calls(warehouse, write_daily_bars):
+    low_setup(warehouse, write_daily_bars)
+    selection = selector(warehouse, require_auction_volume=False)
+
+    selection.select(TODAY, YESTERDAY)
+    first = selection.funnel
+    selection.select(TODAY, YESTERDAY)
+
+    assert selection.funnel == first
+    assert first is not None
+    assert len(selection.decisions) == first.routed

@@ -22,6 +22,7 @@ from qsys.core.trading import to_cents
 from qsys.core.types import Symbol
 from qsys.data.feed import Adjustment, DataFeed
 from qsys.data.market_feed import BoundMarket, MarketFeed
+from qsys.ops.strategy_log import RunReport
 from qsys.strategy.schedule import Schedule
 
 
@@ -88,6 +89,7 @@ class Context:
         market: MarketFeed | None = None,
         schedule: Schedule | None = None,
         log=None,
+        report: RunReport | None = None,
     ) -> None:
         self._clock = clock
         self._feed = feed
@@ -99,6 +101,7 @@ class Context:
         self.params = params
         self.state = state
         self.log = log if log is not None else structlog.get_logger("strategy")
+        self._report = report if report is not None else RunReport()
 
     @property
     def now(self) -> datetime:
@@ -115,6 +118,18 @@ class Context:
     @property
     def order(self):
         return self._order
+
+    def report(
+        self,
+        candidates: int | None = None,
+        passed: int | None = None,
+        reasons: Mapping[str, int] | None = None,
+        note: str | None = None,
+    ) -> None:
+        """上报事件筛选漏斗和无动作原因，供运行日志展示。"""
+        self._report.report(
+            candidates=candidates, passed=passed, reasons=reasons, note=note
+        )
 
     @property
     def schedule(self) -> Schedule:

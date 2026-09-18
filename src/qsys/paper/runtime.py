@@ -6,6 +6,8 @@ from collections.abc import Mapping, Sequence
 from datetime import date, datetime, time
 from pathlib import Path
 
+import structlog
+
 from qsys.backtest.runner import corporate_actions, cost_model
 from qsys.core.clock import Phase
 from qsys.core.portfolio import Portfolio
@@ -25,6 +27,10 @@ from qsys.data.feed import HistoricalFeed
 from qsys.data.market_feed import MarketFeed
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
+from qsys.ops.strategy_log import RunReport, build_record
+
+
+log = structlog.get_logger(__name__)
 
 
 # 行情刷新与盘中权益只在这段时间有意义：开盘事件 09:15 到收盘结算事件 15:30。
@@ -178,13 +184,13 @@ class PaperRuntime:
         self.strategy.on_init(self._context(schedule)[0])
         self.schedule = schedule
 
-    def _context(self, schedule=None):
+    def _context(self, schedule=None, report=None):
         view = PortfolioView.of(self.portfolio, self.last_prices)
         api = OrderApi(view, self.last_prices)
         return Context(
             self.clock, self.feed, view, api,
             params=dict(self.store.account(self.id).config.get("params", {})),
-            state=self.state, market=self.market, schedule=schedule,
+            state=self.state, market=self.market, schedule=schedule, report=report,
         ), api
 
     def _events(self, day: date):
@@ -215,6 +221,12 @@ class PaperRuntime:
             late = (now - moment).total_seconds() > self.GRACE_SECONDS
             if late and phase is not Phase.SESSION_START:
                 self.store.finish_event(self.id, key, detail="进程恢复时事件已过期，未补跑")
+                expired = RunReport()
+                expired.report(note="进程恢复时事件已过期，未补跑")
+                self._record_run(
+                    key, moment, phase, expired, datetime.now(),
+                    orders=0, rejects=0, error="",
+                )
                 continue
             self._run_event(key, moment, phase, skip_strategy=late)
         if QUOTE_WINDOW[0] <= now.time() <= QUOTE_WINDOW[1]:
@@ -222,44 +234,114 @@ class PaperRuntime:
 
     def _run_event(self, key: str, moment: datetime, phase: Phase,
                    *, skip_strategy: bool = False) -> None:
+        started = datetime.now()
+        report = RunReport()
         self.clock.set(moment)
-        if phase is Phase.SESSION_START:
-            self.portfolio.unfreeze()
-            if moment.date() in self.actions:
-                from qsys.backtest.corporate import apply_corporate_actions
-                apply_corporate_actions(self.portfolio, self.actions[moment.date()])
-        if skip_strategy:
+        try:
+            if phase is Phase.SESSION_START:
+                self.portfolio.unfreeze()
+                if moment.date() in self.actions:
+                    from qsys.backtest.corporate import apply_corporate_actions
+
+                    apply_corporate_actions(
+                        self.portfolio, self.actions[moment.date()]
+                    )
+            if skip_strategy:
+                report.report(note="仅执行账户结算；策略事件未补跑")
+                self.store.commit_event(
+                    self.id, key, self.portfolio, self.state, self.last_prices,
+                    at=moment, detail=report.note,
+                )
+                self._record_run(
+                    key, moment, phase, report, started,
+                    orders=0, rejects=0, error="",
+                )
+                return
+
+            ctx, api = self._context(report=report)
+            if phase is Phase.SESSION_START:
+                self.strategy.on_session_start(ctx)
+            elif phase is Phase.AUCTION:
+                self.strategy.on_auction(ctx)
+            elif phase is Phase.CHECKPOINT:
+                self.strategy.on_checkpoint(ctx, moment.time())
+            elif phase is Phase.BAR:
+                quotes = self.market.get([str(s) for s in self.universe])
+                bars = {
+                    Symbol.parse(symbol): _bar(quote, moment.date())
+                    for symbol, quote in quotes.items()
+                    if quote.price > 0 and not quote.suspended
+                }
+                for symbol, bar in bars.items():
+                    self.last_prices[symbol] = bar.close
+                self.strategy.on_bar(ctx, bars)
+            else:
+                self.strategy.on_session_end(ctx)
+            orders = self._flush(api, key, moment)
+            rejects = self._record_results()
+            if phase is Phase.SESSION_END:
+                self.broker.cancel_all(moment, "session ended: unfilled order cancelled")
+                rejects += self._record_results()
             self.store.commit_event(
                 self.id, key, self.portfolio, self.state, self.last_prices,
-                at=moment, detail="仅执行账户结算；策略事件未补跑",
+                at=moment,
             )
-            return
+            self._record_run(
+                key, moment, phase, report, started,
+                orders=orders, rejects=rejects, error="",
+            )
+        except Exception as exc:
+            self._record_run(
+                key, moment, phase, report, started,
+                orders=0, rejects=0, error=str(exc),
+            )
+            raise
 
-        ctx, api = self._context()
-        if phase is Phase.SESSION_START:
-            self.strategy.on_session_start(ctx)
-        elif phase is Phase.AUCTION:
-            self.strategy.on_auction(ctx)
-        elif phase is Phase.CHECKPOINT:
-            self.strategy.on_checkpoint(ctx, moment.time())
-        elif phase is Phase.BAR:
-            quotes = self.market.get([str(s) for s in self.universe])
-            bars = {Symbol.parse(s): _bar(q, moment.date()) for s, q in quotes.items()
-                    if q.price > 0 and not q.suspended}
-            for symbol, bar in bars.items():
-                self.last_prices[symbol] = bar.close
-            self.strategy.on_bar(ctx, bars)
-        else:
-            self.strategy.on_session_end(ctx)
-        self._flush(api, key, moment)
-        if phase is Phase.SESSION_END:
-            self.broker.cancel_all(moment, "session ended: unfilled order cancelled")
-            self._record_results()
-        self.store.commit_event(
-            self.id, key, self.portfolio, self.state, self.last_prices, at=moment
-        )
+    def _record_run(
+        self,
+        key: str,
+        moment: datetime,
+        phase: Phase,
+        report: RunReport,
+        started: datetime,
+        *,
+        orders: int,
+        rejects: int,
+        error: str,
+    ) -> None:
+        """写运行记录；记录失败只能告警，不能影响交易。"""
+        try:
+            market_value = sum(
+                position.total_qty
+                * self.last_prices.get(symbol, position.avg_cost)
+                for symbol, position in self.portfolio.positions.items()
+            )
+            self.store.record_run(
+                self.id,
+                build_record(
+                    report,
+                    event_key=key,
+                    session=moment.date(),
+                    phase=phase.value,
+                    started_at=started,
+                    finished_at=datetime.now(),
+                    cash=self.portfolio.cash,
+                    market_value=market_value,
+                    position_count=len(self.portfolio.positions),
+                    orders=orders,
+                    rejects=rejects,
+                    error=error,
+                ),
+            )
+        except Exception as exc:
+            log.warning(
+                "strategy_run.record_failed",
+                account_id=self.id,
+                event_key=key,
+                error=str(exc),
+            )
 
-    def _flush(self, api: OrderApi, event_key: str, moment: datetime) -> None:
+    def _flush(self, api: OrderApi, event_key: str, moment: datetime) -> int:
         orders = []
         for intent in api.drain():
             index = self.order_seq.get(event_key, 0) + 1
@@ -271,6 +353,7 @@ class PaperRuntime:
             self.broker.submit(order)
             orders.append(order)
         self.store.record_orders(self.id, event_key, orders)
+        return len(orders)
 
     def _refresh_quotes(self, now: datetime) -> None:
         symbols = {str(s) for s in self.portfolio.positions}
@@ -299,7 +382,7 @@ class PaperRuntime:
     def _limits_on(self, day: date) -> dict[str, tuple[float, float]]:
         return self._limits.on(day)
 
-    def _record_results(self) -> None:
+    def _record_results(self) -> int:
         fills, rejects = self.broker.poll_fills(), self.broker.poll_rejects()
         for fill in fills:
             ctx, api = self._context()
@@ -309,6 +392,7 @@ class PaperRuntime:
         remaining = {order.order_id: self.broker.remaining(order.order_id)
                      for order in self.broker.pending()}
         self.store.record_results(self.id, fills, rejects, remaining)
+        return len(rejects)
 
     def _save(self, at: datetime, benchmark_value: float | None = None) -> None:
         self.store.save_snapshot(

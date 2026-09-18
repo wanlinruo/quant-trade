@@ -14,6 +14,7 @@ import structlog
 
 from qsys.live.heartbeat import HeartbeatMonitor
 from qsys.live.messages import AccountSnapshot
+from qsys.live.store import LiveStore
 from qsys.live.transport import Transport
 from qsys.ops.daily_report import DailyReport, EquityLine, build_daily_report
 from qsys.ops.journal import SessionJournal
@@ -56,11 +57,13 @@ class MonitorService:
         config: WebConfig,
         transport: Transport | None = None,
         quality_summary_provider: Callable[[], str] | None = None,
+        store: LiveStore | None = None,
     ) -> None:
         self._journal = journal
         self._cfg = config
         self._transport = transport
         self._quality = quality_summary_provider
+        self._store = store
 
     def latest_session(self) -> date | None:
         sessions = self._journal.sessions()
@@ -172,3 +175,9 @@ class MonitorService:
             quality_summary=self._quality_summary(),
             dead_sources=self._dead_sources(now),
         )
+
+    def strategy_runs(self, session: date) -> list[dict]:
+        return self._store.strategy_runs(session) if self._store else []
+
+    def run_sessions(self) -> list[date]:
+        return self._store.run_sessions() if self._store else []

@@ -13,6 +13,7 @@ continue 用于固定生命周期语义。`LOW_MAIN` 的竞价量过滤没过时
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, time
@@ -51,6 +52,16 @@ class Selection:
     allow: bool
 
 
+@dataclass(frozen=True, slots=True)
+class SelectionFunnel:
+    """一次选股的漏斗；只汇总本次已有的判定结果。"""
+
+    pool: int
+    routed: int
+    allowed: int
+    reasons: dict[str, int]
+
+
 class StructuralSelection:
     def __init__(
         self,
@@ -67,6 +78,7 @@ class StructuralSelection:
         self._require_auction_volume = require_auction_volume
         self._listing: dict[str, date] | None = None
         self.decisions: list[Selection] = []
+        self.funnel: SelectionFunnel | None = None
 
     def _listing_dates(self) -> dict[str, date]:
         if self._listing is None:
@@ -81,6 +93,8 @@ class StructuralSelection:
         用的是 T-1 的数据，只是以 T 为键存下来。我们的表按「因子所描述
         的那一天」存，所以在 T 日要读 T-1 的行。
         """
+        self.decisions = []
+        self.funnel = None
         as_of = datetime.combine(day, SELECTION_AT)
         market = self._market.bind(as_of)
 
@@ -98,6 +112,9 @@ class StructuralSelection:
                 [s for s in pool.broken_boards if s not in suspended],
             )
         if not pool.first_boards:
+            self.funnel = SelectionFunnel(
+                pool=0, routed=0, allowed=0, reasons={}
+            )
             return []
 
         opens = market.session_open(pool.first_boards, day)
@@ -136,6 +153,15 @@ class StructuralSelection:
             self.decisions.append(decided)
             if decided.allow:
                 picks.append(decided)
+        rejected = Counter(
+            decision.reason for decision in self.decisions if not decision.allow
+        )
+        self.funnel = SelectionFunnel(
+            pool=len(pool.first_boards),
+            routed=len(self.decisions),
+            allowed=len(picks),
+            reasons=dict(rejected),
+        )
         return picks
 
     def _route(
