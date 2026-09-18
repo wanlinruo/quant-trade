@@ -1,5 +1,7 @@
 from datetime import date, datetime, time
 
+import pytest
+
 from qsys.core.calendar import AShareCalendar
 from qsys.live.messages import MarketQuote
 from qsys.paper.runtime import PaperRuntime
@@ -132,3 +134,60 @@ def test_runtime_limits_reload_until_the_premarket_job_has_written_today(warehou
         "limit_up": [44.0], "limit_down": [36.0],
     }, schema=schema.PRICE_LIMITS_DAILY), year=today.year)
     assert runtime._limits_on(today) == {"600036.SH": (44.0, 36.0)}
+
+
+def test_paper_events_leave_run_rows(warehouse, tmp_path):
+    runtime, store, ident, today = _runtime(warehouse, tmp_path, Quotes())
+    moment = datetime.combine(today, time(9, 15, 10))
+
+    runtime.tick(moment)
+
+    rows = store.strategy_runs(ident, today)
+    assert [row["phase"] for row in rows] == ["session_start"]
+    assert rows[0]["summary"]
+
+
+def test_paper_recorder_failure_does_not_break_the_event(
+    warehouse, tmp_path, monkeypatch
+):
+    runtime, store, ident, today = _runtime(warehouse, tmp_path, Quotes())
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("坏了")
+
+    monkeypatch.setattr(store, "record_run", boom)
+    moment = datetime.combine(today, time(9, 15, 10))
+
+    runtime.tick(moment)
+
+    events = store.rows(ident, "events")
+    assert events and events[0]["status"] == "completed"
+    assert store.strategy_runs(ident, today) == []
+
+
+def test_paper_strategy_error_leaves_a_run_row(warehouse, tmp_path, monkeypatch):
+    runtime, store, ident, today = _runtime(warehouse, tmp_path, Quotes())
+
+    def boom(ctx):
+        raise RuntimeError("策略坏了")
+
+    monkeypatch.setattr(runtime.strategy, "on_session_start", boom)
+    moment = datetime.combine(today, time(9, 15, 10))
+
+    with pytest.raises(RuntimeError, match="策略坏了"):
+        runtime.tick(moment)
+
+    rows = store.strategy_runs(ident, today)
+    assert len(rows) == 1
+    assert rows[0]["summary"] == "事件失败：策略坏了"
+
+
+def test_paper_expired_event_leaves_a_run_row(warehouse, tmp_path):
+    runtime, store, ident, today = _runtime(warehouse, tmp_path, Quotes())
+    runtime.schedule.checkpoint("10:30")
+
+    runtime.tick(datetime.combine(today, time(10, 32)))
+
+    rows = store.strategy_runs(ident, today)
+    assert [row["phase"] for row in rows] == ["session_start", "checkpoint"]
+    assert rows[1]["note"] == "进程恢复时事件已过期，未补跑"

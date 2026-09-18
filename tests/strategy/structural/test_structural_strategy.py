@@ -13,9 +13,10 @@ DAY = date(2024, 1, 4)
 
 
 class FakeSelection:
-    def __init__(self, picks=()):
+    def __init__(self, picks=(), funnel=None):
         self.picks = list(picks)
         self.calls = []
+        self.funnel = funnel
 
     def select(self, day, previous):
         self.calls.append((day, previous))
@@ -96,7 +97,9 @@ class FakeData:
 
 
 class FakeCtx:
-    def __init__(self, now, portfolio=None, market=None, data=None, state=None):
+    def __init__(
+        self, now, portfolio=None, market=None, data=None, state=None, report=None
+    ):
         self.now = now
         self.portfolio = portfolio or FakePortfolio()
         self.market = market or FakeMarket()
@@ -104,9 +107,14 @@ class FakeCtx:
         self.order = FakeOrder()
         self.state = state if state is not None else {}
         self.params = {}
+        self._report = report
         import structlog
 
         self.log = structlog.get_logger("test")
+
+    def report(self, **kwargs):
+        if self._report is not None:
+            self._report.report(**kwargs)
 
 
 # ---------------- 买入 ----------------
@@ -119,6 +127,42 @@ def test_first_session_places_no_orders():
     strategy.on_session_start(ctx)
     strategy.on_auction(ctx)
     assert ctx.order.submitted == []
+
+
+def test_auction_reports_the_funnel():
+    from qsys.ops.strategy_log import RunReport
+    from qsys.strategy.structural.selection import SelectionFunnel
+
+    report = RunReport()
+    funnel = SelectionFunnel(
+        pool=37, routed=30, allowed=1, reasons={"高开超过阈值": 12}
+    )
+    selection = FakeSelection([Pick(str(SYM), "LOW_MAIN")], funnel=funnel)
+    strategy = StructuralStrategy(selection)
+    state = {"previous_session": date(2024, 1, 3)}
+    ctx = FakeCtx(
+        datetime.combine(DAY, AUCTION_AT),
+        market=FakeMarket(opens={str(SYM): 10.0}),
+        state=state,
+        report=report,
+    )
+
+    strategy.on_auction(ctx)
+
+    assert report.candidates == 37 and report.passed == 1
+    assert report.reasons["高开超过阈值"] == 12
+
+
+def test_auction_without_a_previous_session_says_so():
+    from qsys.ops.strategy_log import RunReport
+
+    report = RunReport()
+    strategy = StructuralStrategy(FakeSelection([Pick(str(SYM), "LOW_MAIN")]))
+    ctx = FakeCtx(datetime.combine(DAY, time(9, 15)), report=report)
+
+    strategy.on_auction(ctx)
+
+    assert report.note == "没有上一交易日，无从选股"
 
 
 def test_a_pick_becomes_a_buy_order():
