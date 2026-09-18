@@ -380,6 +380,7 @@ class LiveRuntime:
             else:
                 self.strategy.on_session_end(ctx)
             orders = self._flush(api, key, moment)
+            rejects = self._record_results()
             if phase is Phase.SESSION_END:
                 self.broker.cancel_all()
                 if self.shadow:
@@ -417,7 +418,7 @@ class LiveRuntime:
             )
             self._record_run(
                 key, moment, phase, report, started,
-                orders=orders, rejects=0, error="",
+                orders=orders, rejects=rejects, error="",
             )
         except Exception as exc:
             self._record_run(
@@ -500,7 +501,7 @@ class LiveRuntime:
         )
         return len(orders)
 
-    def _record_results(self) -> None:
+    def _record_results(self) -> int:
         statuses = self.broker.poll_statuses()
         received_fills = self.broker.poll_fills()
         fills = tuple(fill for fill in received_fills if not self.store.fill_recorded(fill))
@@ -537,6 +538,7 @@ class LiveRuntime:
                 self.alerts.critical("实盘连续拒单熔断", reason)
         if fills:
             self.consecutive_rejects = 0
+        return len(rejects)
 
     def _refresh_quotes(self, now: datetime) -> None:
         symbols = {str(symbol) for symbol in self.portfolio.positions}

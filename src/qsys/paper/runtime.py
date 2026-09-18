@@ -278,10 +278,10 @@ class PaperRuntime:
             else:
                 self.strategy.on_session_end(ctx)
             orders = self._flush(api, key, moment)
-            rejects = 0
+            rejects = self._record_results()
             if phase is Phase.SESSION_END:
                 self.broker.cancel_all(moment, "session ended: unfilled order cancelled")
-                rejects = self._record_results()
+                rejects += self._record_results()
             self.store.commit_event(
                 self.id, key, self.portfolio, self.state, self.last_prices,
                 at=moment,
