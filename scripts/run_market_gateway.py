@@ -9,7 +9,9 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
+from typing import Callable
 
 import structlog
 
@@ -19,6 +21,43 @@ from qsys.live.redis_transport import RedisTransport
 from qsys.paper.quotes import MarketGateway, build_market_schedule
 
 log = structlog.get_logger("market-gateway")
+
+
+@dataclass
+class TradingSessionCache:
+    """Refresh QMT's current-day calendar until its delayed data is available.
+
+    MiniQMT can return an empty trading-date result shortly after midnight and
+    populate it later in the morning.  An empty first result must therefore
+    not be treated as authoritative for the rest of the day.
+    """
+
+    refresh_interval: float = 300.0
+    sessions: list[date] = field(default_factory=list)
+    day: date | None = None
+    next_refresh: float = 0.0
+
+    def refresh_if_due(
+        self,
+        wall: datetime,
+        monotonic: float,
+        provider: Callable[[date, date], list[date]],
+    ) -> list[date]:
+        today = wall.date()
+        if self.day != today:
+            self.day = today
+            self.sessions = []
+            self.next_refresh = 0.0
+        if monotonic < self.next_refresh:
+            return self.sessions
+
+        # Set the retry deadline before calling QMT so a transient exception
+        # cannot turn the 100 ms gateway loop into a calendar-query storm.
+        self.next_refresh = monotonic + max(1.0, self.refresh_interval)
+        refreshed = provider(today, today + timedelta(days=40))
+        if refreshed:
+            self.sessions = refreshed
+        return self.sessions
 
 
 def qmt_provider(symbols):
@@ -105,15 +144,15 @@ def main() -> int:
     parser.add_argument("--config", default=None)
     parser.add_argument("--poll", type=float, default=0.1)
     parser.add_argument("--overview-interval", type=float, default=15.0)
+    parser.add_argument("--calendar-refresh-interval", type=float, default=300.0)
     args = parser.parse_args()
     cfg = load_deploy_config(args.config)
     gateway = MarketGateway(RedisTransport.from_config(cfg), cfg.streams, qmt_provider)
     log.info("market_gateway.started")
     next_overview = 0.0
     next_schedule = 0.0
-    calendar_day = None
     limit_check_done = False
-    sessions: list[date] = []
+    calendar = TradingSessionCache(args.calendar_refresh_interval)
     while True:
         try:
             gateway.run_once()
@@ -123,12 +162,11 @@ def main() -> int:
                 if limit_check_done:
                     log.info("market_gateway.limit_check_done")
             wall = datetime.now()
-            if calendar_day != wall.date():
+            if calendar.day != wall.date():
                 limit_check_done = False
-                sessions = qmt_trading_sessions(wall.date(), wall.date() + timedelta(days=40))
-                calendar_day = wall.date()
-            schedule = build_market_schedule(wall, sessions)
             monotonic = time.monotonic()
+            sessions = calendar.refresh_if_due(wall, monotonic, qmt_trading_sessions)
+            schedule = build_market_schedule(wall, sessions)
             if monotonic >= next_schedule:
                 next_schedule = monotonic + 30.0
                 gateway.publish_schedule(schedule)

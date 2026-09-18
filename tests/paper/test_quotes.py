@@ -90,16 +90,24 @@ def test_market_overview_uses_direct_limits_and_never_derives_them():
     assert snapshot.limit_price_missing_count == 1
 
 
-def test_market_schedule_only_opens_during_continuous_auction():
+def test_market_schedule_uses_the_operational_overview_windows():
     sessions = [date(2026, 9, 16), date(2026, 9, 18)]
-    morning = build_market_schedule(datetime(2026, 9, 16, 10), sessions)
+    before = build_market_schedule(datetime(2026, 9, 16, 8, 59, 59), sessions)
+    morning_start = build_market_schedule(datetime(2026, 9, 16, 9), sessions)
     lunch = build_market_schedule(datetime(2026, 9, 16, 12), sessions)
+    afternoon_end = build_market_schedule(datetime(2026, 9, 16, 15, 30), sessions)
+    after = build_market_schedule(datetime(2026, 9, 16, 15, 30, 1), sessions)
     holiday = build_market_schedule(datetime(2026, 9, 17, 10), sessions)
-    assert morning.is_open is True
+    assert before.is_open is False
+    assert before.next_open_at == datetime(2026, 9, 16, 9)
+    assert morning_start.is_open is True
     assert lunch.is_open is False
     assert lunch.next_open_at == datetime(2026, 9, 16, 13)
+    assert afternoon_end.is_open is True
+    assert after.is_open is False
+    assert after.next_open_at == datetime(2026, 9, 18, 9)
     assert holiday.is_trading_day is False
-    assert holiday.next_open_at == datetime(2026, 9, 18, 9, 30)
+    assert holiday.next_open_at == datetime(2026, 9, 18, 9)
 
 
 # --- D-19：盘前 Tushare stk_limit 与 QMT get_instrument_detail 逐只核对 -------
