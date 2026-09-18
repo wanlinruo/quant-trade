@@ -12,6 +12,9 @@ from qsys.data.quality.minute_rules import check_minute_bars
 
 _REL_TOL = 1e-4
 _GAP_TOL = 0.005
+# Tushare adj_factor 生产中常见只有 3 位小数（2026-09-17：5,553 只里 1,370 只），
+# 单个因子的舍入误差最多 ±0.0005，会传到相邻两日因子之比上。
+_FACTOR_ROUNDING = 0.0005
 _FOUR_DECIMAL_ABS_TOL = 0.0000500001
 
 
@@ -220,10 +223,14 @@ def _missed_exdiv(ctx: CheckContext) -> CheckResult:
     )
     if frame.height == 0:
         return CheckResult(0, 0, "区间内没有可回看的股-日")
+    # 因子之比的舍入误差上界：jump × (δ/factor + δ/previous_factor)
+    rounding = pl.col("factor_jump") * (
+        _FACTOR_ROUNDING / pl.col("factor") + _FACTOR_ROUNDING / pl.col("previous_factor")
+    )
     bad = frame.filter(
         (pl.col("gap") > _GAP_TOL)
         & ((pl.col("factor_jump") - pl.col("expected_jump")).abs()
-           / pl.col("expected_jump").abs() > _REL_TOL)
+           > pl.col("expected_jump").abs() * _REL_TOL + rounding)
     )
     return CheckResult(bad.height, frame.height,
                        f"{bad.height} 个价格缺口没有匹配的因子跳变",

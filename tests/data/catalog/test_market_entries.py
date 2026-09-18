@@ -139,3 +139,9 @@ def test_unknown_meanings_are_listed_not_hidden():
     """允许有 UNKNOWN，但要能被数出来——写 UNKNOWN 合规，编一句才违规。"""
     unknown = [m.id for m in METRICS if m.meaning is UNKNOWN]
     assert len(unknown) <= 10, f"待查过多，先补依据：{unknown}"
+
+
+def test_pre_close_carries_the_factor_known_issue():
+    """A3.missed_exdiv 报的是源端因子与价格缺口不符（D-1）；价格是仲裁者，
+    前收价本身对得上公司行动，不应因此判阻断。"""
+    assert BY_ID["tushare_daily.pre_close"].known_issues == ("D-1",)

@@ -166,6 +166,23 @@ def test_missed_exdiv_accepts_matching_jump(ctx, warehouse, tmp_path):
     assert _run("A3.missed_exdiv", ctx, tmp_path)["violations"] == 0
 
 
+@pytest.mark.parametrize("symbol,rows,violations", [
+    # 生产 689009.SH 2026-08-07：因子只有 3 位小数，跳变 1.030010 与价格缺口 1.029483
+    # 的差完全落在舍入误差内
+    ("689009.SH", [(42.6, 42.26, 1.033), (40.09, 41.38, 1.064)], 0),
+    # 生产 300091.SZ 2026-02-12：转增 0.132616，前收隐含 1.1326，因子只跳 1.1111
+    ("300091.SZ", [(3.16, 3.05, 12.201), (3.1, 2.79, 13.5567)], 1),
+])
+def test_missed_exdiv_allows_factor_rounding_but_not_real_mismatch(
+    ctx, warehouse, tmp_path, symbol, rows, violations,
+):
+    _daily([
+        {"symbol": symbol, "dt": day, "close": close, "pre_close": pre_close, "factor": factor}
+        for day, (close, pre_close, factor) in zip(D, rows)
+    ], warehouse)
+    assert _run("A3.missed_exdiv", ctx, tmp_path)["violations"] == violations
+
+
 def test_limit_list_allows_only_st_to_be_missing(ctx, warehouse, tmp_path):
     _flags([
         {"dt": D[0], "symbol": "600036.SH", "is_limit_up": True, "is_st": False},
