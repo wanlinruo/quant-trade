@@ -184,14 +184,17 @@ class MarketGateway:
 def build_market_schedule(
     now: datetime, sessions: Sequence[date],
 ) -> MarketSchedule:
-    """Return continuous-auction state and the next time live polling is useful."""
+    """Return the market-overview refresh window and its next useful start."""
     trading_days = sorted(set(sessions))
     today = now.date()
     is_trading_day = today in trading_days
-    morning = (datetime.combine(today, dt_time(9, 30)),
+    # Start before call auction so operators can confirm that the full market
+    # feed is ready, and keep refreshing briefly after the close so the final
+    # 15:00 ticks are guaranteed to replace the last intraday snapshot.
+    morning = (datetime.combine(today, dt_time(9, 0)),
                datetime.combine(today, dt_time(11, 30)))
     afternoon = (datetime.combine(today, dt_time(13, 0)),
-                 datetime.combine(today, dt_time(15, 0)))
+                 datetime.combine(today, dt_time(15, 30)))
     is_open = is_trading_day and (
         morning[0] <= now <= morning[1] or afternoon[0] <= now <= afternoon[1]
     )
@@ -204,7 +207,7 @@ def build_market_schedule(
         else:
             next_day = next((day for day in trading_days if day > today), None)
             if next_day is not None:
-                next_open = datetime.combine(next_day, dt_time(9, 30))
+                next_open = datetime.combine(next_day, dt_time(9, 0))
     return MarketSchedule(
         checked_at=now, is_trading_day=is_trading_day,
         is_open=is_open, next_open_at=next_open,
