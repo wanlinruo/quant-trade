@@ -52,7 +52,8 @@ def test_verification_is_skipped_while_the_sync_is_still_running(
         monkeypatch, tmp_path, warehouse):
     """两者峰值各约 5 GB，节点只有 7.5 GB：撞上就跳过，由当晚质检核对结果在不在。"""
     runs = tmp_path / "runs"
-    folder = runs / f"{datetime.now():%Y/%m/%d}"
+    # load_runs 按被验证交易日扫描目录；测试不能随实际运行日期跨日后失效。
+    folder = runs / f"{DAY:%Y/%m/%d}"
     folder.mkdir(parents=True)
     (folder / "tushare-sync-190000-1.json").write_text(json.dumps({
         "run_id": "tushare-sync-190000-1", "service": "tushare-sync",
