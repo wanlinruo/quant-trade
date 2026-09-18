@@ -107,9 +107,9 @@ def qmt_market_overview():
     """Fetch the live A-share breadth universe plus the four headline indices."""
     from xtquant import xtdata
 
-    symbols = []
-    for sector in ("沪深A股", "北交所"):
-        symbols.extend(xtdata.get_stock_list_in_sector(sector) or [])
+    # QMT 的全 A 股权威集合名是「沪深京A股」；「沪深A股」不含北交所，
+    # 「北交所」不是有效集合名（2026-09-19 节点实测分别为 5218 / 0 只）。
+    symbols = list(xtdata.get_stock_list_in_sector("沪深京A股") or [])
     symbols.extend(("000001.SH", "399001.SZ", "399006.SZ", "000300.SH"))
     return qmt_provider(sorted(set(symbols)))
 
