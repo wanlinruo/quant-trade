@@ -62,7 +62,7 @@ def execute_backtest(
     def validate_schedule(checkpoints, auction_at):
         if not checkpoints:
             return
-        bounds = query.dataset_bounds("minute_bars")
+        bounds = query.intraday_bounds()
         if bounds is None:
             raise ValueError("策略声明了盘中检查点，但仓库没有分钟行情")
         first, last = bounds

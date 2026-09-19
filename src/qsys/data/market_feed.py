@@ -97,8 +97,8 @@ class BoundMarket:
         moment = datetime.combine(day, at)
         if moment > self._as_of:
             return {}
-        bars = self._query.minute_bars(
-            list(symbols), datetime.combine(day, time(0, 0)), moment
+        bars = self._query.intraday_bars(list(symbols), day).filter(
+            pl.col("visible_at") <= moment
         )
         if bars.height == 0:
             return {}
@@ -109,6 +109,7 @@ class BoundMarket:
                 pl.col("close").last().alias("price"),
                 pl.col("volume").sum().alias("volume"),
             )
+            .filter(pl.col("price").is_finite() & (pl.col("price") > 0))
         )
         return {
             row["symbol"]: IntradayQuote(float(row["price"]), int(row["volume"]))
@@ -145,9 +146,14 @@ class BoundMarket:
             return {}
         moment = datetime.combine(day, AUCTION_AT)
         bars = self._query.minute_bars(list(symbols), moment, moment)
-        if bars.height == 0:
-            return {}
-        return dict(zip(bars["symbol"].to_list(), bars["volume"].to_list()))
+        out = dict(zip(bars["symbol"].to_list(), bars["volume"].to_list()))
+        rest = [symbol for symbol in symbols if symbol not in out]
+        if rest:
+            ticks = self._query.auction_ticks(rest, day, day).filter(pl.col("volume") > 0)
+            if ticks.height:
+                first = ticks.sort("ts").group_by("symbol", maintain_order=True).first()
+                out.update(zip(first["symbol"].to_list(), first["volume"].to_list()))
+        return out
 
 
 class MarketFeed:
