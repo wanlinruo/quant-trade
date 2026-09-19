@@ -331,7 +331,11 @@ class ServiceConsole:
         rows = []
         for service_id, segments in grouped.items():
             spec = SERVICE_BY_ID.get(service_id)
-            if spec is None:
+            # Daily timers answer whether their latest scheduled run
+            # succeeded, so their history belongs on the execution board.
+            # Supervisors such as the Windows watchdog still represent a
+            # continuously expected protection capability and remain here.
+            if spec is None or spec.kind == "timer":
                 continue
             rows.append({
                 "spec": spec,
