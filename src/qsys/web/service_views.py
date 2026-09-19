@@ -11,13 +11,14 @@ import json
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
 import structlog
 
 from qsys.core.calendar import AShareCalendar
 from qsys.ops.service_checks import parse_step_name
+from qsys.ops.health import DEGRADED, DOWN, HEALTHY, SHANGHAI, HealthStore, assess_heartbeat
 from qsys.ops.services import (
     FAILED,
     REPAIRED,
@@ -98,6 +99,25 @@ class Cell:
     def label(self) -> str:
         return CELL_LABELS[self.state]
 
+    @property
+    def detail_url(self) -> str | None:
+        """Return the run that actually contains this cell's details.
+
+        A retry may start on the day after its logical session, and resident
+        acceptance cells only have a service-check run.  The route therefore
+        has to use the run's start date instead of the board column date.
+        """
+        if self.runs:
+            run = self.runs[-1]
+            return f"/services/runs/{run['started_at'][:10]}/{run['run_id']}"
+        if self.checks:
+            check = self.checks[-1]
+            return (
+                f"/services/runs/{check['check_started_at'][:10]}/"
+                f"{check['check_run_id']}"
+            )
+        return None
+
 
 class ServiceConsole:
     def __init__(
@@ -107,6 +127,7 @@ class ServiceConsole:
         calendar: Callable[[], AShareCalendar] | None = None,
         heartbeat: Callable[[str], dict] | None = None,
         windows_task: Callable[[str], dict] | None = None,
+        health_store: HealthStore | None = None,
         systemd: Callable[[str], dict[str, str]] = systemctl_show,
         now: Callable[[], datetime] = datetime.now,
     ) -> None:
@@ -114,6 +135,7 @@ class ServiceConsole:
         self._calendar = calendar
         self._heartbeat = heartbeat
         self._windows_task = windows_task
+        self._health_store = health_store
         self._systemd = systemd
         self._now = now
 
@@ -128,13 +150,26 @@ class ServiceConsole:
         if self._calendar is None:
             return None
         try:
-            return set(self._calendar().sessions_in_range(start, end))
+            calendar = self._calendar()
+            return None if calendar is None else set(calendar.sessions_in_range(start, end))
         except Exception as exc:  # 交易日历取不到时看板照样打开，只是不判「未运行」
             log.warning("services.calendar_unavailable", error=str(exc))
             return None
 
     def board(self, days: int = 14) -> tuple[list[date], list[tuple[ServiceSpec, list[Cell]]], bool]:
-        """(日期列, [(服务, 每日格子)], 是否拿到了交易日历)。"""
+        """每日定时任务看板；常驻服务的业务验收不再混入这里。"""
+        return self._board_for(self.services("timer"), days)
+
+    def acceptance_board(
+        self, days: int = 14,
+    ) -> tuple[list[date], list[tuple[ServiceSpec, list[Cell]]], bool]:
+        """影子盘/模拟盘每日策略事件验收，与当前进程健康严格分离。"""
+        specs = [SERVICE_BY_ID[name] for name in ("shadow-core", "paper")]
+        return self._board_for(specs, days)
+
+    def _board_for(
+        self, specs: list[ServiceSpec], days: int,
+    ) -> tuple[list[date], list[tuple[ServiceSpec, list[Cell]]], bool]:
         now = self._now()
         end = now.date()
         start = end - timedelta(days=days - 1)
@@ -144,8 +179,7 @@ class ServiceConsole:
         first_record = self._first_record_day()
         checks = _checks_by_day(runs)
         rows = []
-        # 常驻服务不写运行记录，但当晚质检会给出结论；它们也该出现在看板上。
-        for spec in (*self.services("timer"), *self.services("resident")):
+        for spec in specs:
             mine = [r for r in runs if r.get("service") == spec.id]
             cells = []
             for day in columns:
@@ -223,9 +257,44 @@ class ServiceConsole:
     # ---- 进程状态 ----
 
     def process_status(self) -> list[dict]:
+        if self._health_store is not None:
+            stored = {row["service_id"]: row for row in self._health_store.latest()}
+            rows = []
+            # The observer writes unchanged-state checkpoints every five
+            # minutes.  Allow that interval plus scheduling/probe headroom;
+            # 90 seconds would incorrectly mark healthy checkpoints stale for
+            # most of every cycle.
+            stale_after = self._health_store.checkpoint_interval + timedelta(minutes=2)
+            for spec in SERVICES:
+                observation = stored.get(spec.id)
+                state = "unknown"
+                if observation is not None:
+                    observed = observation["observed_at_utc"]
+                    reference = self._now()
+                    if reference.tzinfo is None:
+                        reference = reference.replace(tzinfo=SHANGHAI)
+                    age = (reference.astimezone(timezone.utc) - observed).total_seconds()
+                    if age <= stale_after.total_seconds():
+                        state = {
+                            HEALTHY: "ok", DEGRADED: "warn", DOWN: "bad"
+                        }.get(observation["state"], "unknown")
+                    else:
+                        observation = {**observation, "state": "unknown",
+                                       "reason_code": "observer_stale"}
+                rows.append({
+                    "spec": spec, "systemd": {}, "heartbeat": None,
+                    "heartbeat_assessment": None, "windows_task": {},
+                    "health_observation": observation, "state": state,
+                })
+            # Once a store is configured the request path is strictly local,
+            # including before the observer has produced its first sample.
+            return rows
         rows = []
+        now = self._now()
+        trading = self._trading_days(now.date(), now.date())
         for spec in SERVICES:
-            row: dict = {"spec": spec, "systemd": {}, "heartbeat": None, "windows_task": {}}
+            row: dict = {"spec": spec, "systemd": {}, "heartbeat": None,
+                         "heartbeat_assessment": None, "windows_task": {}}
             if spec.unit:
                 unit = f"{spec.unit}.timer" if spec.kind == "timer" else f"{spec.unit}.service"
                 row["systemd"] = self._systemd(unit)
@@ -234,6 +303,11 @@ class ServiceConsole:
             if spec.heartbeat and self._heartbeat is not None:
                 try:
                     row["heartbeat"] = self._heartbeat(spec.heartbeat)
+                    advertised = row["heartbeat"].get("expected_interval_s")
+                    row["heartbeat_assessment"] = assess_heartbeat(
+                        spec.heartbeat, row["heartbeat"].get("last_beat"), now, trading,
+                        active=advertised is not None and advertised <= 2,
+                    )
                 except Exception as exc:
                     log.warning("services.heartbeat_failed", source=spec.heartbeat,
                                 error=str(exc))
@@ -246,6 +320,27 @@ class ServiceConsole:
             row["state"] = _process_state(spec, row)
             rows.append(row)
         return rows
+
+    def health_timeline(self, hours: int = 24) -> list[dict]:
+        if self._health_store is None:
+            return []
+        end = self._now()
+        start = end - timedelta(hours=hours)
+        grouped = self._health_store.timeline(start, end)
+        total = (end - start).total_seconds()
+        rows = []
+        for service_id, segments in grouped.items():
+            spec = SERVICE_BY_ID.get(service_id)
+            if spec is None:
+                continue
+            rows.append({
+                "spec": spec,
+                "segments": [
+                    {**segment, "width": 100 * segment["duration_s"] / total}
+                    for segment in segments
+                ],
+            })
+        return sorted(rows, key=lambda row: row["spec"].name)
 
 
 def _run_session(run: dict) -> str:
@@ -305,8 +400,15 @@ def _process_state(spec: ServiceSpec, row: dict) -> str:
             return "unknown"
         return ("ok" if task.get("State") in ("Ready", "Running")
                 and task.get("LastTaskResult") == 0 else "bad")
-    if spec.heartbeat and row["heartbeat"] is not None:
-        return "ok" if row["heartbeat"].get("alive") else "bad"
+    if spec.heartbeat:
+        if row["heartbeat"] is None:
+            return "unknown"
+        assessment = row.get("heartbeat_assessment")
+        if assessment is None:
+            return "unknown"
+        return {HEALTHY: "ok", DEGRADED: "warn", DOWN: "bad"}.get(
+            assessment.state, "unknown"
+        )
     if not systemd:
         return "unknown"
     if spec.kind == "timer":

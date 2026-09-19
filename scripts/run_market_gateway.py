@@ -19,6 +19,7 @@ import structlog
 from qsys.live.config import load_deploy_config
 from qsys.live.messages import MarketQuote
 from qsys.live.redis_transport import RedisTransport
+from qsys.ops.health import HeartbeatCadence, heartbeat_policy, trading_phase
 from qsys.paper.quotes import MarketGateway, build_market_schedule
 
 log = structlog.get_logger("market-gateway")
@@ -166,21 +167,40 @@ def main() -> int:
     log.info("market_gateway.started")
     next_overview = 0.0
     next_schedule = 0.0
+    active_until = 0.0
+    heartbeat = HeartbeatCadence()
     limit_check_done = False
     calendar = TradingSessionCache(args.calendar_refresh_interval)
     while True:
+        wall = datetime.now()
+        monotonic = time.monotonic()
+        sessions = calendar.sessions
         try:
-            gateway.run_once()
-            gateway.beat()
-            if not limit_check_done:
-                limit_check_done = gateway.check_limits_step(qmt_limit_detail, datetime.now().date())
-                if limit_check_done:
-                    log.info("market_gateway.limit_check_done")
-            wall = datetime.now()
             if calendar.day != wall.date():
                 limit_check_done = False
-            monotonic = time.monotonic()
             sessions = calendar.refresh_if_due(wall, monotonic, qmt_trading_sessions)
+        except Exception as exc:
+            log.error("market_gateway.calendar_error", error=str(exc))
+
+        phase = trading_phase(wall, set(sessions) if sessions else None)
+        policy = heartbeat_policy("market", phase, active=monotonic < active_until)
+        try:
+            if heartbeat.due(monotonic, policy.expected_interval_s):
+                gateway.beat(expected_interval_s=policy.expected_interval_s, phase=phase)
+        except Exception as exc:
+            log.error("market_gateway.heartbeat_error", error=str(exc))
+
+        try:
+            handled = gateway.run_once()
+            if handled:
+                active_until = monotonic + 30.0
+                # 盘外收到请求后立即宣告活跃，不等低频心跳的下一个截止点。
+                heartbeat.next_due = 0.0
+                gateway.beat(expected_interval_s=1, phase=phase)
+            if not limit_check_done:
+                limit_check_done = gateway.check_limits_step(qmt_limit_detail, wall.date())
+                if limit_check_done:
+                    log.info("market_gateway.limit_check_done")
             schedule = build_market_schedule(wall, sessions)
             if monotonic >= next_schedule:
                 next_schedule = monotonic + 30.0

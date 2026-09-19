@@ -158,10 +158,13 @@ class MarketGateway:
         self._limit_checked, self._limit_check = day, None
         return True
 
-    def beat(self) -> None:
+    def beat(self, *, expected_interval_s: float | None = None, phase: str | None = None) -> None:
         self._t.set_key(
             f"{self._s.heartbeat}:market",
-            Heartbeat(source="market", at=datetime.now()).model_dump_json(),
+            Heartbeat(
+                source="market", at=datetime.now(),
+                expected_interval_s=expected_interval_s, phase=phase,
+            ).model_dump_json(),
         )
 
     def publish_overview(

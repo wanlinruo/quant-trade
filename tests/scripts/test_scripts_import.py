@@ -14,7 +14,8 @@ import pytest
 # （regression_* / reconcile_* 等）在导入时就读数据文件，不在此列。
 SCRIPTS = [
     "daily_archive", "kill", "live_preflight", "run_agent", "run_backtest",
-    "run_live", "run_market_gateway", "run_monitor", "run_paper", "run_shadow",
+    "run_health_observer", "run_live", "run_market_gateway", "run_monitor", "run_paper",
+    "run_shadow",
     "catalog_verify", "tushare_daily_sync", "tushare_premarket_limits", "verify_metrics",
 ]
 

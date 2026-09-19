@@ -189,10 +189,13 @@ def create_app(
     def service_overview(request: Request, days: int = Query(14, ge=7, le=60)):
         console = _services()
         columns, rows, has_calendar = console.board(days)
+        _, acceptance_rows, _ = console.acceptance_board(days)
         return TEMPLATES.TemplateResponse(
             request=request, name="services.html",
             context={"title": config.title, "session": None, "page": "services",
                      "columns": columns, "rows": rows, "has_calendar": has_calendar,
+                     "acceptance_rows": acceptance_rows,
+                     "timeline": console.health_timeline(),
                      "processes": console.process_status(),
                      "timers": console.services("timer"),
                      "residents": console.services("resident"),

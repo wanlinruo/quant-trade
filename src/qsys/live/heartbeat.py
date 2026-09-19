@@ -24,17 +24,24 @@ class HeartbeatMonitor:
     def _key(self, source: str) -> str:
         return f"{self._prefix}:{source}"
 
-    def beat(self, source: str, now: datetime | None = None) -> None:
+    def beat(
+        self, source: str, now: datetime | None = None, *,
+        expected_interval_s: float | None = None, phase: str | None = None,
+    ) -> None:
         moment = now or datetime.now()
         self._t.set_key(
-            self._key(source), Heartbeat(source=source, at=moment).model_dump_json()
+            self._key(source), Heartbeat(
+                source=source, at=moment, expected_interval_s=expected_interval_s, phase=phase,
+            ).model_dump_json()
         )
 
-    def last_beat(self, source: str) -> datetime | None:
+    def read(self, source: str) -> Heartbeat | None:
         raw = self._t.get_key(self._key(source))
-        if raw is None:
-            return None
-        return Heartbeat.model_validate_json(raw).at
+        return None if raw is None else Heartbeat.model_validate_json(raw)
+
+    def last_beat(self, source: str) -> datetime | None:
+        heartbeat = self.read(source)
+        return heartbeat.at if heartbeat else None
 
     def is_alive(
         self, source: str, *, max_age_seconds: float = 60.0, now: datetime | None = None
