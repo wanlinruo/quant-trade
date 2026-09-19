@@ -183,6 +183,21 @@ def test_persisted_health_avoids_live_remote_probes_and_feeds_timeline(tmp_path)
     assert live.health_timeline()[0]["segments"][-1]["state"] == "healthy"
 
 
+def test_health_timeline_only_contains_resident_services(tmp_path):
+    store = HealthStore(tmp_path / "health.sqlite3")
+    observed = (NOW - timedelta(minutes=1)).replace(tzinfo=SHANGHAI)
+    for service_id in ("market-gateway", "tushare-sync", "watchdog"):
+        store.record(HealthObservation(
+            service_id=service_id, observed_at_utc=observed, phase=MORNING,
+            expected_interval_s=30, warn_after_s=60, down_after_s=90,
+            state=HEALTHY, process_state=HEALTHY, business_state="unknown",
+            reason_code="healthy", source="test",
+        ))
+    live = ServiceConsole(tmp_path, health_store=store, now=lambda: NOW)
+
+    assert [row["spec"].id for row in live.health_timeline()] == ["market-gateway"]
+
+
 def test_configured_empty_health_store_never_falls_back_to_remote_probes(tmp_path):
     live = ServiceConsole(
         tmp_path, health_store=HealthStore(tmp_path / "health.sqlite3"), now=lambda: NOW,

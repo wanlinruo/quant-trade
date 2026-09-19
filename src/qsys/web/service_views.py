@@ -331,7 +331,10 @@ class ServiceConsole:
         rows = []
         for service_id, segments in grouped.items():
             spec = SERVICE_BY_ID.get(service_id)
-            if spec is None:
+            # Timers and periodic supervisors answer a different question:
+            # whether their latest scheduled run succeeded.  Their history
+            # belongs on the daily execution board, not the online timeline.
+            if spec is None or spec.kind != "resident":
                 continue
             rows.append({
                 "spec": spec,
