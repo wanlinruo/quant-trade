@@ -146,16 +146,15 @@ METRICS: tuple[Metric, ...] = (
         "逐档试 {0.05,0.10,0.20,0.30}，取能精确还原 limit_up 的那一档，"
         "命中零档或多档记 null；limit_up 为 null 则 null",
         ("A2.recompute.limit_pct", "A3.limit_pct_reproduces_price"),
-        ("D-13",),
     ),
     _m(
         "daily_flags.is_st",
-        "ST 真值，**只认 stock_st_daily**（D-11，用户 2026-09-17 定）。"
-        "缺行为 null，不从名称推断、不默认为非 ST",
-        ("stock_st_daily.is_st",),
-        "stock_st_daily.is_st 按 (symbol, dt) 左连透传；缺行为 null",
+        "ST 真值以 stock_st_daily 为主；处于已公告退市整理期时由"
+        "delisting_pool 覆盖为 false（修复 D-15）。缺行为 null，不从名称推断",
+        ("stock_st_daily.is_st", "delisting_pool.symbol"),
+        "stock_st_daily 按 (symbol, dt) 左连；已公告退市整理期覆盖为 false，"
+        "其余缺行为 null",
         ("A2.recompute.is_st", "B3.null_rate"),
-        ("D-15",),
     ),
     _m(
         "daily_flags.st_source",

@@ -38,7 +38,15 @@ def test_limit_pct_is_decoded_from_the_price_not_from_st_status():
     """2026-07-06 起主板 ST 与普通股同为 10%，档位不能再由 ST 派生。"""
     metric = BY_ID["daily_flags.limit_pct"]
     assert "daily_flags.limit_up" in metric.lineage.upstream
-    assert "D-13" in metric.known_issues
+    assert metric.known_issues == ()
+
+
+def test_st_truth_uses_delisting_pool_to_resolve_d15():
+    metric = BY_ID["daily_flags.is_st"]
+    assert metric.lineage.upstream == (
+        "stock_st_daily.is_st", "delisting_pool.symbol"
+    )
+    assert metric.known_issues == ()
 
 
 def test_is_first_board_needs_yesterday():
@@ -52,9 +60,11 @@ def test_first_observation_is_treated_as_not_limit_up_yesterday():
     assert "False" in BY_ID["daily_flags.is_first_board"].lineage.formula
 
 
-def test_is_st_traces_back_only_to_stock_st():
-    """D-11：ST 只认 stock_st，名称源不再是 ST 的上游。"""
-    assert BY_ID["daily_flags.is_st"].lineage.upstream == ("stock_st_daily.is_st",)
+def test_is_st_uses_direct_st_and_the_delisting_exception():
+    """D-11/D-15：不按名称猜 ST，仅用直取名单和独立退市整理期池。"""
+    assert BY_ID["daily_flags.is_st"].lineage.upstream == (
+        "stock_st_daily.is_st", "delisting_pool.symbol"
+    )
     assert BY_ID["daily_flags.st_source"].lineage.upstream == ("stock_st_daily.is_st",)
 def test_st_source_records_which_level_won():
     assert "来源" in BY_ID["daily_flags.st_source"].meaning

@@ -332,7 +332,7 @@ def _limit_pct_reproduces(ctx: CheckContext) -> CheckResult:
 register(Check(
     "A3.limit_pct_reproduces_price", Category.TRUTHFULNESS, Scope.INCREMENTAL,
     ("daily_flags.limit_pct", "daily_flags.limit_up", "daily_flags.limit_down"),
-    ("D-13",), "档位必须能精确还原出同一行的涨跌停价", _limit_pct_reproduces,
+    (), "档位必须能精确还原出同一行的涨跌停价", _limit_pct_reproduces,
 ))
 
 
