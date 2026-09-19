@@ -120,6 +120,21 @@ def test_data_spanning_two_years_lands_in_both_partitions(warehouse, tmp_path):
     assert q.minute_bars(None, datetime(2024, 1, 1), datetime(2024, 12, 31)).height == 3
 
 
+def test_incremental_days_are_written_to_visible_day_partitions(warehouse, tmp_path):
+    """已有日分区后，下一交易日不能落到会被查询忽略的年度文件。"""
+    write_incoming(tmp_path / "in1", "a.parquet", start=datetime(2024, 1, 2, 9, 31))
+    import_minute_bars(warehouse, tmp_path / "in1")
+    write_incoming(tmp_path / "in2", "b.parquet", start=datetime(2024, 1, 3, 9, 31))
+    import_minute_bars(warehouse, tmp_path / "in2")
+
+    assert warehouse.day_path("minute_bars", datetime(2024, 1, 2).date()).exists()
+    assert warehouse.day_path("minute_bars", datetime(2024, 1, 3).date()).exists()
+    assert not warehouse.path_for("minute_bars", 2024).exists()
+    assert WarehouseQuery(warehouse).minute_bars(
+        None, datetime(2024, 1, 2), datetime(2024, 1, 3, 23, 59)
+    ).height == 6
+
+
 def test_a_second_batch_does_not_drop_the_first(warehouse, tmp_path):
     """增量导入必须追加，不是覆盖。"""
     write_incoming(tmp_path / "in1", "a.parquet", symbol="600036.SH")

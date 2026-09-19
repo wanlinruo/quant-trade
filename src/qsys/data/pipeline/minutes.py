@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import shutil
 from dataclasses import dataclass
-from datetime import datetime, time
+from datetime import date, datetime, time
 from pathlib import Path
 
 import polars as pl
@@ -93,22 +93,38 @@ def _free_name(archive: Path, name: str) -> Path:
 
 
 def _write_by_year(warehouse: Warehouse, fresh: pl.DataFrame) -> int:
-    query = WarehouseQuery(warehouse)
+    """按交易日合并写入。
+
+    D-20 起 QMT 分钟线使用日分区。若这里继续写 ``year=*/part.parquet``，
+    查询在发现同年日分区后会忽略年度文件，使新归档看似成功却不可见。
+    函数名暂时保留，避免影响既有调用方。
+    """
     written = 0
-    for year in sorted({t.year for t in fresh["dt"].to_list()}):
-        lo = datetime(year, 1, 1)
-        hi = datetime(year, 12, 31, 23, 59, 59)
-        incoming = fresh.filter(pl.col("dt").is_between(lo, hi))
+    fresh = fresh.with_columns(pl.col("dt").dt.date().alias("_day"))
+    for day in sorted(set(fresh["_day"].to_list())):
+        incoming = fresh.filter(pl.col("_day") == day).drop("_day")
         merged = (
-            pl.concat([query.minute_bars(None, lo, hi), incoming], how="vertical")
+            pl.concat([_read_day(warehouse, day), incoming], how="vertical")
             # 重复导入覆盖旧值；maintain_order 让「保留最后一条」有确定语义
             .unique(subset=["symbol", "dt"], keep="last", maintain_order=True)
             .sort(["symbol", "dt"])
             .select(_COLUMNS)
         )
-        warehouse.write(_DATASET, merged.to_arrow().cast(schema.MINUTE_BARS), year=year)
+        warehouse.write_day(_DATASET, merged.to_arrow().cast(schema.MINUTE_BARS), day=day)
         written += incoming.height
     return written
+
+
+def _read_day(warehouse: Warehouse, day: date) -> pl.DataFrame:
+    """读取待合并交易日；日分区优先，兼容尚未拆分的年度文件。"""
+    path = warehouse.day_path(_DATASET, day)
+    if path.exists():
+        return pl.read_parquet(path).select(_COLUMNS)
+    return WarehouseQuery(warehouse).minute_bars(
+        None,
+        datetime.combine(day, time(0, 0)),
+        datetime.combine(day, time(23, 59, 59)),
+    ).select(_COLUMNS)
 
 
 def missing_stock_days(warehouse: Warehouse, candidates: pl.DataFrame) -> pl.DataFrame:
