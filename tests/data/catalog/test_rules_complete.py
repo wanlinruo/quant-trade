@@ -67,9 +67,12 @@ def test_calendar_has_a_real_denominator(ctx, warehouse):
     _flags([{"dt": D[0], "symbol": "600036.SH"}], warehouse)
     assert _run("B1.calendar", ctx)["checked_rows"] > 0
 
-def test_all_six_rules_are_registered_as_completeness():
+def test_all_completeness_rules_are_registered():
     ids = {cid for cid in C.CHECKS if cid.startswith("B")}
-    assert ids == {"B1.calendar", "B2.holes", "B3.null_rate", "B4.arrival", "B4.zero_limit_up", "B5.span"}
+    assert ids == {
+        "B1.calendar", "B2.holes", "B2.paid_minute_structure",
+        "B3.null_rate", "B4.arrival", "B4.zero_limit_up", "B5.span",
+    }
     assert all(C.CHECKS[cid].category is C.Category.COMPLETENESS for cid in ids)
 
 

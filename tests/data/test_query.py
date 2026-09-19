@@ -156,6 +156,52 @@ def test_minute_bars_on_empty_warehouse(warehouse: Warehouse):
     assert df.columns == list(schema.MINUTE_BARS.names)
 
 
+def _seed_paid_minutes(warehouse: Warehouse) -> None:
+    from datetime import datetime
+    import pyarrow.parquet as pq
+
+    target = warehouse.root / "paid_minute_bars/year=2024/shard=0000"
+    target.mkdir(parents=True)
+    pq.write_table(pa.table({
+        "symbol": ["600036.SH", "600036.SH", "000001.SZ"],
+        "dt": [
+            datetime(2024, 1, 2, 9, 30),
+            datetime(2024, 1, 2, 9, 31),
+            datetime(2024, 1, 2, 9, 30),
+        ],
+        "open": [10.0, 10.1, 8.0],
+        "high": [10.2, 10.3, 8.1],
+        "low": [9.9, 10.0, 7.9],
+        "close": [10.1, 10.2, 8.0],
+        "volume": [1000, 1200, 800],
+        "amount": [10_100.0, 12_240.0, 6_400.0],
+        "factor": [2.5, 2.5, 1.2],
+    }, schema=schema.PAID_MINUTE_BARS), target / "part.parquet")
+
+
+def test_paid_minute_bars_are_queryable_without_mixing_qmt(warehouse: Warehouse):
+    from datetime import datetime
+
+    _seed_paid_minutes(warehouse)
+    got = WarehouseQuery(warehouse).paid_minute_bars(
+        ["600036.SH"], datetime(2024, 1, 2, 9, 30), datetime(2024, 1, 2, 9, 31)
+    )
+    assert got.height == 2
+    assert got.columns == list(schema.PAID_MINUTE_BARS.names)
+    assert got["volume"].to_list() == [1000, 1200]
+    assert got["factor"].to_list() == [2.5, 2.5]
+
+
+def test_paid_minute_bars_on_empty_warehouse(warehouse: Warehouse):
+    from datetime import datetime
+
+    got = WarehouseQuery(warehouse).paid_minute_bars(
+        None, datetime(2024, 1, 1), datetime(2024, 1, 2)
+    )
+    assert got.height == 0
+    assert got.columns == list(schema.PAID_MINUTE_BARS.names)
+
+
 def test_share_capital_round_trips(warehouse: Warehouse):
     import pyarrow as pa
 

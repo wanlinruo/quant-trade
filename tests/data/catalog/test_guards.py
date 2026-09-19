@@ -18,15 +18,15 @@ from qsys.data.catalog.types import Computed, Direct, Uncovered
 from qsys.data.pipeline.tushare_daily import _FROM_BASIC, _FROM_DAILY
 
 
-def test_expected_ids_cover_schema_and_paid_daily():
-    """244 = schema.ALL 的 216 列 + PAID_DAILY 的 28 列。
+def test_expected_ids_cover_schema_and_read_only_sources():
+    """253 = schema.ALL 的 216 列 + 两张只读外部事实表的 37 列。
 
     paid_daily 故意不在 schema.ALL 里（那会让 Warehouse.write 成为可能），
     但它是 2026-09-11 前名称的唯一真值源，必须进字典。
     """
     ids = expected_metric_ids()
-    assert len(ids) == 244, (
-        f"期望 244 条（schema.ALL 的 216 列 + PAID_DAILY 的 28 列），实得 {len(ids)}。"
+    assert len(ids) == 253, (
+        f"期望 253 条（schema.ALL 的 216 列 + 只读事实 37 列），实得 {len(ids)}。"
         "schema 若有增删，先确认变动是否预期，再改这个数字。"
     )
 
@@ -37,9 +37,7 @@ def test_registry_covers_exactly_the_datasets_it_claims_to_own():
     这条在建设期就能跑绿——它管的是「已认领的有没有做完」。
     """
     for dataset in OWNED_DATASETS:
-        cols = set(schema.ALL[dataset].names) if dataset in schema.ALL else set(
-            schema.PAID_DAILY.names
-        )
+        cols = set((schema.ALL | schema.READ_ONLY)[dataset].names)
         got = {m.column for m in REGISTRY.values() if m.dataset == dataset}
         assert got == cols, f"{dataset} 登记不全：缺 {cols - got}，多 {got - cols}"
 
@@ -50,7 +48,7 @@ def test_all_datasets_are_owned_by_some_module():
     它红着就说明还有表没人认领。不设允许清单——允许清单会被忘掉，
     红色测试不会。
     """
-    every = set(schema.ALL) | {"paid_daily"}
+    every = set(schema.ALL) | set(schema.READ_ONLY)
     assert OWNED_DATASETS == every, f"还没认领：{every - OWNED_DATASETS}"
 
 
@@ -70,6 +68,8 @@ def test_frozen_datasets_are_not_writable():
     """
     assert "paid_daily" not in schema.PARTITIONED
     assert "paid_daily" not in schema.UNPARTITIONED
+    assert "paid_minute_bars" not in schema.PARTITIONED
+    assert "paid_minute_bars" not in schema.UNPARTITIONED
 
 
 def test_every_upstream_reference_resolves():

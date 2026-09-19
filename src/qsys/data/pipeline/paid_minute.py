@@ -23,6 +23,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import duckdb
 
+from qsys.data import schema
+
 
 HEADERS = [
     "证券代码", "交易日期", "分钟时间", "开盘价（元）", "最高价（元）",
@@ -32,28 +34,7 @@ HEADER_VARIANTS = [
     HEADERS,
     ["交易日期", "分钟时间", "证券代码", *HEADERS[3:]],
 ]
-SCHEMA = pa.schema(
-    [
-        ("symbol", pa.string()),
-        ("dt", pa.timestamp("us")),
-        ("open", pa.float64()),
-        ("high", pa.float64()),
-        ("low", pa.float64()),
-        ("close", pa.float64()),
-        ("volume", pa.int64()),
-        ("amount", pa.float64()),
-        ("factor", pa.float64()),
-    ],
-    metadata={
-        b"provider": b"yuhaha-baidupan",
-        b"frequency": b"1min",
-        b"timestamp_policy": b"source value; no shift",
-        b"price_unit": b"CNY",
-        b"volume_unit": b"share",
-        b"amount_unit": b"CNY",
-        b"factor": b"source cumulative backward adjustment",
-    },
-)
+SCHEMA = schema.PAID_MINUTE_BARS
 
 _SYMBOL_IN_NAME = re.compile(r"(?:^|/)(\d{6}\.(?:SZ|SH|BJ))@")
 _SYMBOL = re.compile(r"^\d{6}\.(?:SZ|SH|BJ)$")

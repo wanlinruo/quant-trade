@@ -64,13 +64,17 @@ __all__ = [
 
 
 def expected_metric_ids() -> set[str]:
-    """字典**应该**有哪些落盘条目：schema.ALL 展开 + PAID_DAILY 展开。"""
+    """指标字典应该包含全部可写表与只读外部事实表。"""
     ids = {
         f"{dataset}.{col}"
         for dataset, arrow_schema in schema.ALL.items()
         for col in arrow_schema.names
     }
-    ids |= {f"paid_daily.{col}" for col in schema.PAID_DAILY.names}
+    ids |= {
+        f"{dataset}.{col}"
+        for dataset, arrow_schema in schema.READ_ONLY.items()
+        for col in arrow_schema.names
+    }
     return ids
 
 

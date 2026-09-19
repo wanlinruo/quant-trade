@@ -286,6 +286,29 @@ class WarehouseQuery:
             params.extend(symbols)
         return self._con.execute(sql + " ORDER BY symbol, dt", params).pl()
 
+    def paid_minute_bars(
+        self,
+        symbols: Sequence[str] | None,
+        start: datetime,
+        end: datetime,
+    ) -> pl.DataFrame:
+        """查询已发布的只读付费分钟事实，不与 QMT 分钟线静默混合。"""
+        if symbols is not None and len(symbols) == 0:
+            return _empty(schema.PAID_MINUTE_BARS)
+        base = self._wh.root / "paid_minute_bars"
+        pattern = "year=*/shard=*/part.parquet"
+        if not list(base.glob(pattern)):
+            return _empty(schema.PAID_MINUTE_BARS)
+        glob = str(base / pattern)
+        columns = _projection(self._con, glob, schema.PAID_MINUTE_BARS)
+        sql = f"SELECT {columns} FROM {_read(glob)} WHERE dt BETWEEN ? AND ?"
+        params: list[object] = [start, end]
+        if symbols is not None:
+            placeholders = ", ".join("?" for _ in symbols)
+            sql += f" AND symbol IN ({placeholders})"
+            params.extend(symbols)
+        return self._con.execute(sql + " ORDER BY symbol, dt", params).pl()
+
     def auction_ticks(
         self,
         symbols: Sequence[str] | None,
