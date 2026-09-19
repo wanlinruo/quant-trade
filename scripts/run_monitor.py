@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from datetime import date
 from pathlib import Path
@@ -25,7 +26,7 @@ from qsys.web.backtest_views import BacktestService
 from qsys.web.catalog_views import CatalogService
 from qsys.web.config import WebConfig
 from qsys.web.data_views import DataService, MarketService
-from qsys.web.service_views import ServiceConsole
+from qsys.web.service_views import ServiceConsole, windows_task_show
 from qsys.web.views import MonitorService
 from qsys.web.workbench import BacktestQueue, WorkbenchStore
 from qsys.paper.store import PaperStore
@@ -94,6 +95,12 @@ def build_app(
             calendar=trading_calendar,
             # 没有 Redis 时不判心跳（显示未知），不能把「查不到」当成「进程已死」
             heartbeat=monitor.heartbeat_status if transport is not None else None,
+            windows_task=lambda task: windows_task_show(
+                task,
+                host=os.environ.get("QSYS_WINDOWS_SSH_HOST", "Administrator@118.25.42.149"),
+                key=Path(os.environ.get("QSYS_WINDOWS_SSH_KEY",
+                                        "/home/ubuntu/.ssh/id_ed25519_winnode")),
+            ),
         ),
     )
 

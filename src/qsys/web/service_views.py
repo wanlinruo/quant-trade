@@ -6,6 +6,8 @@ Web 层只摆事实：运行记录来自任务自己写的 JSON（`qsys.ops.serv
 
 from __future__ import annotations
 
+import base64
+import json
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -59,6 +61,32 @@ def systemctl_show(unit: str) -> dict[str, str]:
     return {k: v for k, v in props.items() if v and v != "n/a"}
 
 
+def windows_task_show(task: str, *, host: str, key: Path) -> dict:
+    """经 SSH 只读查询 Windows 计划任务；连接失败时返回空，避免误报为禁用。"""
+    script = (
+        f"$t = Get-ScheduledTask -TaskName '{task}'; "
+        f"$i = Get-ScheduledTaskInfo -TaskName '{task}'; "
+        "[pscustomobject]@{State=$t.State.ToString(); "
+        "LastTaskResult=$i.LastTaskResult; "
+        "LastRunTime=$i.LastRunTime.ToString('s')} | ConvertTo-Json -Compress"
+    )
+    encoded = base64.b64encode(script.encode("utf-16le")).decode("ascii")
+    try:
+        out = subprocess.run(
+            ["ssh", "-i", str(key), "-o", "BatchMode=yes", "-o", "ConnectTimeout=3",
+             host, "powershell", "-NoProfile", "-EncodedCommand", encoded],
+            # Windows PowerShell 的 stderr 可能带 GBK 编码的 CLIXML 进度信息；
+            # 只解析 stdout 的 JSON，不能让 text=True 因 stderr 解码失败丢掉结果。
+            capture_output=True, timeout=8,
+        )
+        if out.returncode != 0:
+            return {}
+        result = json.loads(out.stdout.decode("utf-8").strip())
+        return result if isinstance(result, dict) else {}
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return {}
+
+
 @dataclass(frozen=True, slots=True)
 class Cell:
     day: date
@@ -78,12 +106,14 @@ class ServiceConsole:
         *,
         calendar: Callable[[], AShareCalendar] | None = None,
         heartbeat: Callable[[str], dict] | None = None,
+        windows_task: Callable[[str], dict] | None = None,
         systemd: Callable[[str], dict[str, str]] = systemctl_show,
         now: Callable[[], datetime] = datetime.now,
     ) -> None:
         self._root = Path(runs_root)
         self._calendar = calendar
         self._heartbeat = heartbeat
+        self._windows_task = windows_task
         self._systemd = systemd
         self._now = now
 
@@ -195,7 +225,7 @@ class ServiceConsole:
     def process_status(self) -> list[dict]:
         rows = []
         for spec in SERVICES:
-            row: dict = {"spec": spec, "systemd": {}, "heartbeat": None}
+            row: dict = {"spec": spec, "systemd": {}, "heartbeat": None, "windows_task": {}}
             if spec.unit:
                 unit = f"{spec.unit}.timer" if spec.kind == "timer" else f"{spec.unit}.service"
                 row["systemd"] = self._systemd(unit)
@@ -206,6 +236,12 @@ class ServiceConsole:
                     row["heartbeat"] = self._heartbeat(spec.heartbeat)
                 except Exception as exc:
                     log.warning("services.heartbeat_failed", source=spec.heartbeat,
+                                error=str(exc))
+            if spec.windows_task and self._windows_task is not None:
+                try:
+                    row["windows_task"] = self._windows_task(spec.windows_task)
+                except Exception as exc:
+                    log.warning("services.windows_task_failed", task=spec.windows_task,
                                 error=str(exc))
             row["state"] = _process_state(spec, row)
             rows.append(row)
@@ -263,6 +299,12 @@ def _with_checks(state: str, checks: list[dict], *, resident: bool = False) -> s
 def _process_state(spec: ServiceSpec, row: dict) -> str:
     """ok / bad / unknown。定时任务看 timer 是否在等待、上次退出是否成功。"""
     systemd = row["systemd"]
+    if spec.windows_task:
+        task = row["windows_task"]
+        if not task:
+            return "unknown"
+        return ("ok" if task.get("State") in ("Ready", "Running")
+                and task.get("LastTaskResult") == 0 else "bad")
     if spec.heartbeat and row["heartbeat"] is not None:
         return "ok" if row["heartbeat"].get("alive") else "bad"
     if not systemd:
