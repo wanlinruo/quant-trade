@@ -20,6 +20,15 @@ def test_beat_is_recorded():
     assert m.last_beat("agent") == NOW
 
 
+def test_beat_can_advertise_operational_cadence_without_changing_safety_api():
+    m = monitor()
+    m.beat("market", now=NOW, expected_interval_s=30, phase="off_hours")
+    beat = m.read("market")
+    assert beat is not None
+    assert beat.expected_interval_s == 30 and beat.phase == "off_hours"
+    assert m.is_alive("market", max_age_seconds=60, now=NOW) is True
+
+
 def test_fresh_beat_is_alive():
     m = monitor()
     m.beat("agent", now=NOW)

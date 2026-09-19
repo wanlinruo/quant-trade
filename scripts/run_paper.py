@@ -20,6 +20,7 @@ import structlog
 from qsys.live.config import load_deploy_config
 from qsys.live.messages import Heartbeat
 from qsys.live.redis_transport import RedisTransport
+from qsys.ops.health import CALENDAR_UNKNOWN, HeartbeatCadence, heartbeat_policy, trading_phase
 from qsys.paper.calendar import load_trading_calendar
 from qsys.paper.quotes import QuoteClient, QuoteUnavailable
 from qsys.paper.runtime import PaperRuntime
@@ -174,6 +175,10 @@ def run_supervisor(args) -> int:
     store = PaperStore(workspace / "workbench.sqlite3")
     workers: dict[str, subprocess.Popen] = {}
     heartbeat_failed = False
+    heartbeat = HeartbeatCadence()
+    calendar = None
+    calendar_day = None
+    next_calendar_retry = 0.0
     log.info("paper_runner.started")
     while True:
         active = {a.id: a for a in store.accounts()
@@ -197,21 +202,40 @@ def run_supervisor(args) -> int:
             workers[ident] = subprocess.Popen(command)
             log.info("paper.worker_started", account_id=ident,
                      pid=workers[ident].pid)
-        try:
-            transport.set_key(
-                f"{deploy.streams.heartbeat}:paper",
-                Heartbeat(source="paper", at=datetime.now()).model_dump_json(),
-            )
-            if heartbeat_failed:
-                log.info("paper.redis_recovered")
-            heartbeat_failed = False
-        except Exception as exc:
-            # An empty supervisor remains useful while Redis/QMT is being
-            # provisioned.  Account workers still fail closed and mark the
-            # affected account as error when quotes are unavailable.
-            if not heartbeat_failed:
-                log.warning("paper.redis_unavailable", error=str(exc))
-            heartbeat_failed = True
+        monotonic = time.monotonic()
+        wall = datetime.now()
+        if calendar_day != wall.date() and monotonic >= next_calendar_retry:
+            try:
+                calendar = load_trading_calendar(args.config)
+                calendar_day = wall.date()
+            except Exception as exc:
+                calendar = None
+                next_calendar_retry = monotonic + 300
+                log.warning("paper.calendar_unavailable", error=str(exc))
+        sessions = None if calendar is None else set(
+            calendar.sessions_in_range(wall.date(), wall.date())
+        )
+        phase = trading_phase(wall, sessions)
+        policy = heartbeat_policy("paper", phase, active=bool(active))
+        if heartbeat.due(monotonic, policy.expected_interval_s):
+            try:
+                transport.set_key(
+                    f"{deploy.streams.heartbeat}:paper",
+                    Heartbeat(
+                        source="paper", at=datetime.now(),
+                        expected_interval_s=policy.expected_interval_s, phase=phase,
+                    ).model_dump_json(),
+                )
+                if heartbeat_failed:
+                    log.info("paper.redis_recovered")
+                heartbeat_failed = False
+            except Exception as exc:
+                # An empty supervisor remains useful while Redis/QMT is being
+                # provisioned.  Account workers still fail closed and mark the
+                # affected account as error when quotes are unavailable.
+                if not heartbeat_failed:
+                    log.warning("paper.redis_unavailable", error=str(exc))
+                heartbeat_failed = True
         time.sleep(max(0.2, args.poll))
 
 

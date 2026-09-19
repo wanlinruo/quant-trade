@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from qsys.core.calendar import AShareCalendar
 from qsys.ops import services
+from qsys.ops.health import HEALTHY, MORNING, HealthObservation, HealthStore, SHANGHAI
 from qsys.ops.services import ServiceRun
 from qsys.ops.journal import SessionJournal
 from qsys.web.app import create_app
@@ -103,6 +104,7 @@ def test_pages_open_without_any_record(tmp_path, warehouse):
     assert page.status_code == 200
     assert "Tushare 收盘同步" in page.text and "suspend_daily" in page.text
     assert "服务管理" in page.text
+    assert "每日业务验收" in page.text and "在线时刻轴" in page.text
     assert "Windows 进程看门狗" in page.text
     assert http.get("/services/tushare-sync").status_code == 200
     assert http.get("/services/nope").status_code == 404
@@ -116,6 +118,10 @@ def test_watchdog_is_in_process_status_but_not_daily_board(tmp_path, warehouse):
         now=lambda: NOW,
     )
     assert "watchdog" not in [spec.id for spec, _ in live.board()[1]]
+    assert [spec.id for spec, _ in live.board()[1]] == [
+        "premarket-limits", "daily-archive", "tushare-sync", "catalog-verify",
+        "service-checks",
+    ]
     row = next(r for r in live.process_status() if r["spec"].id == "watchdog")
     assert row["state"] == "ok"
     page = TestClient(create_app(
@@ -132,6 +138,79 @@ def test_watchdog_disabled_and_unreachable_are_distinct(tmp_path):
     unavailable = ServiceConsole(tmp_path, windows_task=lambda task: {}, now=lambda: NOW)
     assert next(r for r in disabled.process_status() if r["spec"].id == "watchdog")["state"] == "bad"
     assert next(r for r in unavailable.process_status() if r["spec"].id == "watchdog")["state"] == "unknown"
+
+
+def test_heartbeat_process_status_uses_phase_specific_warn_and_down_thresholds(tmp_path):
+    last = datetime(2026, 9, 17, 10, 0)
+    live = ServiceConsole(
+        tmp_path, calendar=lambda: AShareCalendar(SESSIONS), systemd=lambda unit: {},
+        heartbeat=lambda source: {"last_beat": last, "alive": True,
+                                  "expected_interval_s": 1, "phase": "morning"},
+        now=lambda: last + timedelta(seconds=4),
+    )
+    market = next(r for r in live.process_status() if r["spec"].id == "market-gateway")
+    assert market["state"] == "warn"
+    assert market["heartbeat_assessment"].reason_code == "heartbeat_delayed"
+
+
+def test_unreachable_heartbeat_is_unknown_even_when_systemd_process_is_active(tmp_path):
+    live = ServiceConsole(
+        tmp_path, calendar=lambda: AShareCalendar(SESSIONS),
+        systemd=lambda unit: {"ActiveState": "active"},
+        heartbeat=lambda source: (_ for _ in ()).throw(ConnectionError("redis down")),
+        now=lambda: NOW,
+    )
+    shadow = next(r for r in live.process_status() if r["spec"].id == "shadow-core")
+    assert shadow["state"] == "unknown"
+
+
+def test_persisted_health_avoids_live_remote_probes_and_feeds_timeline(tmp_path):
+    store = HealthStore(tmp_path / "health.sqlite3")
+    observed = (NOW - timedelta(minutes=1)).replace(tzinfo=SHANGHAI)
+    store.record(HealthObservation(
+        service_id="market-gateway", observed_at_utc=observed, phase=MORNING,
+        expected_interval_s=1, warn_after_s=3, down_after_s=10,
+        state=HEALTHY, process_state=HEALTHY, business_state="unknown",
+        reason_code="heartbeat_fresh", source="redis_heartbeat",
+    ))
+    live = ServiceConsole(
+        tmp_path, health_store=store, now=lambda: NOW,
+        systemd=lambda unit: (_ for _ in ()).throw(AssertionError("must not probe")),
+        windows_task=lambda task: (_ for _ in ()).throw(AssertionError("must not ssh")),
+    )
+    row = next(r for r in live.process_status() if r["spec"].id == "market-gateway")
+    assert row["state"] == "ok"
+    assert live.health_timeline()[0]["segments"][-1]["state"] == "healthy"
+
+
+def test_configured_empty_health_store_never_falls_back_to_remote_probes(tmp_path):
+    live = ServiceConsole(
+        tmp_path, health_store=HealthStore(tmp_path / "health.sqlite3"), now=lambda: NOW,
+        systemd=lambda unit: (_ for _ in ()).throw(AssertionError("must not probe")),
+        windows_task=lambda task: (_ for _ in ()).throw(AssertionError("must not ssh")),
+    )
+    assert {row["state"] for row in live.process_status()} == {"unknown"}
+
+
+def test_persisted_health_stays_fresh_for_checkpoint_interval_plus_headroom(tmp_path):
+    store = HealthStore(tmp_path / "health.sqlite3")
+    observed = (NOW - timedelta(minutes=4)).replace(tzinfo=SHANGHAI)
+    store.record(HealthObservation(
+        service_id="market-gateway", observed_at_utc=observed, phase=MORNING,
+        expected_interval_s=1, warn_after_s=3, down_after_s=10,
+        state=HEALTHY, process_state=HEALTHY, business_state="unknown",
+        reason_code="heartbeat_fresh", source="redis_heartbeat",
+    ))
+    live = ServiceConsole(tmp_path, health_store=store, now=lambda: NOW)
+    assert next(r for r in live.process_status()
+                if r["spec"].id == "market-gateway")["state"] == "ok"
+
+    stale = ServiceConsole(
+        tmp_path, health_store=store, now=lambda: NOW + timedelta(minutes=4),
+    )
+    row = next(r for r in stale.process_status() if r["spec"].id == "market-gateway")
+    assert row["state"] == "unknown"
+    assert row["health_observation"]["reason_code"] == "observer_stale"
 
 
 def test_windows_task_query_uses_read_only_encoded_powershell(monkeypatch, tmp_path):
@@ -234,6 +313,11 @@ def test_runs_land_on_the_session_they_checked_not_the_day_they_started(
     got = states(next_morning.board(14), "daily-archive")
     assert got[session] == "fixed"                 # 当天失败、次日补跑成功
     assert got[date(2026, 9, 18)] == "closed"      # 补跑那天不是交易日，没有它自己的活
+    cells = next(cells for spec, cells in next_morning.board(14)[1]
+                 if spec.id == "daily-archive")
+    assert next(cell for cell in cells if cell.day == session).detail_url.startswith(
+        "/services/runs/2026-09-18/"
+    )
 
 
 def test_resident_services_show_their_check_results_on_the_board(tmp_path, monkeypatch):
@@ -242,7 +326,11 @@ def test_resident_services_show_their_check_results_on_the_board(tmp_path, monke
     record(tmp_path, "service-checks", datetime(2026, 9, 17, 20, 0), check_run(
         day, ("shadow-core｜当日策略事件已执行", "failed"),
         ("paper｜当日策略事件已执行", "succeeded")), monkeypatch)
-    board = console(tmp_path).board(14)
+    board = console(tmp_path).acceptance_board(14)
     assert states(board, "shadow-core")[day] == "qcbad"
     assert states(board, "paper")[day] == "ok"
     assert states(board, "shadow-core")[date(2026, 9, 16)] == "none"   # 没质检就不判
+    cells = next(cells for spec, cells in board[1] if spec.id == "shadow-core")
+    assert next(cell for cell in cells if cell.day == day).detail_url.startswith(
+        "/services/runs/2026-09-17/service-checks-"
+    )

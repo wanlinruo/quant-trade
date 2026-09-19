@@ -146,6 +146,19 @@ sudo systemctl daemon-reload && sudo systemctl enable --now qsys-monitor
 curl -s http://127.0.0.1:8420/healthz
 ```
 
+服务健康时刻轴由独立采样器写入，网页只读本地 SQLite，正常路径不在请求中 SSH
+Windows：
+
+```bash
+sudo cp deploy/systemd/qsys-health-observer.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now qsys-health-observer
+systemctl status qsys-health-observer --no-pager
+```
+
+采样器故障只会让时刻轴出现灰色缺测，不参与 `control:kill`，也不替代 LIVE 的固定
+10 秒双向心跳检查。
+
 ## 访问监控台
 
 应用**只监听回环** `127.0.0.1:8420`，公网只经 Nginx 8443 进入，并且必须带认证。

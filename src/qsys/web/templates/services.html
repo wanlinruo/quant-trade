@@ -12,7 +12,7 @@
     {% for spec, cells in rows %}
     <tr><th class="svc">{{ spec.name }}<br><span class="muted" style="font-size:11px;font-weight:400">{{ spec.schedule }}</span></th>
       {% for cell in cells %}<td>
-        {% if cell.runs %}<a class="cell {{ cell.state }}" href="/services/runs/{{ cell.day }}/{{ cell.runs[-1].run_id }}" title="{{ cell.runs|length }} 次执行{% if cell.checks %}，质检 {{ cell.checks|length }} 项{% endif %}">{{ cell.label }}{% if cell.runs|length > 1 %}×{{ cell.runs|length }}{% endif %}</a>
+        {% if cell.detail_url %}<a class="cell {{ cell.state }}" href="{{ cell.detail_url }}" title="{{ cell.runs|length }} 次执行{% if cell.checks %}，质检 {{ cell.checks|length }} 项{% endif %}">{{ cell.label }}{% if cell.runs|length > 1 %}×{{ cell.runs|length }}{% endif %}</a>
         {% else %}<span class="cell {{ cell.state }}">{{ cell.label }}</span>{% endif %}
       </td>{% endfor %}
     </tr>
@@ -20,6 +20,23 @@
   </table>
   </div>
   <p class="muted" style="margin:10px 0 0;font-size:12px">成功＝全部步骤成功且当晚质检通过；质检未过＝任务跑完了但产出不对（缺数据、数量不符）；有警告＝结果可用但有步骤报警；已修复＝当天出过问题（任务失败、质检未过或未按时执行），之后补跑或数据核对已通过，点进去看备注；未运行＝交易日到了应完成的时间仍无记录；无记录＝运行记录启用之前。点格子看当天最后一次执行的明细。</p>
+</div>
+
+<div class="card">
+  <h2>每日业务验收</h2>
+  <p class="muted">只回答影子盘与模拟盘当天应执行的策略事件是否完成，不代表进程此刻在线。</p>
+  <div class="table-wrap">
+  <table class="board">
+    <tr><th></th>{% for day in columns %}<th class="day">{{ day.strftime("%m-%d") }}<br>{{ "一二三四五六日"[day.weekday()] }}</th>{% endfor %}</tr>
+    {% for spec, cells in acceptance_rows %}
+    <tr><th class="svc">{{ spec.name }}<br><span class="muted" style="font-size:11px;font-weight:400">策略事件</span></th>
+      {% for cell in cells %}<td>
+        {% if cell.detail_url %}<a class="cell {{ cell.state }}" href="{{ cell.detail_url }}">{{ cell.label }}</a>
+        {% else %}<span class="cell {{ cell.state }}">{{ cell.label }}</span>{% endif %}
+      </td>{% endfor %}
+    </tr>{% endfor %}
+  </table>
+  </div>
 </div>
 
 <div class="card">
@@ -31,9 +48,11 @@
       <td><a href="/services/{{ row.spec.id }}">{{ row.spec.name }}</a></td>
       <td>{{ {"timer": "定时任务", "resident": "常驻服务", "supervisor": "守护任务"}[row.spec.kind] }}</td>
       <td>{{ row.spec.host }}</td>
-      <td>{% if row.state == "ok" %}<span class="pill ok">正常</span>{% elif row.state == "bad" %}<span class="pill bad">异常</span>{% else %}<span class="pill todo">未知</span>{% endif %}</td>
+      <td>{% if row.state == "ok" %}<span class="pill ok">正常</span>{% elif row.state == "warn" %}<span class="pill warn">延迟</span>{% elif row.state == "bad" %}<span class="pill bad">异常</span>{% else %}<span class="pill todo">未知</span>{% endif %}</td>
       <td class="muted" style="font-size:12px">
-        {% if row.spec.kind == "supervisor" %}
+        {% if row.health_observation %}
+          观测 {{ row.health_observation.observed_at_utc }}；进程 {{ row.health_observation.process_state }}；业务 {{ row.health_observation.business_state }}；原因 {{ row.health_observation.reason_code }}；来源 {{ row.health_observation.source }}
+        {% elif row.spec.kind == "supervisor" %}
           {% if row.windows_task %}计划任务 {{ row.windows_task.State }}；上次运行 {{ row.windows_task.LastRunTime or "—" }}；结果码 {{ row.windows_task.LastTaskResult }}{% else %}Windows 任务状态暂不可读{% endif %}
         {% elif row.spec.kind == "timer" %}
           {% if s.LastTriggerUSec %}上次触发 {{ s.LastTriggerUSec }}；{% endif %}
@@ -41,11 +60,27 @@
           {% if row.last_exit and row.last_exit.Result %}上次结果 {{ row.last_exit.Result }}（退出码 {{ row.last_exit.ExecMainStatus or "—" }}）{% endif %}
         {% else %}
           {% if row.heartbeat %}心跳 {{ row.heartbeat.last_beat or "无" }}；{% endif %}
+          {% if row.heartbeat_assessment %}年龄 {{ "%.1f"|format(row.heartbeat_assessment.age_s) if row.heartbeat_assessment.age_s is not none else "—" }} 秒；阈值 {{ row.heartbeat_assessment.policy.warn_after_s|int }}/{{ row.heartbeat_assessment.policy.down_after_s|int }} 秒；原因 {{ row.heartbeat_assessment.reason_code }}；{% endif %}
           {% if s.ActiveState %}{{ s.ActiveState }}/{{ s.SubState }}{% if s.ActiveEnterTimestamp %}，自 {{ s.ActiveEnterTimestamp }}{% endif %}{% endif %}
         {% endif %}
       </td>
     </tr>{% endfor %}
   </table>
+</div>
+
+<div class="card">
+  <h2>在线时刻轴（近 24 小时）</h2>
+  <p class="muted">绿色正常、黄色延迟、红色不可用、灰色缺测；缺少采样绝不补画为正常。</p>
+  {% if timeline %}
+  {% for row in timeline %}
+  <div style="display:grid;grid-template-columns:180px 1fr;gap:12px;align-items:center;margin:9px 0">
+    <a href="/services/{{ row.spec.id }}">{{ row.spec.name }}</a>
+    <div style="display:flex;height:18px;border-radius:4px;overflow:hidden;background:#e5e7eb">
+      {% for segment in row.segments %}<span class="timeline-segment {{ {'healthy':'ok','degraded':'warn','down':'bad','unknown':'todo','planned':'todo'}.get(segment.state,'todo') }}" style="display:block;width:{{ '%.4f'|format(segment.width) }}%" title="{{ segment.start }}—{{ segment.end }}；{{ segment.reason_code }}"></span>{% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+  {% else %}<div class="empty">健康采样器尚无历史记录</div>{% endif %}
 </div>
 
 <div class="card">

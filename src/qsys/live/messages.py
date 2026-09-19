@@ -130,6 +130,9 @@ class ControlCommand(Message):
 class Heartbeat(Message):
     source: str
     at: datetime
+    # 仅供运营监控解释发送端当前节奏；LIVE 安全检查仍使用固定阈值。
+    expected_interval_s: float | None = None
+    phase: str | None = None
 
 
 class QuoteRequest(Message):

@@ -20,6 +20,7 @@ import uvicorn
 
 from qsys.data.storage import Warehouse
 from qsys.ops.journal import SessionJournal
+from qsys.ops.health import HealthStore
 from qsys.live.store import LiveStore
 from qsys.web.app import create_app
 from qsys.web.backtest_views import BacktestService
@@ -43,6 +44,7 @@ def build_app(
     service_runs_dir: Path | None = None,
     tushare_config_path: str | None = None,
     state_path: Path | None = None,
+    health_state_path: Path | None = None,
 ):
     warehouse = Warehouse(warehouse_root)
     journal = SessionJournal(warehouse)
@@ -101,6 +103,9 @@ def build_app(
                 key=Path(os.environ.get("QSYS_WINDOWS_SSH_KEY",
                                         "/home/ubuntu/.ssh/id_ed25519_winnode")),
             ),
+            health_store=HealthStore(
+                health_state_path or Path("var/service-health.sqlite3")
+            ),
         ),
     )
 
@@ -140,6 +145,10 @@ def main() -> int:
         default="var/shadow-state.sqlite3",
         help="影子盘状态库，实盘运行日志页面只读",
     )
+    parser.add_argument(
+        "--health-state", default="var/service-health.sqlite3",
+        help="服务健康状态变更与检查点 SQLite",
+    )
     parser.add_argument("--tushare-config", default=None,
                         help="只取 [tushare] 凭据查交易日历；不给则用 --config。"
                              "测试环境用它避免连到生产 Redis")
@@ -155,7 +164,7 @@ def main() -> int:
     app = build_app(
         Path(args.warehouse), config, args.config,
         Path(args.runs), Path(args.workspace), Path(args.service_runs),
-        args.tushare_config, Path(args.state),
+        args.tushare_config, Path(args.state), Path(args.health_state),
     )
     log.info("monitor.started", host=args.host, port=args.port)
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
