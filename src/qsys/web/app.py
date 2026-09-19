@@ -195,7 +195,8 @@ def create_app(
                      "columns": columns, "rows": rows, "has_calendar": has_calendar,
                      "processes": console.process_status(),
                      "timers": console.services("timer"),
-                     "residents": console.services("resident")},
+                     "residents": console.services("resident"),
+                     "supervisors": console.services("supervisor")},
         )
 
     @app.get("/services/runs/{day}/{run_id}", response_class=HTMLResponse)

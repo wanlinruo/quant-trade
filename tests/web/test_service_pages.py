@@ -10,7 +10,7 @@ from qsys.ops.services import ServiceRun
 from qsys.ops.journal import SessionJournal
 from qsys.web.app import create_app
 from qsys.web.config import WebConfig
-from qsys.web.service_views import ServiceConsole
+from qsys.web.service_views import ServiceConsole, windows_task_show
 from qsys.web.views import MonitorService
 
 NOW = datetime(2026, 9, 17, 20, 0)  # 周四
@@ -103,8 +103,52 @@ def test_pages_open_without_any_record(tmp_path, warehouse):
     assert page.status_code == 200
     assert "Tushare 收盘同步" in page.text and "suspend_daily" in page.text
     assert "服务管理" in page.text
+    assert "Windows 进程看门狗" in page.text
     assert http.get("/services/tushare-sync").status_code == 200
     assert http.get("/services/nope").status_code == 404
+
+
+def test_watchdog_is_in_process_status_but_not_daily_board(tmp_path, warehouse):
+    live = ServiceConsole(
+        tmp_path, systemd=lambda unit: {},
+        windows_task=lambda task: {"State": "Ready", "LastTaskResult": 0,
+                                   "LastRunTime": "2026-09-19T14:17:17"},
+        now=lambda: NOW,
+    )
+    assert "watchdog" not in [spec.id for spec, _ in live.board()[1]]
+    row = next(r for r in live.process_status() if r["spec"].id == "watchdog")
+    assert row["state"] == "ok"
+    page = TestClient(create_app(
+        MonitorService(SessionJournal(warehouse), config=WebConfig()), WebConfig(),
+        services=live,
+    )).get("/services")
+    assert "Windows 进程看门狗" in page.text
+    assert "计划任务 Ready" in page.text
+
+
+def test_watchdog_disabled_and_unreachable_are_distinct(tmp_path):
+    disabled = ServiceConsole(tmp_path, windows_task=lambda task: {
+        "State": "Disabled", "LastTaskResult": 0}, now=lambda: NOW)
+    unavailable = ServiceConsole(tmp_path, windows_task=lambda task: {}, now=lambda: NOW)
+    assert next(r for r in disabled.process_status() if r["spec"].id == "watchdog")["state"] == "bad"
+    assert next(r for r in unavailable.process_status() if r["spec"].id == "watchdog")["state"] == "unknown"
+
+
+def test_windows_task_query_uses_read_only_encoded_powershell(monkeypatch, tmp_path):
+    import base64
+    import subprocess
+
+    def fake_run(args, **kwargs):
+        script = base64.b64decode(args[-1]).decode("utf-16le")
+        assert "Get-ScheduledTask -TaskName 'qsys-watchdog'" in script
+        assert "Get-ScheduledTaskInfo -TaskName 'qsys-watchdog'" in script
+        assert "Start-ScheduledTask" not in script
+        return subprocess.CompletedProcess(args, 0, '{"State":"Ready","LastTaskResult":0}', "")
+
+    monkeypatch.setattr("qsys.web.service_views.subprocess.run", fake_run)
+    assert windows_task_show("qsys-watchdog", host="win.example", key=tmp_path / "key") == {
+        "State": "Ready", "LastTaskResult": 0,
+    }
 
 
 def test_run_detail_page(tmp_path, warehouse, monkeypatch):

@@ -33,7 +33,7 @@ REPAIRED = "repaired"
 class ServiceSpec:
     id: str
     name: str
-    kind: str  # timer（定时任务）或 resident（常驻服务）
+    kind: str  # timer（每日定时任务）、resident（常驻服务）或 supervisor（周期守护任务）
     host: str
     unit: str | None
     schedule: str
@@ -45,6 +45,7 @@ class ServiceSpec:
     # 超过这么久仍是 running，视为进程已中断
     max_runtime: timedelta = timedelta(hours=3)
     heartbeat: str | None = None
+    windows_task: str | None = None
 
 
 SERVICES: tuple[ServiceSpec, ...] = (
@@ -118,6 +119,12 @@ SERVICES: tuple[ServiceSpec, ...] = (
     ServiceSpec(
         "shadow-agent", "影子盘执行代理", "resident", "Windows", None, "常驻",
         ("QMT 交易接口（影子模式不下单）",), (), "执行端代理", heartbeat="agent",
+    ),
+    ServiceSpec(
+        "watchdog", "Windows 进程看门狗", "supervisor", "Windows", None, "每 5 分钟",
+        ("Windows 计划任务",), (),
+        "检查影子盘执行代理与 QMT 行情网关进程；进程缺失时触发对应计划任务",
+        windows_task="qsys-watchdog",
     ),
 )
 

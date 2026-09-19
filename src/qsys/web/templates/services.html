@@ -29,11 +29,13 @@
     {% for row in processes %}{% set s = row.systemd %}
     <tr>
       <td><a href="/services/{{ row.spec.id }}">{{ row.spec.name }}</a></td>
-      <td>{{ "定时任务" if row.spec.kind == "timer" else "常驻服务" }}</td>
+      <td>{{ {"timer": "定时任务", "resident": "常驻服务", "supervisor": "守护任务"}[row.spec.kind] }}</td>
       <td>{{ row.spec.host }}</td>
       <td>{% if row.state == "ok" %}<span class="pill ok">正常</span>{% elif row.state == "bad" %}<span class="pill bad">异常</span>{% else %}<span class="pill todo">未知</span>{% endif %}</td>
       <td class="muted" style="font-size:12px">
-        {% if row.spec.kind == "timer" %}
+        {% if row.spec.kind == "supervisor" %}
+          {% if row.windows_task %}计划任务 {{ row.windows_task.State }}；上次运行 {{ row.windows_task.LastRunTime or "—" }}；结果码 {{ row.windows_task.LastTaskResult }}{% else %}Windows 任务状态暂不可读{% endif %}
+        {% elif row.spec.kind == "timer" %}
           {% if s.LastTriggerUSec %}上次触发 {{ s.LastTriggerUSec }}；{% endif %}
           {% if s.NextElapseUSecRealtime %}下次 {{ s.NextElapseUSecRealtime }}；{% endif %}
           {% if row.last_exit and row.last_exit.Result %}上次结果 {{ row.last_exit.Result }}（退出码 {{ row.last_exit.ExecMainStatus or "—" }}）{% endif %}
@@ -50,7 +52,7 @@
   <h2>服务清单</h2>
   <table>
     <tr><th>服务</th><th>执行时间</th><th>访问接口</th><th>写入表</th><th>作用</th></tr>
-    {% for spec in timers + residents %}
+    {% for spec in timers + residents + supervisors %}
     <tr>
       <td style="white-space:nowrap"><a href="/services/{{ spec.id }}">{{ spec.name }}</a>{% if spec.unit %}<br><span class="mono muted" style="font-size:11px">{{ spec.unit }}</span>{% endif %}</td>
       <td style="font-size:12px">{{ spec.schedule }}</td>
