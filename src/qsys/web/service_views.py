@@ -75,11 +75,13 @@ def windows_task_show(task: str, *, host: str, key: Path) -> dict:
         out = subprocess.run(
             ["ssh", "-i", str(key), "-o", "BatchMode=yes", "-o", "ConnectTimeout=3",
              host, "powershell", "-NoProfile", "-EncodedCommand", encoded],
-            capture_output=True, text=True, timeout=8,
+            # Windows PowerShell 的 stderr 可能带 GBK 编码的 CLIXML 进度信息；
+            # 只解析 stdout 的 JSON，不能让 text=True 因 stderr 解码失败丢掉结果。
+            capture_output=True, timeout=8,
         )
         if out.returncode != 0:
             return {}
-        result = json.loads(out.stdout.strip())
+        result = json.loads(out.stdout.decode("utf-8").strip())
         return result if isinstance(result, dict) else {}
     except (OSError, ValueError, subprocess.SubprocessError):
         return {}

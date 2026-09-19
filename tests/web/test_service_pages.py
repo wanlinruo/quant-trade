@@ -143,7 +143,10 @@ def test_windows_task_query_uses_read_only_encoded_powershell(monkeypatch, tmp_p
         assert "Get-ScheduledTask -TaskName 'qsys-watchdog'" in script
         assert "Get-ScheduledTaskInfo -TaskName 'qsys-watchdog'" in script
         assert "Start-ScheduledTask" not in script
-        return subprocess.CompletedProcess(args, 0, '{"State":"Ready","LastTaskResult":0}', "")
+        return subprocess.CompletedProcess(
+            args, 0, b'{"State":"Ready","LastTaskResult":0}',
+            b'\xd5\xfd\xd4\xda',  # PowerShell stderr 可以不是 UTF-8
+        )
 
     monkeypatch.setattr("qsys.web.service_views.subprocess.run", fake_run)
     assert windows_task_show("qsys-watchdog", host="win.example", key=tmp_path / "key") == {
