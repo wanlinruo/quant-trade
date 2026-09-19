@@ -1,5 +1,5 @@
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 
 from scripts import run_market_gateway
@@ -22,6 +22,24 @@ def test_calendar_retries_an_empty_midnight_result_and_recovers_before_open():
     assert cache.refresh_if_due(datetime(2026, 9, 18, 0, 4), 240, provider) == []
     assert cache.refresh_if_due(datetime(2026, 9, 18, 0, 5), 300, provider) == [today]
     assert len(calls) == 2
+    assert calls == [
+        (date(2026, 8, 9), date(2026, 10, 28)),
+        (date(2026, 8, 9), date(2026, 10, 28)),
+    ]
+
+
+def test_calendar_weekend_query_includes_recent_sessions():
+    saturday = date(2026, 9, 19)
+    friday = date(2026, 9, 18)
+    calls = []
+
+    def provider(start, end):
+        calls.append((start, end))
+        return [friday]
+
+    cache = TradingSessionCache(refresh_interval=300)
+    assert cache.refresh_if_due(datetime(2026, 9, 19, 10), 0, provider) == [friday]
+    assert calls == [(saturday - timedelta(days=40), saturday + timedelta(days=40))]
 
 
 def test_calendar_keeps_last_good_result_during_a_transient_empty_refresh():

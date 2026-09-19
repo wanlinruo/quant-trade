@@ -56,7 +56,13 @@ class TradingSessionCache:
         # Set the retry deadline before calling QMT so a transient exception
         # cannot turn the 100 ms gateway loop into a calendar-query storm.
         self.next_refresh = monotonic + max(1.0, self.refresh_interval)
-        refreshed = provider(today, today + timedelta(days=40))
+        # MiniQMT may not expose future sessions.  Starting the query at
+        # ``today`` therefore yields an empty result on weekends/holidays and
+        # incorrectly keeps health monitoring in conservative
+        # ``calendar_unknown`` mode.  Recent past sessions prove that the
+        # calendar source is available while today's absence still means the
+        # market is closed.
+        refreshed = provider(today - timedelta(days=40), today + timedelta(days=40))
         if refreshed:
             self.sessions = refreshed
         return self.sessions
