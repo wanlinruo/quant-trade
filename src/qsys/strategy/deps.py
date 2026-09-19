@@ -24,6 +24,10 @@ EXCLUDED_PREFIXES = ("4", "8", "68")
 log = structlog.get_logger(__name__)
 
 
+class MissingIntradayDataError(ValueError):
+    """可交易持仓在退出检查点缺少分钟行情。"""
+
+
 def build_universe(instruments):
     """只把核心类型能够准确表达的 A 股代码交给回测引擎。"""
     universe: list[Symbol] = []
@@ -75,6 +79,21 @@ def intraday_quotes(market: MarketFeed):
     def quotes(session: date, at: time, symbols):
         bound = market.bind(datetime.combine(session, at))
         got = bound.intraday([str(s) for s in symbols], session, at)
+        requested = {str(s) for s in symbols}
+        missing = requested - set(got)
+        if missing:
+            # 没有日线是停牌/尚未上市/已经退市，当时确实无可成交报价；有日线
+            # 却没有分钟线则是数据缺口。后者不能继续跑出一条“成功”的净值线，
+            # 否则持仓会永久卖不出（3a3d2f19c66c45d1 的实际事故）。
+            tradable = set(bound.session_open(sorted(missing), session))
+            broken = sorted(missing & tradable)
+            if broken:
+                sample = ", ".join(broken[:10])
+                raise MissingIntradayDataError(
+                    f"{session} {at:%H:%M} 可交易持仓缺少分钟行情：{sample}"
+                    + (f" 等 {len(broken)} 只" if len(broken) > 10 else "")
+                    + "；回测已停止，避免持仓因数据缺口永久无法卖出"
+                )
         return {
             s: (got[str(s)].price, got[str(s)].volume)
             for s in symbols

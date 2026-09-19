@@ -70,6 +70,28 @@ def test_st_comes_from_stock_st(warehouse, write_daily_bars, write_direct_truth)
     assert got["st_source"].to_list() == ["stock_st"]
 
 
+def test_delisting_period_overrides_a_stock_st_false_positive(
+    warehouse, write_daily_bars, write_direct_truth
+):
+    """D-15：退市整理期不是风险警示板，独立区间真值优先。"""
+    rows = _one("600242.SH", DAYS[1], name="退市中昌")
+    _bars(write_daily_bars, warehouse, rows)
+    write_direct_truth(warehouse, pl.DataFrame(rows), st={"600242.SH"})
+    warehouse.write("delisting_pool", pa.table({
+        "dt": [DAYS[1]],
+        "symbol": ["600242.SH"],
+        "name": ["退市中昌"],
+        "start_date": [DAYS[0]],
+        "end_date": [DAYS[1]],
+        "ann_date": [DAYS[0]],
+    }, schema=schema.DELISTING_POOL), year=2026)
+
+    build_daily_flags(warehouse, DAYS[1], DAYS[1])
+    got = _flags(warehouse, DAYS[1])
+    assert got["is_st"].to_list() == [False]
+    assert got["st_source"].to_list() == ["delisting_pool_override"]
+
+
 def test_a_st_looking_name_does_not_make_a_stock_st(
     warehouse, write_daily_bars, write_direct_truth
 ):

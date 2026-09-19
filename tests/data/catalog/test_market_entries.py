@@ -11,20 +11,21 @@ from qsys.data.catalog.types import Direct, Kind, MetricStatus, UNKNOWN, Validit
 BY_ID = {m.id: m for m in METRICS}
 
 
-def test_owns_the_six_market_datasets():
+def test_owns_the_seven_market_datasets():
     assert DATASETS == frozenset(
-        {"tushare_daily", "bars_daily", "paid_daily",
+        {"tushare_daily", "bars_daily", "paid_daily", "paid_minute_bars",
          "index_bars", "minute_bars", "auction_ticks"}
     )
 
 
 def test_registers_every_market_column():
-    """六张表的列数逐表核对。断总数只会说「89 != 90」，断分表能指出是哪张表短了。"""
+    """七张表的列数逐表核对，缺列时直接指出数据集。"""
     from collections import Counter
     got = Counter(m.dataset for m in METRICS)
     assert dict(got) == {
         "tushare_daily": 28, "paid_daily": 28, "index_bars": 8,
-        "minute_bars": 8, "auction_ticks": 10, "bars_daily": 8,
+        "minute_bars": 8, "paid_minute_bars": 9,
+        "auction_ticks": 10, "bars_daily": 8,
     }
 
 
@@ -94,6 +95,15 @@ def test_paid_daily_is_frozen_and_points_at_baidupan():
         if m.dataset == "paid_daily":
             assert m.status is MetricStatus.FROZEN
             assert m.lineage.source_id == "baidupan.daily"
+
+
+def test_paid_minutes_are_frozen_and_keep_source_units():
+    metrics = [m for m in METRICS if m.dataset == "paid_minute_bars"]
+    assert len(metrics) == 9
+    assert all(m.status is MetricStatus.FROZEN for m in metrics)
+    assert all(m.lineage.source_id == "baidupan.minute" for m in metrics)
+    assert "股" in BY_ID["paid_minute_bars.volume"].meaning
+    assert "D-20" in BY_ID["paid_minute_bars.close"].known_issues
 
 
 def test_bars_daily_is_frozen_on_a_dead_source():

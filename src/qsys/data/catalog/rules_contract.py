@@ -42,12 +42,16 @@ _KEYS: dict[str, tuple[str, ...]] = {
 
 
 def _expected(dataset: str) -> pa.Schema:
-    return schema.PAID_DAILY if dataset == "paid_daily" else schema.ALL[dataset]
+    return schema.READ_ONLY.get(dataset) or schema.ALL[dataset]
 
 
 def _files(root: Path, dataset: str) -> list[Path]:
     base = root / dataset
-    return sorted({*base.glob("part.parquet"), *base.glob("year=*/part.parquet")})
+    return sorted({
+        *base.glob("part.parquet"),
+        *base.glob("year=*/part.parquet"),
+        *base.glob("year=*/shard=*/part.parquet"),
+    })
 
 
 def _default_keys(dataset: str, names: Iterable[str]) -> tuple[str, ...]:

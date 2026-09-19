@@ -23,6 +23,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import duckdb
 
+from qsys.data import schema
+
 
 HEADERS = [
     "证券代码", "交易日期", "分钟时间", "开盘价（元）", "最高价（元）",
@@ -32,28 +34,7 @@ HEADER_VARIANTS = [
     HEADERS,
     ["交易日期", "分钟时间", "证券代码", *HEADERS[3:]],
 ]
-SCHEMA = pa.schema(
-    [
-        ("symbol", pa.string()),
-        ("dt", pa.timestamp("us")),
-        ("open", pa.float64()),
-        ("high", pa.float64()),
-        ("low", pa.float64()),
-        ("close", pa.float64()),
-        ("volume", pa.int64()),
-        ("amount", pa.float64()),
-        ("factor", pa.float64()),
-    ],
-    metadata={
-        b"provider": b"yuhaha-baidupan",
-        b"frequency": b"1min",
-        b"timestamp_policy": b"source value; no shift",
-        b"price_unit": b"CNY",
-        b"volume_unit": b"share",
-        b"amount_unit": b"CNY",
-        b"factor": b"source cumulative backward adjustment",
-    },
-)
+SCHEMA = schema.PAID_MINUTE_BARS
 
 _SYMBOL_IN_NAME = re.compile(r"(?:^|/)(\d{6}\.(?:SZ|SH|BJ))@")
 _SYMBOL = re.compile(r"^\d{6}\.(?:SZ|SH|BJ)$")
@@ -694,11 +675,13 @@ def quarantine_unmatched_zero_trade_days(warehouse: Path, year: int) -> dict:
 def validate_year(warehouse: Path, year: int) -> dict:
     """生成年度质量报告；所有聚合仅用于核验，不写回事实表。"""
     staging = warehouse / "paid_minute_bars_staging" / f"year={year}"
-    manifest_path = staging / "manifest.json"
+    published = warehouse / "paid_minute_bars" / f"year={year}"
+    source = staging if (staging / "manifest.json").exists() else published
+    manifest_path = source / "manifest.json"
     if not manifest_path.exists():
-        raise ValueError(f"{year} 暂存清单不存在")
+        raise ValueError(f"{year} 暂存或已发布清单不存在")
     manifest = json.loads(manifest_path.read_text())
-    minute_glob = str(staging / "shard=*/part.parquet").replace("'", "''")
+    minute_glob = str(source / "shard=*/part.parquet").replace("'", "''")
     daily_path = warehouse / "paid_daily" / f"year={year}" / "part.parquet"
     if not daily_path.exists():
         raise ValueError(f"{year} 付费日线不存在")
@@ -743,8 +726,9 @@ def validate_year(warehouse: Path, year: int) -> dict:
                max(high) FILTER (WHERE strftime(dt, '%H:%M')<='15:00') AS high,
                min(low) FILTER (WHERE strftime(dt, '%H:%M')<='15:00') AS low,
                arg_max(close, dt) FILTER (WHERE strftime(dt, '%H:%M')<='15:00') AS "close",
-               sum(volume)::HUGEINT AS volume,
-               sum(amount) AS amount, min(factor) AS factor_min, max(factor) AS factor_max,
+               sum(volume) FILTER (WHERE strftime(dt, '%H:%M')<='15:00')::HUGEINT AS volume,
+               sum(amount) FILTER (WHERE strftime(dt, '%H:%M')<='15:00') AS amount,
+               min(factor) AS factor_min, max(factor) AS factor_max,
                count(*)::INTEGER AS minute_count,
                count(*) FILTER (WHERE strftime(dt, '%H:%M')<='15:00')::INTEGER AS regular_minute_count,
                count(*) FILTER (WHERE strftime(dt, '%H:%M')>'15:00')::INTEGER AS post_close_minute_count
@@ -828,7 +812,8 @@ def validate_year(warehouse: Path, year: int) -> dict:
                    count(*) FILTER (WHERE p.symbol IS NOT NULL AND
                      (abs(q.open-p.open)>1e-8 OR abs(q.high-p.high)>1e-8 OR
                       abs(q.low-p.low)>1e-8 OR abs(q.close-p.close)>1e-8))::BIGINT ohlc_mismatch_rows,
-                   count(*) FILTER (WHERE p.symbol IS NOT NULL AND q.volume<>p.volume)::BIGINT volume_mismatch_rows,
+                   count(*) FILTER (WHERE p.symbol IS NOT NULL AND
+                     abs(q.volume*100-p.volume)>0.5)::BIGINT volume_mismatch_rows,
                    count(*) FILTER (WHERE p.symbol IS NOT NULL AND abs(q.amount-p.amount)>1)::BIGINT amount_mismatch_gt_1_rows
             FROM {qmt_source} q LEFT JOIN {minute} p USING(symbol, dt)
         """
@@ -853,7 +838,7 @@ def validate_year(warehouse: Path, year: int) -> dict:
 
     report = {
         "year": year,
-        "status": "VALIDATED_NOT_PUBLISHED",
+        "status": "PUBLISHED" if source == published else "VALIDATED_NOT_PUBLISHED",
         "source_manifest": str(manifest_path),
         "structural": structural,
         "daily_comparison": daily,
@@ -868,7 +853,8 @@ def validate_year(warehouse: Path, year: int) -> dict:
             "volume_rule": "sum(source minute shares) == source daily lots * 100, tolerance 0.5 share",
             "amount_daily_tolerance_cny": 100,
             "factor_tolerance": 1e-10,
-            "ohlc_session": "09:30-15:00; BJ 15:01-15:30 retained as direct post-close/bulk-trade observations",
+            "ohlc_session": "09:30-15:00; BJ 15:01-15:30 retained as direct post-close/bulk-trade observations but excluded from daily OHLCV/amount comparison",
+            "qmt_volume_rule": "QMT minute lots * 100 == paid minute shares, tolerance 0.5 share",
             "note": "aggregates are validation-only and never written to source facts",
         },
     }

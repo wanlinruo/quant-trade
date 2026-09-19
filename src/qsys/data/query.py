@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import date, datetime
+import json
+from datetime import date, datetime, time, timedelta
 
 import duckdb
 import polars as pl
@@ -11,6 +12,8 @@ import pyarrow as pa
 
 from qsys.data import schema
 from qsys.data.storage import Warehouse
+
+PAID_MINUTE_VISIBILITY_LAG = timedelta(minutes=1)
 
 
 def _empty(arrow_schema: pa.Schema) -> pl.DataFrame:
@@ -22,11 +25,14 @@ def _empty(arrow_schema: pa.Schema) -> pl.DataFrame:
 _UNION = "union_by_name=true"
 
 
-def _read(glob: str) -> str:
-    return f"read_parquet('{glob}', {_UNION})"
+def _read(glob: str | Sequence[str]) -> str:
+    if isinstance(glob, str):
+        return f"read_parquet('{glob}', {_UNION})"
+    files = ", ".join(f"'{path}'" for path in glob)
+    return f"read_parquet([{files}], {_UNION})"
 
 
-def _projection(con, glob: str, arrow_schema: pa.Schema) -> str:
+def _projection(con, glob: str | Sequence[str], arrow_schema: pa.Schema) -> str:
     """按当前 schema 生成 SELECT 列表，文件里没有的列取 NULL。
 
     schema 加列后旧分区依然要能读：派生表虽可整体重算，但重算本身要先读
@@ -79,7 +85,8 @@ class WarehouseQuery:
         table_schema = schema.ALL.get(dataset)
         if table_schema is None or column not in table_schema.names:
             raise ValueError(f"unknown dataset column: {dataset}.{column}")
-        glob = self._glob(dataset, partitioned)
+        glob = (self._minute_files(None, None) or None) if dataset == "minute_bars" \
+            else self._glob(dataset, partitioned)
         if glob is None:
             return None
         row = self._con.execute(
@@ -265,6 +272,130 @@ class WarehouseQuery:
             schema.LIMIT_LIST_DAILY, symbols, start, end,
         )
 
+    def _minute_files(self, start: date | None, end: date | None) -> list[str]:
+        """QMT 分钟线：日分区优先，尚未迁移的年份兼容旧整年文件。"""
+        base = self._wh.root / "minute_bars"
+        files: list[str] = []
+        for year_dir in sorted(base.glob("year=*")):
+            try:
+                year = int(year_dir.name.split("=", 1)[1])
+            except ValueError:
+                continue
+            if (start is not None and year < start.year) or (end is not None and year > end.year):
+                continue
+            days = sorted(year_dir.glob("date=*/part.parquet"))
+            if days:
+                for path in days:
+                    day = datetime.strptime(path.parent.name.split("=", 1)[1], "%Y%m%d").date()
+                    if (start is None or day >= start) and (end is None or day <= end):
+                        files.append(str(path))
+            elif (year_dir / "part.parquet").exists():
+                files.append(str(year_dir / "part.parquet"))
+        return files
+
+    def _minute_days(self, dataset: str, start: date, end: date) -> set[date]:
+        base = self._wh.root / dataset
+        covered: set[date] = set()
+        for year in range(start.year, end.year + 1):
+            year_dir = base / f"year={year}"
+            for path in year_dir.glob("date=*/part.parquet"):
+                day = datetime.strptime(path.parent.name.split("=", 1)[1], "%Y%m%d").date()
+                if start <= day <= end:
+                    covered.add(day)
+            manifest = year_dir / "manifest.json"
+            if dataset == "paid_minute_bars" and manifest.exists() \
+                    and any(year_dir.glob("shard=*/part.parquet")):
+                meta = json.loads(manifest.read_text())
+                lo = datetime.fromisoformat(str(meta["start"])).date()
+                hi = datetime.fromisoformat(str(meta["end"])).date()
+                covered.update(
+                    d for d in (lo + timedelta(days=i) for i in range((hi - lo).days + 1))
+                    if start <= d <= end
+                )
+        return covered
+
+    def paid_minute_days(self, start: date, end: date) -> set[date]:
+        return self._minute_days("paid_minute_bars", start, end)
+
+    def joinquant_minute_days(self, start: date, end: date) -> set[date]:
+        return self._minute_days("joinquant_minute_bars", start, end)
+
+    def tushare_minute_days(self, start: date, end: date) -> set[date]:
+        return self._minute_days("tushare_minute_bars", start, end)
+
+    def intraday_bounds(self) -> tuple[date, date] | None:
+        """检查点可用分钟线的最早与最晚交易日（显式来源并集）。"""
+        days: list[date] = []
+        for dataset, reader in (
+            ("paid_minute_bars", self.paid_minute_days),
+            ("tushare_minute_bars", self.tushare_minute_days),
+            ("joinquant_minute_bars", self.joinquant_minute_days),
+        ):
+            base = self._wh.root / dataset
+            years = sorted(
+                int(path.name.split("=", 1)[1]) for path in base.glob("year=*")
+            ) if base.exists() else []
+            if years:
+                covered = reader(date(years[0], 1, 1), date(years[-1], 12, 31))
+                if covered:
+                    days.extend((min(covered), max(covered)))
+        qmt = self.dataset_bounds("minute_bars")
+        if qmt is not None:
+            days.extend(v.date() if isinstance(v, datetime) else v for v in qmt)
+        return (min(days), max(days)) if days else None
+
+    def intraday_bars(self, symbols: Sequence[str], day: date) -> pl.DataFrame:
+        """检查点统一分钟事实：显式覆盖优先，最后才读 QMT。
+
+        同一标的日不混源；成交量统一为手，并保留来源与 PIT 可见时刻。
+        """
+        columns = {
+            "symbol": pl.Utf8, "dt": pl.Datetime("us"), "close": pl.Float64,
+            "volume": pl.Float64, "source": pl.Utf8,
+            "visible_at": pl.Datetime("us"),
+        }
+        if not symbols:
+            return pl.DataFrame(schema=columns)
+        lo = datetime.combine(day, time(0, 0))
+        hi = datetime.combine(day, time(23, 59, 59))
+        frames: list[pl.DataFrame] = []
+        remaining = list(symbols)
+
+        if day in self.paid_minute_days(day, day):
+            paid = self.paid_minute_bars(remaining, lo, hi)
+            if paid.height:
+                frames.append(paid.select(
+                    "symbol", "dt", "close", (pl.col("volume") / 100).alias("volume"),
+                    pl.lit("paid").alias("source"),
+                    (pl.col("dt") + PAID_MINUTE_VISIBILITY_LAG).alias("visible_at"),
+                ).cast(columns))
+                covered = set(paid["symbol"].to_list())
+                remaining = [symbol for symbol in remaining if symbol not in covered]
+
+        for dataset, source, day_reader in (
+            ("tushare_minute_bars", "tushare", self.tushare_minute_days),
+            ("joinquant_minute_bars", "joinquant", self.joinquant_minute_days),
+        ):
+            if not remaining or day not in day_reader(day, day):
+                continue
+            path = self._wh.root / dataset / f"year={day.year}" \
+                / f"date={day:%Y%m%d}" / "part.parquet"
+            frame = pl.read_parquet(path).filter(pl.col("symbol").is_in(remaining))
+            if frame.height:
+                frames.append(frame.select(
+                    "symbol", "dt", "close", (pl.col("volume") / 100).alias("volume"),
+                    pl.lit(source).alias("source"), pl.col("dt").alias("visible_at"),
+                ).cast(columns))
+                covered = set(frame["symbol"].to_list())
+                remaining = [symbol for symbol in remaining if symbol not in covered]
+
+        qmt = self.minute_bars(remaining, lo, hi).select(
+            "symbol", "dt", "close", pl.col("volume").cast(pl.Float64),
+            pl.lit("qmt").alias("source"), pl.col("dt").alias("visible_at"),
+        ).cast(columns)
+        frames.append(qmt)
+        return pl.concat(frames, how="vertical").sort(["symbol", "dt"])
+
     def minute_bars(
         self,
         symbols: Sequence[str] | None,
@@ -273,12 +404,38 @@ class WarehouseQuery:
     ) -> pl.DataFrame:
         if symbols is not None and len(symbols) == 0:
             return _empty(schema.MINUTE_BARS)
-        glob = self._glob("minute_bars", partitioned=True)
-        if glob is None:
+        glob = self._minute_files(start.date(), end.date())
+        if not glob:
             return _empty(schema.MINUTE_BARS)
 
         columns = _projection(self._con, glob, schema.MINUTE_BARS)
         sql = f"SELECT {columns} FROM {_read(glob)} WHERE dt BETWEEN ? AND ?"
+        params: list[object] = [start, end]
+        if symbols is not None:
+            placeholders = ", ".join("?" for _ in symbols)
+            sql += f" AND symbol IN ({placeholders})"
+            params.extend(symbols)
+        return self._con.execute(sql + " ORDER BY symbol, dt", params).pl()
+
+    def paid_minute_bars(
+        self,
+        symbols: Sequence[str] | None,
+        start: datetime,
+        end: datetime,
+    ) -> pl.DataFrame:
+        """查询已发布的只读付费分钟事实，不与 QMT 分钟线静默混合。"""
+        if symbols is not None and len(symbols) == 0:
+            return _empty(schema.PAID_MINUTE_BARS)
+        base = self._wh.root / "paid_minute_bars"
+        files: list[str] = []
+        for year in range(start.year, end.year + 1):
+            year_dir = base / f"year={year}"
+            files.extend(str(path) for path in sorted(year_dir.glob("shard=*/part.parquet")))
+            files.extend(str(path) for path in sorted(year_dir.glob("date=*/part.parquet")))
+        if not files:
+            return _empty(schema.PAID_MINUTE_BARS)
+        columns = _projection(self._con, files, schema.PAID_MINUTE_BARS)
+        sql = f"SELECT {columns} FROM {_read(files)} WHERE dt BETWEEN ? AND ?"
         params: list[object] = [start, end]
         if symbols is not None:
             placeholders = ", ".join("?" for _ in symbols)

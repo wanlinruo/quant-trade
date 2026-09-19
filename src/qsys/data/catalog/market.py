@@ -48,7 +48,7 @@ from qsys.data.pipeline.paid_daily import COLUMNS as _PAID_COLUMNS
 from qsys.data.pipeline.tushare_daily import _FROM_BASIC, _FROM_DAILY
 
 DATASETS = frozenset(
-    {"tushare_daily", "bars_daily", "paid_daily",
+    {"tushare_daily", "bars_daily", "paid_daily", "paid_minute_bars",
      "index_bars", "minute_bars", "auction_ticks"}
 )
 
@@ -269,6 +269,44 @@ _MINUTE_MEANING = {
     "volume": "该分钟成交量（手）", "amount": "该分钟成交额（元）",
 }
 
+_PAID_MINUTE_MEANING = {
+    "symbol": "标的代码，带交易所后缀",
+    "dt": "源文件分钟时间；原样保留，不平移时间戳",
+    "open": "该分钟开盘价（元）",
+    "high": "该分钟最高价（元）",
+    "low": "该分钟最低价（元）",
+    "close": "该分钟收盘价（元）",
+    "volume": "该分钟成交量（股；不同于日线的手）",
+    "amount": "该分钟成交额（元）",
+    "factor": "源文件逐分钟携带的后复权累计因子",
+}
+
+_PAID_MINUTE_TRUTH_CHECKS = {
+    "open": ("A3.paid_minute_ohlc_vs_daily",),
+    "high": ("A3.paid_minute_ohlc_vs_daily",),
+    "low": ("A3.paid_minute_ohlc_vs_daily",),
+    "close": ("A3.paid_minute_ohlc_vs_daily",),
+    "volume": ("A3.paid_minute_volume_vs_daily",),
+    "amount": ("A3.paid_minute_amount_vs_daily",),
+}
+
+
+def _paid_minute_metrics() -> list[Metric]:
+    out = []
+    for field in schema.PAID_MINUTE_BARS:
+        truth = _PAID_MINUTE_TRUTH_CHECKS.get(field.name, ())
+        out.append(Metric(
+            id=f"paid_minute_bars.{field.name}",
+            kind=Kind.DIRECT,
+            validity=Validity.POINT,
+            status=MetricStatus.FROZEN,
+            meaning=_PAID_MINUTE_MEANING[field.name],
+            lineage=Direct("baidupan.minute", field.name),
+            checks=("B2.paid_minute_structure", *truth),
+            known_issues=("D-20",) if truth else (),
+        ))
+    return out
+
 _AUCTION_MEANING = {
     "symbol": "标的代码",
     "dt": "交易日",
@@ -309,6 +347,7 @@ def _simple(
 METRICS: tuple[Metric, ...] = tuple(
     _tushare_daily_metrics()
     + _paid_daily_metrics()
+    + _paid_minute_metrics()
     + _simple("index_bars", "tushare.index_daily", _INDEX_MEANING,
               MetricStatus.ACTIVE, ("B1.calendar", "B5.span"))
     + _simple("minute_bars", "qmt.minute", _MINUTE_MEANING,

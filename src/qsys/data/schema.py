@@ -104,6 +104,32 @@ MINUTE_BARS = pa.schema(
     ]
 )
 
+# 冻结的付费分钟源。与 QMT MINUTE_BARS 的关键区别是：成交量单位为股，
+# 并且源文件逐分钟携带后复权累计因子。它和 PAID_DAILY 一样只读，不能
+# 注册进 PARTITIONED，否则 Warehouse.write 会获得覆盖历史证据的能力。
+PAID_MINUTE_BARS = pa.schema(
+    [
+        ("symbol", pa.string()),
+        ("dt", pa.timestamp("us")),
+        ("open", pa.float64()),
+        ("high", pa.float64()),
+        ("low", pa.float64()),
+        ("close", pa.float64()),
+        ("volume", pa.int64()),
+        ("amount", pa.float64()),
+        ("factor", pa.float64()),
+    ],
+    metadata={
+        b"provider": b"yuhaha-baidupan",
+        b"frequency": b"1min",
+        b"timestamp_policy": b"source value; no shift",
+        b"price_unit": b"CNY",
+        b"volume_unit": b"share",
+        b"amount_unit": b"CNY",
+        b"factor": b"source cumulative backward adjustment",
+    },
+)
+
 CORPORATE_ACTIONS = pa.schema(
     [
         ("symbol", pa.string()),
@@ -452,3 +478,9 @@ UNPARTITIONED: dict[str, pa.Schema] = {
 }
 
 ALL: dict[str, pa.Schema] = {**PARTITIONED, **UNPARTITIONED}
+
+# 外部冻结证据可以查询和登记进指标字典，但不能通过 Warehouse.write 改写。
+READ_ONLY: dict[str, pa.Schema] = {
+    "paid_daily": PAID_DAILY,
+    "paid_minute_bars": PAID_MINUTE_BARS,
+}

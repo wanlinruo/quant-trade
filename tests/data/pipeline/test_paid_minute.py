@@ -4,6 +4,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 import polars as pl
+import pyarrow as pa
 import pytest
 
 from qsys.data.pipeline.paid_minute import (
@@ -14,6 +15,8 @@ from qsys.data.pipeline.paid_minute import (
     query_paid_minute,
     validate_year,
 )
+from qsys.data import schema
+from qsys.data.storage import Warehouse
 
 
 HEADER = "证券代码,交易日期,分钟时间,开盘价（元）,最高价（元）,最低价（元）,收盘价（元）,成交量,成交额,复权因子\n"
@@ -77,8 +80,40 @@ def test_stage_is_resumable_and_publish_is_atomic(tmp_path):
     )
     assert queried.height == 2
     assert queried["factor"].to_list() == [2.5, 2.5]
+    assert validate_year(warehouse, 2025)["status"] == "PUBLISHED"
     with pytest.raises(ValueError, match="已发布"):
         publish_year(warehouse, 2025)
+
+
+def test_validation_excludes_bj_post_close_and_normalizes_qmt_lots(tmp_path):
+    source = tmp_path / "2025.zip"
+    with zipfile.ZipFile(source, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(
+            "2025/1min/920001.BJ@来源.csv",
+            HEADER
+            + "920001.BJ,20250102,09:30,8,8,8,8,100,800,1.2\n"
+            + "920001.BJ,20250102,15:01,9,9,9,9,50,450,1.2\n",
+        )
+    root = tmp_path / "warehouse"
+    ingest_year(source, root, 2025)
+    paid_dir = root / "paid_daily/year=2025"
+    paid_dir.mkdir(parents=True)
+    pl.DataFrame({
+        "symbol": ["920001.BJ"], "dt": [date(2025, 1, 2)],
+        "open": [8.0], "high": [8.0], "low": [8.0], "close": [8.0],
+        "volume": [1.0], "amount": [800.0], "factor": [1.2],
+    }).write_parquet(paid_dir / "part.parquet")
+    Warehouse(root).write("minute_bars", pa.table({
+        "symbol": ["920001.BJ"], "dt": [datetime(2025, 1, 2, 9, 30)],
+        "open": [8.0], "high": [8.0], "low": [8.0], "close": [8.0],
+        "volume": [1], "amount": [800.0],
+    }, schema=schema.MINUTE_BARS), year=2025)
+
+    summary = validate_year(root, 2025)
+    assert summary["daily_comparison"]["ohlc_mismatch_days"] == 0
+    assert summary["daily_comparison"]["volume_mismatch_days"] == 0
+    assert summary["daily_comparison"]["amount_mismatch_gt_100_days"] == 0
+    assert summary["qmt_comparison"]["volume_mismatch_rows"] == 0
 
 
 def test_fractional_source_volume_is_rejected(tmp_path):

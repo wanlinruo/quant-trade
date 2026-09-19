@@ -148,6 +148,23 @@ def build_daily_flags(
             pl.when(pl.col("_direct_is_st").is_not_null())
             .then(pl.lit("stock_st")).otherwise(None).alias("st_source"),
         ).drop("_direct_is_st")
+        # stock_st 对退市整理期股票存在 4 个已确认的孤立误报（D-15）。
+        # 退市整理期池来自独立的 namechange 区间；公告不晚于当日时优先级
+        # 高于 stock_st，避免把「退市中昌」重新判成 *ST中昌。
+        delisting = query.delisting_pool(back, hi)
+        if delisting.height:
+            delisting = delisting.filter(
+                pl.col("ann_date").is_null() | (pl.col("ann_date") <= pl.col("dt"))
+            ).select("symbol", "dt").unique().with_columns(
+                pl.lit(True).alias("_is_delisting")
+            )
+            bars = bars.join(delisting, on=["symbol", "dt"], how="left").with_columns(
+                pl.when(pl.col("_is_delisting") == True).then(False)  # noqa: E712
+                .otherwise(pl.col("is_st")).alias("is_st"),
+                pl.when(pl.col("_is_delisting") == True)  # noqa: E712
+                .then(pl.lit("delisting_pool_override"))
+                .otherwise(pl.col("st_source")).alias("st_source"),
+            ).drop("_is_delisting")
         direct_limits = query.price_limits(None, back, hi).select(
             "symbol", "dt",
             pl.col("pre_close").alias("_direct_pre_close"),

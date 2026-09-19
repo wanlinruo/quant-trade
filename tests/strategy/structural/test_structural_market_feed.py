@@ -11,6 +11,8 @@ from qsys.data import schema
 from qsys.data.market_feed import MarketFeed
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
+from qsys.core.types import Symbol
+from qsys.strategy.deps import MissingIntradayDataError, intraday_quotes
 
 D = [date(2024, 1, d) for d in (2, 3, 4)]
 SESSIONS = list(D)
@@ -211,6 +213,67 @@ def test_intraday_accumulates_volume_up_to_the_moment(market):
 
 def test_intraday_without_minute_data_is_empty(market):
     assert market.bind(at(D[0], 15, 0)).intraday(["600001.SH"], D[0], time(11, 25)) == {}
+
+
+def test_backtest_adapter_fails_when_tradable_holding_has_no_minutes(market):
+    with pytest.raises(MissingIntradayDataError, match="可交易持仓缺少分钟行情"):
+        intraday_quotes(market)(D[0], time(11, 25), [Symbol.parse("600001.SH")])
+
+
+def test_backtest_adapter_rejects_qmt_rows_with_zero_trade_price(
+    warehouse, write_daily_bars
+):
+    seed(warehouse, write_daily_bars)
+    warehouse.write_day("minute_bars", pa.table({
+        "symbol": ["600001.SH"], "dt": [datetime(2024, 1, 2, 11, 25)],
+        "open": [0.0], "high": [0.0], "low": [0.0], "close": [0.0],
+        "volume": [100], "amount": [0.0],
+    }, schema=schema.MINUTE_BARS), day=D[0])
+    broken = MarketFeed(WarehouseQuery(warehouse), AShareCalendar(SESSIONS))
+
+    with pytest.raises(MissingIntradayDataError, match="可交易持仓缺少分钟行情"):
+        intraday_quotes(broken)(D[0], time(11, 25), [Symbol.parse("600001.SH")])
+
+
+def test_joinquant_override_replaces_invalid_qmt_symbol_day(warehouse):
+    warehouse.write_day("minute_bars", pa.table({
+        "symbol": ["300344.SZ"], "dt": [datetime(2024, 1, 2, 11, 25)],
+        "open": [0.0], "high": [0.0], "low": [0.0], "close": [0.0],
+        "volume": [100], "amount": [0.0],
+    }, schema=schema.MINUTE_BARS), day=D[0])
+    target = warehouse.root / "joinquant_minute_bars/year=2024/date=20240102"
+    target.mkdir(parents=True)
+    pl.DataFrame({
+        "symbol": ["300344.SZ"], "dt": [datetime(2024, 1, 2, 11, 25)],
+        "open": [1.8], "high": [1.9], "low": [1.8], "close": [1.9],
+        "volume": [10_000], "amount": [19_000.0],
+    }).write_parquet(target / "part.parquet")
+
+    got = WarehouseQuery(warehouse).intraday_bars(["300344.SZ"], D[0])
+    assert got.select("source", "close", "volume").row(0) == ("joinquant", 1.9, 100.0)
+
+
+def test_published_paid_minutes_are_preferred_and_volume_is_normalized(
+    warehouse, write_daily_bars
+):
+    seed(warehouse, write_daily_bars)
+    target = warehouse.root / "paid_minute_bars/year=2024/date=20240104"
+    target.mkdir(parents=True)
+    pl.DataFrame({
+        "symbol": ["600001.SH", "600001.SH"],
+        "dt": [datetime(2024, 1, 4, 9, 30), datetime(2024, 1, 4, 9, 31)],
+        "open": [20.0, 20.0], "high": [20.0, 20.5],
+        "low": [20.0, 20.0], "close": [20.0, 20.5],
+        "volume": [5_000, 30_000], "amount": [100_000.0, 615_000.0],
+        "factor": [1.0, 1.0],
+    }).write_parquet(target / "part.parquet")
+    paid_market = MarketFeed(WarehouseQuery(warehouse), AShareCalendar(SESSIONS))
+
+    got = paid_market.bind(at(D[2], 9, 32)).intraday(
+        ["600001.SH"], D[2], time(9, 32)
+    )["600001.SH"]
+    assert got.price == 20.5  # 不是同年 QMT 的 12.3
+    assert got.volume == 350  # 35,000 股统一成 350 手
 
 
 def test_limit_up_price_is_visible_from_the_open(market):
