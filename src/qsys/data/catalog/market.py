@@ -302,7 +302,7 @@ def _paid_minute_metrics() -> list[Metric]:
             status=MetricStatus.FROZEN,
             meaning=_PAID_MINUTE_MEANING[field.name],
             lineage=Direct("baidupan.minute", field.name),
-            checks=("B2.paid_minute_structure", *truth),
+            checks=("B2.paid_minute_structure", "B2.paid_minute_symbol_coverage", *truth),
             known_issues=("D-20",) if truth else (),
         ))
     return out
