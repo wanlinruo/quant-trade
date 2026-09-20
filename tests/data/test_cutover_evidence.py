@@ -48,6 +48,40 @@ def _seed(warehouse, canonical_close: float = 10.0):
         "security_status_daily", status.to_arrow().cast(schema.SECURITY_STATUS_DAILY),
         year=DAY.year,
     )
+    legacy_valuation = {
+        "dt": DAY, "symbol": "600036.SH", "close": 10.0,
+        "market_cap": 1000.0, "circulating_market_cap": 800.0,
+        "turnover_ratio": 1.25,
+    }
+    warehouse.write(
+        "valuation_snapshot",
+        pl.DataFrame([legacy_valuation]).to_arrow().cast(schema.VALUATION_SNAPSHOT),
+        year=DAY.year,
+    )
+    canonical_valuation = {name: None for name in schema.VALUATION_DAILY.names}
+    canonical_valuation.update({
+        "symbol": "600036.SH", "dt": DAY, "market_cap": 100_000_000_000.0,
+        "circulating_market_cap": 80_000_000_000.0, "turnover_ratio": 1.25,
+    })
+    warehouse.write(
+        "valuation_daily",
+        pl.DataFrame([canonical_valuation]).select(schema.VALUATION_DAILY.names)
+        .to_arrow().cast(schema.VALUATION_DAILY), year=DAY.year,
+    )
+    legacy_regime = {name: None for name in schema.MARKET_REGIME.names}
+    legacy_regime.update({"dt": DAY, "index_ma20_slope_5d": 0.12345678901234})
+    canonical_regime = dict(legacy_regime)
+    canonical_regime["index_ma20_slope_5d"] = 0.12345678901235
+    warehouse.write(
+        "market_regime",
+        pl.DataFrame([legacy_regime]).select(schema.MARKET_REGIME.names)
+        .to_arrow().cast(schema.MARKET_REGIME), year=DAY.year,
+    )
+    warehouse.write(
+        "market_regime_daily",
+        pl.DataFrame([canonical_regime]).select(schema.MARKET_REGIME_DAILY.names)
+        .to_arrow().cast(schema.MARKET_REGIME_DAILY), year=DAY.year,
+    )
 
 
 def test_strategy_evidence_hashes_all_normalized_input_families(warehouse):
@@ -58,6 +92,8 @@ def test_strategy_evidence_hashes_all_normalized_input_families(warehouse):
     assert result.legacy_digest == result.canonical_digest
     assert "daily_bars: old/new=1/1" in result.detail
     assert "security_status: old/new=1/1" in result.detail
+    assert "valuation: old/new=1/1" in result.detail
+    assert "market_regime: old/new=1/1" in result.detail
 
 
 def test_strategy_evidence_detects_value_drift(warehouse):

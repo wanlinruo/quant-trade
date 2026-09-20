@@ -77,6 +77,15 @@ def _combine(results: list[Reconciliation]) -> Reconciliation:
     )
 
 
+def _round_float_columns(frame: pl.DataFrame, precision: int = 12) -> pl.DataFrame:
+    """把派生浮点输入收敛到策略可观察精度，消除运算顺序的机器尾差。"""
+    return frame.with_columns(
+        pl.col(column).round(precision)
+        for column, dtype in frame.schema.items()
+        if dtype.is_float()
+    )
+
+
 def strategy_input_comparison(
     warehouse: Warehouse, start: date, end: date
 ) -> StrategyComparison:
@@ -95,13 +104,18 @@ def strategy_input_comparison(
     )
     old_valuation = query.valuation(start, end)
     new_valuation = query.valuation_daily(None, start, end).select(
-        "symbol", "dt", "market_cap", "circulating_market_cap", "turnover_ratio"
+        "symbol", "dt",
+        (pl.col("market_cap") / 1e8).alias("market_cap"),
+        (pl.col("circulating_market_cap") / 1e8).alias("circulating_market_cap"),
+        "turnover_ratio",
     ).join(
         query.bar_daily(None, start, end, columns=("symbol", "dt", "close")),
         on=["symbol", "dt"], how="left",
     ).select(schema.VALUATION_SNAPSHOT.names)
     old_status = _security_status_frame(warehouse, start, end)
     new_status = query.security_status_daily(None, start, end)
+    old_regime = _round_float_columns(query.market_regime(start, end))
+    new_regime = _round_float_columns(query.market_regime_daily(start, end))
 
     pairs: tuple[tuple[str, pl.DataFrame, pl.DataFrame, tuple[str, ...]], ...] = (
         ("daily_bars", old_daily, new_daily, ("symbol", "dt")),
@@ -112,8 +126,7 @@ def strategy_input_comparison(
         ("security_status", old_status, new_status, ("symbol", "dt")),
         ("market_flags", query.daily_flags(start, end),
          query.market_flags_daily(None, start, end), ("symbol", "dt")),
-        ("market_regime", query.market_regime(start, end),
-         query.market_regime_daily(start, end), ("dt",)),
+        ("market_regime", old_regime, new_regime, ("dt",)),
     )
     results = [
         (name, reconcile_frames(left, right, keys), left, right, keys)
