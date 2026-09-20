@@ -55,9 +55,19 @@ def test_runtime_executes_each_scheduled_event_once_and_recovers_state(warehouse
 def test_paper_runtime_honors_explicit_canonical_facade(
     warehouse, tmp_path, monkeypatch
 ):
+    import pyarrow as pa
+    from qsys.data import schema
+
     monkeypatch.setenv("QSYS_MARKET_DATA_FACADE", "canonical")
-    runtime, *_ = _runtime(warehouse, tmp_path, Quotes())
+    runtime, _, _, today = _runtime(warehouse, tmp_path, Quotes())
     assert runtime.feed._market_data.config.mode is FacadeMode.CANONICAL
+    warehouse.write("price_limit_daily", pa.table({
+        "symbol": ["600036.SH"], "dt": [today], "pre_close": [40.0],
+        "limit_up": [44.0], "limit_down": [36.0],
+    }, schema=schema.PRICE_LIMIT_DAILY), year=today.year)
+    bound = runtime.market.bind(datetime.combine(today, time(11, 25)))
+    assert bound.limit_up_price(["600036.SH"], today) == {"600036.SH": 44.0}
+    assert runtime._limits_on(today) == {"600036.SH": (44.0, 36.0)}
 
 
 class CountingQuotes(Quotes):
@@ -114,7 +124,9 @@ def test_quotes_refresh_inside_the_session_window(warehouse, tmp_path):
     assert len(store.rows(ident, "equity")) >= 1
 
 
-def test_realtime_limit_up_comes_from_the_warehouse_not_the_qmt_tick(warehouse, tmp_path):
+def test_realtime_limit_up_comes_from_the_warehouse_not_the_qmt_tick(
+    warehouse, tmp_path, monkeypatch
+):
     """D-19：QMT get_full_tick 不给涨停价，盘中退出据此永远判「未涨停」、封板也卖。
 
     盘中涨停价与回测同源：price_limits_daily（Tushare stk_limit，盘前写入）。
@@ -122,6 +134,7 @@ def test_realtime_limit_up_comes_from_the_warehouse_not_the_qmt_tick(warehouse, 
     import pyarrow as pa
     from qsys.data import schema
 
+    monkeypatch.setenv("QSYS_MARKET_DATA_FACADE", "legacy")
     runtime, store, ident, today = _runtime(warehouse, tmp_path, CountingQuotes())
     warehouse.write("price_limits_daily", pa.table({
         "symbol": ["600036.SH"], "dt": [today], "pre_close": [None],
@@ -131,11 +144,14 @@ def test_realtime_limit_up_comes_from_the_warehouse_not_the_qmt_tick(warehouse, 
     assert bound.limit_up_price(["600036.SH", "000001.SZ"], today) == {"600036.SH": 44.0}
 
 
-def test_runtime_limits_reload_until_the_premarket_job_has_written_today(warehouse, tmp_path):
+def test_runtime_limits_reload_until_the_premarket_job_has_written_today(
+    warehouse, tmp_path, monkeypatch
+):
     """盘前任务晚到时，模拟撮合不能把「当日空表」缓存一整天。"""
     import pyarrow as pa
     from qsys.data import schema
 
+    monkeypatch.setenv("QSYS_MARKET_DATA_FACADE", "legacy")
     runtime, store, ident, today = _runtime(warehouse, tmp_path, CountingQuotes())
     assert runtime._limits_on(today) == {}
     warehouse.write("price_limits_daily", pa.table({
