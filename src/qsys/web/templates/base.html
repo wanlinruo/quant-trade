@@ -39,6 +39,10 @@ td.num, th.num { text-align:right; }
 .pill.bad { background:#fee2e2; color:var(--bad); }
 .pill.warn { background:#fef3c7; color:var(--warn); }
 .pill.todo { background:#f1f5f9; color:#64748b; }
+.pill.green { background:#dcfce7; color:var(--ok); }
+.pill.red { background:#fee2e2; color:var(--bad); }
+.pill.yellow { background:#fef3c7; color:var(--warn); }
+.pill.gray { background:#f1f5f9; color:#64748b; }
 .pill.fixed { background:#ccfbf1; color:#0f766e; }
 .up { color:var(--ok); } .down { color:var(--bad); }
 .empty { color:var(--muted); padding:12px 0; }
@@ -134,7 +138,7 @@ button:disabled { opacity:.55; cursor:not-allowed; }
 {% if page in ('strategies', 'backtests', 'paper') %}
 <div class="subnav"><a href="/strategies" class="{{ 'active' if page == 'strategies' }}">策略研究</a><a href="/backtests" class="{{ 'active' if page == 'backtests' }}">回测记录</a><a href="/paper" class="{{ 'active' if page == 'paper' }}">模拟交易</a></div>
 {% elif page and page.startswith('data') %}
-<div class="subnav"><a href="/data" class="{{ 'active' if page == 'data' }}">数据表</a><a href="/data/catalog" class="{{ 'active' if page == 'data_catalog' }}">指标字典</a><a href="/data/catalog/sources" class="{{ 'active' if page == 'data_sources' }}">数据源</a></div>
+<div class="subnav"><a href="/data" class="{{ 'active' if page == 'data' }}">总览</a><a href="/data/tables" class="{{ 'active' if page == 'data_tables' }}">数据表</a><a href="/data/catalog" class="{{ 'active' if page == 'data_catalog' }}">指标字典</a><a href="/data/catalog/sources" class="{{ 'active' if page == 'data_sources' }}">数据源</a></div>
 {% elif session and page in ('live','overview','trades','health','report','runs') %}
 <div class="subnav"><a href="/s/{{ session }}" class="{{ 'active' if page in ('live','overview') }}">总览</a><a href="/s/{{ session }}/trades" class="{{ 'active' if page == 'trades' }}">成交</a><a href="/s/{{ session }}/health" class="{{ 'active' if page == 'health' }}">对账与质量</a><a href="/s/{{ session }}/report" class="{{ 'active' if page == 'report' }}">日报</a><a href="/s/{{ session }}/runs" class="{{ 'active' if page == 'runs' }}">运行日志</a></div>
 {% endif %}

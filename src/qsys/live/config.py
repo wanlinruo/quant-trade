@@ -35,6 +35,7 @@ class StreamConfig:
     heartbeat: str = "state:heartbeat"
     quote_requests: str = "cmd:quote_requests"
     quote_snapshots: str = "evt:quote_snapshots"
+    quote_latest: str = "state:quote_realtime_latest"
     market_snapshot: str = "state:market_overview"
     market_schedule: str = "state:market_schedule"
     # 盘前发布的当日 stk_limit，键后缀 YYYYMMDD（data.pipeline.premarket）

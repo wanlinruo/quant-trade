@@ -1,7 +1,7 @@
 # 数据资产架构、表级血缘与健康模型实施计划
 
 - 创建日期：2026-09-20
-- 状态：待实施
+- 状态：阶段 0–2 已完成；阶段 3–8 代码完成；阶段 9–10 完成；阶段 11 门禁完成、生产切换待条件满足
 - 设计依据：`docs/superpowers/specs/2026-09-20-data-asset-architecture-design.md`
 - 需求分支：`feat/data-asset-architecture`
 - 起始基线：`origin/test` @ `3375584f69d254210d5b67a4fe23d09cc7330960`
@@ -385,9 +385,10 @@
 
 ### 当前状态
 
-- 2026-09-20：需求讨论完成，设计与实施计划已记录。
-- 尚未修改应用代码、Schema 或生产数据。
-- 尚未创建目标规范表或迁移脚本。
+- 2026-09-20：阶段 0–2 已完成，阶段 3–7 的 Schema、构建/发布、查询门面和对账代码已完成。
+- 2026-09-20：阶段 8 已完成稳定历史/实时门面、差异审计及数据页/只读诊断入口；生产消费者未切换。
+- 当前改动仍在 `feat/data-asset-architecture` 未提交工作区；未修改当前或生产 warehouse。
+- 阶段 3–7 的目标环境回填、实时联调、真实对账、性能门禁和消费者切换尚未执行。
 
 ### 已确认决策
 
@@ -401,8 +402,8 @@
 
 ### 下一位执行者的第一步
 
-从阶段 0 开始生成可重复的数据集与消费者盘点，不要直接创建新 Schema。盘点完成后先提交表契约和
-依赖模型的独立设计 diff，再进入阶段 1。
+在具备完整来源表的目标或临时环境中依次运行阶段 3–7 构建/发布脚本，保存逐键逐字段对账和性能证据；
+门禁未通过前不要切换生产消费者，也不要冻结或删除旧表。
 
 ### 每次交接必须追加
 
@@ -420,3 +421,265 @@
 ```
 
 不得覆盖历史交接记录；按时间顺序追加。
+
+### 2026-09-20 阶段 0–1 交接
+
+```text
+日期：2026-09-20
+执行分支与 SHA：feat/data-asset-architecture @ aaf1f83（其后为当前未提交工作区）
+完成阶段：阶段 0 基线与盘点；阶段 1 表契约与依赖注册表
+修改文件：catalog/types.py、catalog/datasets.py、catalog/inventory.py、catalog/__init__.py、
+          scripts/inventory_data_assets.py、两组守护测试、盘点基线 JSON
+执行命令与测试结果：uv run pytest -> 1842 passed, 2 warnings in 53.07s
+数据对账摘要：28 个物理数据集与 schema.ALL + schema.READ_ONLY 精确相等；
+              2 个逻辑数据集已登记；字段血缘推导 19 条跨表边且全部有显式关系契约；
+              本地 warehouse 仅通过 Parquet footer 读取统计，未读取或修改数据行。
+新发现问题：ingest_log 的稳定唯一键尚不能安全确认，已显式登记 UNKNOWN；
+            paid_minute_bars 当前仍被统一日内查询直接消费，阶段 6 前作为冻结规范输入登记，
+            不能提前标成纯 RAW 审计表。
+未完成事项：阶段 2–11；本次未创建新 Schema、规范表或迁移脚本。
+下一步：实现 DatasetHealthPolicy、表级/关系级结果 Schema 与四态门禁。
+回滚点：aaf1f83a07eecf671b72cf4cd0d20e04b51b7c24
+```
+
+### 2026-09-20 阶段 2 交接
+
+```text
+日期：2026-09-20
+执行分支与 SHA：feat/data-asset-architecture @ aaf1f83（其后为当前未提交工作区）
+完成阶段：阶段 2 健康策略、表级/关系级结果与四态门禁
+修改文件：data/schema.py、catalog/health.py、catalog/datasets.py、catalog/operational.py、
+          catalog/rules_contract.py、data/query.py、健康模型及既有守护测试
+执行命令与测试结果：uv run pytest -> 1861 passed, 2 warnings in 53.77s
+数据对账摘要：metric_checks 保持原样；新增 dataset_checks（14 列）与
+              relation_checks（18 列），字段字典现精确覆盖 285 个落盘字段；
+              未执行生产 warehouse 写入。
+新发现问题：健康结果已有纯检查、持久化和查询接口，但尚未接入阶段 9 的 Web 页面；
+            ingest_log 主键仍为 UNKNOWN，不以猜测键产生假绿状态。
+未完成事项：阶段 3–11；规范基础资料尚未创建或切换消费者。
+下一步：阶段 3 新增 security_master、security_name_history、trading_calendar，
+        先并行构建和对账，再增加稳定查询门面，不切换生产消费者。
+回滚点：aaf1f83a07eecf671b72cf4cd0d20e04b51b7c24
+```
+
+### 2026-09-20 阶段 3 代码交接
+
+```text
+日期：2026-09-20
+执行分支与 SHA：feat/data-asset-architecture @ aaf1f83（其后为当前未提交工作区）
+完成阶段：阶段 3 规范基础资料的 Schema、并行构建、查询门面和对账代码
+修改文件：data/schema.py、pipeline/canonical_reference.py、providers/tushare.py、
+          data/query.py、catalog/reference.py、catalog/datasets.py、
+          scripts/build_canonical_reference.py 及相关测试
+执行命令与测试结果：uv run pytest -> 1871 passed, 2 warnings in 63.06s；
+                  真实 Tushare 数据仅在 /tmp 临时仓库演练
+数据对账摘要：新增 security_master、security_name_history、trading_calendar；
+              在 /tmp 临时仓库用真实 Tushare 来源演练：5,904 / 13,865 / 13,162 行，
+              三表逐键逐字段零差异；未对当前或生产 warehouse 执行回填或写入。
+新发现问题：真实 name_history 报告 7 个重叠、246 个断档，工具只报告不填补；
+            当前本地 warehouse 的 instruments 是缺 as_of 的旧 Schema，且无 name_history，
+            新增预检会在任何写入前明确拒绝，不能以当前日期补造观测日。
+未完成事项：目标环境回填、真实逐键对账和完整观察期；阶段 4–11。
+下一步：在目标环境运行 scripts/build_canonical_reference.py，确认三张表对账；
+        未通过前不得切换消费者，也不得开始删除或冻结旧表。
+回滚点：aaf1f83a07eecf671b72cf4cd0d20e04b51b7c24
+```
+
+### 2026-09-20 阶段 4 代码交接
+
+```text
+日期：2026-09-20
+执行分支与 SHA：feat/data-asset-architecture @ aaf1f83（其后为当前未提交工作区）
+完成阶段：阶段 4 规范历史日线窄表的 Schema、并行构建、查询门面和精确对账代码
+修改文件：data/schema.py、pipeline/canonical_daily.py、data/query.py、
+          catalog/canonical.py、catalog/datasets.py、catalog/rules_contract.py、
+          scripts/build_canonical_daily.py 及相关测试
+执行命令与测试结果：uv run pytest -> 1881 passed, 2 warnings in 66.00s
+数据对账摘要：新增 bar_daily、valuation_daily、share_capital_history、
+              adjustment_factor_daily 四张规范表；构建器逐目标检查键唯一、非空并执行
+              逐键逐字段精确对账；当前本地来源不完整，因此未写当前或生产 warehouse，
+              也未切换 daily_bars 等既有消费者。
+新发现问题：当前环境不具备完整 tushare_daily/share_capital 来源，无法诚实完成真实回填与性能测量；
+            构建预检会在首次写入前拒绝缺失来源、列或冲突键。
+未完成事项：阶段 3–4 的目标环境回填、真实对账、性能门禁和观察期；阶段 5–11。
+下一步：在具备完整来源数据的目标或临时环境运行 scripts/build_canonical_daily.py，
+        保存行数、耗时和精确对账结果；门禁通过后才能进入影子读取和消费者切换。
+回滚点：aaf1f83a07eecf671b72cf4cd0d20e04b51b7c24
+```
+
+### 2026-09-20 阶段 5 代码交接
+
+```text
+日期：2026-09-20
+执行分支与 SHA：feat/data-asset-architecture @ aaf1f83（其后为当前未提交工作区）
+完成阶段：阶段 5 规范价格限制、证券状态、市场标志与市场生态的 Schema、并行构建、查询门面和对账代码
+修改文件：data/schema.py、pipeline/canonical_state.py、data/query.py、
+          catalog/canonical.py、catalog/datasets.py、catalog/rules_contract.py、
+          catalog/rules_valid.py、scripts/build_canonical_state.py 及相关测试
+执行命令与测试结果：阶段 5 定向测试 27 passed；uv run pytest -q 全量通过，2 warnings；
+                  项目环境未安装 ruff，未执行 ruff 静态检查
+数据对账摘要：新增 price_limit_daily、security_status_daily、market_flags_daily、
+              market_regime_daily；样例仓库中四表逐键逐字段零差异；生产消费者仍读取旧表，
+              未执行当前或生产 warehouse 回填。
+新发现问题：当前环境缺少阶段 3–5 的完整目标来源，不能诚实完成全量真实对账、性能测量及
+            S6/S7 Gate 和候选股票专项对账；退市整理稀疏表缺失与“无事件”已由预检明确区分。
+未完成事项：阶段 3–5 的目标环境回填、真实对账、性能门禁、S6/S7 与候选结果专项对账和观察期；阶段 6–11。
+下一步：在具备完整来源数据的目标或临时环境依次运行 build_canonical_reference.py、
+        build_canonical_daily.py、build_canonical_state.py，保存对账与性能证据；
+        门禁通过后再开始影子读取，未通过前不得切换消费者。
+回滚点：aaf1f83a07eecf671b72cf4cd0d20e04b51b7c24
+```
+
+### 2026-09-20 阶段 6 代码交接
+
+```text
+日期：2026-09-20
+执行分支与 SHA：feat/data-asset-architecture @ aaf1f83（其后为当前未提交工作区）
+完成阶段：阶段 6 规范一分钟线 Schema、标的日唯一选源、单位统一、日分区原子发布、查询门面和写后对账代码
+修改文件：data/schema.py、data/storage.py、data/query.py、pipeline/canonical_minute.py、
+          catalog/canonical.py、catalog/datasets.py、catalog/rules_contract.py、
+          catalog/rules_valid.py、scripts/build_canonical_minute.py 及相关测试
+执行命令与测试结果：阶段 6 及关联定向测试 76 passed；uv run pytest -q 全量通过，2 warnings
+数据对账摘要：新增 bar_minute_1m；按 paid > Tushare 显式覆盖 > JoinQuant 显式覆盖 > QMT
+              为每个 symbol × session 选择唯一来源；成交量统一为手，保留 source 和 visible_at；
+              样例仓库写后逐键逐字段零差异，旧 minute_bars/intraday 消费者未切换。
+新发现问题：Polars hour/minute 提取值为 Int8，计算分钟序号前必须提升到 Int32，否则 09:30 会溢出；
+            D-20 的付费源数值差异仍未结案，规范层只沿用已验证的“不平移源标签、延后一分可见”策略，
+            不宣称其与 QMT 数值等价；当前仓库没有真实历史分钟源，不能执行全量性能测量。
+未完成事项：目标环境全量构建、241/240 根适用性审阅、日线聚合与来源覆盖门禁、上市前隔离复核、
+            四类性能验收和观察期；阶段 7–11。
+下一步：在完整分钟仓库按小日期窗口运行 scripts/build_canonical_minute.py，先审阅来源分布、
+        nonstandard_counts 和 D-20 样本，再扩到年度；全部门禁通过前不得切换消费者。
+回滚点：aaf1f83a07eecf671b72cf4cd0d20e04b51b7c24
+```
+
+### 2026-09-20 阶段 7 实时契约交接
+
+```text
+日期：2026-09-20
+执行分支与 SHA：feat/data-asset-architecture @ aaf1f83（其后为当前未提交工作区）
+完成阶段：阶段 7 实时逻辑契约、Redis 原子最新快照、实时聚合与收盘事务式发布代码
+修改文件：data/realtime.py、live/config.py、paper/quotes.py、scripts/run_market_gateway.py、
+          pipeline/realtime_close.py、scripts/publish_realtime_close.py、catalog/datasets.py 及相关测试
+执行命令与测试结果：阶段 7 定向测试全部通过；uv run pytest -q 全量通过，2 warnings
+数据对账摘要：登记 quote_realtime_latest、bar_daily_realtime、bar_minute_realtime 三个逻辑数据集；
+              最新报价包含市场时刻、接收时刻、年龄和来源；累计成交量由股统一为手；
+              当前分钟显式 finalized=false，观测不完整时 partial=true，默认查询不返回为定稿分钟。
+新发现问题：仅有周期性累计快照时，进程启动所在分钟无法证明拥有完整分钟增量，必须标 partial，
+            不能为了凑齐分钟线把启动前累计成交量塞入当前分钟；Redis 空响应不能覆盖上一份证据；
+            收盘发布必须同时保护年度日线文件和分钟日分区，第二目标提交失败时两者都要回滚。
+未完成事项：目标环境 Redis/QMT 联调、全天候选生成、真实收盘演练与观察期；阶段 8–11。
+下一步：用隔离 warehouse 和完整交易日快照生成候选 JSON，运行 publish_realtime_close.py 做失败注入与
+        幂等重试演练；确认 Manifest 和双目标回滚证据后，再进入阶段 8 查询门面与消费者迁移。
+回滚点：aaf1f83a07eecf671b72cf4cd0d20e04b51b7c24
+```
+
+### 2026-09-20 阶段 8 稳定门面交接
+
+```text
+日期：2026-09-20
+执行分支与 SHA：feat/data-asset-architecture @ aaf1f83（其后为当前未提交工作区）
+完成阶段：阶段 8 稳定历史/实时查询门面、新旧输入差异审计、数据页与只读诊断入口
+修改文件：data/access.py、data/query.py、web/data_views.py、scripts/audit_query_facade.py 及相关测试
+执行命令与测试结果：阶段 8 及关联定向测试 49 passed；uv run pytest -q 全量通过，2 warnings
+数据对账摘要：historical_daily_bars 只读 bar_daily，historical_minute_bars 只读 bar_minute_1m，
+              均禁止来源回退；facade_reconciliation 对旧/新日线和分钟逐键逐字段比较；
+              样例仓库新旧输入零差异，生产消费者仍保持旧入口。
+新发现问题：当前分钟的 ts 是未来一分钟收盘标签；若合并查询只返回历史十列，会丢失状态并伪装成定稿，
+            因此 include_live=True 的分钟结果强制附带 finalized/partial，且仍须显式 as_of；
+            当前本地 warehouse 未完成规范表回填，不能安全迁移研究、回测或交易消费者。
+未完成事项：在目标环境运行新旧门面对账；依次迁移研究脚本、回测、模拟交易、影子实盘和实盘核心；
+            每类消费者的专项场景测试及切换观察期；阶段 9–11。
+下一步：先在目标环境运行 audit_query_facade.py；只有 daily/minute 两组 matches=true 时，
+        才迁移研究与回测消费者，且每次只切一类。
+回滚点：aaf1f83a07eecf671b72cf4cd0d20e04b51b7c24
+```
+
+### 2026-09-20 阶段 9 数据管理页面交接
+
+```text
+日期：2026-09-20
+执行分支与 SHA：feat/data-asset-architecture @ aaf1f83（其后为当前未提交工作区）
+完成阶段：阶段 9 表级资产目录、表详情、关系详情、规则详情和兼容导航
+修改文件：web/asset_views.py、web/app.py、web/templates/data_*.html、web/templates/base.html、
+          scripts/run_monitor.py、tests/web/test_data_asset_pages.py
+执行命令与测试结果：阶段 9 页面专项测试 7 passed；既有数据页与指标字典回归 31 passed；
+                  uv run pytest -q 全量通过，2 warnings
+页面验收摘要：/data/tables 默认隐藏 raw 层并显示文字化红黄绿灰状态；表详情集中展示用途、粒度、
+              主键、来源、五维健康、覆盖、上下游、字段、规则、证据、消费者和只读结构建议；
+              关系详情展示 Join 键、基数、匹配率、孤儿行、检查范围与刷新状态；规则详情展示定义、
+              通过条件、局限、实现位置及结果历史。缺少或过期证据严格显示灰色。
+新发现问题：阶段 10 建议器尚未实现，因此结构建议固定为 INSUFFICIENT_EVIDENCE，并明确列出原因；
+            页面不提供任何自动执行按钮。目标仓库尚未生成完整五维和关系证据，投产后会以灰色为主。
+未完成事项：阶段 10 确定性结构优化建议器；目标环境健康检查补跑与页面人工验收；阶段 11 切换清理。
+下一步：实现纯函数建议器及其边界用例，将建议和逐条触发证据接入现有表详情的只读建议区域。
+回滚点：aaf1f83a07eecf671b72cf4cd0d20e04b51b7c24
+```
+
+### 2026-09-20 阶段 10 结构优化建议器交接
+
+```text
+日期：2026-09-20
+执行分支与 SHA：feat/data-asset-architecture @ aaf1f83（其后为当前未提交工作区）
+完成阶段：阶段 10 确定性结构优化建议器及数据管理页面接入
+修改文件：data/catalog/advisor.py、data/catalog/__init__.py、web/asset_views.py、
+          web/templates/data_table_detail.html、web/templates/data_relation_detail.html、
+          tests/data/catalog/test_advisor.py、tests/web/test_data_asset_pages.py
+执行命令与测试结果：建议器、表级契约、健康模型和 Web 相关测试 65 passed；
+                  uv run pytest -q 全量通过，2 warnings
+建议摘要：纯函数只接收不可变标准化证据，输出 MERGE_CANDIDATE、SPLIT_CANDIDATE、
+          KEEP_SEPARATE 或 INSUFFICIENT_EVIDENCE，并为每个触发项保留可读理由；缺少主键、
+          消费者、质量或关系证据时，证据不足优先于任何结构推断。Web 适配层从表契约、来源节奏、
+          字段有效期、消费者、五维健康及关系检查提取信号，表详情与关系详情均只读展示结论。
+新发现问题：现有目标仓库尚未补齐五维与关系检查结果，因此多数线上结论在补跑前会保持证据不足；
+            这是门禁行为，不应通过默认绿色或启发式猜测绕过。
+未完成事项：目标环境健康与关系证据补跑；阶段 11 消费者切换、冻结与清理；完整交易周期观察。
+下一步：按阶段 11 条件先做只读切换审计，生成规范表回填、健康门禁、新旧输入、性能和回滚开关
+        的统一检查报告；任何条件未满足都不得切换生产消费者或删除旧表。
+回滚点：aaf1f83a07eecf671b72cf4cd0d20e04b51b7c24
+```
+
+### 2026-09-20 阶段 11 切换门禁交接
+
+```text
+日期：2026-09-20
+执行分支与 SHA：feat/data-asset-architecture @ aaf1f83（其后为当前未提交工作区）
+完成阶段：阶段 11 显式双路门面、只读切换审计和失败关闭门禁；未执行生产切换或旧表清理
+修改文件：data/cutover.py、scripts/audit_cutover.py、tests/data/test_cutover.py
+执行命令与测试结果：切换门面、审计与关联测试 31 passed；uv run pytest -q 全量通过，2 warnings；
+                  git diff --check 与 py_compile 通过
+门禁摘要：QSYS_MARKET_DATA_FACADE 默认 legacy，只接受 legacy/canonical，canonical 路径禁止回退；
+          audit_cutover 同时检查固定且干净的 commit、规范表回填、新旧逐键逐值对账、全部必需健康维度、
+          查询耗时/扫描文件/扫描列/峰值内存、策略输入摘要、完整交易周期及旧数据回滚可用性。
+本地实审：2026-09-15 至 2026-09-19 的报告 ready=false，八项门禁全部未通过：工作区 dirty，
+          日线与分钟 old/new 均为 0/0，12 张规范表健康均为 gray，缺性能和策略输入证据，
+          完整交易日为 0，所选窗口无旧日线/分钟回滚数据。脚本以非零状态退出并确认未执行切换。
+未完成事项：在目标环境完成规范表回填和健康/关系检查；生成性能与策略输入证据；覆盖至少一个完整
+            交易周期；固定干净发布 SHA 后重新审计；随后才可逐类消费者切换和观察。
+旧表处置：保持现状。现有冻结证据表继续只读；仍在生产使用的 tushare_daily/minute_bars 不得提前冻结；
+          删除不在本计划范围内，必须另立带备份、校验和与恢复演练的任务。
+下一步：把目标环境生成的 performance.json 与 strategy.json 交给 scripts/audit_cutover.py；只有
+        ready=true 才进入停写窗口、最后增量、逐消费者切换和观察记录。
+回滚点：aaf1f83a07eecf671b72cf4cd0d20e04b51b7c24
+```
+
+### 2026-09-20 阶段 11 策略摘要稳定性修复交接
+
+```text
+日期：2026-09-20
+执行分支与 SHA：feat/data-asset-architecture @ aaf1f83（其后为当前未提交工作区）
+完成事项：修复策略输入证据在逻辑值相同但 Arrow 物理 dtype、chunk 或 IPC schema 不同时产生假差异的问题
+修改文件：data/cutover_evidence.py、本实施计划
+执行命令与测试结果：阶段 11 定向测试 8 passed；uv run pytest -q -> 1931 passed, 2 warnings；
+                  python -m compileall、git diff --check 通过
+修复摘要：策略摘要现按输入族、稳定字段名和规范化逻辑值生成；整数/浮点等值不再因物理表示不同而
+          产生不同摘要，真实字段值漂移仍由逐键逐字段对账与摘要共同拦截。
+本地实审：重新执行 2026-09-15 至 2026-09-19 切换审计，ready=false；仍因工作区未固定、
+          规范表未回填、健康证据为灰、缺性能和策略证据、无完整交易周期及旧数据回滚输入而失败关闭，
+          未执行消费者切换、冻结或清理。
+未完成事项：目标环境回填和健康/关系检查；性能与策略输入证据；至少一个完整交易周期观察；
+            固定干净发布 SHA 后重新审计和逐类消费者切换。
+下一步：在具备完整来源表的目标环境生成 performance.json 与 strategy.json，并重新运行
+        scripts/audit_cutover.py；ready=true 前保持 legacy 门面和旧表可回滚。
+回滚点：aaf1f83a07eecf671b72cf4cd0d20e04b51b7c24
+```

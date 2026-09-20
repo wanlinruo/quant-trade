@@ -2,7 +2,7 @@ import threading
 from datetime import date, datetime
 
 from qsys.live.config import StreamConfig
-from qsys.live.messages import MarketOverviewSnapshot, MarketQuote
+from qsys.live.messages import MarketOverviewSnapshot, MarketQuote, QuoteSnapshot
 from qsys.live.transport import MemoryTransport
 from qsys.data.pipeline.premarket import publish_key
 from qsys.paper.quotes import (
@@ -74,6 +74,20 @@ def test_gateway_publishes_one_atomic_overview_key():
     raw = transport.get_key(streams.market_snapshot)
     assert raw is not None
     assert MarketOverviewSnapshot.model_validate_json(raw).limit_up_count == 1
+
+
+def test_gateway_publishes_stable_latest_quote_snapshot_and_rejects_empty_replace():
+    transport, streams = MemoryTransport(), StreamConfig()
+    gateway = MarketGateway(transport, streams, lambda symbols: {})
+    now = datetime(2026, 9, 16, 10, 30)
+    gateway.publish_latest_quotes({"600001.SH": _quote("600001.SH", 11)}, now=now)
+    raw = transport.get_key(streams.quote_latest)
+    assert QuoteSnapshot.model_validate_json(raw).published_at == now
+    import pytest
+    from qsys.paper.quotes import QuoteUnavailable
+    with pytest.raises(QuoteUnavailable, match="为空"):
+        gateway.publish_latest_quotes({}, now=now)
+    assert transport.get_key(streams.quote_latest) == raw
 
 
 def test_market_overview_treats_limit_price_with_remaining_ask_as_broken():

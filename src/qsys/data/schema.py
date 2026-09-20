@@ -62,6 +62,83 @@ DAILY_BARS = pa.schema(
     ]
 )
 
+# 规范窄表：与旧 tushare_daily 并行构建，生产消费者尚未切换。
+BAR_DAILY = pa.schema(
+    [
+        ("symbol", pa.string()),
+        ("dt", pa.date32()),
+        ("pre_close", pa.float64()),
+        ("open", pa.float64()),
+        ("high", pa.float64()),
+        ("low", pa.float64()),
+        ("close", pa.float64()),
+        ("volume", pa.float64()),
+        ("amount", pa.float64()),
+    ]
+)
+
+VALUATION_DAILY = pa.schema(
+    [
+        ("symbol", pa.string()),
+        ("dt", pa.date32()),
+        ("turnover_ratio", pa.float64()),
+        ("free_turnover_ratio", pa.float64()),
+        ("volume_ratio", pa.float64()),
+        ("pe", pa.float64()),
+        ("pe_ttm", pa.float64()),
+        ("pb", pa.float64()),
+        ("ps", pa.float64()),
+        ("ps_ttm", pa.float64()),
+        ("dividend_yield", pa.float64()),
+        ("dividend_yield_ttm", pa.float64()),
+        ("market_cap", pa.float64()),
+        ("circulating_market_cap", pa.float64()),
+    ]
+)
+
+SHARE_CAPITAL_HISTORY = pa.schema(
+    [
+        ("symbol", pa.string()),
+        ("effective_date", pa.date32()),
+        ("announcement_date", pa.date32()),
+        ("total_shares", pa.float64()),
+        ("circulating_shares", pa.float64()),
+    ]
+)
+
+ADJUSTMENT_FACTOR_DAILY = pa.schema(
+    [
+        ("symbol", pa.string()),
+        ("dt", pa.date32()),
+        ("price_factor", pa.float64()),
+        ("share_factor", pa.float64()),
+    ]
+)
+
+# 阶段 5 规范状态与派生表。与旧表并行构建，生产消费者尚未切换。
+PRICE_LIMIT_DAILY = pa.schema(
+    [
+        ("symbol", pa.string()),
+        ("dt", pa.date32()),
+        ("pre_close", pa.float64()),
+        ("limit_up", pa.float64()),
+        ("limit_down", pa.float64()),
+    ]
+)
+
+SECURITY_STATUS_DAILY = pa.schema(
+    [
+        ("symbol", pa.string()),
+        ("dt", pa.date32()),
+        ("is_st", pa.bool_()),
+        ("is_suspended", pa.bool_()),
+        ("is_delisting", pa.bool_()),
+        ("st_source", pa.string()),
+        ("suspension_source", pa.string()),
+        ("delisting_source", pa.string()),
+    ]
+)
+
 SHARE_CAPITAL = pa.schema(
     [
         ("symbol", pa.string()),
@@ -128,6 +205,23 @@ PAID_MINUTE_BARS = pa.schema(
         b"amount_unit": b"CNY",
         b"factor": b"source cumulative backward adjustment",
     },
+)
+
+# 阶段 6 规范历史分钟线。``ts`` 是分钟收盘标签；``visible_at`` 单独保存
+# 实际可见时刻，避免把供应商到达延迟混进市场事实时间。
+BAR_MINUTE_1M = pa.schema(
+    [
+        ("symbol", pa.string()),
+        ("ts", pa.timestamp("us")),
+        ("open", pa.float64()),
+        ("high", pa.float64()),
+        ("low", pa.float64()),
+        ("close", pa.float64()),
+        ("volume", pa.float64()),  # 手；外部源的股数除以 100 后可能非整数
+        ("amount", pa.float64()),
+        ("source", pa.string()),
+        ("visible_at", pa.timestamp("us")),
+    ]
 )
 
 CORPORATE_ACTIONS = pa.schema(
@@ -202,6 +296,10 @@ MARKET_REGIME = pa.schema(
     ]
 )
 
+# 字段暂与旧表同构，以便逐键逐字段验证；血缘已改为只依赖规范事实。
+MARKET_FLAGS_DAILY = DAILY_FLAGS
+MARKET_REGIME_DAILY = MARKET_REGIME
+
 VALUATION_SNAPSHOT = pa.schema(
     [
         ("dt", pa.date32()),
@@ -258,6 +356,50 @@ METRIC_EVIDENCE = pa.schema(
         ("checked_by", pa.string()),
         ("checked_at", pa.timestamp("us")),
         ("note", pa.string()),
+    ]
+)
+
+# 表级与关系级健康证据。字段级历史仍只写 METRIC_CHECKS，三层结果物理隔离，
+# 避免用一张含大量 nullable 列的万能表掩盖检查对象的语义差异。
+DATASET_CHECKS = pa.schema(
+    [
+        ("run_id", pa.string()),
+        ("checked_at", pa.timestamp("us")),
+        ("dataset_id", pa.string()),
+        ("check_id", pa.string()),
+        ("dimension", pa.string()),
+        ("scope_start", pa.date32()),
+        ("scope_end", pa.date32()),
+        ("status", pa.string()),
+        ("evidence_at", pa.timestamp("us")),
+        ("expires_at", pa.timestamp("us")),
+        ("required", pa.bool_()),
+        ("violations", pa.int64()),
+        ("checked_rows", pa.int64()),
+        ("detail", pa.string()),
+    ]
+)
+
+RELATION_CHECKS = pa.schema(
+    [
+        ("run_id", pa.string()),
+        ("checked_at", pa.timestamp("us")),
+        ("upstream", pa.string()),
+        ("downstream", pa.string()),
+        ("check_id", pa.string()),
+        ("dimension", pa.string()),
+        ("scope_start", pa.date32()),
+        ("scope_end", pa.date32()),
+        ("status", pa.string()),
+        ("evidence_at", pa.timestamp("us")),
+        ("expires_at", pa.timestamp("us")),
+        ("required", pa.bool_()),
+        ("upstream_rows", pa.int64()),
+        ("downstream_rows", pa.int64()),
+        ("matched_rows", pa.int64()),
+        ("orphan_rows", pa.int64()),
+        ("violations", pa.int64()),
+        ("detail", pa.string()),
     ]
 )
 
@@ -429,6 +571,40 @@ NAME_HISTORY = pa.schema(
     ]
 )
 
+# --- 规范基础资料（与旧表并行构建，消费者尚未切换） ---
+
+SECURITY_MASTER = pa.schema(
+    [
+        ("symbol", pa.string()),
+        ("name", pa.string()),
+        ("market", pa.string()),
+        ("list_date", pa.date32()),
+        ("delist_date", pa.date32()),
+        ("board", pa.string()),
+        ("as_of", pa.date32()),
+    ]
+)
+
+SECURITY_NAME_HISTORY = pa.schema(
+    [
+        ("symbol", pa.string()),
+        ("name", pa.string()),
+        ("start_date", pa.date32()),
+        ("end_date", pa.date32()),
+        ("ann_date", pa.date32()),
+        ("change_reason", pa.string()),
+    ]
+)
+
+TRADING_CALENDAR = pa.schema(
+    [
+        ("market", pa.string()),
+        ("dt", pa.date32()),
+        ("is_open", pa.bool_()),
+        ("pretrade_date", pa.date32()),
+    ]
+)
+
 
 # 退市整理期池：每个交易日处于退市整理期的标的，纯派生自 name_history 中
 # change_reason='退市整理期' 的区间（Tushare namechange 直取）。保留公告日，
@@ -447,8 +623,16 @@ DELISTING_POOL = pa.schema(
 
 PARTITIONED: dict[str, pa.Schema] = {
     "bars_daily": BARS_DAILY,
+    "bar_daily": BAR_DAILY,
+    "valuation_daily": VALUATION_DAILY,
+    "adjustment_factor_daily": ADJUSTMENT_FACTOR_DAILY,
+    "price_limit_daily": PRICE_LIMIT_DAILY,
+    "security_status_daily": SECURITY_STATUS_DAILY,
+    "market_flags_daily": MARKET_FLAGS_DAILY,
+    "market_regime_daily": MARKET_REGIME_DAILY,
     "index_bars": INDEX_BARS,
     "minute_bars": MINUTE_BARS,
+    "bar_minute_1m": BAR_MINUTE_1M,
     "auction_ticks": AUCTION_TICKS,
     "daily_flags": DAILY_FLAGS,
     "market_regime": MARKET_REGIME,
@@ -456,6 +640,8 @@ PARTITIONED: dict[str, pa.Schema] = {
     "ingest_log": INGEST_LOG,
     "metric_checks": METRIC_CHECKS,
     "metric_evidence": METRIC_EVIDENCE,
+    "dataset_checks": DATASET_CHECKS,
+    "relation_checks": RELATION_CHECKS,
     "live_equity": LIVE_EQUITY,
     "live_fills": LIVE_FILLS,
     "live_rejects": LIVE_REJECTS,
@@ -467,6 +653,7 @@ PARTITIONED: dict[str, pa.Schema] = {
     "limit_list_daily": LIMIT_LIST_DAILY,
     "name_snapshots": NAME_SNAPSHOTS,
     "delisting_pool": DELISTING_POOL,
+    "trading_calendar": TRADING_CALENDAR,
 }
 
 UNPARTITIONED: dict[str, pa.Schema] = {
@@ -475,6 +662,9 @@ UNPARTITIONED: dict[str, pa.Schema] = {
     "adj_factors": ADJ_FACTORS,
     "share_capital": SHARE_CAPITAL,
     "name_history": NAME_HISTORY,
+    "security_master": SECURITY_MASTER,
+    "security_name_history": SECURITY_NAME_HISTORY,
+    "share_capital_history": SHARE_CAPITAL_HISTORY,
 }
 
 ALL: dict[str, pa.Schema] = {**PARTITIONED, **UNPARTITIONED}

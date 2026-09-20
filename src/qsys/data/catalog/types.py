@@ -57,6 +57,126 @@ class Access(StrEnum):
     REALTIME = "realtime"  # 实时自采，漏一天永久缺一天
 
 
+class DatasetLayer(StrEnum):
+    """数据集所处的稳定架构层，而不是供应商或存储介质。"""
+
+    RAW = "raw"
+    CANONICAL = "canonical"
+    REALTIME = "realtime"
+    DERIVED = "derived"
+    OPERATIONAL = "operational"
+
+
+class DatasetRole(StrEnum):
+    DIMENSION = "dimension"
+    FACT = "fact"
+    EVENT = "event"
+    SNAPSHOT = "snapshot"
+    FACTOR = "factor"
+    LOGICAL = "logical"
+
+
+class DatasetStatus(StrEnum):
+    ACTIVE = "active"
+    FROZEN = "frozen"
+    OPERATIONAL = "operational"
+
+
+class DependencyKind(StrEnum):
+    PASSTHROUGH = "passthrough"
+    JOIN = "join"
+    AGGREGATION = "aggregation"
+    WINDOW = "window"
+    PUBLISH = "publish"
+
+
+class JoinCardinality(StrEnum):
+    ONE_TO_ONE = "1:1"
+    ONE_TO_MANY = "1:N"
+    MANY_TO_ONE = "N:1"
+    UNKNOWN = "unknown"
+
+
+class DependencyRequirement(StrEnum):
+    REQUIRED = "required"
+    OPTIONAL = "optional"
+
+
+@dataclass(frozen=True, slots=True)
+class Dataset:
+    """表级契约。
+
+    ``schema_id`` 指向 :mod:`qsys.data.schema` 中的物理契约；逻辑视图为
+    ``None``。不能安全确认的粒度或入口必须写 ``UNKNOWN``，不能靠默认值
+    隐去。
+    """
+
+    id: str
+    name: str
+    purpose: str
+    layer: DatasetLayer
+    role: DatasetRole
+    status: DatasetStatus
+    grain: str
+    primary_key: tuple[str, ...]
+    time_columns: tuple[str, ...]
+    partition_keys: tuple[str, ...]
+    sort_keys: tuple[str, ...]
+    schema_id: str | None
+    schema_version: int
+    compatibility: str
+    builder: str
+    update_mode: str
+    finalized_at: str
+    lifecycle: str
+    sources: tuple[str, ...]
+    consumers: tuple[str, ...]
+    health_policy: str | None
+    physical: bool = True
+
+    def __post_init__(self) -> None:
+        if not self.id or not self.name or not self.purpose:
+            raise ValueError("Dataset 的 id/name/purpose 不得为空")
+        if self.physical != (self.schema_id is not None):
+            raise ValueError(f"{self.id}: physical 与 schema_id 不一致")
+        if self.schema_version < 1:
+            raise ValueError(f"{self.id}: schema_version 必须大于 0")
+        if len(set(self.primary_key)) != len(self.primary_key):
+            raise ValueError(f"{self.id}: 主键列重复")
+
+
+@dataclass(frozen=True, slots=True)
+class DatasetDependency:
+    """跨数据集关系契约；无法确认的连接键/基数必须显式写 UNKNOWN。"""
+
+    upstream: str
+    downstream: str
+    kind: DependencyKind
+    join_keys: tuple[tuple[str, str], ...]
+    cardinality: JoinCardinality
+    requirement: DependencyRequirement
+    allowed_lag: str
+    metrics: tuple[str, ...]
+    health_policy: str | None
+    note: str = ""
+
+    def __post_init__(self) -> None:
+        if self.upstream == self.downstream:
+            raise ValueError("DatasetDependency 必须是跨表关系")
+        if not self.allowed_lag:
+            raise ValueError(
+                f"{self.upstream}->{self.downstream}: allowed_lag 不得为空"
+            )
+        if (
+            self.cardinality is not JoinCardinality.UNKNOWN
+            and not self.join_keys
+            and self.kind is DependencyKind.JOIN
+        ):
+            raise ValueError(
+                f"{self.upstream}->{self.downstream}: JOIN 基数已知时必须登记键"
+            )
+
+
 @dataclass(frozen=True, slots=True)
 class Uncovered:
     """显式声明「这条指标没有验证规则」及其理由。

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head"><div><h2><span class="mono">{{ d.row.dataset.id }}</span> · {{ d.row.dataset.name }}</h2><p>{{ d.row.dataset.purpose }}</p></div><span class="pill {{ d.row.status.value }}">{{ d.row.status_label }}</span></div>
+<div class="metric-grid">
+  <div class="metric"><div class="label">层 / 角色</div><div class="value" style="font-size:15px">{{ d.row.dataset.layer.value }} / {{ d.row.dataset.role.value }}</div></div>
+  <div class="metric"><div class="label">粒度</div><div class="value" style="font-size:15px">{{ d.row.dataset.grain }}</div></div>
+  <div class="metric"><div class="label">主键</div><div class="value mono" style="font-size:14px">{{ d.row.dataset.primary_key|join(', ') or '未登记' }}</div></div>
+  <div class="metric"><div class="label">覆盖</div><div class="value" style="font-size:15px">{% if d.row.coverage %}{{ "{:,}".format(d.row.coverage.rows) }} 行{% else %}未落盘{% endif %}</div></div>
+</div>
+<div class="card"><h2>契约</h2><table>
+  <tr><th>构建器</th><td class="mono">{{ d.row.dataset.builder }}</td></tr><tr><th>更新方式</th><td>{{ d.row.dataset.update_mode }}</td></tr>
+  <tr><th>定稿条件</th><td>{{ d.row.dataset.finalized_at }}</td></tr><tr><th>生命周期</th><td>{{ d.row.dataset.lifecycle }}</td></tr>
+  <tr><th>分区 / 排序</th><td class="mono">{{ d.row.dataset.partition_keys|join(', ') or '无' }} / {{ d.row.dataset.sort_keys|join(', ') or '无' }}</td></tr>
+  <tr><th>兼容约定</th><td>{{ d.row.dataset.compatibility }}</td></tr><tr><th>来源</th><td>{{ d.row.dataset.sources|join('、') or '未登记' }}</td></tr>
+  <tr><th>消费方</th><td>{{ d.row.dataset.consumers|join('、') or '未登记' }}</td></tr>
+</table></div>
+<div class="card"><h2>五维健康</h2>{% if d.dimensions %}<div class="kpis">{% for name, state in d.dimensions %}<div class="kpi"><div class="label">{{ name }}</div><div><span class="pill {{ state.value }}">{{ state.value }}</span></div></div>{% endfor %}</div>{% else %}<div class="empty">未登记健康策略。</div>{% endif %}
+{% if d.reasons %}<ul>{% for reason in d.reasons %}<li>{{ reason.dimension.value }}：{{ reason.message }}</li>{% endfor %}</ul>{% endif %}</div>
+<div class="card"><h2>上下游关系</h2><div class="grid"><div><strong>上游</strong>{% for edge in d.upstream %}<p><a href="/data/relations/{{ edge.upstream }}/{{ edge.downstream }}">{{ edge.upstream }} → {{ edge.downstream }}</a><br><span class="muted">{{ edge.kind.value }} · {{ edge.cardinality.value }}</span></p>{% else %}<div class="empty">无登记上游</div>{% endfor %}</div><div><strong>下游</strong>{% for edge in d.downstream %}<p><a href="/data/relations/{{ edge.upstream }}/{{ edge.downstream }}">{{ edge.upstream }} → {{ edge.downstream }}</a><br><span class="muted">{{ edge.kind.value }} · {{ edge.cardinality.value }}</span></p>{% else %}<div class="empty">无登记下游</div>{% endfor %}</div></div></div>
+<div class="card"><h2>字段</h2>{% if d.fields %}<div class="table-wrap"><table><tr><th>字段</th><th>类型</th><th>含义</th></tr>{% for name, type, meaning in d.fields %}<tr><td class="mono">{{ name }}</td><td class="mono">{{ type }}</td><td>{{ meaning }}</td></tr>{% endfor %}</table></div>{% else %}<div class="empty">逻辑数据集，无独立物理 Schema。</div>{% endif %}</div>
+<div class="card"><h2>规则与证据</h2>{% if d.rules %}<p>{% for rule in d.rules %}<a class="pill todo" href="/data/quality/rules/{{ rule }}">{{ rule }}</a> {% endfor %}</p>{% else %}<div class="empty">无登记规则。</div>{% endif %}{% if d.evidence %}<div class="table-wrap"><table><tr><th>检查时刻</th><th>规则</th><th>维度</th><th>状态</th><th>详情</th></tr>{% for item in d.evidence %}<tr><td>{{ item.checked_at }}</td><td><a href="/data/quality/rules/{{ item.check_id }}">{{ item.check_id }}</a></td><td>{{ item.dimension }}</td><td><span class="pill {{ item.status }}">{{ item.status }}</span></td><td>{{ item.detail }}</td></tr>{% endfor %}</table></div>{% else %}<div class="empty">尚无运行证据，因此健康状态不能判绿。</div>{% endif %}</div>
+<div class="card"><h2>结构建议</h2><p><span class="pill todo">{{ d.suggestion.kind.value }}</span></p><ul>{% for item in d.suggestion.reasons %}<li>{{ item }}</li>{% endfor %}</ul>
+{% if d.related_suggestions %}<h3 style="font-size:13px">关系级建议</h3><table><tr><th>关系</th><th>结论</th><th>依据</th></tr>{% for edge, advice in d.related_suggestions %}<tr><td><a href="/data/relations/{{ edge.upstream }}/{{ edge.downstream }}">{{ edge.upstream }} → {{ edge.downstream }}</a></td><td><span class="pill todo">{{ advice.kind.value }}</span></td><td>{{ advice.reasons|join('；') }}</td></tr>{% endfor %}</table>{% endif %}
+<p class="muted">确定性静态建议，仅供人工决策；不提供自动执行入口。</p></div>
+{% endblock %}
