@@ -27,6 +27,7 @@ from qsys.backtest.runner import price_limit_loader
 from qsys.backtest.slippage import FixedRateSlippage
 from qsys.core.calendar import AShareCalendar
 from qsys.core.types import Symbol
+from qsys.data.cutover import CutoverConfig, CutoverMarketData
 from qsys.data.feed import HistoricalFeed
 from qsys.data.market_feed import MarketFeed
 from qsys.data.query import WarehouseQuery
@@ -95,11 +96,12 @@ def main() -> int:
     start, end = date.fromisoformat(args.start), date.fromisoformat(args.end)
     warehouse = Warehouse(Path(args.warehouse))
     query = WarehouseQuery(warehouse)
+    market_data = CutoverMarketData(query, CutoverConfig.from_env())
 
     sessions = sorted(query.market_regime()["dt"].to_list())
     calendar = AShareCalendar(sessions)
-    feed = HistoricalFeed(query, calendar)
-    market = MarketFeed(query, calendar)
+    feed = HistoricalFeed(query, calendar, market_data)
+    market = MarketFeed(query, calendar, market_data)
 
     instruments = query.instruments()
     universe = [

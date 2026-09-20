@@ -82,6 +82,71 @@ class CutoverMarketData:
             .rename({"ts": "dt"})
         )
 
+    def adjustment_factors(
+        self, symbols: Sequence[str] | None, start: date, end: date
+    ) -> pl.DataFrame:
+        if self.config.mode is FacadeMode.LEGACY:
+            return self._query.adj_factors(symbols).filter(
+                pl.col("dt").is_between(start, end)
+            )
+        return self._query.adjustment_factor_daily(symbols, start, end).select(
+            "symbol", "dt", pl.col("price_factor").alias("cum_factor"),
+            pl.col("share_factor").alias("cum_share_factor"),
+        )
+
+    def daily_flags(self, start: date, end: date) -> pl.DataFrame:
+        if self.config.mode is FacadeMode.LEGACY:
+            return self._query.daily_flags(start, end)
+        return self._query.market_flags_daily(None, start, end)
+
+    def market_regime(self, start: date, end: date) -> pl.DataFrame:
+        if self.config.mode is FacadeMode.LEGACY:
+            return self._query.market_regime(start, end)
+        return self._query.market_regime_daily(start, end)
+
+    def valuation(self, start: date, end: date) -> pl.DataFrame:
+        if self.config.mode is FacadeMode.LEGACY:
+            return self._query.valuation(start, end)
+        return self._query.valuation_daily(None, start, end).select(
+            "symbol", "dt",
+            (pl.col("market_cap") / 1e8).alias("market_cap"),
+            (pl.col("circulating_market_cap") / 1e8)
+            .alias("circulating_market_cap"),
+            "turnover_ratio",
+        ).join(
+            self._query.bar_daily(
+                None, start, end, columns=("symbol", "dt", "close")
+            ),
+            on=["symbol", "dt"], how="left",
+        ).select(schema.VALUATION_SNAPSHOT.names)
+
+    def price_limits(
+        self, symbols: Sequence[str] | None, start: date, end: date
+    ) -> pl.DataFrame:
+        if self.config.mode is FacadeMode.LEGACY:
+            return self._query.price_limits(symbols, start, end)
+        return self._query.price_limit_daily(symbols, start, end)
+
+    def suspended_symbols(self, symbols: Sequence[str], day: date) -> set[str]:
+        if self.config.mode is FacadeMode.LEGACY:
+            rows = self._query.suspensions(symbols, day, day)
+            return set(rows.filter(
+                pl.col("suspend_type") == "S"
+            )["symbol"].to_list())
+        rows = self._query.security_status_daily(symbols, day, day)
+        return set(rows.filter(
+            pl.col("is_suspended") == True  # noqa: E712
+        )["symbol"].to_list())
+
+    def intraday_bars(
+        self, symbols: Sequence[str], day: date
+    ) -> pl.DataFrame:
+        if self.config.mode is FacadeMode.LEGACY:
+            return self._query.intraday_bars(symbols, day)
+        lo = datetime.combine(day, datetime.min.time())
+        hi = datetime.combine(day, datetime.max.time())
+        return self._query.bar_minute_1m(symbols, lo, hi).rename({"ts": "dt"})
+
 
 @dataclass(frozen=True, slots=True)
 class BenchmarkComparison:
