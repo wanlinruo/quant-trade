@@ -14,6 +14,7 @@ from qsys.core.constraints import ConstraintContext
 from qsys.core.order_ids import live_order_id
 from qsys.core.trading import Order, OrderIntent, OrderType, Side
 from qsys.core.types import Symbol
+from qsys.data.cutover import CutoverConfig, CutoverMarketData
 from qsys.data.feed import HistoricalFeed
 from qsys.data.market_feed import MarketFeed
 from qsys.data.query import WarehouseQuery
@@ -108,8 +109,9 @@ class LiveRuntime:
         wh = Warehouse(warehouse)
         self.journal = SessionJournal(wh)
         query = WarehouseQuery(wh)
-        feed = HistoricalFeed(query, calendar)
-        historical = MarketFeed(query, calendar)
+        market_data = CutoverMarketData(query, CutoverConfig.from_env())
+        feed = HistoricalFeed(query, calendar, market_data)
+        historical = MarketFeed(query, calendar, market_data)
         self.market = RealtimeMarketFeed(historical, quotes)
         instruments = query.instruments()
         self.universe, raw_boards = build_universe(instruments)
@@ -120,7 +122,7 @@ class LiveRuntime:
         )
         self.strategy = load_strategy(strategy_file, deps)
         self.feed, self.query = feed, query
-        self._limits = DirectLimitCache(query)
+        self._limits = DirectLimitCache(market_data)
         self.schedule = Schedule()
         self.strategy.on_init(self._context(self.schedule)[0])
 

@@ -13,6 +13,7 @@ from qsys.core.clock import Phase
 from qsys.core.portfolio import Portfolio
 from qsys.core.trading import Order
 from qsys.core.types import Bar, Symbol
+from qsys.data.cutover import CutoverConfig, CutoverMarketData
 from qsys.live.messages import MarketQuote
 from qsys.markets.ashare import ashare_pipeline, board_of
 from qsys.paper.broker import PaperBroker
@@ -44,13 +45,13 @@ class DirectLimitCache:
     模拟盘与实盘共用。盘前任务可能晚到：当日还是空表时每次都重读，读到后缓存到换日。
     """
 
-    def __init__(self, query: WarehouseQuery) -> None:
-        self._query = query
+    def __init__(self, market_data: CutoverMarketData) -> None:
+        self._market_data = market_data
         self._cached: tuple[date, dict[str, tuple[float, float]]] | None = None
 
     def on(self, day: date) -> dict[str, tuple[float, float]]:
         if self._cached is None or self._cached[0] != day or not self._cached[1]:
-            frame = self._query.price_limits(None, day, day)
+            frame = self._market_data.price_limits(None, day, day)
             self._cached = (day, {
                 row["symbol"]: (float(row["limit_up"]), float(row["limit_down"]))
                 for row in frame.iter_rows(named=True)
@@ -149,8 +150,9 @@ class PaperRuntime:
             raise LookupError("模拟账户不存在")
         wh = Warehouse(warehouse)
         query = WarehouseQuery(wh)
-        feed = HistoricalFeed(query, calendar)
-        historical_market = MarketFeed(query, calendar)
+        market_data = CutoverMarketData(query, CutoverConfig.from_env())
+        feed = HistoricalFeed(query, calendar, market_data)
+        historical_market = MarketFeed(query, calendar, market_data)
         self.market = RealtimeMarketFeed(historical_market, quote_client)
         instruments = query.instruments()
         self.universe, raw_boards = build_universe(instruments)
@@ -177,7 +179,7 @@ class PaperRuntime:
             for row in store.rows(account_id, "positions")
         }
         self.order_seq: dict[str, int] = {}
-        self._limits = DirectLimitCache(query)
+        self._limits = DirectLimitCache(market_data)
         self.actions = corporate_actions(query, date.today(), date.today())
         schedule = Schedule()
         self.clock.set(datetime.now())

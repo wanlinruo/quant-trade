@@ -3,6 +3,7 @@ from datetime import date, datetime, time
 import pytest
 
 from qsys.core.calendar import AShareCalendar
+from qsys.data.cutover import FacadeMode
 from qsys.live.config import StreamConfig
 from qsys.live.config import RiskConfig
 from qsys.live.messages import AccountSnapshot, Heartbeat, MarketQuote
@@ -84,6 +85,14 @@ def test_live_runtime_executes_event_once_and_recovers(warehouse, tmp_path):
     _, state, _, _ = runtime.store.load()
     assert state["starts"] == 1
     assert runtime.journal.sessions() == [date.today()]
+
+
+def test_live_runtime_honors_explicit_canonical_facade(
+    warehouse, tmp_path, monkeypatch
+):
+    monkeypatch.setenv("QSYS_MARKET_DATA_FACADE", "canonical")
+    runtime, _ = _runtime_with_store(warehouse, tmp_path)
+    assert runtime.feed._market_data.config.mode is FacadeMode.CANONICAL
 
 
 def test_first_stage_rejects_an_oversized_account(warehouse, tmp_path):

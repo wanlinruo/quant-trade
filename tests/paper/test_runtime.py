@@ -3,6 +3,7 @@ from datetime import date, datetime, time
 import pytest
 
 from qsys.core.calendar import AShareCalendar
+from qsys.data.cutover import FacadeMode
 from qsys.live.messages import MarketQuote
 from qsys.paper.runtime import PaperRuntime
 from qsys.paper.store import PaperStore
@@ -49,6 +50,14 @@ def test_runtime_executes_each_scheduled_event_once_and_recovers_state(warehouse
     events = store.rows(account.id, "events")
     assert len(events) == 1
     assert events[0]["status"] == "completed"
+
+
+def test_paper_runtime_honors_explicit_canonical_facade(
+    warehouse, tmp_path, monkeypatch
+):
+    monkeypatch.setenv("QSYS_MARKET_DATA_FACADE", "canonical")
+    runtime, *_ = _runtime(warehouse, tmp_path, Quotes())
+    assert runtime.feed._market_data.config.mode is FacadeMode.CANONICAL
 
 
 class CountingQuotes(Quotes):
