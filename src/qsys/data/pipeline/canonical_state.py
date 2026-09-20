@@ -67,11 +67,17 @@ def canonical_state_preflight(
             issues.append(f"{name} 尚未发布，不能把缺失解释为无事件")
     suspensions = query.suspensions(None, start, end)
     if suspensions.height:
-        duplicate_days = suspensions.height - suspensions.n_unique(
-            subset=["symbol", "dt"]
+        event_keys = ["symbol", "dt", "suspend_type"]
+        duplicate_events = suspensions.height - suspensions.n_unique(
+            subset=event_keys
         )
-        if duplicate_days:
-            issues.append(f"suspend_daily 有 {duplicate_days} 个同标的日多状态，口径待确认")
+        if duplicate_events:
+            issues.append(f"suspend_daily 有 {duplicate_events} 个重复停复牌事件")
+        invalid_types = sorted(
+            set(suspensions["suspend_type"].drop_nulls().to_list()) - {"S", "R"}
+        )
+        if invalid_types:
+            issues.append(f"suspend_daily 含未知事件类型 {invalid_types}")
     return tuple(issues)
 
 
@@ -132,8 +138,15 @@ def _security_status_frame(
     st = query.stock_st(None, start, end).select(
         "symbol", "dt", pl.col("is_st").alias("_is_st")
     )
-    suspensions = query.suspensions(None, start, end).select(
+    suspension_events = query.suspensions(None, start, end).select(
         "symbol", "dt", "suspend_type"
+    )
+    _require_unique(
+        suspension_events, ("symbol", "dt", "suspend_type"), "suspend_daily"
+    )
+    suspensions = suspension_events.group_by("symbol", "dt").agg(
+        (pl.col("suspend_type") == "S").any().alias("_has_suspend"),
+        (pl.col("suspend_type") == "R").any().alias("_has_resume"),
     )
     delisting = query.delisting_pool(start, end).filter(
         pl.col("ann_date").is_null() | (pl.col("ann_date") <= pl.col("dt"))
@@ -155,8 +168,10 @@ def _security_status_frame(
     return frame.select(
         "symbol", "dt",
         pl.when(is_delisting).then(False).otherwise(pl.col("_is_st")).alias("is_st"),
-        pl.when(pl.col("suspend_type") == "S").then(True)
-        .when(pl.col("suspend_type") == "R").then(False)
+        # suspend_d 是事件表；同一标的日可以同时有 S 和 R。日度状态表示
+        # “当日曾发生停牌”，因此 S 优先；只有 R 而没有 S 才表示 false。
+        pl.when(pl.col("_has_suspend") == True).then(True)  # noqa: E712
+        .when(pl.col("_has_resume") == True).then(False)  # noqa: E712
         .when(pl.col("_has_bar") == True).then(False)  # noqa: E712
         .otherwise(pl.lit(None, dtype=pl.Boolean)).alias("is_suspended"),
         is_delisting.alias("is_delisting"),
@@ -164,7 +179,10 @@ def _security_status_frame(
         # 保持现有公开值 ``stock_st``，数据集来源由字段血缘另行记录。
         .when(pl.col("_is_st").is_not_null()).then(pl.lit("stock_st"))
         .otherwise(None).alias("st_source"),
-        pl.when(pl.col("suspend_type").is_not_null()).then(pl.lit("suspend_daily"))
+        pl.when(
+            (pl.col("_has_suspend") == True)  # noqa: E712
+            | (pl.col("_has_resume") == True)  # noqa: E712
+        ).then(pl.lit("suspend_daily"))
         .when(pl.col("_has_bar") == True).then(pl.lit("bar_daily_observed"))  # noqa: E712
         .otherwise(None).alias("suspension_source"),
         pl.lit("delisting_pool").alias("delisting_source"),

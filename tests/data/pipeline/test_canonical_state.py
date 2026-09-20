@@ -116,6 +116,27 @@ def test_unknown_status_is_not_filled_false(warehouse):
     assert row["st_source"] is None
 
 
+def test_same_day_suspend_and_resume_preserves_suspension_event(warehouse):
+    _seed(warehouse)
+    events = pl.DataFrame([
+        {"symbol": SYMBOL, "dt": D2, "suspend_type": "S",
+         "suspend_timing": "9:30-9:40"},
+        {"symbol": SYMBOL, "dt": D2, "suspend_type": "R",
+         "suspend_timing": None},
+    ])
+    warehouse.write(
+        "suspend_daily", events.to_arrow().cast(schema.SUSPEND_DAILY), year=2026
+    )
+
+    assert canonical_state_preflight(warehouse, D1, D2) == ()
+    build_security_status_daily(warehouse, D1, D2)
+    rows = WarehouseQuery(warehouse).security_status_daily([SYMBOL], D2, D2)
+
+    assert rows.height == 1
+    assert rows.row(0, named=True)["is_suspended"] is True
+    assert rows.row(0, named=True)["suspension_source"] == "suspend_daily"
+
+
 def test_existing_consumers_are_not_switched(warehouse):
     _seed(warehouse)
     fake = schema.MARKET_FLAGS_DAILY.empty_table()
