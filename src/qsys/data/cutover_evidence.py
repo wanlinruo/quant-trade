@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
-from decimal import Decimal
 import hashlib
 import json
-import math
-from numbers import Number
 
 import polars as pl
+import pyarrow as pa
 
 from qsys.data import schema
 from qsys.data.cutover import StrategyComparison
@@ -17,25 +15,6 @@ from qsys.data.pipeline.canonical_reference import Reconciliation, reconcile_fra
 from qsys.data.pipeline.canonical_state import _security_status_frame
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
-
-
-def _digest_value(value: object) -> object:
-    """按对账使用的值语义生成稳定且不依赖 Arrow dtype 的摘要值。"""
-    if value is None:
-        return None
-    if isinstance(value, Number):
-        if isinstance(value, bool):
-            return {"number": str(int(value))}
-        if isinstance(value, float) and not math.isfinite(value):
-            return {"number": str(value)}
-        return {"number": str(Decimal(str(value)).normalize())}
-    if isinstance(value, datetime):
-        return {"datetime": value.isoformat()}
-    if isinstance(value, date):
-        return {"date": value.isoformat()}
-    if isinstance(value, bytes):
-        return {"bytes": value.hex()}
-    return {"value": str(value)}
 
 
 def _update_digest(
@@ -49,12 +28,43 @@ def _update_digest(
         ensure_ascii=False, separators=(",", ":"), sort_keys=True,
     ).encode())
     digest.update(b"\0")
-    for row in ordered.iter_rows():
-        digest.update(json.dumps(
-            [_digest_value(value) for value in row],
-            ensure_ascii=False, separators=(",", ":"), sort_keys=True,
-        ).encode())
-        digest.update(b"\n")
+    if not ordered.height:
+        return
+    # 对账允许数值物理类型不同；统一 Arrow 物理表示后再做批量 IPC 摘要，
+    # 避免逐行 JSON 在分钟数据上造成数分钟的 CPU 开销。
+    casts: list[pl.Expr] = []
+    for column, dtype in ordered.schema.items():
+        if dtype == pl.Boolean or dtype.is_numeric():
+            casts.append(pl.col(column).cast(pl.Float64))
+        elif isinstance(dtype, pl.Datetime):
+            casts.append(pl.col(column).cast(pl.Datetime("us")))
+    normalized = ordered.with_columns(casts) if casts else ordered
+    null_exprs: list[pl.Expr] = []
+    for index, (column, dtype) in enumerate(normalized.schema.items()):
+        null_exprs.append(
+            pl.col(column).is_null().cast(pl.Float64).alias(f"__null_{index}")
+        )
+        if dtype.is_numeric():
+            replacement: object = 0.0
+        elif isinstance(dtype, pl.Datetime):
+            replacement = datetime(1970, 1, 1)
+        elif dtype == pl.Date:
+            replacement = date(1970, 1, 1)
+        elif dtype == pl.Boolean:
+            replacement = False
+        elif dtype == pl.String:
+            replacement = ""
+        elif dtype == pl.Binary:
+            replacement = b""
+        else:
+            continue
+        null_exprs.append(pl.col(column).fill_null(replacement))
+    normalized = normalized.with_columns(null_exprs)
+    table = normalized.to_arrow().combine_chunks().replace_schema_metadata(None)
+    sink = pa.BufferOutputStream()
+    with pa.ipc.new_stream(sink, table.schema) as writer:
+        writer.write_table(table)
+    digest.update(sink.getvalue().to_pybytes())
 
 
 def _combine(results: list[Reconciliation]) -> Reconciliation:

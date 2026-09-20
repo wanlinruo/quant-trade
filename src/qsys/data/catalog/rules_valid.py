@@ -106,6 +106,13 @@ FILL_EXEMPTIONS: dict[tuple[str, str], str] = {
         "左连未命中按事件模型定义就是不处于退市整理期"
     ),
     (
+        "src/qsys/data/cutover_evidence.py",
+        "null_exprs.append(pl.col(column).fill_null(replacement))",
+    ): (
+        "策略证据摘要已单独编码 null 位；此处只把 null 的未定义底层缓冲区"
+        "规范为确定字节，不改变参与对账的数据语义"
+    ),
+    (
         "src/qsys/data/pipeline/canonical_minute.py",
         'sources[row["source"]] = sources.get(row["source"], 0) + row["len"]',
     ): "构建报告的来源行数计数器；未出现过的来源累计行数按定义从 0 开始",
