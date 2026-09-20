@@ -256,6 +256,45 @@ def _dataset_health(query: WarehouseQuery, dataset: str, now: datetime):
     return aggregate_health(policy_for(dataset), evidence, now)
 
 
+def _required_relation_health(
+    query: WarehouseQuery,
+    start: date,
+    end: date,
+    required_datasets: tuple[str, ...],
+    now: datetime,
+) -> tuple[bool, str]:
+    # 延迟导入避免 catalog 聚合入口与 cutover 模块形成初始化环。
+    from qsys.data.cutover_health import canonical_required_relations
+
+    required = set(required_datasets)
+    expected = tuple(
+        edge for edge in canonical_required_relations()
+        if edge.upstream in required and edge.downstream in required
+    )
+    if not expected:
+        return True, "当前必需数据集之间没有登记的阻断关系"
+
+    failures: list[str] = []
+    for edge in expected:
+        rows = query.relation_checks(edge.upstream, edge.downstream).filter(
+            (pl.col("scope_start") == start) & (pl.col("scope_end") == end)
+        )
+        if rows.height == 0:
+            failures.append(f"{edge.upstream}->{edge.downstream}=missing")
+            continue
+        latest = rows.sort("checked_at", descending=True).row(0, named=True)
+        expired = latest["expires_at"] is not None and latest["expires_at"] < now
+        if latest["status"] in (HealthStatus.GRAY.value, HealthStatus.RED.value) or expired:
+            suffix = "/expired" if expired else ""
+            failures.append(
+                f"{edge.upstream}->{edge.downstream}={latest['status']}{suffix}"
+            )
+    return (
+        not failures,
+        f"{len(expected)} 条必需关系证据有效" if not failures else "; ".join(failures),
+    )
+
+
 def audit_cutover(
     query: WarehouseQuery,
     start: date,
@@ -311,6 +350,13 @@ def audit_cutover(
     checks.append(GateCheck(
         "required_health", not unhealthy,
         "全部必需维度非灰且无红" if not unhealthy else "; ".join(unhealthy),
+    ))
+
+    relations_ok, relations_detail = _required_relation_health(
+        query, start, end, required_datasets, now
+    )
+    checks.append(GateCheck(
+        "required_relations", relations_ok, relations_detail
     ))
 
     performance_ok = bool(performance) and all(item.passed for item in performance)
