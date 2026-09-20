@@ -76,7 +76,10 @@ def test_whole_symbol_gap_fails_coverage_without_scanning_minute_facts(warehouse
     pl.DataFrame({
         "symbol": ["600001.SH"], "dt": [date(2025, 1, 2)]
     }).write_parquet(quality / "daily_aggregate.parquet")
-    _write_tushare_symbols(warehouse, ["600001.SH", "603227.SH"])
+    _write_tushare_symbols(
+        warehouse,
+        ["600001.SH", "603227.SH", "920001.BJ", "302132.SZ"],
+    )
 
     row = _run("B2.paid_minute_symbol_coverage", warehouse)
 

@@ -87,7 +87,12 @@ def _difference(ctx: CheckContext, key: str, label: str) -> CheckResult:
 
 
 def _symbol_coverage(ctx: CheckContext) -> CheckResult:
-    """用独立 Tushare 日线发现源包整只证券缺失，不重扫分钟事实。"""
+    """用独立 Tushare 日线发现源包整只沪深证券缺失，不重扫分钟事实。
+
+    北交所历史代码会被 Tushare 映射成当前 920 号段，付费源则保留当时的
+    43/83/87 代码；``302132.SZ`` 也存在同类换码。两者不能直接按 symbol
+    做反连接，因此这里只比较 2020—2025 期间身份稳定的沪深股票号段。
+    """
     summaries = _summaries(ctx)
     if not summaries:
         return CheckResult(0, 0, "尚无付费分钟线年度质量摘要", applicable=False)
@@ -105,7 +110,17 @@ def _symbol_coverage(ctx: CheckContext) -> CheckResult:
         daily = ctx.query.tushare_daily(
             None, date(year, 1, 1), date(year, 12, 31),
             columns=("symbol", "dt", "volume"),
-        ).filter(pl.col("volume") > 0)
+        )
+        symbol = pl.col("symbol")
+        prefix = symbol.str.slice(0, 3)
+        comparable = (
+            symbol.str.ends_with(".SH")
+            & prefix.is_in(["600", "601", "603", "605", "688", "689"])
+        ) | (
+            symbol.str.ends_with(".SZ")
+            & prefix.is_in(["000", "001", "002", "003", "300", "301"])
+        )
+        daily = daily.filter((pl.col("volume") > 0) & comparable)
         if daily.is_empty():
             continue
         compared_years += 1
