@@ -87,10 +87,17 @@ def test_cutover_facade_defaults_to_legacy_and_never_falls_back(warehouse, monke
     canonical = CutoverMarketData(query, CutoverConfig(FacadeMode.CANONICAL))
     assert legacy.daily_bars(None, DAY, DAY).columns == schema.DAILY_BARS.names
     assert canonical.daily_bars(None, DAY, DAY).columns == schema.DAILY_BARS.names
-    assert canonical.minute_bars(
+    legacy_minute = legacy.minute_bars(
         None, datetime.combine(DAY, datetime.min.time()),
         datetime.combine(DAY, datetime.max.time()),
-    )["volume"].dtype == pl.Float64
+    )
+    canonical_minute = canonical.minute_bars(
+        None, datetime.combine(DAY, datetime.min.time()),
+        datetime.combine(DAY, datetime.max.time()),
+    )
+    assert legacy_minute["volume"].dtype == pl.Float64
+    assert canonical_minute["volume"].dtype == pl.Float64
+    assert legacy_minute.equals(canonical_minute)
     assert query.historical_daily_bars(
         None, DAY, DAY, columns=("symbol", "close")
     ).columns == ["symbol", "close"]
