@@ -65,6 +65,26 @@ def test_canonical_query_does_not_fall_back_to_legacy_sources(warehouse):
     assert got.columns == list(schema.BAR_MINUTE_1M.names)
 
 
+def test_build_quarantines_a_whole_invalid_symbol_day(warehouse):
+    valid = pl.DataFrame([_row("600000.SH", 30, 10.0, 10)])
+    invalid = pl.DataFrame([
+        _row("920305.BJ", 30, 0.0, 10),
+        _row("920305.BJ", 31, 10.0, 10),
+    ])
+    source = pl.concat([valid, invalid])
+    warehouse.write_day(
+        "minute_bars", source.to_arrow().cast(schema.MINUTE_BARS), day=DAY
+    )
+
+    result = build_bar_minute_1m(warehouse, DAY, DAY)
+    got = WarehouseQuery(warehouse).bar_minute_1m(
+        None, datetime(2024, 1, 2), datetime(2024, 1, 2, 23, 59)
+    )
+
+    assert result.rows == 1
+    assert got["symbol"].to_list() == ["600000.SH"]
+
+
 def test_preflight_rejects_an_empty_source_environment(warehouse):
     assert canonical_minute_preflight(warehouse, DAY, DAY) == (
         "没有任何已发布分钟来源",
