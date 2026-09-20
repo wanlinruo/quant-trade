@@ -1,6 +1,9 @@
 import json
 from datetime import date, datetime
 
+import polars as pl
+
+from qsys.data import schema
 from qsys.data.catalog import checks as C
 from qsys.data.query import WarehouseQuery
 
@@ -50,6 +53,36 @@ def test_missing_stock_days_fail_structure(warehouse):
     row = _run("B2.paid_minute_structure", warehouse)
     assert row["passed"] is False
     assert row["severity"] == "blocking"
+
+
+def _write_tushare_symbols(warehouse, symbols):
+    rows = []
+    for symbol in symbols:
+        row = {field.name: 1.0 for field in list(schema.TUSHARE_DAILY)[3:]}
+        row.update({"dt": date(2025, 1, 2), "symbol": symbol, "name": symbol})
+        rows.append(row)
+    warehouse.write(
+        "tushare_daily",
+        pl.DataFrame(rows).select(schema.TUSHARE_DAILY.names).to_arrow().cast(
+            schema.TUSHARE_DAILY
+        ),
+        year=2025,
+    )
+
+
+def test_whole_symbol_gap_fails_coverage_without_scanning_minute_facts(warehouse):
+    _write_summary(warehouse)
+    quality = warehouse.root / "paid_minute_quality/year=2025"
+    pl.DataFrame({
+        "symbol": ["600001.SH"], "dt": [date(2025, 1, 2)]
+    }).write_parquet(quality / "daily_aggregate.parquet")
+    _write_tushare_symbols(warehouse, ["600001.SH", "603227.SH"])
+
+    row = _run("B2.paid_minute_symbol_coverage", warehouse)
+
+    assert row["passed"] is False
+    assert row["severity"] == "blocking"
+    assert row["violations"] == 1
 
 
 def test_cross_source_differences_are_visible_known_issues(warehouse):

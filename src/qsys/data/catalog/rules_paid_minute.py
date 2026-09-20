@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
 
 import polars as pl
@@ -85,6 +86,52 @@ def _difference(ctx: CheckContext, key: str, label: str) -> CheckResult:
     )
 
 
+def _symbol_coverage(ctx: CheckContext) -> CheckResult:
+    """用独立 Tushare 日线发现源包整只证券缺失，不重扫分钟事实。"""
+    summaries = _summaries(ctx)
+    if not summaries:
+        return CheckResult(0, 0, "尚无付费分钟线年度质量摘要", applicable=False)
+    problems: list[dict[str, object]] = []
+    checked = 0
+    compared_years = 0
+    for _path, report in summaries:
+        year = int(report["year"])
+        aggregate = ctx.warehouse.root / "paid_minute_quality" / f"year={year}" \
+            / "daily_aggregate.parquet"
+        if not aggregate.exists():
+            problems.append({"year": year, "symbol": "*", "traded_days": None,
+                             "problem": "缺少分钟日聚合质量产物"})
+            continue
+        daily = ctx.query.tushare_daily(
+            None, date(year, 1, 1), date(year, 12, 31),
+            columns=("symbol", "dt", "volume"),
+        ).filter(pl.col("volume") > 0)
+        if daily.is_empty():
+            continue
+        compared_years += 1
+        traded = daily.group_by("symbol").agg(pl.len().alias("traded_days"))
+        minute_symbols = pl.read_parquet(aggregate, columns=["symbol"]).select(
+            "symbol"
+        ).unique()
+        missing = traded.join(minute_symbols, on="symbol", how="anti").sort("symbol")
+        checked += traded.height
+        problems.extend(
+            {"year": year, "symbol": row["symbol"],
+             "traded_days": row["traded_days"], "problem": "全年分钟证券缺失"}
+            for row in missing.iter_rows(named=True)
+        )
+    if not compared_years and not problems:
+        return CheckResult(
+            0, 0, "没有与付费分钟年度重叠的 Tushare 日线", applicable=False
+        )
+    return CheckResult(
+        len(problems), max(checked, len(summaries)),
+        f"{compared_years} 个年度与 Tushare 成交证券对账，全年分钟证券缺失 "
+        f"{len(problems)} 只",
+        pl.DataFrame(problems) if problems else None,
+    )
+
+
 _ALL = tuple(f"paid_minute_bars.{name}" for name in (
     "symbol", "dt", "open", "high", "low", "close", "volume", "amount", "factor"
 ))
@@ -92,6 +139,10 @@ _ALL = tuple(f"paid_minute_bars.{name}" for name in (
 register(Check(
     "B2.paid_minute_structure", Category.COMPLETENESS, Scope.FULL,
     _ALL, (), "年度已发布、交易时段完整、日级键不缺失且因子日内唯一", _structure,
+))
+register(Check(
+    "B2.paid_minute_symbol_coverage", Category.COMPLETENESS, Scope.FULL,
+    _ALL, (), "Tushare 有成交的证券不能在付费分钟年度中整只缺失", _symbol_coverage,
 ))
 register(Check(
     "A3.paid_minute_ohlc_vs_daily", Category.TRUTHFULNESS, Scope.FULL,

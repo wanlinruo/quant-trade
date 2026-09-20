@@ -13,7 +13,10 @@ from qsys.data.market_feed import MarketFeed
 from qsys.data.pipeline.delisting import build_delisting_pool
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
-from qsys.strategy.structural.selection import StructuralSelection
+from qsys.strategy.structural.selection import (
+    MissingAuctionDataError,
+    StructuralSelection,
+)
 
 # 需要 101 根历史，构造 120 个连续交易日
 START = date(2024, 1, 2)
@@ -117,9 +120,10 @@ def test_low_branch_selects_a_valid_candidate(warehouse, write_daily_bars):
 
 
 def test_low_main_needs_the_auction_volume_filter_when_required(warehouse, write_daily_bars):
-    """忠实版：没有分钟线就拿不到竞价量，该只整只剔除。"""
+    """忠实版：缺竞价量必须失败，不能静默剔除并产出失真的低交易报告。"""
     low_setup(warehouse, write_daily_bars)
-    assert selector(warehouse, require_auction_volume=True).select(TODAY, YESTERDAY) == []
+    with pytest.raises(MissingAuctionDataError, match="严格回测的候选缺少集合竞价成交量"):
+        selector(warehouse, require_auction_volume=True).select(TODAY, YESTERDAY)
 
 
 def test_low_main_passes_when_the_auction_volume_is_enough(warehouse, write_daily_bars):
@@ -140,6 +144,29 @@ def test_low_chinext_skips_the_auction_volume_filter(warehouse, write_daily_bars
     low_setup(warehouse, write_daily_bars, symbol="300001.SZ")
     picks = selector(warehouse, require_auction_volume=True).select(TODAY, YESTERDAY)
     assert [p.tag for p in picks] == ["LOW_CHINEXT"]
+
+
+def test_high_candidate_missing_auction_volume_fails_strict_mode(
+    warehouse, write_daily_bars, monkeypatch
+):
+    low_setup(warehouse, write_daily_bars)
+    selection = selector(warehouse, require_auction_volume=True)
+    bars = selection._history(
+        ["600001.SH"], YESTERDAY, datetime.combine(TODAY, time(9, 30))
+    )["600001.SH"]
+    monkeypatch.setattr(
+        "qsys.strategy.structural.selection.check_low_open", lambda *_args: False
+    )
+    monkeypatch.setattr(
+        "qsys.strategy.structural.selection.check_high_open",
+        lambda *_args, **kwargs: kwargs["require_auction_volume"] is False,
+    )
+
+    with pytest.raises(MissingAuctionDataError, match="600001.SH"):
+        selection._route(
+            "600001.SH", TODAY, YESTERDAY, bars, 10.2, None,
+            {"market_cap": 100.0, "circulating_market_cap": 100.0}, None,
+        )
 
 
 def test_a_gated_out_candidate_is_not_returned(warehouse, write_daily_bars):

@@ -62,6 +62,10 @@ class SelectionFunnel:
     reasons: dict[str, int]
 
 
+class MissingAuctionDataError(ValueError):
+    """严格策略候选缺少可用于入场判定的集合竞价成交量。"""
+
+
 class StructuralSelection:
     def __init__(
         self,
@@ -171,6 +175,9 @@ class StructuralSelection:
         """LOW 优先，命中即定；不回落去判 HIGH。"""
         if check_low_open(bars, auction_price):
             tag = strategy_tag("LOW", symbol)
+            if tag == "LOW_MAIN" and self._require_auction_volume \
+                    and auction_volume is None:
+                self._raise_missing_auction(day, symbol)
             if tag == "LOW_MAIN" and not self._auction_volume_ok(
                 bars, auction_volume
             ):
@@ -179,14 +186,29 @@ class StructuralSelection:
             factors = _stock_factors(bars) if tag == "LOW_MAIN" else {}
             return self._gate(day, previous, symbol, tag, market, factors)
 
-        if check_high_open(
+        high_without_volume = check_high_open(
             bars, auction_price, auction_volume, valuation,
-            require_auction_volume=self._require_auction_volume,
+            require_auction_volume=False,
+        )
+        if high_without_volume and self._require_auction_volume \
+                and auction_volume is None:
+            self._raise_missing_auction(day, symbol)
+        if high_without_volume and (
+            auction_volume is not None or not self._require_auction_volume
         ):
             return self._gate(
                 day, previous, symbol, strategy_tag("HIGH", symbol), market, {}
             )
         return None
+
+    @staticmethod
+    def _raise_missing_auction(day: date, symbol: str) -> None:
+        raise MissingAuctionDataError(
+            f"{day} 严格回测的候选缺少集合竞价成交量：{symbol}；"
+            "该数据不能用付费 09:30 分钟线替代。"
+            "请选择有 QMT 09:30 或竞价逐笔覆盖的区间，"
+            "或显式关闭“要求竞价成交量”运行近似版"
+        )
 
     def _auction_volume_ok(self, bars: pl.DataFrame, auction_volume) -> bool:
         prev_volume = bars["volume"].to_list()[-1]
