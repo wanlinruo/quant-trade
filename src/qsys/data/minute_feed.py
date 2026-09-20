@@ -15,6 +15,7 @@ from datetime import date, datetime, time
 
 import polars as pl
 
+from qsys.data.cutover import CutoverConfig, CutoverMarketData
 from qsys.data.query import WarehouseQuery
 
 # QMT 实测的当日 bar 结构（241 根，均以**收盘时刻**标注）：
@@ -30,8 +31,13 @@ SESSION_CLOSE = time(15, 0)
 
 
 class MinuteFeed:
-    def __init__(self, query: WarehouseQuery) -> None:
+    def __init__(
+        self, query: WarehouseQuery, market_data: CutoverMarketData | None = None
+    ) -> None:
         self._query = query
+        self._market_data = market_data or CutoverMarketData(
+            query, CutoverConfig()
+        )
 
     def get(
         self,
@@ -44,8 +50,8 @@ class MinuteFeed:
         """返回 [start, min(end, as_of)] 区间内的分钟线。"""
         effective_end = min(end, as_of)
         if effective_end < start:
-            return self._query.minute_bars(symbols, start, start).clear()
-        return self._query.minute_bars(symbols, start, effective_end)
+            return self._market_data.minute_bars(symbols, start, start).clear()
+        return self._market_data.minute_bars(symbols, start, effective_end)
 
     def session_bars(
         self, symbols: Sequence[str], day: date, *, as_of: datetime

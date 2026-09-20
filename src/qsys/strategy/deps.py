@@ -13,6 +13,7 @@ import structlog
 
 from qsys.core.calendar import AShareCalendar
 from qsys.core.types import Symbol
+from qsys.data.cutover import CutoverConfig, CutoverMarketData
 from qsys.data.feed import HistoricalFeed
 from qsys.data.market_feed import MarketFeed
 from qsys.data.query import WarehouseQuery
@@ -54,11 +55,12 @@ def build_deps(warehouse_root: Path, params: dict | None = None):
     """返回 (deps, query, calendar, sessions, universe, boards)。"""
     warehouse = Warehouse(Path(warehouse_root))
     query = WarehouseQuery(warehouse)
+    market_data = CutoverMarketData(query, CutoverConfig.from_env())
 
     sessions: list[date] = sorted(query.market_regime()["dt"].to_list())
     calendar = AShareCalendar(sessions)
-    feed = HistoricalFeed(query, calendar)
-    market = MarketFeed(query, calendar)
+    feed = HistoricalFeed(query, calendar, market_data)
+    market = MarketFeed(query, calendar, market_data)
 
     instruments = query.instruments()
     universe, boards = build_universe(instruments)

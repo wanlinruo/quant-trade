@@ -19,6 +19,9 @@ from qsys.data.cutover import (
     StrategyComparison,
     audit_cutover,
 )
+from qsys.core.calendar import AShareCalendar
+from qsys.data.feed import HistoricalFeed
+from qsys.data.minute_feed import MinuteFeed
 from qsys.data.query import WarehouseQuery
 
 
@@ -119,6 +122,28 @@ def test_canonical_switch_does_not_fall_back_to_populated_legacy(warehouse):
         WarehouseQuery(warehouse), CutoverConfig(FacadeMode.CANONICAL)
     )
     assert facade.daily_bars(None, DAY, DAY).height == 0
+
+
+def test_research_feeds_use_the_explicit_canonical_facade(warehouse):
+    _seed(warehouse)
+    query = WarehouseQuery(warehouse)
+    market_data = CutoverMarketData(
+        query, CutoverConfig(FacadeMode.CANONICAL)
+    )
+    calendar = AShareCalendar([DAY])
+
+    daily = HistoricalFeed(query, calendar, market_data).get(
+        [SYMBOL], DAY, DAY,
+        as_of=datetime.combine(DAY, datetime.max.time()),
+    )
+    minute = MinuteFeed(query, market_data).get(
+        [SYMBOL], AT, AT, as_of=AT,
+    )
+
+    assert daily.height == 1
+    assert daily.columns == schema.DAILY_BARS.names
+    assert minute.height == 1
+    assert minute["volume"].dtype == pl.Float64
 
 
 def test_invalid_cutover_mode_fails_closed(monkeypatch):

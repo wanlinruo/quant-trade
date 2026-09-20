@@ -21,6 +21,7 @@ from datetime import date, datetime, time
 import polars as pl
 
 from qsys.core.calendar import TradingCalendar, last_closed_session
+from qsys.data.cutover import CutoverConfig, CutoverMarketData
 from qsys.data.query import WarehouseQuery
 
 # QMT 的开盘集合竞价 bar 以 09:30 标注（收盘时刻约定）
@@ -37,11 +38,13 @@ class BoundMarket:
     """as_of 钉死的派生数据视图。策略拿不到别的 as_of。"""
 
     def __init__(
-        self, query: WarehouseQuery, calendar: TradingCalendar, as_of: datetime
+        self, query: WarehouseQuery, calendar: TradingCalendar, as_of: datetime,
+        market_data: CutoverMarketData,
     ) -> None:
         self._query = query
         self._calendar = calendar
         self._as_of = as_of
+        self._market_data = market_data
 
     def _clip(self, start: date, end: date) -> tuple[date, date] | None:
         through = last_closed_session(self._calendar, self._as_of)
@@ -53,22 +56,22 @@ class BoundMarket:
     def flags(self, symbols: Sequence[str], start: date, end: date) -> pl.DataFrame:
         window = self._clip(start, end)
         if window is None:
-            return self._query.daily_flags(start, start).clear()
-        return self._query.daily_flags(*window).filter(
+            return self._market_data.daily_flags(start, start).clear()
+        return self._market_data.daily_flags(*window).filter(
             pl.col("symbol").is_in(list(symbols))
         )
 
     def regime(self, start: date, end: date) -> pl.DataFrame:
         window = self._clip(start, end)
         if window is None:
-            return self._query.market_regime(start, start).clear()
-        return self._query.market_regime(*window)
+            return self._market_data.market_regime(start, start).clear()
+        return self._market_data.market_regime(*window)
 
     def valuation(self, symbols: Sequence[str], start: date, end: date) -> pl.DataFrame:
         window = self._clip(start, end)
         if window is None:
-            return self._query.valuation(start, start).clear()
-        return self._query.valuation(*window).filter(
+            return self._market_data.valuation(start, start).clear()
+        return self._market_data.valuation(*window).filter(
             pl.col("symbol").is_in(list(symbols))
         )
 
@@ -79,7 +82,7 @@ class BoundMarket:
         """当日开盘价，09:30 起可见。**只返回 open。**"""
         if not self._open_is_visible(day):
             return {}
-        bars = self._query.daily_bars(list(symbols), day, day)
+        bars = self._market_data.daily_bars(list(symbols), day, day)
         if bars.height == 0:
             return {}
         return dict(zip(bars["symbol"].to_list(), bars["open"].to_list()))
@@ -97,7 +100,7 @@ class BoundMarket:
         moment = datetime.combine(day, at)
         if moment > self._as_of:
             return {}
-        bars = self._query.intraday_bars(list(symbols), day).filter(
+        bars = self._market_data.intraday_bars(list(symbols), day).filter(
             pl.col("visible_at") <= moment
         )
         if bars.height == 0:
@@ -124,10 +127,10 @@ class BoundMarket:
         """
         if not self._open_is_visible(day):
             return {}
-        hit = self._query.price_limits(list(symbols), day, day)
-        # 迁移期兼容尚未回填 price_limits_daily 的历史；新表覆盖后不再走这里。
+        hit = self._market_data.price_limits(list(symbols), day, day)
+        # 同一模式内兼容早期旧派生字段；canonical 模式不会回退旧表。
         if hit.height == 0:
-            hit = self._query.daily_flags(day, day).filter(
+            hit = self._market_data.daily_flags(day, day).filter(
                 pl.col("symbol").is_in(list(symbols))
             )
         hit = hit.filter(pl.col("limit_up").is_not_null())
@@ -137,15 +140,14 @@ class BoundMarket:
         """当日开盘后可见的直取停牌集合。"""
         if not self._open_is_visible(day):
             return set()
-        rows = self._query.suspensions(list(symbols), day, day)
-        return set(rows.filter(pl.col("suspend_type") == "S")["symbol"].to_list())
+        return self._market_data.suspended_symbols(list(symbols), day)
 
     def auction_volume(self, symbols: Sequence[str], day: date) -> dict[str, int]:
         """集合竞价成交量，取自分钟线 09:30 那根。取不到返回空。"""
         if not self._open_is_visible(day):
             return {}
         moment = datetime.combine(day, AUCTION_AT)
-        bars = self._query.minute_bars(list(symbols), moment, moment)
+        bars = self._market_data.minute_bars(list(symbols), moment, moment)
         out = dict(zip(bars["symbol"].to_list(), bars["volume"].to_list()))
         rest = [symbol for symbol in symbols if symbol not in out]
         if rest:
@@ -157,9 +159,17 @@ class BoundMarket:
 
 
 class MarketFeed:
-    def __init__(self, query: WarehouseQuery, calendar: TradingCalendar) -> None:
+    def __init__(
+        self, query: WarehouseQuery, calendar: TradingCalendar,
+        market_data: CutoverMarketData | None = None,
+    ) -> None:
         self._query = query
         self._calendar = calendar
+        self._market_data = market_data or CutoverMarketData(
+            query, CutoverConfig()
+        )
 
     def bind(self, as_of: datetime) -> BoundMarket:
-        return BoundMarket(self._query, self._calendar, as_of)
+        return BoundMarket(
+            self._query, self._calendar, as_of, self._market_data
+        )
