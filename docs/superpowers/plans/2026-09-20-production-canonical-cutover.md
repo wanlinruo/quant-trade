@@ -1,7 +1,7 @@
 # 生产环境 canonical 全面切换实施方案
 
 - 创建日期：2026-09-20
-- 状态：方案已建立，待按阶段实施
+- 状态：阶段 A–E 代码完成并通过全量测试，待测试环境部署与生产回填/切换
 - 工作分支：`feat/production-canonical-cutover`
 - 开发基线：`origin/test @ ba9e470318b33c0e7132db4fd6e2d0854d91dd72`
 - 当前生产版本：`main @ 0cfd36ec5be0a5adf034e46a9f56b296ebbbe0a4`
@@ -370,4 +370,23 @@ CLI 入口增加显式 `--market-data-facade legacy|canonical`，默认读取相
 下一步：实现统一发布协调器和可恢复全历史回填器
 代码回滚点：生产 3375584f69d254210d5b67a4fe23d09cc7330960
 数据恢复点：legacy 表保持原状；canonical 为新增目标，可按 manifest 单独重建
+```
+
+### 2026-09-20 代码实施交接
+
+```text
+日期与时间：2026-09-20 23:22 CST
+执行分支与 SHA：feat/production-canonical-cutover @ dcd34cbbcd708ce98fbefc63ff834a9ad32f919c
+完成阶段：A 增量发布、B 可恢复回填、C 关系证据、D 浮点/心跳修复、E 统一门面开关代码
+修改文件：canonical_backfill/publish、cutover_health/audit、消费者门面、入口 CLI、systemd drop-in、测试与本方案
+执行测试：uv run pytest -q 全量通过；相关定向测试通过；git diff --check 通过
+生产数据修改：无；本批次仍只修改开发分支代码
+当前 canonical 覆盖：沿用初始交接记录，生产尚未执行全历史回填
+对账与健康摘要：审计新增 7 条 canonical required 关系硬门禁；缺失、过期、red/gray 均阻断
+服务与读取模式：生产仍为 legacy；统一 canonical env/drop-in 已就绪但尚未安装；live core 应继续 inactive
+新发现问题：原登记中 3 条聚合依赖基数/键方向错误，已修正为 dt 多对一；消费者存在交易日、证券池、涨跌停旁路，已收口
+未完成事项：推送分支、合入 test、部署测试环境、生产全历史回填、生成全范围证据、合入 main、生产切换与验收
+下一步：先部署 test 并做 smoke；随后在生产 legacy 模式回填和审计，通过后安装统一 env/drop-in 并依次重启 monitor/paper/shadow
+代码回滚点：生产仍为 3375584f69d254210d5b67a4fe23d09cc7330960；本分支可逐提交回退
+数据恢复点：回填器 manifest 支持按已验证分区 resume/rebuild；不覆盖 legacy
 ```
