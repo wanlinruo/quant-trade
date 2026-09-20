@@ -52,6 +52,32 @@ def _regular_session(frame: pl.DataFrame) -> pl.DataFrame:
     return frame.filter(regular)
 
 
+def _invalid_market_rows(frame: pl.DataFrame) -> pl.DataFrame:
+    """Return rows that cannot represent an executable market price."""
+    return frame.filter(
+        (pl.col("low") > pl.col("high"))
+        | (pl.col("open") < pl.col("low")) | (pl.col("open") > pl.col("high"))
+        | (pl.col("close") < pl.col("low")) | (pl.col("close") > pl.col("high"))
+        | (pl.col("open") <= 0) | (pl.col("high") <= 0)
+        | (pl.col("low") <= 0) | (pl.col("close") <= 0)
+        | (pl.col("volume") < 0) | (pl.col("amount") < 0)
+    )
+
+
+def _quarantine_invalid_symbol_days(frame: pl.DataFrame) -> pl.DataFrame:
+    """Drop a whole symbol-day when its selected source contains invalid bars.
+
+    QMT represents some suspended instruments as 240/241 zero-price placeholders.
+    They are not market facts. Keeping only the nonzero rows of such a symbol-day
+    would create a partial session, so quarantine the entire selected symbol-day.
+    """
+    invalid = _invalid_market_rows(frame)
+    if invalid.height == 0:
+        return frame
+    symbols = invalid.select("symbol").unique()
+    return frame.join(symbols, on="symbol", how="anti")
+
+
 def _validate(frame: pl.DataFrame, day: date) -> None:
     if frame.height == 0:
         return
@@ -72,14 +98,7 @@ def _validate(frame: pl.DataFrame, day: date) -> None:
         pl.col(numeric).is_nan() | pl.col(numeric).is_infinite()
     ).any()).item():
         raise RuntimeError(f"{day} 规范分钟线含非有限数值")
-    invalid = frame.filter(
-        (pl.col("low") > pl.col("high"))
-        | (pl.col("open") < pl.col("low")) | (pl.col("open") > pl.col("high"))
-        | (pl.col("close") < pl.col("low")) | (pl.col("close") > pl.col("high"))
-        | (pl.col("open") <= 0) | (pl.col("high") <= 0)
-        | (pl.col("low") <= 0) | (pl.col("close") <= 0)
-        | (pl.col("volume") < 0) | (pl.col("amount") < 0)
-    )
+    invalid = _invalid_market_rows(frame)
     if invalid.height:
         raise RuntimeError(f"{day} 有 {invalid.height} 根分钟线违反 OHLC/量额约束")
     mixed = frame.group_by("symbol").agg(pl.col("source").n_unique().alias("n")).filter(pl.col("n") != 1)
@@ -93,7 +112,9 @@ def canonical_minute_frame(warehouse: Warehouse, day: date) -> pl.DataFrame:
     symbols = _source_symbols(query, warehouse, day)
     if not symbols:
         return pl.from_arrow(schema.BAR_MINUTE_1M.empty_table())
-    selected = _regular_session(query.intraday_bars(symbols, day))
+    selected = _quarantine_invalid_symbol_days(
+        _regular_session(query.intraday_bars(symbols, day))
+    )
     frame = selected.rename({"dt": "ts"}).select(schema.BAR_MINUTE_1M.names)
     _validate(frame, day)
     return frame.sort(["symbol", "ts"])
