@@ -32,6 +32,8 @@ from qsys.markets.ashare import ashare_pipeline
 from qsys.strategy.deps import build_deps, intraday_quotes
 from qsys.strategy.loader import load_strategy
 from qsys.strategy.parameters import parameter_specs_from_file, validate_parameters
+from qsys.data.cutover import add_facade_argument, apply_facade_argument
+from qsys.data.cutover import CutoverConfig, CutoverMarketData
 def main() -> int:
     parser = argparse.ArgumentParser(description="通用回测运行器")
     parser.add_argument("--strategy", required=True, help="策略 .py 的路径")
@@ -47,7 +49,9 @@ def main() -> int:
                         help="传给策略的参数，可重复")
     parser.add_argument("--runs-dir", default="var/runs")
     parser.add_argument("--run-name", default=None)
+    add_facade_argument(parser)
     args = parser.parse_args()
+    apply_facade_argument(args.market_data_facade)
 
     start, end = date.fromisoformat(args.start), date.fromisoformat(args.end)
     raw_params: dict[str, str] = {}
@@ -112,7 +116,7 @@ def main() -> int:
         },
         metrics=metrics,
         decisions=getattr(selection, "decisions", ()),
-        regime=query.market_regime(),
+        regime=CutoverMarketData(query, CutoverConfig.from_env()).market_regime(),
         sessions=sessions,
     )
 

@@ -48,6 +48,23 @@ class CutoverConfig:
             ) from exc
 
 
+def add_facade_argument(parser) -> None:
+    """为入口脚本登记显式读取门面覆盖；未传时继续读取统一环境变量。"""
+    parser.add_argument(
+        "--market-data-facade",
+        choices=tuple(mode.value for mode in FacadeMode),
+        default=None,
+        help="行情读取门面；未传时读取 QSYS_MARKET_DATA_FACADE",
+    )
+
+
+def apply_facade_argument(value: str | None) -> CutoverConfig:
+    """应用 CLI 覆盖并返回最终配置，非法环境值仍失败关闭。"""
+    if value is not None:
+        os.environ["QSYS_MARKET_DATA_FACADE"] = FacadeMode(value).value
+    return CutoverConfig.from_env()
+
+
 class CutoverMarketData:
     """保持旧八列契约的显式双路门面；默认路径永远是 legacy。"""
 
@@ -99,10 +116,17 @@ class CutoverMarketData:
             return self._query.daily_flags(start, end)
         return self._query.market_flags_daily(None, start, end)
 
-    def market_regime(self, start: date, end: date) -> pl.DataFrame:
+    def market_regime(
+        self, start: date | None = None, end: date | None = None
+    ) -> pl.DataFrame:
         if self.config.mode is FacadeMode.LEGACY:
             return self._query.market_regime(start, end)
         return self._query.market_regime_daily(start, end)
+
+    def instruments(self) -> pl.DataFrame:
+        if self.config.mode is FacadeMode.LEGACY:
+            return self._query.instruments()
+        return self._query.security_master()
 
     def valuation(self, start: date, end: date) -> pl.DataFrame:
         if self.config.mode is FacadeMode.LEGACY:

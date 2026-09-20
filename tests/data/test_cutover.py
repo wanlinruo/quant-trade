@@ -17,6 +17,7 @@ from qsys.data.cutover import (
     CutoverMarketData,
     FacadeMode,
     StrategyComparison,
+    apply_facade_argument,
     audit_cutover,
 )
 from qsys.core.calendar import AShareCalendar
@@ -154,6 +155,15 @@ def test_invalid_cutover_mode_fails_closed(monkeypatch):
         assert "legacy 或 canonical" in str(exc)
     else:
         raise AssertionError("非法模式不应被接受")
+
+
+def test_cli_facade_override_updates_the_shared_process_setting(monkeypatch):
+    monkeypatch.setenv("QSYS_MARKET_DATA_FACADE", "legacy")
+
+    config = apply_facade_argument("canonical")
+
+    assert config.mode is FacadeMode.CANONICAL
+    assert CutoverConfig.from_env().mode is FacadeMode.CANONICAL
 
 
 def test_performance_evidence_checks_time_scan_shape_and_memory():

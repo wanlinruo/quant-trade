@@ -17,6 +17,7 @@ from qsys.backtest.fees import AShareFeeModel
 from qsys.backtest.metrics import compute_metrics
 from qsys.backtest.slippage import FixedRateSlippage
 from qsys.core.types import Symbol
+from qsys.data.cutover import CutoverConfig, CutoverMarketData
 from qsys.markets.ashare import ashare_pipeline
 from qsys.strategy.deps import build_deps, intraday_quotes
 from qsys.strategy.loader import load_strategy
@@ -28,8 +29,10 @@ def price_limit_loader(query) -> Callable[[date, date], dict[date, dict[Symbol, 
 
     缺行的股-日不出现在结果里，撮合按「买单拒绝、卖单放行」处理（D-19）。
     """
+    market_data = CutoverMarketData(query, CutoverConfig.from_env())
+
     def load(start: date, end: date) -> dict[date, dict[Symbol, tuple[float, float]]]:
-        frame = query.price_limits(None, start, end).filter(
+        frame = market_data.price_limits(None, start, end).filter(
             pl.col("limit_up").is_not_null() & pl.col("limit_down").is_not_null()
         )
         out: dict[date, dict[Symbol, tuple[float, float]]] = {}
@@ -106,7 +109,8 @@ def execute_backtest(
                 "cost_model": cost_label, "jq_compat": jq_compat,
                 "benchmark": "000300.SH", "universe_size": len(universe), **typed},
         metrics=metrics, decisions=getattr(selection, "decisions", ()),
-        regime=query.market_regime(), sessions=sessions, benchmark=benchmark,
+        regime=CutoverMarketData(query, CutoverConfig.from_env()).market_regime(),
+        sessions=sessions, benchmark=benchmark,
         strategy_source=strategy_source or strategy_file.read_text(encoding="utf-8"),
     )
     archive = staging / f"{staging.name}.zip"
