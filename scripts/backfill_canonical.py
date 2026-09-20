@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import argparse
-from datetime import date
+from datetime import date, timedelta
 import json
 from pathlib import Path
 import subprocess
@@ -142,22 +142,42 @@ def main() -> int:
                 **static_counts, "trading_calendar": calendar_rows
             }
 
-        if "daily" in selected:
-            lo, hi = _scope(_bounds(query, "tushare_daily"), args.start, args.end)
+        daily_requested = _scope(
+            _bounds(query, "tushare_daily"), args.start, args.end
+        ) if "daily" in selected else None
+        state_requested = _scope(
+            _bounds(query, "price_limits_daily"), args.start, args.end
+        ) if "state" in selected else None
+        flags_requested = _scope(
+            _bounds(query, "daily_flags"), args.start, args.end
+        ) if "state" in selected else None
+
+        if "daily" in selected or "state" in selected:
+            lo, hi = daily_requested or _scope(
+                _bounds(query, "tushare_daily"), args.start, args.end
+            )
+            if flags_requested is not None:
+                # flags 自身看回 150 天，regime 还需要请求起点前 30 天 flags。
+                support_lo = flags_requested[0] - timedelta(days=180)
+                lo = max(_bounds(query, "tushare_daily")[0], min(lo, support_lo))
             counts = backfill_daily(
                 warehouse, store, lo, hi, resume=args.resume
             )
-            counts["share_capital_history"] = build_share_capital_history(warehouse)
-            report["families"]["daily"] = counts
+            if "daily" in selected:
+                counts["share_capital_history"] = build_share_capital_history(warehouse)
+                report["families"]["daily"] = counts
+            else:
+                report["families"]["state_support_daily"] = counts
 
         if "state" in selected:
-            lo, hi = _scope(_bounds(query, "price_limits_daily"), args.start, args.end)
+            assert state_requested is not None and flags_requested is not None
+            lo, hi = state_requested
+            support_lo = flags_requested[0] - timedelta(days=180)
+            lo = max(_bounds(query, "price_limits_daily")[0], min(lo, support_lo))
             base = backfill_state_base(
                 warehouse, store, lo, hi, resume=args.resume
             )
-            flags_lo, flags_hi = _scope(
-                _bounds(query, "daily_flags"), args.start, args.end
-            )
+            flags_lo, flags_hi = flags_requested
             derived = backfill_state_derived(
                 warehouse, store, flags_lo, flags_hi, resume=args.resume
             )

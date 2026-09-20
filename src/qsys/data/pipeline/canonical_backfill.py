@@ -32,6 +32,7 @@ from qsys.data.pipeline.canonical_state import (
     require_canonical_state_sources,
     state_reconciliation,
 )
+from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
 
 
@@ -261,13 +262,26 @@ def backfill_state_derived(
     *,
     resume: bool = False,
 ) -> dict[str, int]:
-    return _backfill_state_family(
-        warehouse, store, start, end, family="state-derived", resume=resume,
+    query = WarehouseQuery(warehouse)
+    flags_bounds = query.dataset_bounds("daily_flags")
+    if flags_bounds is None:
+        raise RuntimeError("daily_flags 没有可回填范围")
+    # regime 的首日计算依赖此前 30 个自然日的 canonical flags。先发布
+    # 支撑窗口，再只从用户请求起点发布/验收 regime，避免分块首日失真。
+    flags_start = max(flags_bounds[0], start - timedelta(days=30))
+    flags = _backfill_state_family(
+        warehouse, store, flags_start, end, family="state-flags", resume=resume,
         builders={
             "market_flags_daily": build_market_flags_daily,
+        },
+    )
+    regime = _backfill_state_family(
+        warehouse, store, start, end, family="state-regime", resume=resume,
+        builders={
             "market_regime_daily": build_market_regime_daily,
         },
     )
+    return {**flags, **regime}
 
 
 def backfill_minutes(

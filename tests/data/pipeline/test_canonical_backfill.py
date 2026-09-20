@@ -1,6 +1,10 @@
-from datetime import date
+from datetime import date, timedelta
 
-from qsys.data.pipeline.canonical_backfill import ManifestStore
+from qsys.data.pipeline import canonical_backfill
+from qsys.data.pipeline.canonical_backfill import (
+    ManifestStore,
+    backfill_state_derived,
+)
 from qsys.data.pipeline.canonical_reference import Reconciliation
 
 
@@ -43,3 +47,37 @@ def test_manifest_refuses_failed_reconciliation(warehouse, tmp_path):
         assert "对账失败" in str(exc)
     else:
         raise AssertionError("failed reconciliation must not produce a manifest")
+
+
+def test_state_derived_builds_flags_support_before_requested_regime(
+    warehouse, tmp_path, monkeypatch
+):
+    start = DAY
+    calls = []
+
+    class Query:
+        def __init__(self, _warehouse):
+            pass
+
+        def dataset_bounds(self, dataset):
+            assert dataset == "daily_flags"
+            return start - timedelta(days=365), start
+
+    def fake_family(_warehouse, _store, lo, hi, *, family, builders, resume):
+        calls.append((family, lo, hi, tuple(builders)))
+        return {name: 1 for name in builders}
+
+    monkeypatch.setattr(canonical_backfill, "WarehouseQuery", Query)
+    monkeypatch.setattr(canonical_backfill, "_backfill_state_family", fake_family)
+    store = ManifestStore(
+        tmp_path / "state", warehouse, revision="a" * 40, minimum_free_gib=0
+    )
+
+    result = backfill_state_derived(warehouse, store, start, start, resume=True)
+
+    assert result == {"market_flags_daily": 1, "market_regime_daily": 1}
+    assert calls == [
+        ("state-flags", start - timedelta(days=30), start,
+         ("market_flags_daily",)),
+        ("state-regime", start, start, ("market_regime_daily",)),
+    ]
