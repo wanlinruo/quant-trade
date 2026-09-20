@@ -136,3 +136,21 @@ def test_old_and_new_facades_have_exact_migration_evidence(warehouse):
     )
     results = facade_reconciliation(WarehouseQuery(warehouse), DAY, DAY)
     assert all(result.matches for result in results.values())
+
+
+def test_facade_reconciliation_reads_minute_data_one_day_at_a_time(warehouse):
+    class DayBoundedQuery(WarehouseQuery):
+        def minute_bars(self, symbols, start, end):
+            assert start.date() == end.date()
+            return super().minute_bars(symbols, start, end)
+
+        def bar_minute_1m(self, symbols, start, end, *, columns=None):
+            assert start.date() == end.date()
+            return super().bar_minute_1m(
+                symbols, start, end, columns=columns
+            )
+
+    results = facade_reconciliation(
+        DayBoundedQuery(warehouse), DAY, DAY + timedelta(days=2)
+    )
+    assert results["minute"].matches
