@@ -33,6 +33,7 @@ from qsys.data.market_feed import MarketFeed
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
 from qsys.markets.ashare import ashare_pipeline
+from qsys.strategy.deps import build_universe
 from qsys.strategy.structural.selection import StructuralSelection
 from qsys.strategy.structural.strategy import (
     AUCTION_AT,
@@ -103,14 +104,7 @@ def main() -> int:
     feed = HistoricalFeed(query, calendar, market_data)
     market = MarketFeed(query, calendar, market_data)
 
-    instruments = query.instruments()
-    universe = [
-        Symbol.parse(s) for s in instruments["symbol"].to_list()
-        if not s.split(".")[0].startswith(("4", "8", "68"))
-    ]
-    boards = dict(
-        zip(instruments["symbol"].to_list(), instruments["board"].to_list())
-    )
+    universe, boards = build_universe(query.instruments())
 
     # 除权除息：持仓期间遇到除权，价格会掉，不处理就被当成亏损。
     # 全市场 6 万条，一期 bootstrap 时只有 3 只，回测入口此前根本没传。
