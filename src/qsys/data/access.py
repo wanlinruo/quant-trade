@@ -141,19 +141,33 @@ class StableMarketData:
 def facade_reconciliation(
     query: WarehouseQuery, start: date, end: date
 ) -> dict[str, Reconciliation]:
-    """迁移证据：把旧生产门面规范化后与阶段 8 历史门面逐键逐值比较。"""
+    """迁移证据：逐日比较新旧门面，避免把多日分钟线同时载入内存。"""
     old_daily = query.daily_bars(None, start, end)
     new_daily = query.bar_daily(None, start, end).select(old_daily.columns)
-    lo, hi = datetime.combine(start, datetime.min.time()), datetime.combine(
-        end, datetime.max.time()
-    )
-    old_minute = query.minute_bars(None, lo, hi).with_columns(
-        pl.col("volume").cast(pl.Float64)
-    )
-    new_minute = query.bar_minute_1m(None, lo, hi).rename({"ts": "dt"}).select(
-        old_minute.columns
+    minute_results: list[Reconciliation] = []
+    current = start
+    while current <= end:
+        lo = datetime.combine(current, datetime.min.time())
+        hi = datetime.combine(current, datetime.max.time())
+        old_minute = query.minute_bars(None, lo, hi).with_columns(
+            pl.col("volume").cast(pl.Float64)
+        )
+        new_minute = query.bar_minute_1m(None, lo, hi).rename(
+            {"ts": "dt"}
+        ).select(old_minute.columns)
+        minute_results.append(reconcile_frames(
+            old_minute, new_minute, ("symbol", "dt")
+        ))
+        current += timedelta(days=1)
+
+    minute = Reconciliation(
+        sum(result.left_rows for result in minute_results),
+        sum(result.right_rows for result in minute_results),
+        tuple(key for result in minute_results for key in result.left_only),
+        tuple(key for result in minute_results for key in result.right_only),
+        tuple(key for result in minute_results for key in result.mismatched),
     )
     return {
         "daily": reconcile_frames(old_daily, new_daily, ("symbol", "dt")),
-        "minute": reconcile_frames(old_minute, new_minute, ("symbol", "dt")),
+        "minute": minute,
     }
