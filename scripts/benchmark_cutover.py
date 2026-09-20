@@ -116,6 +116,7 @@ def main() -> None:
             legacy["scanned_files"], canonical["scanned_files"],
             legacy["scanned_columns"], canonical["scanned_columns"],
             legacy["peak_mb"], canonical["peak_mb"], args.max_regression_ratio,
+            legacy["rows"], canonical["rows"],
         ))
     payload = json.dumps(
         [asdict(item) for item in comparisons], ensure_ascii=False, indent=2

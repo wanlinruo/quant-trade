@@ -91,6 +91,8 @@ class BenchmarkComparison:
     legacy_peak_mb: float
     canonical_peak_mb: float
     max_regression_ratio: float = 1.0
+    legacy_rows: int = 0
+    canonical_rows: int = 0
 
     @property
     def passed(self) -> bool:
@@ -104,6 +106,8 @@ class BenchmarkComparison:
             and self.legacy_peak_mb >= 0
             and self.canonical_peak_mb >= 0
             and self.max_regression_ratio > 0
+            and self.legacy_rows > 0
+            and self.canonical_rows == self.legacy_rows
             and self.canonical_ms <= self.legacy_ms * self.max_regression_ratio
             and self.canonical_scanned_files <= self.legacy_scanned_files
             and self.canonical_scanned_columns <= self.legacy_scanned_columns
@@ -243,6 +247,7 @@ def audit_cutover(
     performance_ok = bool(performance) and all(item.passed for item in performance)
     performance_detail = "缺少性能基准证据" if not performance else "; ".join(
         f"{item.name}={item.canonical_ms:.3f}/{item.legacy_ms:.3f}ms "
+        f"rows={item.canonical_rows}/{item.legacy_rows}, "
         f"files={item.canonical_scanned_files}/{item.legacy_scanned_files}, "
         f"columns={item.canonical_scanned_columns}/{item.legacy_scanned_columns}, "
         f"peak={item.canonical_peak_mb:.1f}/{item.legacy_peak_mb:.1f}MB "

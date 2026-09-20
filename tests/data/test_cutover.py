@@ -125,19 +125,30 @@ def test_invalid_cutover_mode_fails_closed(monkeypatch):
 
 
 def test_performance_evidence_checks_time_scan_shape_and_memory():
-    baseline = BenchmarkComparison("daily", 10.0, 10.0, 2, 2, 8, 8, 20.0, 20.0)
+    rows = {"legacy_rows": 100, "canonical_rows": 100}
+    baseline = BenchmarkComparison(
+        "daily", 10.0, 10.0, 2, 2, 8, 8, 20.0, 20.0, **rows
+    )
     assert baseline.passed
     assert not BenchmarkComparison(
-        "slower", 10.0, 10.1, 2, 2, 8, 8, 20.0, 20.0
+        "slower", 10.0, 10.1, 2, 2, 8, 8, 20.0, 20.0, **rows
     ).passed
     assert not BenchmarkComparison(
-        "more-files", 10.0, 9.0, 2, 3, 8, 8, 20.0, 19.0
+        "more-files", 10.0, 9.0, 2, 3, 8, 8, 20.0, 19.0, **rows
     ).passed
     assert not BenchmarkComparison(
-        "more-columns", 10.0, 9.0, 2, 2, 8, 9, 20.0, 19.0
+        "more-columns", 10.0, 9.0, 2, 2, 8, 9, 20.0, 19.0, **rows
     ).passed
     assert not BenchmarkComparison(
-        "more-memory", 10.0, 9.0, 2, 2, 8, 8, 20.0, 20.1
+        "more-memory", 10.0, 9.0, 2, 2, 8, 8, 20.0, 20.1, **rows
+    ).passed
+    assert not BenchmarkComparison(
+        "empty-target", 0.1, 0.1, 0, 0, 8, 8, 20.0, 20.0,
+        legacy_rows=100, canonical_rows=0,
+    ).passed
+    assert not BenchmarkComparison(
+        "missing-row", 10.0, 9.0, 2, 2, 8, 8, 20.0, 19.0,
+        legacy_rows=100, canonical_rows=99,
     ).passed
 
 
@@ -163,8 +174,14 @@ def test_all_cutover_conditions_can_pass_with_explicit_evidence(warehouse):
         WarehouseQuery(warehouse), DAY, DAY,
         commit_sha="a" * 40, release_clean=True,
         performance=(
-            BenchmarkComparison("daily", 10.0, 9.0, 2, 1, 8, 8, 20.0, 18.0),
-            BenchmarkComparison("minute", 20.0, 20.0, 5, 1, 8, 8, 30.0, 30.0),
+            BenchmarkComparison(
+                "daily", 10.0, 9.0, 2, 1, 8, 8, 20.0, 18.0,
+                legacy_rows=1, canonical_rows=1,
+            ),
+            BenchmarkComparison(
+                "minute", 20.0, 20.0, 5, 1, 8, 8, 30.0, 30.0,
+                legacy_rows=1, canonical_rows=1,
+            ),
         ),
         strategy=StrategyComparison(
             True, 3, "same-digest", "same-digest", "三组策略输入逐键一致"
