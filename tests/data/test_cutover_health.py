@@ -1,7 +1,10 @@
 from datetime import datetime
 
+import polars as pl
+
 from qsys.data.catalog.health import HealthStatus
 from qsys.data.cutover_health import (
+    _check_canonical_relation,
     _combine_evidence,
     _reconciliation_evidence,
     canonical_required_relations,
@@ -62,3 +65,27 @@ def test_required_canonical_relations_are_generated_and_persisted(warehouse):
     stored = WarehouseQuery(warehouse).relation_checks()
     assert stored.height == len(relations)
     assert set(stored["status"].to_list()) == {HealthStatus.GREEN.value}
+
+
+def test_bar_status_relation_allows_suspended_status_without_bar():
+    dependency = next(
+        edge for edge in canonical_required_relations()
+        if (edge.upstream, edge.downstream)
+        == ("bar_daily", "security_status_daily")
+    )
+    bars = pl.DataFrame({"symbol": ["A"], "dt": [NOW.date()]})
+    statuses = pl.DataFrame({
+        "symbol": ["A", "SUSPENDED"], "dt": [NOW.date(), NOW.date()]
+    })
+
+    good = _check_canonical_relation(dependency, bars, statuses, NOW)
+    missing = _check_canonical_relation(
+        dependency,
+        pl.DataFrame({"symbol": ["A", "B"], "dt": [NOW.date(), NOW.date()]}),
+        statuses,
+        NOW,
+    )
+
+    assert good.evidence.status is HealthStatus.GREEN
+    assert missing.evidence.status is HealthStatus.RED
+    assert missing.orphan_rows == 1

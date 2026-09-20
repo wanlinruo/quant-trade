@@ -173,6 +173,30 @@ def canonical_required_relations():
     )
 
 
+def _check_canonical_relation(
+    dependency,
+    upstream: pl.DataFrame,
+    downstream: pl.DataFrame,
+    observed_at: datetime,
+    *,
+    upstream_published_at: datetime | None = None,
+    downstream_published_at: datetime | None = None,
+):
+    # security_status_daily 合法包含没有日线的停牌日。这里要验证的是每根
+    # bar 都有状态，而不是每条状态都有 bar；刷新顺序仍按原始血缘方向。
+    frames = (
+        (downstream, upstream)
+        if (dependency.upstream, dependency.downstream)
+        == ("bar_daily", "security_status_daily")
+        else (upstream, downstream)
+    )
+    return check_dependency(
+        dependency, *frames, observed_at,
+        upstream_published_at=upstream_published_at,
+        downstream_published_at=downstream_published_at,
+    )
+
+
 def generate_cutover_relations(
     warehouse: Warehouse,
     start: date,
@@ -197,7 +221,7 @@ def generate_cutover_relations(
         return cache[dataset]
 
     for dependency in canonical_required_relations():
-        result = check_dependency(
+        result = _check_canonical_relation(
             dependency,
             target(dependency.upstream),
             target(dependency.downstream),
