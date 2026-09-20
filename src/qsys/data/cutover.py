@@ -68,7 +68,11 @@ class CutoverMarketData:
         self, symbols: Sequence[str] | None, start: datetime, end: datetime
     ) -> pl.DataFrame:
         if self.config.mode is FacadeMode.LEGACY:
-            return self._query.minute_bars(symbols, start, end)
+            # 规范表允许外部源出现小数手数。双路门面必须向消费者提供同一
+            # 物理类型，否则切换前后的策略输入和性能比较都不是同一契约。
+            return self._query.minute_bars(symbols, start, end).with_columns(
+                pl.col("volume").cast(pl.Float64)
+            )
         return (
             self._query.historical_minute_bars(
                 symbols, start, end,
