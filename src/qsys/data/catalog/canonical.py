@@ -111,7 +111,8 @@ def _metrics() -> list[Metric]:
         "is_st": (("stock_st_daily.is_st", "delisting_pool.symbol"),
                   "ST 真值；退市整理状态显式覆盖为 false"),
         "is_suspended": (("suspend_daily.suspend_type", "bar_daily.symbol"),
-                         "停牌事件为 true，复牌或存在当日行情为 false，其余未知"),
+                         "当日存在停牌事件为 true；同日兼有复牌事件时仍保留曾停牌事实；"
+                         "仅复牌或存在当日行情为 false，其余未知"),
         "is_delisting": (("delisting_pool.symbol", "bar_daily.symbol"),
                          "处于已公告退市整理区间"),
         "st_source": (("stock_st_daily.is_st", "delisting_pool.symbol"), "ST 状态来源"),
