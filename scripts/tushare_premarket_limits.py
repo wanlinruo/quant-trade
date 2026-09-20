@@ -15,6 +15,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from qsys.data.pipeline.premarket import run_premarket_limits
+from qsys.data.pipeline.canonical_publish import publish_premarket
 from qsys.data.providers.tushare import TushareProvider
 from qsys.data.providers.tushare_client import TushareClient
 from qsys.data.storage import Warehouse
@@ -62,6 +63,14 @@ def main() -> int:
             step.rows = WarehouseQuery(warehouse).price_limits(None, day, day).height
             if code != 0:
                 step.fail(f"{DEADLINE:%H:%M} 仍未取到完整数据；盘中缺价标的买单拒绝、卖单放行")
+        if code == 0:
+            with run.step(
+                "canonical 涨跌停价", interface="price_limits_daily → price_limit_daily",
+                table="price_limit_daily",
+            ) as step:
+                published = publish_premarket(warehouse, day)
+                step.rows = published.counts["price_limit_daily"]
+                step.detail = "写后逐键逐字段对账通过"
         print(f"{day} 盘前涨跌停价：{'完成' if code == 0 else '到点仍未取到完整数据'}")
         return code
 

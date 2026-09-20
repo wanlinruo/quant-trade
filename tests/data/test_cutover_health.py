@@ -1,7 +1,16 @@
 from datetime import datetime
 
+import polars as pl
+
 from qsys.data.catalog.health import HealthStatus
-from qsys.data.cutover_health import _combine_evidence, _reconciliation_evidence
+from qsys.data.cutover_health import (
+    _check_canonical_relation,
+    _combine_evidence,
+    _reconciliation_evidence,
+    canonical_required_relations,
+    generate_cutover_relations,
+)
+from qsys.data.query import WarehouseQuery
 from qsys.data.pipeline.canonical_reference import Reconciliation
 
 
@@ -42,3 +51,41 @@ def test_combined_partition_evidence_keeps_worst_status():
     assert combined.status is HealthStatus.RED
     assert combined.checked_rows == 19
     assert combined.violations == 1
+
+
+def test_required_canonical_relations_are_generated_and_persisted(warehouse):
+    relations = canonical_required_relations()
+
+    summary = generate_cutover_relations(
+        warehouse, NOW.date(), NOW.date(), now=NOW
+    )
+
+    assert len(relations) == 7
+    assert set(summary.values()) == {HealthStatus.GREEN}
+    stored = WarehouseQuery(warehouse).relation_checks()
+    assert stored.height == len(relations)
+    assert set(stored["status"].to_list()) == {HealthStatus.GREEN.value}
+
+
+def test_bar_status_relation_allows_suspended_status_without_bar():
+    dependency = next(
+        edge for edge in canonical_required_relations()
+        if (edge.upstream, edge.downstream)
+        == ("bar_daily", "security_status_daily")
+    )
+    bars = pl.DataFrame({"symbol": ["A"], "dt": [NOW.date()]})
+    statuses = pl.DataFrame({
+        "symbol": ["A", "SUSPENDED"], "dt": [NOW.date(), NOW.date()]
+    })
+
+    good = _check_canonical_relation(dependency, bars, statuses, NOW)
+    missing = _check_canonical_relation(
+        dependency,
+        pl.DataFrame({"symbol": ["A", "B"], "dt": [NOW.date(), NOW.date()]}),
+        statuses,
+        NOW,
+    )
+
+    assert good.evidence.status is HealthStatus.GREEN
+    assert missing.evidence.status is HealthStatus.RED
+    assert missing.orphan_rows == 1

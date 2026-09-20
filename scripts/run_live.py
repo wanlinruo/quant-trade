@@ -17,6 +17,7 @@ from qsys.agent.locking import single_instance
 from qsys.paper.quotes import QuoteClient
 from qsys.ops.alerts import AlertBus, LogAlertSink, WebhookAlertSink
 from qsys.paper.calendar import load_trading_calendar
+from qsys.data.cutover import add_facade_argument, apply_facade_argument
 
 log = structlog.get_logger("live-core")
 
@@ -29,7 +30,9 @@ def main() -> int:
     parser.add_argument("--config", default=None)
     parser.add_argument("--poll", type=float, default=1.0)
     parser.add_argument("--lock", default="var/live-core.lock")
+    add_facade_argument(parser)
     args = parser.parse_args()
+    apply_facade_argument(args.market_data_facade)
 
     config = load_deploy_config(args.config)
     if config.safety.mode != "live" or not config.safety.orders_enabled:

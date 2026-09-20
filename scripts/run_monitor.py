@@ -129,6 +129,8 @@ def _daily_trading_calendar(config_path: str | None):
 
 
 def main() -> int:
+    from qsys.data.cutover import add_facade_argument, apply_facade_argument
+
     parser = argparse.ArgumentParser(description="量化监控与回测工作台")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
@@ -154,7 +156,9 @@ def main() -> int:
     parser.add_argument("--tushare-config", default=None,
                         help="只取 [tushare] 凭据查交易日历；不给则用 --config。"
                              "测试环境用它避免连到生产 Redis")
+    add_facade_argument(parser)
     args = parser.parse_args()
+    apply_facade_argument(args.market_data_facade)
 
     if args.host == "0.0.0.0":  # noqa: S104 - 刻意检查
         log.warning(

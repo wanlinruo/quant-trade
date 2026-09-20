@@ -13,11 +13,16 @@ from qsys.data.catalog.health import (
     HealthReason,
     HealthStatus,
     check_table_contract,
+    check_dependency,
     dataset_check_frame,
     freshness_evidence,
     policy_for,
+    relation_check_frame,
     write_dataset_checks,
+    write_relation_checks,
 )
+from qsys.data.catalog import DEPENDENCIES
+from qsys.data.catalog.types import DependencyRequirement
 from qsys.data.cutover import CANONICAL_CUTOVER_DATASETS
 from qsys.data.pipeline.canonical_daily import daily_reconciliation
 from qsys.data.pipeline.canonical_minute import canonical_minute_frame
@@ -157,6 +162,83 @@ def _target_frame(
     return readers[dataset]()
 
 
+def canonical_required_relations():
+    """返回规范表之间、会阻断切换的已登记依赖。"""
+    canonical = set(CANONICAL_CUTOVER_DATASETS)
+    return tuple(
+        dependency for dependency in DEPENDENCIES
+        if dependency.upstream in canonical
+        and dependency.downstream in canonical
+        and dependency.requirement is DependencyRequirement.REQUIRED
+    )
+
+
+def _check_canonical_relation(
+    dependency,
+    upstream: pl.DataFrame,
+    downstream: pl.DataFrame,
+    observed_at: datetime,
+    *,
+    upstream_published_at: datetime | None = None,
+    downstream_published_at: datetime | None = None,
+):
+    # security_status_daily 合法包含没有日线的停牌日。这里要验证的是每根
+    # bar 都有状态，而不是每条状态都有 bar；刷新顺序仍按原始血缘方向。
+    frames = (
+        (downstream, upstream)
+        if (dependency.upstream, dependency.downstream)
+        == ("bar_daily", "security_status_daily")
+        else (upstream, downstream)
+    )
+    return check_dependency(
+        dependency, *frames, observed_at,
+        upstream_published_at=upstream_published_at,
+        downstream_published_at=downstream_published_at,
+    )
+
+
+def generate_cutover_relations(
+    warehouse: Warehouse,
+    start: date,
+    end: date,
+    *,
+    now: datetime | None = None,
+    run_id: str | None = None,
+) -> dict[tuple[str, str], HealthStatus]:
+    """重算并持久化规范表之间的 Join、基数和孤儿行证据。"""
+    if start > end:
+        raise ValueError("start must not be after end")
+    now = now or datetime.now()
+    run_id = run_id or f"cutover-rel-{now:%Y%m%dT%H%M%S%f}"
+    query = WarehouseQuery(warehouse)
+    frames: list[pl.DataFrame] = []
+    summary: dict[tuple[str, str], HealthStatus] = {}
+    cache: dict[str, pl.DataFrame] = {}
+
+    def target(dataset: str) -> pl.DataFrame:
+        if dataset not in cache:
+            cache[dataset] = _target_frame(query, dataset, start, end)
+        return cache[dataset]
+
+    for dependency in canonical_required_relations():
+        result = _check_canonical_relation(
+            dependency,
+            target(dependency.upstream),
+            target(dependency.downstream),
+            now,
+            upstream_published_at=_published_at(warehouse.root, dependency.upstream),
+            downstream_published_at=_published_at(warehouse.root, dependency.downstream),
+        )
+        frames.append(relation_check_frame(
+            run_id, now, dependency, result,
+            scope_start=start, scope_end=end,
+        ))
+        summary[(dependency.upstream, dependency.downstream)] = result.evidence.status
+    if frames:
+        write_relation_checks(warehouse, pl.concat(frames, how="vertical"))
+    return summary
+
+
 def generate_cutover_health(
     warehouse: Warehouse,
     start: date,
@@ -260,4 +342,7 @@ def generate_cutover_health(
         (item.status for item in minute_evidence), key=_STATUS_ORDER.__getitem__
     )
     write_dataset_checks(warehouse, pl.concat(frames, how="vertical"))
+    generate_cutover_relations(
+        warehouse, start, end, now=now, run_id=run_id
+    )
     return summary

@@ -56,7 +56,7 @@ class HistoricalFeed(DataFeed):
         self._query = query
         self._calendar = calendar
         self._market_data = market_data or CutoverMarketData(
-            query, CutoverConfig()
+            query, CutoverConfig.from_env()
         )
 
     def _last_visible_session(self, as_of: datetime) -> date | None:

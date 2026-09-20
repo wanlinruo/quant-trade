@@ -22,6 +22,19 @@ def _is_private_host(host: str) -> bool:
         return False
 
 
+def heartbeat_freshness(
+    beat: Heartbeat | None, now: datetime | None = None
+) -> tuple[bool, float, float]:
+    """按发送端声明节奏应用与健康观察器一致的 3 倍失联余量。"""
+    if beat is None:
+        return False, float("inf"), 10.0
+    now = now or datetime.now(tz=beat.at.tzinfo)
+    age = (now - beat.at).total_seconds()
+    expected = beat.expected_interval_s or 1.0
+    down_after = max(10.0, expected * 3.0)
+    return -1 <= age <= down_after, age, down_after
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="实盘盘前只读检查")
     parser.add_argument("--config", default=None)
@@ -60,9 +73,9 @@ def main() -> int:
     for source in ("agent", "market"):
         raw = transport.get_key(f"{cfg.streams.heartbeat}:{source}")
         beat = Heartbeat.model_validate_json(raw) if raw else None
-        age = (datetime.now() - beat.at).total_seconds() if beat else float("inf")
-        checks.append((beat is not None and -1 <= age <= 10,
-                       f"{source} 心跳新鲜度 {age:.1f}s"))
+        fresh, age, threshold = heartbeat_freshness(beat)
+        checks.append((fresh,
+                       f"{source} 心跳新鲜度 {age:.1f}s（阈值 {threshold:.1f}s）"))
 
     for ok, label in checks:
         print(f"[{'PASS' if ok else 'FAIL'}] {label}")

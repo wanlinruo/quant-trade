@@ -25,6 +25,11 @@ from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
 
 _LOOKBACK_DAYS = 150
+_REGIME_FLOAT_TOLERANCES = {
+    field.name: (1e-12, 1e-12)
+    for field in schema.MARKET_REGIME_DAILY
+    if str(field.type) == "double"
+}
 
 
 def _require_unique(frame: pl.DataFrame, keys: tuple[str, ...], source: str) -> None:
@@ -309,6 +314,6 @@ def state_reconciliation(
         ),
         "market_regime_daily": reconcile_frames(
             query.market_regime(start, end), query.market_regime_daily(start, end),
-            ("dt",),
+            ("dt",), float_tolerances=_REGIME_FLOAT_TOLERANCES,
         ),
     }

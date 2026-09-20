@@ -21,6 +21,7 @@ from qsys.data.pipeline.tushare_sync import (
     refresh_derived,
     sync,
 )
+from qsys.data.pipeline.canonical_publish import publish_postclose
 from qsys.data.providers.tushare import TushareProvider
 from qsys.data.providers.tushare_client import TushareClient
 from qsys.data.storage import Warehouse
@@ -70,6 +71,25 @@ def after_sync(warehouse: Warehouse, day: date, *, ok: bool,
             step.warn(f"阻断级指标结果未通过 {blocking} 条，详见服务质检与数据管理 → 指标字典")
 
 
+def publish_canonical_after_sync(
+    provider: TushareProvider,
+    warehouse: Warehouse,
+    day: date,
+    *,
+    run: ServiceRun | None = None,
+) -> dict[str, int]:
+    """legacy 事实和派生完成后发布 canonical；失败必须使同步任务失败。"""
+    raw_calendar = provider.trade_cal(day, day, exchange="SSE")
+    with record_step(
+        run, "canonical 收盘发布", interface="legacy → canonical",
+        table="bar_daily / state / reference",
+    ) as step:
+        result = publish_postclose(warehouse, raw_calendar, day)
+        step.rows = sum(result.counts.values())
+        step.detail = f"{len(result.reconciled)} 张表写后对账通过"
+    return result.counts
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--warehouse", type=Path, default=Path("warehouse"))
@@ -95,10 +115,14 @@ def main() -> int:
         run.session = day
 
         warehouse = Warehouse(args.warehouse)
-        counts = sync(TushareProvider(client), warehouse, day, run=run)
+        provider = TushareProvider(client)
+        counts = sync(provider, warehouse, day, run=run)
         # 次日开盘前选股要用次日的退市整理期池，今晚一并建好
         next_session = next_open_day(client, day)
         counts.update(refresh_derived(warehouse, day, run=run, next_session=next_session))
+        counts.update(publish_canonical_after_sync(
+            provider, warehouse, day, run=run
+        ))
         after_sync(warehouse, day, ok=True, run=run)
     print(f"=== {day} ===")
     for name, rows in counts.items():

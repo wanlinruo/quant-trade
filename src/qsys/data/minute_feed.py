@@ -36,7 +36,7 @@ class MinuteFeed:
     ) -> None:
         self._query = query
         self._market_data = market_data or CutoverMarketData(
-            query, CutoverConfig()
+            query, CutoverConfig.from_env()
         )
 
     def get(

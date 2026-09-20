@@ -27,7 +27,9 @@ from qsys.backtest.runner import price_limit_loader
 from qsys.backtest.slippage import FixedRateSlippage
 from qsys.core.calendar import AShareCalendar
 from qsys.core.types import Symbol
-from qsys.data.cutover import CutoverConfig, CutoverMarketData
+from qsys.data.cutover import (
+    CutoverConfig, CutoverMarketData, add_facade_argument, apply_facade_argument,
+)
 from qsys.data.feed import HistoricalFeed
 from qsys.data.market_feed import MarketFeed
 from qsys.data.query import WarehouseQuery
@@ -92,19 +94,21 @@ def main() -> int:
         "--jq-compat", action="store_true",
         help="成本口径切成聚宽默认值，用于逐笔对账（见下方 _cost_model）",
     )
+    add_facade_argument(parser)
     args = parser.parse_args()
+    apply_facade_argument(args.market_data_facade)
 
     start, end = date.fromisoformat(args.start), date.fromisoformat(args.end)
     warehouse = Warehouse(Path(args.warehouse))
     query = WarehouseQuery(warehouse)
     market_data = CutoverMarketData(query, CutoverConfig.from_env())
 
-    sessions = sorted(query.market_regime()["dt"].to_list())
+    sessions = sorted(market_data.market_regime()["dt"].to_list())
     calendar = AShareCalendar(sessions)
     feed = HistoricalFeed(query, calendar, market_data)
     market = MarketFeed(query, calendar, market_data)
 
-    universe, boards = build_universe(query.instruments())
+    universe, boards = build_universe(market_data.instruments())
 
     # 除权除息：持仓期间遇到除权，价格会掉，不处理就被当成亏损。
     # 全市场 6 万条，一期 bootstrap 时只有 3 只，回测入口此前根本没传。
@@ -207,7 +211,7 @@ def main() -> int:
         },
         metrics=metrics_map,
         decisions=getattr(selection, "decisions", ()),
-        regime=query.market_regime(),
+        regime=market_data.market_regime(),
         sessions=sessions,
     )
     print(f"运行目录 {run_dir}   （zip: {run_dir.name}.zip）")

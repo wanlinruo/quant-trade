@@ -122,3 +122,11 @@ def test_preflight_reports_every_missing_source_before_partial_publish(warehouse
     assert any("share_capital" in item for item in issues)
     assert any("adj_factors" in item for item in issues)
     assert not (warehouse.root / "bar_daily").exists()
+
+
+def test_adjustment_factor_query_pushes_down_date_range(warehouse):
+    _seed(warehouse)
+    query = WarehouseQuery(warehouse)
+    assert query.adj_factors(start=D2, end=D2)["dt"].to_list() == [D2]
+    with pytest.raises(ValueError, match="together"):
+        query.adj_factors(start=D1)
