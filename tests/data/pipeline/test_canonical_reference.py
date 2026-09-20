@@ -12,6 +12,7 @@ from qsys.data.pipeline.canonical_reference import (
     name_interval_issues,
     normalize_trading_calendar,
     publish_trading_calendar,
+    reconcile_frames,
     reference_reconciliation,
     reference_preflight,
     require_reference_sources,
@@ -144,3 +145,21 @@ def test_name_interval_validator_reports_without_filling():
     issues = name_interval_issues(frame)
     assert [item.kind for item in issues] == ["overlap", "gap"]
     assert frame.height == 3
+
+
+def test_reconciliation_uses_tolerance_only_for_explicit_float_columns():
+    left = pl.DataFrame({"id": [1], "value": [1.0], "strict": [2.0]})
+    right = pl.DataFrame({"id": [1], "value": [1.0 + 1e-14], "strict": [2.0 + 1e-14]})
+    result = reconcile_frames(
+        left, right, ("id",), float_tolerances={"value": (1e-12, 1e-12)}
+    )
+    assert result.mismatched == ((1,),)
+
+    fully_tolerant = reconcile_frames(
+        left, right, ("id",),
+        float_tolerances={
+            "value": (1e-12, 1e-12),
+            "strict": (1e-12, 1e-12),
+        },
+    )
+    assert fully_tolerant.matches

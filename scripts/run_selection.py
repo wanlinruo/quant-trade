@@ -25,6 +25,8 @@ from qsys.data.feed import HistoricalFeed
 from qsys.data.market_feed import MarketFeed
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
+from qsys.data.cutover import add_facade_argument, apply_facade_argument
+from qsys.data.cutover import CutoverMarketData
 from qsys.strategy.structural.selection import StructuralSelection
 
 
@@ -40,16 +42,19 @@ def main() -> int:
         action="store_false",
         help="近似版：分钟线缺失时跳过 LOW_MAIN 的竞价量过滤",
     )
+    add_facade_argument(parser)
     args = parser.parse_args()
+    facade_config = apply_facade_argument(args.market_data_facade)
 
     start = date.fromisoformat(args.start)
     end = date.fromisoformat(args.end)
     warehouse = Warehouse(Path(args.warehouse))
     query = WarehouseQuery(warehouse)
+    market_data = CutoverMarketData(query, facade_config)
 
     # 交易日历取自实际有日线的日子——比另配一份日历更不容易走样
     sessions = sorted(
-        query.market_regime()["dt"].to_list()
+        market_data.market_regime()["dt"].to_list()
     )
     if not sessions:
         print("仓库里没有生态因子，先跑 daily_archive")
@@ -57,8 +62,8 @@ def main() -> int:
     calendar = AShareCalendar(sessions)
 
     selector = StructuralSelection(
-        HistoricalFeed(query, calendar),
-        MarketFeed(query, calendar),
+        HistoricalFeed(query, calendar, market_data),
+        MarketFeed(query, calendar, market_data),
         query,
         require_auction_volume=args.require_auction_volume,
     )

@@ -166,7 +166,7 @@ class MarketFeed:
         self._query = query
         self._calendar = calendar
         self._market_data = market_data or CutoverMarketData(
-            query, CutoverConfig()
+            query, CutoverConfig.from_env()
         )
 
     def bind(self, as_of: datetime) -> BoundMarket:

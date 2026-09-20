@@ -19,6 +19,7 @@ from qsys.data.coverage import DatasetCoverage, coverage
 from qsys.data.access import StableMarketData
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
+from qsys.data.cutover import CutoverConfig, CutoverMarketData
 from qsys.live.messages import MarketOverviewSnapshot, MarketSchedule
 from qsys.live.transport import Transport
 
@@ -35,6 +36,9 @@ class DataService:
         self._warehouse = warehouse
         self._query = WarehouseQuery(warehouse)
         self._stable = StableMarketData(self._query)
+        self._market_data = CutoverMarketData(
+            self._query, CutoverConfig.from_env()
+        )
 
     def historical_daily_bars(
         self, symbols: list[str] | None, start: date, end: date
@@ -80,20 +84,20 @@ class DataService:
     # ---- 市场生态因子 ----
 
     def regime(self, limit: int = 60) -> pl.DataFrame:
-        frame = self._query.market_regime()
+        frame = self._market_data.market_regime()
         if frame.height == 0:
             return frame
         return frame.sort("dt").tail(limit)
 
     def regime_series(self, column: str, limit: int = 250) -> list[float]:
-        frame = self._query.market_regime()
+        frame = self._market_data.market_regime()
         if frame.height == 0 or column not in frame.columns:
             return []
         values = frame.sort("dt").tail(limit)[column].to_list()
         return [float(v) for v in values if v is not None]
 
     def latest_session(self) -> date | None:
-        frame = self._query.market_regime()
+        frame = self._market_data.market_regime()
         return frame["dt"].max() if frame.height else None
 
 

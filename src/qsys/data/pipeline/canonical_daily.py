@@ -38,7 +38,7 @@ def canonical_daily_preflight(
         None, start, end, columns=["symbol", "dt"]
     )
     capital = query.share_capital()
-    factors = query.adj_factors().filter(pl.col("dt").is_between(start, end))
+    factors = query.adj_factors(start=start, end=end)
     issues: list[str] = []
     for name, frame, keys in (
         ("tushare_daily", daily, ("symbol", "dt")),
@@ -143,7 +143,7 @@ def build_adjustment_factor_daily(
     warehouse: Warehouse, start: date, end: date
 ) -> int:
     query = WarehouseQuery(warehouse)
-    source = query.adj_factors().filter(pl.col("dt").is_between(start, end))
+    source = query.adj_factors(start=start, end=end)
     if source.height == 0:
         return 0
     fresh = source.select(
@@ -174,9 +174,7 @@ def daily_reconciliation(
         pl.col("total").alias("total_shares"),
         pl.col("circulating").alias("circulating_shares"),
     )
-    factor_source = query.adj_factors().filter(
-        pl.col("dt").is_between(start, end)
-    ).select(
+    factor_source = query.adj_factors(start=start, end=end).select(
         "symbol", "dt", pl.col("cum_factor").alias("price_factor"),
         pl.col("cum_share_factor").alias("share_factor"),
     )

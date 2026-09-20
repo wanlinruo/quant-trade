@@ -57,12 +57,12 @@ def build_deps(warehouse_root: Path, params: dict | None = None):
     query = WarehouseQuery(warehouse)
     market_data = CutoverMarketData(query, CutoverConfig.from_env())
 
-    sessions: list[date] = sorted(query.market_regime()["dt"].to_list())
+    sessions: list[date] = sorted(market_data.market_regime()["dt"].to_list())
     calendar = AShareCalendar(sessions)
     feed = HistoricalFeed(query, calendar, market_data)
     market = MarketFeed(query, calendar, market_data)
 
-    instruments = query.instruments()
+    instruments = market_data.instruments()
     universe, boards = build_universe(instruments)
 
     deps = StrategyDeps(

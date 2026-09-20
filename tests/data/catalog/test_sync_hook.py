@@ -59,6 +59,10 @@ def test_main_calls_hook_after_facts_and_derived_refresh(monkeypatch, tmp_path):
         lambda warehouse, day, run=None, next_session=None: events.append("derived") or {"derived": 1},
     )
     monkeypatch.setattr(
+        tushare_daily_sync, "publish_canonical_after_sync",
+        lambda provider, warehouse, day, run=None: events.append("canonical") or {"canonical": 1},
+    )
+    monkeypatch.setattr(
         tushare_daily_sync, "after_sync",
         lambda warehouse, day, ok, run=None: events.append(("verify", ok)),
     )
@@ -69,5 +73,5 @@ def test_main_calls_hook_after_facts_and_derived_refresh(monkeypatch, tmp_path):
          "--service-runs", str(tmp_path / "runs")],
     )
     assert tushare_daily_sync.main() == 0
-    assert events == ["facts", "derived", ("verify", True)]
+    assert events == ["facts", "derived", "canonical", ("verify", True)]
     assert len(list((tmp_path / "runs").rglob("*.json"))) == 1

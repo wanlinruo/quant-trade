@@ -45,6 +45,7 @@ from qsys.data.pipeline.auction import (
 from qsys.data.pipeline.candidates import candidate_stock_days, write_manifest
 from qsys.data.pipeline.capital import import_share_capital
 from qsys.data.pipeline.minutes import import_minute_bars, missing_stock_days
+from qsys.data.pipeline.canonical_publish import publish_minutes
 from qsys.data.quality.minute_rules import check_minute_bars
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
@@ -72,6 +73,24 @@ def run(cmd: list[str], *, what: str, timeout: int = 3600) -> str:
 def _exit_code(rc: int, *, auction_ok: bool) -> int:
     """竞价失败时不中断后续步骤，但最终必须让 systemd 看到失败（D-7）。"""
     return rc or (0 if auction_ok else 1)
+
+
+def _publish_canonical_minutes(
+    warehouse: Warehouse,
+    start: date,
+    end: date,
+    service_run: ServiceRun,
+) -> int:
+    """发布归档涉及的 canonical 分钟分区；失败向上抛出。"""
+    with service_run.step(
+        "canonical 分钟线", interface="分钟来源 → bar_minute_1m",
+        table="bar_minute_1m",
+    ) as step:
+        result = publish_minutes(warehouse, start, end)
+        rows = result.counts["bar_minute_1m"]
+        step.rows = rows
+        step.detail = f"{start}..{end} 写后逐键逐字段对账通过"
+        return rows
 
 
 def _archive_auction(args, warehouse, wanted, ssh, key, stamp) -> bool:
@@ -257,6 +276,9 @@ def _archive(args, service_run: ServiceRun) -> int:
         # 维护。本脚本 15:41 跑、同步 17:00 才跑，所以这里读到的是**昨日**
         # 收盘后那次同步的结果——候选为空是正常的「已齐」，不是算不出来。
         print("分钟线已齐，无需下载")
+        _publish_canonical_minutes(
+            warehouse, complete_through, complete_through, service_run
+        )
         print(f"=== 完成，耗时 {(time.time()-started)/60:.1f} 分钟 ===")
         return _exit_code(0, auction_ok=auction_ok)
 
@@ -315,6 +337,14 @@ def _archive(args, service_run: ServiceRun) -> int:
     service_run.add_step("分钟线校验", status=FAILED if issues else SUCCEEDED,
                          interface="仓库内规则", table="minute_bars",
                          detail=f"校验 {len(days)} 天，问题 {issues} 个")
+
+    if not result.errors and not issues:
+        _publish_canonical_minutes(
+            warehouse,
+            min(days) if days else complete_through,
+            max(days) if days else complete_through,
+            service_run,
+        )
 
     print(f"=== 完成，耗时 {(time.time()-started)/60:.1f} 分钟 ===")
     log.info("archive.done", days=len(days), rows=result.rows, issues=issues,

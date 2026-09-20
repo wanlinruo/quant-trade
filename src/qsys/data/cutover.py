@@ -48,6 +48,23 @@ class CutoverConfig:
             ) from exc
 
 
+def add_facade_argument(parser) -> None:
+    """为入口脚本登记显式读取门面覆盖；未传时继续读取统一环境变量。"""
+    parser.add_argument(
+        "--market-data-facade",
+        choices=tuple(mode.value for mode in FacadeMode),
+        default=None,
+        help="行情读取门面；未传时读取 QSYS_MARKET_DATA_FACADE",
+    )
+
+
+def apply_facade_argument(value: str | None) -> CutoverConfig:
+    """应用 CLI 覆盖并返回最终配置，非法环境值仍失败关闭。"""
+    if value is not None:
+        os.environ["QSYS_MARKET_DATA_FACADE"] = FacadeMode(value).value
+    return CutoverConfig.from_env()
+
+
 class CutoverMarketData:
     """保持旧八列契约的显式双路门面；默认路径永远是 legacy。"""
 
@@ -99,10 +116,17 @@ class CutoverMarketData:
             return self._query.daily_flags(start, end)
         return self._query.market_flags_daily(None, start, end)
 
-    def market_regime(self, start: date, end: date) -> pl.DataFrame:
+    def market_regime(
+        self, start: date | None = None, end: date | None = None
+    ) -> pl.DataFrame:
         if self.config.mode is FacadeMode.LEGACY:
             return self._query.market_regime(start, end)
         return self._query.market_regime_daily(start, end)
+
+    def instruments(self) -> pl.DataFrame:
+        if self.config.mode is FacadeMode.LEGACY:
+            return self._query.instruments()
+        return self._query.security_master()
 
     def valuation(self, start: date, end: date) -> pl.DataFrame:
         if self.config.mode is FacadeMode.LEGACY:
@@ -256,6 +280,45 @@ def _dataset_health(query: WarehouseQuery, dataset: str, now: datetime):
     return aggregate_health(policy_for(dataset), evidence, now)
 
 
+def _required_relation_health(
+    query: WarehouseQuery,
+    start: date,
+    end: date,
+    required_datasets: tuple[str, ...],
+    now: datetime,
+) -> tuple[bool, str]:
+    # 延迟导入避免 catalog 聚合入口与 cutover 模块形成初始化环。
+    from qsys.data.cutover_health import canonical_required_relations
+
+    required = set(required_datasets)
+    expected = tuple(
+        edge for edge in canonical_required_relations()
+        if edge.upstream in required and edge.downstream in required
+    )
+    if not expected:
+        return True, "当前必需数据集之间没有登记的阻断关系"
+
+    failures: list[str] = []
+    for edge in expected:
+        rows = query.relation_checks(edge.upstream, edge.downstream).filter(
+            (pl.col("scope_start") == start) & (pl.col("scope_end") == end)
+        )
+        if rows.height == 0:
+            failures.append(f"{edge.upstream}->{edge.downstream}=missing")
+            continue
+        latest = rows.sort("checked_at", descending=True).row(0, named=True)
+        expired = latest["expires_at"] is not None and latest["expires_at"] < now
+        if latest["status"] in (HealthStatus.GRAY.value, HealthStatus.RED.value) or expired:
+            suffix = "/expired" if expired else ""
+            failures.append(
+                f"{edge.upstream}->{edge.downstream}={latest['status']}{suffix}"
+            )
+    return (
+        not failures,
+        f"{len(expected)} 条必需关系证据有效" if not failures else "; ".join(failures),
+    )
+
+
 def audit_cutover(
     query: WarehouseQuery,
     start: date,
@@ -311,6 +374,13 @@ def audit_cutover(
     checks.append(GateCheck(
         "required_health", not unhealthy,
         "全部必需维度非灰且无红" if not unhealthy else "; ".join(unhealthy),
+    ))
+
+    relations_ok, relations_detail = _required_relation_health(
+        query, start, end, required_datasets, now
+    )
+    checks.append(GateCheck(
+        "required_relations", relations_ok, relations_detail
     ))
 
     performance_ok = bool(performance) and all(item.passed for item in performance)

@@ -888,5 +888,31 @@ class WarehouseQuery:
             "corporate_actions", schema.CORPORATE_ACTIONS, symbols
         )
 
-    def adj_factors(self, symbols: Sequence[str] | None = None) -> pl.DataFrame:
-        return self._read_unpartitioned("adj_factors", schema.ADJ_FACTORS, symbols)
+    def adj_factors(
+        self,
+        symbols: Sequence[str] | None = None,
+        start: date | None = None,
+        end: date | None = None,
+    ) -> pl.DataFrame:
+        """累计复权因子；可按日期下推过滤，避免回填时反复加载全表。"""
+        if (start is None) != (end is None):
+            raise ValueError("start and end must be provided together")
+        if symbols is not None and len(symbols) == 0:
+            return _empty(schema.ADJ_FACTORS)
+        glob = self._glob("adj_factors", partitioned=False)
+        if glob is None:
+            return _empty(schema.ADJ_FACTORS)
+        columns = _projection(self._con, glob, schema.ADJ_FACTORS)
+        sql = f"SELECT {columns} FROM {_read(glob)}"
+        clauses: list[str] = []
+        params: list[object] = []
+        if start is not None and end is not None:
+            clauses.append("dt BETWEEN ? AND ?")
+            params.extend([start, end])
+        if symbols is not None:
+            placeholders = ", ".join("?" for _ in symbols)
+            clauses.append(f"symbol IN ({placeholders})")
+            params.extend(symbols)
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+        return self._con.execute(sql + " ORDER BY symbol, dt", params).pl()

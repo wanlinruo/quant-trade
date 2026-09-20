@@ -154,7 +154,7 @@ class PaperRuntime:
         feed = HistoricalFeed(query, calendar, market_data)
         historical_market = MarketFeed(query, calendar, market_data)
         self.market = RealtimeMarketFeed(historical_market, quote_client)
-        instruments = query.instruments()
+        instruments = market_data.instruments()
         self.universe, raw_boards = build_universe(instruments)
         self.boards = {Symbol.parse(k): v for k, v in raw_boards.items()}
         deps = StrategyDeps(feed=feed, market=self.market, query=query,

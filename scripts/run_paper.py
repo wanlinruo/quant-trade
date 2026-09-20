@@ -25,6 +25,7 @@ from qsys.paper.calendar import load_trading_calendar
 from qsys.paper.quotes import QuoteClient, QuoteUnavailable
 from qsys.paper.runtime import PaperRuntime
 from qsys.paper.store import PaperStore
+from qsys.data.cutover import add_facade_argument, apply_facade_argument
 
 log = structlog.get_logger("paper-runner")
 
@@ -36,7 +37,9 @@ def main() -> int:
     parser.add_argument("--config", default=None)
     parser.add_argument("--poll", type=float, default=1.0)
     parser.add_argument("--account", default="", help=argparse.SUPPRESS)
+    add_facade_argument(parser)
     args = parser.parse_args()
+    apply_facade_argument(args.market_data_facade)
 
     if args.account:
         return run_worker(args)

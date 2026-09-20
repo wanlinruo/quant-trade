@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, timedelta
+import math
 
 import polars as pl
 
@@ -184,8 +185,12 @@ def reconcile_frames(
     left: pl.DataFrame,
     right: pl.DataFrame,
     keys: tuple[str, ...],
+    *,
+    float_tolerances: dict[str, tuple[float, float]] | None = None,
 ) -> Reconciliation:
-    """逐键逐字段比较；返回键摘要，不泄露整行生产数据。"""
+    """逐键逐字段比较；仅对显式登记的浮点列使用 ``(abs, rel)`` 容差。"""
+    tolerances = float_tolerances or {}
+
     def indexed(frame: pl.DataFrame) -> dict[tuple[object, ...], tuple[object, ...]]:
         values = [name for name in frame.columns if name not in keys]
         return {
@@ -194,10 +199,33 @@ def reconcile_frames(
         }
 
     lhs, rhs = indexed(left), indexed(right)
+    value_columns = [name for name in left.columns if name not in keys]
+
+    def row_matches(left_values: tuple[object, ...], right_values: tuple[object, ...]) -> bool:
+        if len(left_values) != len(right_values):
+            return False
+        for column, left_value, right_value in zip(
+            value_columns, left_values, right_values
+        ):
+            if column in tolerances and isinstance(left_value, float) \
+                    and isinstance(right_value, float):
+                absolute, relative = tolerances[column]
+                if not math.isclose(
+                    left_value, right_value, abs_tol=absolute, rel_tol=relative
+                ):
+                    return False
+            elif left_value != right_value:
+                return False
+        return True
+
     left_only = tuple(sorted(set(lhs) - set(rhs), key=str))
     right_only = tuple(sorted(set(rhs) - set(lhs), key=str))
     mismatched = tuple(sorted(
-        (key for key in set(lhs) & set(rhs) if lhs[key] != rhs[key]), key=str
+        (
+            key for key in set(lhs) & set(rhs)
+            if not row_matches(lhs[key], rhs[key])
+        ),
+        key=str,
     ))
     return Reconciliation(
         left.height, right.height, left_only, right_only, mismatched
