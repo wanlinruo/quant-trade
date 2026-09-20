@@ -88,12 +88,29 @@ def _measure(args, kind: str, mode: str) -> dict:
     ).stdout)
 
 
+def _aggregate(samples: list[dict]) -> dict:
+    """汇总独立进程样本；扫描形状或行数漂移时拒绝生成证据。"""
+    if not samples:
+        raise ValueError("性能样本不得为空")
+    stable = ("scanned_files", "scanned_columns", "rows")
+    for key in stable:
+        values = {sample[key] for sample in samples}
+        if len(values) != 1:
+            raise RuntimeError(f"性能样本 {key} 不稳定: {sorted(values)}")
+    return {
+        "median_ms": statistics.median(sample["median_ms"] for sample in samples),
+        "peak_mb": statistics.median(sample["peak_mb"] for sample in samples),
+        **{key: samples[0][key] for key in stable},
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--warehouse", type=Path, default=Path("warehouse"))
     parser.add_argument("--start", type=date.fromisoformat, required=True)
     parser.add_argument("--end", type=date.fromisoformat, required=True)
     parser.add_argument("--repeats", type=int, default=5)
+    parser.add_argument("--trials", type=int, default=3)
     parser.add_argument("--max-regression-ratio", type=float, default=1.0)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--worker-kind", choices=("daily", "minute"), help=argparse.SUPPRESS)
@@ -101,6 +118,8 @@ def main() -> None:
     args = parser.parse_args()
     if args.repeats < 1:
         parser.error("--repeats 必须大于 0")
+    if args.trials < 1:
+        parser.error("--trials 必须大于 0")
     if args.worker_kind or args.worker_mode:
         if not args.worker_kind or not args.worker_mode:
             parser.error("worker 参数必须成对出现")
@@ -109,8 +128,15 @@ def main() -> None:
 
     comparisons = []
     for kind in ("daily", "minute"):
-        legacy = _measure(args, kind, "legacy")
-        canonical = _measure(args, kind, "canonical")
+        samples = {"legacy": [], "canonical": []}
+        for trial in range(args.trials):
+            modes = ("legacy", "canonical") if trial % 2 == 0 else (
+                "canonical", "legacy"
+            )
+            for mode in modes:
+                samples[mode].append(_measure(args, kind, mode))
+        legacy = _aggregate(samples["legacy"])
+        canonical = _aggregate(samples["canonical"])
         comparisons.append(BenchmarkComparison(
             kind, legacy["median_ms"], canonical["median_ms"],
             legacy["scanned_files"], canonical["scanned_files"],
