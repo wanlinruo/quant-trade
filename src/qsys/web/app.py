@@ -24,6 +24,7 @@ from fastapi.responses import (
 from fastapi.templating import Jinja2Templates
 
 from qsys.web.backtest_views import BacktestService
+from qsys.web.asset_views import DataAssetService
 from qsys.web.catalog_views import CatalogService, Status
 from qsys.web.config import WebConfig
 from qsys.web.data_views import DataService, MarketService
@@ -135,6 +136,7 @@ def create_app(
     market: MarketService | None = None,
     paper_calendar: Callable[[], AShareCalendar] | None = None,
     services: ServiceConsole | None = None,
+    assets: DataAssetService | None = None,
 ) -> FastAPI:
     app = FastAPI(title=config.title, docs_url=None, redoc_url=None)
 
@@ -178,6 +180,58 @@ def create_app(
                 "total_symbols": symbols, "latest": data.latest_session(),
                 "catalog_summary": catalog.summary() if catalog else None,
             },
+        )
+
+    @app.get("/data/tables", response_class=HTMLResponse)
+    def data_tables(request: Request, include_raw: bool = False):
+        if assets is None:
+            raise HTTPException(status_code=404, detail="data assets not enabled")
+        return TEMPLATES.TemplateResponse(
+            request=request, name="data_tables.html",
+            context={
+                "title": config.title, "session": None, "page": "data_tables",
+                "rows": assets.tables(include_raw=include_raw),
+                "include_raw": include_raw,
+            },
+        )
+
+    @app.get("/data/tables/{dataset}", response_class=HTMLResponse)
+    def data_table_detail(request: Request, dataset: str):
+        if assets is None:
+            raise HTTPException(status_code=404, detail="data assets not enabled")
+        detail = assets.table(dataset)
+        if detail is None:
+            raise HTTPException(status_code=404, detail=f"no dataset {dataset}")
+        return TEMPLATES.TemplateResponse(
+            request=request, name="data_table_detail.html",
+            context={"title": config.title, "session": None,
+                     "page": "data_tables", "d": detail},
+        )
+
+    @app.get("/data/relations/{upstream}/{downstream}", response_class=HTMLResponse)
+    def data_relation_detail(request: Request, upstream: str, downstream: str):
+        if assets is None:
+            raise HTTPException(status_code=404, detail="data assets not enabled")
+        detail = assets.relation(upstream, downstream)
+        if detail is None:
+            raise HTTPException(status_code=404, detail="no such dataset relation")
+        return TEMPLATES.TemplateResponse(
+            request=request, name="data_relation_detail.html",
+            context={"title": config.title, "session": None,
+                     "page": "data_tables", "d": detail},
+        )
+
+    @app.get("/data/quality/rules/{check_id}", response_class=HTMLResponse)
+    def data_rule_detail(request: Request, check_id: str):
+        if assets is None:
+            raise HTTPException(status_code=404, detail="data assets not enabled")
+        detail = assets.rule(check_id)
+        if detail is None:
+            raise HTTPException(status_code=404, detail=f"no rule {check_id}")
+        return TEMPLATES.TemplateResponse(
+            request=request, name="data_rule_detail.html",
+            context={"title": config.title, "session": None,
+                     "page": "data_quality", "d": detail},
         )
 
     def _services() -> ServiceConsole:

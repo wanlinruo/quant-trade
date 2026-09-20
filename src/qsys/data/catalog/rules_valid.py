@@ -99,6 +99,24 @@ FILL_EXEMPTIONS: dict[tuple[str, str], str] = {
         'pl.col("_matched").fill_null(False).alias("is_st")',
     ): "stock_st 只返回正例；与完整日线左连未命中按接口定义就是非 ST",
     (
+        "src/qsys/data/pipeline/canonical_state.py",
+        'is_delisting = pl.col("_is_delisting").fill_null(False)',
+    ): (
+        "delisting_pool 是已发布的稀疏正例事实；预检先确认数据集存在，"
+        "左连未命中按事件模型定义就是不处于退市整理期"
+    ),
+    (
+        "src/qsys/data/cutover_evidence.py",
+        "null_exprs.append(pl.col(column).fill_null(replacement))",
+    ): (
+        "策略证据摘要已单独编码 null 位；此处只把 null 的未定义底层缓冲区"
+        "规范为确定字节，不改变参与对账的数据语义"
+    ),
+    (
+        "src/qsys/data/pipeline/canonical_minute.py",
+        'sources[row["source"]] = sources.get(row["source"], 0) + row["len"]',
+    ): "构建报告的来源行数计数器；未出现过的来源累计行数按定义从 0 开始",
+    (
         "src/qsys/strategy/structural/universe.py",
         'broken = (broken.filter(~pl.col("is_st").fill_null(True))',
     ): "炸板池对未知 ST 状态保守排除（D-11 ST 炸板不进池）；只会少选不会误放行",

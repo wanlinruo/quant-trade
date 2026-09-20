@@ -16,6 +16,7 @@ from enum import StrEnum
 import polars as pl
 
 from qsys.core.calendar import TradingCalendar, last_closed_session
+from qsys.data.cutover import CutoverConfig, CutoverMarketData
 from qsys.data.query import WarehouseQuery
 
 PRICE_COLUMNS = ("open", "high", "low", "close")
@@ -48,9 +49,15 @@ class DataFeed(ABC):
 
 
 class HistoricalFeed(DataFeed):
-    def __init__(self, query: WarehouseQuery, calendar: TradingCalendar) -> None:
+    def __init__(
+        self, query: WarehouseQuery, calendar: TradingCalendar,
+        market_data: CutoverMarketData | None = None,
+    ) -> None:
         self._query = query
         self._calendar = calendar
+        self._market_data = market_data or CutoverMarketData(
+            query, CutoverConfig()
+        )
 
     def _last_visible_session(self, as_of: datetime) -> date | None:
         """as_of 时刻已收盘的最后一个交易日。"""
@@ -67,17 +74,19 @@ class HistoricalFeed(DataFeed):
     ) -> pl.DataFrame:
         visible_through = self._last_visible_session(as_of)
         if visible_through is None:
-            return self._query.daily_bars(symbols, start, start).clear()
+            return self._market_data.daily_bars(symbols, start, start).clear()
 
         effective_end = min(end, visible_through)
         if effective_end < start:
-            return self._query.daily_bars(symbols, start, start).clear()
+            return self._market_data.daily_bars(symbols, start, start).clear()
 
-        bars = self._query.daily_bars(symbols, start, effective_end)
+        bars = self._market_data.daily_bars(symbols, start, effective_end)
         if adjustment is Adjustment.NONE or bars.height == 0:
             return bars
 
-        factors = self._query.adj_factors(symbols)
+        factors = self._market_data.adjustment_factors(
+            symbols, start, effective_end
+        )
         # 因子缺失时价格与成交量必须为 null，不能退回原价或填 1。累计因子
         # 带源自身锚点，1.0 并不是一个中性的可替代观测；见 D-9。
         joined = bars.join(factors, on=["symbol", "dt"], how="left").with_columns(

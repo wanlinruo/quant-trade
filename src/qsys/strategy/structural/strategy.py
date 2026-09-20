@@ -149,10 +149,10 @@ class StructuralStrategy(Strategy):
 
     def on_checkpoint(self, ctx, at: time) -> None:
         tags = ctx.state.get("tags", {})
-        held = [
+        held = sorted([
             s for s in ctx.portfolio.symbols
             if ctx.portfolio.position(s).available_qty > 0
-        ]
+        ], key=str)
         if not held:
             return
 

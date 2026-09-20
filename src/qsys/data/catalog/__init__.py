@@ -15,7 +15,15 @@ from qsys.data import schema
 from qsys.data.catalog.sources import SOURCES
 from qsys.data.catalog.types import (
     Computed,
+    Dataset,
+    DatasetDependency,
+    DatasetLayer,
+    DatasetRole,
+    DatasetStatus,
+    DependencyKind,
+    DependencyRequirement,
     Direct,
+    JoinCardinality,
     Kind,
     Metric,
     MetricStatus,
@@ -25,7 +33,9 @@ from qsys.data.catalog.types import (
 )
 
 # Task 4-8 逐个接上；每个模块导出 (METRICS, DATASETS) 两个名字。
-_MODULES: list[str] = ["market", "reference", "derived", "factors", "operational"]
+_MODULES: list[str] = [
+    "market", "reference", "canonical", "derived", "factors", "operational"
+]
 
 _metrics: dict[str, Metric] = {}
 _owned: set[str] = set()
@@ -55,11 +65,36 @@ for _name in _MODULES:
 REGISTRY: dict[str, Metric] = _metrics
 OWNED_DATASETS: frozenset[str] = frozenset(_owned)
 
+# 表级注册表必须在字段 REGISTRY 完成聚合后构建，依赖边上的产出指标由
+# Computed.upstream 反向生成，不能手抄第二份。
+from qsys.data.catalog.datasets import (  # noqa: E402  (有意延后导入)
+    DATASETS,
+    build_dependencies,
+    lineage_edges,
+)
+
+DEPENDENCIES: tuple[DatasetDependency, ...] = build_dependencies(REGISTRY)
+
+from qsys.data.catalog.advisor import (  # noqa: E402
+    AdviceKind,
+    PairEvidence,
+    SplitEvidence,
+    StructureAdvice,
+    advise_pair,
+    advise_split,
+)
+
 __all__ = [
-    "REGISTRY", "SOURCES", "OWNED_DATASETS", "expected_metric_ids",
+    "REGISTRY", "SOURCES", "OWNED_DATASETS", "DATASETS", "DEPENDENCIES",
+    "expected_metric_ids", "lineage_edges",
     "landed", "unlanded", "consumers", "root_sources",
     "Metric", "Source", "Direct", "Computed",
     "Kind", "Validity", "MetricStatus", "Uncovered",
+    "Dataset", "DatasetDependency", "DatasetLayer", "DatasetRole",
+    "DatasetStatus", "DependencyKind", "DependencyRequirement",
+    "JoinCardinality",
+    "AdviceKind", "PairEvidence", "SplitEvidence", "StructureAdvice",
+    "advise_pair", "advise_split",
 ]
 
 

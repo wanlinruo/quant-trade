@@ -9,6 +9,7 @@ from qsys.core.types import Market, Symbol
 from qsys.strategy.structural.strategy import AUCTION_AT, CHECKPOINTS, StructuralStrategy
 
 SYM = Symbol("600001", Market.SH)
+SYM2 = Symbol("000002", Market.SZ)
 DAY = date(2024, 1, 4)
 
 
@@ -206,6 +207,32 @@ def test_real_buy_fill_creates_a_persistent_lot_and_sell_reduces_it():
     strategy.on_fill(ctx, Fill("s1", SYM, Side.SELL, 200, 11.0, 5.0,
                                datetime.combine(DAY, time(14))))
     assert state["lots"][str(SYM)][0]["qty"] == 300
+
+
+def test_checkpoint_orders_held_symbols_deterministically():
+    positions = {
+        str(SYM): FakePosition(100, 100, 10.0),
+        str(SYM2): FakePosition(200, 200, 10.0),
+    }
+    state = {
+        "tags": {str(SYM): "LOW_MAIN", str(SYM2): "LOW_MAIN"},
+        "lots": {
+            str(SYM): [{"qty": 100, "entry_price": 10.0, "tag": "LOW_MAIN",
+                        "acquired_on": "2024-01-03"}],
+            str(SYM2): [{"qty": 200, "entry_price": 10.0, "tag": "LOW_MAIN",
+                         "acquired_on": "2024-01-03"}],
+        },
+    }
+    quotes = {str(SYM): Quote(10.2), str(SYM2): Quote(10.2)}
+    ctx = FakeCtx(
+        datetime.combine(DAY, time(11, 25)),
+        portfolio=FakePortfolio(positions=positions),
+        market=FakeMarket(intraday=quotes), state=state,
+    )
+
+    StructuralStrategy(FakeSelection()).on_checkpoint(ctx, time(11, 25))
+
+    assert [row[0] for row in ctx.order.submitted] == [str(SYM2), str(SYM)]
 
 
 def test_exit_is_evaluated_per_lot_entry_price():

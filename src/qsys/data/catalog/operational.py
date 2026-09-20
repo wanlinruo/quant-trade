@@ -1,4 +1,4 @@
-"""运行时类指标 56 条（会话/采集 32 条，验证结果与证据 24 条）。
+"""运行时类指标（会话/采集日志，以及字段、表、关系三层验证证据）。
 
 这些记录由系统自身写入，多数没有独立外部真值。UNCOVERED 不是免检章：
 理由明确记录验证边界，已有到货规则的关键列仍挂 B4。
@@ -25,6 +25,8 @@ DATASETS = frozenset({
     "ingest_log",
     "metric_checks",
     "metric_evidence",
+    "dataset_checks",
+    "relation_checks",
 })
 
 _SELF = "qsys.runtime"
@@ -89,6 +91,38 @@ _MEANING = {
     "metric_evidence.checked_by": "核对人",
     "metric_evidence.checked_at": "人工核对完成时刻",
     "metric_evidence.note": "证据说明、口径或已知问题备注",
+    "dataset_checks.run_id": "同一轮表级检查的唯一运行标识",
+    "dataset_checks.checked_at": "表级检查完成时刻",
+    "dataset_checks.dataset_id": "被检查的数据集 id",
+    "dataset_checks.check_id": "表级规则 id",
+    "dataset_checks.dimension": "健康维度：freshness/completeness/structure/validity/lineage",
+    "dataset_checks.scope_start": "检查范围起点；不适用时为 null",
+    "dataset_checks.scope_end": "检查范围终点；不适用时为 null",
+    "dataset_checks.status": "本条证据的 red/gray/yellow/green 状态",
+    "dataset_checks.evidence_at": "证据所代表的业务时点",
+    "dataset_checks.expires_at": "证据过期时刻；永不过期时为 null",
+    "dataset_checks.required": "该证据是否属于健康策略必需维度",
+    "dataset_checks.violations": "违规项数量",
+    "dataset_checks.checked_rows": "实际检查行数；稀疏事件表可合法为 0",
+    "dataset_checks.detail": "状态原因、范围或错误摘要",
+    "relation_checks.run_id": "同一轮关系检查的唯一运行标识",
+    "relation_checks.checked_at": "关系检查完成时刻",
+    "relation_checks.upstream": "上游数据集 id",
+    "relation_checks.downstream": "下游数据集 id",
+    "relation_checks.check_id": "关系规则 id",
+    "relation_checks.dimension": "关系证据所属健康维度，通常为 lineage",
+    "relation_checks.scope_start": "检查范围起点；不适用时为 null",
+    "relation_checks.scope_end": "检查范围终点；不适用时为 null",
+    "relation_checks.status": "本条关系证据的 red/gray/yellow/green 状态",
+    "relation_checks.evidence_at": "关系证据所代表的业务时点",
+    "relation_checks.expires_at": "关系证据过期时刻；永不过期时为 null",
+    "relation_checks.required": "关系是否为下游健康的必需证据",
+    "relation_checks.upstream_rows": "参与关系检查的上游行数",
+    "relation_checks.downstream_rows": "参与关系检查的下游行数",
+    "relation_checks.matched_rows": "成功匹配的下游行数",
+    "relation_checks.orphan_rows": "找不到上游的下游行数",
+    "relation_checks.violations": "基数、孤儿或刷新异常总数",
+    "relation_checks.detail": "连接键、基数和异常摘要",
 }
 
 _CHECKS = {

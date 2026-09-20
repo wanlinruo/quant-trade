@@ -27,11 +27,13 @@ from qsys.backtest.runner import price_limit_loader
 from qsys.backtest.slippage import FixedRateSlippage
 from qsys.core.calendar import AShareCalendar
 from qsys.core.types import Symbol
+from qsys.data.cutover import CutoverConfig, CutoverMarketData
 from qsys.data.feed import HistoricalFeed
 from qsys.data.market_feed import MarketFeed
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
 from qsys.markets.ashare import ashare_pipeline
+from qsys.strategy.deps import build_universe
 from qsys.strategy.structural.selection import StructuralSelection
 from qsys.strategy.structural.strategy import (
     AUCTION_AT,
@@ -95,20 +97,14 @@ def main() -> int:
     start, end = date.fromisoformat(args.start), date.fromisoformat(args.end)
     warehouse = Warehouse(Path(args.warehouse))
     query = WarehouseQuery(warehouse)
+    market_data = CutoverMarketData(query, CutoverConfig.from_env())
 
     sessions = sorted(query.market_regime()["dt"].to_list())
     calendar = AShareCalendar(sessions)
-    feed = HistoricalFeed(query, calendar)
-    market = MarketFeed(query, calendar)
+    feed = HistoricalFeed(query, calendar, market_data)
+    market = MarketFeed(query, calendar, market_data)
 
-    instruments = query.instruments()
-    universe = [
-        Symbol.parse(s) for s in instruments["symbol"].to_list()
-        if not s.split(".")[0].startswith(("4", "8", "68"))
-    ]
-    boards = dict(
-        zip(instruments["symbol"].to_list(), instruments["board"].to_list())
-    )
+    universe, boards = build_universe(query.instruments())
 
     # 除权除息：持仓期间遇到除权，价格会掉，不处理就被当成亏损。
     # 全市场 6 万条，一期 bootstrap 时只有 3 只，回测入口此前根本没传。

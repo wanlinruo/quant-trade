@@ -16,6 +16,7 @@ from datetime import date, datetime
 import polars as pl
 
 from qsys.data.coverage import DatasetCoverage, coverage
+from qsys.data.access import StableMarketData
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
 from qsys.live.messages import MarketOverviewSnapshot, MarketSchedule
@@ -33,6 +34,19 @@ class DataService:
     def __init__(self, warehouse: Warehouse) -> None:
         self._warehouse = warehouse
         self._query = WarehouseQuery(warehouse)
+        self._stable = StableMarketData(self._query)
+
+    def historical_daily_bars(
+        self, symbols: list[str] | None, start: date, end: date
+    ) -> pl.DataFrame:
+        """数据页/只读诊断的阶段 8 日线入口。"""
+        return self._stable.historical_daily_bars(symbols, start, end)
+
+    def historical_minute_bars(
+        self, symbols: list[str] | None, start: datetime, end: datetime
+    ) -> pl.DataFrame:
+        """数据页/只读诊断的阶段 8 分钟入口。"""
+        return self._stable.historical_minute_bars(symbols, start, end)
 
     # ---- 数据覆盖 ----
 

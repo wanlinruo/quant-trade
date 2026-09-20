@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head"><div><h2><span class="mono">{{ d.id }}</span> · {{ d.name }}</h2><p>{{ d.category }}</p></div></div>
+<div class="card"><h2>规则定义</h2><table><tr><th>通过条件</th><td>{{ d.condition }}</td></tr><tr><th>局限</th><td>{{ d.limitation }}</td></tr><tr><th>实现位置</th><td class="mono">{{ d.implementation }}</td></tr><tr><th>对象</th><td>{{ d.targets|join('、') or '从历史结果识别' }}</td></tr></table></div>
+<div class="card"><h2>最近与历史结果</h2>{% if d.history %}<div class="table-wrap"><table><tr><th>检查时刻</th><th>对象</th><th>状态</th><th>违规 / 行数</th><th>详情</th></tr>{% for item in d.history %}<tr><td>{{ item.checked_at }}</td><td class="mono">{{ item.metric_id or item.dataset_id or ((item.upstream or '') ~ '→' ~ (item.downstream or '')) }}</td><td>{% if item.status %}<span class="pill {{ item.status }}">{{ item.status }}</span>{% else %}<span class="pill {{ 'green' if item.passed else 'red' }}">{{ 'passed' if item.passed else 'failed' }}</span>{% endif %}</td><td>{{ item.violations }} / {{ item.checked_rows or item.downstream_rows or '—' }}</td><td>{{ item.detail }}</td></tr>{% endfor %}</table></div>{% else %}<div class="empty">规则已定义，但尚未运行。</div>{% endif %}</div>
+{% endblock %}

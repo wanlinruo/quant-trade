@@ -34,6 +34,20 @@ _KEYS: dict[str, tuple[str, ...]] = {
     "ingest_log": ("dataset", "dt", "provider", "ingested_at"),
     "metric_checks": ("run_id", "checked_at", "metric_id", "check_id"),
     "metric_evidence": ("metric_id", "dt", "checked_at"),
+    "dataset_checks": ("run_id", "dataset_id", "check_id", "dimension"),
+    "relation_checks": ("run_id", "upstream", "downstream", "check_id", "dimension"),
+    "security_master": ("symbol",),
+    "security_name_history": ("symbol", "start_date", "name"),
+    "trading_calendar": ("market", "dt"),
+    "bar_daily": ("symbol", "dt"),
+    "valuation_daily": ("symbol", "dt"),
+    "share_capital_history": ("symbol", "effective_date"),
+    "adjustment_factor_daily": ("symbol", "dt"),
+    "price_limit_daily": ("symbol", "dt"),
+    "security_status_daily": ("symbol", "dt"),
+    "market_flags_daily": ("symbol", "dt"),
+    "market_regime_daily": ("dt",),
+    "bar_minute_1m": ("symbol", "ts"),
     "live_equity": ("dt",),
     "live_fills": ("client_order_id", "broker_trade_id", "filled_at"),
     "live_rejects": ("client_order_id", "at"),
@@ -50,6 +64,7 @@ def _files(root: Path, dataset: str) -> list[Path]:
     return sorted({
         *base.glob("part.parquet"),
         *base.glob("year=*/part.parquet"),
+        *base.glob("year=*/date=*/part.parquet"),
         *base.glob("year=*/shard=*/part.parquet"),
     })
 

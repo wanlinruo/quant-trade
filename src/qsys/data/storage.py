@@ -38,7 +38,8 @@ class Warehouse:
             raise ValueError(f"schema mismatch for {dataset!r}")
         if table.num_rows:
             import pyarrow.compute as pc
-            days = set(pc.unique(pc.cast(table.column("dt"), pa.date32())).to_pylist())
+            partition_column = "dt" if "dt" in table.column_names else "ts"
+            days = set(pc.unique(pc.cast(table.column(partition_column), pa.date32())).to_pylist())
             if days != {day}:
                 raise ValueError(f"{dataset} 分区 {day} 混入其他交易日")
         path = self.day_path(dataset, day)

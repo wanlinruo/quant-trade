@@ -24,6 +24,7 @@ from qsys.ops.health import HealthStore
 from qsys.live.store import LiveStore
 from qsys.web.app import create_app
 from qsys.web.backtest_views import BacktestService
+from qsys.web.asset_views import DataAssetService
 from qsys.web.catalog_views import CatalogService
 from qsys.web.config import WebConfig
 from qsys.web.data_views import DataService, MarketService
@@ -107,6 +108,7 @@ def build_app(
                 health_state_path or Path("var/service-health.sqlite3")
             ),
         ),
+        assets=DataAssetService(warehouse),
     )
 
 
