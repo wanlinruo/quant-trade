@@ -110,6 +110,21 @@ class TushareProvider:
             raise RuntimeError("namechange 分页超过 1,000,000 行，拒绝静默截断")
         return pl.DataFrame(rows, infer_schema_length=None) if rows else pl.DataFrame()
 
+    def trade_cal(
+        self, start: date, end: date, *, exchange: str = "SSE"
+    ) -> pl.DataFrame:
+        """交易日历原始事实，包含开市和休市日；不按工作日推算。"""
+        rows = self._client.call(
+            "trade_cal",
+            {
+                "exchange": exchange,
+                "start_date": start.strftime("%Y%m%d"),
+                "end_date": end.strftime("%Y%m%d"),
+            },
+            "exchange,cal_date,is_open,pretrade_date",
+        )
+        return pl.DataFrame(rows, infer_schema_length=None) if rows else pl.DataFrame()
+
     def limit_list_d(self, trade_date: date, limit_type: str = "U") -> pl.DataFrame:
         rows = self._client.call(
             "limit_list_d",

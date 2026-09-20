@@ -1,0 +1,6018 @@
+{
+  "format_version": 1,
+  "baseline": {
+    "git_sha": "aaf1f83a07eecf671b72cf4cd0d20e04b51b7c24",
+    "python": "3.12.13",
+    "platform": "macOS-14.1.1-x86_64-i386-64bit",
+    "uv_lock_sha256": "77bf62507aac09f67cb8ba01799ddf360902a23f3235d1d66a02036d57bcd6a9",
+    "warehouse": "warehouse",
+    "test_result": "1881 passed, 2 warnings in 66.00s"
+  },
+  "coverage": {
+    "schema_all": [
+      "adj_factors",
+      "adjustment_factor_daily",
+      "auction_ticks",
+      "bar_daily",
+      "bars_daily",
+      "corporate_actions",
+      "daily_flags",
+      "dataset_checks",
+      "delisting_pool",
+      "index_bars",
+      "ingest_log",
+      "instruments",
+      "limit_list_daily",
+      "live_equity",
+      "live_fills",
+      "live_recon",
+      "live_rejects",
+      "market_regime",
+      "metric_checks",
+      "metric_evidence",
+      "minute_bars",
+      "name_history",
+      "name_snapshots",
+      "price_limits_daily",
+      "relation_checks",
+      "security_master",
+      "security_name_history",
+      "share_capital",
+      "share_capital_history",
+      "stock_st_daily",
+      "suspend_daily",
+      "trading_calendar",
+      "tushare_daily",
+      "valuation_daily",
+      "valuation_snapshot"
+    ],
+    "schema_read_only": [
+      "paid_daily",
+      "paid_minute_bars"
+    ],
+    "metric_datasets": [
+      "adj_factors",
+      "adjustment_factor_daily",
+      "auction_ticks",
+      "bar_daily",
+      "bars_daily",
+      "corporate_actions",
+      "daily_flags",
+      "dataset_checks",
+      "delisting_pool",
+      "index_bars",
+      "ingest_log",
+      "instruments",
+      "limit_list_daily",
+      "live_equity",
+      "live_fills",
+      "live_recon",
+      "live_rejects",
+      "market_regime",
+      "metric_checks",
+      "metric_evidence",
+      "minute_bars",
+      "name_history",
+      "name_snapshots",
+      "paid_daily",
+      "paid_minute_bars",
+      "price_limits_daily",
+      "relation_checks",
+      "security_master",
+      "security_name_history",
+      "share_capital",
+      "share_capital_history",
+      "stock_st_daily",
+      "strategy",
+      "suspend_daily",
+      "trading_calendar",
+      "tushare_daily",
+      "valuation_daily",
+      "valuation_snapshot"
+    ],
+    "registered_physical": [
+      "adj_factors",
+      "adjustment_factor_daily",
+      "auction_ticks",
+      "bar_daily",
+      "bars_daily",
+      "corporate_actions",
+      "daily_flags",
+      "dataset_checks",
+      "delisting_pool",
+      "index_bars",
+      "ingest_log",
+      "instruments",
+      "limit_list_daily",
+      "live_equity",
+      "live_fills",
+      "live_recon",
+      "live_rejects",
+      "market_regime",
+      "metric_checks",
+      "metric_evidence",
+      "minute_bars",
+      "name_history",
+      "name_snapshots",
+      "paid_daily",
+      "paid_minute_bars",
+      "price_limits_daily",
+      "relation_checks",
+      "security_master",
+      "security_name_history",
+      "share_capital",
+      "share_capital_history",
+      "stock_st_daily",
+      "suspend_daily",
+      "trading_calendar",
+      "tushare_daily",
+      "valuation_daily",
+      "valuation_snapshot"
+    ],
+    "registered_logical": [
+      "daily_bars",
+      "strategy"
+    ]
+  },
+  "datasets": [
+    {
+      "id": "adj_factors",
+      "name": "复权因子",
+      "purpose": "价格累计因子和股本累计因子",
+      "layer": "canonical",
+      "role": "factor",
+      "status": "active",
+      "grain": "每标的每交易日一行",
+      "primary_key": [
+        "symbol",
+        "dt"
+      ],
+      "time_columns": [
+        "dt"
+      ],
+      "partition_keys": [],
+      "sort_keys": [
+        "symbol",
+        "dt"
+      ],
+      "schema_id": "adj_factors",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "qsys.data.pipeline.adjust",
+      "update_mode": "全表原子覆盖",
+      "finalized_at": "UNKNOWN(待查)",
+      "lifecycle": "持续维护",
+      "sources": [
+        "tushare.adj_factor",
+        "corporate_actions"
+      ],
+      "consumers": [
+        "复权行情",
+        "market_regime",
+        "策略"
+      ],
+      "health_policy": "dense_daily",
+      "physical": true,
+      "columns": [
+        "symbol",
+        "dt",
+        "cum_factor",
+        "cum_share_factor"
+      ],
+      "warehouse": {
+        "dataset": "adj_factors",
+        "files": 1,
+        "rows": 351,
+        "bytes": 1860,
+        "min_time": "2024-01-02",
+        "max_time": "2024-06-28",
+        "errors": []
+      }
+    },
+    {
+      "id": "adjustment_factor_daily",
+      "name": "规范每日复权因子",
+      "purpose": "价格累计因子和股本累计因子的稳定窄表",
+      "layer": "canonical",
+      "role": "factor",
+      "status": "active",
+      "grain": "每标的每交易日一行",
+      "primary_key": [
+        "symbol",
+        "dt"
+      ],
+      "time_columns": [
+        "dt"
+      ],
+      "partition_keys": [
+        "year"
+      ],
+      "sort_keys": [
+        "symbol",
+        "dt"
+      ],
+      "schema_id": "adjustment_factor_daily",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "qsys.data.pipeline.canonical_daily.build_adjustment_factor_daily",
+      "update_mode": "按分区原子覆盖",
+      "finalized_at": "UNKNOWN(待查)",
+      "lifecycle": "持续维护",
+      "sources": [
+        "adj_factors"
+      ],
+      "consumers": [
+        "阶段 4 对账与只读诊断"
+      ],
+      "health_policy": "dense_daily",
+      "physical": true,
+      "columns": [
+        "symbol",
+        "dt",
+        "price_factor",
+        "share_factor"
+      ],
+      "warehouse": {
+        "dataset": "adjustment_factor_daily",
+        "files": 0,
+        "rows": 0,
+        "bytes": 0,
+        "min_time": null,
+        "max_time": null,
+        "errors": []
+      }
+    },
+    {
+      "id": "auction_ticks",
+      "name": "集合竞价快照",
+      "purpose": "竞价阶段盘口、匹配量与成交累计快照",
+      "layer": "canonical",
+      "role": "event",
+      "status": "active",
+      "grain": "每标的每快照时刻一行",
+      "primary_key": [
+        "symbol",
+        "ts"
+      ],
+      "time_columns": [
+        "dt",
+        "ts"
+      ],
+      "partition_keys": [
+        "year"
+      ],
+      "sort_keys": [
+        "symbol",
+        "ts"
+      ],
+      "schema_id": "auction_ticks",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "qsys.data.pipeline.auction",
+      "update_mode": "按分区原子覆盖",
+      "finalized_at": "UNKNOWN(待查)",
+      "lifecycle": "持续维护",
+      "sources": [
+        "qmt.tick"
+      ],
+      "consumers": [
+        "结构策略竞价入场",
+        "回测"
+      ],
+      "health_policy": "sparse_event",
+      "physical": true,
+      "columns": [
+        "symbol",
+        "dt",
+        "ts",
+        "bid1",
+        "ask1",
+        "bid_vol1",
+        "ask_vol1",
+        "last_price",
+        "volume",
+        "amount"
+      ],
+      "warehouse": {
+        "dataset": "auction_ticks",
+        "files": 0,
+        "rows": 0,
+        "bytes": 0,
+        "min_time": null,
+        "max_time": null,
+        "errors": []
+      }
+    },
+    {
+      "id": "bar_daily",
+      "name": "规范历史日线",
+      "purpose": "前收、OHLC、成交量和成交额窄表",
+      "layer": "canonical",
+      "role": "fact",
+      "status": "active",
+      "grain": "每标的每交易日一行",
+      "primary_key": [
+        "symbol",
+        "dt"
+      ],
+      "time_columns": [
+        "dt"
+      ],
+      "partition_keys": [
+        "year"
+      ],
+      "sort_keys": [
+        "symbol",
+        "dt"
+      ],
+      "schema_id": "bar_daily",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "qsys.data.pipeline.canonical_daily.build_bar_daily",
+      "update_mode": "按分区原子覆盖",
+      "finalized_at": "交易日收盘后来源同步且对账通过",
+      "lifecycle": "持续维护",
+      "sources": [
+        "tushare_daily"
+      ],
+      "consumers": [
+        "阶段 4 对账与只读诊断"
+      ],
+      "health_policy": "dense_daily",
+      "physical": true,
+      "columns": [
+        "symbol",
+        "dt",
+        "pre_close",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "amount"
+      ],
+      "warehouse": {
+        "dataset": "bar_daily",
+        "files": 0,
+        "rows": 0,
+        "bytes": 0,
+        "min_time": null,
+        "max_time": null,
+        "errors": []
+      }
+    },
+    {
+      "id": "bars_daily",
+      "name": "冻结旧日线",
+      "purpose": "mootdx 旧日线，仅供换源回归",
+      "layer": "raw",
+      "role": "fact",
+      "status": "frozen",
+      "grain": "每标的每交易日一行",
+      "primary_key": [
+        "symbol",
+        "dt"
+      ],
+      "time_columns": [
+        "dt"
+      ],
+      "partition_keys": [
+        "year"
+      ],
+      "sort_keys": [
+        "symbol",
+        "dt"
+      ],
+      "schema_id": "bars_daily",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "qsys.data.pipeline.bars.ingest_daily_bars",
+      "update_mode": "按分区原子覆盖",
+      "finalized_at": "已冻结",
+      "lifecycle": "只读审计证据",
+      "sources": [
+        "mootdx.kline"
+      ],
+      "consumers": [
+        "换源回归"
+      ],
+      "health_policy": "frozen",
+      "physical": true,
+      "columns": [
+        "symbol",
+        "dt",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "amount"
+      ],
+      "warehouse": {
+        "dataset": "bars_daily",
+        "files": 1,
+        "rows": 351,
+        "bytes": 15444,
+        "min_time": "2024-01-02",
+        "max_time": "2024-06-28",
+        "errors": []
+      }
+    },
+    {
+      "id": "corporate_actions",
+      "name": "公司行为",
+      "purpose": "除权日分红送转配股事实",
+      "layer": "canonical",
+      "role": "event",
+      "status": "active",
+      "grain": "每标的每除权日一行（同日多事件合并口径待查）",
+      "primary_key": [
+        "symbol",
+        "ex_date"
+      ],
+      "time_columns": [
+        "ex_date"
+      ],
+      "partition_keys": [],
+      "sort_keys": [
+        "symbol",
+        "ex_date"
+      ],
+      "schema_id": "corporate_actions",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "qsys.data.pipeline.dividends",
+      "update_mode": "全表原子覆盖",
+      "finalized_at": "UNKNOWN(待查)",
+      "lifecycle": "持续维护",
+      "sources": [
+        "qmt.dividends"
+      ],
+      "consumers": [
+        "adj_factors",
+        "回测持仓调整"
+      ],
+      "health_policy": "sparse_event",
+      "physical": true,
+      "columns": [
+        "symbol",
+        "ex_date",
+        "cash_per_share",
+        "stock_per_share",
+        "rights_per_share",
+        "rights_price"
+      ],
+      "warehouse": {
+        "dataset": "corporate_actions",
+        "files": 1,
+        "rows": 63,
+        "bytes": 2802,
+        "min_time": "1991-05-02",
+        "max_time": "2026-08-10",
+        "errors": []
+      }
+    },
+    {
+      "id": "daily_flags",
+      "name": "每日市场标志",
+      "purpose": "涨跌停、触板、炸板、首板和 ST 派生状态",
+      "layer": "derived",
+      "role": "fact",
+      "status": "active",
+      "grain": "每标的每交易日一行",
+      "primary_key": [
+        "symbol",
+        "dt"
+      ],
+      "time_columns": [
+        "dt"
+      ],
+      "partition_keys": [
+        "year"
+      ],
+      "sort_keys": [
+        "symbol",
+        "dt"
+      ],
+      "schema_id": "daily_flags",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "qsys.data.pipeline.flags",
+      "update_mode": "按分区原子覆盖",
+      "finalized_at": "UNKNOWN(待查)",
+      "lifecycle": "持续维护",
+      "sources": [
+        "规范日线与状态事实"
+      ],
+      "consumers": [
+        "候选池",
+        "market_regime",
+        "策略"
+      ],
+      "health_policy": "dense_daily",
+      "physical": true,
+      "columns": [
+        "dt",
+        "symbol",
+        "prev_close",
+        "adj_prev_close",
+        "limit_up",
+        "limit_down",
+        "is_limit_up",
+        "is_limit_down",
+        "touched_limit_up",
+        "is_broken_board",
+        "is_first_board",
+        "limit_pct",
+        "is_st",
+        "st_source"
+      ],
+      "warehouse": {
+        "dataset": "daily_flags",
+        "files": 0,
+        "rows": 0,
+        "bytes": 0,
+        "min_time": null,
+        "max_time": null,
+        "errors": []
+      }
+    },
+    {
+      "id": "dataset_checks",
+      "name": "表级健康结果",
+      "purpose": "数据集五维健康检查的可追溯证据",
+      "layer": "operational",
+      "role": "event",
+      "status": "operational",
+      "grain": "每运行、数据集、规则、维度一行",
+      "primary_key": [
+        "run_id",
+        "dataset_id",
+        "check_id",
+        "dimension"
+      ],
+      "time_columns": [
+        "checked_at",
+        "scope_start",
+        "scope_end",
+        "evidence_at",
+        "expires_at"
+      ],
+      "partition_keys": [
+        "year"
+      ],
+      "sort_keys": [
+        "run_id",
+        "dataset_id",
+        "check_id",
+        "dimension"
+      ],
+      "schema_id": "dataset_checks",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "qsys.data.catalog.health.write_dataset_checks",
+      "update_mode": "按分区原子覆盖",
+      "finalized_at": "UNKNOWN(待查)",
+      "lifecycle": "持续维护",
+      "sources": [
+        "qsys.runtime"
+      ],
+      "consumers": [
+        "数据表页面",
+        "发布门禁"
+      ],
+      "health_policy": "runtime_log",
+      "physical": true,
+      "columns": [
+        "run_id",
+        "checked_at",
+        "dataset_id",
+        "check_id",
+        "dimension",
+        "scope_start",
+        "scope_end",
+        "status",
+        "evidence_at",
+        "expires_at",
+        "required",
+        "violations",
+        "checked_rows",
+        "detail"
+      ],
+      "warehouse": {
+        "dataset": "dataset_checks",
+        "files": 0,
+        "rows": 0,
+        "bytes": 0,
+        "min_time": null,
+        "max_time": null,
+        "errors": []
+      }
+    },
+    {
+      "id": "delisting_pool",
+      "name": "退市整理池",
+      "purpose": "按名称变更区间展开的每日退市整理标的",
+      "layer": "derived",
+      "role": "fact",
+      "status": "active",
+      "grain": "每标的每适用交易日一行",
+      "primary_key": [
+        "symbol",
+        "dt"
+      ],
+      "time_columns": [
+        "dt",
+        "start_date",
+        "end_date",
+        "ann_date"
+      ],
+      "partition_keys": [
+        "year"
+      ],
+      "sort_keys": [
+        "symbol",
+        "dt"
+      ],
+      "schema_id": "delisting_pool",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "qsys.data.pipeline.delisting",
+      "update_mode": "按分区原子覆盖",
+      "finalized_at": "UNKNOWN(待查)",
+      "lifecycle": "持续维护",
+      "sources": [
+        "name_history",
+        "tushare_daily"
+      ],
+      "consumers": [
+        "daily_flags",
+        "策略股票池"
+      ],
+      "health_policy": "sparse_event",
+      "physical": true,
+      "columns": [
+        "dt",
+        "symbol",
+        "name",
+        "start_date",
+        "end_date",
+        "ann_date"
+      ],
+      "warehouse": {
+        "dataset": "delisting_pool",
+        "files": 0,
+        "rows": 0,
+        "bytes": 0,
+        "min_time": null,
+        "max_time": null,
+        "errors": []
+      }
+    },
+    {
+      "id": "index_bars",
+      "name": "指数日线",
+      "purpose": "市场指数日度 OHLCVA",
+      "layer": "canonical",
+      "role": "fact",
+      "status": "active",
+      "grain": "每指数每交易日一行",
+      "primary_key": [
+        "symbol",
+        "dt"
+      ],
+      "time_columns": [
+        "dt"
+      ],
+      "partition_keys": [
+        "year"
+      ],
+      "sort_keys": [
+        "symbol",
+        "dt"
+      ],
+      "schema_id": "index_bars",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "qsys.data.pipeline.index_bars",
+      "update_mode": "按分区原子覆盖",
+      "finalized_at": "UNKNOWN(待查)",
+      "lifecycle": "持续维护",
+      "sources": [
+        "tushare.index_daily"
+      ],
+      "consumers": [
+        "market_regime"
+      ],
+      "health_policy": "dense_daily",
+      "physical": true,
+      "columns": [
+        "symbol",
+        "dt",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "amount"
+      ],
+      "warehouse": {
+        "dataset": "index_bars",
+        "files": 0,
+        "rows": 0,
+        "bytes": 0,
+        "min_time": null,
+        "max_time": null,
+        "errors": []
+      }
+    },
+    {
+      "id": "ingest_log",
+      "name": "采集运行日志",
+      "purpose": "采集与长任务的进度、行数和结果",
+      "layer": "operational",
+      "role": "event",
+      "status": "operational",
+      "grain": "每数据集每进度日每次写入一行；主键=UNKNOWN(待查)",
+      "primary_key": [],
+      "time_columns": [
+        "dt",
+        "ingested_at"
+      ],
+      "partition_keys": [
+        "year"
+      ],
+      "sort_keys": [],
+      "schema_id": "ingest_log",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "qsys.data.pipeline.ingest_log",
+      "update_mode": "按分区原子覆盖",
+      "finalized_at": "UNKNOWN(待查)",
+      "lifecycle": "持续维护",
+      "sources": [
+        "qsys.runtime"
+      ],
+      "consumers": [
+        "运维检查"
+      ],
+      "health_policy": "runtime_log",
+      "physical": true,
+      "columns": [
+        "dataset",
+        "dt",
+        "provider",
+        "ingested_at",
+        "row_count",
+        "ok",
+        "message"
+      ],
+      "warehouse": {
+        "dataset": "ingest_log",
+        "files": 1,
+        "rows": 1,
+        "bytes": 1984,
+        "min_time": "2024-12-31",
+        "max_time": "2026-09-07T10:15:51.894920",
+        "errors": []
+      }
+    },
+    {
+      "id": "instruments",
+      "name": "证券主数据快照",
+      "purpose": "当前证券代码、市场、板块和上市状态",
+      "layer": "canonical",
+      "role": "snapshot",
+      "status": "active",
+      "grain": "每标的一行当前快照",
+      "primary_key": [
+        "symbol"
+      ],
+      "time_columns": [
+        "as_of"
+      ],
+      "partition_keys": [],
+      "sort_keys": [
+        "symbol"
+      ],
+      "schema_id": "instruments",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "qsys.data.pipeline.tushare_reference.ingest_instruments",
+      "update_mode": "全表原子覆盖",
+      "finalized_at": "UNKNOWN(待查)",
+      "lifecycle": "持续维护",
+      "sources": [
+        "tushare.stock_basic"
+      ],
+      "consumers": [
+        "策略股票池",
+        "daily_flags",
+        "Web 数据页"
+      ],
+      "health_policy": "snapshot",
+      "physical": true,
+      "columns": [
+        "symbol",
+        "name",
+        "market",
+        "list_date",
+        "delist_date",
+        "board",
+        "as_of"
+      ],
+      "warehouse": {
+        "dataset": "instruments",
+        "files": 1,
+        "rows": 5919,
+        "bytes": 107330,
+        "min_time": null,
+        "max_time": null,
+        "errors": []
+      }
+    },
+    {
+      "id": "limit_list_daily",
+      "name": "涨跌停榜事件",
+      "purpose": "涨停、跌停和炸板榜的事件事实",
+      "layer": "canonical",
+      "role": "event",
+      "status": "active",
+      "grain": "每标的每交易日每榜单类型一行",
+      "primary_key": [
+        "symbol",
+        "dt",
+        "limit_type"
+      ],
+      "time_columns": [
+        "dt"
+      ],
+      "partition_keys": [
+        "year"
+      ],
+      "sort_keys": [
+        "symbol",
+        "dt",
+        "limit_type"
+      ],
+      "schema_id": "limit_list_daily",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "qsys.data.pipeline.tushare_reference.ingest_limit_list",
+      "update_mode": "按分区原子覆盖",
+      "finalized_at": "UNKNOWN(待查)",
+      "lifecycle": "持续维护",
+      "sources": [
+        "tushare.limit_list_d"
+      ],
+      "consumers": [
+        "daily_flags"
+      ],
+      "health_policy": "sparse_event",
+      "physical": true,
+      "columns": [
+        "symbol",
+        "dt",
+        "limit_type",
+        "limit_times",
+        "open_times",
+        "first_time",
+        "fd_amount",
+        "limit_amount",
+        "float_mv"
+      ],
+      "warehouse": {
+        "dataset": "limit_list_daily",
+        "files": 0,
+        "rows": 0,
+        "bytes": 0,
+        "min_time": null,
+        "max_time": null,
+        "errors": []
+      }
+    },
+    {
+      "id": "live_equity",
+      "name": "实盘净值日志",
+      "purpose": "实盘会话资金与市值快照",
+      "layer": "operational",
+      "role": "snapshot",
+      "status": "operational",
+      "grain": "每交易日最新快照一行",
+      "primary_key": [
+        "dt"
+      ],
+      "time_columns": [
+        "dt"
+      ],
+      "partition_keys": [
+        "year"
+      ],
+      "sort_keys": [
+        "dt"
+      ],
+      "schema_id": "live_equity",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "qsys.ops.journal.SessionJournal",
+      "update_mode": "按分区原子覆盖",
+      "finalized_at": "UNKNOWN(待查)",
+      "lifecycle": "持续维护",
+      "sources": [
+        "qsys.runtime"
+      ],
+      "consumers": [
+        "监控台",
+        "日报"
+      ],
+      "health_policy": "runtime_log",
+      "physical": true,
+      "columns": [
+        "dt",
+        "cash",
+        "market_value",
+        "total_value"
+      ],
+      "warehouse": {
+        "dataset": "live_equity",
+        "files": 0,
+        "rows": 0,
+        "bytes": 0,
+        "min_time": null,
+        "max_time": null,
+        "errors": []
+      }
+    },
+    {
+      "id": "live_fills",
+      "name": "实盘成交日志",
+      "purpose": "券商真实逐笔成交及费用",
+      "layer": "operational",
+      "role": "event",
+      "status": "operational",
+      "grain": "每券商成交编号一行",
+      "primary_key": [
+        "broker_trade_id"
+      ],
+      "time_columns": [
+        "dt",
+        "filled_at"
+      ],
+      "partition_keys": [
+        "year"
+      ],
+      "sort_keys": [
+        "broker_trade_id"
+      ],
+      "schema_id": "live_fills",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "qsys.ops.journal.SessionJournal",
+      "update_mode": "按分区原子覆盖",
+      "finalized_at": "UNKNOWN(待查)",
+      "lifecycle": "持续维护",
+      "sources": [
+        "qsys.runtime"
+      ],
+      "consumers": [
+        "监控台",
+        "对账",
+        "日报"
+      ],
+      "health_policy": "runtime_log",
+      "physical": true,
+      "columns": [
+        "dt",
+        "client_order_id",
+        "broker_order_id",
+        "broker_trade_id",
+        "symbol",
+        "side",
+        "qty",
+        "price",
+        "fee",
+        "filled_at"
+      ],
+      "warehouse": {
+        "dataset": "live_fills",
+        "files": 0,
+        "rows": 0,
+        "bytes": 0,
+        "min_time": null,
+        "max_time": null,
+        "errors": []
+      }
+    },
+    {
+      "id": "live_recon",
+      "name": "实盘对账日志",
+      "purpose": "盘中、收盘和模拟实盘三层对账结果",
+      "layer": "operational",
+      "role": "event",
+      "status": "operational",
+      "grain": "每交易日每层每次对账一行",
+      "primary_key": [
+        "dt",
+        "layer",
+        "at"
+      ],
+      "time_columns": [
+        "dt",
+        "at"
+      ],
+      "partition_keys": [
+        "year"
+      ],
+      "sort_keys": [
+        "dt",
+        "layer",
+        "at"
+      ],
+      "schema_id": "live_recon",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "qsys.ops.journal.SessionJournal",
+      "update_mode": "按分区原子覆盖",
+      "finalized_at": "UNKNOWN(待查)",
+      "lifecycle": "持续维护",
+      "sources": [
+        "qsys.runtime"
+      ],
+      "consumers": [
+        "监控台",
+        "告警",
+        "日报"
+      ],
+      "health_policy": "runtime_log",
+      "physical": true,
+      "columns": [
+        "dt",
+        "at",
+        "layer",
+        "is_consistent",
+        "cash_diff",
+        "n_mismatches",
+        "detail"
+      ],
+      "warehouse": {
+        "dataset": "live_recon",
+        "files": 0,
+        "rows": 0,
+        "bytes": 0,
+        "min_time": null,
+        "max_time": null,
+        "errors": []
+      }
+    },
+    {
+      "id": "live_rejects",
+      "name": "实盘拒单日志",
+      "purpose": "本地约束或券商拒绝的订单",
+      "layer": "operational",
+      "role": "event",
+      "status": "operational",
+      "grain": "每本地订单每次拒绝一行",
+      "primary_key": [
+        "client_order_id",
+        "at"
+      ],
+      "time_columns": [
+        "dt",
+        "at"
+      ],
+      "partition_keys": [
+        "year"
+      ],
+      "sort_keys": [
+        "client_order_id",
+        "at"
+      ],
+      "schema_id": "live_rejects",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "qsys.ops.journal.SessionJournal",
+      "update_mode": "按分区原子覆盖",
+      "finalized_at": "UNKNOWN(待查)",
+      "lifecycle": "持续维护",
+      "sources": [
+        "qsys.runtime"
+      ],
+      "consumers": [
+        "监控台",
+        "日报"
+      ],
+      "health_policy": "runtime_log",
+      "physical": true,
+      "columns": [
+        "dt",
+        "client_order_id",
+        "symbol",
+        "qty",
+        "reason",
+        "at"
+      ],
+      "warehouse": {
+        "dataset": "live_rejects",
+        "files": 0,
+        "rows": 0,
+        "bytes": 0,
+        "min_time": null,
+        "max_time": null,
+        "errors": []
+      }
+    },
+    {
+      "id": "market_regime",
+      "name": "市场生态因子",
+      "purpose": "每日市场广度、涨跌停生态和指数趋势因子",
+      "layer": "derived",
+      "role": "factor",
+      "status": "active",
+      "grain": "每交易日一行",
+      "primary_key": [
+        "dt"
+      ],
+      "time_columns": [
+        "dt"
+      ],
+      "partition_keys": [
+        "year"
+      ],
+      "sort_keys": [
+        "dt"
+      ],
+      "schema_id": "market_regime",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "qsys.data.pipeline.regime",
+      "update_mode": "按分区原子覆盖",
+      "finalized_at": "UNKNOWN(待查)",
+      "lifecycle": "持续维护",
+      "sources": [
+        "daily_flags",
+        "tushare_daily",
+        "index_bars",
+        "adj_factors"
+      ],
+      "consumers": [
+        "S6 分类",
+        "S7 Gate"
+      ],
+      "health_policy": "dense_daily",
+      "physical": true,
+      "columns": [
+        "dt",
+        "limit_up_count",
+        "limit_down_count",
+        "limit_up_down_ratio",
+        "touched_limit_up_count",
+        "broken_board_count",
+        "broken_board_rate",
+        "first_board_count",
+        "market_advance_ratio",
+        "market_median_return_1d",
+        "market_total_money",
+        "prior_limitup_nextday_return_mean",
+        "prior_limitup_nextday_return_median",
+        "valid_stock_count",
+        "index_ma20_slope_5d"
+      ],
+      "warehouse": {
+        "dataset": "market_regime",
+        "files": 0,
+        "rows": 0,
+        "bytes": 0,
+        "min_time": null,
+        "max_time": null,
+        "errors": []
+      }
+    },
+    {
+      "id": "metric_checks",
+      "name": "字段质检结果",
+      "purpose": "自动规则每次运行对每个指标的结果",
+      "layer": "operational",
+      "role": "event",
+      "status": "operational",
+      "grain": "每运行、指标、规则一行",
+      "primary_key": [
+        "run_id",
+        "metric_id",
+        "check_id"
+      ],
+      "time_columns": [
+        "checked_at",
+        "scope_start",
+        "scope_end"
+      ],
+      "partition_keys": [
+        "year"
+      ],
+      "sort_keys": [
+        "run_id",
+        "metric_id",
+        "check_id"
+      ],
+      "schema_id": "metric_checks",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "qsys.data.catalog.checks.write_results",
+      "update_mode": "按分区原子覆盖",
+      "finalized_at": "UNKNOWN(待查)",
+      "lifecycle": "持续维护",
+      "sources": [
+        "qsys.runtime"
+      ],
+      "consumers": [
+        "数据质量页面",
+        "发布门禁"
+      ],
+      "health_policy": "runtime_log",
+      "physical": true,
+      "columns": [
+        "run_id",
+        "checked_at",
+        "metric_id",
+        "check_id",
+        "category",
+        "scope_start",
+        "scope_end",
+        "passed",
+        "severity",
+        "known_issue",
+        "violations",
+        "checked_rows",
+        "detail",
+        "sample_path"
+      ],
+      "warehouse": {
+        "dataset": "metric_checks",
+        "files": 1,
+        "rows": 188,
+        "bytes": 7302,
+        "min_time": "2026-09-11",
+        "max_time": "2026-09-15T12:22:15.023230",
+        "errors": []
+      }
+    },
+    {
+      "id": "metric_evidence",
+      "name": "人工质检证据",
+      "purpose": "人工抽查的我方值、参考值与判定",
+      "layer": "operational",
+      "role": "event",
+      "status": "operational",
+      "grain": "每指标、标的、日期、检查时刻一行",
+      "primary_key": [
+        "metric_id",
+        "symbol",
+        "dt",
+        "checked_at"
+      ],
+      "time_columns": [
+        "dt",
+        "checked_at"
+      ],
+      "partition_keys": [
+        "year"
+      ],
+      "sort_keys": [
+        "metric_id",
+        "symbol",
+        "dt",
+        "checked_at"
+      ],
+      "schema_id": "metric_evidence",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "scripts/verify_metrics.py",
+      "update_mode": "按分区原子覆盖",
+      "finalized_at": "UNKNOWN(待查)",
+      "lifecycle": "持续维护",
+      "sources": [
+        "人工证据"
+      ],
+      "consumers": [
+        "数据质量页面"
+      ],
+      "health_policy": "runtime_log",
+      "physical": true,
+      "columns": [
+        "metric_id",
+        "symbol",
+        "dt",
+        "our_value",
+        "reference_value",
+        "reference_source",
+        "verdict",
+        "checked_by",
+        "checked_at",
+        "note"
+      ],
+      "warehouse": {
+        "dataset": "metric_evidence",
+        "files": 0,
+        "rows": 0,
+        "bytes": 0,
+        "min_time": null,
+        "max_time": null,
+        "errors": []
+      }
+    },
+    {
+      "id": "minute_bars",
+      "name": "QMT 分钟线",
+      "purpose": "QMT 历史一分钟定稿行情",
+      "layer": "canonical",
+      "role": "fact",
+      "status": "active",
+      "grain": "每标的每一分钟收盘时刻一行",
+      "primary_key": [
+        "symbol",
+        "dt"
+      ],
+      "time_columns": [
+        "dt"
+      ],
+      "partition_keys": [
+        "year"
+      ],
+      "sort_keys": [
+        "symbol",
+        "dt"
+      ],
+      "schema_id": "minute_bars",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "qsys.data.pipeline.minutes",
+      "update_mode": "按分区原子覆盖",
+      "finalized_at": "导入后通过分钟质量检查",
+      "lifecycle": "持续维护",
+      "sources": [
+        "qmt.minute"
+      ],
+      "consumers": [
+        "统一日内查询",
+        "策略与回测"
+      ],
+      "health_policy": "minute",
+      "physical": true,
+      "columns": [
+        "symbol",
+        "dt",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "amount"
+      ],
+      "warehouse": {
+        "dataset": "minute_bars",
+        "files": 0,
+        "rows": 0,
+        "bytes": 0,
+        "min_time": null,
+        "max_time": null,
+        "errors": []
+      }
+    },
+    {
+      "id": "name_history",
+      "name": "证券名称历史",
+      "purpose": "证券曾用名及其有效区间和公告日",
+      "layer": "canonical",
+      "role": "dimension",
+      "status": "active",
+      "grain": "每标的每名称有效区间一行",
+      "primary_key": [
+        "symbol",
+        "start_date",
+        "name"
+      ],
+      "time_columns": [
+        "start_date",
+        "end_date",
+        "ann_date"
+      ],
+      "partition_keys": [],
+      "sort_keys": [
+        "symbol",
+        "start_date",
+        "name"
+      ],
+      "schema_id": "name_history",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "qsys.data.pipeline.tushare_reference.ingest_name_history",
+      "update_mode": "全表原子覆盖",
+      "finalized_at": "UNKNOWN(待查)",
+      "lifecycle": "持续维护",
+      "sources": [
+        "tushare.namechange"
+      ],
+      "consumers": [
+        "delisting_pool",
+        "Web 数据页"
+      ],
+      "health_policy": "interval",
+      "physical": true,
+      "columns": [
+        "symbol",
+        "name",
+        "start_date",
+        "end_date",
+        "ann_date",
+        "change_reason"
+      ],
+      "warehouse": {
+        "dataset": "name_history",
+        "files": 0,
+        "rows": 0,
+        "bytes": 0,
+        "min_time": null,
+        "max_time": null,
+        "errors": []
+      }
+    },
+    {
+      "id": "name_snapshots",
+      "name": "证券名称点观测",
+      "purpose": "保留 stock_basic 每日名称观测，不推断区间",
+      "layer": "canonical",
+      "role": "snapshot",
+      "status": "active",
+      "grain": "每观测日每标的一行",
+      "primary_key": [
+        "dt",
+        "symbol"
+      ],
+      "time_columns": [
+        "dt"
+      ],
+      "partition_keys": [
+        "year"
+      ],
+      "sort_keys": [
+        "dt",
+        "symbol"
+      ],
+      "schema_id": "name_snapshots",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "qsys.data.pipeline.tushare_reference.ingest_instruments",
+      "update_mode": "按分区原子覆盖",
+      "finalized_at": "UNKNOWN(待查)",
+      "lifecycle": "持续维护",
+      "sources": [
+        "tushare.stock_basic"
+      ],
+      "consumers": [
+        "daily_flags"
+      ],
+      "health_policy": "dense_daily",
+      "physical": true,
+      "columns": [
+        "dt",
+        "symbol",
+        "name"
+      ],
+      "warehouse": {
+        "dataset": "name_snapshots",
+        "files": 0,
+        "rows": 0,
+        "bytes": 0,
+        "min_time": null,
+        "max_time": null,
+        "errors": []
+      }
+    },
+    {
+      "id": "paid_daily",
+      "name": "冻结付费日线",
+      "purpose": "百度网盘历史日线，仅供来源对账",
+      "layer": "raw",
+      "role": "fact",
+      "status": "frozen",
+      "grain": "每标的每交易日一行",
+      "primary_key": [
+        "symbol",
+        "dt"
+      ],
+      "time_columns": [
+        "dt"
+      ],
+      "partition_keys": [
+        "year"
+      ],
+      "sort_keys": [
+        "symbol",
+        "dt"
+      ],
+      "schema_id": "paid_daily",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "scripts/ingest_paid_daily.py",
+      "update_mode": "按分区原子覆盖",
+      "finalized_at": "已冻结",
+      "lifecycle": "只读审计证据",
+      "sources": [
+        "baidupan.daily"
+      ],
+      "consumers": [
+        "换源对账"
+      ],
+      "health_policy": "frozen",
+      "physical": true,
+      "columns": [
+        "dt",
+        "symbol",
+        "name",
+        "open",
+        "high",
+        "low",
+        "close",
+        "pre_close",
+        "change",
+        "pct_change",
+        "volume",
+        "amount",
+        "factor",
+        "turnover_ratio",
+        "free_turnover_ratio",
+        "volume_ratio",
+        "pe",
+        "pe_ttm",
+        "pb",
+        "ps",
+        "ps_ttm",
+        "dividend_yield",
+        "dividend_yield_ttm",
+        "total_shares",
+        "circulating_shares",
+        "free_shares",
+        "market_cap",
+        "circulating_market_cap"
+      ],
+      "warehouse": {
+        "dataset": "paid_daily",
+        "files": 0,
+        "rows": 0,
+        "bytes": 0,
+        "min_time": null,
+        "max_time": null,
+        "errors": []
+      }
+    },
+    {
+      "id": "paid_minute_bars",
+      "name": "冻结付费分钟线",
+      "purpose": "当前统一日内查询使用的外部一分钟定稿行情",
+      "layer": "canonical",
+      "role": "fact",
+      "status": "frozen",
+      "grain": "每标的每源时间戳一行",
+      "primary_key": [
+        "symbol",
+        "dt"
+      ],
+      "time_columns": [
+        "dt"
+      ],
+      "partition_keys": [
+        "year"
+      ],
+      "sort_keys": [
+        "symbol",
+        "dt"
+      ],
+      "schema_id": "paid_minute_bars",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "qsys.data.pipeline.paid_minute",
+      "update_mode": "按分区原子覆盖",
+      "finalized_at": "发布年度分片后冻结",
+      "lifecycle": "只读审计证据",
+      "sources": [
+        "baidupan.minute"
+      ],
+      "consumers": [
+        "统一日内查询",
+        "分钟质量对账"
+      ],
+      "health_policy": "frozen",
+      "physical": true,
+      "columns": [
+        "symbol",
+        "dt",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "amount",
+        "factor"
+      ],
+      "warehouse": {
+        "dataset": "paid_minute_bars",
+        "files": 0,
+        "rows": 0,
+        "bytes": 0,
+        "min_time": null,
+        "max_time": null,
+        "errors": []
+      }
+    },
+    {
+      "id": "price_limits_daily",
+      "name": "每日涨跌停价",
+      "purpose": "交易所口径前收、涨停价和跌停价",
+      "layer": "canonical",
+      "role": "fact",
+      "status": "active",
+      "grain": "每标的每交易日一行",
+      "primary_key": [
+        "symbol",
+        "dt"
+      ],
+      "time_columns": [
+        "dt"
+      ],
+      "partition_keys": [
+        "year"
+      ],
+      "sort_keys": [
+        "symbol",
+        "dt"
+      ],
+      "schema_id": "price_limits_daily",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "qsys.data.pipeline.tushare_reference.ingest_price_limits",
+      "update_mode": "按分区原子覆盖",
+      "finalized_at": "UNKNOWN(待查)",
+      "lifecycle": "持续维护",
+      "sources": [
+        "tushare.stk_limit",
+        "tushare.daily"
+      ],
+      "consumers": [
+        "daily_flags",
+        "撮合与风控"
+      ],
+      "health_policy": "dense_daily",
+      "physical": true,
+      "columns": [
+        "symbol",
+        "dt",
+        "pre_close",
+        "limit_up",
+        "limit_down"
+      ],
+      "warehouse": {
+        "dataset": "price_limits_daily",
+        "files": 0,
+        "rows": 0,
+        "bytes": 0,
+        "min_time": null,
+        "max_time": null,
+        "errors": []
+      }
+    },
+    {
+      "id": "relation_checks",
+      "name": "关系健康结果",
+      "purpose": "上下游连接、基数、孤儿行和刷新顺序证据",
+      "layer": "operational",
+      "role": "event",
+      "status": "operational",
+      "grain": "每运行、上下游、规则、维度一行",
+      "primary_key": [
+        "run_id",
+        "upstream",
+        "downstream",
+        "check_id",
+        "dimension"
+      ],
+      "time_columns": [
+        "checked_at",
+        "scope_start",
+        "scope_end",
+        "evidence_at",
+        "expires_at"
+      ],
+      "partition_keys": [
+        "year"
+      ],
+      "sort_keys": [
+        "run_id",
+        "upstream",
+        "downstream",
+        "check_id",
+        "dimension"
+      ],
+      "schema_id": "relation_checks",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "qsys.data.catalog.health.write_relation_checks",
+      "update_mode": "按分区原子覆盖",
+      "finalized_at": "UNKNOWN(待查)",
+      "lifecycle": "持续维护",
+      "sources": [
+        "qsys.runtime"
+      ],
+      "consumers": [
+        "关系页面",
+        "发布门禁"
+      ],
+      "health_policy": "runtime_log",
+      "physical": true,
+      "columns": [
+        "run_id",
+        "checked_at",
+        "upstream",
+        "downstream",
+        "check_id",
+        "dimension",
+        "scope_start",
+        "scope_end",
+        "status",
+        "evidence_at",
+        "expires_at",
+        "required",
+        "upstream_rows",
+        "downstream_rows",
+        "matched_rows",
+        "orphan_rows",
+        "violations",
+        "detail"
+      ],
+      "warehouse": {
+        "dataset": "relation_checks",
+        "files": 0,
+        "rows": 0,
+        "bytes": 0,
+        "min_time": null,
+        "max_time": null,
+        "errors": []
+      }
+    },
+    {
+      "id": "security_master",
+      "name": "规范证券主数据",
+      "purpose": "稳定证券代码、市场、板块和上市状态契约",
+      "layer": "canonical",
+      "role": "snapshot",
+      "status": "active",
+      "grain": "每标的一行当前快照",
+      "primary_key": [
+        "symbol"
+      ],
+      "time_columns": [
+        "as_of"
+      ],
+      "partition_keys": [],
+      "sort_keys": [
+        "symbol"
+      ],
+      "schema_id": "security_master",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "qsys.data.pipeline.canonical_reference.build_security_master",
+      "update_mode": "全表原子覆盖",
+      "finalized_at": "UNKNOWN(待查)",
+      "lifecycle": "持续维护",
+      "sources": [
+        "instruments"
+      ],
+      "consumers": [
+        "阶段 3 对账与只读诊断"
+      ],
+      "health_policy": "snapshot",
+      "physical": true,
+      "columns": [
+        "symbol",
+        "name",
+        "market",
+        "list_date",
+        "delist_date",
+        "board",
+        "as_of"
+      ],
+      "warehouse": {
+        "dataset": "security_master",
+        "files": 0,
+        "rows": 0,
+        "bytes": 0,
+        "min_time": null,
+        "max_time": null,
+        "errors": []
+      }
+    },
+    {
+      "id": "security_name_history",
+      "name": "规范证券名称历史",
+      "purpose": "稳定的曾用名有效区间契约",
+      "layer": "canonical",
+      "role": "dimension",
+      "status": "active",
+      "grain": "每标的每名称有效区间一行",
+      "primary_key": [
+        "symbol",
+        "start_date",
+        "name"
+      ],
+      "time_columns": [
+        "start_date",
+        "end_date",
+        "ann_date"
+      ],
+      "partition_keys": [],
+      "sort_keys": [
+        "symbol",
+        "start_date",
+        "name"
+      ],
+      "schema_id": "security_name_history",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "qsys.data.pipeline.canonical_reference.build_security_name_history",
+      "update_mode": "全表原子覆盖",
+      "finalized_at": "UNKNOWN(待查)",
+      "lifecycle": "持续维护",
+      "sources": [
+        "name_history"
+      ],
+      "consumers": [
+        "阶段 3 对账与只读诊断"
+      ],
+      "health_policy": "interval",
+      "physical": true,
+      "columns": [
+        "symbol",
+        "name",
+        "start_date",
+        "end_date",
+        "ann_date",
+        "change_reason"
+      ],
+      "warehouse": {
+        "dataset": "security_name_history",
+        "files": 0,
+        "rows": 0,
+        "bytes": 0,
+        "min_time": null,
+        "max_time": null,
+        "errors": []
+      }
+    },
+    {
+      "id": "share_capital",
+      "name": "股本历史",
+      "purpose": "总股本和流通股本的生效日记录",
+      "layer": "canonical",
+      "role": "fact",
+      "status": "active",
+      "grain": "每标的每生效日一行",
+      "primary_key": [
+        "symbol",
+        "dt"
+      ],
+      "time_columns": [
+        "dt",
+        "ann_date"
+      ],
+      "partition_keys": [],
+      "sort_keys": [
+        "symbol",
+        "dt"
+      ],
+      "schema_id": "share_capital",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "qsys.data.pipeline.capital",
+      "update_mode": "全表原子覆盖",
+      "finalized_at": "UNKNOWN(待查)",
+      "lifecycle": "持续维护",
+      "sources": [
+        "qmt.capital"
+      ],
+      "consumers": [
+        "估值重算"
+      ],
+      "health_policy": "interval",
+      "physical": true,
+      "columns": [
+        "symbol",
+        "dt",
+        "ann_date",
+        "total",
+        "circulating"
+      ],
+      "warehouse": {
+        "dataset": "share_capital",
+        "files": 0,
+        "rows": 0,
+        "bytes": 0,
+        "min_time": null,
+        "max_time": null,
+        "errors": []
+      }
+    },
+    {
+      "id": "share_capital_history",
+      "name": "规范股本历史",
+      "purpose": "按真实生效日记录总股本和流通股本",
+      "layer": "canonical",
+      "role": "fact",
+      "status": "active",
+      "grain": "每标的每生效日一行",
+      "primary_key": [
+        "symbol",
+        "effective_date"
+      ],
+      "time_columns": [
+        "effective_date",
+        "announcement_date"
+      ],
+      "partition_keys": [],
+      "sort_keys": [
+        "symbol",
+        "effective_date"
+      ],
+      "schema_id": "share_capital_history",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "qsys.data.pipeline.canonical_daily.build_share_capital_history",
+      "update_mode": "全表原子覆盖",
+      "finalized_at": "UNKNOWN(待查)",
+      "lifecycle": "持续维护",
+      "sources": [
+        "share_capital"
+      ],
+      "consumers": [
+        "阶段 4 对账与只读诊断"
+      ],
+      "health_policy": "interval",
+      "physical": true,
+      "columns": [
+        "symbol",
+        "effective_date",
+        "announcement_date",
+        "total_shares",
+        "circulating_shares"
+      ],
+      "warehouse": {
+        "dataset": "share_capital_history",
+        "files": 0,
+        "rows": 0,
+        "bytes": 0,
+        "min_time": null,
+        "max_time": null,
+        "errors": []
+      }
+    },
+    {
+      "id": "stock_st_daily",
+      "name": "每日 ST 状态",
+      "purpose": "每日全市场 ST 真值的稠密布尔表",
+      "layer": "canonical",
+      "role": "fact",
+      "status": "active",
+      "grain": "每标的每交易日一行",
+      "primary_key": [
+        "symbol",
+        "dt"
+      ],
+      "time_columns": [
+        "dt"
+      ],
+      "partition_keys": [
+        "year"
+      ],
+      "sort_keys": [
+        "symbol",
+        "dt"
+      ],
+      "schema_id": "stock_st_daily",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "qsys.data.pipeline.tushare_reference.ingest_stock_st",
+      "update_mode": "按分区原子覆盖",
+      "finalized_at": "UNKNOWN(待查)",
+      "lifecycle": "持续维护",
+      "sources": [
+        "tushare.stock_st",
+        "tushare.daily"
+      ],
+      "consumers": [
+        "daily_flags"
+      ],
+      "health_policy": "dense_daily",
+      "physical": true,
+      "columns": [
+        "symbol",
+        "dt",
+        "is_st",
+        "name",
+        "st_type",
+        "st_type_name"
+      ],
+      "warehouse": {
+        "dataset": "stock_st_daily",
+        "files": 0,
+        "rows": 0,
+        "bytes": 0,
+        "min_time": null,
+        "max_time": null,
+        "errors": []
+      }
+    },
+    {
+      "id": "suspend_daily",
+      "name": "停复牌事件",
+      "purpose": "每日停牌或复牌事件及时间段",
+      "layer": "canonical",
+      "role": "event",
+      "status": "active",
+      "grain": "每标的每交易日事件一行",
+      "primary_key": [
+        "symbol",
+        "dt",
+        "suspend_type"
+      ],
+      "time_columns": [
+        "dt"
+      ],
+      "partition_keys": [
+        "year"
+      ],
+      "sort_keys": [
+        "symbol",
+        "dt",
+        "suspend_type"
+      ],
+      "schema_id": "suspend_daily",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "qsys.data.pipeline.tushare_reference.ingest_suspensions",
+      "update_mode": "按分区原子覆盖",
+      "finalized_at": "UNKNOWN(待查)",
+      "lifecycle": "持续维护",
+      "sources": [
+        "tushare.suspend_d"
+      ],
+      "consumers": [
+        "可交易性判断"
+      ],
+      "health_policy": "sparse_event",
+      "physical": true,
+      "columns": [
+        "symbol",
+        "dt",
+        "suspend_type",
+        "suspend_timing"
+      ],
+      "warehouse": {
+        "dataset": "suspend_daily",
+        "files": 0,
+        "rows": 0,
+        "bytes": 0,
+        "min_time": null,
+        "max_time": null,
+        "errors": []
+      }
+    },
+    {
+      "id": "trading_calendar",
+      "name": "规范交易日历",
+      "purpose": "来源登记的市场开闭市自然日事实",
+      "layer": "canonical",
+      "role": "dimension",
+      "status": "active",
+      "grain": "每市场每自然日一行",
+      "primary_key": [
+        "market",
+        "dt"
+      ],
+      "time_columns": [
+        "dt",
+        "pretrade_date"
+      ],
+      "partition_keys": [
+        "year"
+      ],
+      "sort_keys": [
+        "market",
+        "dt"
+      ],
+      "schema_id": "trading_calendar",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "qsys.data.pipeline.canonical_reference.publish_trading_calendar",
+      "update_mode": "按分区原子覆盖",
+      "finalized_at": "UNKNOWN(待查)",
+      "lifecycle": "持续维护",
+      "sources": [
+        "tushare.trade_cal"
+      ],
+      "consumers": [
+        "阶段 3 对账与只读诊断"
+      ],
+      "health_policy": "dense_daily",
+      "physical": true,
+      "columns": [
+        "market",
+        "dt",
+        "is_open",
+        "pretrade_date"
+      ],
+      "warehouse": {
+        "dataset": "trading_calendar",
+        "files": 0,
+        "rows": 0,
+        "bytes": 0,
+        "min_time": null,
+        "max_time": null,
+        "errors": []
+      }
+    },
+    {
+      "id": "tushare_daily",
+      "name": "生产组合日线",
+      "purpose": "当前生产日线、估值、股本和因子的宽表",
+      "layer": "canonical",
+      "role": "fact",
+      "status": "active",
+      "grain": "每标的每交易日一行",
+      "primary_key": [
+        "symbol",
+        "dt"
+      ],
+      "time_columns": [
+        "dt"
+      ],
+      "partition_keys": [
+        "year"
+      ],
+      "sort_keys": [
+        "symbol",
+        "dt"
+      ],
+      "schema_id": "tushare_daily",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "qsys.data.pipeline.tushare_daily.write_day",
+      "update_mode": "按分区原子覆盖",
+      "finalized_at": "交易日收盘后同步成功且验证通过",
+      "lifecycle": "持续维护",
+      "sources": [
+        "tushare.daily",
+        "tushare.daily_basic",
+        "tushare.adj_factor"
+      ],
+      "consumers": [
+        "daily_bars",
+        "daily_flags",
+        "valuation_snapshot",
+        "策略与回测"
+      ],
+      "health_policy": "dense_daily",
+      "physical": true,
+      "columns": [
+        "dt",
+        "symbol",
+        "name",
+        "open",
+        "high",
+        "low",
+        "close",
+        "pre_close",
+        "change",
+        "pct_change",
+        "volume",
+        "amount",
+        "factor",
+        "turnover_ratio",
+        "free_turnover_ratio",
+        "volume_ratio",
+        "pe",
+        "pe_ttm",
+        "pb",
+        "ps",
+        "ps_ttm",
+        "dividend_yield",
+        "dividend_yield_ttm",
+        "total_shares",
+        "circulating_shares",
+        "free_shares",
+        "market_cap",
+        "circulating_market_cap"
+      ],
+      "warehouse": {
+        "dataset": "tushare_daily",
+        "files": 0,
+        "rows": 0,
+        "bytes": 0,
+        "min_time": null,
+        "max_time": null,
+        "errors": []
+      }
+    },
+    {
+      "id": "valuation_daily",
+      "name": "规范每日估值",
+      "purpose": "换手、估值倍数、股息率和市值窄表",
+      "layer": "canonical",
+      "role": "fact",
+      "status": "active",
+      "grain": "每标的每交易日一行",
+      "primary_key": [
+        "symbol",
+        "dt"
+      ],
+      "time_columns": [
+        "dt"
+      ],
+      "partition_keys": [
+        "year"
+      ],
+      "sort_keys": [
+        "symbol",
+        "dt"
+      ],
+      "schema_id": "valuation_daily",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "qsys.data.pipeline.canonical_daily.build_valuation_daily",
+      "update_mode": "按分区原子覆盖",
+      "finalized_at": "交易日收盘后来源同步且对账通过",
+      "lifecycle": "持续维护",
+      "sources": [
+        "tushare_daily"
+      ],
+      "consumers": [
+        "阶段 4 对账与只读诊断"
+      ],
+      "health_policy": "dense_daily",
+      "physical": true,
+      "columns": [
+        "symbol",
+        "dt",
+        "turnover_ratio",
+        "free_turnover_ratio",
+        "volume_ratio",
+        "pe",
+        "pe_ttm",
+        "pb",
+        "ps",
+        "ps_ttm",
+        "dividend_yield",
+        "dividend_yield_ttm",
+        "market_cap",
+        "circulating_market_cap"
+      ],
+      "warehouse": {
+        "dataset": "valuation_daily",
+        "files": 0,
+        "rows": 0,
+        "bytes": 0,
+        "min_time": null,
+        "max_time": null,
+        "errors": []
+      }
+    },
+    {
+      "id": "valuation_snapshot",
+      "name": "估值快照",
+      "purpose": "收盘价、市值和换手率的每日投影",
+      "layer": "derived",
+      "role": "snapshot",
+      "status": "active",
+      "grain": "每标的每交易日一行",
+      "primary_key": [
+        "symbol",
+        "dt"
+      ],
+      "time_columns": [
+        "dt"
+      ],
+      "partition_keys": [
+        "year"
+      ],
+      "sort_keys": [
+        "symbol",
+        "dt"
+      ],
+      "schema_id": "valuation_snapshot",
+      "schema_version": 1,
+      "compatibility": "新增列向后兼容；删列、改类型或改语义必须升版本并对账",
+      "builder": "qsys.data.pipeline.valuation",
+      "update_mode": "按分区原子覆盖",
+      "finalized_at": "UNKNOWN(待查)",
+      "lifecycle": "持续维护",
+      "sources": [
+        "tushare_daily"
+      ],
+      "consumers": [
+        "策略估值 Gate"
+      ],
+      "health_policy": "dense_daily",
+      "physical": true,
+      "columns": [
+        "dt",
+        "symbol",
+        "close",
+        "market_cap",
+        "circulating_market_cap",
+        "turnover_ratio"
+      ],
+      "warehouse": {
+        "dataset": "valuation_snapshot",
+        "files": 0,
+        "rows": 0,
+        "bytes": 0,
+        "min_time": null,
+        "max_time": null,
+        "errors": []
+      }
+    }
+  ],
+  "dependencies": [
+    {
+      "upstream": "instruments",
+      "downstream": "name_snapshots",
+      "kind": "passthrough",
+      "join_keys": [
+        [
+          "symbol",
+          "symbol"
+        ]
+      ],
+      "cardinality": "1:1",
+      "requirement": "required",
+      "allowed_lag": "同一生产批次或下游保持灰/红",
+      "metrics": [
+        "name_snapshots.dt"
+      ],
+      "health_policy": "lineage_freshness",
+      "note": ""
+    },
+    {
+      "upstream": "instruments",
+      "downstream": "security_master",
+      "kind": "passthrough",
+      "join_keys": [
+        [
+          "symbol",
+          "symbol"
+        ]
+      ],
+      "cardinality": "1:1",
+      "requirement": "required",
+      "allowed_lag": "同一生产批次或下游保持灰/红",
+      "metrics": [
+        "security_master.as_of",
+        "security_master.board",
+        "security_master.delist_date",
+        "security_master.list_date",
+        "security_master.market",
+        "security_master.name",
+        "security_master.symbol"
+      ],
+      "health_policy": "lineage_freshness",
+      "note": ""
+    },
+    {
+      "upstream": "name_history",
+      "downstream": "security_name_history",
+      "kind": "passthrough",
+      "join_keys": [
+        [
+          "symbol",
+          "symbol"
+        ],
+        [
+          "start_date",
+          "start_date"
+        ],
+        [
+          "name",
+          "name"
+        ]
+      ],
+      "cardinality": "1:1",
+      "requirement": "required",
+      "allowed_lag": "同一生产批次或下游保持灰/红",
+      "metrics": [
+        "security_name_history.ann_date",
+        "security_name_history.change_reason",
+        "security_name_history.end_date",
+        "security_name_history.name",
+        "security_name_history.start_date",
+        "security_name_history.symbol"
+      ],
+      "health_policy": "lineage_freshness",
+      "note": ""
+    },
+    {
+      "upstream": "corporate_actions",
+      "downstream": "adj_factors",
+      "kind": "window",
+      "join_keys": [
+        [
+          "symbol",
+          "symbol"
+        ]
+      ],
+      "cardinality": "1:N",
+      "requirement": "required",
+      "allowed_lag": "同一生产批次或下游保持灰/红",
+      "metrics": [
+        "adj_factors.cum_share_factor"
+      ],
+      "health_policy": "lineage_freshness",
+      "note": ""
+    },
+    {
+      "upstream": "name_history",
+      "downstream": "delisting_pool",
+      "kind": "join",
+      "join_keys": [
+        [
+          "symbol",
+          "symbol"
+        ]
+      ],
+      "cardinality": "1:N",
+      "requirement": "required",
+      "allowed_lag": "同一生产批次或下游保持灰/红",
+      "metrics": [
+        "delisting_pool.ann_date",
+        "delisting_pool.end_date",
+        "delisting_pool.name",
+        "delisting_pool.start_date",
+        "delisting_pool.symbol"
+      ],
+      "health_policy": "lineage_freshness",
+      "note": ""
+    },
+    {
+      "upstream": "tushare_daily",
+      "downstream": "delisting_pool",
+      "kind": "join",
+      "join_keys": [
+        [
+          "dt",
+          "dt"
+        ]
+      ],
+      "cardinality": "1:N",
+      "requirement": "required",
+      "allowed_lag": "同一生产批次或下游保持灰/红",
+      "metrics": [
+        "delisting_pool.dt"
+      ],
+      "health_policy": "lineage_freshness",
+      "note": ""
+    },
+    {
+      "upstream": "tushare_daily",
+      "downstream": "price_limits_daily",
+      "kind": "passthrough",
+      "join_keys": [
+        [
+          "symbol",
+          "symbol"
+        ],
+        [
+          "dt",
+          "dt"
+        ]
+      ],
+      "cardinality": "1:1",
+      "requirement": "required",
+      "allowed_lag": "同一生产批次或下游保持灰/红",
+      "metrics": [
+        "price_limits_daily.pre_close"
+      ],
+      "health_policy": "lineage_freshness",
+      "note": ""
+    },
+    {
+      "upstream": "tushare_daily",
+      "downstream": "stock_st_daily",
+      "kind": "join",
+      "join_keys": [
+        [
+          "symbol",
+          "symbol"
+        ],
+        [
+          "dt",
+          "dt"
+        ]
+      ],
+      "cardinality": "1:1",
+      "requirement": "required",
+      "allowed_lag": "同一生产批次或下游保持灰/红",
+      "metrics": [
+        "stock_st_daily.is_st"
+      ],
+      "health_policy": "lineage_freshness",
+      "note": ""
+    },
+    {
+      "upstream": "tushare_daily",
+      "downstream": "valuation_snapshot",
+      "kind": "passthrough",
+      "join_keys": [
+        [
+          "symbol",
+          "symbol"
+        ],
+        [
+          "dt",
+          "dt"
+        ]
+      ],
+      "cardinality": "1:1",
+      "requirement": "required",
+      "allowed_lag": "同一生产批次或下游保持灰/红",
+      "metrics": [
+        "valuation_snapshot.circulating_market_cap",
+        "valuation_snapshot.close",
+        "valuation_snapshot.dt",
+        "valuation_snapshot.market_cap",
+        "valuation_snapshot.symbol",
+        "valuation_snapshot.turnover_ratio"
+      ],
+      "health_policy": "lineage_freshness",
+      "note": ""
+    },
+    {
+      "upstream": "tushare_daily",
+      "downstream": "daily_flags",
+      "kind": "window",
+      "join_keys": [
+        [
+          "symbol",
+          "symbol"
+        ],
+        [
+          "dt",
+          "dt"
+        ]
+      ],
+      "cardinality": "1:1",
+      "requirement": "required",
+      "allowed_lag": "同一生产批次或下游保持灰/红",
+      "metrics": [
+        "daily_flags.adj_prev_close",
+        "daily_flags.dt",
+        "daily_flags.is_limit_down",
+        "daily_flags.is_limit_up",
+        "daily_flags.prev_close",
+        "daily_flags.symbol",
+        "daily_flags.touched_limit_up"
+      ],
+      "health_policy": "lineage_freshness",
+      "note": ""
+    },
+    {
+      "upstream": "price_limits_daily",
+      "downstream": "daily_flags",
+      "kind": "join",
+      "join_keys": [
+        [
+          "symbol",
+          "symbol"
+        ],
+        [
+          "dt",
+          "dt"
+        ]
+      ],
+      "cardinality": "1:1",
+      "requirement": "required",
+      "allowed_lag": "同一生产批次或下游保持灰/红",
+      "metrics": [
+        "daily_flags.adj_prev_close",
+        "daily_flags.limit_down",
+        "daily_flags.limit_up"
+      ],
+      "health_policy": "lineage_freshness",
+      "note": ""
+    },
+    {
+      "upstream": "stock_st_daily",
+      "downstream": "daily_flags",
+      "kind": "join",
+      "join_keys": [
+        [
+          "symbol",
+          "symbol"
+        ],
+        [
+          "dt",
+          "dt"
+        ]
+      ],
+      "cardinality": "1:1",
+      "requirement": "required",
+      "allowed_lag": "同一生产批次或下游保持灰/红",
+      "metrics": [
+        "daily_flags.is_st",
+        "daily_flags.st_source"
+      ],
+      "health_policy": "lineage_freshness",
+      "note": ""
+    },
+    {
+      "upstream": "limit_list_daily",
+      "downstream": "daily_flags",
+      "kind": "join",
+      "join_keys": [
+        [
+          "symbol",
+          "symbol"
+        ],
+        [
+          "dt",
+          "dt"
+        ]
+      ],
+      "cardinality": "1:1",
+      "requirement": "optional",
+      "allowed_lag": "同一生产批次或下游保持灰/红",
+      "metrics": [
+        "daily_flags.is_limit_up"
+      ],
+      "health_policy": "lineage_freshness",
+      "note": "limit_list_d 历史范围较短；缺失不得伪造为未涨停"
+    },
+    {
+      "upstream": "delisting_pool",
+      "downstream": "daily_flags",
+      "kind": "join",
+      "join_keys": [
+        [
+          "symbol",
+          "symbol"
+        ],
+        [
+          "dt",
+          "dt"
+        ]
+      ],
+      "cardinality": "1:1",
+      "requirement": "optional",
+      "allowed_lag": "同一生产批次或下游保持灰/红",
+      "metrics": [
+        "daily_flags.is_st"
+      ],
+      "health_policy": "lineage_freshness",
+      "note": ""
+    },
+    {
+      "upstream": "daily_flags",
+      "downstream": "market_regime",
+      "kind": "aggregation",
+      "join_keys": [
+        [
+          "dt",
+          "dt"
+        ]
+      ],
+      "cardinality": "1:N",
+      "requirement": "required",
+      "allowed_lag": "同一生产批次或下游保持灰/红",
+      "metrics": [
+        "market_regime.broken_board_count",
+        "market_regime.dt",
+        "market_regime.first_board_count",
+        "market_regime.limit_down_count",
+        "market_regime.limit_up_count",
+        "market_regime.market_advance_ratio",
+        "market_regime.market_median_return_1d",
+        "market_regime.prior_limitup_nextday_return_mean",
+        "market_regime.prior_limitup_nextday_return_median",
+        "market_regime.touched_limit_up_count",
+        "market_regime.valid_stock_count"
+      ],
+      "health_policy": "lineage_freshness",
+      "note": ""
+    },
+    {
+      "upstream": "tushare_daily",
+      "downstream": "market_regime",
+      "kind": "aggregation",
+      "join_keys": [
+        [
+          "dt",
+          "dt"
+        ]
+      ],
+      "cardinality": "1:N",
+      "requirement": "required",
+      "allowed_lag": "同一生产批次或下游保持灰/红",
+      "metrics": [
+        "market_regime.market_advance_ratio",
+        "market_regime.market_median_return_1d",
+        "market_regime.market_total_money",
+        "market_regime.prior_limitup_nextday_return_mean",
+        "market_regime.prior_limitup_nextday_return_median",
+        "market_regime.valid_stock_count"
+      ],
+      "health_policy": "lineage_freshness",
+      "note": ""
+    },
+    {
+      "upstream": "adj_factors",
+      "downstream": "market_regime",
+      "kind": "join",
+      "join_keys": [
+        [
+          "symbol",
+          "symbol"
+        ],
+        [
+          "dt",
+          "dt"
+        ]
+      ],
+      "cardinality": "1:1",
+      "requirement": "required",
+      "allowed_lag": "同一生产批次或下游保持灰/红",
+      "metrics": [
+        "market_regime.market_advance_ratio",
+        "market_regime.market_median_return_1d",
+        "market_regime.prior_limitup_nextday_return_mean",
+        "market_regime.prior_limitup_nextday_return_median"
+      ],
+      "health_policy": "lineage_freshness",
+      "note": ""
+    },
+    {
+      "upstream": "index_bars",
+      "downstream": "market_regime",
+      "kind": "window",
+      "join_keys": [
+        [
+          "dt",
+          "dt"
+        ]
+      ],
+      "cardinality": "1:N",
+      "requirement": "required",
+      "allowed_lag": "同一生产批次或下游保持灰/红",
+      "metrics": [
+        "market_regime.index_ma20_slope_5d"
+      ],
+      "health_policy": "lineage_freshness",
+      "note": ""
+    },
+    {
+      "upstream": "tushare_daily",
+      "downstream": "strategy",
+      "kind": "window",
+      "join_keys": [
+        [
+          "symbol",
+          "symbol"
+        ],
+        [
+          "dt",
+          "dt"
+        ]
+      ],
+      "cardinality": "1:N",
+      "requirement": "required",
+      "allowed_lag": "同一生产批次或下游保持灰/红",
+      "metrics": [
+        "strategy.distance_to_60d_high",
+        "strategy.high_auction_price_ratio",
+        "strategy.high_auction_volume_ratio",
+        "strategy.high_avg_inc",
+        "strategy.left_pressure_days",
+        "strategy.left_pressure_volume_ratio",
+        "strategy.low_auction_price_ratio",
+        "strategy.low_main_auction_volume_ratio",
+        "strategy.low_relative_position_60d",
+        "strategy.stock_return_10d"
+      ],
+      "health_policy": "lineage_freshness",
+      "note": ""
+    },
+    {
+      "upstream": "adj_factors",
+      "downstream": "strategy",
+      "kind": "window",
+      "join_keys": [
+        [
+          "symbol",
+          "symbol"
+        ],
+        [
+          "dt",
+          "dt"
+        ]
+      ],
+      "cardinality": "1:N",
+      "requirement": "required",
+      "allowed_lag": "同一生产批次或下游保持灰/红",
+      "metrics": [
+        "strategy.distance_to_60d_high",
+        "strategy.high_auction_price_ratio",
+        "strategy.high_auction_volume_ratio",
+        "strategy.high_avg_inc",
+        "strategy.left_pressure_days",
+        "strategy.left_pressure_volume_ratio",
+        "strategy.low_auction_price_ratio",
+        "strategy.low_main_auction_volume_ratio",
+        "strategy.low_relative_position_60d",
+        "strategy.stock_return_10d"
+      ],
+      "health_policy": "lineage_freshness",
+      "note": ""
+    },
+    {
+      "upstream": "minute_bars",
+      "downstream": "strategy",
+      "kind": "window",
+      "join_keys": [
+        [
+          "symbol",
+          "symbol"
+        ],
+        [
+          "dt",
+          "dt"
+        ]
+      ],
+      "cardinality": "1:N",
+      "requirement": "required",
+      "allowed_lag": "同一生产批次或下游保持灰/红",
+      "metrics": [
+        "strategy.high_auction_volume_ratio",
+        "strategy.low_main_auction_volume_ratio"
+      ],
+      "health_policy": "lineage_freshness",
+      "note": ""
+    },
+    {
+      "upstream": "tushare_daily",
+      "downstream": "daily_bars",
+      "kind": "passthrough",
+      "join_keys": [
+        [
+          "symbol",
+          "symbol"
+        ],
+        [
+          "dt",
+          "dt"
+        ]
+      ],
+      "cardinality": "1:1",
+      "requirement": "required",
+      "allowed_lag": "同一生产批次或下游保持灰/红",
+      "metrics": [],
+      "health_policy": "lineage_freshness",
+      "note": "WarehouseQuery.daily_bars 固定投影八列且禁止来源回退"
+    },
+    {
+      "upstream": "tushare_daily",
+      "downstream": "bar_daily",
+      "kind": "passthrough",
+      "join_keys": [
+        [
+          "symbol",
+          "symbol"
+        ],
+        [
+          "dt",
+          "dt"
+        ]
+      ],
+      "cardinality": "1:1",
+      "requirement": "required",
+      "allowed_lag": "同一生产批次或下游保持灰/红",
+      "metrics": [
+        "bar_daily.amount",
+        "bar_daily.close",
+        "bar_daily.dt",
+        "bar_daily.high",
+        "bar_daily.low",
+        "bar_daily.open",
+        "bar_daily.pre_close",
+        "bar_daily.symbol",
+        "bar_daily.volume"
+      ],
+      "health_policy": "lineage_freshness",
+      "note": ""
+    },
+    {
+      "upstream": "tushare_daily",
+      "downstream": "valuation_daily",
+      "kind": "passthrough",
+      "join_keys": [
+        [
+          "symbol",
+          "symbol"
+        ],
+        [
+          "dt",
+          "dt"
+        ]
+      ],
+      "cardinality": "1:1",
+      "requirement": "required",
+      "allowed_lag": "同一生产批次或下游保持灰/红",
+      "metrics": [
+        "valuation_daily.circulating_market_cap",
+        "valuation_daily.dividend_yield",
+        "valuation_daily.dividend_yield_ttm",
+        "valuation_daily.dt",
+        "valuation_daily.free_turnover_ratio",
+        "valuation_daily.market_cap",
+        "valuation_daily.pb",
+        "valuation_daily.pe",
+        "valuation_daily.pe_ttm",
+        "valuation_daily.ps",
+        "valuation_daily.ps_ttm",
+        "valuation_daily.symbol",
+        "valuation_daily.turnover_ratio",
+        "valuation_daily.volume_ratio"
+      ],
+      "health_policy": "lineage_freshness",
+      "note": ""
+    },
+    {
+      "upstream": "share_capital",
+      "downstream": "share_capital_history",
+      "kind": "passthrough",
+      "join_keys": [
+        [
+          "symbol",
+          "symbol"
+        ],
+        [
+          "dt",
+          "effective_date"
+        ]
+      ],
+      "cardinality": "1:1",
+      "requirement": "required",
+      "allowed_lag": "同一生产批次或下游保持灰/红",
+      "metrics": [
+        "share_capital_history.announcement_date",
+        "share_capital_history.circulating_shares",
+        "share_capital_history.effective_date",
+        "share_capital_history.symbol",
+        "share_capital_history.total_shares"
+      ],
+      "health_policy": "lineage_freshness",
+      "note": "dt 显式重命名为 effective_date，不从每日快照推断事件"
+    },
+    {
+      "upstream": "adj_factors",
+      "downstream": "adjustment_factor_daily",
+      "kind": "passthrough",
+      "join_keys": [
+        [
+          "symbol",
+          "symbol"
+        ],
+        [
+          "dt",
+          "dt"
+        ]
+      ],
+      "cardinality": "1:1",
+      "requirement": "required",
+      "allowed_lag": "同一生产批次或下游保持灰/红",
+      "metrics": [
+        "adjustment_factor_daily.dt",
+        "adjustment_factor_daily.price_factor",
+        "adjustment_factor_daily.share_factor",
+        "adjustment_factor_daily.symbol"
+      ],
+      "health_policy": "lineage_freshness",
+      "note": ""
+    }
+  ],
+  "query_methods": [
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 81,
+      "kind": "query_method",
+      "name": "dataset_bounds",
+      "datasets": [
+        "*"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 130,
+      "kind": "query_method",
+      "name": "daily_bars",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 148,
+      "kind": "query_method",
+      "name": "paid_daily",
+      "datasets": [
+        "paid_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 166,
+      "kind": "query_method",
+      "name": "tushare_daily",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 184,
+      "kind": "query_method",
+      "name": "bar_daily",
+      "datasets": [
+        "bar_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 193,
+      "kind": "query_method",
+      "name": "valuation_daily",
+      "datasets": [
+        "valuation_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 202,
+      "kind": "query_method",
+      "name": "adjustment_factor_daily",
+      "datasets": [
+        "adjustment_factor_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 212,
+      "kind": "query_method",
+      "name": "legacy_paid_daily",
+      "datasets": [
+        "paid_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 223,
+      "kind": "query_method",
+      "name": "legacy_daily_bars",
+      "datasets": [
+        "bars_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 238,
+      "kind": "query_method",
+      "name": "index_bars",
+      "datasets": [
+        "index_bars"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 267,
+      "kind": "query_method",
+      "name": "price_limits",
+      "datasets": [
+        "price_limits_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 276,
+      "kind": "query_method",
+      "name": "suspensions",
+      "datasets": [
+        "suspend_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 285,
+      "kind": "query_method",
+      "name": "stock_st",
+      "datasets": [
+        "stock_st_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 294,
+      "kind": "query_method",
+      "name": "limit_list",
+      "datasets": [
+        "limit_list_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 345,
+      "kind": "query_method",
+      "name": "paid_minute_days",
+      "datasets": [
+        "minute_bars",
+        "paid_minute_bars"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 348,
+      "kind": "query_method",
+      "name": "joinquant_minute_days",
+      "datasets": [
+        "minute_bars",
+        "paid_minute_bars"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 351,
+      "kind": "query_method",
+      "name": "tushare_minute_days",
+      "datasets": [
+        "minute_bars",
+        "paid_minute_bars"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 354,
+      "kind": "query_method",
+      "name": "intraday_bounds",
+      "datasets": [
+        "minute_bars",
+        "paid_minute_bars"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 375,
+      "kind": "query_method",
+      "name": "intraday_bars",
+      "datasets": [
+        "minute_bars",
+        "paid_minute_bars"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 427,
+      "kind": "query_method",
+      "name": "minute_bars",
+      "datasets": [
+        "minute_bars"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 448,
+      "kind": "query_method",
+      "name": "paid_minute_bars",
+      "datasets": [
+        "minute_bars",
+        "paid_minute_bars"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 474,
+      "kind": "query_method",
+      "name": "auction_ticks",
+      "datasets": [
+        "auction_ticks"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 496,
+      "kind": "query_method",
+      "name": "daily_flags",
+      "datasets": [
+        "daily_flags"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 513,
+      "kind": "query_method",
+      "name": "market_regime",
+      "datasets": [
+        "market_regime"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 530,
+      "kind": "query_method",
+      "name": "valuation",
+      "datasets": [
+        "valuation_snapshot"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 566,
+      "kind": "query_method",
+      "name": "share_capital",
+      "datasets": [
+        "share_capital"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 569,
+      "kind": "query_method",
+      "name": "share_capital_history",
+      "datasets": [
+        "share_capital",
+        "share_capital_history"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 577,
+      "kind": "query_method",
+      "name": "listing_dates",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 603,
+      "kind": "query_method",
+      "name": "instruments",
+      "datasets": [
+        "instruments"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 606,
+      "kind": "query_method",
+      "name": "security_master",
+      "datasets": [
+        "security_master"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 612,
+      "kind": "query_method",
+      "name": "security_name_history",
+      "datasets": [
+        "name_history",
+        "security_name_history"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 620,
+      "kind": "query_method",
+      "name": "trading_calendar",
+      "datasets": [
+        "trading_calendar"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 642,
+      "kind": "query_method",
+      "name": "metric_checks",
+      "datasets": [
+        "metric_checks"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 663,
+      "kind": "query_method",
+      "name": "latest_metric_checks",
+      "datasets": [
+        "metric_checks"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 672,
+      "kind": "query_method",
+      "name": "metric_evidence",
+      "datasets": [
+        "metric_evidence"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 685,
+      "kind": "query_method",
+      "name": "dataset_checks",
+      "datasets": [
+        "dataset_checks"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 706,
+      "kind": "query_method",
+      "name": "relation_checks",
+      "datasets": [
+        "relation_checks"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 727,
+      "kind": "query_method",
+      "name": "name_snapshots",
+      "datasets": [
+        "name_snapshots"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 736,
+      "kind": "query_method",
+      "name": "delisting_pool",
+      "datasets": [
+        "delisting_pool"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 743,
+      "kind": "query_method",
+      "name": "name_history",
+      "datasets": [
+        "name_history"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 748,
+      "kind": "query_method",
+      "name": "delisting_pool_coverage",
+      "datasets": [
+        "delisting_pool"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 765,
+      "kind": "query_method",
+      "name": "delisting_symbols",
+      "datasets": [
+        "delisting_pool"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 786,
+      "kind": "query_method",
+      "name": "corporate_actions",
+      "datasets": [
+        "corporate_actions"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 791,
+      "kind": "query_method",
+      "name": "adj_factors",
+      "datasets": [
+        "adj_factors"
+      ]
+    }
+  ],
+  "source_references": [
+    {
+      "path": "src/qsys/backtest/runner.py",
+      "line": 154,
+      "kind": "query_call",
+      "name": "corporate_actions",
+      "datasets": [
+        "corporate_actions"
+      ]
+    },
+    {
+      "path": "src/qsys/backtest/runner.py",
+      "line": 65,
+      "kind": "query_call",
+      "name": "intraday_bounds",
+      "datasets": [
+        "minute_bars",
+        "paid_minute_bars"
+      ]
+    },
+    {
+      "path": "src/qsys/backtest/runner.py",
+      "line": 88,
+      "kind": "query_call",
+      "name": "index_bars",
+      "datasets": [
+        "index_bars"
+      ]
+    },
+    {
+      "path": "src/qsys/backtest/runner.py",
+      "line": 109,
+      "kind": "query_call",
+      "name": "market_regime",
+      "datasets": [
+        "market_regime"
+      ]
+    },
+    {
+      "path": "src/qsys/backtest/runner.py",
+      "line": 32,
+      "kind": "query_call",
+      "name": "price_limits",
+      "datasets": [
+        "price_limits_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/checks.py",
+      "line": 189,
+      "kind": "warehouse_write",
+      "name": "write",
+      "datasets": [
+        "metric_checks"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/checks.py",
+      "line": 185,
+      "kind": "query_call",
+      "name": "metric_checks",
+      "datasets": [
+        "metric_checks"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/inventory.py",
+      "line": 62,
+      "kind": "direct_parquet_read",
+      "name": "ParquetFile",
+      "datasets": []
+    },
+    {
+      "path": "src/qsys/data/catalog/inventory.py",
+      "line": 88,
+      "kind": "direct_parquet_read",
+      "name": "ParquetFile",
+      "datasets": []
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_complete.py",
+      "line": 29,
+      "kind": "query_call",
+      "name": "tushare_daily",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_complete.py",
+      "line": 30,
+      "kind": "query_call",
+      "name": "daily_flags",
+      "datasets": [
+        "daily_flags"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_complete.py",
+      "line": 31,
+      "kind": "query_call",
+      "name": "market_regime",
+      "datasets": [
+        "market_regime"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_complete.py",
+      "line": 32,
+      "kind": "query_call",
+      "name": "valuation",
+      "datasets": [
+        "valuation_snapshot"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_complete.py",
+      "line": 33,
+      "kind": "query_call",
+      "name": "price_limits",
+      "datasets": [
+        "price_limits_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_complete.py",
+      "line": 63,
+      "kind": "query_call",
+      "name": "tushare_daily",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_complete.py",
+      "line": 86,
+      "kind": "query_call",
+      "name": "daily_flags",
+      "datasets": [
+        "daily_flags"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_complete.py",
+      "line": 136,
+      "kind": "query_call",
+      "name": "tushare_daily",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_complete.py",
+      "line": 172,
+      "kind": "query_call",
+      "name": "daily_flags",
+      "datasets": [
+        "daily_flags"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_complete.py",
+      "line": 173,
+      "kind": "query_call",
+      "name": "limit_list",
+      "datasets": [
+        "limit_list_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_complete.py",
+      "line": 200,
+      "kind": "query_call",
+      "name": "tushare_daily",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_complete.py",
+      "line": 141,
+      "kind": "query_call",
+      "name": "daily_flags",
+      "datasets": [
+        "daily_flags"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_complete.py",
+      "line": 142,
+      "kind": "query_call",
+      "name": "market_regime",
+      "datasets": [
+        "market_regime"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_complete.py",
+      "line": 147,
+      "kind": "query_call",
+      "name": "instruments",
+      "datasets": [
+        "instruments"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_complete.py",
+      "line": 150,
+      "kind": "direct_parquet_read",
+      "name": "read_parquet",
+      "datasets": []
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_complete.py",
+      "line": 68,
+      "kind": "query_call",
+      "name": "suspensions",
+      "datasets": [
+        "suspend_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_complete.py",
+      "line": 125,
+      "kind": "query_call",
+      "name": "suspensions",
+      "datasets": [
+        "suspend_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_contract.py",
+      "line": 85,
+      "kind": "direct_parquet_read",
+      "name": "ParquetFile",
+      "datasets": []
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_paid_minute.py",
+      "line": 110,
+      "kind": "query_call",
+      "name": "tushare_daily",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_paid_minute.py",
+      "line": 128,
+      "kind": "direct_parquet_read",
+      "name": "read_parquet",
+      "datasets": []
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_recompute.py",
+      "line": 46,
+      "kind": "query_call",
+      "name": "daily_flags",
+      "datasets": [
+        "daily_flags"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_recompute.py",
+      "line": 47,
+      "kind": "query_call",
+      "name": "tushare_daily",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_recompute.py",
+      "line": 81,
+      "kind": "query_call",
+      "name": "daily_flags",
+      "datasets": [
+        "daily_flags"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_recompute.py",
+      "line": 143,
+      "kind": "query_call",
+      "name": "daily_flags",
+      "datasets": [
+        "daily_flags"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_recompute.py",
+      "line": 144,
+      "kind": "query_call",
+      "name": "tushare_daily",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_recompute.py",
+      "line": 147,
+      "kind": "query_call",
+      "name": "limit_list",
+      "datasets": [
+        "limit_list_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_recompute.py",
+      "line": 245,
+      "kind": "query_call",
+      "name": "valuation",
+      "datasets": [
+        "valuation_snapshot"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_recompute.py",
+      "line": 246,
+      "kind": "query_call",
+      "name": "tushare_daily",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_recompute.py",
+      "line": 289,
+      "kind": "query_call",
+      "name": "tushare_daily",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_recompute.py",
+      "line": 293,
+      "kind": "query_call",
+      "name": "daily_flags",
+      "datasets": [
+        "daily_flags"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_recompute.py",
+      "line": 304,
+      "kind": "query_call",
+      "name": "adj_factors",
+      "datasets": [
+        "adj_factors"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_recompute.py",
+      "line": 340,
+      "kind": "query_call",
+      "name": "index_bars",
+      "datasets": [
+        "index_bars"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_recompute.py",
+      "line": 82,
+      "kind": "query_call",
+      "name": "price_limits",
+      "datasets": [
+        "price_limits_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_recompute.py",
+      "line": 222,
+      "kind": "query_call",
+      "name": "daily_flags",
+      "datasets": [
+        "daily_flags"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_recompute.py",
+      "line": 225,
+      "kind": "query_call",
+      "name": "stock_st",
+      "datasets": [
+        "stock_st_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_recompute.py",
+      "line": 357,
+      "kind": "query_call",
+      "name": "market_regime",
+      "datasets": [
+        "market_regime"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_recompute.py",
+      "line": 59,
+      "kind": "query_call",
+      "name": "daily_flags",
+      "datasets": [
+        "daily_flags"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_recompute.py",
+      "line": 273,
+      "kind": "direct_parquet_read",
+      "name": "read_parquet",
+      "datasets": []
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_recompute.py",
+      "line": 53,
+      "kind": "query_call",
+      "name": "tushare_daily",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_truth.py",
+      "line": 249,
+      "kind": "query_call",
+      "name": "daily_flags",
+      "datasets": [
+        "daily_flags"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_truth.py",
+      "line": 250,
+      "kind": "query_call",
+      "name": "limit_list",
+      "datasets": [
+        "limit_list_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_truth.py",
+      "line": 48,
+      "kind": "query_call",
+      "name": "tushare_daily",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_truth.py",
+      "line": 353,
+      "kind": "query_call",
+      "name": "minute_bars",
+      "datasets": [
+        "minute_bars"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_truth.py",
+      "line": 356,
+      "kind": "query_call",
+      "name": "tushare_daily",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_truth.py",
+      "line": 280,
+      "kind": "query_call",
+      "name": "daily_flags",
+      "datasets": [
+        "daily_flags"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_truth.py",
+      "line": 284,
+      "kind": "query_call",
+      "name": "price_limits",
+      "datasets": [
+        "price_limits_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_truth.py",
+      "line": 310,
+      "kind": "query_call",
+      "name": "daily_flags",
+      "datasets": [
+        "daily_flags"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_truth.py",
+      "line": 68,
+      "kind": "query_call",
+      "name": "tushare_daily",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_truth.py",
+      "line": 133,
+      "kind": "query_call",
+      "name": "tushare_daily",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_truth.py",
+      "line": 205,
+      "kind": "query_call",
+      "name": "tushare_daily",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_valid.py",
+      "line": 195,
+      "kind": "query_call",
+      "name": "daily_flags",
+      "datasets": [
+        "daily_flags"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_valid.py",
+      "line": 221,
+      "kind": "query_call",
+      "name": "name_history",
+      "datasets": [
+        "name_history"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_valid.py",
+      "line": 204,
+      "kind": "query_call",
+      "name": "name_snapshots",
+      "datasets": [
+        "name_snapshots"
+      ]
+    },
+    {
+      "path": "src/qsys/data/catalog/rules_valid.py",
+      "line": 265,
+      "kind": "direct_parquet_read",
+      "name": "ParquetFile",
+      "datasets": []
+    },
+    {
+      "path": "src/qsys/data/feed.py",
+      "line": 76,
+      "kind": "query_call",
+      "name": "daily_bars",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/feed.py",
+      "line": 80,
+      "kind": "query_call",
+      "name": "adj_factors",
+      "datasets": [
+        "adj_factors"
+      ]
+    },
+    {
+      "path": "src/qsys/data/feed.py",
+      "line": 70,
+      "kind": "query_call",
+      "name": "daily_bars",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/feed.py",
+      "line": 74,
+      "kind": "query_call",
+      "name": "daily_bars",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/market_feed.py",
+      "line": 65,
+      "kind": "query_call",
+      "name": "market_regime",
+      "datasets": [
+        "market_regime"
+      ]
+    },
+    {
+      "path": "src/qsys/data/market_feed.py",
+      "line": 82,
+      "kind": "query_call",
+      "name": "daily_bars",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/market_feed.py",
+      "line": 127,
+      "kind": "query_call",
+      "name": "price_limits",
+      "datasets": [
+        "price_limits_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/market_feed.py",
+      "line": 140,
+      "kind": "query_call",
+      "name": "suspensions",
+      "datasets": [
+        "suspend_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/market_feed.py",
+      "line": 148,
+      "kind": "query_call",
+      "name": "minute_bars",
+      "datasets": [
+        "minute_bars"
+      ]
+    },
+    {
+      "path": "src/qsys/data/market_feed.py",
+      "line": 57,
+      "kind": "query_call",
+      "name": "daily_flags",
+      "datasets": [
+        "daily_flags"
+      ]
+    },
+    {
+      "path": "src/qsys/data/market_feed.py",
+      "line": 71,
+      "kind": "query_call",
+      "name": "valuation",
+      "datasets": [
+        "valuation_snapshot"
+      ]
+    },
+    {
+      "path": "src/qsys/data/market_feed.py",
+      "line": 100,
+      "kind": "query_call",
+      "name": "intraday_bars",
+      "datasets": [
+        "minute_bars",
+        "paid_minute_bars"
+      ]
+    },
+    {
+      "path": "src/qsys/data/market_feed.py",
+      "line": 56,
+      "kind": "query_call",
+      "name": "daily_flags",
+      "datasets": [
+        "daily_flags"
+      ]
+    },
+    {
+      "path": "src/qsys/data/market_feed.py",
+      "line": 64,
+      "kind": "query_call",
+      "name": "market_regime",
+      "datasets": [
+        "market_regime"
+      ]
+    },
+    {
+      "path": "src/qsys/data/market_feed.py",
+      "line": 70,
+      "kind": "query_call",
+      "name": "valuation",
+      "datasets": [
+        "valuation_snapshot"
+      ]
+    },
+    {
+      "path": "src/qsys/data/market_feed.py",
+      "line": 130,
+      "kind": "query_call",
+      "name": "daily_flags",
+      "datasets": [
+        "daily_flags"
+      ]
+    },
+    {
+      "path": "src/qsys/data/market_feed.py",
+      "line": 152,
+      "kind": "query_call",
+      "name": "auction_ticks",
+      "datasets": [
+        "auction_ticks"
+      ]
+    },
+    {
+      "path": "src/qsys/data/minute_feed.py",
+      "line": 48,
+      "kind": "query_call",
+      "name": "minute_bars",
+      "datasets": [
+        "minute_bars"
+      ]
+    },
+    {
+      "path": "src/qsys/data/minute_feed.py",
+      "line": 47,
+      "kind": "query_call",
+      "name": "minute_bars",
+      "datasets": [
+        "minute_bars"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/adjust.py",
+      "line": 67,
+      "kind": "query_call",
+      "name": "corporate_actions",
+      "datasets": [
+        "corporate_actions"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/adjust.py",
+      "line": 101,
+      "kind": "warehouse_write",
+      "name": "write",
+      "datasets": [
+        "adj_factors"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/adjust.py",
+      "line": 113,
+      "kind": "query_call",
+      "name": "tushare_daily",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/adjust.py",
+      "line": 258,
+      "kind": "query_call",
+      "name": "corporate_actions",
+      "datasets": [
+        "corporate_actions"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/adjust.py",
+      "line": 265,
+      "kind": "warehouse_write",
+      "name": "write",
+      "datasets": [
+        "corporate_actions"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/adjust.py",
+      "line": 150,
+      "kind": "query_call",
+      "name": "tushare_daily",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/auction.py",
+      "line": 146,
+      "kind": "query_call",
+      "name": "auction_ticks",
+      "datasets": [
+        "auction_ticks"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/auction.py",
+      "line": 169,
+      "kind": "query_call",
+      "name": "auction_ticks",
+      "datasets": [
+        "auction_ticks"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/auction.py",
+      "line": 58,
+      "kind": "direct_parquet_read",
+      "name": "read_parquet",
+      "datasets": []
+    },
+    {
+      "path": "src/qsys/data/pipeline/auction.py",
+      "line": 131,
+      "kind": "query_call",
+      "name": "auction_ticks",
+      "datasets": [
+        "auction_ticks"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/auction.py",
+      "line": 109,
+      "kind": "query_call",
+      "name": "auction_ticks",
+      "datasets": [
+        "auction_ticks"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/bars.py",
+      "line": 56,
+      "kind": "query_call",
+      "name": "legacy_daily_bars",
+      "datasets": [
+        "bars_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/bars.py",
+      "line": 64,
+      "kind": "warehouse_write",
+      "name": "write",
+      "datasets": [
+        "bars_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/candidates.py",
+      "line": 54,
+      "kind": "query_call",
+      "name": "daily_flags",
+      "datasets": [
+        "daily_flags"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/canonical_daily.py",
+      "line": 37,
+      "kind": "query_call",
+      "name": "tushare_daily",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/canonical_daily.py",
+      "line": 40,
+      "kind": "query_call",
+      "name": "share_capital",
+      "datasets": [
+        "share_capital"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/canonical_daily.py",
+      "line": 124,
+      "kind": "query_call",
+      "name": "share_capital",
+      "datasets": [
+        "share_capital"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/canonical_daily.py",
+      "line": 135,
+      "kind": "warehouse_write",
+      "name": "write",
+      "datasets": [
+        "share_capital",
+        "share_capital_history"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/canonical_daily.py",
+      "line": 165,
+      "kind": "query_call",
+      "name": "tushare_daily",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/canonical_daily.py",
+      "line": 168,
+      "kind": "query_call",
+      "name": "tushare_daily",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/canonical_daily.py",
+      "line": 41,
+      "kind": "query_call",
+      "name": "adj_factors",
+      "datasets": [
+        "adj_factors"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/canonical_daily.py",
+      "line": 103,
+      "kind": "query_call",
+      "name": "tushare_daily",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/canonical_daily.py",
+      "line": 108,
+      "kind": "query_call",
+      "name": "bar_daily",
+      "datasets": [
+        "bar_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/canonical_daily.py",
+      "line": 114,
+      "kind": "query_call",
+      "name": "tushare_daily",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/canonical_daily.py",
+      "line": 119,
+      "kind": "query_call",
+      "name": "valuation_daily",
+      "datasets": [
+        "valuation_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/canonical_daily.py",
+      "line": 146,
+      "kind": "query_call",
+      "name": "adj_factors",
+      "datasets": [
+        "adj_factors"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/canonical_daily.py",
+      "line": 157,
+      "kind": "query_call",
+      "name": "adjustment_factor_daily",
+      "datasets": [
+        "adjustment_factor_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/canonical_daily.py",
+      "line": 171,
+      "kind": "query_call",
+      "name": "share_capital",
+      "datasets": [
+        "share_capital"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/canonical_daily.py",
+      "line": 185,
+      "kind": "query_call",
+      "name": "bar_daily",
+      "datasets": [
+        "bar_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/canonical_daily.py",
+      "line": 188,
+      "kind": "query_call",
+      "name": "valuation_daily",
+      "datasets": [
+        "valuation_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/canonical_daily.py",
+      "line": 192,
+      "kind": "query_call",
+      "name": "share_capital_history",
+      "datasets": [
+        "share_capital",
+        "share_capital_history"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/canonical_daily.py",
+      "line": 196,
+      "kind": "query_call",
+      "name": "adjustment_factor_daily",
+      "datasets": [
+        "adjustment_factor_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/canonical_daily.py",
+      "line": 177,
+      "kind": "query_call",
+      "name": "adj_factors",
+      "datasets": [
+        "adj_factors"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/canonical_reference.py",
+      "line": 43,
+      "kind": "query_call",
+      "name": "instruments",
+      "datasets": [
+        "instruments"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/canonical_reference.py",
+      "line": 44,
+      "kind": "query_call",
+      "name": "name_history",
+      "datasets": [
+        "name_history"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/canonical_reference.py",
+      "line": 68,
+      "kind": "query_call",
+      "name": "instruments",
+      "datasets": [
+        "instruments"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/canonical_reference.py",
+      "line": 79,
+      "kind": "warehouse_write",
+      "name": "write",
+      "datasets": [
+        "security_master"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/canonical_reference.py",
+      "line": 86,
+      "kind": "query_call",
+      "name": "name_history",
+      "datasets": [
+        "name_history"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/canonical_reference.py",
+      "line": 97,
+      "kind": "warehouse_write",
+      "name": "write",
+      "datasets": [
+        "name_history",
+        "security_name_history"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/canonical_reference.py",
+      "line": 169,
+      "kind": "query_call",
+      "name": "trading_calendar",
+      "datasets": [
+        "trading_calendar"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/canonical_reference.py",
+      "line": 175,
+      "kind": "warehouse_write",
+      "name": "write",
+      "datasets": [
+        "trading_calendar"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/canonical_reference.py",
+      "line": 211,
+      "kind": "query_call",
+      "name": "instruments",
+      "datasets": [
+        "instruments"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/canonical_reference.py",
+      "line": 211,
+      "kind": "query_call",
+      "name": "security_master",
+      "datasets": [
+        "security_master"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/canonical_reference.py",
+      "line": 214,
+      "kind": "query_call",
+      "name": "name_history",
+      "datasets": [
+        "name_history"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/canonical_reference.py",
+      "line": 214,
+      "kind": "query_call",
+      "name": "security_name_history",
+      "datasets": [
+        "name_history",
+        "security_name_history"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/capital.py",
+      "line": 45,
+      "kind": "direct_parquet_read",
+      "name": "read_parquet",
+      "datasets": []
+    },
+    {
+      "path": "src/qsys/data/pipeline/capital.py",
+      "line": 60,
+      "kind": "query_call",
+      "name": "share_capital",
+      "datasets": [
+        "share_capital"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/daily_backfill.py",
+      "line": 89,
+      "kind": "query_call",
+      "name": "legacy_daily_bars",
+      "datasets": [
+        "bars_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/daily_backfill.py",
+      "line": 102,
+      "kind": "warehouse_write",
+      "name": "write",
+      "datasets": [
+        "bars_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/daily_backfill.py",
+      "line": 58,
+      "kind": "direct_parquet_read",
+      "name": "read_parquet",
+      "datasets": []
+    },
+    {
+      "path": "src/qsys/data/pipeline/delisting.py",
+      "line": 62,
+      "kind": "query_call",
+      "name": "tushare_daily",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/delisting.py",
+      "line": 67,
+      "kind": "query_call",
+      "name": "name_history",
+      "datasets": [
+        "name_history"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/delisting.py",
+      "line": 67,
+      "kind": "query_call",
+      "name": "instruments",
+      "datasets": [
+        "instruments"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/delisting.py",
+      "line": 70,
+      "kind": "query_call",
+      "name": "delisting_pool_coverage",
+      "datasets": [
+        "delisting_pool"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/delisting.py",
+      "line": 81,
+      "kind": "warehouse_write",
+      "name": "write",
+      "datasets": [
+        "delisting_pool"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/delisting.py",
+      "line": 72,
+      "kind": "query_call",
+      "name": "delisting_pool",
+      "datasets": [
+        "delisting_pool"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/dividends.py",
+      "line": 83,
+      "kind": "warehouse_write",
+      "name": "write",
+      "datasets": [
+        "corporate_actions"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/dividends.py",
+      "line": 62,
+      "kind": "direct_parquet_read",
+      "name": "read_parquet",
+      "datasets": []
+    },
+    {
+      "path": "src/qsys/data/pipeline/dividends.py",
+      "line": 77,
+      "kind": "query_call",
+      "name": "corporate_actions",
+      "datasets": [
+        "corporate_actions"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/flags.py",
+      "line": 123,
+      "kind": "query_call",
+      "name": "instruments",
+      "datasets": [
+        "instruments"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/flags.py",
+      "line": 139,
+      "kind": "query_call",
+      "name": "tushare_daily",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/flags.py",
+      "line": 154,
+      "kind": "query_call",
+      "name": "delisting_pool",
+      "datasets": [
+        "delisting_pool"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/flags.py",
+      "line": 175,
+      "kind": "query_call",
+      "name": "limit_list",
+      "datasets": [
+        "limit_list_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/flags.py",
+      "line": 226,
+      "kind": "query_call",
+      "name": "daily_flags",
+      "datasets": [
+        "daily_flags"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/flags.py",
+      "line": 234,
+      "kind": "warehouse_write",
+      "name": "write",
+      "datasets": [
+        "daily_flags"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/flags.py",
+      "line": 143,
+      "kind": "query_call",
+      "name": "stock_st",
+      "datasets": [
+        "stock_st_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/flags.py",
+      "line": 168,
+      "kind": "query_call",
+      "name": "price_limits",
+      "datasets": [
+        "price_limits_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/index_bars.py",
+      "line": 68,
+      "kind": "query_call",
+      "name": "index_bars",
+      "datasets": [
+        "index_bars"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/ingest_log.py",
+      "line": 33,
+      "kind": "direct_parquet_read",
+      "name": "read_parquet",
+      "datasets": []
+    },
+    {
+      "path": "src/qsys/data/pipeline/ingest_log.py",
+      "line": 64,
+      "kind": "warehouse_write",
+      "name": "write",
+      "datasets": [
+        "ingest_log"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/instruments.py",
+      "line": 52,
+      "kind": "warehouse_write",
+      "name": "write",
+      "datasets": [
+        "instruments"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/minutes.py",
+      "line": 140,
+      "kind": "query_call",
+      "name": "minute_bars",
+      "datasets": [
+        "minute_bars"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/minutes.py",
+      "line": 54,
+      "kind": "direct_parquet_read",
+      "name": "read_parquet",
+      "datasets": []
+    },
+    {
+      "path": "src/qsys/data/pipeline/minutes.py",
+      "line": 123,
+      "kind": "query_call",
+      "name": "minute_bars",
+      "datasets": [
+        "minute_bars"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/minutes.py",
+      "line": 122,
+      "kind": "direct_parquet_read",
+      "name": "read_parquet",
+      "datasets": []
+    },
+    {
+      "path": "src/qsys/data/pipeline/paid_daily.py",
+      "line": 161,
+      "kind": "direct_parquet_read",
+      "name": "read_parquet",
+      "datasets": []
+    },
+    {
+      "path": "src/qsys/data/pipeline/paid_daily.py",
+      "line": 224,
+      "kind": "direct_parquet_read",
+      "name": "scan_parquet",
+      "datasets": []
+    },
+    {
+      "path": "src/qsys/data/pipeline/paid_daily.py",
+      "line": 234,
+      "kind": "direct_parquet_read",
+      "name": "read_parquet",
+      "datasets": []
+    },
+    {
+      "path": "src/qsys/data/pipeline/paid_daily.py",
+      "line": 189,
+      "kind": "direct_parquet_read",
+      "name": "scan_parquet",
+      "datasets": [
+        "paid_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/paid_daily_repair.py",
+      "line": 111,
+      "kind": "direct_parquet_read",
+      "name": "read_parquet",
+      "datasets": []
+    },
+    {
+      "path": "src/qsys/data/pipeline/paid_daily_repair.py",
+      "line": 134,
+      "kind": "direct_parquet_read",
+      "name": "read_parquet",
+      "datasets": []
+    },
+    {
+      "path": "src/qsys/data/pipeline/paid_minute.py",
+      "line": 468,
+      "kind": "direct_parquet_read",
+      "name": "read_parquet",
+      "datasets": []
+    },
+    {
+      "path": "src/qsys/data/pipeline/paid_minute.py",
+      "line": 833,
+      "kind": "direct_parquet_read",
+      "name": "read_parquet",
+      "datasets": []
+    },
+    {
+      "path": "src/qsys/data/pipeline/paid_minute.py",
+      "line": 881,
+      "kind": "direct_parquet_read",
+      "name": "scan_parquet",
+      "datasets": []
+    },
+    {
+      "path": "src/qsys/data/pipeline/paid_minute.py",
+      "line": 592,
+      "kind": "direct_parquet_read",
+      "name": "read_parquet",
+      "datasets": []
+    },
+    {
+      "path": "src/qsys/data/pipeline/premarket.py",
+      "line": 44,
+      "kind": "query_call",
+      "name": "price_limits",
+      "datasets": [
+        "price_limits_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/premarket.py",
+      "line": 60,
+      "kind": "query_call",
+      "name": "price_limits",
+      "datasets": [
+        "price_limits_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/premarket.py",
+      "line": 65,
+      "kind": "warehouse_write",
+      "name": "write",
+      "datasets": [
+        "price_limits_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/regime.py",
+      "line": 245,
+      "kind": "query_call",
+      "name": "index_bars",
+      "datasets": [
+        "index_bars"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/regime.py",
+      "line": 108,
+      "kind": "query_call",
+      "name": "market_regime",
+      "datasets": [
+        "market_regime"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/regime.py",
+      "line": 116,
+      "kind": "warehouse_write",
+      "name": "write",
+      "datasets": [
+        "market_regime"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/regime.py",
+      "line": 91,
+      "kind": "query_call",
+      "name": "daily_bars",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/regime.py",
+      "line": 92,
+      "kind": "query_call",
+      "name": "daily_flags",
+      "datasets": [
+        "daily_flags"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/regime.py",
+      "line": 96,
+      "kind": "query_call",
+      "name": "adj_factors",
+      "datasets": [
+        "adj_factors"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/tushare_daily.py",
+      "line": 118,
+      "kind": "warehouse_write",
+      "name": "write",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/tushare_daily.py",
+      "line": 113,
+      "kind": "query_call",
+      "name": "tushare_daily",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/tushare_reference.py",
+      "line": 216,
+      "kind": "warehouse_write",
+      "name": "write",
+      "datasets": [
+        "instruments"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/tushare_reference.py",
+      "line": 233,
+      "kind": "warehouse_write",
+      "name": "write",
+      "datasets": [
+        "name_history"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/tushare_reference.py",
+      "line": 135,
+      "kind": "query_call",
+      "name": "stock_st",
+      "datasets": [
+        "stock_st_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/tushare_reference.py",
+      "line": 91,
+      "kind": "query_call",
+      "name": "price_limits",
+      "datasets": [
+        "price_limits_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/tushare_reference.py",
+      "line": 117,
+      "kind": "query_call",
+      "name": "suspensions",
+      "datasets": [
+        "suspend_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/tushare_reference.py",
+      "line": 157,
+      "kind": "query_call",
+      "name": "stock_st",
+      "datasets": [
+        "stock_st_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/tushare_reference.py",
+      "line": 185,
+      "kind": "query_call",
+      "name": "index_bars",
+      "datasets": [
+        "index_bars"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/tushare_reference.py",
+      "line": 273,
+      "kind": "query_call",
+      "name": "limit_list",
+      "datasets": [
+        "limit_list_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/tushare_reference.py",
+      "line": 130,
+      "kind": "query_call",
+      "name": "tushare_daily",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/tushare_reference.py",
+      "line": 264,
+      "kind": "query_call",
+      "name": "limit_list",
+      "datasets": [
+        "limit_list_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/tushare_sync.py",
+      "line": 66,
+      "kind": "query_call",
+      "name": "limit_list",
+      "datasets": [
+        "limit_list_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/tushare_sync.py",
+      "line": 62,
+      "kind": "query_call",
+      "name": "tushare_daily",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/universe.py",
+      "line": 198,
+      "kind": "query_call",
+      "name": "legacy_daily_bars",
+      "datasets": [
+        "bars_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/valuation.py",
+      "line": 45,
+      "kind": "query_call",
+      "name": "valuation",
+      "datasets": [
+        "valuation_snapshot"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/valuation.py",
+      "line": 55,
+      "kind": "warehouse_write",
+      "name": "write",
+      "datasets": [
+        "valuation_snapshot"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/valuation.py",
+      "line": 74,
+      "kind": "query_call",
+      "name": "tushare_daily",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/valuation.py",
+      "line": 98,
+      "kind": "warehouse_write",
+      "name": "write",
+      "datasets": [
+        "valuation_snapshot"
+      ]
+    },
+    {
+      "path": "src/qsys/data/pipeline/valuation.py",
+      "line": 89,
+      "kind": "query_call",
+      "name": "valuation",
+      "datasets": [
+        "valuation_snapshot"
+      ]
+    },
+    {
+      "path": "src/qsys/data/quality/daily_rules.py",
+      "line": 48,
+      "kind": "query_call",
+      "name": "daily_bars",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/quality/minute_rules.py",
+      "line": 52,
+      "kind": "query_call",
+      "name": "minute_bars",
+      "datasets": [
+        "minute_bars"
+      ]
+    },
+    {
+      "path": "src/qsys/data/quality/minute_rules.py",
+      "line": 60,
+      "kind": "query_call",
+      "name": "daily_bars",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/quality/report.py",
+      "line": 65,
+      "kind": "query_call",
+      "name": "daily_bars",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/quality/report.py",
+      "line": 66,
+      "kind": "query_call",
+      "name": "instruments",
+      "datasets": [
+        "instruments"
+      ]
+    },
+    {
+      "path": "src/qsys/data/quality/source_diff.py",
+      "line": 42,
+      "kind": "query_call",
+      "name": "daily_bars",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/quality/source_diff.py",
+      "line": 43,
+      "kind": "query_call",
+      "name": "legacy_daily_bars",
+      "datasets": [
+        "bars_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/quality/tushare_reconcile.py",
+      "line": 39,
+      "kind": "query_call",
+      "name": "tushare_daily",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/quality/tushare_reconcile.py",
+      "line": 40,
+      "kind": "query_call",
+      "name": "paid_daily",
+      "datasets": [
+        "paid_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 221,
+      "kind": "query_call",
+      "name": "paid_daily",
+      "datasets": [
+        "paid_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 370,
+      "kind": "query_call",
+      "name": "dataset_bounds",
+      "datasets": [
+        "*"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 665,
+      "kind": "query_call",
+      "name": "metric_checks",
+      "datasets": [
+        "metric_checks"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 776,
+      "kind": "query_call",
+      "name": "delisting_pool_coverage",
+      "datasets": [
+        "delisting_pool"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 782,
+      "kind": "query_call",
+      "name": "delisting_pool",
+      "datasets": [
+        "delisting_pool"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 392,
+      "kind": "query_call",
+      "name": "paid_minute_days",
+      "datasets": [
+        "minute_bars",
+        "paid_minute_bars"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 393,
+      "kind": "query_call",
+      "name": "paid_minute_bars",
+      "datasets": [
+        "minute_bars",
+        "paid_minute_bars"
+      ]
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 759,
+      "kind": "direct_parquet_read",
+      "name": "read_schema",
+      "datasets": []
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 411,
+      "kind": "direct_parquet_read",
+      "name": "read_parquet",
+      "datasets": []
+    },
+    {
+      "path": "src/qsys/data/query.py",
+      "line": 420,
+      "kind": "query_call",
+      "name": "minute_bars",
+      "datasets": [
+        "minute_bars"
+      ]
+    },
+    {
+      "path": "src/qsys/live/runtime.py",
+      "line": 114,
+      "kind": "query_call",
+      "name": "instruments",
+      "datasets": [
+        "instruments"
+      ]
+    },
+    {
+      "path": "src/qsys/ops/journal.py",
+      "line": 58,
+      "kind": "direct_parquet_read",
+      "name": "read_parquet",
+      "datasets": []
+    },
+    {
+      "path": "src/qsys/ops/journal.py",
+      "line": 72,
+      "kind": "direct_parquet_read",
+      "name": "read_parquet",
+      "datasets": []
+    },
+    {
+      "path": "src/qsys/ops/service_checks.py",
+      "line": 177,
+      "kind": "query_call",
+      "name": "instruments",
+      "datasets": [
+        "instruments"
+      ]
+    },
+    {
+      "path": "src/qsys/ops/service_checks.py",
+      "line": 200,
+      "kind": "query_call",
+      "name": "name_history",
+      "datasets": [
+        "name_history"
+      ]
+    },
+    {
+      "path": "src/qsys/ops/service_checks.py",
+      "line": 201,
+      "kind": "query_call",
+      "name": "instruments",
+      "datasets": [
+        "instruments"
+      ]
+    },
+    {
+      "path": "src/qsys/ops/service_checks.py",
+      "line": 213,
+      "kind": "query_call",
+      "name": "delisting_pool",
+      "datasets": [
+        "delisting_pool"
+      ]
+    },
+    {
+      "path": "src/qsys/ops/service_checks.py",
+      "line": 227,
+      "kind": "query_call",
+      "name": "metric_checks",
+      "datasets": [
+        "metric_checks"
+      ]
+    },
+    {
+      "path": "src/qsys/ops/service_checks.py",
+      "line": 245,
+      "kind": "query_call",
+      "name": "metric_checks",
+      "datasets": [
+        "metric_checks"
+      ]
+    },
+    {
+      "path": "src/qsys/ops/service_checks.py",
+      "line": 420,
+      "kind": "query_call",
+      "name": "minute_bars",
+      "datasets": [
+        "minute_bars"
+      ]
+    },
+    {
+      "path": "src/qsys/ops/service_checks.py",
+      "line": 66,
+      "kind": "query_call",
+      "name": "tushare_daily",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/ops/service_checks.py",
+      "line": 136,
+      "kind": "query_call",
+      "name": "price_limits",
+      "datasets": [
+        "price_limits_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/ops/service_checks.py",
+      "line": 140,
+      "kind": "query_call",
+      "name": "stock_st",
+      "datasets": [
+        "stock_st_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/ops/service_checks.py",
+      "line": 159,
+      "kind": "query_call",
+      "name": "suspensions",
+      "datasets": [
+        "suspend_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/ops/service_checks.py",
+      "line": 165,
+      "kind": "query_call",
+      "name": "limit_list",
+      "datasets": [
+        "limit_list_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/ops/service_checks.py",
+      "line": 185,
+      "kind": "query_call",
+      "name": "daily_flags",
+      "datasets": [
+        "daily_flags"
+      ]
+    },
+    {
+      "path": "src/qsys/ops/service_checks.py",
+      "line": 190,
+      "kind": "query_call",
+      "name": "market_regime",
+      "datasets": [
+        "market_regime"
+      ]
+    },
+    {
+      "path": "src/qsys/ops/service_checks.py",
+      "line": 195,
+      "kind": "query_call",
+      "name": "valuation",
+      "datasets": [
+        "valuation_snapshot"
+      ]
+    },
+    {
+      "path": "src/qsys/ops/service_checks.py",
+      "line": 146,
+      "kind": "query_call",
+      "name": "suspensions",
+      "datasets": [
+        "suspend_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/ops/service_checks.py",
+      "line": 172,
+      "kind": "query_call",
+      "name": "index_bars",
+      "datasets": [
+        "index_bars"
+      ]
+    },
+    {
+      "path": "src/qsys/ops/service_checks.py",
+      "line": 399,
+      "kind": "query_call",
+      "name": "suspensions",
+      "datasets": [
+        "suspend_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/paper/runtime.py",
+      "line": 107,
+      "kind": "query_call",
+      "name": "valuation",
+      "datasets": [
+        "valuation_snapshot"
+      ]
+    },
+    {
+      "path": "src/qsys/paper/runtime.py",
+      "line": 155,
+      "kind": "query_call",
+      "name": "instruments",
+      "datasets": [
+        "instruments"
+      ]
+    },
+    {
+      "path": "src/qsys/paper/runtime.py",
+      "line": 53,
+      "kind": "query_call",
+      "name": "price_limits",
+      "datasets": [
+        "price_limits_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/strategy/deps.py",
+      "line": 63,
+      "kind": "query_call",
+      "name": "instruments",
+      "datasets": [
+        "instruments"
+      ]
+    },
+    {
+      "path": "src/qsys/strategy/deps.py",
+      "line": 58,
+      "kind": "query_call",
+      "name": "market_regime",
+      "datasets": [
+        "market_regime"
+      ]
+    },
+    {
+      "path": "src/qsys/strategy/structural/selection.py",
+      "line": 265,
+      "kind": "query_call",
+      "name": "valuation",
+      "datasets": [
+        "valuation_snapshot"
+      ]
+    },
+    {
+      "path": "src/qsys/strategy/structural/selection.py",
+      "line": 89,
+      "kind": "query_call",
+      "name": "listing_dates",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "src/qsys/strategy/structural/selection.py",
+      "line": 110,
+      "kind": "query_call",
+      "name": "delisting_symbols",
+      "datasets": [
+        "delisting_pool"
+      ]
+    },
+    {
+      "path": "src/qsys/web/app.py",
+      "line": 171,
+      "kind": "query_call",
+      "name": "delisting_pool",
+      "datasets": [
+        "delisting_pool"
+      ]
+    },
+    {
+      "path": "src/qsys/web/catalog_views.py",
+      "line": 126,
+      "kind": "query_call",
+      "name": "latest_metric_checks",
+      "datasets": [
+        "metric_checks"
+      ]
+    },
+    {
+      "path": "src/qsys/web/catalog_views.py",
+      "line": 198,
+      "kind": "query_call",
+      "name": "latest_metric_checks",
+      "datasets": [
+        "metric_checks"
+      ]
+    },
+    {
+      "path": "src/qsys/web/catalog_views.py",
+      "line": 208,
+      "kind": "query_call",
+      "name": "metric_checks",
+      "datasets": [
+        "metric_checks"
+      ]
+    },
+    {
+      "path": "src/qsys/web/catalog_views.py",
+      "line": 209,
+      "kind": "query_call",
+      "name": "metric_evidence",
+      "datasets": [
+        "metric_evidence"
+      ]
+    },
+    {
+      "path": "src/qsys/web/data_views.py",
+      "line": 69,
+      "kind": "query_call",
+      "name": "market_regime",
+      "datasets": [
+        "market_regime"
+      ]
+    },
+    {
+      "path": "src/qsys/web/data_views.py",
+      "line": 75,
+      "kind": "query_call",
+      "name": "market_regime",
+      "datasets": [
+        "market_regime"
+      ]
+    },
+    {
+      "path": "src/qsys/web/data_views.py",
+      "line": 82,
+      "kind": "query_call",
+      "name": "market_regime",
+      "datasets": [
+        "market_regime"
+      ]
+    },
+    {
+      "path": "src/qsys/web/data_views.py",
+      "line": 60,
+      "kind": "query_call",
+      "name": "delisting_pool_coverage",
+      "datasets": [
+        "delisting_pool"
+      ]
+    },
+    {
+      "path": "src/qsys/web/data_views.py",
+      "line": 63,
+      "kind": "query_call",
+      "name": "delisting_pool",
+      "datasets": [
+        "delisting_pool"
+      ]
+    },
+    {
+      "path": "scripts/build_canonical_reference.py",
+      "line": 59,
+      "kind": "query_call",
+      "name": "trading_calendar",
+      "datasets": [
+        "trading_calendar"
+      ]
+    },
+    {
+      "path": "scripts/build_canonical_reference.py",
+      "line": 63,
+      "kind": "query_call",
+      "name": "security_name_history",
+      "datasets": [
+        "name_history",
+        "security_name_history"
+      ]
+    },
+    {
+      "path": "scripts/daily_archive.py",
+      "line": 177,
+      "kind": "query_call",
+      "name": "instruments",
+      "datasets": [
+        "instruments"
+      ]
+    },
+    {
+      "path": "scripts/diff_regime_alignment.py",
+      "line": 113,
+      "kind": "query_call",
+      "name": "daily_bars",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "scripts/diff_regime_alignment.py",
+      "line": 114,
+      "kind": "query_call",
+      "name": "daily_flags",
+      "datasets": [
+        "daily_flags"
+      ]
+    },
+    {
+      "path": "scripts/diff_regime_alignment.py",
+      "line": 48,
+      "kind": "query_call",
+      "name": "daily_bars",
+      "datasets": [
+        "tushare_daily"
+      ]
+    },
+    {
+      "path": "scripts/export_holding_manifest.py",
+      "line": 46,
+      "kind": "query_call",
+      "name": "market_regime",
+      "datasets": [
+        "market_regime"
+      ]
+    },
+    {
+      "path": "scripts/ingest_universe.py",
+      "line": 60,
+      "kind": "query_call",
+      "name": "instruments",
+      "datasets": [
+        "instruments"
+      ]
+    },
+    {
+      "path": "scripts/quarantine_paid_minute_prelisting.py",
+      "line": 51,
+      "kind": "direct_parquet_read",
+      "name": "read_parquet",
+      "datasets": []
+    },
+    {
+      "path": "scripts/quarantine_paid_minute_prelisting.py",
+      "line": 73,
+      "kind": "direct_parquet_read",
+      "name": "read_parquet",
+      "datasets": []
+    },
+    {
+      "path": "scripts/reconcile_truth_switch.py",
+      "line": 86,
+      "kind": "direct_parquet_read",
+      "name": "scan_parquet",
+      "datasets": [
+        "daily_flags"
+      ]
+    },
+    {
+      "path": "scripts/reconcile_truth_switch.py",
+      "line": 146,
+      "kind": "direct_parquet_read",
+      "name": "read_parquet",
+      "datasets": [
+        "market_regime"
+      ]
+    },
+    {
+      "path": "scripts/reconcile_truth_switch.py",
+      "line": 147,
+      "kind": "direct_parquet_read",
+      "name": "read_parquet",
+      "datasets": [
+        "market_regime"
+      ]
+    },
+    {
+      "path": "scripts/regression_stage2_st_truth.py",
+      "line": 10,
+      "kind": "direct_parquet_read",
+      "name": "read_parquet",
+      "datasets": []
+    },
+    {
+      "path": "scripts/regression_stage3_factors.py",
+      "line": 11,
+      "kind": "direct_parquet_read",
+      "name": "read_parquet",
+      "datasets": [
+        "adj_factors"
+      ]
+    },
+    {
+      "path": "scripts/regression_stage3_factors.py",
+      "line": 14,
+      "kind": "direct_parquet_read",
+      "name": "read_parquet",
+      "datasets": [
+        "adj_factors"
+      ]
+    },
+    {
+      "path": "scripts/regression_stage4_tushare_switch.py",
+      "line": 19,
+      "kind": "direct_parquet_read",
+      "name": "read_parquet",
+      "datasets": []
+    },
+    {
+      "path": "scripts/repair_paid_daily.py",
+      "line": 45,
+      "kind": "direct_parquet_read",
+      "name": "scan_parquet",
+      "datasets": [
+        "paid_daily"
+      ]
+    },
+    {
+      "path": "scripts/repair_paid_daily.py",
+      "line": 49,
+      "kind": "direct_parquet_read",
+      "name": "scan_parquet",
+      "datasets": [
+        "paid_daily"
+      ]
+    },
+    {
+      "path": "scripts/run_backtest.py",
+      "line": 115,
+      "kind": "query_call",
+      "name": "market_regime",
+      "datasets": [
+        "market_regime"
+      ]
+    },
+    {
+      "path": "scripts/run_selection.py",
+      "line": 52,
+      "kind": "query_call",
+      "name": "market_regime",
+      "datasets": [
+        "market_regime"
+      ]
+    },
+    {
+      "path": "scripts/run_structural_backtest.py",
+      "line": 104,
+      "kind": "query_call",
+      "name": "instruments",
+      "datasets": [
+        "instruments"
+      ]
+    },
+    {
+      "path": "scripts/run_structural_backtest.py",
+      "line": 116,
+      "kind": "query_call",
+      "name": "corporate_actions",
+      "datasets": [
+        "corporate_actions"
+      ]
+    },
+    {
+      "path": "scripts/run_structural_backtest.py",
+      "line": 214,
+      "kind": "query_call",
+      "name": "market_regime",
+      "datasets": [
+        "market_regime"
+      ]
+    },
+    {
+      "path": "scripts/run_structural_backtest.py",
+      "line": 99,
+      "kind": "query_call",
+      "name": "market_regime",
+      "datasets": [
+        "market_regime"
+      ]
+    },
+    {
+      "path": "scripts/stage3_classify_factor_divergence.py",
+      "line": 28,
+      "kind": "direct_parquet_read",
+      "name": "read_parquet",
+      "datasets": []
+    },
+    {
+      "path": "scripts/stage3_classify_factor_divergence.py",
+      "line": 30,
+      "kind": "query_call",
+      "name": "corporate_actions",
+      "datasets": [
+        "corporate_actions"
+      ]
+    },
+    {
+      "path": "scripts/stage3_classify_factor_divergence.py",
+      "line": 121,
+      "kind": "direct_parquet_read",
+      "name": "read_parquet",
+      "datasets": []
+    },
+    {
+      "path": "scripts/stage3_classify_factor_divergence.py",
+      "line": 124,
+      "kind": "query_call",
+      "name": "paid_daily",
+      "datasets": [
+        "paid_daily"
+      ]
+    },
+    {
+      "path": "scripts/stage3_classify_factor_divergence.py",
+      "line": 116,
+      "kind": "query_call",
+      "name": "legacy_daily_bars",
+      "datasets": [
+        "bars_daily"
+      ]
+    },
+    {
+      "path": "scripts/stage3_classify_factor_divergence.py",
+      "line": 35,
+      "kind": "query_call",
+      "name": "paid_daily",
+      "datasets": [
+        "paid_daily"
+      ]
+    },
+    {
+      "path": "scripts/stage3_classify_factor_divergence.py",
+      "line": 89,
+      "kind": "direct_parquet_read",
+      "name": "read_parquet",
+      "datasets": []
+    },
+    {
+      "path": "scripts/summarize_tushare_reconcile.py",
+      "line": 19,
+      "kind": "direct_parquet_read",
+      "name": "read_parquet",
+      "datasets": []
+    },
+    {
+      "path": "scripts/tushare_premarket_limits.py",
+      "line": 62,
+      "kind": "query_call",
+      "name": "price_limits",
+      "datasets": [
+        "price_limits_daily"
+      ]
+    },
+    {
+      "path": "scripts/verify_metrics.py",
+      "line": 65,
+      "kind": "warehouse_write",
+      "name": "write",
+      "datasets": [
+        "metric_evidence"
+      ]
+    },
+    {
+      "path": "scripts/verify_metrics.py",
+      "line": 61,
+      "kind": "query_call",
+      "name": "metric_evidence",
+      "datasets": [
+        "metric_evidence"
+      ]
+    }
+  ],
+  "critical_summaries": {
+    "adj_factors": {
+      "dataset": "adj_factors",
+      "files": 1,
+      "rows": 351,
+      "bytes": 1860,
+      "min_time": "2024-01-02",
+      "max_time": "2024-06-28",
+      "errors": []
+    },
+    "daily_flags": {
+      "dataset": "daily_flags",
+      "files": 0,
+      "rows": 0,
+      "bytes": 0,
+      "min_time": null,
+      "max_time": null,
+      "errors": []
+    },
+    "market_regime": {
+      "dataset": "market_regime",
+      "files": 0,
+      "rows": 0,
+      "bytes": 0,
+      "min_time": null,
+      "max_time": null,
+      "errors": []
+    },
+    "minute_bars": {
+      "dataset": "minute_bars",
+      "files": 0,
+      "rows": 0,
+      "bytes": 0,
+      "min_time": null,
+      "max_time": null,
+      "errors": []
+    },
+    "paid_minute_bars": {
+      "dataset": "paid_minute_bars",
+      "files": 0,
+      "rows": 0,
+      "bytes": 0,
+      "min_time": null,
+      "max_time": null,
+      "errors": []
+    },
+    "tushare_daily": {
+      "dataset": "tushare_daily",
+      "files": 0,
+      "rows": 0,
+      "bytes": 0,
+      "min_time": null,
+      "max_time": null,
+      "errors": []
+    }
+  }
+}

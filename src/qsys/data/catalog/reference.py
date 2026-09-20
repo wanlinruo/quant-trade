@@ -59,6 +59,7 @@
 
 from __future__ import annotations
 
+from qsys.data import schema
 from qsys.data.catalog.types import (
     UNCOVERED,
     Computed,
@@ -73,6 +74,7 @@ DATASETS = frozenset({
     "instruments", "name_history", "name_snapshots", "price_limits_daily",
     "suspend_daily", "limit_list_daily", "corporate_actions",
     "share_capital", "adj_factors", "stock_st_daily",
+    "security_master", "security_name_history", "trading_calendar",
 })
 
 # --- QMT 分红送配链路两处「空值归零」的填充问题，供多列复用一段说明 -------
@@ -816,9 +818,71 @@ def _stock_st_daily() -> list[Metric]:
     ]
 
 
+def _canonical_reference() -> list[Metric]:
+    """阶段 3 并行规范表；旧表保持生产读取，新表先做逐字段对账。"""
+    out: list[Metric] = []
+    master_meanings = {
+        "symbol": "规范证券代码",
+        "name": "主数据取数日的当前名称，仅在 as_of 点成立",
+        "market": "交易所后缀",
+        "list_date": "上市日期",
+        "delist_date": "退市日期；未退市为 null",
+        "board": "按已登记 A 股号段得到的板块",
+        "as_of": "当前主数据快照的观测日",
+    }
+    for column in schema.SECURITY_MASTER.names:
+        out.append(Metric(
+            id=f"security_master.{column}", kind=Kind.DERIVED,
+            validity=Validity.POINT, status=MetricStatus.ACTIVE,
+            meaning=master_meanings[column],
+            lineage=Computed(
+                upstream=(f"instruments.{column}",),
+                formula=f"阶段 3 并行迁移逐值透传 instruments.{column}",
+            ),
+            checks=UNCOVERED("阶段 3 由逐键逐字段对账与表契约验证"),
+        ))
+
+    history_meanings = {
+        "symbol": "规范名称区间所属证券代码",
+        "name": "有效区间内的证券名称",
+        "start_date": "名称区间起日",
+        "end_date": "名称区间止日；开放区间为 null",
+        "ann_date": "名称变更公告日",
+        "change_reason": "名称变更原因",
+    }
+    for column in schema.SECURITY_NAME_HISTORY.names:
+        out.append(Metric(
+            id=f"security_name_history.{column}", kind=Kind.DERIVED,
+            validity=Validity.SPAN, status=MetricStatus.ACTIVE,
+            meaning=history_meanings[column],
+            lineage=Computed(
+                upstream=(f"name_history.{column}",),
+                formula=f"阶段 3 并行迁移逐值透传 name_history.{column}",
+            ),
+            checks=UNCOVERED("阶段 3 由区间检查、逐键逐字段对账与表契约验证"),
+        ))
+
+    calendar = {
+        "market": ("exchange", "交易日历所属市场；当前登记 SSE 作为 A 股共同日历"),
+        "dt": ("cal_date", "自然日"),
+        "is_open": ("is_open", "该自然日是否开市；只认来源值，不按星期推算"),
+        "pretrade_date": ("pretrade_date", "来源登记的前一交易日"),
+    }
+    for column, (field, meaning) in calendar.items():
+        out.append(Metric(
+            id=f"trading_calendar.{column}", kind=Kind.DIRECT,
+            validity=Validity.SESSION, status=MetricStatus.ACTIVE,
+            meaning=meaning,
+            lineage=Direct("tushare.trade_cal", field),
+            checks=UNCOVERED("阶段 3 由来源响应、连续性和表契约验证"),
+        ))
+    return out
+
+
 METRICS: tuple[Metric, ...] = tuple(
     _instruments() + _name_snapshots() + _name_history()
     + _price_limits_daily() + _suspend_daily() + _limit_list_daily()
     + _corporate_actions() + _share_capital() + _adj_factors()
     + _stock_st_daily()
+    + _canonical_reference()
 )

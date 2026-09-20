@@ -213,9 +213,11 @@ def main() -> int:
                 gateway.publish_schedule(schedule)
             if schedule.is_open and monotonic >= next_overview:
                 next_overview = monotonic + max(5.0, args.overview_interval)
-                gateway.publish_overview(qmt_market_overview(
+                quotes = qmt_market_overview(
                     published_limit_symbols(transport, cfg.streams, wall.date())
-                ))
+                )
+                gateway.publish_latest_quotes(quotes, now=wall)
+                gateway.publish_overview(quotes, now=wall)
         except Exception as exc:
             log.error("market_gateway.loop_error", error=str(exc))
         time.sleep(max(0.02, args.poll))

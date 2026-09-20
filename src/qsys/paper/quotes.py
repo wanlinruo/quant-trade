@@ -177,6 +177,19 @@ class MarketGateway:
         self._t.set_key(self._s.market_snapshot, snapshot.model_dump_json())
         return snapshot
 
+    def publish_latest_quotes(
+        self, quotes: dict[str, MarketQuote], *, now: datetime | None = None,
+    ) -> QuoteSnapshot:
+        """原子覆盖稳定实时快照；空响应不覆盖最后一份可审计状态。"""
+        if not quotes:
+            raise QuoteUnavailable("QMT 最新行情为空，保留上一快照")
+        moment = now or datetime.now()
+        snapshot = QuoteSnapshot(
+            request_id="latest", published_at=moment, quotes=quotes,
+        )
+        self._t.set_key(self._s.quote_latest, snapshot.model_dump_json())
+        return snapshot
+
     def publish_schedule(self, schedule: MarketSchedule) -> None:
         self._t.set_key(self._s.market_schedule, schedule.model_dump_json())
 

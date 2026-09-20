@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div><h2>数据表</h2><p class="muted">规范、实时、派生和运行层默认展开；红黄绿灰均来自可追溯证据。</p></div>
+  <a class="button secondary" href="/data/tables{% if not include_raw %}?include_raw=true{% endif %}">{{ "隐藏原始层" if include_raw else "展开原始层" }}</a>
+</div>
+<div class="panel"><div class="table-wrap"><table>
+  <tr><th>状态</th><th>数据表</th><th>层</th><th>角色</th><th>粒度</th><th class="num">行数</th><th>覆盖</th></tr>
+  {% for row in rows %}<tr>
+    <td><span class="pill {{ row.status.value }}">{{ row.status_label }}</span></td>
+    <td><a href="/data/tables/{{ row.dataset.id }}"><span class="mono">{{ row.dataset.id }}</span></a><div class="muted">{{ row.dataset.name }}</div></td>
+    <td>{{ row.dataset.layer.value }}</td><td>{{ row.dataset.role.value }}</td>
+    <td>{{ row.dataset.grain }}</td>
+    <td class="num">{{ "{:,}".format(row.coverage.rows) if row.coverage else "—" }}</td>
+    <td>{% if row.coverage and row.coverage.first_dt %}{{ row.coverage.first_dt }} ~ {{ row.coverage.last_dt }}{% else %}—{% endif %}</td>
+  </tr>{% endfor %}
+</table></div></div>
+{% endblock %}

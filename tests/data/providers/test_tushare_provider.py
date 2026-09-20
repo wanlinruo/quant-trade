@@ -109,6 +109,18 @@ def test_static_reference_interfaces_request_declared_fields():
     ]
 
 
+def test_trade_calendar_requests_closed_days_too():
+    client = FakeClient([])
+    TushareProvider(client).trade_cal(
+        date(2026, 9, 1), date(2026, 9, 30), exchange="SSE"
+    )
+    assert client.calls == [(
+        "trade_cal",
+        {"exchange": "SSE", "start_date": "20260901", "end_date": "20260930"},
+        "exchange,cal_date,is_open,pretrade_date",
+    )]
+
+
 def test_namechange_reads_past_the_ten_thousand_row_api_page():
     class PagedClient:
         def __init__(self):

@@ -181,6 +181,75 @@ class WarehouseQuery:
             "tushare_daily", ", ".join(names), selected_schema, symbols, start, end
         )
 
+    def bar_daily(
+        self, symbols: Sequence[str] | None, start: date, end: date, *,
+        columns: Sequence[str] | None = None,
+    ) -> pl.DataFrame:
+        """阶段 4 规范日线窄表；不回退 ``tushare_daily``。"""
+        names = list(columns) if columns is not None else schema.BAR_DAILY.names
+        unknown = set(names) - set(schema.BAR_DAILY.names)
+        if unknown:
+            raise ValueError(f"unknown bar_daily columns: {sorted(unknown)}")
+        selected_schema = pa.schema([schema.BAR_DAILY.field(name) for name in names])
+        return self._dated_query(
+            "bar_daily", ", ".join(names), selected_schema,
+            symbols, start, end,
+        )
+
+    def historical_daily_bars(
+        self, symbols: Sequence[str] | None, start: date, end: date, *,
+        columns: Sequence[str] | None = None,
+    ) -> pl.DataFrame:
+        """阶段 8 稳定历史日线门面；只读 ``bar_daily``，禁止来源回退。"""
+        return self.bar_daily(symbols, start, end, columns=columns)
+
+    def valuation_daily(
+        self, symbols: Sequence[str] | None, start: date, end: date
+    ) -> pl.DataFrame:
+        """阶段 4 规范估值窄表。"""
+        return self._dated_query(
+            "valuation_daily", ", ".join(schema.VALUATION_DAILY.names),
+            schema.VALUATION_DAILY, symbols, start, end,
+        )
+
+    def adjustment_factor_daily(
+        self, symbols: Sequence[str] | None, start: date, end: date
+    ) -> pl.DataFrame:
+        """阶段 4 规范价格/股本累计因子。"""
+        return self._dated_query(
+            "adjustment_factor_daily",
+            ", ".join(schema.ADJUSTMENT_FACTOR_DAILY.names),
+            schema.ADJUSTMENT_FACTOR_DAILY, symbols, start, end,
+        )
+
+    def price_limit_daily(
+        self, symbols: Sequence[str] | None, start: date, end: date
+    ) -> pl.DataFrame:
+        """阶段 5 规范涨跌停价；不回退旧来源。"""
+        return self._dated_query(
+            "price_limit_daily", ", ".join(schema.PRICE_LIMIT_DAILY.names),
+            schema.PRICE_LIMIT_DAILY, symbols, start, end,
+        )
+
+    def security_status_daily(
+        self, symbols: Sequence[str] | None, start: date, end: date
+    ) -> pl.DataFrame:
+        """阶段 5 规范证券日状态；未知状态保持 null。"""
+        return self._dated_query(
+            "security_status_daily",
+            ", ".join(schema.SECURITY_STATUS_DAILY.names),
+            schema.SECURITY_STATUS_DAILY, symbols, start, end,
+        )
+
+    def market_flags_daily(
+        self, symbols: Sequence[str] | None, start: date, end: date
+    ) -> pl.DataFrame:
+        """阶段 5 规范市场标志；生产 ``daily_flags`` 尚未切换。"""
+        return self._dated_query(
+            "market_flags_daily", ", ".join(schema.MARKET_FLAGS_DAILY.names),
+            schema.MARKET_FLAGS_DAILY, symbols, start, end,
+        )
+
     def legacy_paid_daily(
         self,
         symbols: Sequence[str] | None,
@@ -350,8 +419,10 @@ class WarehouseQuery:
         同一标的日不混源；成交量统一为手，并保留来源与 PIT 可见时刻。
         """
         columns = {
-            "symbol": pl.Utf8, "dt": pl.Datetime("us"), "close": pl.Float64,
-            "volume": pl.Float64, "source": pl.Utf8,
+            "symbol": pl.Utf8, "dt": pl.Datetime("us"),
+            "open": pl.Float64, "high": pl.Float64, "low": pl.Float64,
+            "close": pl.Float64, "volume": pl.Float64, "amount": pl.Float64,
+            "source": pl.Utf8,
             "visible_at": pl.Datetime("us"),
         }
         if not symbols:
@@ -365,7 +436,8 @@ class WarehouseQuery:
             paid = self.paid_minute_bars(remaining, lo, hi)
             if paid.height:
                 frames.append(paid.select(
-                    "symbol", "dt", "close", (pl.col("volume") / 100).alias("volume"),
+                    "symbol", "dt", "open", "high", "low", "close",
+                    (pl.col("volume") / 100).alias("volume"), "amount",
                     pl.lit("paid").alias("source"),
                     (pl.col("dt") + PAID_MINUTE_VISIBILITY_LAG).alias("visible_at"),
                 ).cast(columns))
@@ -383,18 +455,59 @@ class WarehouseQuery:
             frame = pl.read_parquet(path).filter(pl.col("symbol").is_in(remaining))
             if frame.height:
                 frames.append(frame.select(
-                    "symbol", "dt", "close", (pl.col("volume") / 100).alias("volume"),
+                    "symbol", "dt", "open", "high", "low", "close",
+                    (pl.col("volume") / 100).alias("volume"), "amount",
                     pl.lit(source).alias("source"), pl.col("dt").alias("visible_at"),
                 ).cast(columns))
                 covered = set(frame["symbol"].to_list())
                 remaining = [symbol for symbol in remaining if symbol not in covered]
 
         qmt = self.minute_bars(remaining, lo, hi).select(
-            "symbol", "dt", "close", pl.col("volume").cast(pl.Float64),
+            "symbol", "dt", "open", "high", "low", "close",
+            pl.col("volume").cast(pl.Float64), "amount",
             pl.lit("qmt").alias("source"), pl.col("dt").alias("visible_at"),
         ).cast(columns)
         frames.append(qmt)
         return pl.concat(frames, how="vertical").sort(["symbol", "dt"])
+
+    def bar_minute_1m(
+        self, symbols: Sequence[str] | None, start: datetime, end: datetime, *,
+        columns: Sequence[str] | None = None,
+    ) -> pl.DataFrame:
+        """阶段 6 规范分钟线；只读新表，不回退或混合旧来源。"""
+        names = list(columns) if columns is not None else schema.BAR_MINUTE_1M.names
+        unknown = set(names) - set(schema.BAR_MINUTE_1M.names)
+        if unknown:
+            raise ValueError(f"unknown bar_minute_1m columns: {sorted(unknown)}")
+        selected_schema = pa.schema([
+            schema.BAR_MINUTE_1M.field(name) for name in names
+        ])
+        if symbols is not None and len(symbols) == 0:
+            return _empty(selected_schema)
+        files: list[str] = []
+        base = self._wh.root / "bar_minute_1m"
+        for year in range(start.year, end.year + 1):
+            for path in sorted((base / f"year={year}").glob("date=*/part.parquet")):
+                day = datetime.strptime(path.parent.name.split("=", 1)[1], "%Y%m%d").date()
+                if start.date() <= day <= end.date():
+                    files.append(str(path))
+        if not files:
+            return _empty(selected_schema)
+        projection = _projection(self._con, files, selected_schema)
+        sql = f"SELECT {projection} FROM {_read(files)} WHERE ts BETWEEN ? AND ?"
+        params: list[object] = [start, end]
+        if symbols is not None:
+            placeholders = ", ".join("?" for _ in symbols)
+            sql += f" AND symbol IN ({placeholders})"
+            params.extend(symbols)
+        return self._con.execute(sql + " ORDER BY symbol, ts", params).pl()
+
+    def historical_minute_bars(
+        self, symbols: Sequence[str] | None, start: datetime, end: datetime, *,
+        columns: Sequence[str] | None = None,
+    ) -> pl.DataFrame:
+        """阶段 8 稳定历史分钟门面；只读 ``bar_minute_1m``。"""
+        return self.bar_minute_1m(symbols, start, end, columns=columns)
 
     def minute_bars(
         self,
@@ -499,6 +612,21 @@ class WarehouseQuery:
             params = [start, end]
         return self._con.execute(sql + " ORDER BY dt", params).pl()
 
+    def market_regime_daily(
+        self, start: date | None = None, end: date | None = None
+    ) -> pl.DataFrame:
+        """阶段 5 规范市场生态；生产 ``market_regime`` 尚未切换。"""
+        glob = self._glob("market_regime_daily", partitioned=True)
+        if glob is None:
+            return _empty(schema.MARKET_REGIME_DAILY)
+        columns = _projection(self._con, glob, schema.MARKET_REGIME_DAILY)
+        sql = f"SELECT {columns} FROM {_read(glob)}"
+        params: list[object] = []
+        if start is not None and end is not None:
+            sql += " WHERE dt BETWEEN ? AND ?"
+            params = [start, end]
+        return self._con.execute(sql + " ORDER BY dt", params).pl()
+
     def valuation(
         self, start: date | None = None, end: date | None = None
     ) -> pl.DataFrame:
@@ -538,6 +666,14 @@ class WarehouseQuery:
     def share_capital(self, symbols: Sequence[str] | None = None) -> pl.DataFrame:
         return self._read_unpartitioned("share_capital", schema.SHARE_CAPITAL, symbols)
 
+    def share_capital_history(
+        self, symbols: Sequence[str] | None = None
+    ) -> pl.DataFrame:
+        frame = self._read_unpartitioned(
+            "share_capital_history", schema.SHARE_CAPITAL_HISTORY, symbols
+        )
+        return frame.sort(["symbol", "effective_date"])
+
     def listing_dates(self) -> dict[str, date]:
         """每只标的在库内的首个 bar 日期。
 
@@ -566,6 +702,42 @@ class WarehouseQuery:
 
     def instruments(self) -> pl.DataFrame:
         return self._read_unpartitioned("instruments", schema.INSTRUMENTS)
+
+    def security_master(self) -> pl.DataFrame:
+        """规范证券主数据；阶段 3 并行表，不回退旧 ``instruments``。"""
+        return self._read_unpartitioned(
+            "security_master", schema.SECURITY_MASTER
+        ).sort("symbol")
+
+    def security_name_history(
+        self, symbols: Sequence[str] | None = None
+    ) -> pl.DataFrame:
+        """规范名称有效区间；不以名称点观测填补历史。"""
+        return self._read_unpartitioned(
+            "security_name_history", schema.SECURITY_NAME_HISTORY, symbols
+        ).sort(["symbol", "start_date", "name"])
+
+    def trading_calendar(
+        self,
+        start: date,
+        end: date,
+        *,
+        market: str = "SSE",
+        open_only: bool = False,
+    ) -> pl.DataFrame:
+        """规范交易日历；只返回已落库来源事实，不推算工作日。"""
+        glob = self._glob("trading_calendar", partitioned=True)
+        if glob is None:
+            return _empty(schema.TRADING_CALENDAR)
+        columns = _projection(self._con, glob, schema.TRADING_CALENDAR)
+        sql = (
+            f"SELECT {columns} FROM {_read(glob)} "
+            "WHERE market = ? AND dt BETWEEN ? AND ?"
+        )
+        params: list[object] = [market, start, end]
+        if open_only:
+            sql += " AND is_open"
+        return self._con.execute(sql + " ORDER BY dt", params).pl()
 
     def metric_checks(
         self, metric_id: str | None = None, check_id: str | None = None
@@ -609,6 +781,48 @@ class WarehouseQuery:
             sql += " WHERE metric_id = ?"
             params.append(metric_id)
         return self._con.execute(sql + " ORDER BY dt DESC, symbol", params).pl()
+
+    def dataset_checks(
+        self, dataset_id: str | None = None, check_id: str | None = None
+    ) -> pl.DataFrame:
+        """表级健康证据；与字段级 ``metric_checks`` 物理隔离。"""
+        glob = self._glob("dataset_checks", partitioned=True)
+        if glob is None:
+            return _empty(schema.DATASET_CHECKS)
+        columns = _projection(self._con, glob, schema.DATASET_CHECKS)
+        sql = f"SELECT {columns} FROM {_read(glob)}"
+        clauses: list[str] = []
+        params: list[object] = []
+        if dataset_id is not None:
+            clauses.append("dataset_id = ?")
+            params.append(dataset_id)
+        if check_id is not None:
+            clauses.append("check_id = ?")
+            params.append(check_id)
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+        return self._con.execute(sql + " ORDER BY checked_at DESC", params).pl()
+
+    def relation_checks(
+        self, upstream: str | None = None, downstream: str | None = None
+    ) -> pl.DataFrame:
+        """跨表连接、基数、孤儿行和刷新顺序证据。"""
+        glob = self._glob("relation_checks", partitioned=True)
+        if glob is None:
+            return _empty(schema.RELATION_CHECKS)
+        columns = _projection(self._con, glob, schema.RELATION_CHECKS)
+        sql = f"SELECT {columns} FROM {_read(glob)}"
+        clauses: list[str] = []
+        params: list[object] = []
+        if upstream is not None:
+            clauses.append("upstream = ?")
+            params.append(upstream)
+        if downstream is not None:
+            clauses.append("downstream = ?")
+            params.append(downstream)
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+        return self._con.execute(sql + " ORDER BY checked_at DESC", params).pl()
 
     def name_snapshots(
         self, symbols: Sequence[str] | None, start: date, end: date

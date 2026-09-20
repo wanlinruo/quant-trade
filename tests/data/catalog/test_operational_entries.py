@@ -8,7 +8,7 @@ from qsys.data.catalog.types import Computed, Kind, MetricStatus, Uncovered
 BY_ID = {m.id: m for m in METRICS}
 
 
-def test_owns_the_five_runtime_datasets():
+def test_owns_the_runtime_and_quality_datasets():
     assert DATASETS == frozenset({
         "live_equity",
         "live_fills",
@@ -17,6 +17,8 @@ def test_owns_the_five_runtime_datasets():
         "ingest_log",
         "metric_checks",
         "metric_evidence",
+        "dataset_checks",
+        "relation_checks",
     })
 
 
@@ -29,8 +31,10 @@ def test_registers_all_runtime_columns():
         "live_rejects": 6,
         "metric_checks": 14,
         "metric_evidence": 10,
+        "dataset_checks": 14,
+        "relation_checks": 18,
     }
-    assert len(METRICS) == 58
+    assert len(METRICS) == 90
 
 
 def test_all_are_operational_status():
