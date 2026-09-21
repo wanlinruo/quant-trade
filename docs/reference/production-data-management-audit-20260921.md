@@ -3,8 +3,9 @@
 状态：整改进行中  
 审计方式：从 Mac 通过生产只读 SSH 执行元数据、Parquet footer、质量结果、
 systemd 状态和磁盘检查；未触发同步、重算、服务重启或数据写入。  
-生产代码：`main@34fe2a60941715206d934a8c8b50c6ed1381e5a0`  
-整改分支：`fix/production-data-governance`
+审计时生产代码：`main@34fe2a60941715206d934a8c8b50c6ed1381e5a0`；
+整改分支：`fix/production-data-governance`，已于 2026-09-21 经 PR #43 发布
+（`main@8fc4af73bdc94d099dda88a826fb224cf0df17cd`，部署记录见第 9 节）
 
 ## 1. 结论
 
@@ -176,16 +177,17 @@ uv run python scripts/verify_warehouse_backup.py verify \
 
 | 优先级 | 项目 | 状态 | 验收条件 |
 |---|---|---|---|
-| P0 | 付费分钟日期覆盖质量门禁（原“冻结边界门禁”，已撤回） | 代码完成，生产只读预演通过；待部署 | 结构、日线对账规则在生产运行 |
+| P0 | 付费分钟日期覆盖质量门禁（原“冻结边界门禁”，已撤回） | 已部署；首次生产运行为 09-21 19:40 指标验证 | 结构、日线对账规则在生产运行 |
 | P0 | 24 个成交量错误标的日处置 | 待确认方案：移出覆盖后由聚宽补取（按既有优先级），或暂留并接受阻断 | 粗大偏差规则通过，canonical 对应日重建 |
 | — | 12 只证券来源核验 | 完成：余哈哈付费源，无需迁移（见 5.1） | provider 可证明 |
-| P0 | canonical 分钟覆盖失败关闭 | 代码完成 | 未发布交易日查询明确报错 |
+| P0 | canonical 分钟覆盖失败关闭 | 已部署（Web/回测）；paper、shadow 待下次重启生效 | 未发布交易日查询明确报错 |
 | P0 | 加密异地备份 | 验收工具完成；待确定目的地和密钥托管 | 定时成功且完成隔离恢复演练 |
 | P1 | 2020—2024 canonical 分钟回填 | 待容量/需求确认 | 请求范围全部交易日有 manifest |
-| P1 | daily/archive 与 Tushare unit 纳管 | 完成 | 仓库模板与生产 unit 无差异 |
-| P1 | 分区并发写锁 | 生产定时写任务已统一互斥；待部署 | 同时启动时仅一项进入写流程，另一项明确失败 |
-| P1 | 健康状态拆分 | 代码完成，待部署 | 策略失败保留明细，但不再使数据质检 unit 失败 |
+| P1 | daily/archive 与 Tushare unit 纳管 | 已部署；模板以生产原文为底稿 | 仓库模板与生产 unit 无差异 |
+| P1 | 分区并发写锁 | 已部署：5 个定时 unit 的 ExecStart 均经 flock | 同时启动时仅一项进入写流程，另一项明确失败 |
+| P1 | 健康状态拆分 | 已部署；以 09-21 20:00 服务质检为首次验收 | 策略失败保留明细，但不再使数据质检 unit 失败 |
 | P2 | 旧副本与 staging 生命周期 | 待实施 | 有保留策略、容量告警和审批记录 |
+| P0 | 存量阻断项（C6 类型、B2 证券覆盖、A3 QMT 分钟对日线） | 待排查：main 上已有规则，09-18 后首次运行即会报出，与本次发布无关 | 各规则在生产通过或登记已知缺陷 |
 
 ## 8. 部署约束
 
@@ -197,3 +199,30 @@ uv run python scripts/verify_warehouse_backup.py verify \
 失败，不允许两个读—合并—覆盖事务并发。底层 Parquet 落盘也改用进程唯一临时文件，
 避免未经过 systemd 的写入者互相破坏 `.tmp`。手工写仓库时必须复用同一把锁；
 canonical 回填命令已默认复用该锁。
+
+## 9. 部署记录（2026-09-21）
+
+| 项目 | 内容 |
+|---|---|
+| 发布 | PR #43（`test` → `main` squash），生产 `8fc4af73bdc94d099dda88a826fb224cf0df17cd` |
+| 回滚点 | `34fe2a60941715206d934a8c8b50c6ed1381e5a0`；unit 部署前副本在节点 `/data/qsys/var-deployments/20260921T134756/units-before/` |
+| 测试环境 | `5f81f9f2edc5d23322ca0be35a99f2f74247158d`，CI run 35563876156、35565083350、35565395566 全绿 |
+| 部署时间 | 2026-09-21 13:47（交易时段） |
+| 安装 unit | catalog-verify、daily-archive（含 timer）、premarket-limits、tushare-sync（含 timer）；`systemd-analyze verify` 通过 |
+| 重启 | `qsys-monitor`、`qsys-health-observer` |
+| 未重启 | `qsys-paper`、`qsys-shadow-core`：交易时段不中断，继续运行旧代码，下次重启生效 |
+| 健康检查 | 全部常驻服务 active；`8420/healthz` 200；`/data`、`/services`、新规则详情页 200；`8443/healthz` 401（Basic Auth，符合预期） |
+| 数据变更 | 无 |
+
+节点部署记录：`/data/qsys/var-deployments/20260921T134756/record.txt`。
+
+发布前用新代码对生产只读跑全部 102 条规则（当日增量 + 当年全量，结果不落盘），
+阻断 4 条：`A3.paid_minute_override_gross_vs_daily` 24（本次新查出，见 5.3）、
+`C6.storage_contract.paid_minute_bars` 92（日期覆盖文件 `symbol` 为 large_string，
+契约为 string；新发布脚本已按 schema 写入）、`B2.paid_minute_symbol_coverage` 71、
+`A3.minute_vs_daily` 92。后三条是 main 上已有规则，生产最后一次指标验证停在
+09-18 23:55（79 条规则），此后部署的规则还没有在生产运行过。
+
+测试环境节点 `/home/ubuntu/qsys-test` 此前停在 `test` 重置前的旧历史，已按规范 3.1.1
+对齐到 `origin/test` 后再部署；对齐前 SHA 存于
+`/data/qsys-test/var/deployments/pre-align-20260921.sha`。
