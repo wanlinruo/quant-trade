@@ -52,6 +52,18 @@ def test_step_can_fail_without_raising(tmp_path):
     assert [s["status"] for s in data["steps"]] == ["failed", "succeeded"]
 
 
+def test_non_affecting_failure_stays_visible_without_failing_aggregate(tmp_path):
+    with ServiceRun.open(tmp_path, "service-checks") as run:
+        with run.step("shadow-core｜当日策略事件已执行", affects_run=False) as step:
+            step.fail("事件已过期")
+        with run.step("tushare-sync｜日线到货"):
+            pass
+    data = _only_run(tmp_path)
+    assert data["status"] == "succeeded"
+    assert data["steps"][0]["status"] == "failed"
+    assert data["steps"][0]["affects_run"] is False
+
+
 def test_warning_step_makes_run_warning(tmp_path):
     with ServiceRun.open(tmp_path, "tushare-sync") as run:
         with run.step("增量质检") as step:

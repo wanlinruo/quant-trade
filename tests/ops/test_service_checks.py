@@ -217,6 +217,13 @@ def test_step_names_round_trip_and_every_check_belongs_to_a_timer():
     assert sc.parse_step_name("日线") is None
 
 
+def test_strategy_checks_are_separate_from_data_checks():
+    strategy = {check.service for check in sc.CHECKS if check.domain == "strategy"}
+    assert strategy == {"shadow-core", "paper"}
+    assert all(check.domain == "data" for check in sc.CHECKS
+               if check.service not in strategy)
+
+
 def test_delisting_pool_is_recomputed_independently_from_namechange():
     history = pl.DataFrame({
         "symbol": ["300344.SZ", "600001.SH", "600002.SH"],

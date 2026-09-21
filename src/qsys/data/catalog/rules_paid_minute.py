@@ -1,14 +1,17 @@
-"""冻结付费分钟线的年度验收规则。
+"""付费分钟线的年度验收与日期覆盖规则。
 
-规则只读发布时生成的质量摘要，不在每日验证里重扫 16 亿行。摘要由
+年度分片的规则只读发布时生成的质量摘要，不在每日验证里重扫 16 亿行。摘要由
 ``pipeline.paid_minute.validate_year`` 从事实分片计算，事实、隔离证据和摘要
 三者均保留。结构问题阻断；尚未归因的跨源数值差异挂 D-20、只报警告。
+
+``year=YYYY/date=YYYYMMDD`` 日期覆盖是从付费暂存区挑出、替换 QMT 零价格记录的
+标的日，不在年度摘要里；它们体量很小，每日直接复验。
 """
 
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import polars as pl
@@ -21,6 +24,7 @@ from qsys.data.catalog.checks import (
     Scope,
     register,
 )
+from qsys.data.pipeline.minute_repairs import compare_with_daily, valid_paid_overrides
 
 
 def _summaries(ctx: CheckContext) -> list[tuple[Path, dict]]:
@@ -34,11 +38,17 @@ def _summaries(ctx: CheckContext) -> list[tuple[Path, dict]]:
 
 def _structure(ctx: CheckContext) -> CheckResult:
     summaries = _summaries(ctx)
-    if not summaries:
+    problems: list[dict[str, object]] = []
+    summarized = {int(report["year"]) for _path, report in summaries}
+    for year_dir in sorted((ctx.warehouse.root / "paid_minute_bars").glob("year=*")):
+        year = year_dir.name.split("=", 1)[1]
+        if any(year_dir.glob("shard=*/part.parquet")) and \
+                not (year.isdigit() and int(year) in summarized):
+            problems.append({"year": year, "problem": "年度分片没有年度质量摘要"})
+    if not summaries and not problems:
         return CheckResult(
             0, 0, "尚无付费分钟线年度质量摘要", applicable=False
         )
-    problems: list[dict[str, object]] = []
     checked = 0
     for _path, report in summaries:
         year = report["year"]
@@ -59,9 +69,68 @@ def _structure(ctx: CheckContext) -> CheckResult:
             if not passed
         )
     return CheckResult(
-        len(problems), max(checked, len(summaries)),
+        len(problems), max(checked, len(summaries), 1),
         f"{len(summaries)} 个年度摘要，结构/到货异常 {len(problems)} 项",
         pl.DataFrame(problems) if problems else None,
+    )
+
+
+def _override_structure(ctx: CheckContext) -> CheckResult:
+    """日期覆盖逐标的日复验：241 根标准网格、价格和成交额有效、日期与分区一致。"""
+    problems: list[dict[str, object]] = []
+    checked = 0
+    for path in sorted((ctx.warehouse.root / "paid_minute_bars").glob(
+            "year=*/date=*/part.parquet")):
+        day = datetime.strptime(path.parent.name.split("=", 1)[1], "%Y%m%d").date()
+        frame = pl.read_parquet(path)
+        symbols = sorted(frame["symbol"].unique().to_list())
+        checked += len(symbols)
+        name = str(path.relative_to(ctx.warehouse.root))
+        stray = frame.filter(pl.col("dt").dt.date() != day).height
+        if stray:
+            problems.append({"path": name, "symbol": "*",
+                             "problem": f"混入其他交易日 {stray} 行"})
+        _accepted, rejected = valid_paid_overrides(frame, symbols, day)
+        problems.extend({"path": name, "symbol": symbol, "problem": reason}
+                        for symbol, reason in sorted(rejected.items()))
+    if not checked:
+        return CheckResult(0, 0, "没有付费分钟日期覆盖", applicable=False)
+    return CheckResult(
+        len(problems), checked,
+        f"日期覆盖 {checked} 个标的日，结构异常 {len(problems)} 项",
+        pl.DataFrame(problems) if problems else None,
+    )
+
+
+def _override_daily_comparison(ctx: CheckContext) -> pl.DataFrame | None:
+    files = sorted((ctx.warehouse.root / "paid_minute_bars").glob("year=*/date=*/part.parquet"))
+    if not files:
+        return None
+    minutes = pl.concat([pl.read_parquet(path) for path in files], how="vertical_relaxed")
+    days = minutes["dt"].dt.date()
+    daily = ctx.query.tushare_daily(
+        sorted(minutes["symbol"].unique().to_list()), days.min(), days.max(),
+        columns=("symbol", "dt", "open", "high", "low", "close", "volume", "amount"),
+    )
+    return compare_with_daily(minutes, daily)
+
+
+def _override_vs_daily(ctx: CheckContext, *, gross: bool) -> CheckResult:
+    """日期覆盖逐标的日与 Tushare 日线对账。
+
+    粗大错误（缺日线、成交量/成交额/价格相对偏差超过 5%）阻断；取整与首末分钟
+    边界这类小差异与年度付费分钟同口径，挂 D-20 报警告。
+    """
+    result = _override_daily_comparison(ctx)
+    if result is None:
+        return CheckResult(0, 0, "没有付费分钟日期覆盖", applicable=False)
+    flagged = result.filter(pl.col("gross").is_not_null()) if gross \
+        else result.filter(pl.col("minor"))
+    label = "粗大偏差" if gross else "超出年度验收容差"
+    return CheckResult(
+        flagged.height, result.height,
+        f"日期覆盖 {result.height} 个标的日与 Tushare 日线对账，{label} {flagged.height} 个",
+        flagged if flagged.height else None,
     )
 
 
@@ -153,11 +222,30 @@ _ALL = tuple(f"paid_minute_bars.{name}" for name in (
 
 register(Check(
     "B2.paid_minute_structure", Category.COMPLETENESS, Scope.FULL,
-    _ALL, (), "年度已发布、交易时段完整、日级键不缺失且因子日内唯一", _structure,
+    _ALL, (), "年度分片均有摘要且已发布、交易时段完整、日级键不缺失、因子日内唯一",
+    _structure,
+))
+register(Check(
+    "B2.paid_minute_override_structure", Category.COMPLETENESS, Scope.FULL,
+    _ALL, (), "日期覆盖逐标的日满足 241 根标准网格与数值有效", _override_structure,
 ))
 register(Check(
     "B2.paid_minute_symbol_coverage", Category.COMPLETENESS, Scope.FULL,
     _ALL, (), "Tushare 有成交的证券不能在付费分钟年度中整只缺失", _symbol_coverage,
+))
+_VALUES = tuple(f"paid_minute_bars.{name}" for name in (
+    "open", "high", "low", "close", "volume", "amount"
+))
+
+register(Check(
+    "A3.paid_minute_override_gross_vs_daily", Category.TRUTHFULNESS, Scope.FULL,
+    _VALUES, (), "日期覆盖与日线无粗大偏差（缺日线或量/额/价相对偏差超过 5%）",
+    lambda ctx: _override_vs_daily(ctx, gross=True),
+))
+register(Check(
+    "A3.paid_minute_override_vs_daily", Category.TRUTHFULNESS, Scope.FULL,
+    _VALUES, ("D-20",), "日期覆盖汇总与日线在年度验收容差内一致",
+    lambda ctx: _override_vs_daily(ctx, gross=False),
 ))
 register(Check(
     "A3.paid_minute_ohlc_vs_daily", Category.TRUTHFULNESS, Scope.FULL,

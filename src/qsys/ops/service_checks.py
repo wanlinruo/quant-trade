@@ -86,6 +86,7 @@ class ServiceCheck:
     name: str
     table: str
     fn: Callable[[CheckContext], CheckResult]
+    domain: str = "data"
 
 
 def _samples(items) -> str:
@@ -480,8 +481,8 @@ CHECKS: tuple[ServiceCheck, ...] = (
     ServiceCheck("tushare-sync", "市场广度到货", "market_regime", _regime_arrived),
     ServiceCheck("tushare-sync", "估值覆盖日线", "valuation_snapshot", _valuation_covers_daily),
     ServiceCheck("tushare-sync", "退市整理期池与 namechange 一致", "delisting_pool", _delisting_pool),
-    ServiceCheck("shadow-core", "当日策略事件已执行", "live_events", _shadow_events),
-    ServiceCheck("paper", "当日策略事件已执行", "paper_events", _paper_events),
+    ServiceCheck("shadow-core", "当日策略事件已执行", "live_events", _shadow_events, "strategy"),
+    ServiceCheck("paper", "当日策略事件已执行", "paper_events", _paper_events, "strategy"),
     ServiceCheck("catalog-verify", "当日验证已执行", "metric_checks", _catalog_verify_ran),
     ServiceCheck("catalog-verify", "覆盖全部指标", "metric_checks",
                  _catalog_verify_covers_metrics),

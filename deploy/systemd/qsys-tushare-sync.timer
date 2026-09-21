@@ -1,0 +1,12 @@
+[Unit]
+Description=Sync Tushare data after market close
+
+[Timer]
+# First run catches early publications; the second is the idempotent late-data retry.
+OnCalendar=Mon..Fri 17:00 Asia/Shanghai
+OnCalendar=Mon..Fri 19:00 Asia/Shanghai
+Persistent=true
+RandomizedDelaySec=180
+
+[Install]
+WantedBy=timers.target

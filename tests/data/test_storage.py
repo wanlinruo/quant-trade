@@ -44,6 +44,17 @@ def test_write_leaves_no_temp_files(warehouse: Warehouse):
     assert leftovers == []
 
 
+def test_failed_write_cleans_its_unique_temp_file(warehouse: Warehouse, monkeypatch):
+    def fail(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr("qsys.data.storage.pq.write_table", fail)
+    with pytest.raises(OSError, match="disk full"):
+        warehouse.write("bars_daily", _bars(30.5), year=2024)
+    folder = warehouse.root / "bars_daily" / "year=2024"
+    assert list(folder.glob("*.tmp")) == []
+
+
 def test_write_rejects_schema_mismatch(warehouse: Warehouse):
     wrong = pa.table({"symbol": ["600036.SH"]})
     with pytest.raises(ValueError, match="schema mismatch"):

@@ -1,0 +1,10 @@
+[Unit]
+Description=Run qsys daily archive after market close
+
+[Timer]
+OnCalendar=Mon..Fri 15:40 Asia/Shanghai
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

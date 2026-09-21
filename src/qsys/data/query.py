@@ -16,6 +16,10 @@ from qsys.data.storage import Warehouse
 PAID_MINUTE_VISIBILITY_LAG = timedelta(minutes=1)
 
 
+class CanonicalMinuteCoverageError(RuntimeError):
+    """请求包含交易日，但规范分钟分区尚未发布。"""
+
+
 def _empty(arrow_schema: pa.Schema) -> pl.DataFrame:
     return pl.from_arrow(arrow_schema.empty_table())
 
@@ -506,7 +510,30 @@ class WarehouseQuery:
         self, symbols: Sequence[str] | None, start: datetime, end: datetime, *,
         columns: Sequence[str] | None = None,
     ) -> pl.DataFrame:
-        """阶段 8 稳定历史分钟门面；只读 ``bar_minute_1m``。"""
+        """阶段 8 稳定历史分钟门面；只读 ``bar_minute_1m``。
+
+        规范门面已经是生产默认读取路径。某个交易日没有分区时必须显式失败，
+        不能把「尚未发布」伪装成「当天没有行情」。低层 ``bar_minute_1m``
+        仍保留空表语义，供回填器和诊断代码检查未发布状态。
+        """
+        sessions = self.trading_calendar(
+            start.date(), end.date(), open_only=True
+        )
+        if sessions.height:
+            expected = set(sessions["dt"].to_list())
+            base = self._wh.root / "bar_minute_1m"
+            published = {
+                datetime.strptime(path.parent.name.split("=", 1)[1], "%Y%m%d").date()
+                for year in range(start.year, end.year + 1)
+                for path in (base / f"year={year}").glob("date=*/part.parquet")
+            }
+            missing = sorted(expected - published)
+            if missing:
+                preview = ", ".join(day.isoformat() for day in missing[:10])
+                suffix = f" 等 {len(missing)} 日" if len(missing) > 10 else ""
+                raise CanonicalMinuteCoverageError(
+                    f"规范分钟线尚未发布：{preview}{suffix}"
+                )
         return self.bar_minute_1m(symbols, start, end, columns=columns)
 
     def minute_bars(
