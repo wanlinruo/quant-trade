@@ -50,6 +50,24 @@ def test_state_and_portfolio_survive_reopen(tmp_path):
     assert restored.state["symbols"] == [symbol]
 
 
+def test_equity_limit_keeps_the_newest_rows_in_chart_order(tmp_path):
+    store, job = seeded(tmp_path)
+    account = store.create(job.id, "模拟", 100_000, date.today())
+    portfolio = Portfolio(100_000)
+    for second, cash in enumerate((100_000, 100_100, 100_200), start=1):
+        portfolio.cash = cash
+        store.save_snapshot(
+            account.id, portfolio, {}, {},
+            at=datetime(2026, 9, 21, 10, 0, second),
+        )
+
+    rows = store.rows(account.id, "equity", limit=2)
+
+    assert [row["total_value"] for row in rows] == [100_100, 100_200]
+    assert [row["at"] for row in rows] == sorted(row["at"] for row in rows)
+    assert store.summary(account.id)["total_value"] == 100_200
+
+
 def test_lifecycle_is_validated_and_end_does_not_clear_account(tmp_path):
     store, job = seeded(tmp_path)
     account = store.create(job.id, "模拟", 100_000, date.today())

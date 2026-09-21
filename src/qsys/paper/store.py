@@ -474,10 +474,23 @@ class PaperStore:
             raise ValueError("unknown paper table")
         name, order = allowed[table]
         with self._connect() as con:
-            rows = con.execute(
-                f"SELECT * FROM {name} WHERE account_id=? ORDER BY {order} LIMIT ?",
-                (ident, limit),
-            ).fetchall()
+            if table == "equity":
+                # Charts need chronological points, but the limit must retain the
+                # newest window.  ``ORDER BY at ASC LIMIT`` silently froze long-
+                # running accounts on their oldest snapshots once they crossed
+                # the limit.
+                rows = con.execute(
+                    "SELECT * FROM ("
+                    "SELECT * FROM paper_equity WHERE account_id=? "
+                    "ORDER BY at DESC LIMIT ?"
+                    ") ORDER BY at ASC",
+                    (ident, limit),
+                ).fetchall()
+            else:
+                rows = con.execute(
+                    f"SELECT * FROM {name} WHERE account_id=? ORDER BY {order} LIMIT ?",
+                    (ident, limit),
+                ).fetchall()
         return [dict(row) for row in rows]
 
     def summary(self, ident: str) -> dict[str, Any]:
