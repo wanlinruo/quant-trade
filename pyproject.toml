@@ -31,6 +31,9 @@ dev = [
     # mootdx 把 httpx 钉在 <0.26，此处只要下界，由解析器取交集
     "httpx>=0.25",
 ]
+joinquant = [
+    "jqdatasdk==1.9.8",
+]
 
 [build-system]
 requires = ["hatchling"]

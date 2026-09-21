@@ -6,9 +6,15 @@ QMT 对已经退市的证券回溯时可能返回“成交量非零、价格与�
 
 from __future__ import annotations
 
+import os
+import uuid
 from datetime import date, datetime, time, timedelta
+from pathlib import Path
 
 import polars as pl
+import pyarrow.parquet as pq
+
+from qsys.data import schema
 
 
 def expected_minute_times(day: date) -> list[datetime]:
@@ -216,3 +222,16 @@ def compare_with_daily(minutes: pl.DataFrame, daily: pl.DataFrame) -> pl.DataFra
         "symbol", "dt", gross.alias("gross"),
         (gross.is_null() & minor).alias("minor"),
     )
+
+
+def write_paid_minute_file(frame: pl.DataFrame, target: Path) -> None:
+    """按付费分钟 schema（含 provider 元数据）原子写入；临时文件名进程唯一。"""
+    paid = schema.PAID_MINUTE_BARS
+    table = frame.select(paid.names).to_arrow().cast(paid).replace_schema_metadata(paid.metadata)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_name(f".{target.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+    try:
+        pq.write_table(table, temporary)
+        os.replace(temporary, target)
+    finally:
+        temporary.unlink(missing_ok=True)
