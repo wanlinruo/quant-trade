@@ -1,8 +1,10 @@
 [Unit]
-Description=Run qsys daily archive after market close
+Description=交易日收盘后跑 qsys 每日归档
 
 [Timer]
+# 周一至周五 15:40（收盘 15:00 后留出余量）。非交易日脚本自己会识别并空转。
 OnCalendar=Mon..Fri 15:40 Asia/Shanghai
+# 机器停过则开机后补跑——分钟线是滚动一年，漏一天就永久少一天
 Persistent=true
 RandomizedDelaySec=120
 
