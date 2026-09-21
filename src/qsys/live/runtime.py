@@ -300,15 +300,17 @@ class LiveRuntime:
                 continue
             late = (now - moment).total_seconds() > self.GRACE_SECONDS
             if late and phase is not Phase.SESSION_START:
-                self.store.commit_event(
-                    key, self.portfolio, self.state, self.last_prices, at=now,
-                    detail="事件已过期，未补跑",
-                )
+                failure = self.store.event_detail(key)
+                detail = "事件已过期，未补跑"
+                if failure:
+                    detail += f"；最后错误：{failure}"
+                self.store.fail_event(key, detail, at=now)
                 expired = RunReport()
-                expired.report(note="事件已过期，未补跑")
+                expired.report(note=detail)
                 self._record_run(
                     key, moment, phase, expired, datetime.now(),
-                    orders=0, rejects=0, error="",
+                    orders=0, rejects=0,
+                    error=failure or "策略事件超过执行宽限",
                 )
                 continue
             self._run_event(key, moment, phase, skip_strategy=late)
@@ -423,6 +425,13 @@ class LiveRuntime:
                 orders=orders, rejects=rejects, error="",
             )
         except Exception as exc:
+            try:
+                self.store.record_event_failure(key, str(exc))
+            except Exception as store_exc:
+                log.warning(
+                    "strategy_event.failure_record_failed",
+                    event_key=key, error=str(store_exc),
+                )
             self._record_run(
                 key, moment, phase, report, started,
                 orders=0, rejects=0, error=str(exc),
