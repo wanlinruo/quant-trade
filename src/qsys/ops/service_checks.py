@@ -10,6 +10,8 @@
   即判成功，备注「数据质检成功，但服务未执行」；执行了但失败的，仍判失败；
 - 同一交易日早先的质检未通过、修复后重跑通过的，记「已修复」并保留当时的失败原因。
 - 分钟线与竞价的应到集合与每日归档的下载清单同源（首板次日候选），扣掉直取停牌。
+- 节点存储：磁盘剩余容量低于 10 GiB 判失败、低于 20 GiB 告警；保留策略到期项与未登记
+  目录只告警，删除需维护者逐项批准（见 ``qsys.ops.storage``）。
 """
 
 from __future__ import annotations
@@ -31,6 +33,15 @@ from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
 from qsys.markets.ashare import board_of
 from qsys.ops.services import FAILED, REPAIRED, SKIPPED, SUCCEEDED, WARNING
+from qsys.ops.storage import (
+    ELIGIBLE,
+    FREE_FAIL_BYTES,
+    FREE_WARN_BYTES,
+    GIB,
+    disk_status,
+    inventory,
+    unregistered,
+)
 
 OK, BAD, WARN, SKIP = SUCCEEDED, FAILED, WARNING, SKIPPED
 
@@ -60,6 +71,9 @@ class CheckContext:
     # 模拟盘 var/workbench/workbench.sqlite3；不给则相关检查跳过
     shadow_state: Path | None = None
     workbench: Path | None = None
+    # 节点存储：/data/qsys 与 ~/scratch；不给则存储检查跳过
+    storage_base: Path | None = None
+    scratch: Path | None = None
 
     def daily(self, day: date | None = None) -> pl.DataFrame:
         target = day or self.day
@@ -464,6 +478,43 @@ def _minutes_volume(ctx: CheckContext) -> CheckResult:
                        rows=per.height)
 
 
+# ---- 节点存储 ----
+
+def _gib(value: int) -> str:
+    return f"{value / GIB:.1f} GiB"
+
+
+def _disk_capacity(ctx: CheckContext) -> CheckResult:
+    expected = f"剩余 ≥ {_gib(FREE_WARN_BYTES)}（低于 {_gib(FREE_FAIL_BYTES)} 判失败）"
+    if ctx.storage_base is None or not ctx.storage_base.exists():
+        return CheckResult(SKIP, expected, "未提供存储根目录")
+    disk = disk_status(ctx.storage_base)
+    actual = f"剩余 {_gib(disk.free)} / 共 {_gib(disk.total)}（已用 {disk.used / disk.total:.0%}）"
+    status = {"ok": OK, "warn": WARN, "fail": BAD}[disk.level]
+    return CheckResult(status, expected, actual)
+
+
+def _retention(ctx: CheckContext) -> CheckResult:
+    expected = "无到期未处理的副本，无未登记目录"
+    if ctx.storage_base is None or not ctx.storage_base.exists():
+        return CheckResult(SKIP, expected, "未提供存储根目录")
+    scratch = ctx.scratch if ctx.scratch is not None and ctx.scratch.exists() else None
+    items = inventory(ctx.storage_base, scratch, datetime.now())
+    eligible = [item for item in items if item.verdict == ELIGIBLE]
+    stray = unregistered(ctx.storage_base)
+    freeable = sum(item.exclusive_bytes for item in eligible)
+    actual = f"到期 {len(eligible)} 项（可释放 {_gib(freeable)}），未登记 {len(stray)} 项"
+    if not eligible and not stray:
+        return CheckResult(OK, expected, actual, rows=len(items))
+    parts = []
+    if eligible:
+        parts.append("到期可申请删除：" + _samples(
+            f"{item.path.name}（{_gib(item.exclusive_bytes)}）" for item in eligible))
+    if stray:
+        parts.append("未登记保留策略：" + _samples(path.name for path in stray))
+    return CheckResult(WARN, expected, actual, "；".join(parts), rows=len(items))
+
+
 CHECKS: tuple[ServiceCheck, ...] = (
     ServiceCheck("premarket-limits", "开盘前取到当日涨跌停价", "price_limits_daily", _premarket_rows),
     ServiceCheck("daily-archive", "竞价逐笔到货", "auction_ticks", _auction_arrived),
@@ -489,6 +540,8 @@ CHECKS: tuple[ServiceCheck, ...] = (
     ServiceCheck("catalog-verify", "全量规则已执行", "metric_checks",
                  _catalog_verify_ran_full_scope),
     ServiceCheck("catalog-verify", "阻断级规则全部通过", "metric_checks", _metric_checks),
+    ServiceCheck("service-checks", "磁盘剩余容量", "/data/qsys", _disk_capacity),
+    ServiceCheck("service-checks", "存储保留策略", "/data/qsys", _retention),
 )
 
 

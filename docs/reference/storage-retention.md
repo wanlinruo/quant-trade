@@ -1,0 +1,55 @@
+# 节点存储保留策略
+
+生产 warehouse 在单独挂载的数据盘 `/dev/vdb`（`/data/qsys`，99 GiB），不是系统盘
+`/dev/vda2`。2026-09-21 盘点时数据盘已用 60 GiB、剩余 34 GiB。
+
+规则登记在 `src/qsys/ops/storage.py` 的 `RULES`，盘点命令：
+
+```bash
+uv run python scripts/storage_report.py            # 默认 /data/qsys 与 ~/scratch
+uv run python scripts/storage_report.py --json out.json
+```
+
+## 保留规则
+
+| 位置 | 类别 | 策略 |
+|---|---|---|
+| `warehouse/backups/*`、`warehouse/*.pre-*`、`backups/*` | 操作回滚副本 | 最近修改 30 天后可申请删除 |
+| `baidupan` | 付费原始包 | 永久；异地备份建立前是唯一原始副本 |
+| `minute-rebuild` | 重建暂存区 | 30 天，可由原始包重建 |
+| `qmt-minute-2026` | 隔离构建仓库 | 30 天，已发布进生产 |
+| `repair-cache` | 修复缓存 | 30 天 |
+| `test-env/warehouse-snapshots/*`、`test-env/snapshots/*` | 测试快照 | 保留最新 2 份；`test-env/warehouse-current` 指向的快照始终保留 |
+| `test-env/var`、`var-deployments`、`var-prod` | 运行状态与记录 | 永久 |
+| `~/scratch/*` | 临时工作区 | 最近修改 14 天后可申请删除 |
+
+`/data/qsys` 顶层出现任何未登记的条目都会被报出，新目录必须先在 `RULES` 登记策略。
+warehouse 内的数据集由指标字典与质量规则管理，不在本策略内。
+
+## 占用与可释放
+
+盘点给出两个数：**占用**是目录内文件去重后的磁盘块；**可释放**只计所有硬链接都在
+目录内的 inode，即删除后真正腾出的空间。测试快照与 `*.pre-*` 副本大量硬链接到
+warehouse：2026-09-21 实测，占用 25 GiB 的测试快照可释放约 0.1 GiB，
+`paid_minute_bars.pre-d20-d578a85` 占用 22 GiB、可释放 0。真正独占空间的是付费原始包
+（17 GiB，永久）与重建暂存区（2.6 GiB）。
+
+## 容量告警
+
+每日服务质检（`service-checks`，交易日 20:00）包含两项：
+
+- **磁盘剩余容量**：数据盘低于 20 GiB 告警，低于 10 GiB 判失败（与 canonical 回填
+  空间守卫一致）；
+- **存储保留策略**：有到期项或未登记目录时告警，列出名称与可释放空间。
+
+## 删除与审批
+
+工具只读，**不自动删除**。到期项按以下流程处理：
+
+1. 运行 `storage_report.py --json` 生成当期清单；
+2. 维护者逐项批准，批准范围写进 `/data/qsys/var-deployments/<时间>-storage-prune/approval.txt`
+   （路径、可释放空间、批准人、日期）；
+3. 删除前再确认该项仍是 `eligible`，删除后重新盘点，报告存入同一目录。
+
+回滚副本删除后无法再回到对应变更之前的状态；涉及生产数据修复的副本，至少在修复
+被一次完整的每日验证与服务质检确认后再批准。

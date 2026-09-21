@@ -44,6 +44,10 @@ def main() -> int:
     parser.add_argument("--workbench", type=Path,
                         default=Path("var/workbench/workbench.sqlite3"),
                         help="模拟盘工作台；同上")
+    parser.add_argument("--storage-base", type=Path, default=None,
+                        help="节点存储根目录；默认取 warehouse 实体路径的上一级（/data/qsys）")
+    parser.add_argument("--scratch", type=Path, default=Path.home() / "scratch",
+                        help="临时工作区，纳入保留策略盘点")
     parser.add_argument("--day", type=date.fromisoformat, default=None,
                         help="要检查的交易日；不给则取最近一个已收盘交易日")
     args = parser.parse_args()
@@ -69,6 +73,8 @@ def main() -> int:
             # 任务在交易日当天执行；复查旧日子时读那一天的运行记录
             load_runs(args.service_runs, day, day + timedelta(days=1)),
             shadow_state=args.shadow_state, workbench=args.workbench,
+            storage_base=args.storage_base or Path(args.warehouse).resolve().parent,
+            scratch=args.scratch,
         )
         failed = {"data": 0, "strategy": 0}
         # 同一交易日早先的质检（本次记录已落盘，但还没有任何步骤）
