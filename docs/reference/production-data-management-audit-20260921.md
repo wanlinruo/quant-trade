@@ -145,9 +145,8 @@ canonical。全局门面已经切到 canonical，所以旧实现会把未发布�
 错误，成交额与价格正常；每天约 95 只量额同时偏离的背景差异尚未归因，挂 D-20。
 这批付费 2026 分钟数据以后再用于任何发布，都必须先过日线对账门禁。
 
-**生产存量待处置**：这 24 个标的日目前仍在 `paid_minute_bars` 与 canonical 中，
-部署后 `A3.paid_minute_override_gross_vs_daily` 会如实阻断。处置方案需要确认，
-不自动删改；可选路径见第 7 节。
+**生产存量已处置**（2026-09-21，见第 10 节）：24 个标的日移入隔离区，由聚宽按既定
+优先级补回并通过日线对账，canonical 对应 7 个交易日已重建。
 
 ## 6. 备份与恢复
 
@@ -178,7 +177,7 @@ uv run python scripts/verify_warehouse_backup.py verify \
 | 优先级 | 项目 | 状态 | 验收条件 |
 |---|---|---|---|
 | P0 | 付费分钟日期覆盖质量门禁（原“冻结边界门禁”，已撤回） | 已部署；首次生产运行为 09-21 19:40 指标验证 | 结构、日线对账规则在生产运行 |
-| P0 | 24 个成交量错误标的日处置 | 待确认方案：移出覆盖后由聚宽补取（按既有优先级），或暂留并接受阻断 | 粗大偏差规则通过，canonical 对应日重建 |
+| P0 | 24 个成交量错误标的日处置 | 完成（第 10 节）：隔离 + 聚宽补取 + canonical 重建，粗大偏差 0 | 粗大偏差规则通过，canonical 对应日重建 |
 | — | 12 只证券来源核验 | 完成：余哈哈付费源，无需迁移（见 5.1） | provider 可证明 |
 | P0 | canonical 分钟覆盖失败关闭 | 已部署（Web/回测）；paper、shadow 待下次重启生效 | 未发布交易日查询明确报错 |
 | P0 | 加密异地备份 | 验收工具完成；待确定目的地和密钥托管 | 定时成功且完成隔离恢复演练 |
@@ -187,7 +186,7 @@ uv run python scripts/verify_warehouse_backup.py verify \
 | P1 | 分区并发写锁 | 已部署：5 个定时 unit 的 ExecStart 均经 flock | 同时启动时仅一项进入写流程，另一项明确失败 |
 | P1 | 健康状态拆分 | 已部署；以 09-21 20:00 服务质检为首次验收 | 策略失败保留明细，但不再使数据质检 unit 失败 |
 | P2 | 旧副本与 staging 生命周期 | 待实施 | 有保留策略、容量告警和审批记录 |
-| P0 | 存量阻断项（C6 类型、B2 证券覆盖、A3 QMT 分钟对日线） | 待排查：main 上已有规则，09-18 后首次运行即会报出，与本次发布无关 | 各规则在生产通过或登记已知缺陷 |
+| P0 | 存量阻断项（B2 证券覆盖、A3 QMT 分钟对日线） | 待排查：main 上已有规则，09-18 后首次运行即会报出；C6 类型问题已于第 10 节修复 | 各规则在生产通过或登记已知缺陷 |
 
 ## 8. 部署约束
 
@@ -226,3 +225,33 @@ canonical 回填命令已默认复用该锁。
 测试环境节点 `/home/ubuntu/qsys-test` 此前停在 `test` 重置前的旧历史，已按规范 3.1.1
 对齐到 `origin/test` 后再部署；对齐前 SHA 存于
 `/data/qsys-test/var/deployments/pre-align-20260921.sha`。
+
+## 10. 付费分钟日期覆盖修复记录（2026-09-21）
+
+维护者确认按建议修复 24 个成交量错误标的日与 C6 存储契约问题。工具经 PR #45
+发布（生产 `9dea4277f8b670d859ae34f35db836766cd0e3e9`，部署记录
+`/data/qsys/var-deployments/20260921T143259/`），数据操作全部持有仓库写锁，在
+15:40 每日归档之前完成。备份、报告与回滚说明在节点
+`/data/qsys/warehouse/backups/paid-minute-override-repair-20260921/`（README.txt）。
+
+| 步骤 | 时间 | 操作 | 结果 |
+|---|---|---|---|
+| 0 | 14:33 | 备份 canonical 与聚宽 7 个交易日分区 | `canonical-before/`、`jq-before/` 各 7 个 |
+| 1 | 14:33 | `repair_paid_minute_overrides.py` 预演 | 92 文件需按 schema 重写，24 个标的日需隔离 |
+| 2 | 14:33 | 同上 `--apply` | 92 文件重写（`symbol` → string，含 provider 元数据）；24 个标的日 5,784 行移入 `paid_minute_quarantine/year=2026/daily-volume-mismatch/`；92 份原文件备份 |
+| 3 | 14:34 | `publish_joinquant_minute_overrides.py --start 2026-03-03 --end 2026-03-11` 预演 | 24 个标的日通过 240 网格与日线对账 |
+| 4 | 14:34 | 同上 `--apply` | 写入 5,760 行；`jqdatasdk` 以 `uv sync --frozen --group joinquant` 临时安装，完成后已卸载 |
+| 5 | 14:37 | `backfill_canonical.py --datasets minute --start 2026-03-03 --end 2026-03-11` | 7 天共 9,238,441 行 |
+| 6 | 14:38 | canonical 修复前后逐键对账 | 其余 9,232,681 键逐字段相同、0 增减；24 个标的日 5,784 → 5,760 行，`source` 全为 `joinquant`，值与聚宽源一致 |
+
+复验（生产代码，只读）：`C6.storage_contract.paid_minute_bars` 0、
+`A3.paid_minute_override_gross_vs_daily` 0、`B2.paid_minute_override_structure` 0；
+`A3.paid_minute_override_vs_daily` 415 仍为 D-20 警告。全部 102 条规则的阻断从 4 条
+降到 2 条，剩 `A3.minute_vs_daily` 92 与 `B2.paid_minute_symbol_coverage` 71，属存量规则。
+
+**遗留缺口**：`920305.BJ` 在 2026-03-03..03-11 的 QMT 分钟为零价格，付费覆盖只有 1 月、
+聚宽不支持北交所，这 7 个标的日目前没有有效分钟来源。按“拿不到就留空”的原则
+不做填充，回测触及时会显式失败。
+
+这次同时补齐了两处入库门禁：聚宽覆盖发布与付费覆盖发布一样，入库前与日线对账，
+粗大偏差拒收；`jqdatasdk` 进入锁文件的可选依赖组，聚宽补取可以复现。
