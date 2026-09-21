@@ -278,7 +278,8 @@ def create_app(
         return TEMPLATES.TemplateResponse(
             request=request, name="service_detail.html",
             context={"title": config.title, "session": None, "page": "services_detail",
-                     "spec": spec, "run": None, "recent": console.recent_runs(service_id)},
+                     "spec": spec, "run": None, "recent": console.recent_runs(service_id),
+                     "health": console.service_health(service_id)},
         )
 
     @app.get("/data/selection")
