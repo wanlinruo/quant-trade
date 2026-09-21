@@ -155,6 +155,56 @@ def test_zero_volume_bars_are_accepted(warehouse, write_daily_bars):
     seed(
         warehouse, write_daily_bars,
         [(14, 59, 41.01, 41.01, 41.01, 41.01, 0), (15, 0, 40.9, 40.9, 40.9, 40.9, 100)],
-        daily=(41.01, 41.01, 40.9, 40.9, 100),
+        daily=(40.9, 40.9, 40.9, 40.9, 100),
     )
     assert check_minute_bars(warehouse, DAY) == []
+
+
+def test_zero_volume_auction_placeholder_is_not_the_open(warehouse, write_daily_bars):
+    """竞价无成交：09:30 占位 bar 成交量 0、四价等于昨收 20.84，真实开盘是 09:31 的 20.70。"""
+    seed(
+        warehouse, write_daily_bars,
+        [(9, 30, 20.84, 20.84, 20.84, 20.84, 0), (9, 31, 20.70, 20.75, 20.60, 20.72, 500),
+         (15, 0, 20.72, 20.72, 20.72, 20.72, 500)],
+        daily=(20.70, 20.75, 20.60, 20.72, 1000),
+    )
+    assert check_minute_bars(warehouse, DAY) == []
+
+
+def test_traded_first_bar_mismatch_is_still_flagged(warehouse, write_daily_bars):
+    seed(
+        warehouse, write_daily_bars,
+        [(9, 30, 20.84, 20.84, 20.84, 20.84, 0), (9, 31, 21.50, 21.50, 20.60, 20.72, 1000)],
+        daily=(20.70, 21.50, 20.60, 20.72, 1000),
+    )
+    assert "first_bar_open" in rules_of(check_minute_bars(warehouse, DAY))
+
+
+def test_bj_after_hours_volume_in_the_closing_bar_is_tolerated(warehouse, write_daily_bars):
+    """2026-09-17 920112.BJ：分钟 10,835 vs 日线 6,835.2，多出的 4,000 在 15:00 bar 里。"""
+    seed(
+        warehouse, write_daily_bars,
+        [(9, 30, 14.2, 14.3, 14.1, 14.2, 6772), (15, 0, 14.27, 14.27, 14.27, 14.27, 4063)],
+        daily=(14.2, 14.3, 14.1, 14.27, 6835.2),
+        symbol="920112.BJ",
+    )
+    assert "volume_vs_daily" not in rules_of(check_minute_bars(warehouse, DAY))
+
+
+def test_bj_volume_outside_the_closing_bar_band_is_flagged(warehouse, write_daily_bars):
+    seed(
+        warehouse, write_daily_bars,
+        [(9, 30, 14.2, 14.3, 14.1, 14.2, 20000), (15, 0, 14.27, 14.27, 14.27, 14.27, 100)],
+        daily=(14.2, 14.3, 14.1, 14.27, 6835.2),
+        symbol="920112.BJ",
+    )
+    assert "volume_vs_daily" in rules_of(check_minute_bars(warehouse, DAY))
+
+
+def test_after_hours_band_applies_only_to_bj(warehouse, write_daily_bars):
+    seed(
+        warehouse, write_daily_bars,
+        [(9, 30, 14.2, 14.3, 14.1, 14.2, 6772), (15, 0, 14.27, 14.27, 14.27, 14.27, 4063)],
+        daily=(14.2, 14.3, 14.1, 14.27, 6835.2),
+    )
+    assert "volume_vs_daily" in rules_of(check_minute_bars(warehouse, DAY))

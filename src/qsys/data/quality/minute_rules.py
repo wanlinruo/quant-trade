@@ -1,9 +1,17 @@
 """分钟线质量校验。
 
-分钟线来自 QMT、日线来自 mootdx，**两个独立数据源**。它们必须对得上：
+分钟线来自 QMT、日线来自 Tushare，**两个独立数据源**。它们必须对得上：
   · 分钟成交量之和 ≈ 日线成交量
-  · 分钟最高价之最大 == 日线最高价
-  · 首根分钟线的 open == 日线 open（竞价成交价即开盘价，2-1a 已实测）
+  · 有成交分钟的最高价之最大 == 日线最高价
+  · 首根有成交分钟线的 open == 日线 open（竞价成交价即开盘价，2-1a 已实测）
+
+价格只看有成交的 bar：集合竞价无成交时，QMT 仍给出成交量为 0、四价等于昨收的
+09:30 占位 bar，真实开盘价是连续竞价第一笔（2026-09-16..18 生产实测 297 例全部
+如此，改看有成交 bar 后差异为 0）。
+
+北交所盘后固定价格交易被 QMT 并入 15:00 那根 bar，Tushare 日线不计入，且无法
+从同一根 bar 里拆出。北交所成交量因此做区间检查：日线成交量须落在
+[分钟合计 − 15:00 bar 成交量, 分钟合计] 之间（各留 1% 余量）。
 
 对不上说明至少一个源错了，或时间戳约定弄反了。这是本项目能拿到的最强的
 数据交叉验证——两个独立源同时错得一模一样的概率很低。
@@ -38,6 +46,18 @@ class MinuteIssue:
     dt: date
     rule: str
     detail: str
+
+
+def _bj_after_hours_explains(
+    symbol: str, group: pl.DataFrame, minute_volume: int, daily_volume: float
+) -> bool:
+    """北交所：日线成交量是否落在「扣除/含 15:00 bar」两个分钟合计之间。"""
+    if not symbol.endswith(".BJ"):
+        return False
+    closing = group.filter(pl.col("dt").dt.time() == _AFTERNOON[1])["volume"].sum()
+    lower = (minute_volume - closing) * (1 - _VOLUME_TOLERANCE)
+    upper = minute_volume * (1 + _VOLUME_TOLERANCE)
+    return lower <= daily_volume <= upper
 
 
 def _in_session(moment: time) -> bool:
@@ -101,7 +121,9 @@ def check_minute_bars(warehouse: Warehouse, day: date) -> list[MinuteIssue]:
         minute_volume = int(group["volume"].sum())
         if reference["volume"] > 0:
             drift = abs(minute_volume - reference["volume"]) / reference["volume"]
-            if drift > _VOLUME_TOLERANCE:
+            if drift > _VOLUME_TOLERANCE and not _bj_after_hours_explains(
+                symbol, group, minute_volume, reference["volume"]
+            ):
                 issues.append(
                     MinuteIssue(
                         symbol,
@@ -111,7 +133,10 @@ def check_minute_bars(warehouse: Warehouse, day: date) -> list[MinuteIssue]:
                     )
                 )
 
-        minute_high = float(group["high"].max())
+        traded = group.filter(pl.col("volume") > 0)
+        if traded.height == 0:
+            continue  # 全天无成交 bar：没有可比的成交价
+        minute_high = float(traded["high"].max())
         if abs(minute_high - reference["high"]) > _PRICE_TOLERANCE:
             issues.append(
                 MinuteIssue(
@@ -122,7 +147,7 @@ def check_minute_bars(warehouse: Warehouse, day: date) -> list[MinuteIssue]:
                 )
             )
 
-        first_open = float(group["open"].to_list()[0])
+        first_open = float(traded["open"].to_list()[0])
         if abs(first_open - reference["open"]) > _PRICE_TOLERANCE:
             issues.append(
                 MinuteIssue(
