@@ -6,6 +6,7 @@ import polars as pl
 import pytest
 
 from qsys.ops import service_checks as sc
+from qsys.ops import storage as sc_storage
 from qsys.ops.service_checks import CheckContext
 
 DAY, PREV = date(2026, 9, 17), date(2026, 9, 16)
@@ -398,3 +399,48 @@ def test_paper_events_ignore_accounts_that_were_not_live_yet(tmp_path):
     path = _workbench(tmp_path / "future.sqlite3",
                       [("acct-new", "明天才生效的", "running", "2026-09-18")], [])
     assert sc._paper_events(ctx(FakeQuery(), workbench=path)).status == sc.SKIP
+
+
+# ---- 节点存储 ----
+
+def _storage_ctx(base, scratch=None):
+    return CheckContext(None, None, DAY, PREV, SESSIONS, [],
+                        storage_base=base, scratch=scratch)
+
+
+def test_storage_checks_skip_without_a_base():
+    assert sc._disk_capacity(_storage_ctx(None)).status == sc.SKIP
+    assert sc._retention(_storage_ctx(None)).status == sc.SKIP
+
+
+def test_disk_capacity_levels(tmp_path, monkeypatch):
+    gib = sc.GIB
+    for free, status in ((50 * gib, sc.OK), (15 * gib, sc.WARN), (5 * gib, sc.BAD)):
+        monkeypatch.setattr(sc, "disk_status",
+                            lambda _p, free=free: sc_storage.DiskStatus(100 * gib, 100 * gib - free, free))
+        assert sc._disk_capacity(_storage_ctx(tmp_path)).status == status
+
+
+def test_retention_warns_on_expired_copies_and_unregistered_dirs(tmp_path):
+    import os
+    base = tmp_path / "qsys"
+    old = base / "warehouse/backups/old"
+    old.mkdir(parents=True)
+    (old / "part.parquet").write_bytes(b"x" * 4096)
+    stamp = datetime(2026, 1, 1).timestamp()
+    os.utime(old / "part.parquet", (stamp, stamp))
+    os.utime(old, (stamp, stamp))
+    (base / "mystery").mkdir()
+
+    result = sc._retention(_storage_ctx(base))
+
+    assert result.status == sc.WARN
+    assert "old" in result.detail and "mystery" in result.detail
+
+
+def test_retention_passes_when_everything_is_registered_and_fresh(tmp_path):
+    base = tmp_path / "qsys"
+    (base / "warehouse").mkdir(parents=True)
+    (base / "baidupan").mkdir()
+
+    assert sc._retention(_storage_ctx(base)).status == sc.OK
