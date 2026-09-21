@@ -155,3 +155,18 @@ def test_paper_detail_run_log_empty_state(warehouse, tmp_path):
     page = client.get(f"/paper/{ident}")
 
     assert "当日没有运行记录" in page.text
+
+
+def test_paper_detail_explains_marking_and_strategy_frequency(warehouse, tmp_path):
+    client, ident = _account_with_run(
+        warehouse, tmp_path, candidates=None, passed=None, reasons=None
+    )
+
+    page = client.get(f"/paper/{ident}")
+
+    assert "运行与更新口径" in page.text
+    assert "收益盯市" in page.text
+    assert "默认约每秒更新" in page.text
+    assert "午休约每 60 秒更新" in page.text
+    assert "不会每秒重复执行交易逻辑" in page.text
+    assert "本页面不会自动刷新" in page.text
