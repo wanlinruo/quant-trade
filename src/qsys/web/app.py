@@ -28,6 +28,7 @@ from qsys.web.asset_views import DataAssetService
 from qsys.web.catalog_views import CatalogService, Status
 from qsys.web.config import WebConfig
 from qsys.web.data_views import DataService, MarketService
+from qsys.web.paper_chart import history_series, intraday_series
 from qsys.web.service_views import ServiceConsole
 from qsys.web.svg import line_chart, multi_line_chart
 from qsys.web.views import MonitorService
@@ -472,23 +473,33 @@ def create_app(
 
     @app.get("/paper/{ident}", response_class=HTMLResponse)
     def paper_detail(
-        request: Request, ident: str, run_session: date | None = None
+        request: Request, ident: str, run_session: date | None = None,
+        chart_day: date | None = None,
     ):
         if paper is None:
             raise HTTPException(status_code=404, detail="paper trading not enabled")
         account = paper.account(ident)
         if account is None:
             raise HTTPException(status_code=404, detail="no such paper account")
-        equity = paper.rows(ident, "equity", limit=10_000)
         initial = account.initial_cash
-        chart_data = [{
-            "date": row["at"],
-            "strategy": row["total_value"] / initial - 1 if initial else 0,
-            "benchmark": (
-                row["benchmark_value"] / initial - 1
-                if row["benchmark_value"] is not None and initial else None
+        daily = paper.equity_daily(ident)
+        sessions = [row["session"] for row in daily]
+        chart_notice = ""
+        if chart_day is not None and chart_day.isoformat() not in sessions:
+            chart_notice = f"{chart_day} 没有收益记录，已显示历史曲线"
+            chart_day = None
+        chart = {
+            "view": "intraday" if chart_day else "history",
+            "day": chart_day.isoformat() if chart_day else None,
+            "sessions": sessions[::-1],
+            "history": history_series(daily, initial),
+            "intraday": (
+                intraday_series(paper.equity_intraday(ident, chart_day), daily,
+                                chart_day, initial)
+                if chart_day else []
             ),
-        } for row in equity]
+            "notice": chart_notice,
+        }
         run_sessions = paper.run_sessions(ident)
         selected_run_session = run_session or (
             run_sessions[0] if run_sessions else date.today()
@@ -504,7 +515,7 @@ def create_app(
                 "rejects": paper.rows(ident, "rejects"),
                 "events": paper.rows(ident, "events", limit=200),
                 "logs": paper.rows(ident, "logs", limit=200),
-                "chart_data": chart_data,
+                "chart": chart,
                 "market_health": service.heartbeat_status("market"),
                 "paper_health": service.heartbeat_status("paper"),
                 "runs": paper.strategy_runs(ident, selected_run_session),

@@ -170,3 +170,66 @@ def test_paper_detail_explains_marking_and_strategy_frequency(warehouse, tmp_pat
     assert "午休约每 60 秒更新" in page.text
     assert "不会每秒重复执行交易逻辑" in page.text
     assert "本页面不会自动刷新" in page.text
+
+
+# ---- 收益曲线：历史与分时 ----
+
+def _account_with_equity(warehouse, tmp_path):
+    from qsys.core.portfolio import Portfolio
+
+    client, job = make_client(warehouse, tmp_path)
+    ident = client.post(
+        "/api/paper-accounts",
+        json={"backtest_id": job.id, "name": "曲线", "cash": 100_000},
+    ).json()["id"]
+    store = PaperStore(tmp_path / "workbench.sqlite3")
+    for day, closes in ((date(2026, 9, 18), (100_000, 100_000)),
+                        (date(2026, 9, 21), (99_000, 100_050))):
+        opened = datetime.combine(day, time(9, 30))
+        key = f"{day}:auction:09:30:00"
+        store.begin_event(ident, key, opened, "auction")
+        store.commit_event(ident, key, Portfolio(100_000), {}, {}, at=opened)
+        for at, total in ((time(10, 0), closes[0]), (time(15, 0), closes[1])):
+            store.save_snapshot(ident, Portfolio(total), {}, {},
+                                at=datetime.combine(day, at), benchmark_value=100_100)
+    return client, ident
+
+
+def test_paper_detail_defaults_to_the_daily_history(warehouse, tmp_path):
+    client, ident = _account_with_equity(warehouse, tmp_path)
+
+    page = client.get(f"/paper/{ident}")
+
+    assert 'data-view="history"' in page.text
+    assert "累计收益（每日收盘）" in page.text
+    assert '"session": "2026-09-18"' in page.text and '"session": "2026-09-21"' in page.text
+    assert "paper-chart" not in page.text
+
+
+def test_paper_detail_shows_the_selected_day_intraday(warehouse, tmp_path):
+    client, ident = _account_with_equity(warehouse, tmp_path)
+
+    page = client.get(f"/paper/{ident}?chart_day=2026-09-21")
+
+    assert 'data-view="intraday"' in page.text
+    assert "2026-09-21 当日收益（相对前一交易日收盘）" in page.text
+    assert '"time": "10:00"' in page.text
+
+
+def test_paper_detail_unknown_chart_day_falls_back_to_history(warehouse, tmp_path):
+    client, ident = _account_with_equity(warehouse, tmp_path)
+
+    page = client.get(f"/paper/{ident}?chart_day=2026-01-05")
+
+    assert 'data-view="history"' in page.text
+    assert "2026-01-05 没有收益记录，已显示历史曲线" in page.text
+
+
+def test_paper_detail_without_equity_shows_the_empty_state(warehouse, tmp_path):
+    client, ident = _account_with_run(
+        warehouse, tmp_path, candidates=None, passed=None, reasons=None
+    )
+
+    page = client.get(f"/paper/{ident}")
+
+    assert "模拟盘生效后将在这里展示收益曲线" in page.text
