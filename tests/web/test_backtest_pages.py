@@ -59,6 +59,16 @@ def test_the_detail_page_shows_the_headline_and_files(client):
     assert "<svg" in body   # 净值曲线
 
 
+def test_the_detail_page_explains_backtest_frequency(client):
+    body = client.get("/backtests/jq100k").text
+    assert "回测运行口径" in body
+    assert "主驱动" in body and "日级" in body
+    assert "分钟级按需" in body
+    assert "不逐分钟遍历全天" in body
+    assert "每天记录一个净值点" in body
+    assert "不使用秒级行情" in body
+
+
 def test_gate_decisions_belong_to_the_specific_backtest(client):
     body = client.get("/backtests/jq100k").text
     assert "候选与 Gate" in body
