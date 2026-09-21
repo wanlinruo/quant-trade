@@ -306,8 +306,10 @@ def _paid_minute_metrics() -> list[Metric]:
             meaning=_PAID_MINUTE_MEANING[field.name],
             lineage=Direct("baidupan.minute", field.name),
             checks=("B2.paid_minute_structure", "B2.paid_minute_override_structure",
-                    "B2.paid_minute_symbol_coverage", *truth),
-            known_issues=("D-20",) if truth else (),
+                    "B2.paid_minute_symbol_coverage", "B2.paid_minute_known_symbol_gap",
+                    *truth),
+            # D-21 只挂在 B2.paid_minute_known_symbol_gap 上，名单外缺失仍阻断。
+            known_issues=("D-20", "D-21") if truth else ("D-21",),
         ))
     return out
 

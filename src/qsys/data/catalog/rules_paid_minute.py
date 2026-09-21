@@ -155,8 +155,20 @@ def _difference(ctx: CheckContext, key: str, label: str) -> CheckResult:
     )
 
 
-def _symbol_coverage(ctx: CheckContext) -> CheckResult:
+# D-21：卖家 2020—2025 每个年度包都没有这 13 只沪市证券的成员文件，无法从源包补回；
+# 2025-06-12 起已由聚宽覆盖。单独一条规则挂已知缺陷报警告，名单外的缺失仍阻断。
+D21_MISSING_SYMBOLS = frozenset({
+    "603211.SH", "603213.SH", "603214.SH", "603215.SH", "603216.SH", "603217.SH",
+    "603219.SH", "603220.SH", "603221.SH", "603222.SH", "603223.SH", "603226.SH",
+    "603227.SH",
+})
+
+
+def _symbol_coverage(ctx: CheckContext, *, known: bool) -> CheckResult:
     """用独立 Tushare 日线发现源包整只沪深证券缺失，不重扫分钟事实。
+
+    ``known=False`` 只报 D-21 名单之外的缺失（阻断），``known=True`` 只报名单内的
+    缺失（挂 D-21 警告）；两条规则分母相同。
 
     北交所历史代码会被 Tushare 映射成当前 920 号段，付费源则保留当时的
     43/83/87 代码；``302132.SZ`` 也存在同类换码。两者不能直接按 symbol
@@ -198,6 +210,8 @@ def _symbol_coverage(ctx: CheckContext) -> CheckResult:
             "symbol"
         ).unique()
         missing = traded.join(minute_symbols, on="symbol", how="anti").sort("symbol")
+        listed = pl.col("symbol").is_in(list(D21_MISSING_SYMBOLS))
+        missing = missing.filter(listed if known else ~listed)
         checked += traded.height
         problems.extend(
             {"year": year, "symbol": row["symbol"],
@@ -231,7 +245,13 @@ register(Check(
 ))
 register(Check(
     "B2.paid_minute_symbol_coverage", Category.COMPLETENESS, Scope.FULL,
-    _ALL, (), "Tushare 有成交的证券不能在付费分钟年度中整只缺失", _symbol_coverage,
+    _ALL, (), "Tushare 有成交的证券不能在付费分钟年度中整只缺失（D-21 名单除外）",
+    lambda ctx: _symbol_coverage(ctx, known=False),
+))
+register(Check(
+    "B2.paid_minute_known_symbol_gap", Category.COMPLETENESS, Scope.FULL,
+    _ALL, ("D-21",), "D-21：卖家源包缺失的 13 只沪市证券仍然缺失",
+    lambda ctx: _symbol_coverage(ctx, known=True),
 ))
 _VALUES = tuple(f"paid_minute_bars.{name}" for name in (
     "open", "high", "low", "close", "volume", "amount"
