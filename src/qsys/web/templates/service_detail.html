@@ -47,6 +47,21 @@
 {% endif %}
 {% endif %}
 
+{% if health and spec.id in ("shadow-core", "paper") %}
+{% set chain = health.details.get("trading_chain", {}) %}
+<div class="card">
+  <h2>交易链路监控</h2>
+  <div class="kpis">
+    <div class="kpi"><div class="label">业务状态</div><div class="value"><span class="pill {{ 'ok' if health.business_state == 'healthy' else 'warn' if health.business_state == 'degraded' else 'bad' }}">{{ {'healthy':'当前正常','degraded':'事件延迟','down':'事件失败'}.get(health.business_state, '状态未知') }}</span></div></div>
+    <div class="kpi"><div class="label">进程状态</div><div class="value"><span class="pill {{ 'ok' if health.process_state == 'healthy' else 'warn' if health.process_state == 'degraded' else 'bad' }}">{{ {'healthy':'正常','degraded':'延迟','down':'异常'}.get(health.process_state, '未知') }}</span></div></div>
+    <div class="kpi"><div class="label">到期事件</div><div class="value">{{ chain.get('completed', 0) }} / {{ chain.get('expected', 0) }}</div></div>
+    <div class="kpi"><div class="label">最近观测</div><div class="value" style="font-size:14px">{{ health.observed_at_local }}</div></div>
+  </div>
+  <p class="{{ 'error' if health.business_state == 'down' else 'muted' }}" style="margin-bottom:6px">{{ chain.get('detail', health.reason_code) }}</p>
+  <p class="muted" style="font-size:12px;margin:0">原因代码：<span class="mono">{{ health.reason_code }}</span>；此处展示健康采样器持久化的交易日策略事件状态，不是定时任务运行记录。</p>
+</div>
+{% endif %}
+
 <div class="card">
   <h2>最近执行</h2>
   <table>
@@ -56,7 +71,7 @@
       <td><a href="/services/runs/{{ r.started_at[:10] }}/{{ r.run_id }}">{{ r.started_at }}</a></td>
       <td>{{ r.session or "—" }}</td><td><span class="pill {{ rs[0] }}">{{ rs[1] }}</span></td>
       <td>{{ r.steps|length }}</td><td style="font-size:12px">{{ r.note or r.error }}</td>
-    </tr>{% else %}<tr><td colspan="5" class="empty">还没有运行记录{% if spec.kind == "resident" %}（常驻服务不写运行记录，看进程状态）{% endif %}</td></tr>{% endfor %}
+    </tr>{% else %}<tr><td colspan="5" class="empty">还没有运行记录{% if spec.kind == "resident" %}（常驻服务不写任务运行记录；交易链路状态见上方）{% endif %}</td></tr>{% endfor %}
   </table>
 </div>
 {% endblock %}
