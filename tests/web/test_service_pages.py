@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from qsys.core.calendar import AShareCalendar
 from qsys.ops import services
-from qsys.ops.health import HEALTHY, MORNING, HealthObservation, HealthStore, SHANGHAI
+from qsys.ops.health import DOWN, HEALTHY, MORNING, HealthObservation, HealthStore, SHANGHAI
 from qsys.ops.services import ServiceRun
 from qsys.ops.journal import SessionJournal
 from qsys.web.app import create_app
@@ -351,3 +351,50 @@ def test_resident_services_show_their_check_results_on_the_board(tmp_path, monke
     assert next(cell for cell in cells if cell.day == day).detail_url.startswith(
         "/services/runs/2026-09-17/service-checks-"
     )
+
+
+def test_live_business_health_populates_acceptance_board_and_service_detail(
+        tmp_path, warehouse):
+    store = HealthStore(tmp_path / "health.sqlite3")
+    store.record(HealthObservation(
+        service_id="shadow-core",
+        observed_at_utc=NOW.replace(tzinfo=SHANGHAI),
+        phase=MORNING,
+        expected_interval_s=1,
+        warn_after_s=3,
+        down_after_s=10,
+        state=DOWN,
+        process_state=HEALTHY,
+        business_state=DOWN,
+        reason_code="strategy_event_failed",
+        source="redis_heartbeat",
+        details={"trading_chain": {
+            "detail": "auction:09:30:00 事件已过期，未补跑",
+            "expected": 2,
+            "completed": 1,
+        }},
+    ))
+    live = ServiceConsole(
+        tmp_path / "runs",
+        calendar=lambda: AShareCalendar(SESSIONS),
+        health_store=store,
+        now=lambda: NOW,
+    )
+
+    cells = next(cells for spec, cells in live.acceptance_board(14)[1]
+                 if spec.id == "shadow-core")
+    today = next(cell for cell in cells if cell.day == NOW.date())
+    assert today.state == "bad"
+    assert today.label == "事件失败"
+    assert today.detail_url == "/services/shadow-core"
+
+    config = WebConfig()
+    page = TestClient(create_app(
+        MonitorService(SessionJournal(warehouse), config=config), config,
+        services=live,
+    )).get("/services/shadow-core")
+    assert page.status_code == 200
+    assert "交易链路监控" in page.text
+    assert "事件失败" in page.text
+    assert "auction:09:30:00 事件已过期，未补跑" in page.text
+    assert "1 / 2" in page.text

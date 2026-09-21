@@ -94,9 +94,17 @@ class Cell:
     state: str
     runs: list[dict]
     checks: list[dict] = ()
+    health: dict | None = None
+    service_id: str | None = None
 
     @property
     def label(self) -> str:
+        if self.health is not None:
+            return {
+                HEALTHY: "当前正常",
+                DEGRADED: "事件延迟",
+                DOWN: "事件失败",
+            }.get(self.health.get("business_state"), "状态未知")
         return CELL_LABELS[self.state]
 
     @property
@@ -107,6 +115,8 @@ class Cell:
         acceptance cells only have a service-check run.  The route therefore
         has to use the run's start date instead of the board column date.
         """
+        if self.health is not None and self.service_id:
+            return f"/services/{self.service_id}"
         if self.runs:
             run = self.runs[-1]
             return f"/services/runs/{run['started_at'][:10]}/{run['run_id']}"
@@ -165,7 +175,39 @@ class ServiceConsole:
     ) -> tuple[list[date], list[tuple[ServiceSpec, list[Cell]]], bool]:
         """影子盘/模拟盘每日策略事件验收，与当前进程健康严格分离。"""
         specs = [SERVICE_BY_ID[name] for name in ("shadow-core", "paper")]
-        return self._board_for(specs, days)
+        columns, rows, has_calendar = self._board_for(specs, days)
+        if self._health_store is None:
+            return columns, rows, has_calendar
+
+        now = self._now()
+        start = datetime.combine(columns[-1], time.min)
+        observations = self._health_store.history(start, now)
+        latest: dict[tuple[str, date], dict] = {}
+        for observation in observations:
+            if observation["service_id"] not in ("shadow-core", "paper"):
+                continue
+            local_day = observation["observed_at_utc"].astimezone(SHANGHAI).date()
+            latest[(observation["service_id"], local_day)] = observation
+
+        enriched = []
+        state_map = {HEALTHY: "ok", DEGRADED: "warn", DOWN: "bad"}
+        for spec, cells in rows:
+            updated = []
+            for cell in cells:
+                health = latest.get((spec.id, cell.day))
+                if health is None or health.get("business_state") == "unknown":
+                    updated.append(cell)
+                    continue
+                updated.append(Cell(
+                    cell.day,
+                    state_map.get(health["business_state"], "none"),
+                    cell.runs,
+                    cell.checks,
+                    health,
+                    spec.id,
+                ))
+            enriched.append((spec, updated))
+        return columns, enriched, has_calendar
 
     def _board_for(
         self, specs: list[ServiceSpec], days: int,
@@ -253,6 +295,21 @@ class ServiceConsole:
                 if r.get("service") == service]
         return [{**r, "effective_status": effective_status(r, now=self._now())}
                 for r in runs[::-1][:limit]]
+
+    def service_health(self, service: str) -> dict | None:
+        """Latest persisted process/business observation for a service detail page."""
+        if self._health_store is None:
+            return None
+        rows = self._health_store.latest(service)
+        if not rows:
+            return None
+        row = rows[0]
+        return {
+            **row,
+            "observed_at_local": row["observed_at_utc"].astimezone(SHANGHAI).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            ),
+        }
 
     # ---- 进程状态 ----
 
