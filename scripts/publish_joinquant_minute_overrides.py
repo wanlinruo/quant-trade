@@ -3,7 +3,9 @@
 
 覆盖数据写入独立的 ``joinquant_minute_bars``，绝不改写 QMT。聚宽 09:31
 包含集合竞价与首分钟成交，不能伪拆成 09:30/09:31 两根；因此保留源时间网格。
-默认预演，传 ``--apply`` 后才原子发布，全程持有仓库写锁。已有目标文件在覆盖前必须备份。
+入库前必须通过 240 根原生网格、数值有效与 Tushare 日线对账（量/额/价相对偏差
+≤ 5%）。``--start/--end`` 限定处理的交易日。默认预演，传 ``--apply`` 后才原子
+发布，全程持有仓库写锁。已有目标文件在覆盖前必须备份。
 """
 
 from __future__ import annotations
@@ -15,16 +17,19 @@ import shutil
 import tomllib
 import uuid
 from contextlib import nullcontext
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 import polars as pl
 
 from qsys.agent.locking import single_instance
 from qsys.data.pipeline.minute_repairs import (
+    compare_with_daily,
     invalid_qmt_price_symbols,
     valid_joinquant_overrides,
 )
+from qsys.data.query import WarehouseQuery
+from qsys.data.storage import Warehouse
 
 
 def _jq_code(symbol: str) -> str | None:
@@ -75,6 +80,10 @@ def main() -> int:
     parser.add_argument("--warehouse", type=Path, required=True)
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--backup-dir", type=Path, required=True)
+    parser.add_argument("--daily-warehouse", type=Path,
+                        help="提供 tushare_daily 对账的仓库，默认同 --warehouse")
+    parser.add_argument("--start", type=date.fromisoformat, help="只处理该日及之后的交易日")
+    parser.add_argument("--end", type=date.fromisoformat, help="只处理该日及之前的交易日")
     parser.add_argument("--report", type=Path)
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--lock", type=Path, default=Path("var/warehouse-write.lock"),
@@ -90,6 +99,7 @@ def _run(args: argparse.Namespace) -> int:
     credentials = tomllib.loads(args.config.read_text())["joinquant"]
     jq.auth(credentials["username"], credentials["password"])
     quota_before = int(jq.get_query_count(field="spare"))
+    daily_query = WarehouseQuery(Warehouse(args.daily_warehouse or args.warehouse))
     target_root = args.warehouse / "joinquant_minute_bars"
     summary = {
         "operation": "publish_joinquant_minute_overrides",
@@ -112,6 +122,8 @@ def _run(args: argparse.Namespace) -> int:
     for qmt_path in sorted((args.warehouse / "minute_bars").glob("year=*/date=*/part.parquet")):
         stamp = qmt_path.parent.name.split("=", 1)[1]
         day = datetime.strptime(stamp, "%Y%m%d").date()
+        if (args.start and day < args.start) or (args.end and day > args.end):
+            continue
         invalid = invalid_qmt_price_symbols(pl.read_parquet(qmt_path))
         if not invalid:
             continue
@@ -148,6 +160,15 @@ def _run(args: argparse.Namespace) -> int:
         else:
             accepted, rejected = pl.DataFrame(), {}
         rejected.update(failed_queries)
+        if not accepted.is_empty():
+            daily = daily_query.tushare_daily(
+                sorted(accepted["symbol"].unique().to_list()), day, day,
+                columns=("symbol", "dt", "open", "high", "low", "close", "volume", "amount"),
+            )
+            gross = compare_with_daily(accepted, daily).filter(pl.col("gross").is_not_null())
+            for symbol, reason in gross.select("symbol", "gross").iter_rows():
+                rejected[symbol] = f"daily_{reason}"
+            accepted = accepted.filter(~pl.col("symbol").is_in(gross["symbol"].to_list()))
         for symbol, reason in rejected.items():
             reject(reason, day, symbol)
         if accepted.is_empty():

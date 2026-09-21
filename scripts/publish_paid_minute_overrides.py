@@ -3,46 +3,30 @@
 
 只读取 QMT 隔离仓库与付费暂存区。默认预演；传 ``--apply`` 后才把通过完整
 241 时刻网格、数值校验且与 Tushare 日线无粗大偏差的标的日写入目标仓库的
-``paid_minute_bars``。已有文件
-覆盖前必须复制到指定备份目录，写入采用临时文件原子替换，并保留付费源
-schema 元数据。写入全程持有仓库写锁。
+``paid_minute_bars``。已有文件覆盖前必须复制到指定备份目录，写入采用临时
+文件原子替换，并保留付费源 schema 元数据。写入全程持有仓库写锁。
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import shutil
-import uuid
 from contextlib import nullcontext
 from datetime import datetime
 from pathlib import Path
 
 import polars as pl
-import pyarrow.parquet as pq
 
 from qsys.agent.locking import single_instance
 from qsys.data.pipeline.minute_repairs import (
     compare_with_daily,
     invalid_qmt_price_symbols,
     valid_paid_overrides,
+    write_paid_minute_file,
 )
-from qsys.data.pipeline.paid_minute import SCHEMA
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
-
-
-def _write(frame: pl.DataFrame, target: Path) -> None:
-    table = frame.select(SCHEMA.names).to_arrow().cast(SCHEMA) \
-        .replace_schema_metadata(SCHEMA.metadata)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    temporary = target.with_name(f".{target.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
-    try:
-        pq.write_table(table, temporary)
-        os.replace(temporary, target)
-    finally:
-        temporary.unlink(missing_ok=True)
 
 
 def main() -> int:
@@ -117,7 +101,7 @@ def _run(args: argparse.Namespace) -> int:
             shutil.copy2(target, backup)
             accepted = pl.concat([pl.read_parquet(target), accepted], how="vertical") \
                 .unique(subset=["symbol", "dt"], keep="last").sort(["symbol", "dt"])
-        _write(accepted, target)
+        write_paid_minute_file(accepted, target)
 
     text = json.dumps(summary, ensure_ascii=False, indent=2)
     print(text)
