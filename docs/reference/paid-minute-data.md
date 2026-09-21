@@ -18,8 +18,26 @@
 
 生产数据集为 `/data/qsys/warehouse/paid_minute_bars`，按年度和分片存储：
 
+本表只存余哈哈付费源的数据，分两种布局：
+
+- 年度分片 `year=YYYY/shard=NNNN`：按下文年度流程发布，必须有
+  `paid_minute_quality/year=YYYY/quality-summary.json`；
+- 日期覆盖 `year=YYYY/date=YYYYMMDD`：`scripts/publish_paid_minute_overrides.py`
+  从付费暂存区原样挑出、替换 QMT「有成交、价格或成交额为零」的标的日。入库前
+  必须通过 241 根网格、数值有效与 Tushare 日线对账（量/额/价相对偏差 ≤ 5%）。
+
+JoinQuant/Tushare/QMT 数据写入各自具名数据集，查询层按「付费 → Tushare → 聚宽 →
+QMT」的优先级逐标的日选源。常驻规则：`B2.paid_minute_structure`（年度分片有摘要）、
+`B2.paid_minute_override_structure`（日期覆盖结构）、
+`A3.paid_minute_override_gross_vs_daily`（粗大偏差阻断）、
+`A3.paid_minute_override_vs_daily`（小差异挂 D-20）。
+
+2026 年分钟文件已知缺陷：03-03..03-11 约 68% 证券成交量错误而成交额正常，
+详见 `production-data-management-audit-20260921.md` 5.3。
+
 ```text
 paid_minute_bars/year=YYYY/shard=NNNN/part.parquet
+paid_minute_bars/year=YYYY/date=YYYYMMDD/part.parquet
 ```
 
 | 字段 | 类型 | 单位与处理 |

@@ -281,13 +281,16 @@ _PAID_MINUTE_MEANING = {
     "factor": "源文件逐分钟携带的后复权累计因子",
 }
 
+_OVERRIDE_DAILY_CHECKS = (
+    "A3.paid_minute_override_gross_vs_daily", "A3.paid_minute_override_vs_daily",
+)
 _PAID_MINUTE_TRUTH_CHECKS = {
-    "open": ("A3.paid_minute_ohlc_vs_daily",),
-    "high": ("A3.paid_minute_ohlc_vs_daily",),
-    "low": ("A3.paid_minute_ohlc_vs_daily",),
-    "close": ("A3.paid_minute_ohlc_vs_daily",),
-    "volume": ("A3.paid_minute_volume_vs_daily",),
-    "amount": ("A3.paid_minute_amount_vs_daily",),
+    "open": ("A3.paid_minute_ohlc_vs_daily", *_OVERRIDE_DAILY_CHECKS),
+    "high": ("A3.paid_minute_ohlc_vs_daily", *_OVERRIDE_DAILY_CHECKS),
+    "low": ("A3.paid_minute_ohlc_vs_daily", *_OVERRIDE_DAILY_CHECKS),
+    "close": ("A3.paid_minute_ohlc_vs_daily", *_OVERRIDE_DAILY_CHECKS),
+    "volume": ("A3.paid_minute_volume_vs_daily", *_OVERRIDE_DAILY_CHECKS),
+    "amount": ("A3.paid_minute_amount_vs_daily", *_OVERRIDE_DAILY_CHECKS),
 }
 
 
@@ -302,7 +305,8 @@ def _paid_minute_metrics() -> list[Metric]:
             status=MetricStatus.FROZEN,
             meaning=_PAID_MINUTE_MEANING[field.name],
             lineage=Direct("baidupan.minute", field.name),
-            checks=("B2.paid_minute_structure", "B2.paid_minute_symbol_coverage", *truth),
+            checks=("B2.paid_minute_structure", "B2.paid_minute_override_structure",
+                    "B2.paid_minute_symbol_coverage", *truth),
             known_issues=("D-20",) if truth else (),
         ))
     return out

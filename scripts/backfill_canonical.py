@@ -70,7 +70,8 @@ def main() -> int:
     )
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--state-root", type=Path, default=Path("var/canonical-backfill"))
-    parser.add_argument("--lock", type=Path, default=Path("var/canonical-backfill.lock"))
+    parser.add_argument("--lock", type=Path, default=Path("var/warehouse-write.lock"),
+                        help="与生产定时写任务共用的仓库写锁")
     parser.add_argument("--minimum-free-gib", type=float, default=10.0)
     args = parser.parse_args()
     selected = {item.strip() for item in args.datasets.split(",") if item.strip()}

@@ -157,6 +157,9 @@ class Step:
     rows: int | None = None
     detail: str = ""
     error: str = ""
+    # Some checks belong to another health domain. Keep their own status for
+    # drill-down dashboards without contaminating this run's aggregate status.
+    affects_run: bool = True
 
     def fail(self, detail: str) -> None:
         """不抛异常地把这一步记为失败（任务按原逻辑继续）。"""
@@ -173,6 +176,7 @@ class Step:
             "name": self.name, "interface": self.interface, "table": self.table,
             "started_at": _stamp(self.started_at), "finished_at": _stamp(self.finished_at),
             "status": self.status, "rows": self.rows, "detail": self.detail, "error": self.error,
+            "affects_run": self.affects_run,
         }
 
 
@@ -209,8 +213,8 @@ class ServiceRun:
 
     @contextmanager
     def step(self, name: str, *, interface: str | None = None,
-             table: str | None = None) -> Iterator[Step]:
-        current = Step(name, interface, table)
+             table: str | None = None, affects_run: bool = True) -> Iterator[Step]:
+        current = Step(name, interface, table, affects_run=affects_run)
         self.steps.append(current)
         self._save()
         try:
@@ -251,7 +255,7 @@ class ServiceRun:
         if forced:
             self.status = forced
         elif self.status != SKIPPED:
-            statuses = {s.status for s in self.steps}
+            statuses = {s.status for s in self.steps if s.affects_run}
             self.status = (FAILED if FAILED in statuses
                            else WARNING if WARNING in statuses
                            else REPAIRED if REPAIRED in statuses else SUCCEEDED)

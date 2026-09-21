@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import uuid
 from datetime import date
 from pathlib import Path
 
@@ -44,9 +45,7 @@ class Warehouse:
                 raise ValueError(f"{dataset} 分区 {day} 混入其他交易日")
         path = self.day_path(dataset, day)
         path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".parquet.tmp")
-        pq.write_table(table, tmp)
-        os.replace(tmp, path)
+        self._atomic_write(table, path)
         return path
 
     def write(self, dataset: str, table: pa.Table, *, year: int | None = None) -> Path:
@@ -59,7 +58,20 @@ class Warehouse:
 
         path = self.path_for(dataset, year)
         path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".parquet.tmp")
-        pq.write_table(table, tmp)
-        os.replace(tmp, path)
+        self._atomic_write(table, path)
         return path
+
+    @staticmethod
+    def _atomic_write(table: pa.Table, path: Path) -> None:
+        """Write through a process-unique sibling and atomically publish it.
+
+        The unique name prevents two writers from corrupting each other's
+        temporary file.  Read/merge/write transactions still need the shared
+        process lock configured by the production service units.
+        """
+        tmp = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+        try:
+            pq.write_table(table, tmp)
+            os.replace(tmp, path)
+        finally:
+            tmp.unlink(missing_ok=True)

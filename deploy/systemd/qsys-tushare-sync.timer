@@ -1,0 +1,18 @@
+[Unit]
+Description=Sync Tushare data after market close
+
+[Timer]
+# 两次触发，不是一次。sync 是幂等的（write_year 按 symbol+dt keep=last 合并，
+# 参考表各自整日覆盖写），重跑无害；Tushare 积分是权限档位不是消耗额度，
+# 重跑不花钱。
+#
+# 而 Persistent=true **不会为「已触发但失败」补跑**——它只补「错过的触发」。
+# 单次触发若撞上 Tushare 当日发布延迟，sync 会按设计显式报错退出，
+# 那一天的数据就要人工介入。17:00 给收盘后两小时的缓冲，19:00 兜底。
+OnCalendar=Mon..Fri 17:00 Asia/Shanghai
+OnCalendar=Mon..Fri 19:00 Asia/Shanghai
+Persistent=true
+RandomizedDelaySec=180
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,32 @@
+[Unit]
+Description=qsys 每日归档（竞价tick -> 分钟线 -> 校验；日线与股本归 tushare-sync）
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/qsys
+# 直接用 venv 解释器。用 `uv run` 会因 ProtectHome=read-only 挡住 uv 缓存而失败。
+# --skip-capital（2026-09-15）：股本已由 Tushare daily_basic 落进
+# tushare_daily 的 total_shares/circulating_shares/free_shares，实测 5,550 只
+# 里仅 4 只相对差 >1e-6、中位差为 0。QMT 这条链路是整个归档最慢的一步。
+# **只是停止更新，share_capital 表原地保留、不删**——观察期内若发现
+# daily_basic 的股本不够用，去掉本参数即可立刻恢复。
+ExecStart=/usr/bin/flock --exclusive --nonblock /home/ubuntu/qsys/var/warehouse-write.lock \
+          /home/ubuntu/qsys/.venv/bin/python -u scripts/daily_archive.py \
+          --warehouse /home/ubuntu/qsys/warehouse --lookback-days 8 \
+          --skip-capital
+TimeoutStartSec=7200
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+# 需要读 ~/.ssh 里的 winnode 私钥去驱动 Windows
+ProtectHome=read-only
+# warehouse 已于 2026-09-12 迁到数据盘，/home/ubuntu/qsys/warehouse 是指向它的软链接。
+# 少了这一行，ProtectSystem=strict 会让归档在第一次写入时失败。
+ReadWritePaths=/home/ubuntu/qsys /data/qsys
+
+[Install]
+WantedBy=multi-user.target

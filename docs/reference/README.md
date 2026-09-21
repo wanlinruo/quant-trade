@@ -1,5 +1,10 @@
 # 参考资料
 
+## `production-data-management-audit-20260921.md`
+
+2026-09-21 对生产 warehouse、质量证据、定时任务、磁盘和备份状态的只读审计，
+以及冻结分钟源、canonical 覆盖和灾备整改的持续跟踪记录。
+
 ## `strategy-api.md`
 
 qsys 的策略 API 参考：一个策略 = 一个 `.py` 文件。生命周期钩子、调度声明、

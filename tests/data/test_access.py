@@ -32,6 +32,21 @@ def _seed_canonical_daily(warehouse, day: date = DAY, close: float = 10.0):
     )
 
 
+def _seed_calendar(warehouse, *days: date):
+    frame = pl.DataFrame({
+        "market": ["SSE"] * len(days),
+        "dt": list(days),
+        "is_open": [True] * len(days),
+        "pretrade_date": list(days),
+    })
+    for year in sorted({day.year for day in days}):
+        chunk = frame.filter(pl.col("dt").dt.year() == year)
+        warehouse.write(
+            "trading_calendar",
+            chunk.to_arrow().cast(schema.TRADING_CALENDAR), year=year,
+        )
+
+
 def test_historical_facade_reads_only_canonical_tables(warehouse):
     _seed_canonical_daily(warehouse)
     stable = StableMarketData(WarehouseQuery(warehouse))
@@ -55,6 +70,23 @@ def test_new_query_methods_never_fall_back_to_legacy_tables(warehouse):
     assert query.historical_minute_bars(
         [SYMBOL], datetime(2026, 9, 21), datetime(2026, 9, 21, 23, 59)
     ).height == 0
+
+
+def test_historical_minute_facade_rejects_unpublished_trading_sessions(warehouse):
+    from qsys.data.query import CanonicalMinuteCoverageError
+
+    _seed_calendar(warehouse, DAY)
+    query = WarehouseQuery(warehouse)
+
+    try:
+        query.historical_minute_bars(
+            [SYMBOL], datetime.combine(DAY, datetime.min.time()),
+            datetime.combine(DAY, datetime.max.time()),
+        )
+    except CanonicalMinuteCoverageError as exc:
+        assert DAY.isoformat() in str(exc)
+    else:
+        raise AssertionError("未发布的 canonical 交易日不应返回假空表")
 
 
 def test_data_page_read_only_entry_uses_the_stable_facade(warehouse):

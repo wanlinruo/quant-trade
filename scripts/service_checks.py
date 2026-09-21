@@ -28,6 +28,11 @@ from qsys.ops.services import SKIPPED, ServiceRun, load_runs
 from qsys.paper.calendar import load_trading_calendar
 
 
+def _exit_code(failed: dict[str, int]) -> int:
+    """Only data-domain failures fail the data-quality systemd unit."""
+    return 1 if failed.get("data", 0) else 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -65,19 +70,19 @@ def main() -> int:
             load_runs(args.service_runs, day, day + timedelta(days=1)),
             shadow_state=args.shadow_state, workbench=args.workbench,
         )
-        failed = 0
+        failed = {"data": 0, "strategy": 0}
         # 同一交易日早先的质检（本次记录已落盘，但还没有任何步骤）
         failures = earlier_failures(ctx.runs, day)
         for check in CHECKS:
             with run.step(step_name(check), interface="只读仓库与运行记录",
-                          table=check.table) as step:
+                          table=check.table, affects_run=check.domain == "data") as step:
                 result = mark_repaired(check.fn(ctx), failures.get(step_name(check)))
                 step.rows = result.rows
                 text = f"期望：{result.expected}；实际：{result.actual}"
                 if result.detail:
                     text += f"。{result.detail}"
                 if result.status == BAD:
-                    failed += 1
+                    failed[check.domain] += 1
                     step.fail(text)
                 elif result.status == WARN:
                     step.warn(text)
@@ -88,10 +93,13 @@ def main() -> int:
                 else:
                     assert result.status == OK
                     step.detail = text
-        print(f"{day} 服务质检：{len(CHECKS)} 项，未通过 {failed} 项")
+        print(f"{day} 服务质检：{len(CHECKS)} 项，数据未通过 {failed['data']} 项，"
+              f"策略事件未通过 {failed['strategy']} 项")
         if run.status == SKIPPED:
             return 0
-        return 1 if failed else 0
+        # 策略事件仍作为失败步骤写入运行记录并挂回对应服务，但不能再让
+        # 数据质检的 systemd unit 失败；策略链由各自 resident/observer 告警。
+        return _exit_code(failed)
 
 
 if __name__ == "__main__":
