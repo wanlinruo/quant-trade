@@ -27,6 +27,8 @@ from qsys.ops.health import (
     HeartbeatPolicy,
     trading_phase,
 )
+from qsys.ops.alerts import AlertBus, LogAlertSink, WebhookAlertSink
+from qsys.ops.trading_chain import ChainAssessment, assess_paper, assess_shadow
 from qsys.web.service_views import ServiceConsole, windows_task_show
 
 log = structlog.get_logger("health-observer")
@@ -105,7 +107,10 @@ def _watchdog_state(task: dict, now: datetime) -> tuple[str, str]:
     return HEALTHY, "watchdog_fresh"
 
 
-def observation(row: dict, now: datetime, phase: str) -> HealthObservation:
+def observation(
+    row: dict, now: datetime, phase: str,
+    business: ChainAssessment | None = None,
+) -> HealthObservation:
     spec = row["spec"]
     assessment = row.get("heartbeat_assessment")
     last_beat = None
@@ -127,14 +132,51 @@ def observation(row: dict, now: datetime, phase: str) -> HealthObservation:
         }[state]
         policy = HeartbeatPolicy(30, 60, 90)
         source = "systemd"
+    process_state = state
+    business_state = business.state if business is not None else UNKNOWN
+    if business is not None:
+        if business.state == DOWN or (
+            business.state == DEGRADED and state != DOWN
+        ):
+            state, reason = business.state, business.reason_code
+    details = {"host": spec.host}
+    if business is not None:
+        details["trading_chain"] = {
+            "detail": business.detail,
+            "expected": business.expected,
+            "completed": business.completed,
+        }
     return HealthObservation(
         service_id=spec.id, observed_at_utc=now, phase=phase,
         expected_interval_s=policy.expected_interval_s,
         warn_after_s=policy.warn_after_s, down_after_s=policy.down_after_s,
-        state=state, process_state=state, business_state=UNKNOWN,
+        state=state, process_state=process_state, business_state=business_state,
         reason_code=reason, source=source, last_beat_at_utc=last_beat,
-        details={"host": spec.host},
+        details=details,
     )
+
+
+class BusinessAlertTracker:
+    """Emit once per chain failure/degradation and once after recovery."""
+
+    def __init__(self, alerts: AlertBus) -> None:
+        self.alerts = alerts
+        self.states: dict[str, str] = {}
+
+    def update(self, item: HealthObservation) -> None:
+        if item.service_id not in ("paper", "shadow-core"):
+            return
+        previous = self.states.get(item.service_id)
+        current = item.business_state
+        self.states[item.service_id] = current
+        detail = (item.details or {}).get("trading_chain", {}).get("detail", "")
+        name = "模拟交易" if item.service_id == "paper" else "影子盘"
+        if current == DOWN and previous != DOWN:
+            self.alerts.critical(f"{name}交易链路失败", detail)
+        elif current == DEGRADED and previous not in (DEGRADED, DOWN):
+            self.alerts.warning(f"{name}策略事件延迟", detail)
+        elif current == HEALTHY and previous in (DEGRADED, DOWN):
+            self.alerts.info(f"{name}交易链路已恢复", detail)
 
 
 def main() -> int:
@@ -143,6 +185,8 @@ def main() -> int:
     parser.add_argument("--tushare-config", default=None)
     parser.add_argument("--service-runs", default="var/service-runs")
     parser.add_argument("--state", default="var/service-health.sqlite3")
+    parser.add_argument("--shadow-state", default="var/shadow-state.sqlite3")
+    parser.add_argument("--workbench", default="var/workbench/workbench.sqlite3")
     parser.add_argument("--active-interval", type=float, default=5.0)
     parser.add_argument("--idle-interval", type=float, default=30.0)
     args = parser.parse_args()
@@ -151,6 +195,12 @@ def main() -> int:
     from qsys.live.redis_transport import RedisTransport
 
     deploy = load_deploy_config(args.config)
+    sinks = [LogAlertSink()]
+    if deploy.alerts.webhook_url:
+        sinks.append(WebhookAlertSink(
+            deploy.alerts.webhook_url, timeout=deploy.alerts.timeout_seconds,
+        ))
+    alert_tracker = BusinessAlertTracker(AlertBus(sinks))
     try:
         transport = RedisTransport.from_config(deploy)
         heartbeat = _heartbeat_reader(transport, deploy.streams.heartbeat)
@@ -180,7 +230,15 @@ def main() -> int:
         phase = trading_phase(now, sessions)
         try:
             for row in console.process_status():
-                store.record(observation(row, now, phase))
+                business = None
+                if sessions is not None and now.date() in sessions:
+                    if row["spec"].id == "paper":
+                        business = assess_paper(Path(args.workbench), now)
+                    elif row["spec"].id == "shadow-core":
+                        business = assess_shadow(Path(args.shadow_state), now)
+                item = observation(row, now, phase, business)
+                alert_tracker.update(item)
+                store.record(item)
         except Exception as exc:
             # 采样失败不能影响被观测服务；下一轮继续并由缺测区间呈灰色。
             log.error("health_observer.sample_failed", error=str(exc))

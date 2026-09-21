@@ -207,6 +207,29 @@ class LiveStore:
             )
         return True
 
+    def event_detail(self, key: str) -> str:
+        with self._connect() as con:
+            row = con.execute(
+                "SELECT detail FROM live_events WHERE event_key=?", (key,)
+            ).fetchone()
+        return "" if row is None else str(row["detail"] or "")
+
+    def record_event_failure(self, key: str, detail: str) -> None:
+        """Keep an event retryable while making its latest failure observable."""
+        with self._connect() as con:
+            con.execute(
+                "UPDATE live_events SET detail=? WHERE event_key=? AND status='running'",
+                (detail, key),
+            )
+
+    def fail_event(self, key: str, detail: str, *, at: datetime) -> None:
+        with self._connect() as con:
+            con.execute(
+                "UPDATE live_events SET status='failed',detail=?,completed_at=? "
+                "WHERE event_key=? AND status='running'",
+                (detail, at.isoformat(), key),
+            )
+
     def commit_event(
         self, key: str, portfolio: Portfolio, state: Mapping[str, Any],
         prices: Mapping[Symbol, float], *, at: datetime, detail: str = "",

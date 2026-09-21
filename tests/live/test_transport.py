@@ -110,6 +110,16 @@ def test_all_messages_on_unknown_stream_is_empty(t):
     assert t.all_messages("nope") == []
 
 
+def test_reset_group_skips_old_messages_and_clears_pending(t):
+    t.ensure_group(STREAM, GROUP, start_id="0-0")
+    old = t.append(STREAM, {"n": "old"})
+    assert [m.id for m in t.read_group(STREAM, GROUP, "c")] == [old]
+    t.reset_group(STREAM, GROUP)
+    new = t.append(STREAM, {"n": "new"})
+    assert [m.id for m in t.read_group(STREAM, GROUP, "c")] == [new]
+    assert t.pending(STREAM, GROUP)[0].id == new
+
+
 def test_stream_message_is_frozen():
     msg = StreamMessage("1-0", {"a": "b"})
     with pytest.raises(Exception):

@@ -373,6 +373,31 @@ class PaperStore:
             )
         return cur.rowcount == 1
 
+    def event_detail(self, ident: str, key: str) -> str:
+        with self._connect() as con:
+            row = con.execute(
+                "SELECT detail FROM paper_events WHERE account_id=? AND event_key=?",
+                (ident, key),
+            ).fetchone()
+        return "" if row is None else str(row["detail"] or "")
+
+    def record_event_failure(self, ident: str, key: str, detail: str) -> None:
+        """Keep an event retryable while exposing its latest failed attempt."""
+        with self._connect() as con:
+            con.execute(
+                "UPDATE paper_events SET detail=? WHERE account_id=? AND event_key=? "
+                "AND status='running'",
+                (detail, ident, key),
+            )
+
+    def fail_event(self, ident: str, key: str, detail: str) -> None:
+        with self._connect() as con:
+            con.execute(
+                "UPDATE paper_events SET status='failed',detail=?,completed_at=? "
+                "WHERE account_id=? AND event_key=? AND status='running'",
+                (detail, _now(), ident, key),
+            )
+
     def pending_orders(self, ident: str) -> list[Order]:
         from qsys.core.trading import OrderType, Side
 

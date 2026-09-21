@@ -48,6 +48,17 @@ class RedisTransport(Transport):
             if "BUSYGROUP" not in str(exc):
                 raise
 
+    def reset_group(self, stream: str, group: str, start_id: str = "$") -> None:
+        # Quote responses are request-scoped and worthless after their caller
+        # has restarted.  SETID skips the historical fan-out backlog; deleting
+        # the sole logical consumer also clears a crash-left pending set.
+        self._r.xgroup_setid(stream, group, start_id)
+        try:
+            self._r.xgroup_delconsumer(stream, group, group.removeprefix("paper-quotes-"))
+        except Exception as exc:
+            if "NOGROUP" not in str(exc):
+                raise
+
     def _to_messages(self, response: Any) -> list[StreamMessage]:
         out: list[StreamMessage] = []
         for _, entries in response or []:

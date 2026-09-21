@@ -207,6 +207,26 @@ def test_paper_strategy_error_leaves_a_run_row(warehouse, tmp_path, monkeypatch)
     assert rows[0]["summary"] == "事件失败：策略坏了"
 
 
+def test_paper_failed_event_is_not_hidden_as_success_after_grace(
+    warehouse, tmp_path, monkeypatch
+):
+    runtime, store, ident, today = _runtime(warehouse, tmp_path, Quotes())
+    runtime.schedule.checkpoint("10:30")
+
+    def boom(ctx, at):
+        raise RuntimeError("行情响应积压")
+
+    monkeypatch.setattr(runtime.strategy, "on_checkpoint", boom)
+    with pytest.raises(RuntimeError, match="行情响应积压"):
+        runtime.tick(datetime.combine(today, time(10, 30, 1)))
+    runtime.tick(datetime.combine(today, time(10, 31, 31)))
+
+    event = next(row for row in store.rows(ident, "events") if row["phase"] == "checkpoint")
+    assert event["status"] == "failed" and "行情响应积压" in event["detail"]
+    run = store.strategy_runs(ident, today)[-1]
+    assert run["error"] == "行情响应积压"
+
+
 def test_paper_expired_event_leaves_a_run_row(warehouse, tmp_path):
     runtime, store, ident, today = _runtime(warehouse, tmp_path, Quotes())
     runtime.schedule.checkpoint("10:30")

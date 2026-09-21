@@ -45,21 +45,23 @@ class QuoteClient:
         self._consumer, self._timeout = consumer, timeout
         self._group = f"paper-quotes-{consumer}"
         self._t.ensure_group(streams.quote_snapshots, self._group)
-        self._deferred: dict[str, QuoteSnapshot] = {}
 
     def request(self, symbols: Sequence[str]) -> dict[str, MarketQuote]:
         unique = sorted(set(symbols))
         if not unique:
             return {}
+        # This stream fans every client's responses out to every consumer
+        # group.  A long-idle/restarted client must not spend its five-second
+        # request budget replaying thousands of responses that can no longer
+        # belong to an outstanding call.  Reset before publishing our request,
+        # so only responses created after this point are eligible.
+        self._t.reset_group(self._s.quote_snapshots, self._group)
         request_id = uuid.uuid4().hex
         self._t.append(self._s.quote_requests, QuoteRequest(
             request_id=request_id, symbols=unique, requested_at=datetime.now()
         ).to_payload())
         deadline = time.monotonic() + self._timeout
         while time.monotonic() < deadline:
-            cached = self._deferred.pop(request_id, None)
-            if cached is not None:
-                return self._unwrap(cached)
             for message in self._t.read_group(
                 self._s.quote_snapshots, self._group, self._consumer, count=100
             ):
@@ -67,7 +69,6 @@ class QuoteClient:
                 snapshot = QuoteSnapshot.from_payload(message.payload)
                 if snapshot.request_id == request_id:
                     return self._unwrap(snapshot)
-                self._deferred[snapshot.request_id] = snapshot
             time.sleep(0.05)
         raise QuoteTimeout(f"QMT 行情请求超时（{len(unique)} 个标的）")
 
