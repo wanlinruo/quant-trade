@@ -187,6 +187,32 @@ def test_a_failing_strategy_still_leaves_an_error_row(
     assert rows[0]["summary"] == "事件失败：策略坏了"
 
 
+def test_failed_event_stays_visible_when_retry_window_expires(
+    warehouse, tmp_path, monkeypatch
+):
+    import sqlite3
+
+    runtime, store = _runtime_with_store(warehouse, tmp_path)
+    runtime.schedule.checkpoint("10:30")
+
+    def boom(ctx, at):
+        raise RuntimeError("行情响应积压")
+
+    monkeypatch.setattr(runtime.strategy, "on_checkpoint", boom)
+    day = date.today()
+    with pytest.raises(RuntimeError, match="行情响应积压"):
+        runtime.tick(datetime.combine(day, time(10, 30, 1)))
+    runtime.tick(datetime.combine(day, time(10, 30, 31)))
+
+    with sqlite3.connect(store.path) as con:
+        row = con.execute(
+            "SELECT status,detail FROM live_events WHERE phase='checkpoint'"
+        ).fetchone()
+    assert row[0] == "failed" and "行情响应积压" in row[1]
+    run = store.strategy_runs(day)[-1]
+    assert run["error"] == "行情响应积压"
+
+
 def test_an_expired_event_leaves_a_run_row(warehouse, tmp_path):
     runtime, store = _runtime_with_store(warehouse, tmp_path)
     runtime.schedule.checkpoint("10:30")

@@ -34,6 +34,37 @@ def test_quote_request_round_trip_is_read_only():
     assert transport.all_messages(streams.orders) == []
 
 
+def test_quote_client_skips_a_persisted_response_group_backlog():
+    """A restarted/idle client must spend its timeout on its own response."""
+    transport, streams = MemoryTransport(), StreamConfig()
+    group = "paper-quotes-shadow-core"
+    transport.ensure_group(streams.quote_snapshots, group)
+    for index in range(250):
+        transport.append(streams.quote_snapshots, QuoteSnapshot(
+            request_id=f"stale-{index}", published_at=datetime.now(), quotes={},
+        ).to_payload())
+
+    gateway = MarketGateway(transport, streams, lambda symbols: {
+        symbol: MarketQuote(
+            symbol=symbol, at=datetime.now(), price=10, open=9.8,
+            high=10.1, low=9.7, prev_close=9.7, volume=1000,
+        ) for symbol in symbols
+    })
+    client = QuoteClient(transport, streams, consumer="shadow-core", timeout=1)
+    output = {}
+    thread = threading.Thread(
+        target=lambda: output.update(client.request(["600036.SH"]))
+    )
+    thread.start()
+    while not transport.all_messages(streams.quote_requests):
+        pass
+    gateway.run_once()
+    thread.join(2)
+
+    assert output["600036.SH"].price == 10
+    assert transport.pending(streams.quote_snapshots, group) == []
+
+
 def _quote(symbol, price, previous=10, *, high=None, upper=None, lower=None,
            amount=100, suspended=False, bid1_volume=0, ask1_volume=0):
     return MarketQuote(symbol=symbol, at=datetime(2026, 9, 16, 10), price=price,

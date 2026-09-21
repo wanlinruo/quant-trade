@@ -28,6 +28,10 @@ class Transport(ABC):
     def ensure_group(self, stream: str, group: str, start_id: str = "$") -> None: ...
 
     @abstractmethod
+    def reset_group(self, stream: str, group: str, start_id: str = "$") -> None:
+        """Move an ephemeral consumer group cursor and discard its pending set."""
+
+    @abstractmethod
     def read_group(
         self, stream: str, group: str, consumer: str, count: int = 10
     ) -> list[StreamMessage]: ...
@@ -67,6 +71,15 @@ class MemoryTransport(Transport):
         key = (stream, group)
         if key in self._cursors:
             return
+        self._cursors[key] = (
+            len(self._streams.get(stream, [])) if start_id == "$" else 0
+        )
+        self._pending[key] = []
+
+    def reset_group(self, stream: str, group: str, start_id: str = "$") -> None:
+        key = (stream, group)
+        if key not in self._cursors:
+            raise KeyError(f"no such group {group!r} on {stream!r}")
         self._cursors[key] = (
             len(self._streams.get(stream, [])) if start_id == "$" else 0
         )
