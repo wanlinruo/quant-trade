@@ -200,7 +200,7 @@ def test_whole_symbol_gap_fails_coverage_without_scanning_minute_facts(warehouse
     }).write_parquet(quality / "daily_aggregate.parquet")
     _write_tushare_symbols(
         warehouse,
-        ["600001.SH", "603227.SH", "920001.BJ", "302132.SZ"],
+        ["600001.SH", "600002.SH", "603227.SH", "920001.BJ", "302132.SZ"],
     )
 
     row = _run("B2.paid_minute_symbol_coverage", warehouse)
@@ -208,6 +208,12 @@ def test_whole_symbol_gap_fails_coverage_without_scanning_minute_facts(warehouse
     assert row["passed"] is False
     assert row["severity"] == "blocking"
     assert row["violations"] == 1
+    # 600002.SH 不在名单内，阻断；603227.SH 在 D-21 名单内，只由已知缺陷规则报警告。
+    known = _run("B2.paid_minute_known_symbol_gap", warehouse)
+    assert known["passed"] is False
+    assert known["severity"] == "warning"
+    assert known["known_issue"] == "D-21"
+    assert known["violations"] == 1
 
 
 def test_cross_source_differences_are_visible_known_issues(warehouse):

@@ -104,6 +104,7 @@ def test_paid_minutes_are_frozen_and_keep_source_units():
     assert all(m.lineage.source_id == "baidupan.minute" for m in metrics)
     assert "股" in BY_ID["paid_minute_bars.volume"].meaning
     assert "D-20" in BY_ID["paid_minute_bars.close"].known_issues
+    assert all("D-21" in m.known_issues for m in metrics)
 
 
 def test_bars_daily_is_frozen_on_a_dead_source():
