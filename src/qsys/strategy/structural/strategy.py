@@ -36,7 +36,7 @@ import structlog
 from qsys.core.trading import Fill, OrderType, Side
 from qsys.core.types import Symbol
 from qsys.strategy.base import Strategy
-from qsys.strategy.structural.allocation import allocate
+from qsys.strategy.structural.allocation import PRICE_BUFFER, allocate
 from qsys.strategy.structural.exits import (
     dynamic_ma5,
     legacy_exit,
@@ -104,6 +104,7 @@ class StructuralStrategy(Strategy):
         budgets = allocate(
             [(p.symbol, p.tag) for p in picks], ctx.portfolio.cash, opens, limit_ups,
             max_budget=ctx.params.get("max_position_value"),
+            price_buffer=float(ctx.params.get("entry_price_buffer", PRICE_BUFFER)),
         )
         tags = ctx.state.setdefault("tags", {})
         for budget in budgets:

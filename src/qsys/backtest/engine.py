@@ -28,6 +28,7 @@ import polars as pl
 import structlog
 
 from qsys.backtest.corporate import CorporateAction, apply_corporate_actions
+from qsys.backtest.entry_fill import EntryFill, EntryFillMode, MinuteBar, decide
 from qsys.backtest.fees import FeeModel
 from qsys.backtest.sim_broker import SimBroker
 from qsys.backtest.slippage import SlippageModel
@@ -37,7 +38,7 @@ from qsys.core.constraints import ConstraintPipeline
 from qsys.core.events import MarketSnapshot, Reject
 from qsys.core.portfolio import Portfolio
 from qsys.strategy.schedule import Schedule
-from qsys.core.trading import Fill, Order, to_cents
+from qsys.core.trading import Fill, Order, Side, to_cents
 from qsys.core.types import Bar, Symbol
 
 log = structlog.get_logger(__name__)
@@ -60,6 +61,9 @@ class BacktestResult:
         "close": pl.Float64, "market_value": pl.Float64,
         "weight": pl.Float64, "unrealized_pnl": pl.Float64,
     }))
+    # 竞价入场口径的统计：{"orders", "open"/"slippage"/"continuous"/"missed"/
+    # "fallback_no_minute" 计数}。未配入场口径时为空。
+    diagnostics: Mapping[str, object] = field(default_factory=dict)
 
     @property
     def final_value(self) -> float:
@@ -91,6 +95,10 @@ class BacktestEngine:
         market: object | None = None,
         progress: Callable[[int, int, date], None] | None = None,
         schedule_validator: Callable[[tuple[time, ...], time | None], None] | None = None,
+        entry_fill: EntryFill | None = None,
+        entry_minutes: Callable[
+            [date, time, Sequence[Symbol]], Mapping[Symbol, MinuteBar]
+        ] | None = None,
     ) -> None:
         self._strategy = strategy
         self._feed = feed
@@ -116,6 +124,12 @@ class BacktestEngine:
         self._market = market
         self._progress = progress
         self._schedule_validator = schedule_validator
+        # 竞价入场口径。不配则竞价买单按开盘价 + 通用滑点，与原来完全一致。
+        if (entry_fill is not None and entry_fill.mode is EntryFillMode.CONTINUOUS
+                and entry_minutes is None):
+            raise ValueError("continuous entry fill needs entry_minutes")
+        self._entry_fill = entry_fill
+        self._entry_minutes = entry_minutes
 
     def _run_id(self, start: date, end: date) -> str:
         payload = json.dumps(
@@ -137,6 +151,13 @@ class BacktestEngine:
                 **(
                     {"auction_at": self._auction_at.isoformat()}
                     if self._auction_at is not None
+                    else {}
+                ),
+                **(
+                    {"entry_fill": {"mode": self._entry_fill.mode.value,
+                                    "slippage": self._entry_fill.slippage,
+                                    "minute_at": self._entry_fill.minute_at.isoformat()}}
+                    if self._entry_fill is not None
                     else {}
                 ),
             },
@@ -218,6 +239,7 @@ class BacktestEngine:
         last_close: dict[Symbol, float] = {}
         prev_closes: dict[Symbol, float] = {}
         order_seq = 0
+        entry_stats: dict[str, int] = {}
 
         def make_ctx(prices: Mapping[Symbol, float], schedule=None):
             view = PortfolioView.of(portfolio, prices)
@@ -235,14 +257,37 @@ class BacktestEngine:
                 all_orders.append(order)
                 broker.submit(order)
 
-        def match_at_open(at: datetime) -> None:
+        def entry_pricer(session: date, entries: Sequence[Order]):
+            """竞价买单的定价器；未配入场口径或没有竞价买单时返回 None。"""
+            rule = self._entry_fill
+            if rule is None or not entries:
+                return None
+            minutes: Mapping[Symbol, MinuteBar] = {}
+            if rule.mode is EntryFillMode.CONTINUOUS:
+                minutes = self._entry_minutes(  # type: ignore[misc]
+                    session, rule.minute_at, sorted({o.symbol for o in entries}, key=str)
+                ) or {}
+            ids = {o.order_id for o in entries}
+
+            def price(order: Order, bar: Bar):
+                if order.order_id not in ids:
+                    return None
+                decision = decide(rule, order, bar.open, minutes.get(order.symbol),
+                                  self._slippage)
+                entry_stats["orders"] = entry_stats.get("orders", 0) + 1
+                entry_stats[decision.outcome] = entry_stats.get(decision.outcome, 0) + 1
+                return decision.price, decision.reason
+
+            return price
+
+        def match_at_open(at: datetime, entries: Sequence[Order] = ()) -> None:
             session = at.date()
             snapshot = MarketSnapshot(
                 session=session, bars=bars_by_session.get(session, {}),
                 prev_closes=dict(prev_closes), boards=self._boards,
                 limits=limits_by_session.get(session, {}),
             )
-            broker.on_market_data(snapshot)
+            broker.on_market_data(snapshot, pricer=entry_pricer(session, entries))
             all_rejects.extend(broker.poll_rejects())
             for fill in broker.poll_fills():
                 portfolio.apply_fill(fill)
@@ -290,8 +335,10 @@ class BacktestEngine:
                 # 随后按开盘价撮合——对应原策略的 run_daily(buy, '09:26')
                 ctx, api = make_ctx(last_close)
                 self._strategy.on_auction(ctx)
+                submitted = len(all_orders)
                 flush(api, moment)
-                match_at_open(moment)
+                entries = [o for o in all_orders[submitted:] if o.side is Side.BUY]
+                match_at_open(moment, entries)
 
             elif phase is Phase.CHECKPOINT:
                 # 钩子总是触发：「没持仓」与「没分钟线」是两回事，不能混为一谈。
@@ -356,7 +403,7 @@ class BacktestEngine:
                     "total_value": pl.Float64},
         )
         log.info("backtest.finished", sessions=len(sessions), fills=len(all_fills),
-                 rejects=len(all_rejects))
+                 rejects=len(all_rejects), entry=entry_stats)
         positions = pl.DataFrame(position_rows, schema={
             "dt": pl.Date, "symbol": pl.Utf8, "qty": pl.Int64,
             "available_qty": pl.Int64, "avg_cost": pl.Float64,
@@ -365,4 +412,4 @@ class BacktestEngine:
         })
         return BacktestResult(equity, tuple(all_fills), tuple(all_rejects),
                               self._run_id(start, end), self._params, state,
-                              tuple(all_orders), positions)
+                              tuple(all_orders), positions, dict(entry_stats))

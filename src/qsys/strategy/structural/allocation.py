@@ -30,7 +30,8 @@ from qsys.strategy.structural.params import BRANCH_WEIGHTS
 
 LOT = 100
 
-# 原文 CASH_SAFE_V2_PRICE_BUFFER
+# 原文 CASH_SAFE_V2_PRICE_BUFFER。策略参数 entry_price_buffer 可覆盖：09:25 撮合后
+# 才下单时委托进 09:30 连续竞价，0.2% 的保护价挂不上的比例明显变高。
 PRICE_BUFFER = 0.002
 
 # 原文 _cash_safe_v2_buy_fee_reserve 读的 S6_* 常数。写死是原策略的行为：
@@ -60,9 +61,13 @@ def fee_reserve(budget: float) -> float:
     return commission + budget * RESERVE_TRANSFER_RATE
 
 
-def protect_price(open_price: float, limit_up: float | None) -> float:
-    """限价保护价：开盘价上浮 `PRICE_BUFFER`，但不超过涨停价。"""
-    protected = open_price * (1.0 + PRICE_BUFFER)
+def protect_price(
+    open_price: float, limit_up: float | None, buffer: float = PRICE_BUFFER
+) -> float:
+    """限价保护价：开盘价上浮 `buffer`（默认 `PRICE_BUFFER`），但不超过涨停价。"""
+    if buffer < 0:
+        raise ValueError(f"price buffer must be >= 0: {buffer}")
+    protected = open_price * (1.0 + buffer)
     if limit_up is not None and limit_up > 0:
         return min(protected, limit_up)
     return protected
@@ -74,6 +79,7 @@ def allocate(
     opens: Mapping[str, float],
     limit_ups: Mapping[str, float] | None = None,
     max_budget: float | None = None,
+    price_buffer: float = PRICE_BUFFER,
 ) -> list[Budget]:
     """把可用资金按分支权重分给当日候选，再按 CASH-SAFE V2 定量。"""
     if not candidates:
@@ -99,7 +105,7 @@ def allocate(
             out.append(Budget(symbol, tag, weight, budget, 0, "INVALID_OPEN_PRICE"))
             continue
 
-        protected = protect_price(price, limits.get(symbol))
+        protected = protect_price(price, limits.get(symbol), price_buffer)
         if protected <= 0:
             out.append(Budget(symbol, tag, weight, budget, 0, "INVALID_OPEN_PRICE"))
             continue

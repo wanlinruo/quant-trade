@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime, time
 
 import structlog
@@ -20,6 +21,11 @@ from qsys.core.constraints import ConstraintContext, ConstraintPipeline
 from qsys.core.events import MarketSnapshot, Reject
 from qsys.core.portfolio import Portfolio
 from qsys.core.trading import Fill, Order, OrderIntent, to_cents
+from qsys.core.types import Bar
+
+# 按单定价：返回 (成交价, 拒单原因)。成交价为 None 即拒单；整个返回 None
+# 表示这一单不归它管，走开盘价 + 通用滑点的默认路径。
+Pricer = Callable[[Order, Bar], "tuple[float | None, str] | None"]
 
 log = structlog.get_logger(__name__)
 
@@ -73,30 +79,43 @@ class SimBroker(Broker):
         return drained
 
     def on_market_data(
-        self, snapshot: MarketSnapshot, at: datetime | None = None
+        self, snapshot: MarketSnapshot, at: datetime | None = None,
+        *, pricer: Pricer | None = None,
     ) -> None:
         """撮合排队中的订单。
 
         `at` 只影响回报与拒单的时间戳；不给则按当日开盘时刻，
-        与日频回测原来的行为一致。
+        与日频回测原来的行为一致。`pricer` 只替换成交价的来源（竞价入场口径），
+        约束、成交量上限与费用仍走同一条路径。
         """
         at = at if at is not None else datetime.combine(snapshot.session, _OPEN_TIME)
         queued, self._pending = self._pending, []
         for order in queued:
-            self._match(order, snapshot, at)
+            self._match(order, snapshot, at, pricer)
 
     def _reject(self, order: Order, qty: int, reason: str, at: datetime) -> None:
         self._rejects.append(
             Reject(order.order_id, order.symbol, order.side, qty, reason, at)
         )
 
-    def _match(self, order: Order, snapshot: MarketSnapshot, at: datetime) -> None:
+    def _match(
+        self, order: Order, snapshot: MarketSnapshot, at: datetime,
+        pricer: Pricer | None = None,
+    ) -> None:
         bar = snapshot.bar_of(order.symbol)
         if bar is None:
             self._reject(order, order.qty, "suspended: no bar for this session", at)
             return
 
-        price = self._slippage.adjust(order.side, bar.open)
+        priced = pricer(order, bar) if pricer is not None else None
+        if priced is None:
+            price = self._slippage.adjust(order.side, bar.open)
+        else:
+            override, reason = priced
+            if override is None:
+                self._reject(order, order.qty, reason, at)
+                return
+            price = override
         limit_up, limit_down = snapshot.limit_of(order.symbol) or (None, None)
         ctx = ConstraintContext(
             portfolio=self._portfolio,

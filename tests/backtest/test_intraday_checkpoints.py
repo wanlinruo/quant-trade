@@ -9,13 +9,14 @@ from datetime import date, datetime, time, timedelta
 import pytest
 
 from qsys.backtest.engine import BacktestEngine
+from qsys.backtest.entry_fill import EntryFill, EntryFillMode, MinuteBar
 from qsys.backtest.fees import ZeroFeeModel
 from qsys.backtest.slippage import NoSlippage
 from qsys.core.calendar import AShareCalendar
 from qsys.core.types import Symbol
 from qsys.markets.ashare import ashare_pipeline
 from qsys.strategy.base import Strategy
-from qsys.core.trading import Side
+from qsys.core.trading import OrderType, Side
 from direct_truth import limits_from_closes
 
 SESSIONS = [date(2024, 1, d) for d in (2, 3, 4, 5)]
@@ -257,3 +258,78 @@ def test_session_start_orders_still_fill_when_an_auction_phase_exists():
     """盘前提交的单也在同一次开盘撮合里成交，不会被漏掉。"""
     result = auction_engine(BuyOnce()).run(SESSIONS[0], SESSIONS[-1])
     assert [f for f in result.fills if f.side is Side.BUY]
+
+
+class BuyAtAuctionWithLimit(Strategy):
+    """竞价时刻挂限价买单，外加一笔上一交易日留下的隔夜卖单路径不受影响。"""
+
+    def __init__(self, limit):
+        self.limit = limit
+
+    def on_auction(self, ctx):
+        if not ctx.state.get("bought"):
+            ctx.state["bought"] = True
+            ctx.order.submit(Symbol.parse(SYMBOL), Side.BUY, 1000,
+                             OrderType.LIMIT, self.limit)
+
+
+def entry_engine(strategy, rule, minutes):
+    return BacktestEngine(
+        strategy, feed=StubFeed(), calendar=AShareCalendar(SESSIONS),
+        universe=[Symbol.parse(SYMBOL)], initial_cash=1_000_000.0,
+        pipeline=ashare_pipeline(), fees=ZeroFeeModel(), slippage=NoSlippage(),
+        price_limits=LIMITS, auction_at=time(9, 30),
+        entry_fill=rule, entry_minutes=minutes,
+    )
+
+
+def test_continuous_entry_fills_at_the_0931_bar():
+    asked = []
+
+    def minutes(session, at, symbols):
+        asked.append((session, at, [str(s) for s in symbols]))
+        return {s: MinuteBar(open=10.04, low=10.0) for s in symbols}
+
+    rule = EntryFill(EntryFillMode.CONTINUOUS, slippage=0.005)
+    result = entry_engine(BuyAtAuctionWithLimit(10.05), rule, minutes).run(
+        SESSIONS[0], SESSIONS[-1])
+
+    buys = [f for f in result.fills if f.side is Side.BUY]
+    assert [(f.filled_at.date(), f.price) for f in buys] == [(SESSIONS[0], pytest.approx(10.04))]
+    assert asked == [(SESSIONS[0], time(9, 31), [SYMBOL])]
+    assert result.diagnostics == {"orders": 1, "continuous": 1}
+
+
+def test_continuous_entry_that_misses_the_limit_is_rejected_not_carried():
+    rule = EntryFill(EntryFillMode.CONTINUOUS)
+    result = entry_engine(
+        BuyAtAuctionWithLimit(10.02), rule,
+        lambda session, at, symbols: {s: MinuteBar(open=10.3, low=10.1) for s in symbols},
+    ).run(SESSIONS[0], SESSIONS[-1])
+
+    assert [f for f in result.fills if f.side is Side.BUY] == []
+    assert any("entry limit not reached" in r.reason for r in result.rejects)
+    assert result.diagnostics == {"orders": 1, "missed": 1}
+
+
+def test_entry_fill_only_prices_auction_buys():
+    """盘前提交的单不归入场口径管，仍按开盘价撮合。"""
+    rule = EntryFill(EntryFillMode.SLIPPAGE, slippage=0.01)
+    result = entry_engine(BuyOnce(), rule, None).run(SESSIONS[0], SESSIONS[-1])
+    buys = [f for f in result.fills if f.side is Side.BUY]
+    assert buys[0].price == pytest.approx(10.0)
+    assert result.diagnostics == {}
+
+
+def test_configuring_an_entry_fill_changes_the_run_id_and_default_keeps_it():
+    plain = auction_engine(DoNothing()).run(SESSIONS[0], SESSIONS[-1])
+    again = entry_engine(DoNothing(), None, None).run(SESSIONS[0], SESSIONS[-1])
+    shifted = entry_engine(DoNothing(), EntryFill(EntryFillMode.SLIPPAGE, 0.005), None).run(
+        SESSIONS[0], SESSIONS[-1])
+    assert plain.run_id == again.run_id
+    assert plain.run_id != shifted.run_id
+
+
+def test_continuous_entry_requires_a_minute_source():
+    with pytest.raises(ValueError, match="entry_minutes"):
+        entry_engine(DoNothing(), EntryFill(EntryFillMode.CONTINUOUS), None)
