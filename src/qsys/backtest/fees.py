@@ -13,6 +13,13 @@ from dataclasses import dataclass
 from qsys.core.trading import Side, to_cents
 
 
+# 实盘专用账户的券商佣金（维护者 2026-09-23 确认）：成交额万 0.75，不免五，
+# 即 max(成交额 × 0.0075%, 5 元)。"qsys 实盘档位"与实盘配置按此计费；
+# 在此之前的回测按万三计，其 config.json 的 cost_model 标签可区分。
+ACCOUNT_COMMISSION_RATE = 0.000075
+ACCOUNT_MIN_COMMISSION = 5.0
+
+
 class FeeModel(ABC):
     @abstractmethod
     def fee_for(self, side: Side, gross: float) -> float:
