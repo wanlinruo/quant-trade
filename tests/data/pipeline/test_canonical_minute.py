@@ -85,6 +85,36 @@ def test_build_quarantines_a_whole_invalid_symbol_day(warehouse):
     assert got["symbol"].to_list() == ["600000.SH"]
 
 
+def _daily(warehouse, symbols) -> None:
+    rows = pl.DataFrame({"symbol": symbols, "dt": [DAY] * len(symbols)})
+    table = pa.Table.from_pylist(
+        [{name: row.get(name) for name in schema.TUSHARE_DAILY.names} for row in rows.to_dicts()],
+        schema=schema.TUSHARE_DAILY,
+    )
+    warehouse.write("tushare_daily", table, year=2024)
+
+
+def test_build_drops_qmt_suspension_placeholders_without_a_daily_bar(warehouse):
+    source = pl.DataFrame([
+        _row("600000.SH", 30, 10.0, 10),
+        _row("600002.SH", 30, 8.0, 0),      # 停牌占位：零成交、平价、无日线
+        _row("600002.SH", 31, 8.0, 0),
+        _row("600003.SH", 30, 9.0, 0),      # 零成交但有日线：保留
+        _row("600003.SH", 31, 9.0, 0),
+    ])
+    warehouse.write_day(
+        "minute_bars", source.to_arrow().cast(schema.MINUTE_BARS), day=DAY
+    )
+    _daily(warehouse, ["600000.SH", "600003.SH"])
+
+    build_bar_minute_1m(warehouse, DAY, DAY)
+    got = WarehouseQuery(warehouse).bar_minute_1m(
+        None, datetime(2024, 1, 2), datetime(2024, 1, 2, 23, 59)
+    )
+
+    assert sorted(got["symbol"].unique().to_list()) == ["600000.SH", "600003.SH"]
+
+
 def test_preflight_rejects_an_empty_source_environment(warehouse):
     assert canonical_minute_preflight(warehouse, DAY, DAY) == (
         "没有任何已发布分钟来源",

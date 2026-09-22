@@ -204,6 +204,7 @@ def load_builtin_checks() -> None:
         "qsys.data.catalog.rules_complete",
         "qsys.data.catalog.rules_valid",
         "qsys.data.catalog.rules_paid_minute",
+        "qsys.data.catalog.rules_canonical_minute",
         "qsys.data.catalog.rules_contract",
     ):
         importlib.import_module(module)
