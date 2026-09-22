@@ -28,6 +28,7 @@ exit-code，分辨不出来。现在退出码只反映 `issues`。
 from __future__ import annotations
 
 import argparse
+import sqlite3
 import subprocess
 import sys
 import time
@@ -42,7 +43,11 @@ from qsys.data.pipeline.auction import (
     import_auction_ticks,
     missing_auction_days,
 )
-from qsys.data.pipeline.candidates import candidate_stock_days, write_manifest
+from qsys.data.pipeline.candidates import (
+    candidate_stock_days,
+    held_stock_days,
+    write_manifest,
+)
 from qsys.data.pipeline.capital import import_share_capital
 from qsys.data.pipeline.minutes import import_minute_bars, missing_stock_days
 from qsys.data.pipeline.canonical_publish import publish_minutes
@@ -73,6 +78,26 @@ def run(cmd: list[str], *, what: str, timeout: int = 3600) -> str:
 def _exit_code(rc: int, *, auction_ok: bool) -> int:
     """竞价失败时不中断后续步骤，但最终必须让 systemd 看到失败（D-7）。"""
     return rc or (0 if auction_ok else 1)
+
+
+def _paper_fills(store: Path) -> pl.DataFrame:
+    """只读取模拟盘成交；库不存在时返回空表（测试环境、新节点）。"""
+    columns = {"account_id": pl.Utf8, "symbol": pl.Utf8, "side": pl.Utf8,
+               "qty": pl.Int64, "filled_at": pl.Utf8}
+    if not store.exists():
+        log.warning("archive.paper_store_missing", path=str(store))
+        return pl.DataFrame(schema=columns)
+    with sqlite3.connect(f"file:{store}?mode=ro", uri=True) as conn:
+        rows = conn.execute(
+            "SELECT account_id, symbol, side, qty, filled_at FROM paper_fills"
+        ).fetchall()
+    return pl.DataFrame(rows, schema=columns, orient="row")
+
+
+def _minute_wanted(candidates: pl.DataFrame, held: pl.DataFrame) -> pl.DataFrame:
+    """分钟线要归档的股-日 = 首板次日候选 ∪ 模拟盘持仓日。"""
+    return pl.concat([candidates.select("symbol", "dt"), held.select("symbol", "dt")]) \
+        .unique().sort(["dt", "symbol"])
 
 
 def _publish_canonical_minutes(
@@ -162,6 +187,8 @@ def main() -> int:
     parser.add_argument("--win-script", default=r"C:\qsys\win_download_minutes.py")
     parser.add_argument("--win-root", default="C:/qsys/daily")
     parser.add_argument("--config", default="config/deploy.local.toml")
+    parser.add_argument("--paper-store", default="var/workbench/workbench.sqlite3",
+                        help="模拟盘库；其持仓期间的分钟线一并归档")
     parser.add_argument("--service-runs", default="var/service-runs",
                         help="运行记录目录（服务管理页读取）")
     args = parser.parse_args()
@@ -256,7 +283,12 @@ def _archive(args, service_run: ServiceRun) -> int:
 
     # 与竞价同样显式传入交易日历：15:40 时 daily_flags 还没有今天，不传的话
     # 昨日首板找不到「下一个交易日」，今天的候选分钟线要拖到明天才下（服务质检发现）
-    wanted = candidate_stock_days(warehouse, start, complete_through, sessions=sessions)
+    candidates = candidate_stock_days(warehouse, start, complete_through, sessions=sessions)
+    held = held_stock_days(_paper_fills(Path(args.paper_store)), start, complete_through,
+                           sessions)
+    wanted = _minute_wanted(candidates, held)
+    print(f"分钟线清单：首板次日候选 {candidates.height} 组，模拟盘持仓 {held.height} 组，"
+          f"合并去重 {wanted.height} 组")
 
     if args.skip_minutes:
         service_run.add_step("分钟线", status=SKIPPED, detail="按参数跳过")

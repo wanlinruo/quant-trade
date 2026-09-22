@@ -142,3 +142,50 @@ def holding_stock_days(
         {"symbol": [p[0] for p in ordered], "dt": [p[1] for p in ordered]},
         schema=_SCHEMA,
     )
+
+
+def held_stock_days(
+    fills: pl.DataFrame,
+    start: date,
+    end: date,
+    sessions: Sequence[date],
+) -> pl.DataFrame:
+    """模拟盘真实持有过的（标的, 日期）组合，限定在 [start, end] 内。
+
+    `fills` 需含 account_id / symbol / side / qty / filled_at。按账户逐笔累计
+    持仓：从买入当日到清仓当日（两头都算，买入日要看竞价、清仓日要看卖出时点），
+    至今未清仓的算到 `end`。
+
+    候选清单只覆盖买入决策；持仓期间的检查点价格同样要归档——2026-09-22 查
+    模拟盘为何没卖时，两只持仓当天的分钟线不在仓库里，只能去 QMT 现取。
+    """
+    empty = pl.DataFrame(schema=_SCHEMA)
+    if fills.height == 0:
+        return empty
+    ordered = sorted(d for d in sessions if start <= d <= end)
+    if not ordered:
+        return empty
+    frame = fills.with_columns(
+        pl.col("filled_at").cast(pl.Utf8).str.slice(0, 10).str.to_date().alias("day")
+    ).sort("filled_at")
+    pairs: set[tuple[str, date]] = set()
+    for (account, symbol), rows in frame.group_by(["account_id", "symbol"],
+                                                  maintain_order=True):
+        qty = 0
+        opened: date | None = None
+        for side, amount, day in rows.select("side", "qty", "day").iter_rows():
+            if side == "buy":
+                if qty <= 0:
+                    opened = day
+                qty += int(amount)
+            else:
+                qty -= int(amount)
+                if qty <= 0 and opened is not None:
+                    pairs.update((symbol, d) for d in ordered if opened <= d <= day)
+                    opened = None
+        if qty > 0 and opened is not None:
+            pairs.update((symbol, d) for d in ordered if d >= opened)
+    if not pairs:
+        return empty
+    return pl.DataFrame(sorted(pairs), schema=_SCHEMA, orient="row")
+
