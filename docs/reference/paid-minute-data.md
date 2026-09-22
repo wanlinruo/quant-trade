@@ -32,6 +32,10 @@ QMT」的优先级逐标的日选源。常驻规则：`B2.paid_minute_structure`
 `A3.paid_minute_override_gross_vs_daily`（粗大偏差阻断）、
 `A3.paid_minute_override_vs_daily`（小差异挂 D-20）。
 
+2026 年原始 CSV（172 个交易日）已于 2026-09-22 核验无损后删除：暂存区
+`minute-rebuild/warehouse/paid_minute_bars_staging`（逐日源 SHA256 在 manifest）与隔离区
+合起来是无损原始等价物，永久保留；远端网盘仍可原样重下。
+
 2026 年分钟文件已知缺陷：03-03..03-11 约 68% 证券成交量错误而成交额正常，
 详见 `production-data-management-audit-20260921.md` 5.3。
 
