@@ -7,7 +7,7 @@
     <div class="job-actions">{% if job.status in ('queued','running') %}<button id="cancel-button" class="secondary" onclick="cancelJob()">取消任务</button>{% endif %}</div>
   </div>
   <div class="progress large"><span id="progress-bar" style="width:{{ job.percent }}%"></span></div><div class="progress-meta"><span id="progress-date">{{ job.current_session or '等待开始' }}</span><span id="progress-percent">{{ job.percent }}%</span></div>
-  <div class="config-strip"><div><span>回测区间</span><strong>{{ job.config.start }} 至 {{ job.config.end }}</strong></div><div><span>初始资金</span><strong>¥{{ '{:,.0f}'.format(job.config.cash|float) }}</strong></div><div><span>成本模型</span><strong>{{ '聚宽兼容' if job.config.jq_compat else 'qsys 实盘档位' }}</strong></div><div><span>源码版本</span><strong class="mono">{{ job.version_id }}</strong></div></div>
+  <div class="config-strip"><div><span>回测区间</span><strong>{{ job.config.start }} 至 {{ job.config.end }}</strong></div><div><span>初始资金</span><strong>¥{{ '{:,.0f}'.format(job.config.cash|float) }}</strong></div><div><span>成本模型</span><strong>{{ '聚宽兼容' if job.config.jq_compat else 'qsys 实盘档位' }}</strong></div><div><span>竞价入场</span><strong>{{ '连续竞价判定' if job.config.get('entry_fill') == 'continuous' else '开盘价成交' }}</strong></div><div><span>源码版本</span><strong class="mono">{{ job.version_id }}</strong></div></div>
   <div id="job-error" class="error">{{ job.error }}</div>
 </section>
 <section class="panel log-panel"><div class="panel-title">运行日志 <span class="toolbar-spacer"></span><span class="muted">自动刷新</span></div><pre id="job-log">{{ job_log or '等待任务输出…' }}</pre></section>

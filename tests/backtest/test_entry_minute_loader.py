@@ -45,3 +45,15 @@ def test_loader_skips_the_query_without_symbols():
     data = FakeMarketData(pl.DataFrame())
     assert entry_minute_loader(data)(DAY, time(9, 31), []) == {}
     assert data.calls == []
+
+
+def test_web_entry_fill_modes():
+    from qsys.backtest.entry_fill import EntryFillMode
+    from qsys.backtest.runner import entry_fill_rule
+
+    assert entry_fill_rule("open") is None          # 原口径：不配规则，run_id 不变
+    rule = entry_fill_rule("continuous")
+    assert rule.mode is EntryFillMode.CONTINUOUS and rule.slippage == 0.005
+    import pytest
+    with pytest.raises(ValueError):
+        entry_fill_rule("slippage")

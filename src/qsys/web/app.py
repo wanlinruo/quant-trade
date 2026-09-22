@@ -33,6 +33,7 @@ from qsys.web.service_views import ServiceConsole
 from qsys.web.svg import line_chart, multi_line_chart
 from qsys.web.views import MonitorService
 from qsys.web.workbench import BacktestQueue, WorkbenchStore
+from qsys.backtest.runner import ENTRY_FILL_MODES
 from qsys.strategy.parameters import validate_parameters
 from qsys.core.calendar import AShareCalendar
 from qsys.ops.services import SERVICE_BY_ID
@@ -649,11 +650,15 @@ def create_app(
             if start > end or cash <= 0:
                 raise ValueError("日期区间或初始资金无效")
             params = validate_parameters(strategy.parameters, body.get("params", {}))
+            entry_fill = str(body.get("entry_fill", "continuous"))
+            if entry_fill not in ENTRY_FILL_MODES:
+                raise ValueError(f"未知的竞价入场口径：{entry_fill}")
         except (KeyError, TypeError, ValueError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         job = workbench.enqueue(strategy.id, {
             "start": str(start), "end": str(end), "cash": cash,
             "jq_compat": bool(body.get("jq_compat", False)), "params": params,
+            "entry_fill": entry_fill,
         })
         return {"id": job.id, "location": f"/backtests/{job.id}"}
 

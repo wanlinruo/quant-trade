@@ -80,8 +80,16 @@ def allocate(
     limit_ups: Mapping[str, float] | None = None,
     max_budget: float | None = None,
     price_buffer: float = PRICE_BUFFER,
+    sizing_buffer: float | None = None,
 ) -> list[Budget]:
-    """把可用资金按分支权重分给当日候选，再按 CASH-SAFE V2 定量。"""
+    """把可用资金按分支权重分给当日候选，再按 CASH-SAFE V2 定量。
+
+    `price_buffer` 决定限价（保护价），`sizing_buffer` 决定定量用的价格；后者
+    不给时与前者相同，即原策略"按保护价定量"。09:25 撮合后才下单时保护价要放宽到
+    +3% 才能全部成交，但按 +3% 定量会让每笔少买约 3%，故允许两者分开。
+    """
+    if sizing_buffer is None:
+        sizing_buffer = price_buffer
     if not candidates:
         return []
 
@@ -109,9 +117,10 @@ def allocate(
         if protected <= 0:
             out.append(Budget(symbol, tag, weight, budget, 0, "INVALID_OPEN_PRICE"))
             continue
+        sizing = protect_price(price, limits.get(symbol), sizing_buffer)
 
         principal = max(0.0, budget - fee_reserve(budget))
-        qty = int(principal / protected / LOT) * LOT
+        qty = int(principal / sizing / LOT) * LOT
         if qty < LOT:
             out.append(
                 Budget(symbol, tag, weight, budget, 0, "BELOW_BOARD_LOT", protected)

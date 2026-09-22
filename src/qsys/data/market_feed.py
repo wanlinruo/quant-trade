@@ -3,7 +3,7 @@
 日线 bar 的可见时刻是收盘，而 `daily_flags` / `market_regime` /
 `valuation_snapshot` 描述的也是收盘后事实，因此适用同一条规则。
 
-**唯一的例外是当日开盘价**：`open` 在 09:30 就已确定，与同一根 bar 的
+**唯一的例外是当日开盘价**：`open` 在 09:25 集合竞价撮合后就已确定，与同一根 bar 的
 high/low/close 可见时刻不同。策略判低开/高开正是用它。为此单开一个
 `session_open()`，**只返回 open**——把整根 bar 放出来就成了绕过 PIT 的后门。
 
@@ -26,6 +26,12 @@ from qsys.data.query import WarehouseQuery
 
 # QMT 的开盘集合竞价 bar 以 09:30 标注（收盘时刻约定）
 AUCTION_AT = time(9, 30)
+
+# 集合竞价撮合结果（开盘价、竞价量）的可见时刻。09:25:00 撮合，QMT 快照在
+# 09:25:04 前给出撮合价与撮合量：2026-08-17..09-21 的 1,397/1,399 个标的日，
+# 撮合价与日线开盘价、撮合量与 09:30 竞价 bar 均 100% 一致
+# （docs/reference/auction-order-timing-study.md 第 5 节）。
+AUCTION_RESULT_VISIBLE_AT = time(9, 25, 5)
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,10 +82,10 @@ class BoundMarket:
         )
 
     def _open_is_visible(self, day: date) -> bool:
-        return self._as_of >= datetime.combine(day, AUCTION_AT)
+        return self._as_of >= datetime.combine(day, AUCTION_RESULT_VISIBLE_AT)
 
     def session_open(self, symbols: Sequence[str], day: date) -> dict[str, float]:
-        """当日开盘价，09:30 起可见。**只返回 open。**"""
+        """当日开盘价，09:25:05 起可见。**只返回 open。**"""
         if not self._open_is_visible(day):
             return {}
         bars = self._market_data.daily_bars(list(symbols), day, day)
@@ -120,7 +126,7 @@ class BoundMarket:
         }
 
     def limit_up_price(self, symbols: Sequence[str], day: date) -> dict[str, float]:
-        """当日涨停价，09:30 起可见。
+        """当日涨停价，09:25:05 起可见（与开盘价同一时刻）。
 
         涨停价在盘前由 Tushare ``stk_limit`` 直取，因此不该像 high/low/close
         那样锁到当日收盘。迁移期仅对未回填日期读取旧派生表。

@@ -400,3 +400,41 @@ def test_checkpoints_are_the_three_from_the_original():
 def test_buying_happens_at_the_auction_not_at_0915():
     """09:15 竞价还没结算，开盘价不可见——买入必须在竞价时刻。"""
     assert AUCTION_AT == time(9, 30)
+
+
+def test_auction_time_param_moves_the_decision_after_the_auction_match():
+    from qsys.strategy.schedule import Schedule
+    from qsys.strategy.structural.strategy import auction_time
+
+    ctx = FakeCtx(datetime.combine(DAY, time(9, 0)))
+    ctx.schedule = Schedule()
+    StructuralStrategy(FakeSelection()).on_init(ctx)
+    assert ctx.schedule.auction_at == time(9, 30)       # 默认仍是原策略
+
+    ctx.schedule = Schedule()
+    ctx.params = {"auction_at": "09:25:10"}
+    StructuralStrategy(FakeSelection()).on_init(ctx)
+    assert ctx.schedule.auction_at == time(9, 25, 10)
+
+    assert auction_time("09:30") == time(9, 30)
+    with pytest.raises(ValueError):
+        auction_time("09:24:50")                        # 撮合结果还不可见
+
+
+def test_sizing_buffer_is_separate_from_the_protect_price():
+    """保护价 +3% 保证成交，定量只按 +0.5% 预留，不必少买 3%。"""
+    sel = FakeSelection([Pick(str(SYM), "LOW_MAIN")])
+    strategy = StructuralStrategy(sel)
+    state = {}
+    strategy.on_session_start(FakeCtx(datetime.combine(date(2024, 1, 3), time(9, 15)), state=state))
+    ctx = FakeCtx(
+        datetime.combine(DAY, AUCTION_AT),
+        market=FakeMarket(opens={str(SYM): 10.0}),
+        state=state,
+    )
+    ctx.params = {"entry_price_buffer": 0.03, "sizing_price_buffer": 0.005}
+    strategy.on_session_start(ctx)
+    strategy.on_auction(ctx)
+    assert ctx.order.styles == [(OrderType.LIMIT, pytest.approx(10.30))]
+    # 按 10.05 定量：(100000 - 预留) / 10.05 向下取整到手
+    assert ctx.order.submitted == [(str(SYM), Side.BUY, 9900)]
