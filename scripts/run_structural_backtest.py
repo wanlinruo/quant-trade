@@ -6,6 +6,10 @@
 
 用法：
   uv run python scripts/run_structural_backtest.py --start 2025-09-10 --end 2026-09-08
+
+竞价入场口径（默认与原来一致：开盘价 + 通用滑点，保护价上浮 0.2%）：
+  --entry-fill continuous --entry-price-buffer 0.005   # 09:25 后下单、09:31 分钟线判定
+  --entry-fill slippage --entry-slippage 0.005         # 只加价、不改成交率的参照
 """
 
 from __future__ import annotations
@@ -21,9 +25,10 @@ import polars as pl
 from qsys.backtest.artifacts import write_run
 from qsys.backtest.corporate import CorporateAction
 from qsys.backtest.engine import BacktestEngine
+from qsys.backtest.entry_fill import EntryFill, EntryFillMode
 from qsys.backtest.fees import AShareFeeModel
 from qsys.backtest.metrics import compute_metrics
-from qsys.backtest.runner import price_limit_loader
+from qsys.backtest.runner import entry_minute_loader, price_limit_loader
 from qsys.backtest.slippage import FixedRateSlippage
 from qsys.core.calendar import AShareCalendar
 from qsys.core.types import Symbol
@@ -94,6 +99,18 @@ def main() -> int:
         "--jq-compat", action="store_true",
         help="成本口径切成聚宽默认值，用于逐笔对账（见下方 _cost_model）",
     )
+    parser.add_argument(
+        "--entry-fill", choices=[m.value for m in EntryFillMode], default=None,
+        help="竞价买单撮合口径；不给则与原来完全一致（开盘价 + 通用滑点）",
+    )
+    parser.add_argument(
+        "--entry-slippage", type=float, default=0.005,
+        help="slippage 口径的上浮比例，也是 continuous 缺 09:31 分钟线时的退回口径",
+    )
+    parser.add_argument(
+        "--entry-price-buffer", type=float, default=None,
+        help="限价保护价相对开盘价的上浮比例；不给则用策略默认 0.2%%",
+    )
     add_facade_argument(parser)
     args = parser.parse_args()
     apply_facade_argument(args.market_data_facade)
@@ -145,7 +162,17 @@ def main() -> int:
     strategy = StructuralStrategy(selection)
 
     fees, slippage, cost_label = _cost_model(args.jq_compat)
+    entry_fill = (
+        EntryFill(EntryFillMode(args.entry_fill), slippage=args.entry_slippage)
+        if args.entry_fill is not None else None
+    )
+    params: dict[str, object] = {"strategy": "structural_v1_2"}
+    if args.entry_price_buffer is not None:
+        params["entry_price_buffer"] = args.entry_price_buffer
     print(f"区间 {start} ~ {end}，标的池 {len(universe)} 只   成本口径 {cost_label}")
+    if entry_fill is not None or args.entry_price_buffer is not None:
+        print(f"竞价入场 {entry_fill.label() if entry_fill else '开盘价成交'}   "
+              f"保护价上浮 {params.get('entry_price_buffer', 0.002):.2%}")
     print(f"竞价时刻 {AUCTION_AT.strftime('%H:%M')}  检查点 {[t.strftime('%H:%M') for t in CHECKPOINTS]}")
     started = _time.time()
 
@@ -158,7 +185,9 @@ def main() -> int:
         intraday=intraday, market=market,
         corporate_actions=actions,
         boards={Symbol.parse(k): v for k, v in boards.items()},
-        params={"strategy": "structural_v1_2"},
+        params=params,
+        entry_fill=entry_fill,
+        entry_minutes=entry_minute_loader(market_data) if entry_fill is not None else None,
     )
     result = engine.run(start, end)
 
@@ -208,6 +237,12 @@ def main() -> int:
             "checkpoints": ",".join(t.strftime("%H:%M") for t in CHECKPOINTS),
             "universe_size": len(universe),
             "corporate_action_days": len(actions),
+            **({"entry_fill": entry_fill.label(), "entry_fill_mode": entry_fill.mode.value,
+                "entry_slippage": entry_fill.slippage,
+                "entry_fill_stats": ",".join(f"{k}={v}" for k, v in sorted(result.diagnostics.items()))}
+               if entry_fill is not None else {}),
+            **({"entry_price_buffer": args.entry_price_buffer}
+               if args.entry_price_buffer is not None else {}),
         },
         metrics=metrics_map,
         decisions=getattr(selection, "decisions", ()),
@@ -221,6 +256,8 @@ def main() -> int:
     buys = [f for f in result.fills if f.side.value == "buy"]
     sells = [f for f in result.fills if f.side.value == "sell"]
     print(f"  买入 {len(buys)}   卖出 {len(sells)}")
+    if result.diagnostics:
+        print(f"  竞价入场 {dict(result.diagnostics)}")
     print(f"\n初始 {args.cash:,.2f}   最终 {result.final_value:,.2f}")
     if result.equity.height:
         m = compute_metrics(result.equity, result.fills)

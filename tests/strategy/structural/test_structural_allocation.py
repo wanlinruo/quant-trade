@@ -79,6 +79,21 @@ def test_the_protect_price_is_the_open_lifted_by_the_buffer():
     assert budgets[0].protect_price == pytest.approx(10.02)
 
 
+def test_the_protect_price_buffer_is_configurable_and_still_capped():
+    budgets = allocate(
+        [("600001.SH", "LOW_MAIN"), ("600002.SH", "LOW_MAIN")], cash=100_000.0,
+        opens={"600001.SH": 10.0, "600002.SH": 10.0}, limit_ups={"600002.SH": 10.05},
+        price_buffer=0.01,
+    )
+    assert [b.protect_price for b in budgets] == [pytest.approx(10.10), pytest.approx(10.05)]
+
+
+def test_a_negative_protect_price_buffer_is_rejected():
+    with pytest.raises(ValueError):
+        allocate([("600001.SH", "LOW_MAIN")], cash=100_000.0,
+                 opens={"600001.SH": 10.0}, price_buffer=-0.01)
+
+
 def test_the_protect_price_never_exceeds_the_limit_up():
     """开盘就在涨停价附近时，保护价不能挂到涨停之上——那种单挂不进去。"""
     budgets = allocate(

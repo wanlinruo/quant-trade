@@ -4,15 +4,16 @@ from __future__ import annotations
 
 import shutil
 from dataclasses import asdict
-from datetime import date
+from datetime import date, datetime, time
 from pathlib import Path
-from typing import Callable, Mapping
+from typing import Callable, Mapping, Sequence
 
 import polars as pl
 
 from qsys.backtest.artifacts import write_run
 from qsys.backtest.corporate import CorporateAction
 from qsys.backtest.engine import BacktestEngine
+from qsys.backtest.entry_fill import MinuteBar
 from qsys.backtest.fees import AShareFeeModel
 from qsys.backtest.metrics import compute_metrics
 from qsys.backtest.slippage import FixedRateSlippage
@@ -41,6 +42,31 @@ def price_limit_loader(query) -> Callable[[date, date], dict[date, dict[Symbol, 
                 float(row["limit_up"]), float(row["limit_down"])
             )
         return out
+
+    return load
+
+
+def entry_minute_loader(
+    market_data,
+) -> Callable[[date, time, Sequence[Symbol]], dict[Symbol, MinuteBar]]:
+    """竞价入场连续竞价口径用的分钟线：取标注为 `at`（bar 收盘时刻）的那一根。
+
+    只认该时刻本身的 bar；没有就不给，由入场口径退回并计数——不拿别的分钟冒充。
+    """
+
+    def load(session: date, at: time, symbols: Sequence[Symbol]) -> dict[Symbol, MinuteBar]:
+        if not symbols:
+            return {}
+        moment = datetime.combine(session, at)
+        frame = market_data.minute_bars([str(s) for s in symbols], moment, moment).filter(
+            (pl.col("dt") == moment)
+            & pl.col("open").is_finite() & (pl.col("open") > 0)
+            & pl.col("low").is_finite() & (pl.col("low") > 0)
+        )
+        return {
+            Symbol.parse(row["symbol"]): MinuteBar(float(row["open"]), float(row["low"]))
+            for row in frame.iter_rows(named=True)
+        }
 
     return load
 

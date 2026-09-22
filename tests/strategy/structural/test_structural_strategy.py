@@ -184,6 +184,24 @@ def test_a_pick_becomes_a_buy_order():
     assert ctx.order.styles == [(OrderType.LIMIT, pytest.approx(10.02))]
 
 
+def test_entry_price_buffer_param_lifts_the_protect_price():
+    """09:25 撮合后才下单时，保护价上浮可配置；定量也按新保护价算。"""
+    sel = FakeSelection([Pick(str(SYM), "LOW_MAIN")])
+    strategy = StructuralStrategy(sel)
+    state = {}
+    strategy.on_session_start(FakeCtx(datetime.combine(date(2024, 1, 3), time(9, 15)), state=state))
+    ctx = FakeCtx(
+        datetime.combine(DAY, AUCTION_AT),
+        market=FakeMarket(opens={str(SYM): 10.0}),
+        state=state,
+    )
+    ctx.params = {"entry_price_buffer": 0.01}
+    strategy.on_session_start(ctx)
+    strategy.on_auction(ctx)
+    assert ctx.order.styles == [(OrderType.LIMIT, pytest.approx(10.10))]
+    assert ctx.order.submitted == [(str(SYM), Side.BUY, 9800)]
+
+
 def test_the_tag_is_remembered_for_the_exit_side():
     """退出要按分支分流，买入时就得记下标签。"""
     sel = FakeSelection([Pick(str(SYM), "HIGH_MAIN")])
