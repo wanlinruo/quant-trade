@@ -14,7 +14,11 @@ from qsys.backtest.artifacts import write_run
 from qsys.backtest.corporate import CorporateAction
 from qsys.backtest.engine import BacktestEngine
 from qsys.backtest.entry_fill import EntryFill, EntryFillMode, MinuteBar
-from qsys.backtest.fees import AShareFeeModel
+from qsys.backtest.fees import (
+    ACCOUNT_COMMISSION_RATE,
+    ACCOUNT_MIN_COMMISSION,
+    AShareFeeModel,
+)
 from qsys.backtest.metrics import compute_metrics
 from qsys.backtest.slippage import FixedRateSlippage
 from qsys.core.types import Symbol
@@ -203,8 +207,10 @@ def cost_model(jq_compat: bool):
         return (AShareFeeModel(commission_rate=0.0003, min_commission=5.0,
                                stamp_duty_rate=0.001, transfer_fee_rate=0.0),
                 FixedRateSlippage(0.00123), "聚宽默认（滑点 0.123% / 印花税 0.1% / 无过户费）")
-    return (AShareFeeModel(), FixedRateSlippage(0.0005),
-            "qsys 实盘档位（滑点 0.05% / 印花税 0.05% / 含过户费）")
+    return (AShareFeeModel(commission_rate=ACCOUNT_COMMISSION_RATE,
+                           min_commission=ACCOUNT_MIN_COMMISSION),
+            FixedRateSlippage(0.0005),
+            "qsys 实盘档位（佣金万0.75最低5元 / 滑点 0.05% / 印花税 0.05% / 含过户费）")
 
 
 def corporate_actions(query, start: date, end: date):
