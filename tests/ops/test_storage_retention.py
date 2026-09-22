@@ -108,3 +108,22 @@ def test_disk_levels():
     assert S.DiskStatus(100 * gib, 50 * gib, 50 * gib).level == "ok"
     assert S.DiskStatus(100 * gib, 85 * gib, 15 * gib).level == "warn"
     assert S.DiskStatus(100 * gib, 95 * gib, 5 * gib).level == "fail"
+
+
+def test_2026_paid_staging_is_permanent_while_other_rebuild_output_expires(tmp_path):
+    base = tmp_path / "qsys"
+    rebuild = base / "minute-rebuild/warehouse"
+    for name in ("paid_minute_bars_staging", "paid_minute_quarantine",
+                 "paid_minute_quality", "tushare_daily"):
+        _file(rebuild / name / "part.parquet")
+        _age_dir(rebuild / name, 60)
+
+    items = S.inventory(base, None, NOW)
+    by = _by_name(items)
+
+    assert len([i for i in items if i.path.name == "paid_minute_bars_staging"]) == 1
+    assert by["paid_minute_bars_staging"].verdict == S.PERMANENT
+    assert by["paid_minute_quarantine"].verdict == S.PERMANENT
+    assert by["paid_minute_quality"].verdict == S.PERMANENT
+    assert by["tushare_daily"].verdict == S.ELIGIBLE
+    assert S.unregistered(base) == []

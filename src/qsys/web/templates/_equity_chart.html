@@ -1,0 +1,176 @@
+{# 模拟交易收益曲线：历史（每日收盘累计收益）与分时（某日每分钟当日收益），两层都可缩放。
+   数据由 qsys.web.paper_chart 构造；页面手动刷新，不轮询。 #}
+{% if chart.history %}
+<div class="chart-shell equity-chart" data-view="{{ chart.view }}">
+  <div class="equity-toolbar">
+    <div class="equity-views" role="group" aria-label="曲线视图">
+      <button type="button" class="{{ 'active' if chart.view == 'history' else 'secondary' }}" data-chart-day="">历史</button>
+      <label class="equity-day">分时
+        <select id="equity-day" aria-label="选择查看分时的交易日">
+          {% if chart.view == 'history' %}<option value="" selected>选择交易日</option>{% endif %}
+          {% for s in chart.sessions %}<option value="{{ s }}" {{ 'selected' if s == chart.day }}>{{ s }}</option>{% endfor %}
+        </select>
+      </label>
+    </div>
+    <span class="muted equity-hint">滚轮缩放 · 拖动平移 · 双击复位{% if chart.view == 'history' %} · 点击某天查看分时{% endif %}</span>
+    <button type="button" class="secondary" id="equity-reset">重置缩放</button>
+  </div>
+  {% if chart.notice %}<p class="muted equity-notice">{{ chart.notice }}</p>{% endif %}
+  <div class="chart-legend">
+    <strong>{% if chart.view == 'history' %}累计收益（每日收盘）{% else %}{{ chart.day }} 当日收益（相对前一交易日收盘）{% endif %}</strong>
+    <span><i class="legend-line" style="background:#2463b5"></i>策略</span>
+    <span><i class="legend-line" style="background:#dc5a4f"></i>沪深300</span>
+  </div>
+  <svg id="equity-chart" viewBox="0 0 1000 310" preserveAspectRatio="none" role="img"
+       aria-label="{{ '模拟交易每日收盘累计收益曲线' if chart.view == 'history' else '模拟交易 ' ~ chart.day ~ ' 分时当日收益曲线' }}"></svg>
+</div>
+<div id="equity-tooltip" class="chart-tooltip"></div>
+<style>
+.equity-toolbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:10px}
+.equity-views{display:flex;align-items:center;gap:10px}
+.equity-views button{padding:5px 12px}
+.equity-day{display:flex;align-items:center;gap:6px;color:var(--muted)}
+.equity-hint{font-size:12px;margin-left:auto}
+.equity-notice{margin:0 0 8px;font-size:12px}
+.equity-chart svg{touch-action:pan-y;cursor:grab}
+.equity-chart svg.dragging{cursor:grabbing}
+</style>
+<script>
+(() => {
+const C = {{ chart|tojson }}, history = C.view === 'history';
+const rows = history
+  ? C.history.map(p => ({key: p.session, label: p.session.slice(5), s: p.strategy, b: p.benchmark}))
+  : C.intraday.map(p => ({key: p.at, label: p.time, s: p.strategy_day, b: p.benchmark_day, sc: p.strategy_cum, bc: p.benchmark_cum}));
+const svg = document.getElementById('equity-chart'), tip = document.getElementById('equity-tooltip');
+const NS = 'http://www.w3.org/2000/svg', W = 1000, H = 310, m = {l: 72, r: 24, t: 14, b: 42};
+const SERIES = [['s', '#2463b5', '策略'], ['b', '#dc5a4f', '沪深300']];
+const MIN_SPAN = history ? 1 : 10, n = rows.length;
+let lo = 0, hi = n - 1;
+
+function go(day) {
+  const params = new URLSearchParams(location.search);
+  if (day) params.set('chart_day', day); else params.delete('chart_day');
+  location.search = params.toString();
+}
+document.querySelector('.equity-views button').addEventListener('click', () => go(''));
+document.getElementById('equity-day').addEventListener('change', event => go(event.target.value));
+
+function node(name, attrs = {}) {
+  const el = document.createElementNS(NS, name);
+  Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
+  return el;
+}
+const pct = v => v === null || v === undefined ? '—' : (v >= 0 ? '+' : '') + (v * 100).toFixed(2) + '%';
+const x = i => m.l + (hi === lo ? 0.5 : (i - lo) / (hi - lo)) * (W - m.l - m.r);
+const indexAt = clientX => {
+  const r = svg.getBoundingClientRect(), px = (clientX - r.left) / r.width * W;
+  return Math.max(lo, Math.min(hi, Math.round(lo + (px - m.l) / (W - m.l - m.r) * (hi - lo))));
+};
+
+function draw() {
+  svg.replaceChildren();
+  const values = [0];
+  for (let i = lo; i <= hi; i++) SERIES.forEach(([k]) => { if (rows[i][k] !== null) values.push(rows[i][k]); });
+  let top = Math.max(...values), bottom = Math.min(...values);
+  if (top === bottom) { top += 0.001; bottom -= 0.001; }
+  // 整齐刻度：步长取 1/2/2.5/5 × 10^k，约 5 格，坐标范围对齐到刻度
+  const raw = (top - bottom) / 5, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map(f => f * mag).find(v => v >= raw);
+  bottom = Math.floor(bottom / step + 1e-9) * step; top = Math.ceil(top / step - 1e-9) * step;
+  let digits = 0;  // 百分数步长需要的小数位：0.05% → 2，0.5% → 1，1% → 0
+  while (digits < 4 && Math.abs(Math.round(step * 100 * 10 ** digits) - step * 100 * 10 ** digits) > 1e-6) digits++;
+  const y = v => m.t + (top - v) / (top - bottom) * (H - m.t - m.b);
+  for (let v = bottom; v <= top + step / 2; v += step) {
+    const yy = y(v);
+    svg.append(node('line', {x1: m.l, y1: yy, x2: W - m.r, y2: yy, stroke: '#e5e9f0'}));
+    const label = node('text', {x: m.l - 10, y: yy + 4, 'text-anchor': 'end', fill: '#64748b', 'font-size': 11});
+    label.textContent = (Math.abs(v) < step / 1e6 ? 0 : v * 100).toFixed(digits) + '%';
+    svg.append(label);
+  }
+  svg.append(node('line', {x1: m.l, y1: y(0), x2: W - m.r, y2: y(0), stroke: '#94a3b8', 'stroke-width': 1.2}));
+  if (!history) {  // 午休被压缩：在 11:30 与 13:00 之间画一条分隔线
+    for (let i = Math.max(lo, 1); i <= hi; i++) {
+      if (rows[i - 1].label <= '11:30' && rows[i].label >= '13:00') {
+        const xx = (x(i - 1) + x(i)) / 2;
+        svg.append(node('line', {x1: xx, y1: m.t, x2: xx, y2: H - m.b, stroke: '#cbd5e1', 'stroke-dasharray': '4 4'}));
+      }
+    }
+  }
+  const span = hi - lo, ticks = [...new Set([0, .25, .5, .75, 1].map(r => lo + Math.round(r * span)))];
+  ticks.forEach((i, k) => {
+    const xx = x(i);
+    svg.append(node('line', {x1: xx, y1: H - m.b, x2: xx, y2: H - m.b + 5, stroke: '#94a3b8'}));
+    const label = node('text', {x: xx, y: H - 12, fill: '#64748b', 'font-size': 11,
+      'text-anchor': ticks.length === 1 ? 'middle' : k === 0 ? 'start' : k === ticks.length - 1 ? 'end' : 'middle'});
+    label.textContent = rows[i].label;
+    svg.append(label);
+  });
+  SERIES.forEach(([k, color]) => {
+    let d = '', open = false;
+    for (let i = lo; i <= hi; i++) {
+      if (rows[i][k] === null) { open = false; continue; }
+      d += (open ? ' L' : 'M') + x(i) + ' ' + y(rows[i][k]); open = true;
+    }
+    svg.append(node('path', {d, fill: 'none', stroke: color, 'stroke-width': 2, 'vector-effect': 'non-scaling-stroke'}));
+    if (history && span <= 60) {  // 日线点数少时画出圆点，提示可点击查看分时
+      for (let i = lo; i <= hi; i++) if (rows[i][k] !== null) {
+        svg.append(node('circle', {cx: x(i), cy: y(rows[i][k]), r: 4, fill: color, stroke: '#fff', 'stroke-width': 2, 'vector-effect': 'non-scaling-stroke'}));
+      }
+    }
+  });
+  const hover = node('line', {y1: m.t, y2: H - m.b, stroke: '#64748b', 'stroke-dasharray': '3 3', visibility: 'hidden'});
+  svg.append(hover);
+  svg._hover = hover;
+}
+
+function showTip(event) {
+  const i = indexAt(event.clientX), row = rows[i];
+  svg._hover.setAttribute('x1', x(i)); svg._hover.setAttribute('x2', x(i)); svg._hover.setAttribute('visibility', 'visible');
+  tip.innerHTML = history
+    ? `<strong>${row.key} 收盘</strong><div>策略累计：${pct(row.s)}</div><div>沪深300累计：${pct(row.b)}</div><div class="muted">点击查看当日分时</div>`
+    : `<strong>${C.day} ${row.label}</strong><div>策略：当日 ${pct(row.s)} · 累计 ${pct(row.sc)}</div><div>沪深300：当日 ${pct(row.b)} · 累计 ${pct(row.bc)}</div>`;
+  tip.style.display = 'block';
+  const tw = tip.offsetWidth, th = tip.offsetHeight;  // 靠近视口右/下边缘时翻到指针另一侧
+  tip.style.left = (event.clientX + 14 + tw > innerWidth ? event.clientX - tw - 14 : event.clientX + 14) + 'px';
+  tip.style.top = (event.clientY + 12 + th > innerHeight ? event.clientY - th - 12 : event.clientY + 12) + 'px';
+}
+function hideTip() { svg._hover.setAttribute('visibility', 'hidden'); tip.style.display = 'none'; }
+
+function setRange(a, b) {  // 保持跨度，夹在数据范围内
+  const width = Math.min(n - 1, Math.max(Math.min(MIN_SPAN, n - 1), b - a));
+  a = Math.max(0, Math.min(n - 1 - width, a));
+  lo = Math.round(a); hi = Math.round(a + width);
+  draw();
+}
+svg.addEventListener('wheel', event => {
+  if (n < 2) return;
+  event.preventDefault();
+  const center = indexAt(event.clientX), factor = event.deltaY > 0 ? 1.25 : 0.8;
+  const width = (hi - lo) * factor, ratio = hi === lo ? 0.5 : (center - lo) / (hi - lo);
+  setRange(center - ratio * width, center - ratio * width + width);
+}, {passive: false});
+let drag = null;
+svg.addEventListener('pointerdown', event => { drag = {x: event.clientX, lo, hi, moved: false}; svg.setPointerCapture(event.pointerId); });
+svg.addEventListener('pointermove', event => {
+  if (!drag) { showTip(event); return; }
+  const r = svg.getBoundingClientRect(), dx = (event.clientX - drag.x) / r.width * W;
+  const shift = -dx / (W - m.l - m.r) * (drag.hi - drag.lo);
+  if (Math.abs(dx) > 3) { drag.moved = true; svg.classList.add('dragging'); hideTip(); }
+  if (drag.moved) setRange(drag.lo + shift, drag.hi + shift);
+});
+let pending = null;  // 单击延迟跳转，双击复位时取消，避免第一下点击就离开页面
+svg.addEventListener('pointerup', event => {
+  const clicked = drag && !drag.moved;
+  drag = null; svg.classList.remove('dragging');
+  if (clicked && history) {
+    const day = rows[indexAt(event.clientX)].key;
+    clearTimeout(pending); pending = setTimeout(() => go(day), 250);
+  }
+});
+svg.addEventListener('pointerleave', () => { if (!drag) hideTip(); });
+svg.addEventListener('dblclick', () => { clearTimeout(pending); setRange(0, n - 1); });
+document.getElementById('equity-reset').addEventListener('click', () => setRange(0, n - 1));
+draw();
+})();
+</script>
+{% else %}<div class="empty-state">模拟盘生效后将在这里展示收益曲线。</div>{% endif %}

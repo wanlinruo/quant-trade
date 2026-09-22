@@ -51,10 +51,21 @@ RULES: tuple[RetentionRule, ...] = (
                   "整表重建前的原样副本；同上"),
     RetentionRule("base", "backups/*", "操作回滚副本", DAYS, 30, "仓库外的回滚副本；同上"),
     RetentionRule("base", "backups", "操作回滚副本", CONTAINER),
-    RetentionRule("base", "baidupan", "付费原始包", PERMANENT,
-                  note="付费源原始文件；异地备份建立前是唯一原始副本"),
-    RetentionRule("base", "minute-rebuild", "重建暂存区", DAYS, 30,
-                  "付费分钟暂存与质量产物，可由原始包重建"),
+    RetentionRule("base", "baidupan", "付费源下载区", PERMANENT,
+                  note="下载清单与日志；原始数据文件入库并核验无损后删除，远端可重下"),
+    RetentionRule("base", "minute-rebuild", "重建暂存区", CONTAINER),
+    RetentionRule("base", "minute-rebuild/warehouse", "重建暂存区", CONTAINER),
+    # 2026-09-22 起原始 CSV 核验后删除：暂存区（逐日记有源 CSV SHA256）与隔离区（被隔离行的
+    # 原样字符串与物理行号）合起来是 2026 付费分钟的无损原始等价物，永久保留。
+    RetentionRule("base", "minute-rebuild/warehouse/paid_minute_bars_staging",
+                  "付费分钟原始等价物", PERMANENT,
+                  note="2026 付费分钟：原始 CSV 已删，逐日源 SHA256 在 manifest，远端可重下"),
+    RetentionRule("base", "minute-rebuild/warehouse/paid_minute_quarantine",
+                  "付费分钟原始等价物", PERMANENT, note="原始 CSV 被隔离行的原样字符串与行号"),
+    RetentionRule("base", "minute-rebuild/warehouse/paid_minute_quality",
+                  "付费分钟原始等价物", PERMANENT, note="2026 付费分钟质量摘要"),
+    RetentionRule("base", "minute-rebuild/warehouse/*", "重建暂存区", DAYS, 30,
+                  "其他重建中间产物"),
     RetentionRule("base", "qmt-minute-2026", "隔离构建仓库", DAYS, 30,
                   "QMT 全市场分钟隔离仓库，已发布进生产"),
     RetentionRule("base", "repair-cache", "修复缓存", DAYS, 30, "补取数据的中间缓存"),
@@ -151,11 +162,13 @@ def inventory(
     roots = {"base": base, "scratch": scratch}
     protected = _protected_targets(base)
     items: list[StorageItem] = []
+    claimed: set[Path] = set()  # 先登记的具体规则优先，后面的通用规则不再重复认领
     for rule in rules:
         root = roots[rule.root]
         if root is None or rule.policy == CONTAINER:
             continue
-        matches = sorted(p for p in root.glob(rule.pattern))
+        matches = sorted(p for p in root.glob(rule.pattern) if p not in claimed)
+        claimed.update(matches)
         measured = [(p, *measure(p)) for p in matches]
         ranked = sorted(measured, key=lambda m: m[3] or datetime.min, reverse=True)
         latest_kept = {m[0] for m in ranked[: rule.keep]} if rule.policy == LATEST else set()

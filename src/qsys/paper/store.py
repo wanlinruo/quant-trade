@@ -493,17 +493,86 @@ class PaperStore:
                 ).fetchall()
         return [dict(row) for row in rows]
 
+    def chart_start(self, ident: str) -> str:
+        """收益曲线的起始交易日：账户第一次执行完策略事件的那天。
+
+        生效日会被「恢复」改写，不能作为历史起点——否则暂停前真实运行的收益会被
+        藏掉；非交易时段写入的杂散快照（当天没有任何事件）也由此自然排除。尚无
+        任何已完成事件时退回生效日。
+        """
+        account = self.account(ident)
+        if account is None:
+            raise LookupError("模拟账户不存在")
+        with self._connect() as con:
+            row = con.execute(
+                "SELECT MIN(substr(scheduled_at,1,10)) AS first FROM paper_events "
+                "WHERE account_id=? AND status='completed'",
+                (ident,),
+            ).fetchone()
+        return row["first"] or account.activation_date
+
+    def equity_daily(self, ident: str) -> list[dict]:
+        """从起始交易日起，每个交易日最后一个权益点（收盘结算后的值）。
+
+        收盘结算快照不带基准，``benchmark_close`` 取当天最后一个有值的基准观测；
+        当天从未观测到基准时为 None，不做推算。
+        """
+        start = self.chart_start(ident)
+        with self._connect() as con:
+            # IN 子查询只求值一次，再按主键 (account_id, at) 取行；写成 JOIN 时
+            # SQLite 会把子查询当协程逐行重算，3.8 万点就要跑几分钟。
+            rows = con.execute(
+                "SELECT * FROM paper_equity WHERE account_id=? AND at IN ("
+                "SELECT MAX(at) FROM paper_equity "
+                "WHERE account_id=? AND session>=? GROUP BY session"
+                ") ORDER BY at",
+                (ident, ident, start),
+            ).fetchall()
+            benchmarks = dict(con.execute(
+                "SELECT session, benchmark_value FROM paper_equity "
+                "WHERE account_id=? AND at IN ("
+                "SELECT MAX(at) FROM paper_equity WHERE account_id=? AND session>=? "
+                "AND benchmark_value IS NOT NULL GROUP BY session)",
+                (ident, ident, start),
+            ).fetchall())
+        return [{**dict(row), "benchmark_close": benchmarks.get(row["session"])}
+                for row in rows]
+
+    def equity_intraday(self, ident: str, day: date) -> list[dict]:
+        """某交易日每分钟最后一个权益点；午休内部（11:31–12:59）只是重复盯市，压缩掉。"""
+        with self._connect() as con:
+            rows = con.execute(
+                "SELECT * FROM paper_equity WHERE account_id=? AND at IN ("
+                "SELECT MAX(at) FROM paper_equity "
+                "WHERE account_id=? AND session=? "
+                "AND substr(at,12,5) NOT BETWEEN '11:31' AND '12:59' "
+                "GROUP BY substr(at,1,16)"
+                ") ORDER BY at",
+                (ident, ident, day.isoformat()),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def summary(self, ident: str) -> dict[str, Any]:
         account = self.account(ident)
         if account is None:
             raise LookupError("模拟账户不存在")
-        equity = self.rows(ident, "equity", limit=10000)
-        total = equity[-1]["total_value"] if equity else account.cash
-        peak, drawdown = account.initial_cash, 0.0
-        for row in equity:
-            peak = max(peak, row["total_value"])
-            if peak:
-                drawdown = max(drawdown, 1 - row["total_value"] / peak)
+        start = self.chart_start(ident)
+        with self._connect() as con:
+            last = con.execute(
+                "SELECT total_value FROM paper_equity WHERE account_id=? AND session>=? "
+                "ORDER BY at DESC LIMIT 1",
+                (ident, start),
+            ).fetchone()
+            # 全量逐点回撤：峰值从初始资金起算，窗口函数避免把整段历史搬进内存。
+            worst = con.execute(
+                "SELECT MAX(1.0 - total_value / MAX(?, peak)) AS dd FROM ("
+                "SELECT total_value, MAX(total_value) OVER ("
+                "ORDER BY at ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS peak "
+                "FROM paper_equity WHERE account_id=? AND session>=?)",
+                (account.initial_cash, ident, start),
+            ).fetchone()
+        total = last["total_value"] if last is not None else account.cash
+        drawdown = max(0.0, worst["dd"] or 0.0) if account.initial_cash else 0.0
         return {
             "total_value": total,
             "return_pct": (total / account.initial_cash - 1) * 100,
