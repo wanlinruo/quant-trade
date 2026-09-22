@@ -144,8 +144,21 @@ def test_session_open_is_visible_from_the_open(market):
     }
 
 
-def test_session_open_is_invisible_before_the_open(market):
-    assert market.bind(at(D[2], 9, 29)).session_open(["600001.SH"], D[2]) == {}
+def _before_match(day):
+    """09:25 撮合结果 09:25:05 才可见（研究文档第 5 节）。"""
+    return datetime.combine(day, time(9, 25, 4))
+
+
+def _after_match(day):
+    return datetime.combine(day, time(9, 25, 5))
+
+
+def test_session_open_is_invisible_before_the_auction_match(market):
+    assert market.bind(_before_match(D[2])).session_open(["600001.SH"], D[2]) == {}
+
+
+def test_session_open_is_visible_right_after_the_auction_match(market):
+    assert market.bind(_after_match(D[2])).session_open(["600001.SH"], D[2]) == {"600001.SH": 12.0}
 
 
 def test_session_open_never_leaks_the_rest_of_the_bar(market):
@@ -160,8 +173,8 @@ def test_auction_volume_comes_from_the_0930_bar(market):
     }
 
 
-def test_auction_volume_is_invisible_before_the_open(market):
-    assert market.bind(at(D[2], 9, 29)).auction_volume(["600001.SH"], D[2]) == {}
+def test_auction_volume_is_invisible_before_the_auction_match(market):
+    assert market.bind(_before_match(D[2])).auction_volume(["600001.SH"], D[2]) == {}
 
 
 def test_auction_volume_is_empty_when_there_is_no_minute_data(market):
@@ -282,8 +295,8 @@ def test_limit_up_price_is_visible_from_the_open(market):
     assert got["600001.SH"] == 12.32
 
 
-def test_limit_up_price_is_invisible_before_the_open(market):
-    assert market.bind(at(D[2], 9, 29)).limit_up_price(["600001.SH"], D[2]) == {}
+def test_limit_up_price_is_invisible_before_the_auction_match(market):
+    assert market.bind(_before_match(D[2])).limit_up_price(["600001.SH"], D[2]) == {}
 
 
 def test_limit_up_price_is_absent_without_a_prior_close(market):

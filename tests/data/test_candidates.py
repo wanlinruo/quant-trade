@@ -246,3 +246,48 @@ def test_external_calendar_missing_a_flag_day_is_skipped_not_fatal(warehouse):
     got = candidate_stock_days(warehouse, D[0], D[4], sessions=[D[3], D[4]])
 
     assert got.height == 0
+
+
+# ---- 模拟盘持仓日：按真实成交还原持有区间 ----
+
+def _paper_fills(rows):
+    """rows: [(account, symbol, side, qty, filled_at)]"""
+    import polars as pl
+
+    return pl.DataFrame(rows, schema={"account_id": pl.Utf8, "symbol": pl.Utf8,
+                                      "side": pl.Utf8, "qty": pl.Int64,
+                                      "filled_at": pl.Utf8}, orient="row")
+
+
+def test_held_days_cover_buy_day_through_the_day_the_position_is_closed():
+    from qsys.data.pipeline.candidates import held_stock_days
+
+    fills = _paper_fills([
+        ("a", "600001.SH", "buy", 1000, f"{D[1]}T09:30:03"),
+        ("a", "600001.SH", "sell", 400, f"{D[2]}T11:25:00"),   # 部分卖出仍持有
+        ("a", "600001.SH", "sell", 600, f"{D[3]}T14:50:00"),   # 清仓日也要
+    ])
+    got = held_stock_days(fills, D[0], D[-1], D)
+    assert got["dt"].to_list() == [D[1], D[2], D[3]]
+
+
+def test_open_positions_are_held_through_the_end_and_accounts_are_separate():
+    from qsys.data.pipeline.candidates import held_stock_days
+
+    fills = _paper_fills([
+        ("a", "600001.SH", "buy", 1000, f"{D[1]}T09:30:03"),
+        ("a", "600001.SH", "sell", 1000, f"{D[1]}T14:50:00"),
+        # 另一个账户仍持有同一只：不能被 a 的清仓抵消
+        ("b", "600001.SH", "buy", 500, f"{D[3]}T09:30:03"),
+        ("b", "000001.SZ", "buy", 500, f"{D[0]}T09:30:03"),
+    ])
+    got = held_stock_days(fills, D[2], D[4], D)
+    assert sorted(got.rows()) == sorted(
+        [("000001.SZ", d) for d in D[2:5]] + [("600001.SH", D[3]), ("600001.SH", D[4])]
+    )
+
+
+def test_no_fills_means_no_held_days():
+    from qsys.data.pipeline.candidates import held_stock_days
+
+    assert held_stock_days(_paper_fills([]), D[0], D[-1], D).height == 0

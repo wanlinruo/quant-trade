@@ -29,7 +29,7 @@
 
 from __future__ import annotations
 
-from datetime import date, time, timedelta
+from datetime import date, datetime, time, timedelta
 
 import structlog
 
@@ -58,6 +58,18 @@ _MA_BARS = 4
 _MA_LOOKBACK_DAYS = 30
 
 
+def auction_time(value) -> time:
+    """参数里的竞价时刻；不给时为 09:30。早于 09:25:05 撮合结果不可见，拒绝。"""
+    if value in (None, ""):
+        return AUCTION_AT
+    parsed = value if isinstance(value, time) else datetime.strptime(
+        str(value), "%H:%M:%S" if str(value).count(":") == 2 else "%H:%M"
+    ).time()
+    if parsed < time(9, 25, 5) or parsed > time(9, 30):
+        raise ValueError(f"auction_at 必须在 09:25:05–09:30 之间：{value}")
+    return parsed
+
+
 class StructuralStrategy(Strategy):
     def __init__(self, selection) -> None:
         self._selection = selection
@@ -68,9 +80,10 @@ class StructuralStrategy(Strategy):
         """自己声明调度——对应原文 L188-L204 的那几条 run_daily。
 
         调度是策略的一部分，不是运行器的：检查点改到 14:40 应该改这里，
-        而不是改跑它的脚本。
+        而不是改跑它的脚本。竞价时刻可由参数 `auction_at`（HH:MM[:SS]）覆盖：
+        09:25 撮合后决策、09:30 前挂单时用 09:25:10（研究文档第 6 节）。
         """
-        ctx.schedule.auction(AUCTION_AT)
+        ctx.schedule.auction(auction_time(ctx.params.get("auction_at")))
         ctx.schedule.checkpoint(*CHECKPOINTS)
 
     def on_session_start(self, ctx) -> None:
@@ -105,6 +118,10 @@ class StructuralStrategy(Strategy):
             [(p.symbol, p.tag) for p in picks], ctx.portfolio.cash, opens, limit_ups,
             max_budget=ctx.params.get("max_position_value"),
             price_buffer=float(ctx.params.get("entry_price_buffer", PRICE_BUFFER)),
+            sizing_buffer=(
+                float(ctx.params["sizing_price_buffer"])
+                if ctx.params.get("sizing_price_buffer") is not None else None
+            ),
         )
         tags = ctx.state.setdefault("tags", {})
         for budget in budgets:

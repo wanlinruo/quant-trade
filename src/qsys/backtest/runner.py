@@ -13,7 +13,7 @@ import polars as pl
 from qsys.backtest.artifacts import write_run
 from qsys.backtest.corporate import CorporateAction
 from qsys.backtest.engine import BacktestEngine
-from qsys.backtest.entry_fill import MinuteBar
+from qsys.backtest.entry_fill import EntryFill, EntryFillMode, MinuteBar
 from qsys.backtest.fees import AShareFeeModel
 from qsys.backtest.metrics import compute_metrics
 from qsys.backtest.slippage import FixedRateSlippage
@@ -46,6 +46,23 @@ def price_limit_loader(query) -> Callable[[date, date], dict[date, dict[Symbol, 
     return load
 
 
+ENTRY_FILL_MODES = ("open", "continuous")
+
+
+def entry_fill_rule(mode: str) -> EntryFill | None:
+    """网页回测的竞价入场口径。
+
+    ``open`` 为原口径（开盘价 + 通用滑点，不配入场规则，run_id 与旧运行一致）；
+    ``continuous`` 按 09:31 分钟线判定限价能否成交，缺分钟线退回开盘价 +0.5%
+    （研究文档第 6 节的推荐口径）。
+    """
+    if mode == "open":
+        return None
+    if mode == "continuous":
+        return EntryFill(EntryFillMode.CONTINUOUS, slippage=0.005)
+    raise ValueError(f"未知的竞价入场口径：{mode}")
+
+
 def entry_minute_loader(
     market_data,
 ) -> Callable[[date, time, Sequence[Symbol]], dict[Symbol, MinuteBar]]:
@@ -75,7 +92,7 @@ def execute_backtest(
     strategy_file: Path, *, start: date, end: date, cash: float,
     warehouse: Path, out_dir: Path, params: Mapping[str, object] | None = None,
     jq_compat: bool = False, progress: Callable[[int, int, date], None] | None = None,
-    strategy_source: str | None = None,
+    strategy_source: str | None = None, entry_fill: str = "open",
 ) -> Path:
     if start > end:
         raise ValueError("开始日期不能晚于结束日期")
@@ -103,6 +120,7 @@ def execute_backtest(
             )
 
     fees, slippage, cost_label = cost_model(jq_compat)
+    entry = entry_fill_rule(entry_fill)
     result = BacktestEngine(
         strategy, feed=deps.feed, calendar=calendar, universe=universe,
         initial_cash=cash, pipeline=ashare_pipeline(), fees=fees, slippage=slippage,
@@ -112,6 +130,11 @@ def execute_backtest(
         boards={Symbol.parse(k): v for k, v in boards.items()},
         params={"strategy": type(strategy).__name__, **typed}, progress=progress,
         schedule_validator=validate_schedule,
+        entry_fill=entry,
+        entry_minutes=(
+            entry_minute_loader(CutoverMarketData(query, CutoverConfig.from_env()))
+            if entry is not None else None
+        ),
     ).run(start, end)
 
     benchmark = benchmark_nav(result.equity, query.index_bars(["000300.SH"], start, end), cash)
@@ -133,6 +156,11 @@ def execute_backtest(
         initial_cash=cash,
         config={"strategy_file": str(strategy_file), "strategy_version": _sha(strategy_file),
                 "cost_model": cost_label, "jq_compat": jq_compat,
+                "entry_fill": entry.label() if entry is not None else "开盘价成交",
+                "entry_fill_mode": entry_fill,
+                **({"entry_fill_stats": ",".join(
+                    f"{k}={v}" for k, v in sorted(result.diagnostics.items()))}
+                   if entry is not None else {}),
                 "benchmark": "000300.SH", "universe_size": len(universe), **typed},
         metrics=metrics, decisions=getattr(selection, "decisions", ()),
         regime=CutoverMarketData(query, CutoverConfig.from_env()).market_regime(),

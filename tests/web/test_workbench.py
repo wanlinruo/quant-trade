@@ -138,3 +138,16 @@ def test_repository_import_cannot_escape_its_root(client):
     assert client.post("/api/strategies/import", json={"filename": "../secret.py"}).status_code == 422
     imported = client.post("/api/strategies/import", json={"filename": "sample.py"})
     assert imported.status_code == 201
+
+
+def test_backtest_records_the_entry_fill_mode_and_defaults_to_continuous(client, store):
+    ident = client.post("/api/strategies", json={"name": "demo", "source": SOURCE}).json()["id"]
+    base = {"strategy_id": ident, "start": "2024-01-01", "end": "2024-01-31",
+            "cash": 100000, "params": {"window": 20}}
+    default = client.post("/api/backtests", json=base).json()["id"]
+    legacy = client.post("/api/backtests", json={**base, "entry_fill": "open"}).json()["id"]
+    assert store.job(default).config["entry_fill"] == "continuous"
+    assert store.job(legacy).config["entry_fill"] == "open"
+    assert "连续竞价判定" in client.get(f"/backtests/{default}").text
+    bad = client.post("/api/backtests", json={**base, "entry_fill": "slippage"})
+    assert bad.status_code == 422

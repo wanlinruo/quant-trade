@@ -111,6 +111,14 @@ def main() -> int:
         "--entry-price-buffer", type=float, default=None,
         help="限价保护价相对开盘价的上浮比例；不给则用策略默认 0.2%%",
     )
+    parser.add_argument(
+        "--sizing-price-buffer", type=float, default=None,
+        help="定量用的开盘价上浮；不给则与保护价上浮相同（原策略）",
+    )
+    parser.add_argument(
+        "--auction-at", default=None, choices=["09:30", "09:25:10"],
+        help="竞价决策时刻；不给则 09:30（原策略）",
+    )
     add_facade_argument(parser)
     args = parser.parse_args()
     apply_facade_argument(args.market_data_facade)
@@ -169,11 +177,16 @@ def main() -> int:
     params: dict[str, object] = {"strategy": "structural_v1_2"}
     if args.entry_price_buffer is not None:
         params["entry_price_buffer"] = args.entry_price_buffer
+    if args.sizing_price_buffer is not None:
+        params["sizing_price_buffer"] = args.sizing_price_buffer
+    if args.auction_at is not None:
+        params["auction_at"] = args.auction_at
     print(f"区间 {start} ~ {end}，标的池 {len(universe)} 只   成本口径 {cost_label}")
     if entry_fill is not None or args.entry_price_buffer is not None:
         print(f"竞价入场 {entry_fill.label() if entry_fill else '开盘价成交'}   "
               f"保护价上浮 {params.get('entry_price_buffer', 0.002):.2%}")
-    print(f"竞价时刻 {AUCTION_AT.strftime('%H:%M')}  检查点 {[t.strftime('%H:%M') for t in CHECKPOINTS]}")
+    auction_label = args.auction_at or AUCTION_AT.strftime("%H:%M")
+    print(f"竞价时刻 {auction_label}  检查点 {[t.strftime('%H:%M') for t in CHECKPOINTS]}")
     started = _time.time()
 
     engine = BacktestEngine(
@@ -233,7 +246,7 @@ def main() -> int:
             "cost_model": cost_label,
             "jq_compat": args.jq_compat,
             "require_auction_volume": args.require_auction_volume,
-            "auction_at": AUCTION_AT.strftime("%H:%M"),
+            "auction_at": auction_label,
             "checkpoints": ",".join(t.strftime("%H:%M") for t in CHECKPOINTS),
             "universe_size": len(universe),
             "corporate_action_days": len(actions),
@@ -243,6 +256,8 @@ def main() -> int:
                if entry_fill is not None else {}),
             **({"entry_price_buffer": args.entry_price_buffer}
                if args.entry_price_buffer is not None else {}),
+            **({"sizing_price_buffer": args.sizing_price_buffer}
+               if args.sizing_price_buffer is not None else {}),
         },
         metrics=metrics_map,
         decisions=getattr(selection, "decisions", ()),

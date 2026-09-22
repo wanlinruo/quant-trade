@@ -78,6 +78,37 @@ def _quarantine_invalid_symbol_days(frame: pl.DataFrame) -> pl.DataFrame:
     return frame.join(symbols, on="symbol", how="anti")
 
 
+def _quarantine_suspension_placeholders(
+    frame: pl.DataFrame, query: WarehouseQuery, day: date
+) -> pl.DataFrame:
+    """Drop QMT symbol-days that are suspension placeholders, not market facts.
+
+    QMT 旧数据会给停牌标的写一整天零成交、价格不变的分钟线。付费源同类标的日按
+    ``zero-trade-flat-no-daily`` 隔离；这里用同一判据：全天零成交、最高价等于最低价、
+    当天没有 Tushare 日线，整日剔除。有日线的零成交日保留，由日线说明它是交易日。
+    """
+    if frame.height == 0:
+        return frame
+    flat = (
+        frame.filter(pl.col("source") == "qmt")
+        .group_by("symbol")
+        .agg(
+            (pl.col("volume").sum() == 0).alias("zero"),
+            (pl.col("high").max() == pl.col("low").min()).alias("flat"),
+        )
+        .filter(pl.col("zero") & pl.col("flat"))
+    )
+    if flat.height == 0:
+        return frame
+    daily = query.tushare_daily(
+        flat["symbol"].to_list(), day, day, columns=("symbol", "dt")
+    )
+    placeholders = flat.join(daily.select("symbol"), on="symbol", how="anti")
+    if placeholders.height == 0:
+        return frame
+    return frame.join(placeholders.select("symbol"), on="symbol", how="anti")
+
+
 def _validate(frame: pl.DataFrame, day: date) -> None:
     if frame.height == 0:
         return
@@ -112,8 +143,11 @@ def canonical_minute_frame(warehouse: Warehouse, day: date) -> pl.DataFrame:
     symbols = _source_symbols(query, warehouse, day)
     if not symbols:
         return pl.from_arrow(schema.BAR_MINUTE_1M.empty_table())
-    selected = _quarantine_invalid_symbol_days(
-        _regular_session(query.intraday_bars(symbols, day))
+    selected = _quarantine_suspension_placeholders(
+        _quarantine_invalid_symbol_days(
+            _regular_session(query.intraday_bars(symbols, day))
+        ),
+        query, day,
     )
     frame = selected.rename({"dt": "ts"}).select(schema.BAR_MINUTE_1M.names)
     _validate(frame, day)

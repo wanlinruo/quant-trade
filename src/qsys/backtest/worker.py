@@ -36,6 +36,8 @@ def main() -> int:
             params=config.get("params", {}), jq_compat=bool(config.get("jq_compat", False)),
             progress=lambda done, total, session: store.progress(
                 job.id, done, total, str(session)), strategy_source=source,
+            # 没有此键的旧任务一律按原口径复现
+            entry_fill=str(config.get("entry_fill", "open")),
         )
         store.finish(job.id, "succeeded", run_name=run.name)
         return 0

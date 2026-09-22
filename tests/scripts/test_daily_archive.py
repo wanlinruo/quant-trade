@@ -46,3 +46,24 @@ def test_auction_failure_turns_success_into_failure():
     assert daily_archive._exit_code(0, auction_ok=False) == 1
     assert daily_archive._exit_code(0, auction_ok=True) == 0
     assert daily_archive._exit_code(1, auction_ok=True) == 1
+
+
+def test_minute_manifest_includes_paper_holdings(tmp_path):
+    import sqlite3
+
+    store = tmp_path / "workbench.sqlite3"
+    with sqlite3.connect(store) as conn:
+        conn.execute("CREATE TABLE paper_fills (id INTEGER PRIMARY KEY, account_id TEXT, "
+                     "order_id TEXT, symbol TEXT, side TEXT, qty INTEGER, price REAL, "
+                     "fee REAL, filled_at TEXT)")
+        conn.execute("INSERT INTO paper_fills (account_id, order_id, symbol, side, qty, price, "
+                     "fee, filled_at) VALUES ('a', 'o1', '001399.SZ', 'buy', 2000, 23.84, "
+                     "14.78, '2026-09-15T09:30:03')")
+    fills = daily_archive._paper_fills(store)
+    held = daily_archive.held_stock_days(fills, DAY, DAY, [DAY])
+    wanted = daily_archive._minute_wanted(WANTED, held)
+    assert sorted(wanted["symbol"].to_list()) == ["001399.SZ", "600036.SH"]
+
+
+def test_missing_paper_store_is_not_an_error(tmp_path):
+    assert daily_archive._paper_fills(tmp_path / "absent.sqlite3").height == 0
