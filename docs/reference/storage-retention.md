@@ -15,8 +15,9 @@ uv run python scripts/storage_report.py --json out.json
 | 位置 | 类别 | 策略 |
 |---|---|---|
 | `warehouse/backups/*`、`warehouse/*.pre-*`、`backups/*` | 操作回滚副本 | 最近修改 30 天后可申请删除 |
-| `baidupan` | 付费原始包 | 永久；异地备份建立前是唯一原始副本 |
-| `minute-rebuild` | 重建暂存区 | 30 天，可由原始包重建 |
+| `baidupan` | 付费源下载区 | 永久；只留下载清单与日志，原始数据文件入库并核验无损后删除 |
+| `minute-rebuild/warehouse/paid_minute_bars_staging`、`paid_minute_quarantine`、`paid_minute_quality` | 付费分钟原始等价物 | 永久；2026 原始 CSV 已于 2026-09-22 核验后删除，逐日源 SHA256 在 manifest |
+| `minute-rebuild` 其他 | 重建暂存区 | 30 天 |
 | `qmt-minute-2026` | 隔离构建仓库 | 30 天，已发布进生产 |
 | `repair-cache` | 修复缓存 | 30 天 |
 | `test-env/warehouse-snapshots/*`、`test-env/snapshots/*` | 测试快照 | 保留最新 2 份；`test-env/warehouse-current` 指向的快照始终保留 |
@@ -24,7 +25,8 @@ uv run python scripts/storage_report.py --json out.json
 | `~/scratch/*` | 临时工作区 | 最近修改 14 天后可申请删除 |
 
 `/data/qsys` 顶层出现任何未登记的条目都会被报出，新目录必须先在 `RULES` 登记策略。
-warehouse 内的数据集由指标字典与质量规则管理，不在本策略内。
+warehouse 内的数据集由指标字典与质量规则管理，不在本策略内。规则按登记顺序认领，
+具体规则写在通用规则之前。
 
 ## 占用与可释放
 
@@ -32,7 +34,7 @@ warehouse 内的数据集由指标字典与质量规则管理，不在本策略�
 目录内的 inode，即删除后真正腾出的空间。测试快照与 `*.pre-*` 副本大量硬链接到
 warehouse：2026-09-21 实测，占用 25 GiB 的测试快照可释放约 0.1 GiB，
 `paid_minute_bars.pre-d20-d578a85` 占用 22 GiB、可释放 0。真正独占空间的是付费原始包
-（17 GiB，永久）与重建暂存区（2.6 GiB）。
+（17 GiB）与重建暂存区（2.6 GiB）；前者已于 2026-09-22 删除（审计记录 12.4）。
 
 ## 容量告警
 
