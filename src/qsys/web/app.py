@@ -23,7 +23,7 @@ from fastapi.responses import (
 )
 from fastapi.templating import Jinja2Templates
 
-from qsys.web.backtest_views import BacktestService
+from qsys.web.backtest_views import BacktestService, param_rows
 from qsys.web.asset_views import DataAssetService
 from qsys.web.catalog_views import CatalogService, Status
 from qsys.web.config import WebConfig
@@ -33,7 +33,7 @@ from qsys.web.service_views import ServiceConsole
 from qsys.web.svg import line_chart, multi_line_chart
 from qsys.web.views import MonitorService
 from qsys.web.workbench import BacktestQueue, WorkbenchStore
-from qsys.backtest.runner import ENTRY_FILL_MODES
+from qsys.backtest.runner import ENTRY_FILL_LABELS, ENTRY_FILL_MODES
 from qsys.strategy.parameters import validate_parameters
 from qsys.core.calendar import AShareCalendar
 from qsys.ops.services import SERVICE_BY_ID
@@ -510,6 +510,10 @@ def create_app(
             context={
                 "title": config.title, "session": None, "page": "paper",
                 "account": account, "summary": paper.summary(ident),
+                "param_rows": param_rows(account.config.get("params", {})),
+                "entry_fill_label": ENTRY_FILL_LABELS.get(
+                    str(account.config.get("entry_fill", "")), "开盘价成交（原口径）"
+                ),
                 "positions": paper.rows(ident, "positions"),
                 "orders": paper.rows(ident, "orders"),
                 "fills": paper.rows(ident, "fills"),

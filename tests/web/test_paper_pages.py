@@ -26,11 +26,11 @@ def _calendar():
     return AShareCalendar([today + timedelta(days=d) for d in range(-5, 60) if d % 7 not in (3, 4)])
 
 
-def make_client(warehouse, tmp_path: Path, paper_calendar=_calendar):
+def make_client(warehouse, tmp_path: Path, paper_calendar=_calendar, config=None):
     path = tmp_path / "workbench.sqlite3"
     workbench, paper = WorkbenchStore(path), PaperStore(path)
     strategy = workbench.create_strategy("demo", SOURCE)
-    job = workbench.enqueue(strategy.id, {
+    job = workbench.enqueue(strategy.id, config or {
         "start": "2026-01-01", "end": "2026-02-01", "cash": 100_000,
         "params": {}, "jq_compat": False,
     })
@@ -233,3 +233,25 @@ def test_paper_detail_without_equity_shows_the_empty_state(warehouse, tmp_path):
     page = client.get(f"/paper/{ident}")
 
     assert "模拟盘生效后将在这里展示收益曲线" in page.text
+
+
+def test_paper_detail_shows_its_strategy_backtest_and_parameters(warehouse, tmp_path):
+    """做对比要知道这个账户是哪套参数、从哪次回测来的。"""
+    client, job = make_client(warehouse, tmp_path, config={
+        "start": "2026-01-01", "end": "2026-09-22", "cash": 100_000, "jq_compat": False,
+        "entry_fill": "continuous",
+        "params": {"require_auction_volume": True, "auction_at": "09:25:10",
+                   "entry_price_buffer": 0.03, "sizing_price_buffer": 0.005},
+    })
+    ident = client.post("/api/paper-accounts", json={
+        "backtest_id": job.id, "name": "Demo 模拟", "cash": 100_000,
+    }).json()["id"]
+
+    body = client.get(f"/paper/{ident}").text
+
+    assert "策略与来源" in body
+    assert job.id in body and job.strategy_id in body
+    assert "2026-01-01 至 2026-09-22" in body
+    assert "连续竞价判定" in body
+    assert "竞价决策时刻" in body and "09:25:10" in body
+    assert "保护价上浮" in body and "3%（开盘价 ×1.03）" in body

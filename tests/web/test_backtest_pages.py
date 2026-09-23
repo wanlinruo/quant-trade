@@ -103,3 +103,49 @@ def test_the_console_is_404_when_not_enabled(warehouse):
     cfg = WebConfig()
     c = TestClient(create_app(MonitorService(SessionJournal(warehouse), config=cfg), cfg))
     assert c.get("/backtests").status_code == 404
+
+
+def _run_with_config(tmp_path, name, config):
+    run = tmp_path / name
+    run.mkdir()
+    (run / "run_status.csv").write_text(STATUS, encoding="utf-8")
+    (run / "config.json").write_text(json.dumps(config, ensure_ascii=False), encoding="utf-8")
+    return run
+
+
+def test_the_detail_page_shows_the_strategy_parameters(client, tmp_path):
+    """做回测对比要能一眼看到参数；早于参数留痕的运行则明说没有。"""
+    _run_with_config(tmp_path, "withparams", {
+        "cost_model": "qsys 实盘档位（佣金万0.75最低5元 / 滑点 0.05% / 印花税 0.05% / 含过户费）",
+        "entry_fill": "09:31 分钟线连续竞价判定（缺分钟线退回开盘价上浮 0.50%）",
+        "entry_fill_mode": "continuous",
+        "params": {"require_auction_volume": True, "auction_at": "09:25:10",
+                   "entry_price_buffer": 0.03, "sizing_price_buffer": 0.005},
+    })
+
+    body = client.get("/backtests/withparams").text
+
+    assert "策略参数" in body
+    assert "竞价决策时刻" in body and "09:25:10" in body
+    assert "保护价上浮" in body and "3%（开盘价 ×1.03）" in body
+    assert "要求竞价成交量" in body and "是" in body
+    assert "连续竞价判定" in body
+    assert "万0.75最低5元" in body
+
+
+def test_older_runs_without_params_fall_back_to_the_flat_config(client, tmp_path):
+    _run_with_config(tmp_path, "flatparams", {
+        "cost_model": "聚宽默认", "strategy_version": "abc",
+        "require_auction_volume": True, "entry_price_buffer": 0.002,
+    })
+
+    body = client.get("/backtests/flatparams").text
+
+    assert "保护价上浮" in body and "0.2%（开盘价 ×1.002）" in body
+    assert "strategy_version" not in body      # 运行口径的键不当成策略参数
+
+
+def test_a_run_with_no_parameters_says_so(client):
+    body = client.get("/backtests/jq100k").text
+    assert "没有记录策略参数" in body
+    assert "开盘价成交（原口径）" in body      # 没有入场口径字段时按原口径显示
