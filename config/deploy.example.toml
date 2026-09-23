@@ -38,6 +38,18 @@ min_commission = 5.0
 stamp_duty_rate = 0.0005
 transfer_fee_rate = 0.00001
 
+[strategy]
+# 影子核心/实盘核心跑哪套策略。配了 follows_paper_account 就从该模拟账户承袭
+# 存档的源码与参数（回测 → 模拟账户 → 影子盘，一条链不漂移）；留空则用下面的
+# file 与 params。
+file = "strategies/structural_v1_2.py"
+follows_paper_account = ""
+workbench = "var/workbench/workbench.sqlite3"
+# [strategy.params]
+# auction_at = "09:25:10"
+# entry_price_buffer = 0.03
+# sizing_price_buffer = 0.005
+
 [safety]
 # disabled / shadow / live。示例永远保持 disabled，真实值只写 deploy.local.toml。
 mode = "disabled"
