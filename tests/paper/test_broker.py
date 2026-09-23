@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from qsys.backtest.fees import ZeroFeeModel
 from qsys.backtest.slippage import NoSlippage
 from qsys.core.portfolio import Portfolio
-from qsys.core.trading import Order, OrderType, Side
+from qsys.core.trading import Fill, Order, OrderType, Side
 from qsys.core.types import Symbol
 from qsys.live.messages import MarketQuote
 from qsys.markets.ashare import ashare_pipeline
@@ -84,3 +84,40 @@ def test_a_buy_at_a_five_percent_st_limit_up_is_rejected():
     paper.on_quote(quote(price=10.29), limits=(10.29, 9.31))
     assert paper.poll_fills() == ()
     assert "limit up" in paper.poll_rejects()[0].reason
+
+
+def test_a_new_session_resets_the_volume_baseline():
+    """2026-09-23：进程自 09-21 运行，基线停在前一日的收盘累计量，
+
+    当日累计量始终没超过它，可成交量上限恒为 0，11:25 的卖单整天没成交。
+    """
+    portfolio, paper = broker()
+    portfolio.apply_fill(
+        Fill("seed", SYM, Side.BUY, 2000, 10.0, 0.0, NOW - timedelta(days=2))
+    )
+    portfolio.unfreeze()
+    # 前一交易日收盘：累计 9,000,000 股
+    paper.on_quote(quote(volume=9_000_000), limits=(11.0, 9.0))
+
+    paper.begin_session()
+    order = Order("o1", SYM, Side.SELL, 2000, OrderType.MARKET, None, NOW)
+    paper.submit(order)
+    # 当日累计量远小于昨日，但基线已重置：新增量按当日累计量算
+    paper.on_quote(quote(volume=3_000_000), limits=(11.0, 9.0))
+
+    assert [f.qty for f in paper.poll_fills()] == [2000]
+
+
+def test_a_shrinking_cumulative_volume_is_treated_as_a_new_baseline():
+    """没走开盘事件（进程盘中重启）时也不能把订单永远挂住。"""
+    portfolio, paper = broker()
+    portfolio.apply_fill(
+        Fill("seed", SYM, Side.BUY, 2000, 10.0, 0.0, NOW - timedelta(days=2))
+    )
+    portfolio.unfreeze()
+    paper.on_quote(quote(volume=9_000_000), limits=(11.0, 9.0))
+    paper.submit(Order("o1", SYM, Side.SELL, 2000, OrderType.MARKET, None, NOW))
+
+    paper.on_quote(quote(volume=1_000_000), limits=(11.0, 9.0))
+
+    assert [f.qty for f in paper.poll_fills()] == [2000]
