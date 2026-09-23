@@ -202,7 +202,7 @@ def test_failed_event_stays_visible_when_retry_window_expires(
     day = date.today()
     with pytest.raises(RuntimeError, match="行情响应积压"):
         runtime.tick(datetime.combine(day, time(10, 30, 1)))
-    runtime.tick(datetime.combine(day, time(10, 30, 31)))
+    runtime.tick(datetime.combine(day, time(10, 32, 2)))   # 超过 120 秒宽限
 
     with sqlite3.connect(store.path) as con:
         row = con.execute(
@@ -216,10 +216,39 @@ def test_failed_event_stays_visible_when_retry_window_expires(
 def test_an_expired_event_leaves_a_run_row(warehouse, tmp_path):
     runtime, store = _runtime_with_store(warehouse, tmp_path)
     runtime.schedule.checkpoint("10:30")
-    moment = datetime.combine(date.today(), time(10, 31))
+    moment = datetime.combine(date.today(), time(10, 32, 1))
 
     runtime.tick(moment)
 
     rows = store.strategy_runs(moment.date())
     assert [row["phase"] for row in rows] == ["session_start", "checkpoint"]
     assert rows[1]["note"] == "事件已过期，未补跑"
+
+
+def test_a_transient_quote_timeout_is_retried_inside_the_grace_window(
+    warehouse, tmp_path, monkeypatch
+):
+    """2026-09-21：影子核心在 09:30 请求行情超时，30 秒宽限期内没能重试，
+
+    当天的竞价事件被判过期跳过。宽限期放宽到 120 秒后，同一事件要能重试成功。
+    """
+    from qsys.paper.quotes import QuoteTimeout
+
+    runtime, store = _runtime_with_store(warehouse, tmp_path)
+    runtime.schedule.checkpoint("10:30")
+    calls = []
+
+    def flaky(ctx, at):
+        calls.append(at)
+        if len(calls) == 1:
+            raise QuoteTimeout("QMT 行情请求超时（41 个标的）")
+
+    monkeypatch.setattr(runtime.strategy, "on_checkpoint", flaky)
+    day = date.today()
+    with pytest.raises(QuoteTimeout):
+        runtime.tick(datetime.combine(day, time(10, 30, 6)))
+    runtime.tick(datetime.combine(day, time(10, 30, 36)))
+
+    assert len(calls) == 2
+    rows = [r for r in store.strategy_runs(day) if r["phase"] == "checkpoint"]
+    assert rows[-1]["error"] == ""

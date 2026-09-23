@@ -207,6 +207,9 @@ def main() -> int:
                 limit_check_done = gateway.check_limits_step(qmt_limit_detail, wall.date())
                 if limit_check_done:
                     log.info("market_gateway.limit_check_done")
+                # 核对占用了一轮时间片，先把期间到达的报价请求服务掉再做概览：
+                # 决策事件等的就是这些请求（2026-09-21 影子核心因此超时）。
+                gateway.run_once()
             schedule = build_market_schedule(wall, sessions)
             if monotonic >= next_schedule:
                 next_schedule = monotonic + 30.0
@@ -218,6 +221,7 @@ def main() -> int:
                 )
                 gateway.publish_latest_quotes(quotes, now=wall)
                 gateway.publish_overview(quotes, now=wall)
+                gateway.run_once()
         except Exception as exc:
             log.error("market_gateway.loop_error", error=str(exc))
         time.sleep(max(0.02, args.poll))

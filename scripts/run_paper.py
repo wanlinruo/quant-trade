@@ -22,7 +22,7 @@ from qsys.live.messages import Heartbeat
 from qsys.live.redis_transport import RedisTransport
 from qsys.ops.health import CALENDAR_UNKNOWN, HeartbeatCadence, heartbeat_policy, trading_phase
 from qsys.paper.calendar import load_trading_calendar
-from qsys.paper.quotes import QuoteClient, QuoteUnavailable
+from qsys.paper.quotes import DECISION_TIMEOUT, QuoteClient, QuoteUnavailable
 from qsys.paper.runtime import PaperRuntime
 from qsys.paper.store import PaperStore
 from qsys.data.cutover import add_facade_argument, apply_facade_argument
@@ -156,7 +156,7 @@ def run_worker(args) -> int:
     try:
         calendar = load_trading_calendar(args.config)
         client = QuoteClient(RedisTransport.from_config(deploy), deploy.streams,
-                             consumer=f"paper-{args.account}")
+                             consumer=f"paper-{args.account}", timeout=DECISION_TIMEOUT)
     except Exception as exc:
         # 与运行期异常同一处理：失败关闭，避免 supervisor 每个轮询周期重启一次
         log.error("paper.account_failed", account_id=args.account, error=str(exc))

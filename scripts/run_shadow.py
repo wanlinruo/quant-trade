@@ -18,7 +18,7 @@ from qsys.live.store import LiveStore
 from qsys.live.tick_guard import TickFailureGuard
 from qsys.ops.alerts import AlertBus, LogAlertSink, WebhookAlertSink
 from qsys.paper.calendar import load_trading_calendar
-from qsys.paper.quotes import QuoteClient
+from qsys.paper.quotes import DECISION_TIMEOUT, QuoteClient
 from qsys.data.cutover import add_facade_argument, apply_facade_argument
 
 log = structlog.get_logger("shadow-core")
@@ -50,7 +50,8 @@ def main() -> int:
     alerts = AlertBus(sinks)
     runtime = LiveRuntime(
         Path(args.strategy), Path(args.warehouse), load_trading_calendar(args.config),
-        QuoteClient(transport, config.streams, consumer="shadow-core"),
+        QuoteClient(transport, config.streams, consumer="shadow-core",
+                    timeout=DECISION_TIMEOUT),
         transport, config.streams, LiveStore(args.state),
         local_kill_path=Path("var/SHADOW_KILL"),
         alerts=alerts, risk=config.risk, shadow=True,
