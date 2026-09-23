@@ -43,6 +43,16 @@ class PaperBroker(Broker):
         self._rejects: list[Reject] = []
         self._last_volume: dict[str, int] = {}
 
+    def begin_session(self) -> None:
+        """清空成交量基线。**每个交易日开盘前必须调用。**
+
+        `quote.volume` 是当日累计量，基线却记在进程里：进程跨日不重启时，基线仍是
+        上一交易日的收盘累计量，而当日累计量要涨过它才会出现"新增量"。2026-09-23
+        实测，模拟盘进程自 09-21 运行，基线是 09-21 的 94.4 万手，当日 32.2 万手
+        始终没超过，于是可成交量上限恒为 0，11:25 的卖单整天没成交。
+        """
+        self._last_volume.clear()
+
     def submit(self, order: Order) -> None:
         self._pending[order.order_id] = (order, order.qty)
 
@@ -91,8 +101,13 @@ class PaperBroker(Broker):
         """`limits`：当日直取涨跌停价 (up, down)；None 表示拿不到——买单拒绝、卖单放行（D-19）。"""
         limit_up, limit_down = limits or (None, None)
         previous = self._last_volume.get(quote.symbol)
-        delta = quote.volume if previous is None else max(0, quote.volume - previous)
-        self._last_volume[quote.symbol] = max(quote.volume, previous or 0)
+        # 累计量变小只能是换了交易日（或行情源重置）：按新基线处理，
+        # 不能当成"没有新增量"而把上限压成 0——那会让订单永远挂着。
+        if previous is None or quote.volume < previous:
+            delta = quote.volume
+        else:
+            delta = quote.volume - previous
+        self._last_volume[quote.symbol] = quote.volume
 
         for order_id, (order, remaining) in list(self._pending.items()):
             if str(order.symbol) != quote.symbol or quote.at <= order.created_at:

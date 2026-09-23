@@ -36,6 +36,12 @@ class QuoteTimeout(QuoteUnavailable, TimeoutError):
     pass
 
 
+# 09:30 前后网关最忙：既要服务全市场报价请求，又要做当日涨跌停核对与全市场概览。
+# 2026-09-21 影子核心以 5 秒超时请求 41 个标的失败，当日竞价事件被判过期跳过。
+# 决策事件宁可多等，也不能因为一次拥塞丢掉当天的信号。
+DECISION_TIMEOUT = 20.0
+
+
 class QuoteClient:
     def __init__(
         self, transport: Transport, streams: StreamConfig, *,

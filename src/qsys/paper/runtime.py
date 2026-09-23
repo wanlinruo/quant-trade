@@ -246,6 +246,7 @@ class PaperRuntime:
         self.clock.set(moment)
         try:
             if phase is Phase.SESSION_START:
+                self.broker.begin_session()
                 self.portfolio.unfreeze()
                 if moment.date() in self.actions:
                     from qsys.backtest.corporate import apply_corporate_actions

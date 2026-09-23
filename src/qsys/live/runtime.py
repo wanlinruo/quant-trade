@@ -52,7 +52,10 @@ class LivePreflightError(RuntimeError):
 
 
 class LiveRuntime:
-    GRACE_SECONDS = 30
+    # 事件超过宽限期就不再补跑。09:30 前后行情拥塞可能让一次请求超时，30 秒来不及
+    # 重试就把当天的竞价事件判过期（2026-09-21 实测）；120 秒仍在 09:30 连续竞价
+    # 之前，足够重试而不至于用过时的价格下单。
+    GRACE_SECONDS = 120
     ACCOUNT_MAX_AGE = 5.0
     HEARTBEAT_MAX_AGE = 10.0
 
