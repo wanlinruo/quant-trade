@@ -177,3 +177,47 @@ def test_run_log_page_says_when_there_is_nothing(client):
     page = client.get(f"/s/{D}/runs")
     assert page.status_code == 200
     assert "当日没有运行记录" in page.text
+
+
+class _Lineage:
+    paper_account_id = "acct-1"
+    paper_account_name = "模拟-09:25入场"
+    paper_status = "running"
+    backtest_id = "bt-9"
+    strategy_name = "structural_v1_2"
+    version_id = "v1"
+    params = {"auction_at": "09:25:10", "entry_price_buffer": 0.03}
+
+
+class _PaperStub:
+    """只提供影子盘页要用的两个查询。"""
+
+    class _Account:
+        initial_cash = 100_000.0
+
+    def account(self, ident):
+        return self._Account() if ident == "acct-1" else None
+
+    def equity_daily(self, ident):
+        return [
+            {"session": "2024-01-02", "total_value": 100_000.0},
+            {"session": "2024-01-03", "total_value": 102_000.0},
+        ]
+
+
+def test_live_page_shows_the_followed_paper_account_and_compares_returns(warehouse):
+    journal = SessionJournal(warehouse)
+    journal.record_equity(D0, cash=50_000.0, market_value=0.0)      # 2024-01-02
+    journal.record_equity(D, cash=50_000.0, market_value=500.0)     # 2024-01-03
+    cfg = WebConfig()
+    service = MonitorService(journal, config=cfg)
+    http = TestClient(create_app(service, cfg, paper=_PaperStub(),
+                                 shadow_lineage=lambda: _Lineage()))
+
+    body = http.get("/live").text
+
+    assert "策略与来源" in body and "模拟-09:25入场" in body
+    assert "bt-9" in body and "竞价决策时刻" in body and "09:25:10" in body
+    assert "影子盘 vs 模拟交易" in body
+    assert "+1.00%" in body      # 影子盘 50,000 → 50,500
+    assert "+2.00%" in body      # 模拟盘 100,000 → 102,000

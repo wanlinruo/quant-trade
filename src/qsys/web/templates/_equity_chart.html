@@ -39,11 +39,15 @@
 (() => {
 const C = {{ chart|tojson }}, history = C.view === 'history';
 const rows = history
-  ? C.history.map(p => ({key: p.session, label: p.session.slice(5), s: p.strategy, b: p.benchmark}))
+  ? C.history.map(p => ({key: p.session, label: p.session.slice(5), s: p.strategy, b: p.benchmark, h: p.shadow}))
   : C.intraday.map(p => ({key: p.at, label: p.time, s: p.strategy_day, b: p.benchmark_day, sc: p.strategy_cum, bc: p.benchmark_cum}));
 const svg = document.getElementById('equity-chart'), tip = document.getElementById('equity-tooltip');
 const NS = 'http://www.w3.org/2000/svg', W = 1000, H = 310, m = {l: 72, r: 24, t: 14, b: 42};
+// 影子盘只在它承袭本账户、且历史里确实有数据时才画（颜色过色盲区分度校验）
 const SERIES = [['s', '#2463b5', '策略'], ['b', '#dc5a4f', '沪深300']];
+if (history && C.shadow && rows.some(r => r.h !== null && r.h !== undefined)) {
+  SERIES.push(['h', '#7a5bb5', '影子盘']);
+}
 const MIN_SPAN = history ? 1 : 10, n = rows.length;
 let lo = 0, hi = n - 1;
 

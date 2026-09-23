@@ -139,6 +139,8 @@ def create_app(
     paper_calendar: Callable[[], AShareCalendar] | None = None,
     services: ServiceConsole | None = None,
     assets: DataAssetService | None = None,
+    # 影子核心承袭的模拟账户（只读查询；没配承袭时返回 None）
+    shadow_lineage: Callable[[], object | None] | None = None,
 ) -> FastAPI:
     app = FastAPI(title=config.title, docs_url=None, redoc_url=None)
 
@@ -487,6 +489,13 @@ def create_app(
             raise HTTPException(status_code=404, detail="no such paper account")
         initial = account.initial_cash
         daily = paper.equity_daily(ident)
+        lineage = shadow_lineage() if shadow_lineage is not None else None
+        follows_this = bool(lineage and lineage.paper_account_id == ident)
+        shadow_daily = (
+            {str(row["dt"]): float(row["total_value"])
+             for row in service.equity_by_session()}
+            if follows_this else {}
+        )
         sessions = [row["session"] for row in daily]
         chart_notice = ""
         if chart_day is not None and chart_day.isoformat() not in sessions:
@@ -496,7 +505,8 @@ def create_app(
             "view": "intraday" if chart_day else "history",
             "day": chart_day.isoformat() if chart_day else None,
             "sessions": sessions[::-1],
-            "history": history_series(daily, initial),
+            "history": history_series(daily, initial, shadow_daily),
+            "shadow": follows_this,
             "intraday": (
                 intraday_series(paper.equity_intraday(ident, chart_day), daily,
                                 chart_day, initial)
@@ -513,6 +523,7 @@ def create_app(
             context={
                 "title": config.title, "session": None, "page": "paper",
                 "account": account, "summary": paper.summary(ident),
+                "shadow_follows_this": follows_this,
                 "param_rows": param_rows(account.config.get("params", {})),
                 "entry_fill_label": ENTRY_FILL_LABELS.get(
                     str(account.config.get("entry_fill", "")), "开盘价成交（原口径）"
@@ -792,8 +803,43 @@ def create_app(
                          "statuses": statuses},
             )
         view = service.overview(latest)
+        lineage = shadow_lineage() if shadow_lineage is not None else None
+        compare = _shadow_vs_paper(service, paper, lineage)
         return _page(request, "overview.html", latest, "live",
-                     view=view, chart=line_chart(view.equity_curve))
+                     view=view, chart=line_chart(view.equity_curve),
+                     lineage=lineage, compare=compare,
+                     lineage_params=param_rows(getattr(lineage, "params", {}) or {}))
+
+    def _shadow_vs_paper(service, store, lineage) -> dict | None:
+        """影子盘与它承袭的模拟账户，按累计收益率逐交易日对比。
+
+        两者本金不同（影子盘启用资金、模拟账户初始资金），只有收益率可比；
+        只取两边都有记录的交易日，缺的一天不插值。
+        """
+        if lineage is None or store is None or not lineage.paper_account_id:
+            return None
+        account = store.account(lineage.paper_account_id)
+        if account is None:
+            return None
+        shadow = {str(row["dt"]): float(row["total_value"])
+                  for row in service.equity_by_session()}
+        paper_daily = {row["session"]: float(row["total_value"])
+                       for row in store.equity_daily(lineage.paper_account_id)}
+        sessions = sorted(set(shadow) & set(paper_daily))
+        if not sessions:
+            return None
+        shadow_base, paper_base = shadow[sessions[0]], account.initial_cash
+        if not shadow_base or not paper_base:
+            return None
+        return {
+            "sessions": sessions,
+            "chart": multi_line_chart([
+                ("影子盘", [shadow[s] / shadow_base - 1.0 for s in sessions], "#7a5bb5"),
+                ("模拟交易", [paper_daily[s] / paper_base - 1.0 for s in sessions], "#2463b5"),
+            ]),
+            "shadow_return": shadow[sessions[-1]] / shadow_base - 1.0,
+            "paper_return": paper_daily[sessions[-1]] / paper_base - 1.0,
+        }
 
     @app.get("/s/{session}", response_class=HTMLResponse)
     def overview(request: Request, session: date):

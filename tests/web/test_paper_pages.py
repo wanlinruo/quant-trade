@@ -26,7 +26,9 @@ def _calendar():
     return AShareCalendar([today + timedelta(days=d) for d in range(-5, 60) if d % 7 not in (3, 4)])
 
 
-def make_client(warehouse, tmp_path: Path, paper_calendar=_calendar, config=None):
+def make_client(warehouse, tmp_path: Path, paper_calendar=_calendar, config=None,
+                lineage=None):
+    """lineage：返回承袭信息的无参函数（模拟 run_monitor 传进来的那个）。"""
     path = tmp_path / "workbench.sqlite3"
     workbench, paper = WorkbenchStore(path), PaperStore(path)
     strategy = workbench.create_strategy("demo", SOURCE)
@@ -52,6 +54,7 @@ def make_client(warehouse, tmp_path: Path, paper_calendar=_calendar, config=None
         MonitorService(SessionJournal(warehouse), config=cfg), cfg,
         backtests=BacktestService(tmp_path / "runs"), workbench=workbench,
         paper=paper, paper_calendar=paper_calendar,
+        shadow_lineage=lineage,
     )
     return TestClient(app), job
 
@@ -255,3 +258,53 @@ def test_paper_detail_shows_its_strategy_backtest_and_parameters(warehouse, tmp_
     assert "连续竞价判定" in body
     assert "竞价决策时刻" in body and "09:25:10" in body
     assert "保护价上浮" in body and "3%（开盘价 ×1.03）" in body
+
+
+class _Lineage:
+    """影子核心承袭的模拟账户（只取页面要用的字段）。"""
+
+    def __init__(self, account_id, **kw):
+        self.paper_account_id = account_id
+        self.paper_account_name = kw.get("name", "模拟-09:25入场")
+        self.paper_status = "running"
+        self.backtest_id = kw.get("backtest_id", "bt-9")
+        self.strategy_name = "structural_v1_2"
+        self.version_id = "v1"
+        self.params = {"auction_at": "09:25:10", "entry_price_buffer": 0.03}
+
+
+def test_paper_chart_overlays_the_shadow_only_when_it_follows_this_account(
+    warehouse, tmp_path,
+):
+    """影子盘承袭的是哪个账户，就只在那个账户页上叠加它的曲线。"""
+    follows = {"lineage": None}
+    client, job = make_client(warehouse, tmp_path, lineage=lambda: follows["lineage"])
+    mine = client.post("/api/paper-accounts", json={
+        "backtest_id": job.id, "name": "跟随的账户", "cash": 100_000,
+    }).json()["id"]
+    other = client.post("/api/paper-accounts", json={
+        "backtest_id": job.id, "name": "另一个账户", "cash": 100_000,
+    }).json()["id"]
+    follows["lineage"] = _Lineage(mine)
+    for ident in (mine, other):
+        _seed_equity(tmp_path, ident)
+
+    assert '"shadow":true' in client.get(f"/paper/{mine}").text.replace(" ", "")
+    assert '"shadow":false' in client.get(f"/paper/{other}").text.replace(" ", "")
+
+
+def _seed_equity(tmp_path: Path, ident: str) -> None:
+    """一个已完成的策略事件 + 当天收盘权益点，曲线才会渲染。"""
+    import sqlite3
+
+    with sqlite3.connect(tmp_path / "workbench.sqlite3") as con:
+        con.execute(
+            "INSERT INTO paper_events(account_id,event_key,scheduled_at,phase,status)"
+            " VALUES (?,?,?,?,?)",
+            (ident, "2026-09-24:bar:15:00:00", "2026-09-24T15:00:00", "bar", "completed"),
+        )
+        con.execute(
+            "INSERT INTO paper_equity(account_id,at,session,cash,market_value,total_value)"
+            " VALUES (?,?,?,?,?,?)",
+            (ident, "2026-09-24T15:00:00", "2026-09-24", 100_000.0, 0.0, 100_000.0),
+        )

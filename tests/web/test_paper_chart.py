@@ -64,3 +64,28 @@ def test_intraday_benchmark_day_return_needs_an_observed_previous_close():
     assert series[0]["strategy_day"] == pytest.approx(0.01)
     assert series[0]["benchmark_day"] is None
     assert series[0]["benchmark_cum"] == pytest.approx(-0.005)
+
+
+def test_history_overlays_the_shadow_return_on_its_own_base():
+    """影子盘与模拟账户本金不同，只能比收益率；缺数据的交易日给 None，不插值。"""
+    from qsys.web.paper_chart import history_series
+
+    daily = [
+        {"session": "2026-09-24", "total_value": 100_000.0, "benchmark_close": 4000.0},
+        {"session": "2026-09-28", "total_value": 104_000.0, "benchmark_close": 4040.0},
+        {"session": "2026-09-29", "total_value": 103_000.0, "benchmark_close": 4020.0},
+    ]
+    shadow = {"2026-09-23": 50_000.0, "2026-09-24": 50_000.0, "2026-09-28": 50_500.0}
+
+    got = history_series(daily, 100_000.0, shadow)
+
+    assert [round(p["strategy"], 4) for p in got] == [0.0, 0.04, 0.03]
+    assert [p["shadow"] for p in got] == [0.0, pytest.approx(0.01), None]
+
+
+def test_without_shadow_data_the_series_is_absent():
+    from qsys.web.paper_chart import history_series
+
+    daily = [{"session": "2026-09-24", "total_value": 100_000.0, "benchmark_close": None}]
+    assert history_series(daily, 100_000.0)[0]["shadow"] is None
+    assert history_series(daily, 100_000.0, {})[0]["shadow"] is None

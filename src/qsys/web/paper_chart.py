@@ -10,7 +10,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import date
 
 
@@ -20,12 +20,35 @@ def _ratio(value: float | None, base: float | None) -> float | None:
     return value / base - 1
 
 
-def history_series(daily: Sequence[dict], initial: float) -> list[dict]:
+def history_series(
+    daily: Sequence[dict], initial: float,
+    shadow: Mapping[str, float] | None = None,
+) -> list[dict]:
+    """日级历史曲线。
+
+    `shadow` 是承袭本账户的影子盘每日总资产（按交易日）。两边本金不同，故一律比
+    **累计收益率**：影子盘以本账户首个交易日当天（或之前最后一天）的总资产为基准。
+    没有影子盘数据的交易日给 None，不插值。
+    """
+    base = _shadow_base(daily, shadow)
     return [{
         "session": row["session"],
         "strategy": _ratio(row["total_value"], initial),
         "benchmark": _ratio(row.get("benchmark_close"), initial),
+        "shadow": (
+            _ratio((shadow or {}).get(row["session"]), base) if base else None
+        ),
     } for row in daily]
+
+
+def _shadow_base(daily: Sequence[dict], shadow: Mapping[str, float] | None) -> float | None:
+    """影子盘的基准点：本账户第一个交易日当天或之前最近一天的总资产。"""
+    if not shadow or not daily:
+        return None
+    first = daily[0]["session"]
+    earlier = [s for s in sorted(shadow) if s <= first]
+    value = shadow.get(first) or (shadow[earlier[-1]] if earlier else None)
+    return value if value else None
 
 
 def intraday_series(
