@@ -51,6 +51,10 @@ def price_limit_loader(query) -> Callable[[date, date], dict[date, dict[Symbol, 
 
 
 ENTRY_FILL_MODES = ("open", "continuous")
+ENTRY_FILL_LABELS = {
+    "open": "开盘价成交（原口径）",
+    "continuous": "连续竞价判定（09:31 分钟线）",
+}
 
 
 def entry_fill_rule(mode: str) -> EntryFill | None:
@@ -160,6 +164,8 @@ def execute_backtest(
         initial_cash=cash,
         config={"strategy_file": str(strategy_file), "strategy_version": _sha(strategy_file),
                 "cost_model": cost_label, "jq_compat": jq_compat,
+                # 单独存一份策略参数，页面无需从平铺的配置里猜哪些是参数
+                "params": dict(typed),
                 "entry_fill": entry.label() if entry is not None else "开盘价成交",
                 "entry_fill_mode": entry_fill,
                 **({"entry_fill_stats": ",".join(

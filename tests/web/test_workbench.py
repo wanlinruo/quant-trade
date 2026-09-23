@@ -151,3 +151,48 @@ def test_backtest_records_the_entry_fill_mode_and_defaults_to_continuous(client,
     assert "连续竞价判定" in client.get(f"/backtests/{default}").text
     bad = client.post("/api/backtests", json={**base, "entry_fill": "slippage"})
     assert bad.status_code == 422
+
+
+DESCRIBED = '''
+from qsys.strategy.base import Strategy
+PARAMETERS = {
+    "entry_price_buffer": {
+        "type": "float", "default": 0.002, "label": "保护价上浮",
+        "description": "限价 = min(开盘价 ×(1+上浮), 涨停价)；原策略 0.002，推荐 0.03",
+    }
+}
+class Demo(Strategy):
+    pass
+'''
+
+
+def test_the_editor_shows_the_parameter_help_without_hovering(client):
+    """原来只有 title 提示：要悬停一秒、点击无效、触摸设备完全没反应。"""
+    ident = client.post("/api/strategies", json={"name": "demo", "source": DESCRIBED}).json()["id"]
+
+    body = client.get(f"/strategies/{ident}").text
+
+    assert "限价 = min(开盘价 ×(1+上浮), 涨停价)" in body
+    assert 'title="限价' not in body               # 不再靠原生 tooltip
+    assert "entry_price_buffer｜默认 0.002" in body  # 参数名与默认值也要看得见
+    assert "竞价买单怎么算成交" in body              # 竞价入场撮合的说明常驻
+
+
+def test_the_editor_shows_the_strategy_id_and_labels_the_name_field(client):
+    """两条同名策略要能区分，改名入口也要看得出来。"""
+    ident = client.post("/api/strategies", json={"name": "structural_v1_2", "source": SOURCE}).json()["id"]
+
+    body = client.get(f"/strategies/{ident}").text
+
+    assert ident in body
+    assert "策略 id" in body
+    assert "策略名称" in body
+
+
+def test_the_strategy_list_shows_ids(client):
+    a = client.post("/api/strategies", json={"name": "same", "source": SOURCE}).json()["id"]
+    b = client.post("/api/strategies", json={"name": "same", "source": SOURCE}).json()["id"]
+
+    body = client.get("/strategies").text
+
+    assert a in body and b in body

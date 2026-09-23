@@ -11,7 +11,8 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
@@ -57,10 +58,17 @@ class RunSummary:
     gate_rejected: int
     cost_model: str
     generated_at: str
+    # 策略参数与竞价入场口径：做回测对比时要一眼看到用的是什么设置
+    params: Mapping[str, object] = field(default_factory=dict)
+    entry_fill: str = ""
 
     @property
     def return_pct(self) -> float | None:
         return None if self.cumulative_return is None else self.cumulative_return * 100
+
+    @property
+    def param_rows(self) -> list[tuple[str, str]]:
+        return param_rows(self.params)
 
 
 class BacktestService:
@@ -335,7 +343,50 @@ class BacktestService:
             gate_rejected=int(row.get("gate_rejected") or 0),
             cost_model=str(config.get("cost_model", "")),
             generated_at=str(generated),
+            params=_strategy_params(config),
+            entry_fill=str(config.get("entry_fill", "")),
         )
+
+
+PARAM_LABELS = {
+    "require_auction_volume": "要求竞价成交量",
+    "auction_at": "竞价决策时刻",
+    "entry_price_buffer": "保护价上浮",
+    "sizing_price_buffer": "定量价上浮",
+    "max_position_value": "单票预算上限",
+}
+_PERCENT_PARAMS = frozenset({"entry_price_buffer", "sizing_price_buffer"})
+
+
+def param_rows(params: Mapping[str, object]) -> list[tuple[str, str]]:
+    """(中文名, 展示值)。参数名未登记时原样展示，不猜它的含义。"""
+    return [
+        (PARAM_LABELS.get(name, name), _param_text(name, value))
+        for name, value in sorted(params.items())
+    ]
+
+
+def _param_text(name: str, value: object) -> str:
+    if isinstance(value, bool):
+        return "是" if value else "否"
+    if name in _PERCENT_PARAMS and isinstance(value, (int, float)):
+        return f"{float(value) * 100:g}%（开盘价 ×{1 + float(value):g}）"
+    return str(value)
+
+
+# 运行配置里属于"怎么跑"的键；其余视为策略参数（兼容没有 params 块的旧运行）
+_RUN_KEYS = frozenset({
+    "strategy", "strategy_file", "strategy_version", "cost_model", "jq_compat",
+    "benchmark", "universe_size", "generated_at", "params", "entry_fill",
+    "entry_fill_mode", "entry_fill_stats", "corporate_action_days", "checkpoints",
+})
+
+
+def _strategy_params(config: Mapping[str, object]) -> dict[str, object]:
+    stored = config.get("params")
+    if isinstance(stored, Mapping):
+        return dict(stored)
+    return {k: v for k, v in config.items() if k not in _RUN_KEYS}
 
 
 def _within(target: Path, root: Path) -> bool:
