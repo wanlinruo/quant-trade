@@ -1,0 +1,11 @@
+[Unit]
+Description=Re-run the auction order-timing study once a month
+
+[Timer]
+# 每月 1 日 20:30：当天 20:00 的服务质检已跑完，不与它抢内存；
+# 竞价快照每天随归档累积，样本按月变大后重新校准参数。
+OnCalendar=*-*-01 20:30 Asia/Shanghai
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -42,6 +42,10 @@ class ServiceSpec:
     purpose: str
     # 定时任务：交易日几点前应当已有运行记录（宽限后仍无记录判「未运行」）
     due: str | None = None
+    # 执行周期：daily＝每个交易日；monthly＝每月 run_day 号。月度任务在非执行日
+    # 不应被判「未运行」，否则看板天天红。
+    cadence: str = "daily"
+    run_day: int | None = None
     # 超过这么久仍是 running，视为进程已中断
     max_runtime: timedelta = timedelta(hours=3)
     heartbeat: str | None = None
@@ -85,6 +89,15 @@ SERVICES: tuple[ServiceSpec, ...] = (
         "按指标字典的规则验证当日数据：当日增量规则 + 当年至今的全量规则，"
         "结果写 metric_checks，供指标字典页与当晚服务质检读取",
         due="20:00", max_runtime=timedelta(minutes=30),
+    ),
+    ServiceSpec(
+        "auction-study", "竞价挂单时点研究（月度）", "timer", "Linux", "qsys-auction-study",
+        "每月 1 日 20:30",
+        ("仓库只读（auction_ticks、bar_minute_1m、日线）",),
+        ("/data/qsys/research/auction-timing/<年月>/report.json（只写研究产物）",),
+        "按累积的竞价快照重跑入场时点研究：各决策时点的信号一致性、成交率与相对"
+        "开盘价的成本，供 docs/reference/auction-order-timing-study.md 按月校准参数",
+        due="21:30", max_runtime=timedelta(minutes=30), cadence="monthly", run_day=1,
     ),
     ServiceSpec(
         "service-checks", "每日服务质检", "timer", "Linux", "qsys-service-checks",

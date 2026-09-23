@@ -39,6 +39,23 @@
   </div>
 </div>
 
+{% if periodic_rows %}<div class="card">
+  <h2>月度任务</h2>
+  <p class="muted">按月执行，只在执行日应有记录；其余日期显示为不适用。</p>
+  <div class="table-wrap">
+  <table class="board">
+    <tr><th></th>{% for day in periodic_columns %}{% if day.day == 1 %}<th class="day">{{ day.strftime("%m-%d") }}</th>{% endif %}{% endfor %}</tr>
+    {% for spec, cells in periodic_rows %}
+    <tr><th class="svc">{{ spec.name }}<br><span class="muted" style="font-size:11px;font-weight:400">{{ spec.schedule }}</span></th>
+      {% for cell in cells %}{% if cell.day.day == 1 %}<td>
+        {% if cell.detail_url %}<a class="cell {{ cell.state }}" href="{{ cell.detail_url }}">{{ cell.label }}</a>
+        {% else %}<span class="cell {{ cell.state }}">{{ cell.label }}</span>{% endif %}
+      </td>{% endif %}{% endfor %}
+    </tr>{% endfor %}
+  </table>
+  </div>
+</div>{% endif %}
+
 <div class="card">
   <h2>进程状态</h2>
   <table>

@@ -167,8 +167,16 @@ class ServiceConsole:
             return None
 
     def board(self, days: int = 14) -> tuple[list[date], list[tuple[ServiceSpec, list[Cell]]], bool]:
-        """每日定时任务看板；常驻服务的业务验收不再混入这里。"""
-        return self._board_for(self.services("timer"), days)
+        """每日定时任务看板；常驻服务的业务验收与月度任务不混入这里。"""
+        daily = [s for s in self.services("timer") if s.cadence == "daily"]
+        return self._board_for(daily, days)
+
+    def periodic_board(
+        self, days: int = 62,
+    ) -> tuple[list[date], list[tuple[ServiceSpec, list[Cell]]], bool]:
+        """月度任务看板：按月执行，天数窗口要盖到上个月的执行日。"""
+        monthly = [s for s in self.services("timer") if s.cadence == "monthly"]
+        return self._board_for(monthly, days)
 
     def acceptance_board(
         self, days: int = 14,
@@ -270,6 +278,8 @@ class ServiceConsole:
             return "none"
         if trading is None:
             return "none"
+        if spec.cadence == "monthly" and day.day != spec.run_day:
+            return "none"      # 月度任务：不是执行日就不该有记录
         if day not in trading:
             return "closed"
         due = datetime.combine(day, time.fromisoformat(spec.due or "23:59"))

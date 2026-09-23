@@ -1,0 +1,25 @@
+[Unit]
+Description=qsys monthly auction order-timing study (read-only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/qsys
+# 只读仓库，不取写锁；产物按年月落在数据盘的 research 目录。
+ExecStart=/bin/sh -c '/usr/bin/nice /usr/bin/ionice -c3 /home/ubuntu/qsys/.venv/bin/python -u \
+          scripts/auction_timing_study.py --warehouse /home/ubuntu/qsys/warehouse \
+          --service-runs var/service-runs \
+          --out /data/qsys/research/auction-timing/$(date +%%Y-%%m)'
+TimeoutStartSec=1800
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+# 只写研究产物与运行记录。
+ReadWritePaths=/home/ubuntu/qsys/var /data/qsys/research
+
+[Install]
+WantedBy=multi-user.target
