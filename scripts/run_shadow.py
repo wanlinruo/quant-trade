@@ -18,6 +18,7 @@ from qsys.live.store import LiveStore
 from qsys.live.tick_guard import TickFailureGuard
 from qsys.ops.alerts import AlertBus, LogAlertSink, WebhookAlertSink
 from qsys.paper.calendar import load_trading_calendar
+from qsys.live.lineage import StrategySource, resolve_strategy
 from qsys.paper.quotes import DECISION_TIMEOUT, QuoteClient
 from qsys.data.cutover import add_facade_argument, apply_facade_argument
 
@@ -26,7 +27,10 @@ log = structlog.get_logger("shadow-core")
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="qsys Linux 影子策略核心")
-    parser.add_argument("--strategy", default="strategies/structural_v1_2.py")
+    parser.add_argument("--strategy", default=None,
+                        help="不给则按配置 [strategy]（可承袭模拟账户）确定")
+    parser.add_argument("--workspace", default="var/shadow",
+                        help="承袭模拟账户时，策略源码快照写在这里")
     parser.add_argument("--warehouse", default="warehouse")
     parser.add_argument("--state", default="var/shadow-state.sqlite3")
     parser.add_argument("--config", default=None)
@@ -48,17 +52,27 @@ def main() -> int:
             config.alerts.webhook_url, timeout=config.alerts.timeout_seconds
         ))
     alerts = AlertBus(sinks)
+    if args.strategy:
+        source = StrategySource(Path(args.strategy))
+    else:
+        source = resolve_strategy(config.strategy, Path(args.workspace))
+        if source.follows_paper:
+            log.info("shadow_core.follows_paper", account=source.paper_account_id,
+                     name=source.paper_account_name, status=source.paper_status,
+                     backtest=source.backtest_id, version=source.version_id,
+                     params=dict(source.params))
     runtime = LiveRuntime(
-        Path(args.strategy), Path(args.warehouse), load_trading_calendar(args.config),
+        source.path, Path(args.warehouse), load_trading_calendar(args.config),
         QuoteClient(transport, config.streams, consumer="shadow-core",
                     timeout=DECISION_TIMEOUT),
         transport, config.streams, LiveStore(args.state),
         local_kill_path=Path("var/SHADOW_KILL"),
-        alerts=alerts, risk=config.risk, shadow=True,
+        alerts=alerts, risk=config.risk, shadow=True, params=dict(source.params),
     )
     guard = TickFailureGuard(alerts)
     with single_instance(args.lock):
-        log.info("shadow_core.started", strategy=args.strategy)
+        log.info("shadow_core.started", strategy=str(source.path),
+                 follows=source.paper_account_id or None)
         while True:
             try:
                 runtime.tick()

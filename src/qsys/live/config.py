@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import tomllib
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -77,6 +78,21 @@ class RiskConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class StrategyConfig:
+    """影子核心/实盘核心跑哪套策略。
+
+    `follows_paper_account` 指向一个模拟账户：源码与参数都从它存档的版本读，
+    而不是在这里重填一遍——"回测 → 模拟账户 → 影子盘"一条链承袭下来，
+    三者口径不会各自漂移。留空则用 `file` 与 `params`（老行为）。
+    """
+
+    file: str = "strategies/structural_v1_2.py"
+    params: Mapping[str, object] = field(default_factory=dict)
+    follows_paper_account: str = ""
+    workbench: str = "var/workbench/workbench.sqlite3"
+
+
+@dataclass(frozen=True, slots=True)
 class DeployConfig:
     redis: RedisConfig = field(default_factory=RedisConfig)
     streams: StreamConfig = field(default_factory=StreamConfig)
@@ -84,6 +100,7 @@ class DeployConfig:
     safety: SafetyConfig = field(default_factory=SafetyConfig)
     alerts: AlertConfig = field(default_factory=AlertConfig)
     risk: RiskConfig = field(default_factory=RiskConfig)
+    strategy: StrategyConfig = field(default_factory=StrategyConfig)
     consumer_group: str = "core"
     consumer_name: str = "core-1"
 
@@ -140,6 +157,10 @@ def load_deploy_config(path: str | Path | None = None) -> DeployConfig:
         ),
         alerts=AlertConfig(**raw.get("alerts", {})),
         risk=RiskConfig(**raw.get("risk", {})),
+        strategy=StrategyConfig(**{
+            **raw.get("strategy", {}),
+            "params": dict(raw.get("strategy", {}).get("params", {})),
+        }),
         consumer_group=agent.get("consumer_group", "core"),
         consumer_name=agent.get("consumer_name", "core-1"),
     )
