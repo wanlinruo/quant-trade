@@ -16,6 +16,30 @@
   <div style="margin-top:14px">{{ chart | safe }}</div>
 </div>
 
+{% if lineage %}<div class="card">
+  <h2>策略与来源</h2>
+  <p class="muted">影子盘承袭模拟账户的存档源码与参数（回测 → 模拟交易 → 影子盘），两边口径一致才可比。</p>
+  <dl class="param-list">
+    <div><dt>承袭模拟账户</dt><dd><a href="/paper/{{ lineage.paper_account_id }}">{{ lineage.paper_account_name }}</a></dd></div>
+    <div><dt>账户状态</dt><dd>{{ {'scheduled':'待生效','running':'运行中','paused':'已暂停','error':'异常','ended':'已结束'}.get(lineage.paper_status, lineage.paper_status) }}</dd></div>
+    <div><dt>来源回测</dt><dd><a class="mono" href="/backtests/{{ lineage.backtest_id }}">{{ lineage.backtest_id }}</a></dd></div>
+    <div><dt>策略</dt><dd>{{ lineage.strategy_name }}</dd></div>
+    <div><dt>源码版本</dt><dd class="mono">{{ lineage.version_id }}</dd></div>
+    {% for name, value in lineage_params %}<div><dt>{{ name }}</dt><dd>{{ value }}</dd></div>{% endfor %}
+  </dl>
+</div>{% endif %}
+
+{% if compare %}<div class="card">
+  <h2>影子盘 vs 模拟交易</h2>
+  <p class="muted">按累计收益率比较（本金不同，只有收益率可比）；只取两边都有记录的 {{ compare.sessions|length }} 个交易日。</p>
+  <div class="kpis">
+    <div class="kpi"><div class="label">影子盘</div><div class="value {{ 'up' if compare.shadow_return >= 0 else 'down' }}">{{ "{:+.2%}".format(compare.shadow_return) }}</div></div>
+    <div class="kpi"><div class="label">模拟交易</div><div class="value {{ 'up' if compare.paper_return >= 0 else 'down' }}">{{ "{:+.2%}".format(compare.paper_return) }}</div></div>
+    <div class="kpi"><div class="label">差额</div><div class="value">{{ "{:+.2%}".format(compare.shadow_return - compare.paper_return) }}</div></div>
+  </div>
+  <div style="margin-top:14px">{{ compare.chart | safe }}</div>
+</div>{% endif %}
+
 <div class="card">
   <h2>持仓</h2>
   {% if view.positions %}

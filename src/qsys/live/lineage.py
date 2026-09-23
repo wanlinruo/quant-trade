@@ -40,6 +40,13 @@ class StrategySource:
         return bool(self.paper_account_id)
 
 
+def paper_lineage(cfg: StrategyConfig) -> StrategySource | None:
+    """只查承袭关系，不落源码文件（网页只读展示用）。未配置时返回 None。"""
+    if not cfg.follows_paper_account:
+        return None
+    return _from_paper_account(cfg, workspace=None)
+
+
 def resolve_strategy(cfg: StrategyConfig, workspace: Path) -> StrategySource:
     """按部署配置确定策略源码与参数。
 
@@ -48,7 +55,10 @@ def resolve_strategy(cfg: StrategyConfig, workspace: Path) -> StrategySource:
     """
     if not cfg.follows_paper_account:
         return StrategySource(Path(cfg.file), dict(cfg.params))
+    return _from_paper_account(cfg, workspace=workspace)
 
+
+def _from_paper_account(cfg: StrategyConfig, *, workspace: Path | None) -> StrategySource:
     db = Path(cfg.workbench)
     if not db.exists():
         raise StrategyLineageError(f"工作台数据库不存在：{db}")
@@ -73,9 +83,11 @@ def resolve_strategy(cfg: StrategyConfig, workspace: Path) -> StrategySource:
         )
 
     config = json.loads(account["config_json"] or "{}")
-    workspace.mkdir(parents=True, exist_ok=True)
-    path = workspace / "strategy.py"
-    path.write_text(version["source"], encoding="utf-8")
+    path = Path(cfg.file)
+    if workspace is not None:
+        workspace.mkdir(parents=True, exist_ok=True)
+        path = workspace / "strategy.py"
+        path.write_text(version["source"], encoding="utf-8")
     return StrategySource(
         path=path,
         params=dict(config.get("params", {})),

@@ -69,6 +69,10 @@ class MonitorService:
         sessions = self._journal.sessions()
         return sessions[-1] if sessions else None
 
+    def equity_by_session(self) -> list[dict]:
+        """影子/实盘核心每日总资产（收盘写入 live_equity）。"""
+        return self._journal.equity().to_dicts()
+
     def has_session(self, session: date) -> bool:
         return session in self._journal.sessions()
 

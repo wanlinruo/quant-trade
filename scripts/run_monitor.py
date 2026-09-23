@@ -51,6 +51,7 @@ def build_app(
     journal = SessionJournal(warehouse)
 
     transport = None
+    strategy_cfg = None
     market_snapshot_key = "state:market_overview"
     market_schedule_key = "state:market_schedule"
     limits_prefix = "state:price_limits"
@@ -60,6 +61,7 @@ def build_app(
 
         deploy = load_deploy_config(config_path)
         transport = RedisTransport.from_config(deploy)
+        strategy_cfg = deploy.strategy
         market_snapshot_key = deploy.streams.market_snapshot
         market_schedule_key = deploy.streams.market_schedule
         limits_prefix = deploy.streams.price_limits
@@ -93,6 +95,8 @@ def build_app(
             limit_check_prefix=f"{limits_prefix}_check",
         ),
         paper_calendar=trading_calendar,
+        # 影子核心承袭的模拟账户；每次请求现查，配置改了不用重启监控台
+        shadow_lineage=(lambda: _shadow_lineage(strategy_cfg)),
         services=ServiceConsole(
             service_runs_dir or Path("var/service-runs"),
             calendar=trading_calendar,
@@ -126,6 +130,19 @@ def _daily_trading_calendar(config_path: str | None):
         return cache[today]
 
     return get
+
+
+def _shadow_lineage(strategy_cfg):
+    """只读查询影子核心承袭的模拟账户；查不到就不展示，不让监控台因此报错。"""
+    if strategy_cfg is None:
+        return None
+    from qsys.live.lineage import paper_lineage
+
+    try:
+        return paper_lineage(strategy_cfg)
+    except Exception as exc:  # 配置写错或账户被删：页面少一块，不影响监控
+        log.warning("monitor.shadow_lineage_unavailable", error=str(exc))
+        return None
 
 
 def main() -> int:
