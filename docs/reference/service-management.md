@@ -17,6 +17,10 @@
 | 每日归档 `qsys-daily-archive` | 交易日 15:40 | Tushare trade_cal；QMT 竞价逐笔、1 分钟线 | auction_ticks、minute_bars |
 | Tushare 收盘同步 `qsys-tushare-sync` | 交易日 17:00，19:00 补跑 | Tushare 11 个接口 | 9 张事实表、4 张派生表、metric_checks |
 | 每日服务质检 `qsys-service-checks` | 交易日 20:00 | 仓库只读、运行记录 | 运行记录 |
+| 竞价挂单时点研究 `qsys-auction-study` | **每月 1 日 20:30** | 仓库只读 | /data/qsys/research/auction-timing/<年月>/report.json |
+
+月度任务不进「每日执行看板」（否则非执行日天天判漏跑），单列在「月度任务」看板里，
+非执行日显示为不适用。
 
 常驻服务（模拟交易、影子盘、监控网页、Redis 隧道、Windows 行情网关与执行代理）只显示进程状态与心跳。
 Windows 进程看门狗每 5 分钟执行一次，属于周期守护任务：不占「每日执行看板」的日期格，

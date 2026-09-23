@@ -398,3 +398,14 @@ def test_live_business_health_populates_acceptance_board_and_service_detail(
     assert "事件失败" in page.text
     assert "auction:09:30:00 事件已过期，未补跑" in page.text
     assert "1 / 2" in page.text
+
+
+def test_a_monthly_service_is_not_judged_missed_on_ordinary_days(tmp_path, warehouse):
+    """月度任务只在执行日该有记录；混进每日看板会天天报漏跑。"""
+    console = ServiceConsole(tmp_path, systemd=lambda unit: {}, now=lambda: NOW)
+
+    assert "auction-study" not in [spec.id for spec, _ in console.board()[1]]
+    columns, rows, _ = console.periodic_board()
+    assert [spec.id for spec, _ in rows] == ["auction-study"]
+    states = {cell.day: cell.state for cell in rows[0][1]}
+    assert {state for day, state in states.items() if day.day != 1} == {"none"}

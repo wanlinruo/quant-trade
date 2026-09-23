@@ -205,6 +205,23 @@ uv run python scripts/run_structural_backtest.py --start 2026-01-01 --end 2026-0
 164 笔复利下期末净值约为现状的 73%。**现状回测对实盘偏乐观，推荐口径是实盘可达的
 估计。**
 
+### 6.6 月度自动复跑
+
+竞价快照每天随归档累积，样本按月变大，参数要按月校准（第 7 节局限）。
+
+- 定时任务 `qsys-auction-study`（每月 1 日 20:30，只读，不取仓库写锁），产物落在节点
+  `/data/qsys/research/auction-timing/<年月>/report.json`，同时写一条服务运行记录，
+  在服务管理页的「月度任务」看板可见，失败会在看板显示。
+- 报告结构与本文第 3 节同源：`sample`（区间、交易日数、标的日数、最终入档/入选）、
+  `A`（竞价内各决策时点的一致性与成本）、`B`/`C`（09:25 后挂单与 09:31 下单）。
+- 每月拿新报告与本文数字对照；**样本到 100 个入档标的日以上再调参数**，调整要在
+  第 8 节登记。手工复跑：
+
+```bash
+uv run python scripts/auction_timing_study.py --warehouse warehouse \
+    --out var/research/auction-timing/manual
+```
+
 ## 7. 局限
 
 - 样本只有 26 个交易日、32 个入档标的日（最终入选 10 个），只代表一段行情；竞价快照

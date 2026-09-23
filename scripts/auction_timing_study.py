@@ -292,17 +292,39 @@ def main() -> int:
     parser.add_argument("--market-data-facade", choices=("legacy", "canonical"), default=None)
     parser.add_argument("--start", type=date.fromisoformat)
     parser.add_argument("--end", type=date.fromisoformat)
-    parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--out", type=Path, required=True,
+                        help="产物目录；月度任务传 .../<年月>")
+    parser.add_argument("--service-runs", type=Path, default=None,
+                        help="给定则记录一次服务运行（月度定时任务用）")
     args = parser.parse_args()
     if args.market_data_facade:
         os.environ["QSYS_MARKET_DATA_FACADE"] = args.market_data_facade
+    if args.service_runs is None:
+        return _study(args)
+    from qsys.ops.services import ServiceRun
+
+    with ServiceRun.open(args.service_runs, "auction-study") as service_run:
+        with service_run.step("竞价挂单时点研究", interface="仓库只读",
+                              table="research/auction-timing") as step:
+            report = _study(args)
+            sample = report["sample"] if isinstance(report, dict) else {}
+            step.rows = int(sample.get("symbol_days", 0) or 0)
+            step.detail = (
+                f"{sample.get('start')}..{sample.get('end')}，{sample.get('days')} 个交易日、"
+                f"{sample.get('symbol_days')} 个标的日，最终入档 {sample.get('final_routed')}、"
+                f"最终入选 {sample.get('final_picks')}；产物 {args.out}"
+            )
+    return 0
+
+
+def _study(args) -> dict | int:
     report = run(args.warehouse, args.start, args.end)
     report["generated_at"] = datetime.now().isoformat(timespec="seconds")
     args.out.mkdir(parents=True, exist_ok=True)
     text = json.dumps(report, ensure_ascii=False, indent=2, default=str)
     (args.out / "report.json").write_text(text + "\n", encoding="utf-8")
     print(text)
-    return 0
+    return report
 
 
 if __name__ == "__main__":

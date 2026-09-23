@@ -246,11 +246,14 @@ def create_app(
         console = _services()
         columns, rows, has_calendar = console.board(days)
         _, acceptance_rows, _ = console.acceptance_board(days)
+        periodic_columns, periodic_rows, _ = console.periodic_board()
         return TEMPLATES.TemplateResponse(
             request=request, name="services.html",
             context={"title": config.title, "session": None, "page": "services",
                      "columns": columns, "rows": rows, "has_calendar": has_calendar,
                      "acceptance_rows": acceptance_rows,
+                     "periodic_columns": periodic_columns,
+                     "periodic_rows": periodic_rows,
                      "timeline": console.health_timeline(),
                      "processes": console.process_status(),
                      "timers": console.services("timer"),
