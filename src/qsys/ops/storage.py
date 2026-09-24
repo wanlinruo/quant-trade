@@ -53,6 +53,10 @@ RULES: tuple[RetentionRule, ...] = (
     RetentionRule("base", "backups", "操作回滚副本", CONTAINER),
     RetentionRule("base", "baidupan", "付费源下载区", PERMANENT,
                   note="下载清单与日志；原始数据文件入库并核验无损后删除，远端可重下"),
+    # 月度研究产物（竞价挂单、生态闸门）：每份几十 KB 的 JSON，按年月累积，
+    # 是研究结论的凭据，永久保留。
+    RetentionRule("base", "research", "研究产物", PERMANENT,
+                  note="月度定时任务写入，按年月分目录；对应文档见 docs/reference"),
     RetentionRule("base", "minute-rebuild", "重建暂存区", CONTAINER),
     RetentionRule("base", "minute-rebuild/warehouse", "重建暂存区", CONTAINER),
     # 2026-09-22 起原始 CSV 核验后删除：暂存区（逐日记有源 CSV SHA256）与隔离区（被隔离行的
