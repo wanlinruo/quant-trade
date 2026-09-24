@@ -100,6 +100,16 @@ SERVICES: tuple[ServiceSpec, ...] = (
         due="21:30", max_runtime=timedelta(minutes=30), cadence="monthly", run_day=1,
     ),
     ServiceSpec(
+        "gate-study", "生态闸门研究（月度）", "timer", "Linux", "qsys-gate-study",
+        "每月 1 日 21:00",
+        ("仓库只读", "当月回测的判定留痕"),
+        ("var/runs/研究-月度-gate-<年月>（网页可见）",
+         "/data/qsys/research/gate/<年月>/gate_study.json（只写研究产物）"),
+        "按当年至今的数据重跑一次开闸门回测，并对每条 S7 判定做逐笔反事实："
+        "被闸门拒掉的交易如果买了是赚是亏，供 docs/reference/gate-study.md 按月校准",
+        due="23:30", max_runtime=timedelta(hours=1), cadence="monthly", run_day=1,
+    ),
+    ServiceSpec(
         "service-checks", "每日服务质检", "timer", "Linux", "qsys-service-checks",
         "交易日 20:00",
         ("仓库只读", "运行记录"), ("var/service-runs（只写质检结果）",),

@@ -70,6 +70,20 @@ S6 分类 + S7 闸门每天都在拒单，但从没量过它值不值：拒掉�
 4. **暂不调阈值**：目前只有 183 条判定、9 个月样本。建议随竞价研究一起按月复跑，
    样本到 400 条以上再做阈值敏感性分析。
 
+## 4.1 月度复跑
+
+定时任务 `qsys-gate-study`（每月 1 日 21:00，只读）：先按当年至今跑一次开闸门回测
+（落在 `var/runs/研究-月度-gate-<年月>`，网页"回测记录"里带"命令行研究"标识可见），
+再对该次的判定留痕做逐笔反事实，产物写 `/data/qsys/research/gate/<年月>/gate_study.json`，
+并记一条服务运行，在服务管理页的"月度任务"看板可见。
+
+手工复跑：
+
+```bash
+uv run python scripts/gate_study.py --warehouse warehouse \
+    --decisions var/runs/<某次回测>/gate_decisions.csv --out var/research/gate/manual
+```
+
 ## 5. 局限
 
 - 逐笔反事实不含费用、滑点与资金约束，只比较价格上的相对优劣；完整回测对照才含成本。

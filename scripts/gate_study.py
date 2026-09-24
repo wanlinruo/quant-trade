@@ -172,10 +172,24 @@ def main() -> int:
     parser.add_argument("--horizon", type=int, default=20,
                         help="最多持有多少个交易日，超过按收盘价平掉")
     parser.add_argument("--market-data-facade", choices=("legacy", "canonical"), default=None)
+    parser.add_argument("--service-runs", type=Path, default=None,
+                        help="给定则记录一次服务运行（月度定时任务用）")
     args = parser.parse_args()
     if args.market_data_facade:
         os.environ["QSYS_MARKET_DATA_FACADE"] = args.market_data_facade
 
+    if args.service_runs is None:
+        return _study(args)
+    from qsys.ops.services import ServiceRun
+
+    with ServiceRun.open(args.service_runs, "gate-study") as service_run:
+        with service_run.step("生态闸门研究", interface="回测判定留痕 + 仓库只读",
+                              table="research/gate") as step:
+            report = _study(args, service_run=step)
+    return 0
+
+
+def _study(args, service_run=None) -> int:
     decisions = pl.read_csv(args.decisions, try_parse_dates=True)
     report = run(args.warehouse, decisions, args.horizon)
     report["generated_at"] = datetime.now().isoformat(timespec="seconds")
@@ -185,6 +199,14 @@ def main() -> int:
     text = json.dumps(report, ensure_ascii=False, indent=2, default=str)
     (args.out / "gate_study.json").write_text(text + "\n", encoding="utf-8")
     print(text)
+    if service_run is not None:
+        allowed, rejected = report["allowed"], report["rejected"]
+        service_run.rows = int(report["sample"]["decisions"])
+        service_run.detail = (
+            f"{report['sample']['start']}..{report['sample']['end']}，"
+            f"放行 {allowed.get('n', 0)} 笔平均 {allowed.get('mean', 0)}%，"
+            f"拒绝 {rejected.get('n', 0)} 笔平均 {rejected.get('mean', 0)}%；产物 {args.out}"
+        )
     return 0
 
 

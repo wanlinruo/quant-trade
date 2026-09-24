@@ -1,0 +1,10 @@
+[Unit]
+Description=Re-run the ecology gate study once a month
+
+[Timer]
+# 每月 1 日 21:00：竞价研究 20:30 先跑完，两者不抢内存。
+OnCalendar=*-*-01 21:00 Asia/Shanghai
+Persistent=true
+
+[Install]
+WantedBy=timers.target

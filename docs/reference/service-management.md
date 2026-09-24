@@ -18,6 +18,7 @@
 | Tushare 收盘同步 `qsys-tushare-sync` | 交易日 17:00，19:00 补跑 | Tushare 11 个接口 | 9 张事实表、4 张派生表、metric_checks |
 | 每日服务质检 `qsys-service-checks` | 交易日 20:00 | 仓库只读、运行记录 | 运行记录 |
 | 竞价挂单时点研究 `qsys-auction-study` | **每月 1 日 20:30** | 仓库只读 | /data/qsys/research/auction-timing/<年月>/report.json |
+| 生态闸门研究 `qsys-gate-study` | **每月 1 日 21:00** | 仓库只读 | var/runs/研究-月度-gate-<年月>（网页可见）、/data/qsys/research/gate/<年月>/gate_study.json |
 
 月度任务不进「每日执行看板」（否则非执行日天天判漏跑），单列在「月度任务」看板里，
 非执行日显示为不适用。
