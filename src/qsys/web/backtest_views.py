@@ -61,6 +61,9 @@ class RunSummary:
     # 策略参数与竞价入场口径：做回测对比时要一眼看到用的是什么设置
     params: Mapping[str, object] = field(default_factory=dict)
     entry_fill: str = ""
+    # 发起方式：web＝网页排队，cli＝命令行研究。缺失（老运行）按 cli 处理——
+    # 网页跑的都有排队任务，能从任务侧认出来。
+    source: str = "cli"
 
     @property
     def return_pct(self) -> float | None:
@@ -345,6 +348,7 @@ class BacktestService:
             generated_at=str(generated),
             params=_strategy_params(config),
             entry_fill=str(config.get("entry_fill", "")),
+            source=str(config.get("source", "") or "cli"),
         )
 
 
@@ -375,8 +379,10 @@ def _param_text(name: str, value: object) -> str:
 
 
 # 运行配置里属于"怎么跑"的键；其余视为策略参数（兼容没有 params 块的旧运行）
+SOURCE_LABELS = {"web": "网页提交", "cli": "命令行研究"}
+
 _RUN_KEYS = frozenset({
-    "strategy", "strategy_file", "strategy_version", "cost_model", "jq_compat",
+    "strategy", "strategy_file", "strategy_version", "cost_model", "jq_compat", "source",
     "benchmark", "universe_size", "generated_at", "params", "entry_fill",
     "entry_fill_mode", "entry_fill_stats", "corporate_action_days", "checkpoints",
 })

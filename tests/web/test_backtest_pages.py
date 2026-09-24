@@ -149,3 +149,17 @@ def test_a_run_with_no_parameters_says_so(client):
     body = client.get("/backtests/jq100k").text
     assert "没有记录策略参数" in body
     assert "开盘价成交（原口径）" in body      # 没有入场口径字段时按原口径显示
+
+
+def test_runs_carry_a_source_label(client, tmp_path):
+    """命令行跑的研究也要在页面上看得到，并标明不是网页排队任务。"""
+    _run_with_config(tmp_path, "cliresearch", {"cost_model": "qsys", "source": "cli"})
+    _run_with_config(tmp_path, "webjob", {"cost_model": "qsys", "source": "web"})
+
+    index = client.get("/backtests").text
+    assert "命令行研究" in index and "网页提交" in index
+    assert "cliresearch" in index and "webjob" in index
+    assert "命令行研究" in client.get("/backtests/cliresearch").text
+    assert "网页提交" in client.get("/backtests/webjob").text
+    # 老运行没有该字段时按命令行处理，不隐藏
+    assert "jq100k" in index

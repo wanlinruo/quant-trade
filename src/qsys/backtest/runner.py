@@ -164,6 +164,8 @@ def execute_backtest(
         initial_cash=cash,
         config={"strategy_file": str(strategy_file), "strategy_version": _sha(strategy_file),
                 "cost_model": cost_label, "jq_compat": jq_compat,
+                # 谁发起的这次回测：网页排队 vs 命令行研究，页面据此打标识
+                "source": "web",
                 # 单独存一份策略参数，页面无需从平铺的配置里猜哪些是参数
                 "params": dict(typed),
                 "entry_fill": entry.label() if entry is not None else "开盘价成交",

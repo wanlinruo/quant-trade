@@ -95,6 +95,7 @@ def _backtest_rows(backtests: BacktestService, workbench: WorkbenchStore | None)
                 if "max_drawdown" in metrics else None
             ),
             "has_report": run is not None,
+            "source": "web",
         })
         seen.add(run_name)
     for run_name, run in runs.items():
@@ -121,6 +122,7 @@ def _backtest_rows(backtests: BacktestService, workbench: WorkbenchStore | None)
                 if "max_drawdown" in metrics else None
             ),
             "has_report": True,
+            "source": run.source,
         })
     return rows
 

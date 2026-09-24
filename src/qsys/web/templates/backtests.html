@@ -9,9 +9,10 @@
     <button type="submit">筛选</button>
   </form>
   {% if rows %}<div class="table-wrap"><table class="history-table">
-    <thead><tr><th>策略 / 任务</th><th>创建时间</th><th>回测区间</th><th>耗时</th><th>成本模型</th><th class="num">策略收益</th><th class="num">基准收益</th><th class="num">最大回撤</th><th>状态</th></tr></thead>
+    <thead><tr><th>策略 / 任务</th><th>来源</th><th>创建时间</th><th>回测区间</th><th>耗时</th><th>成本模型</th><th class="num">策略收益</th><th class="num">基准收益</th><th class="num">最大回撤</th><th>状态</th></tr></thead>
     <tbody>{% for row in rows %}<tr>
       <td><a class="run-link" href="/backtests/{{ row.id }}">{{ row.strategy }}</a><div class="muted mono small">{{ row.id }}</div></td>
+      <td><span class="pill {{ 'todo' if row.source == 'cli' else 'ok' }}" title="{{ '命令行跑的研究对照，不是网页排队任务' if row.source == 'cli' else '网页提交的回测任务' }}">{{ '命令行研究' if row.source == 'cli' else '网页提交' }}</span></td>
       <td>{{ row.created_at.replace('T',' ') }}</td><td>{{ row.start }}<br><span class="muted">至 {{ row.end }}</span></td><td>{{ row.duration }}</td><td><span title="{{ row.cost_model }}">{{ row.cost_model[:12] }}{% if row.cost_model|length > 12 %}…{% endif %}</span></td>
       <td class="num {{ 'up' if row.return_pct is not none and row.return_pct > 0 else 'down' if row.return_pct is not none and row.return_pct < 0 }}">{% if row.return_pct is not none %}{{ '%+.2f'|format(row.return_pct) }}%{% else %}—{% endif %}</td>
       <td class="num {{ 'up' if row.benchmark_pct is not none and row.benchmark_pct > 0 else 'down' if row.benchmark_pct is not none and row.benchmark_pct < 0 }}">{% if row.benchmark_pct is not none %}{{ '%+.2f'|format(row.benchmark_pct) }}%{% else %}—{% endif %}</td>
