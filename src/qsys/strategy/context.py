@@ -129,10 +129,12 @@ class Context:
         passed: int | None = None,
         reasons: Mapping[str, int] | None = None,
         note: str | None = None,
+        routed: int | None = None,
     ) -> None:
-        """上报事件筛选漏斗和无动作原因，供运行日志展示。"""
+        """上报事件筛选漏斗（池子 → 入档 → 闸门通过）和无动作原因。"""
         self._report.report(
-            candidates=candidates, passed=passed, reasons=reasons, note=note
+            candidates=candidates, passed=passed, reasons=reasons, note=note,
+            routed=routed,
         )
 
     @property

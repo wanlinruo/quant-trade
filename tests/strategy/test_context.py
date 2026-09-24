@@ -167,3 +167,25 @@ class _Clock:
     def now(self):
         from datetime import datetime
         return datetime(2024, 1, 2, 9, 30)
+
+
+def test_context_forwards_every_funnel_stage_to_the_report():
+    """假上下文接受任意参数，真上下文不会——漏转发一个字段就是运行期 TypeError。
+
+    2026-09-24：策略上报 routed，真上下文没有这个参数，竞价事件当场失败。
+    """
+    import inspect
+
+    from qsys.ops.strategy_log import RunReport
+
+    report = RunReport()
+    ctx = Context(FixedClock(T), RecordingFeed(), PortfolioView.of(portfolio_with(0), {}),
+                  None, params={}, state={}, report=report)
+    ctx.report(candidates=34, routed=0, passed=0, reasons={"入档前·价格带": 34})
+
+    assert (report.candidates, report.routed, report.passed) == (34, 0, 0)
+    assert report.reasons == {"入档前·价格带": 34}
+    # 两边签名必须一致，少一个就会在实盘里炸
+    assert set(inspect.signature(RunReport.report).parameters) <= set(
+        inspect.signature(Context.report).parameters
+    )
