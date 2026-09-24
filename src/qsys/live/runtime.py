@@ -274,6 +274,7 @@ class LiveRuntime:
         return Context(
             self.clock, self.feed, view, api, params=self.params,
             state=self.state, market=self.market, schedule=schedule, report=report,
+            calendar=self.calendar,
         ), api
 
     def _events(self):

@@ -246,7 +246,8 @@ class BacktestEngine:
             api = OrderApi(view, prices)
             return Context(clock, self._feed, view, api,
                            params=self._params, state=state,
-                           market=self._market, schedule=schedule), api
+                           market=self._market, schedule=schedule,
+                           calendar=self._calendar), api
 
         def flush(api, at: datetime) -> None:
             nonlocal order_seq

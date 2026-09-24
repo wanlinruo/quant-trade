@@ -470,3 +470,18 @@ def test_sizing_buffer_is_separate_from_the_protect_price():
     assert ctx.order.styles == [(OrderType.LIMIT, pytest.approx(10.30))]
     # 按 10.05 定量：(100000 - 预留) / 10.05 向下取整到手
     assert ctx.order.submitted == [(str(SYM), Side.BUY, 9900)]
+
+
+def test_the_runtime_calendar_reaches_a_snapshot_strategy():
+    """模拟账户跑的是创建时存档的源码，构造参数改不到它；日历要能从 ctx 注入。"""
+    from qsys.core.calendar import AShareCalendar
+
+    sel = FakeSelection([Pick(str(SYM), "LOW_MAIN")])
+    strategy = StructuralStrategy(sel)            # 没有构造期日历
+    ctx = FakeCtx(datetime.combine(DAY, AUCTION_AT),
+                  market=FakeMarket(opens={str(SYM): 10.0}))
+    ctx.calendar = AShareCalendar([date(2024, 1, 2), DAY])
+
+    strategy.on_auction(ctx)
+
+    assert sel.calls == [(DAY, date(2024, 1, 2))]
