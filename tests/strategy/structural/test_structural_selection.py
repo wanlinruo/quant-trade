@@ -261,3 +261,38 @@ def test_funnel_does_not_accumulate_across_calls(warehouse, write_daily_bars):
     assert selection.funnel == first
     assert first is not None
     assert len(selection.decisions) == first.routed
+
+
+def test_history_accumulates_every_session_while_decisions_is_the_latest(
+    warehouse, write_daily_bars,
+):
+    """落盘产物要整段判定：只写最近一次时，gate_decisions.csv 永远只有最后一天
+
+    （2026-09-24 做闸门研究时发现，历次回测的该产物都只有表头或一行）。
+    """
+    low_setup(warehouse, write_daily_bars)
+    selection = selector(warehouse, require_auction_volume=False)
+
+    selection.select(TODAY, YESTERDAY)
+    first = list(selection.history)
+    selection.select(TODAY, YESTERDAY)
+
+    assert len(first) == 1
+    assert len(selection.decisions) == 1          # 最近一次
+    assert len(selection.history) == 2            # 整段累计
+
+
+def test_the_gate_can_be_disabled_for_research(warehouse, write_daily_bars):
+    """关闸门只改放行结果，S6 判定照常留痕，才看得出本该拒的是哪些。"""
+    low_setup(warehouse, write_daily_bars)
+    write_regime(warehouse, slope=0.5, heat=0.5)   # 让 LOW_MAIN 落进 RISK
+
+    blocked = selector(warehouse, require_auction_volume=False).select(TODAY, YESTERDAY)
+    opened = selector(warehouse, require_auction_volume=False,
+                      gate_enabled=False)
+    picks = opened.select(TODAY, YESTERDAY)
+
+    assert blocked == []
+    assert [p.symbol for p in picks] == ["600001.SH"]
+    assert opened.history[0].state == "RISK"
+    assert "GATE_DISABLED" in opened.history[0].reason

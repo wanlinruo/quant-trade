@@ -172,7 +172,7 @@ def execute_backtest(
                     f"{k}={v}" for k, v in sorted(result.diagnostics.items()))}
                    if entry is not None else {}),
                 "benchmark": "000300.SH", "universe_size": len(universe), **typed},
-        metrics=metrics, decisions=getattr(selection, "decisions", ()),
+        metrics=metrics, decisions=getattr(selection, "history", None) or getattr(selection, "decisions", ()),
         regime=CutoverMarketData(query, CutoverConfig.from_env()).market_regime(),
         sessions=sessions, benchmark=benchmark,
         strategy_source=strategy_source or strategy_file.read_text(encoding="utf-8"),

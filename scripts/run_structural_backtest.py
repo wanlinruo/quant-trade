@@ -273,7 +273,7 @@ def main() -> int:
                if args.sizing_price_buffer is not None else {}),
         },
         metrics=metrics_map,
-        decisions=getattr(selection, "decisions", ()),
+        decisions=getattr(selection, "history", None) or getattr(selection, "decisions", ()),
         regime=market_data.market_regime(),
         sessions=sessions,
     )

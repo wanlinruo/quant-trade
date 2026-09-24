@@ -92,7 +92,11 @@ class StructuralSelection:
         # 这样 gate_decisions 里仍能看出"本该拒"的是哪些。
         self._gate_enabled = gate_enabled
         self._listing: dict[str, date] | None = None
+        # decisions 是**最近一次**选股的判定；history 累计整段回测/运行的全部判定。
+        # 落盘产物要的是后者：之前只写 decisions，gate_decisions.csv 因此永远
+        # 只有最后一个交易日（2026-09-24 做闸门研究时发现，产物一直是空的）。
         self.decisions: list[Selection] = []
+        self.history: list[Selection] = []
         self.funnel: SelectionFunnel | None = None
 
     def _listing_dates(self) -> dict[str, date]:
@@ -171,6 +175,7 @@ class StructuralSelection:
             if decided is None:
                 continue
             self.decisions.append(decided)
+            self.history.append(decided)
             if decided.allow:
                 picks.append(decided)
         rejected = Counter(
