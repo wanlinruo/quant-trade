@@ -71,8 +71,11 @@ def auction_time(value) -> time:
 
 
 class StructuralStrategy(Strategy):
-    def __init__(self, selection) -> None:
+    def __init__(self, selection, calendar=None) -> None:
         self._selection = selection
+        # 交易日历：状态里还没攒到"上一交易日"时（新账户第一天、状态重置、
+        # 回测区间首日）用它查，而不是白白空转一天。
+        self._calendar = calendar
 
     # ---- 买入 ----
 
@@ -94,7 +97,7 @@ class StructuralStrategy(Strategy):
 
     def on_auction(self, ctx) -> None:
         today = ctx.now.date()
-        previous = ctx.state.get("previous_session")
+        previous = ctx.state.get("previous_session") or self._previous_session(today)
         if previous is None:
             ctx.report(note="没有上一交易日，无从选股")
             return
@@ -139,6 +142,20 @@ class StructuralStrategy(Strategy):
                 Symbol.parse(budget.symbol), Side.BUY, budget.qty,
                 OrderType.LIMIT, budget.protect_price,
             )
+
+    def _previous_session(self, today: date) -> date | None:
+        """上一交易日：优先用状态里攒的，没有就查交易日历。
+
+        买的是**首板次日**，选股必须先知道 T-1。原版长期连续运行，从不遇到
+        「第一天」，移植过来后新账户、状态重置与回测区间首日都会空转一天。
+        日历拿不到（早于日历范围）时仍然不选股，不猜。
+        """
+        if self._calendar is None:
+            return None
+        try:
+            return self._calendar.prev_session(today)
+        except (ValueError, IndexError):
+            return None
 
     def on_fill(self, ctx, fill: Fill) -> None:
         """用真实成交维护分支 lot；卖出按 FIFO 核销，状态可跨重启恢复。"""

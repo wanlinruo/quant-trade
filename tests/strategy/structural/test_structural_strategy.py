@@ -121,13 +121,45 @@ class FakeCtx:
 # ---------------- 买入 ----------------
 
 
-def test_first_session_places_no_orders():
-    """没有前一交易日就无从选股。"""
+def test_without_a_calendar_the_first_session_places_no_orders():
+    """状态里没攒到上一交易日、又没有日历，就无从选股。"""
     strategy = StructuralStrategy(FakeSelection([Pick(str(SYM), "LOW_MAIN")]))
     ctx = FakeCtx(datetime.combine(DAY, time(9, 15)))
     strategy.on_session_start(ctx)
     strategy.on_auction(ctx)
     assert ctx.order.submitted == []
+
+
+def test_the_first_session_uses_the_calendar_for_the_previous_session():
+    """新账户第一天、状态重置、回测区间首日都不该白白空转一天。"""
+    from qsys.core.calendar import AShareCalendar
+
+    sel = FakeSelection([Pick(str(SYM), "LOW_MAIN")])
+    calendar = AShareCalendar([date(2024, 1, 2), DAY])
+    strategy = StructuralStrategy(sel, calendar=calendar)
+    ctx = FakeCtx(datetime.combine(DAY, AUCTION_AT),
+                  market=FakeMarket(opens={str(SYM): 10.0}))
+
+    strategy.on_session_start(ctx)
+    strategy.on_auction(ctx)
+
+    assert sel.calls == [(DAY, date(2024, 1, 2))]          # 用日历查到的 T-1
+    assert ctx.order.submitted == [(str(SYM), Side.BUY, 9900)]
+
+
+def test_state_wins_over_the_calendar_when_it_has_one():
+    """攒到的上一交易日优先：回测/实盘连续运行时口径不变。"""
+    from qsys.core.calendar import AShareCalendar
+
+    sel = FakeSelection([Pick(str(SYM), "LOW_MAIN")])
+    strategy = StructuralStrategy(sel, calendar=AShareCalendar([date(2024, 1, 2), DAY]))
+    state = {"previous_session": date(2023, 12, 29), "last_session": date(2023, 12, 29)}
+    ctx = FakeCtx(datetime.combine(DAY, AUCTION_AT),
+                  market=FakeMarket(opens={str(SYM): 10.0}), state=state)
+
+    strategy.on_auction(ctx)
+
+    assert sel.calls == [(DAY, date(2023, 12, 29))]
 
 
 def test_auction_reports_the_funnel():
