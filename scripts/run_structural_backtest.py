@@ -174,7 +174,7 @@ def main() -> int:
         feed, market, query,
         require_auction_volume=args.require_auction_volume,
     )
-    strategy = StructuralStrategy(selection)
+    strategy = StructuralStrategy(selection, calendar=calendar)
 
     fees, slippage, cost_label = _cost_model(args.jq_compat)
     entry_fill = (

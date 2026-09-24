@@ -46,5 +46,6 @@ def create(deps):
         StructuralSelection(
             deps.feed, deps.market, deps.query,
             require_auction_volume=bool(require_auction_volume),
-        )
+        ),
+        calendar=deps.calendar,
     )

@@ -257,6 +257,7 @@ uv run python scripts/auction_timing_study.py --warehouse warehouse \
 | 策略参数 `entry_price_buffer`（保护价） | `0.002` | `0.03` | 不填或填 `0.002` |
 | 策略参数 `sizing_price_buffer`（定量价） | `0.002` | `0.005` | 不填或填 `0.002` |
 | 网页回测"竞价入场撮合" | 新任务默认 `continuous` | `continuous` | 选"开盘价成交（原口径）"；没有该字段的旧任务按原口径重放 |
+| 上一交易日来源（2026-09-24 起） | 状态里攒的；攒不到则查交易日历 | — | 区间首日此前不下单，现在会按日历取 T-1 选股；重跑旧回测首日结果会不同 |
 | 命令行 `run_structural_backtest.py` | 不变（`open`） | `--entry-fill continuous --entry-price-buffer 0.03 --sizing-price-buffer 0.005 --auction-at 09:25:10` | 不加参数 |
 
 每次回测的 `config.json` 记录入场口径（`entry_fill`/`entry_fill_mode`/`entry_fill_stats`）
