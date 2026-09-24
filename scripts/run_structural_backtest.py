@@ -103,6 +103,10 @@ def main() -> int:
         action="store_false",
     )
     parser.add_argument(
+        "--no-gate", dest="gate", action="store_false",
+        help="关闭 S7 生态闸门（只用于研究对照；S6 判定照常记录）",
+    )
+    parser.add_argument(
         "--jq-compat", action="store_true",
         help="成本口径切成聚宽默认值，用于逐笔对账（见下方 _cost_model）",
     )
@@ -173,6 +177,7 @@ def main() -> int:
     selection = StructuralSelection(
         feed, market, query,
         require_auction_volume=args.require_auction_volume,
+        gate_enabled=args.gate,
     )
     strategy = StructuralStrategy(selection, calendar=calendar)
 
@@ -253,6 +258,7 @@ def main() -> int:
             "cost_model": cost_label,
             "jq_compat": args.jq_compat,
             "require_auction_volume": args.require_auction_volume,
+            "gate_enabled": args.gate,
             "auction_at": auction_label,
             "checkpoints": ",".join(t.strftime("%H:%M") for t in CHECKPOINTS),
             "universe_size": len(universe),

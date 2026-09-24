@@ -21,6 +21,10 @@ PARAMETERS = {
         "type": "bool", "default": True, "label": "要求竞价成交量",
         "description": "缺少竞价量时是否拒绝候选标的",
     },
+    "gate_enabled": {
+        "type": "bool", "default": True, "label": "启用生态闸门",
+        "description": "关闭仅用于研究对照：S6 判定照常记录，S7 一律放行",
+    },
     "auction_at": {
         "type": "str", "default": "09:30", "choices": ["09:30", "09:25:10"],
         "label": "竞价决策时刻",
@@ -41,11 +45,13 @@ PARAMETERS = {
 
 def create(deps):
     """`--strategy` 装载时调用。调度由策略自己在 on_init 里声明。"""
-    require_auction_volume = (deps.params or {}).get("require_auction_volume", True)
+    params = deps.params or {}
+    require_auction_volume = params.get("require_auction_volume", True)
     return StructuralStrategy(
         StructuralSelection(
             deps.feed, deps.market, deps.query,
             require_auction_volume=bool(require_auction_volume),
+            gate_enabled=bool(params.get("gate_enabled", True)),
         ),
         calendar=deps.calendar,
     )
