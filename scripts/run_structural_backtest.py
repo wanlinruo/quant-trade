@@ -256,6 +256,7 @@ def main() -> int:
         start=start, end=end, initial_cash=args.cash,
         config={
             "cost_model": cost_label,
+            "source": "cli",
             "jq_compat": args.jq_compat,
             "require_auction_volume": args.require_auction_volume,
             "gate_enabled": args.gate,
