@@ -105,10 +105,14 @@ class StructuralStrategy(Strategy):
         picks = self._selection.select(today, previous)
         funnel = getattr(self._selection, "funnel", None)
         if funnel is not None:
+            # 入档前与闸门的拒绝原因分开标注：没买是哪一步决定的，页面要看得出
+            reasons = {f"入档前·{k}": v for k, v in funnel.skipped.items()}
+            reasons.update({f"闸门·{k}": v for k, v in funnel.reasons.items()})
             ctx.report(
                 candidates=funnel.pool,
+                routed=funnel.routed,
                 passed=funnel.allowed,
-                reasons=funnel.reasons,
+                reasons=reasons,
             )
         if not picks:
             return

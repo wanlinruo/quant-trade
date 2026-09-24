@@ -27,6 +27,7 @@ class RunReport:
 
     def __init__(self) -> None:
         self._candidates: int | None = None
+        self._routed: int | None = None
         self._passed: int | None = None
         self._reasons: dict[str, int] = {}
         self._note = ""
@@ -37,9 +38,13 @@ class RunReport:
         passed: int | None = None,
         reasons: Mapping[str, int] | None = None,
         note: str | None = None,
+        routed: int | None = None,
     ) -> None:
+        """`routed` 是"入档"数：池子里通过价格带与竞价量、真正进到闸门的那些。"""
         if candidates is not None:
             self._candidates = int(candidates)
+        if routed is not None:
+            self._routed = int(routed)
         if passed is not None:
             self._passed = int(passed)
         for key, count in (reasons or {}).items():
@@ -50,6 +55,10 @@ class RunReport:
     @property
     def candidates(self) -> int | None:
         return self._candidates
+
+    @property
+    def routed(self) -> int | None:
+        return self._routed
 
     @property
     def passed(self) -> int | None:
@@ -77,6 +86,7 @@ class RunRecord:
     total_value: float
     position_count: int
     candidates: int | None
+    routed: int | None
     passed: int | None
     orders: int
     rejects: int
@@ -98,6 +108,7 @@ RUN_COLUMNS: tuple[str, ...] = (
     "total_value",
     "position_count",
     "candidates",
+    "routed",
     "passed",
     "orders",
     "rejects",
@@ -121,7 +132,11 @@ def _summarize(
         return f"持仓 {position_count} 只，无下单"
     if report.candidates == 0:
         return "候选池为空，未下单"
-    funnel = f"候选 {report.candidates} 只 → 通过 {report.passed or 0} 只"
+    stages = [f"候选 {report.candidates} 只"]
+    if report.routed is not None:
+        stages.append(f"入档 {report.routed} 只")
+    stages.append(f"闸门通过 {report.passed or 0} 只")
+    funnel = " → ".join(stages)
     return f"{funnel} → 下单 {orders} 笔" if orders else f"{funnel}，未下单"
 
 
@@ -152,6 +167,7 @@ def build_record(
         total_value=cash + market_value,
         position_count=position_count,
         candidates=report.candidates,
+        routed=report.routed,
         passed=report.passed,
         orders=orders,
         rejects=rejects,
@@ -178,6 +194,7 @@ def run_values(record: RunRecord) -> tuple[Any, ...]:
         record.total_value,
         record.position_count,
         record.candidates,
+        record.routed,
         record.passed,
         record.orders,
         record.rejects,

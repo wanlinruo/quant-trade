@@ -43,16 +43,21 @@ def test_report_merges_fields_and_accumulates_reasons():
 
 def test_summary_shows_the_funnel_and_the_orders():
     report = RunReport()
-    report.report(candidates=37, passed=2)
+    report.report(candidates=37, routed=5, passed=2)
     record = _record(report, orders=2)
-    assert record.summary == "候选 37 只 → 通过 2 只 → 下单 2 笔"
+    assert record.summary == "候选 37 只 → 入档 5 只 → 闸门通过 2 只 → 下单 2 笔"
+    assert record.routed == 5
     assert record.duration_ms == 1800
     assert record.total_value == 50_000.0
 
 
 def test_summary_says_why_nothing_was_bought():
     passed_none = _record(_funnel(candidates=37, passed=0))
-    assert passed_none.summary == "候选 37 只 → 通过 0 只，未下单"
+    assert passed_none.summary == "候选 37 只 → 闸门通过 0 只，未下单"
+    # 入档为 0：没买是价格带/竞价量拦的，不是闸门
+    none_routed = RunReport()
+    none_routed.report(candidates=34, routed=0, passed=0)
+    assert _record(none_routed).summary == "候选 34 只 → 入档 0 只 → 闸门通过 0 只，未下单"
     empty_pool = _record(_funnel(candidates=0, passed=0))
     assert empty_pool.summary == "候选池为空，未下单"
 

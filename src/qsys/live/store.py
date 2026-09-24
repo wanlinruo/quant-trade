@@ -70,7 +70,7 @@ class LiveStore:
                     finished_at TEXT NOT NULL, duration_ms INTEGER NOT NULL,
                     cash REAL NOT NULL, market_value REAL NOT NULL,
                     total_value REAL NOT NULL, position_count INTEGER NOT NULL,
-                    candidates INTEGER, passed INTEGER,
+                    candidates INTEGER, routed INTEGER, passed INTEGER,
                     orders INTEGER NOT NULL, rejects INTEGER NOT NULL,
                     summary TEXT NOT NULL, reasons_json TEXT NOT NULL DEFAULT '{}',
                     note TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT ''
@@ -78,6 +78,10 @@ class LiveStore:
                 CREATE INDEX IF NOT EXISTS live_runs_session
                     ON live_strategy_runs(session, started_at);
             """)
+            # 已有库补列：入档数（池子 → 入档 → 闸门通过的中间一段）
+            runs = {row[1] for row in con.execute("PRAGMA table_info(live_strategy_runs)")}
+            if "routed" not in runs:
+                con.execute("ALTER TABLE live_strategy_runs ADD COLUMN routed INTEGER")
             columns = {row[1] for row in con.execute("PRAGMA table_info(live_runtime_fills)")}
             if "broker_order_id" not in columns:
                 con.execute("ALTER TABLE live_runtime_fills ADD COLUMN broker_order_id TEXT")

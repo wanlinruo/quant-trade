@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, time
 
 import polars as pl
@@ -54,12 +54,19 @@ class Selection:
 
 @dataclass(frozen=True, slots=True)
 class SelectionFunnel:
-    """一次选股的漏斗；只汇总本次已有的判定结果。"""
+    """一次选股的漏斗：池子 → 入档 → 闸门通过。只汇总本次已有的判定结果。
+
+    `skipped` 是**走到闸门之前**就被筛掉的原因（价格带、竞价量、数据缺失），
+    `reasons` 是**闸门**拒绝的原因。两段分开，才看得出"没买"是哪一步决定的：
+    2026-09-24 模拟盘 34 个池子标的全部在入档前被筛掉，页面却只显示
+    「候选 34 → 通过 0」，看不出闸门根本没参与。
+    """
 
     pool: int
     routed: int
     allowed: int
     reasons: dict[str, int]
+    skipped: dict[str, int] = field(default_factory=dict)
 
 
 class MissingAuctionDataError(ValueError):
@@ -116,10 +123,9 @@ class StructuralSelection:
                 [s for s in pool.broken_boards if s not in suspended],
             )
         if not pool.first_boards:
-            self.funnel = SelectionFunnel(
-                pool=0, routed=0, allowed=0, reasons={}
-            )
+            self.funnel = SelectionFunnel(pool=0, routed=0, allowed=0, reasons={})
             return []
+        skipped: Counter[str] = Counter()
 
         opens = market.session_open(pool.first_boards, day)
         auction_volumes = market.auction_volume(pool.first_boards, day)
@@ -130,7 +136,11 @@ class StructuralSelection:
         for symbol in pool.first_boards:
             bars = history.get(symbol)
             auction_price = opens.get(symbol)
-            if bars is None or bars.height == 0 or auction_price is None:
+            if bars is None or bars.height == 0:
+                skipped["缺历史日线"] += 1
+                continue
+            if auction_price is None:
+                skipped["缺当日开盘价"] += 1
                 continue
             missing = {
                 column: bars[column].null_count()
@@ -146,11 +156,13 @@ class StructuralSelection:
                     rows=bars.height,
                     missing=missing,
                 )
+                skipped["历史日线有空值"] += 1
                 continue
 
             decided = self._route(
                 symbol, day, previous, bars, auction_price,
                 auction_volumes.get(symbol), valuations.get(symbol), market,
+                skipped=skipped,
             )
             if decided is None:
                 continue
@@ -165,14 +177,19 @@ class StructuralSelection:
             routed=len(self.decisions),
             allowed=len(picks),
             reasons=dict(rejected),
+            skipped=dict(skipped),
         )
         return picks
 
     def _route(
         self, symbol, day, previous, bars, auction_price, auction_volume,
-        valuation, market,
+        valuation, market, *, skipped: Counter[str] | None = None,
     ) -> Selection | None:
-        """LOW 优先，命中即定；不回落去判 HIGH。"""
+        """LOW 优先，命中即定；不回落去判 HIGH。
+
+        入档前被筛掉的标的计入 `skipped`，页面才看得出是价格带还是竞价量拦的。
+        """
+        skipped = Counter() if skipped is None else skipped
         if check_low_open(bars, auction_price):
             tag = strategy_tag("LOW", symbol)
             if tag == "LOW_MAIN" and self._require_auction_volume \
@@ -182,6 +199,8 @@ class StructuralSelection:
                 bars, auction_volume
             ):
                 # 原文 L1174：LOW 已命中时，附加过滤失败也不回落去查 HIGH
+                skipped["低开·竞价量不足" if auction_volume is not None
+                        else "低开·缺竞价量"] += 1
                 return None
             factors = _stock_factors(bars) if tag == "LOW_MAIN" else {}
             return self._gate(day, previous, symbol, tag, market, factors)
@@ -199,6 +218,7 @@ class StructuralSelection:
             return self._gate(
                 day, previous, symbol, strategy_tag("HIGH", symbol), market, {}
             )
+        skipped["高开·缺竞价量" if high_without_volume else "不在低开/高开价格带"] += 1
         return None
 
     @staticmethod

@@ -104,7 +104,7 @@ def test_paper_create_and_resume_refuse_without_a_calendar(warehouse, tmp_path):
     assert "交易日历" in response.json()["detail"]
 
 
-def _account_with_run(warehouse, tmp_path, *, reasons, candidates, passed):
+def _account_with_run(warehouse, tmp_path, *, reasons, candidates, passed, routed=None):
     client, job = make_client(warehouse, tmp_path)
     ident = client.post(
         "/api/paper-accounts",
@@ -114,7 +114,7 @@ def _account_with_run(warehouse, tmp_path, *, reasons, candidates, passed):
         return client, ident
     day = date.today()
     report = RunReport()
-    report.report(candidates=candidates, passed=passed, reasons=reasons)
+    report.report(candidates=candidates, routed=routed, passed=passed, reasons=reasons)
     PaperStore(tmp_path / "workbench.sqlite3").record_run(
         ident,
         build_record(
@@ -146,7 +146,7 @@ def test_paper_detail_shows_the_run_log(warehouse, tmp_path):
     page = client.get(f"/paper/{ident}")
 
     assert "运行日志" in page.text
-    assert "候选 12 只 → 通过 0 只，未下单" in page.text
+    assert "候选 12 只 → 闸门通过 0 只，未下单" in page.text
     assert "估值不达标" in page.text
 
 
@@ -308,3 +308,17 @@ def _seed_equity(tmp_path: Path, ident: str) -> None:
             " VALUES (?,?,?,?,?,?)",
             (ident, "2026-09-24T15:00:00", "2026-09-24", 100_000.0, 0.0, 100_000.0),
         )
+
+
+def test_the_run_log_separates_the_pre_gate_stage_from_the_gate(warehouse, tmp_path):
+    """没买是价格带拦的还是闸门拦的，页面要能分清（2026-09-24 全被入档前筛掉）。"""
+    client, ident = _account_with_run(
+        warehouse, tmp_path, candidates=34, routed=0, passed=0,
+        reasons={"入档前·不在低开/高开价格带": 31, "入档前·低开·竞价量不足": 3},
+    )
+
+    page = client.get(f"/paper/{ident}").text
+
+    assert "候选 34 只 → 入档 0 只 → 闸门通过 0 只，未下单" in page
+    assert "入档前·不在低开/高开价格带 31" in page
+    assert "入档前·低开·竞价量不足 3" in page
