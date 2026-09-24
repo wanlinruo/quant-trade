@@ -88,6 +88,7 @@ class Context:
         state: dict[str, Any],
         market: MarketFeed | None = None,
         schedule: Schedule | None = None,
+        calendar=None,
         log=None,
         report: RunReport | None = None,
     ) -> None:
@@ -98,6 +99,9 @@ class Context:
         self._market = market
         # 只有 on_init 那一次的 ctx 带 schedule——调度在别处声明没有意义
         self._schedule = schedule
+        # 交易日历：策略状态里没攒到"上一交易日"时用它查。由运行时注入，
+        # 这样已存档的策略源码（模拟账户的快照）不改也能用上。
+        self._calendar = calendar
         self.params = params
         self.state = state
         self.log = log if log is not None else structlog.get_logger("strategy")
@@ -138,6 +142,11 @@ class Context:
         if self._schedule is None:
             raise RuntimeError("ctx.schedule 只在 on_init 里可用")
         return self._schedule
+
+    @property
+    def calendar(self):
+        """交易日历；运行时没注入时为 None，策略要自己容错。"""
+        return self._calendar
 
     @property
     def market(self) -> BoundMarket:

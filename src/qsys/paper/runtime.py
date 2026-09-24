@@ -193,6 +193,7 @@ class PaperRuntime:
             self.clock, self.feed, view, api,
             params=dict(self.store.account(self.id).config.get("params", {})),
             state=self.state, market=self.market, schedule=schedule, report=report,
+            calendar=self.calendar,
         ), api
 
     def _events(self, day: date):

@@ -97,7 +97,7 @@ class StructuralStrategy(Strategy):
 
     def on_auction(self, ctx) -> None:
         today = ctx.now.date()
-        previous = ctx.state.get("previous_session") or self._previous_session(today)
+        previous = ctx.state.get("previous_session") or self._previous_session(ctx, today)
         if previous is None:
             ctx.report(note="没有上一交易日，无从选股")
             return
@@ -143,17 +143,19 @@ class StructuralStrategy(Strategy):
                 OrderType.LIMIT, budget.protect_price,
             )
 
-    def _previous_session(self, today: date) -> date | None:
+    def _previous_session(self, ctx, today: date) -> date | None:
         """上一交易日：优先用状态里攒的，没有就查交易日历。
 
         买的是**首板次日**，选股必须先知道 T-1。原版长期连续运行，从不遇到
         「第一天」，移植过来后新账户、状态重置与回测区间首日都会空转一天。
-        日历拿不到（早于日历范围）时仍然不选股，不猜。
+        日历优先取运行时注入的 `ctx.calendar`——模拟账户跑的是创建时存档的源码，
+        构造参数改不动它。日历拿不到（早于日历范围）时仍然不选股，不猜。
         """
-        if self._calendar is None:
+        calendar = getattr(ctx, "calendar", None) or self._calendar
+        if calendar is None:
             return None
         try:
-            return self._calendar.prev_session(today)
+            return calendar.prev_session(today)
         except (ValueError, IndexError):
             return None
 
