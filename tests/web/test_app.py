@@ -168,7 +168,7 @@ def test_run_log_page_lists_events_and_reasons(warehouse, tmp_path):
 
     assert page.status_code == 200
     assert "运行日志" in page.text
-    assert "候选 37 只 → 通过 2 只 → 下单 2 笔" in page.text
+    assert "候选 37 只 → 闸门通过 2 只 → 下单 2 笔" in page.text
     assert "高开超过阈值" in page.text and "12" in page.text
     assert "竞价选股" in page.text
 

@@ -97,7 +97,7 @@ def test_strategy_runs_round_trip_and_rerun_overwrites(tmp_path):
 
     rows = store.strategy_runs(day)
     assert len(rows) == 1
-    assert rows[0]["summary"] == "候选 37 只 → 通过 2 只 → 下单 2 笔"
+    assert rows[0]["summary"] == "候选 37 只 → 闸门通过 2 只 → 下单 2 笔"
     assert rows[0]["reasons"] == {"高开超过阈值": 12}
     assert rows[0]["candidates"] == 37 and rows[0]["phase"] == "auction"
 

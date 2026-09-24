@@ -131,7 +131,7 @@ def test_strategy_runs_are_per_account(tmp_path):
 
     rows = store.strategy_runs("acct-a", day)
     assert len(rows) == 1
-    assert rows[0]["summary"] == "候选 12 只 → 通过 0 只，未下单"
+    assert rows[0]["summary"] == "候选 12 只 → 闸门通过 0 只，未下单"
     assert rows[0]["reasons"] == {"估值不达标": 12}
     assert store.strategy_runs("acct-b", day) == []
     assert store.run_sessions("acct-a") == [day]

@@ -183,7 +183,7 @@ def test_auction_reports_the_funnel():
     strategy.on_auction(ctx)
 
     assert report.candidates == 37 and report.passed == 1
-    assert report.reasons["高开超过阈值"] == 12
+    assert report.reasons["闸门·高开超过阈值"] == 12
 
 
 def test_auction_without_a_previous_session_says_so():

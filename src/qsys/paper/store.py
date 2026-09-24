@@ -122,7 +122,8 @@ class PaperStore:
                     duration_ms INTEGER NOT NULL, cash REAL NOT NULL,
                     market_value REAL NOT NULL, total_value REAL NOT NULL,
                     position_count INTEGER NOT NULL, candidates INTEGER,
-                    passed INTEGER, orders INTEGER NOT NULL, rejects INTEGER NOT NULL,
+                    routed INTEGER, passed INTEGER,
+                    orders INTEGER NOT NULL, rejects INTEGER NOT NULL,
                     summary TEXT NOT NULL, reasons_json TEXT NOT NULL DEFAULT '{}',
                     note TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT '',
                     PRIMARY KEY(account_id, event_key)
@@ -130,6 +131,10 @@ class PaperStore:
                 CREATE INDEX IF NOT EXISTS paper_runs_session
                     ON paper_strategy_runs(account_id, session, started_at);
             """)
+            # 已有库补列：入档数（池子 → 入档 → 闸门通过的中间一段）
+            runs = {row[1] for row in con.execute("PRAGMA table_info(paper_strategy_runs)")}
+            if "routed" not in runs:
+                con.execute("ALTER TABLE paper_strategy_runs ADD COLUMN routed INTEGER")
 
     def record_run(self, ident: str, record: RunRecord) -> None:
         columns = ("account_id", *RUN_COLUMNS)
