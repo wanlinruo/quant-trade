@@ -406,6 +406,6 @@ def test_a_monthly_service_is_not_judged_missed_on_ordinary_days(tmp_path, wareh
 
     assert "auction-study" not in [spec.id for spec, _ in console.board()[1]]
     columns, rows, _ = console.periodic_board()
-    assert [spec.id for spec, _ in rows] == ["auction-study"]
+    assert [spec.id for spec, _ in rows] == ["auction-study", "gate-study"]
     states = {cell.day: cell.state for cell in rows[0][1]}
     assert {state for day, state in states.items() if day.day != 1} == {"none"}

@@ -127,3 +127,15 @@ def test_2026_paid_staging_is_permanent_while_other_rebuild_output_expires(tmp_p
     assert by["paid_minute_quality"].verdict == S.PERMANENT
     assert by["tushare_daily"].verdict == S.ELIGIBLE
     assert S.unregistered(base) == []
+
+
+def test_the_research_output_directory_is_registered(tmp_path):
+    """月度研究产物必须有保留策略，否则每天的质检都报"未登记目录"。"""
+    base = tmp_path / "qsys"
+    _file(base / "research/auction-timing/2026-09/report.json")
+
+    items = _by_name(S.inventory(base, None, NOW))
+
+    assert items["research"].category == "研究产物"
+    assert items["research"].policy == S.PERMANENT
+    assert S.unregistered(base) == []
