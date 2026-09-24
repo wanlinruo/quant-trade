@@ -81,12 +81,16 @@ class StructuralSelection:
         query: WarehouseQuery,
         *,
         require_auction_volume: bool = True,
+        gate_enabled: bool = True,
     ) -> None:
         self._feed = feed
         self._market = market
         self._query = query
         # 忠实版：拿不到竞价量就剔除。近似版：跳过该条过滤。
         self._require_auction_volume = require_auction_volume
+        # 关掉 S7 闸门只用于研究对照：判定照常记录，但一律放行，
+        # 这样 gate_decisions 里仍能看出"本该拒"的是哪些。
+        self._gate_enabled = gate_enabled
         self._listing: dict[str, date] | None = None
         self.decisions: list[Selection] = []
         self.funnel: SelectionFunnel | None = None
@@ -243,9 +247,11 @@ class StructuralSelection:
         env = market.regime(previous, previous)
         row = env.row(0, named=True) if env.height else {}
         cls = classify(tag, row, factors)
-        return Selection(
-            day, symbol, tag, cls.state, cls.reason, gate_allow(tag, cls)
-        )
+        allow = gate_allow(tag, cls)
+        if not self._gate_enabled:
+            return Selection(day, symbol, tag, cls.state,
+                             f"{cls.reason}|GATE_DISABLED", True)
+        return Selection(day, symbol, tag, cls.state, cls.reason, allow)
 
     def _all_symbols(self) -> list[str]:
         return list(self._listing_dates())
