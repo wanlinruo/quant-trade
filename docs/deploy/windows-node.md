@@ -243,10 +243,10 @@ T-90d  2026-06-10      0 笔
 
 ## 进程看门狗（2026-09-18）
 
-影子执行代理 `qsys-agent-shadow` 与行情网关 `qsys-market-gateway` 的计划任务都是
-**「登录时触发」**：进程崩了不会自己起来。2026-09-18 05:06:47 代理以 0xC0000409
-崩溃，无人登录，任务一直停在 Ready，Linux 侧影子核心因此 5.5 小时取不到券商账户
-快照，当日 09:30 的竞价事件过期未跑。
+影子执行代理 `qsys-agent-shadow` 是**「登录时触发」**：进程崩了不会自己起来。
+2026-09-18 05:06:47 代理以 0xC0000409 崩溃，无人登录，任务一直停在 Ready，Linux 侧
+影子核心因此 5.5 小时取不到券商账户快照，当日 09:30 的竞价事件过期未跑。
+（行情网关后来改成了「开机触发」+ SYSTEM，见下节的触发方式一览。）
 
 `deploy/windows/qsys_watchdog.ps1` 每 5 分钟按命令行特征检查这两个进程，不在就
 `schtasks /run` 触发对应任务；只启动、不杀进程，也不区分盘中盘后。它写
@@ -267,6 +267,53 @@ schtasks /create /tn qsys-watchdog /tr "powershell -NoProfile -ExecutionPolicy B
 Linux 侧的兜底：每日服务质检新增 `shadow-core｜当日策略事件已执行` 与
 `paper｜当日策略事件已执行`，直接读两边状态库，事件缺失或被记成「已过期，未补跑」
 都会在服务管理页报出来。影子核心还会在连续失败 5 分钟后报一次告警，不再每秒刷屏。
+
+## 重启后能自己起来的和起不来的（2026-09-27）
+
+三个计划任务的触发方式与运行身份并不一致，决定了重启后各自的命运：
+
+| 任务 | 运行身份 | 触发 | 重启后 |
+|---|---|---|---|
+| `qsys-market-gateway` | SYSTEM | 开机时 | ✅ 自动恢复 |
+| `qsys-watchdog` | SYSTEM | 每 5 分钟 | ✅ 自动恢复 |
+| `qsys-agent-shadow` | Administrator | 登录时 | ❌ 需有人登录桌面 |
+
+miniQMT 更是必须有交互式桌面会话才能跑（`XtMiniQmt.exe "linkMini"`，实测在
+`RDP-Tcp#N` 会话里），而执行代理连不上 miniQMT 就会直接退出：
+
+```
+xtquant_adapter.py:45  RuntimeError("miniQMT 连接失败")
+```
+
+于是重启后会出现这样一个**看似故障、实则只是没人登录**的现象：看门狗每 5 分钟拉起
+一次代理，每次都失败，任务「上次结果: 1」，`agent.log` 里一串同样的连接失败。判断
+方法是先看 miniQMT 在不在，而不是去查代理自身。维护者登录并起好 miniQMT 后，
+`schtasks /run /tn \qsys-agent-shadow` 一次即恢复（2026-09-27 实测：07:17:55 启动成功，
+心跳 0.2 秒，券商快照恢复刷新）。
+
+已做的加固：给 miniQMT 建了登录自启快捷方式，登录桌面后不必再手工点开。
+
+```
+C:\Users\Administrator\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\miniQMT.lnk
+→ XtMiniQmt.exe "linkMini"
+```
+
+**尚未解决**：该机没有配置自动登录，重启后仍需人工远程登录一次，无人值守恢复不了。
+这是上线前必须补的一项（见 `docs/reference/live-readiness.md`）。要用 Sysinternals
+Autologon 由维护者自行设置——它把密码加密存 LSA，不要改用注册表 `DefaultPassword`
+那种明文写法。设好后应真做一次重启演练确认全链路自动恢复。
+
+### 任务计划 WMI 接口损坏与修复
+
+2026-09-19～26 这台机器上 `Get-ScheduledTask` 一直报 0x80070057、CIM 枚举返回 0 行，
+根因是 `TaskCache\Tree` 里有 23 条孤儿任务登记（全是 Windows 自带任务）。清理孤儿、
+`sfc /scannow`、`mofcomp` 重编 SchedProv.mof 都没能让接口恢复（Schedule 服务不允许
+单独重启），**最终是重启 Windows 才修好**，之后可正常列出 135 个任务。
+
+期间的影响面与应对：监控探测改用 `schtasks /query /fo CSV /v` 解析（PR #69），看门狗
+脚本本身用 `Win32_Process` + `schtasks`，两者都不依赖该接口，所以功能未受影响，只是
+服务管理页的在线时刻轴把看门狗显示成灰色。备份与全过程记录在
+`/data/qsys/var-deployments/20260927-windows-taskcache-repair/`。
 
 ## 模拟交易实时行情网关
 
