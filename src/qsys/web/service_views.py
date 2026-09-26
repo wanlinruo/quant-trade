@@ -7,6 +7,8 @@ Web 层只摆事实：运行记录来自任务自己写的 JSON（`qsys.ops.serv
 from __future__ import annotations
 
 import base64
+import csv
+import io
 import json
 import subprocess
 from collections.abc import Callable
@@ -62,30 +64,70 @@ def systemctl_show(unit: str) -> dict[str, str]:
     return {k: v for k, v in props.items() if v and v != "n/a"}
 
 
+# schtasks /query /fo CSV /v 的列顺序在各语言下一致，取值按位置读，不认标题文字。
+_TASK_COLUMNS = {"name": 1, "status": 3, "last_run": 5, "last_result": 6}
+# 状态文字随系统语言变化；只映射需要区分的三种，其余原样返回由调用方判未知。
+_TASK_STATES = {
+    "ready": "Ready", "就绪": "Ready", "準備就緒": "Ready",
+    "running": "Running", "正在运行": "Running", "執行中": "Running",
+    "disabled": "Disabled", "已禁用": "Disabled", "已停用": "Disabled",
+}
+
+
 def windows_task_show(task: str, *, host: str, key: Path) -> dict:
-    """经 SSH 只读查询 Windows 计划任务；连接失败时返回空，避免误报为禁用。"""
-    script = (
-        f"$t = Get-ScheduledTask -TaskName '{task}'; "
-        f"$i = Get-ScheduledTaskInfo -TaskName '{task}'; "
-        "[pscustomobject]@{State=$t.State.ToString(); "
-        "LastTaskResult=$i.LastTaskResult; "
-        "LastRunTime=$i.LastRunTime.ToString('s')} | ConvertTo-Json -Compress"
-    )
+    """经 SSH 只读查询 Windows 计划任务；连接失败时返回空，避免误报为禁用。
+
+    用 `schtasks` 而不是 `Get-ScheduledTask`：后者走计划任务的 WMI 提供程序，
+    该机上有 20 个系统自带任务的残留登记，枚举直接失败（2026-09-26 实测
+    `Get-ScheduledTask` 与 CIM 均取不到，`schtasks` 正常），看门狗因此在时刻轴上
+    连续显示"未知"。看门狗脚本本身用的就是 `Win32_Process` + `schtasks`，不受影响。
+    """
+    script = f"chcp 65001 > $null; schtasks /query /tn '{task}' /fo CSV /v"
     encoded = base64.b64encode(script.encode("utf-16le")).decode("ascii")
     try:
         out = subprocess.run(
             ["ssh", "-i", str(key), "-o", "BatchMode=yes", "-o", "ConnectTimeout=3",
              host, "powershell", "-NoProfile", "-EncodedCommand", encoded],
             # Windows PowerShell 的 stderr 可能带 GBK 编码的 CLIXML 进度信息；
-            # 只解析 stdout 的 JSON，不能让 text=True 因 stderr 解码失败丢掉结果。
+            # 只解析 stdout，不能让 text=True 因 stderr 解码失败丢掉结果。
             capture_output=True, timeout=8,
         )
         if out.returncode != 0:
             return {}
-        result = json.loads(out.stdout.decode("utf-8").strip())
-        return result if isinstance(result, dict) else {}
+        return parse_schtasks_csv(out.stdout.decode("utf-8", errors="replace"))
     except (OSError, ValueError, subprocess.SubprocessError):
         return {}
+
+
+def parse_schtasks_csv(text: str) -> dict:
+    """把 `schtasks /fo CSV /v` 的一行解析成 State / LastTaskResult / LastRunTime。
+
+    解析不出来就返回空字典——宁可报"取不到"，也不要编一个状态出来。
+    """
+    rows = [row for row in csv.reader(io.StringIO(text.strip())) if len(row) > 6]
+    if len(rows) < 2:
+        return {}
+    values = rows[1]
+    status = values[_TASK_COLUMNS["status"]].strip()
+    try:
+        result = int(values[_TASK_COLUMNS["last_result"]].strip())
+    except ValueError:
+        return {}
+    return {
+        "State": _TASK_STATES.get(status.casefold(), status),
+        "LastTaskResult": result,
+        "LastRunTime": _task_time(values[_TASK_COLUMNS["last_run"]].strip()),
+    }
+
+
+def _task_time(raw: str) -> str | None:
+    """schtasks 的时间形如 2026/9/26 23:19:00；从未运行过时是 N/A 之类的占位。"""
+    for fmt in ("%Y/%m/%d %H:%M:%S", "%Y-%m-%d %H:%M:%S", "%m/%d/%Y %I:%M:%S %p"):
+        try:
+            return datetime.strptime(raw, fmt).isoformat(timespec="seconds")
+        except ValueError:
+            continue
+    return None
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 from qsys.ops.alerts import AlertBus, RecordingAlertSink, Severity
@@ -53,3 +53,17 @@ def test_business_alerts_fire_once_and_report_recovery():
     assert [alert.severity for alert in sink.alerts] == [
         Severity.WARNING, Severity.CRITICAL, Severity.INFO,
     ]
+
+
+def test_a_task_caught_mid_run_is_not_a_failure():
+    """0x41301 是"正在运行、尚无结果"；看门狗每 5 分钟跑一次，探测可能正好撞上。"""
+    from scripts.run_health_observer import _watchdog_state
+
+    now = datetime(2026, 9, 26, 23, 30, tzinfo=timezone.utc)
+    running = {"State": "Running", "LastTaskResult": 267009,
+               "LastRunTime": (now - timedelta(seconds=30)).replace(tzinfo=None).isoformat()}
+    state, reason = _watchdog_state(running, now.replace(tzinfo=None))
+    assert reason == "watchdog_fresh"
+
+    failed = {**running, "State": "Ready", "LastTaskResult": 267009}
+    assert _watchdog_state(failed, now.replace(tzinfo=None))[1] == "watchdog_failed"
