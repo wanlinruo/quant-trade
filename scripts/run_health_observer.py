@@ -89,12 +89,18 @@ def _heartbeat_reader(transport, prefix: str):
     return read
 
 
+# 0x41301：任务此刻正在运行，还没有本次结果——不是失败。
+_TASK_STILL_RUNNING = 267009
+
+
 def _watchdog_state(task: dict, now: datetime) -> tuple[str, str]:
     if not task:
         return UNKNOWN, "windows_task_unreachable"
     if task.get("State") == "Disabled":
         return DOWN, "watchdog_disabled"
-    if task.get("LastTaskResult") != 0 or task.get("State") not in ("Ready", "Running"):
+    result = task.get("LastTaskResult")
+    running_now = result == _TASK_STILL_RUNNING and task.get("State") == "Running"
+    if (result != 0 and not running_now) or task.get("State") not in ("Ready", "Running"):
         return DOWN, "watchdog_failed"
     raw = task.get("LastRunTime")
     if not raw:
