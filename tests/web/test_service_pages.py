@@ -230,23 +230,30 @@ def test_persisted_health_stays_fresh_for_checkpoint_interval_plus_headroom(tmp_
     assert row["health_observation"]["reason_code"] == "observer_stale"
 
 
+ZH_TASK_CSV = (
+    '"主机名","任务名","下次运行时间","状态","登录模式","上次运行时间","上次结果",'
+    '"创建者","要运行的任务"\n'
+    '"WIN","\\\\qsys-watchdog","2026/9/26 23:24:00","就绪","交互式/后台",'
+    '"2026/9/26 23:19:00","0","admin","powershell"\n'
+)
+
+
 def test_windows_task_query_uses_read_only_encoded_powershell(monkeypatch, tmp_path):
     import base64
     import subprocess
 
     def fake_run(args, **kwargs):
         script = base64.b64decode(args[-1]).decode("utf-16le")
-        assert "Get-ScheduledTask -TaskName 'qsys-watchdog'" in script
-        assert "Get-ScheduledTaskInfo -TaskName 'qsys-watchdog'" in script
-        assert "Start-ScheduledTask" not in script
+        assert "schtasks /query /tn 'qsys-watchdog' /fo CSV /v" in script
+        assert "/run" not in script and "/change" not in script   # 只读
         return subprocess.CompletedProcess(
-            args, 0, b'{"State":"Ready","LastTaskResult":0}',
+            args, 0, ZH_TASK_CSV.encode("utf-8"),
             b'\xd5\xfd\xd4\xda',  # PowerShell stderr 可以不是 UTF-8
         )
 
     monkeypatch.setattr("qsys.web.service_views.subprocess.run", fake_run)
     assert windows_task_show("qsys-watchdog", host="win.example", key=tmp_path / "key") == {
-        "State": "Ready", "LastTaskResult": 0,
+        "State": "Ready", "LastTaskResult": 0, "LastRunTime": "2026-09-26T23:19:00",
     }
 
 
@@ -409,3 +416,41 @@ def test_a_monthly_service_is_not_judged_missed_on_ordinary_days(tmp_path, wareh
     assert [spec.id for spec, _ in rows] == ["auction-study", "gate-study"]
     states = {cell.day: cell.state for cell in rows[0][1]}
     assert {state for day, state in states.items() if day.day != 1} == {"none"}
+
+
+
+
+def test_the_windows_task_probe_reads_localised_schtasks_output():
+    """2026-09-26：Get-ScheduledTask 在该机上枚举失败（20 个系统任务残留登记），
+
+    看门狗在时刻轴上连续显示未知。改读 schtasks，按列位置取值，不认标题文字。
+    """
+    from qsys.web.service_views import parse_schtasks_csv
+
+    got = parse_schtasks_csv(ZH_TASK_CSV)
+
+    assert got == {"State": "Ready", "LastTaskResult": 0,
+                   "LastRunTime": "2026-09-26T23:19:00"}
+
+
+def test_an_english_disabled_task_and_a_failure_are_recognised():
+    from qsys.web.service_views import parse_schtasks_csv
+
+    english = (
+        '"HostName","TaskName","Next Run Time","Status","Logon Mode",'
+        '"Last Run Time","Last Result","Author","Task To Run"\n'
+        '"WIN","\\\\qsys-watchdog","N/A","Disabled","Interactive only",'
+        '"11/30/1999 12:00:00 AM","267011","admin","powershell"\n'
+    )
+    got = parse_schtasks_csv(english)
+    assert got["State"] == "Disabled" and got["LastTaskResult"] == 267011
+
+
+def test_unparsable_output_reports_nothing_rather_than_a_state():
+    from qsys.web.service_views import parse_schtasks_csv
+
+    assert parse_schtasks_csv("") == {}
+    assert parse_schtasks_csv("错误: 系统找不到指定的文件。") == {}
+    # 结果码不是数字时也不猜
+    broken = ZH_TASK_CSV.replace('"0","admin"', '"—","admin"')
+    assert parse_schtasks_csv(broken) == {}
