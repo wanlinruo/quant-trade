@@ -4,6 +4,8 @@ __pycache__/
 .pytest_cache/
 /warehouse
 config/deploy.local.toml
+# 演练配置从 deploy.local.toml 派生，同样带凭据，绝不能进库
+config/drill.toml
 var/
 .DS_Store
 .claude/worktrees/
