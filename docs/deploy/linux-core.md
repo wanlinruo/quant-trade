@@ -447,7 +447,7 @@ uv run python scripts/run_paper.py \
 - 不要在盘中让同一台 QMT 批量下载历史 tick：2026-09-17 00:49 的超时与那次批量补采
   时间重合（未证实因果）。
 
-## 重启后能自己回来的（2026-09-27 静态核对）
+## 重启后能自己回来的（2026-09-27 实测）
 
 先看清楚一件容易想错的事：**Redis 不在这台机器上，它跑在 Windows 节点**，
 Linux 侧靠 `qsys-redis-tunnel.service` 的 SSH 隧道把 `127.0.0.1:6379` 转过去
@@ -465,8 +465,11 @@ Linux 侧靠 `qsys-redis-tunnel.service` 的 SSH 隧道把 `127.0.0.1:6379` 转�
 | nginx / docker / chrony | enabled | ✅ |
 
 **不会回来的**：用 `systemd-run` 起的 transient 单元（临时观察用的
-`qsys-summary-*`）。它们只活在内存里，重启即消失——临时监控要跨重启就得写成
-正式单元文件。
+`qsys-summary-*`）。它们只活在内存里，重启即消失。对策是把脚本写成文件
+（`~/scratch/summary.sh`），重启后只需重新挂定时器，不必从头重写命令。
+
+22:38 实测重启验证：22:38:52 启动完成，22:39:07 影子核心就绪，**约 15 秒全部自动恢复**，无失败单元，上表逐项对得上。唯一损失就是那两个
+transient 单元。记录在 `/data/qsys/var-deployments/20260927-linux-reboot-drill/`。
 
 所以整条链路上唯一的无人值守恢复缺口，仍然只有 Windows 那边的 miniQMT 与执行代理
 （见 `docs/deploy/windows-node.md`）。**控制面（Redis、行情网关、看门狗）能自动恢复，
