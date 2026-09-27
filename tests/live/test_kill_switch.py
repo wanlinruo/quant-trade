@@ -78,3 +78,56 @@ def test_custom_key_is_honored(tmp_path):
     ks = KillSwitch(transport, key="control:halt", local_path=tmp_path / "K")
     ks.engage("x")
     assert transport.get_key("control:halt") is not None
+
+
+# ---- Redis 不可达（2026-09-27 故障演练发现）----
+
+class BrokenRedis(MemoryTransport):
+    """连不上的 Redis：真实的 RedisTransport 不吞异常，redis-py 直接抛。
+
+    以前测试一律用 MemoryTransport，它从不抛错，于是整类故障被测试盖住了。
+    """
+
+    def get_key(self, key):
+        raise ConnectionError("Redis 不可达")
+
+    def set_key(self, key, value):
+        raise ConnectionError("Redis 不可达")
+
+    def delete_key(self, key):
+        raise ConnectionError("Redis 不可达")
+
+
+@pytest.fixture
+def broken(tmp_path) -> KillSwitch:
+    return KillSwitch(BrokenRedis(), local_path=tmp_path / "KILL")
+
+
+def test_engage_still_writes_the_local_mark_when_redis_is_down(broken, tmp_path):
+    """核心熔断停机时，坏的往往正是 Redis；先写 Redis 会让本地标记永远写不下去。"""
+    broken.engage("三次连续失败熔断")
+
+    assert (tmp_path / "KILL").exists()
+    assert "三次连续失败熔断" in (tmp_path / "KILL").read_text()
+
+
+def test_a_local_mark_still_stops_trading_when_redis_is_down(tmp_path):
+    """停机的本地路径本就不该依赖任何服务——这是这个模块存在的理由。"""
+    (tmp_path / "KILL").write_text("人工放置")
+    switch = KillSwitch(BrokenRedis(), local_path=tmp_path / "KILL")
+
+    assert switch.is_engaged() is True
+    assert "人工放置" in switch.reason()
+
+
+def test_an_unreachable_redis_counts_as_engaged(broken):
+    """读不到就按停机算：宁可误停，不可停不下来。"""
+    assert broken.is_engaged() is True
+    assert "Redis 不可达" in broken.reason()
+
+
+def test_release_clears_the_local_mark_even_when_redis_is_down(broken, tmp_path):
+    broken.engage("x")
+    broken.release()
+
+    assert not (tmp_path / "KILL").exists()
