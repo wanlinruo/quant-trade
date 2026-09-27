@@ -80,5 +80,9 @@ class KillSwitch:
         return self._local_reason() is not None or self._remote_reason() is not None
 
     def reason(self) -> str:
-        parts = [self._local_reason(), self._remote_reason()]
-        return " | ".join(p for p in parts if p)
+        """两条路径的原因；同一次停机两边写的是同一句，去重后只显示一次。"""
+        seen: list[str] = []
+        for part in (self._local_reason(), self._remote_reason()):
+            if part and part not in seen:
+                seen.append(part)
+        return " | ".join(seen)

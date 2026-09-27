@@ -21,12 +21,32 @@ Stream 名称，且不得连接该实盘账户发单。
 紧急停止：
 
 ```bash
-uv run python scripts/kill.py stop "manual stop"
+uv run python scripts/kill.py stop "manual stop"   # 实盘核心与影子核心一起停
+uv run python scripts/kill.py status               # 两个都报
+uv run python scripts/kill.py resume live          # 恢复必须指名
 ```
 
 该命令让核心停止开仓，通知 Windows 撤销活动委托，并落下远端/本地停止闸；
-减仓单在风控层仍被允许。恢复前必须先对账，再显式执行 `--resume`。系统不会
+减仓单在风控层仍被允许。恢复前必须先对账，再显式执行 `resume`。系统不会
 自动清仓，避免在行情或网络异常时失控卖出。
+
+**实盘核心与影子核心是两套开关**：`control:kill` / `var/KILL` 对实盘，
+`shadow:control:kill` / `var/SHADOW_KILL` 对影子。所以这个脚本的三条命令是这样定的：
+
+- `stop` 默认**两个都停**——紧急时要的是全停，停掉没在跑的那个也无害，
+  漏停正在跑的那个才要命。要单停就在原因后面加 `live` 或 `shadow`。
+- `status` **两个都报**——2026-09-27 之前它只看实盘那套，观察期里明明跑着影子核心，
+  它却回一句"运行中"，报的是停用中的实盘核心。查了却查错对象，比没查更危险。
+- `resume` **必须指名**，不接受默认值：解除停机是危险方向。
+
+停机标记落地的顺序也要紧：**先写本地文件，再写 Redis**。反过来的话，Redis 不可达时
+`set_key` 会抛，本地标记就永远写不下去——而核心连续故障熔断时，坏的往往正是 Redis
+（2026-09-27 故障演练发现，见 `docs/reference/fault-drills.md`）。相应地，
+Redis 读不到时按**停机**处理：宁可误停，不可停不下来。
+
+这条规则有个副作用要知道：Redis 持续断线超过 3 个 tick，核心熔断会真的落下本地
+停机标记，Redis 恢复后它**不会自动消失**，得人工 `resume`。这是有意的——熔断之后
+本就该有人来看一眼。
 
 ## 首次接入顺序
 
