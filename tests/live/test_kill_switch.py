@@ -131,3 +131,22 @@ def test_release_clears_the_local_mark_even_when_redis_is_down(broken, tmp_path)
     broken.release()
 
     assert not (tmp_path / "KILL").exists()
+
+
+def test_reason_does_not_repeat_itself(ks):
+    """一次停机两边写的是同一句，显示两遍只会让人以为停了两次。"""
+    ks.engage("单一原因")
+
+    assert ks.reason().count("单一原因") == 1
+
+
+def test_reason_keeps_both_when_they_differ(tmp_path):
+    """本地与 Redis 记的不是同一件事时，两条都要看得到。"""
+    transport = MemoryTransport()
+    switch = KillSwitch(transport, local_path=tmp_path / "KILL")
+    transport.set_key("control:kill", "Redis 侧：核心熔断")
+    (tmp_path / "KILL").write_text("本地：人工停机")
+
+    reason = switch.reason()
+
+    assert "核心熔断" in reason and "人工停机" in reason
