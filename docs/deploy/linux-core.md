@@ -447,10 +447,36 @@ uv run python scripts/run_paper.py \
 - 不要在盘中让同一台 QMT 批量下载历史 tick：2026-09-17 00:49 的超时与那次批量补采
   时间重合（未证实因果）。
 
+## 重启后能自己回来的（2026-09-27 静态核对）
+
+先看清楚一件容易想错的事：**Redis 不在这台机器上，它跑在 Windows 节点**，
+Linux 侧靠 `qsys-redis-tunnel.service` 的 SSH 隧道把 `127.0.0.1:6379` 转过去
+（`-L 127.0.0.1:6379:127.0.0.1:6379`）。所以「Redis 能不能恢复」问的其实是 Windows。
+
+| 组件 | 怎么起的 | 重启后 |
+|---|---|---|
+| `/data/qsys` 数据盘 | fstab，`defaults,nofail` | ✅ |
+| `qsys-monitor`、`qsys-web-test` | systemd，enabled | ✅ |
+| `qsys-shadow-core`、`qsys-paper` | systemd，enabled | ✅ |
+| `qsys-health-observer` | systemd，enabled | ✅ |
+| `qsys-redis-tunnel` | systemd，enabled + `Restart=always` | ✅ |
+| 7 个 timer（归档/同步/质检/研究等） | systemd，timer enabled、service disabled | ✅（这是 timer 驱动 oneshot 的正确形态） |
+| Redis 本体（在 Windows） | Windows 服务，启动类型 Automatic | ✅ 实测 05:15:07 随 05:14:58 的重启一起回来 |
+| nginx / docker / chrony | enabled | ✅ |
+
+**不会回来的**：用 `systemd-run` 起的 transient 单元（临时观察用的
+`qsys-summary-*`）。它们只活在内存里，重启即消失——临时监控要跨重启就得写成
+正式单元文件。
+
+所以整条链路上唯一的无人值守恢复缺口，仍然只有 Windows 那边的 miniQMT 与执行代理
+（见 `docs/deploy/windows-node.md`）。**控制面（Redis、行情网关、看门狗）能自动恢复，
+断的只是下单执行这一段。**
+
 ## 待办
 
 - [ ] **Web 应用层登录（TOTP）替换 Nginx Basic Auth**，并按用户做登录失败限流
-- [ ] 证书到期监控与续期演练（8443 复用 `wanlinruo.cn` 证书）
+- [x] 证书到期监控与续期演练（8443 复用 `wanlinruo.cn` 证书）——2026-09-27 完成：
+      续期改回 HTTP-01 全自动、补上 Nginx 重载钩子、加质检项「站点证书有效期」
 - [ ] 关闭 SSH 密码认证（`PasswordAuthentication no`）——公网 22 端口每天被扫数千次
 - [ ] 轮换部署期间在对话中出现过的账号密码
 - [ ] 内存扩容或为全 A 回测设计分批方案

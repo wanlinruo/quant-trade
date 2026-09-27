@@ -90,7 +90,14 @@ TypeError」是同一类教训：**替身不会出错，就测不出出错时会
 
 ## 还差什么
 
-- **两端重启**：Windows 端已于 2026-09-27 真做过一次（见 `docs/deploy/windows-node.md`），
-  Linux 端与核心重启的恢复语义由「重启后重复投递」这项覆盖，但整机重启还没演练过。
+- **两端重启**：Windows 端已于 2026-09-27 真做过一次（见 `docs/deploy/windows-node.md`）；
+  核心进程重启的恢复语义由「重启后重复投递」这项覆盖。**Linux 整机重启尚未实做**，
+  但已做过静态核对（见 `docs/deploy/linux-core.md`「重启后能自己回来的」）：
+  数据盘在 fstab、常驻单元与 timer 全部 enabled、Redis 隧道 `Restart=always`，
+  唯一不会回来的是临时 `systemd-run` 起的观察单元。
+
+  核对时理清了一件容易想错的事：**Redis 跑在 Windows 节点**，Linux 靠 SSH 隧道连过去。
+  所以 Windows 重启时，控制面（Redis 服务，Automatic 启动）能自动恢复，
+  断的只是 miniQMT 与执行代理这一段。
 - **券商仿真账户**：上面 4 项回报类演练用的是桩代理，验的是核心侧。等仿真账户到位后
   应当用真链路（含 QMT 适配器）再复验一遍。
