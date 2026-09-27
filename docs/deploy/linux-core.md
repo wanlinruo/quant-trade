@@ -189,6 +189,41 @@ sudo nginx -t && sudo systemctl reload nginx
 
 改 Nginx 任何配置前先 `sudo nginx -t`；443 上挂着企业微信回调，不能动 `site.conf`。
 
+#### 证书续期（2026-09-27 改回全自动）
+
+证书 `/etc/letsencrypt/live/wanlinruo.cn/` 同时服务 443 与 8443。2026-07-28 签发时
+备案未通过、80 端口不可用，只能走 **DNS-01 人工续期**：钩子 `acme-dns-wait.sh` 要求
+先 `touch /etc/letsencrypt/MANUAL_RENEW_OK` 再由人去 DNSPod 加 TXT 记录，否则直接失败。
+于是 `certbot.timer` 每天两次自动续期必然失败——2026-09-26 进入续期窗口后，
+`certbot.service` 就一直是 failed。
+
+80 端口现已可用（Let's Encrypt staging 从海外实测 HTTP-01 验证成功），按配置里早就
+预留的方案改回 **HTTP-01 webroot**：
+
+```ini
+# /etc/letsencrypt/renewal/wanlinruo.cn.conf
+[renewalparams]
+authenticator = webroot
+webroot_path = /var/www/html,
+
+[[webroot_map]]
+wanlinruo.cn = /var/www/html
+```
+
+`site.conf` 里 80 段的 `location /.well-known/acme-challenge/ { root /var/www/html; }`
+本就是为此预留的，不用改 Nginx。
+
+**同时补了缺失的重载钩子** `/etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh`：
+原先一个钩子都没有，就算续期成功，Nginx 也会继续用内存里的旧证书直到下次重启——
+这半个缺陷单看续期日志是发现不了的。钩子只在 `nginx -t` 通过时 reload，且吞掉
+`nginx -t` 正常时写到 stderr 的两行（否则 certbot 会报「钩子有错误输出」）。
+
+2026-09-27 实测：演练通过 → 真实续期成功 → 443 与 8443 当场换上新证书
+（有效期至 2026-12-25）。旧配置与钩子备份在
+`/data/qsys/var-deployments/20260927-certbot-http01/`，要回退就把两个 `.bak` 拷回去。
+
+`acme-dns-wait.sh` 暂时留着没删，等这套跑过一个完整续期周期再清理。
+
 ### SSH 隧道（不经公网）
 
 从开发机开 SSH 隧道：
