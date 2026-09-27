@@ -12,6 +12,8 @@
 - 分钟线与竞价的应到集合与每日归档的下载清单同源（首板次日候选），扣掉直取停牌。
 - 节点存储：磁盘剩余容量低于 10 GiB 判失败、低于 20 GiB 告警；保留策略到期项与未登记
   目录只告警，删除需维护者逐项批准（见 ``qsys.ops.storage``）。
+- 站点证书验的是**实际提供出来的**那张，不是磁盘上的文件：续期成功但 Nginx 没重载
+  同样要报出来。
 """
 
 from __future__ import annotations
@@ -19,7 +21,7 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timezone
 from pathlib import Path
 
 import polars as pl
@@ -57,6 +59,13 @@ FULL_SCOPE_CHECK_IDS = frozenset(
 )
 SAMPLE_LIMIT = 20
 NOT_RUN_NOTE = "数据质检成功，但服务未执行"
+# Let's Encrypt 在到期前 30 天开始续期，certbot.timer 每天跑两次。留 21 天报警，
+# 意味着已经有 18 次自动续期机会没成功，确实该有人看一眼；10 天以内判失败。
+CERT_WARN_DAYS = 21
+CERT_FAIL_DAYS = 10
+CERT_TIMEOUT = 5.0
+CERT_HINT = ("先看 systemctl status certbot.service；续期日志在 "
+             "/var/log/letsencrypt/letsencrypt.log。证书配置见 docs/deploy/linux-core.md")
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +83,9 @@ class CheckContext:
     # 节点存储：/data/qsys 与 ~/scratch；不给则存储检查跳过
     storage_base: Path | None = None
     scratch: Path | None = None
+    # 公网入口的 TLS：探 127.0.0.1:tls_port 并带上 tls_site 作 SNI；不给则证书检查跳过
+    tls_site: str | None = None
+    tls_port: int = 8443
 
     def daily(self, day: date | None = None) -> pl.DataFrame:
         target = day or self.day
@@ -515,6 +527,48 @@ def _retention(ctx: CheckContext) -> CheckResult:
     return CheckResult(WARN, expected, actual, "；".join(parts), rows=len(items))
 
 
+def serving_not_after(host: str, port: int, server_name: str,
+                      timeout: float = CERT_TIMEOUT, cafile: str | None = None) -> datetime:
+    """取**实际提供出来的**证书的到期时间（不带时区的 UTC）。
+
+    读文件更省事，但那样看不出「续期成功了、Nginx 却还在用内存里的旧证书」——
+    2026-09-27 修续期时正是漏了重载钩子，只看文件的检查会一路报正常。
+
+    握手照常校验证书链与域名：链断了、名字不对同样是站点坏了，应该一起报出来。
+    （也只有开着校验，``getpeercert()`` 才会给出解析好的字段；关掉时它返回空字典。）
+    ``cafile`` 只给测试用自签证书时传。
+    """
+    import socket
+    import ssl
+
+    context = ssl.create_default_context(cafile=cafile)
+    with socket.create_connection((host, port), timeout) as raw:
+        with context.wrap_socket(raw, server_hostname=server_name) as tls:
+            cert = tls.getpeercert()
+    if not cert or "notAfter" not in cert:
+        raise ValueError("握手成功但没拿到证书到期时间")
+    return datetime.strptime(cert["notAfter"], "%b %d %H:%M:%S %Y %Z")
+
+
+def _certificate(ctx: CheckContext) -> CheckResult:
+    expected = f"剩余 ≥ {CERT_WARN_DAYS} 天（低于 {CERT_FAIL_DAYS} 天判失败）"
+    if ctx.tls_site is None:
+        return CheckResult(SKIP, expected, "未提供站点域名")
+    try:
+        not_after = serving_not_after("127.0.0.1", ctx.tls_port, ctx.tls_site)
+    except (OSError, ValueError) as exc:
+        # 连不上、链校验不过、域名对不上，都算站点证书坏了（SSLError 属于 OSError）
+        return CheckResult(BAD, expected, f"取不到证书：{exc}")
+    # notAfter 解析出来是不带时区的 UTC，拿同样口径的当下来减
+    left = (not_after - datetime.now(timezone.utc).replace(tzinfo=None)).days
+    actual = f"剩余 {left} 天（到期 {not_after:%Y-%m-%d}）"
+    if left < CERT_FAIL_DAYS:
+        return CheckResult(BAD, expected, actual, CERT_HINT)
+    if left < CERT_WARN_DAYS:
+        return CheckResult(WARN, expected, actual, CERT_HINT)
+    return CheckResult(OK, expected, actual)
+
+
 CHECKS: tuple[ServiceCheck, ...] = (
     ServiceCheck("premarket-limits", "开盘前取到当日涨跌停价", "price_limits_daily", _premarket_rows),
     ServiceCheck("daily-archive", "竞价逐笔到货", "auction_ticks", _auction_arrived),
@@ -542,6 +596,7 @@ CHECKS: tuple[ServiceCheck, ...] = (
     ServiceCheck("catalog-verify", "阻断级规则全部通过", "metric_checks", _metric_checks),
     ServiceCheck("service-checks", "磁盘剩余容量", "/data/qsys", _disk_capacity),
     ServiceCheck("service-checks", "存储保留策略", "/data/qsys", _retention),
+    ServiceCheck("service-checks", "站点证书有效期", "wanlinruo.cn:8443", _certificate),
 )
 
 

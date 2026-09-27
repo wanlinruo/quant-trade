@@ -48,6 +48,9 @@ def main() -> int:
                         help="节点存储根目录；默认取 warehouse 实体路径的上一级（/data/qsys）")
     parser.add_argument("--scratch", type=Path, default=Path.home() / "scratch",
                         help="临时工作区，纳入保留策略盘点")
+    parser.add_argument("--tls-site", default=None,
+                        help="公网入口域名（作 SNI 探 127.0.0.1）；不给则跳过证书检查")
+    parser.add_argument("--tls-port", type=int, default=8443)
     parser.add_argument("--day", type=date.fromisoformat, default=None,
                         help="要检查的交易日；不给则取最近一个已收盘交易日")
     args = parser.parse_args()
@@ -75,6 +78,7 @@ def main() -> int:
             shadow_state=args.shadow_state, workbench=args.workbench,
             storage_base=args.storage_base or Path(args.warehouse).resolve().parent,
             scratch=args.scratch,
+            tls_site=args.tls_site, tls_port=args.tls_port,
         )
         failed = {"data": 0, "strategy": 0}
         # 同一交易日早先的质检（本次记录已落盘，但还没有任何步骤）
