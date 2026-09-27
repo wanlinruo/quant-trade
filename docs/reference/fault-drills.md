@@ -88,9 +88,44 @@ Redis 读失败按**停机**处理——遵循本模块原本就写明的原则�
 它们在修复前全红。这和 2026-09-24 那次「假 Context 掩盖了 `report(routed=)` 的
 TypeError」是同一类教训：**替身不会出错，就测不出出错时会怎样**。
 
+## 两端重启（第 9 项，两台机器分别实做）
+
+清单里的「两端重启」不是脚本能断言的，两台机器都真重启了一次。
+
+**Windows 节点（2026-09-27 05:14）**：控制面全回来了，miniQMT 与执行代理没回来
+——该机没配自动登录。详见 `docs/deploy/windows-node.md`。这正是纸面推演看不出、
+只有真重启才暴露的那类问题。
+
+**Linux 节点（2026-09-27 22:38）**：重启前已连续运行 2 周 4 天。**全部自动恢复，
+约 15 秒**（22:38:52 启动 → 22:39:07 影子核心就绪），无失败单元，
+与静态核对的预测完全一致。
+
+| | 重启后 |
+|---|---|
+| `/data/qsys` 数据盘（fstab `nofail`） | 挂载正常 |
+| 6 个常驻 qsys 单元 | 全部 active |
+| `qsys-redis-tunnel` | active，心跳有数据即证明隧道重连到 Windows 成功 |
+| nginx / docker / chrony | active |
+| 复盘子系统容器（`restart=unless-stopped`） | 自动重启 |
+| 8443 证书、监控台 `/healthz`、公网站点 | 正常 |
+| 仓库工作区 | 干净 |
+
+**唯一损失**（事前已预测）：`systemd-run` 起的两个临时观察单元
+`qsys-summary-0928-*` 消失了。transient 单元只活在内存里，重启即没。
+已重建，并把原本内联在命令里的脚本改写成文件 `~/scratch/summary.sh`——
+脚本文件扛得住重启，下次只需重新挂一次定时器。**临时监控要跨重启，
+就不能只靠 `systemd-run` 的内联命令。**
+
+结论：Linux 侧无人值守恢复没有缺口。整条链路唯一的缺口仍然只有 Windows 那边的
+miniQMT 与执行代理。
+
+核对时还理清了一件一直没写下来、也容易想错的事：**Redis 跑在 Windows 节点**，
+Linux 靠 SSH 隧道连过去。所以 Windows 重启时控制面（Redis 是 Automatic 启动的
+Windows 服务）能自动恢复，断的只是下单执行这一段。
+
+记录：`/data/qsys/var-deployments/20260927-linux-reboot-drill/`（before / after / record）。
+
 ## 还差什么
 
-- **两端重启**：Windows 端已于 2026-09-27 真做过一次（见 `docs/deploy/windows-node.md`），
-  Linux 端与核心重启的恢复语义由「重启后重复投递」这项覆盖，但整机重启还没演练过。
 - **券商仿真账户**：上面 4 项回报类演练用的是桩代理，验的是核心侧。等仿真账户到位后
   应当用真链路（含 QMT 适配器）再复验一遍。
