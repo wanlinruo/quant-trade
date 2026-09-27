@@ -91,10 +91,14 @@ TypeError」是同一类教训：**替身不会出错，就测不出出错时会
 ## 还差什么
 
 - **两端重启**：Windows 端已于 2026-09-27 真做过一次（见 `docs/deploy/windows-node.md`）；
-  核心进程重启的恢复语义由「重启后重复投递」这项覆盖。**Linux 整机重启尚未实做**，
-  但已做过静态核对（见 `docs/deploy/linux-core.md`「重启后能自己回来的」）：
-  数据盘在 fstab、常驻单元与 timer 全部 enabled、Redis 隧道 `Restart=always`，
-  唯一不会回来的是临时 `systemd-run` 起的观察单元。
+  核心进程重启的恢复语义由「重启后重复投递」这项覆盖。
+
+  **Linux 整机重启不做实测**——2026-09-27 维护者决定以静态核对为准，不为演练中断线上
+  （那台机器上还跑着复盘子系统）。静态核对见 `docs/deploy/linux-core.md`
+  「重启后能自己回来的」：数据盘在 fstab、常驻单元与 timer 全部 enabled、
+  Redis 隧道 `Restart=always`，唯一不会回来的是临时 `systemd-run` 起的观察单元。
+  这是一个**有意接受的残余风险**：纸面推演与真实重启之间总有差距，Windows 那次
+  正是重启才发现 miniQMT 起不来。
 
   核对时理清了一件容易想错的事：**Redis 跑在 Windows 节点**，Linux 靠 SSH 隧道连过去。
   所以 Windows 重启时，控制面（Redis 服务，Automatic 启动）能自动恢复，
