@@ -1,6 +1,6 @@
 """服务质检：期望值只取直取源与运行记录；缺什么要说出具体缺哪些。"""
 
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta, timezone
 
 import polars as pl
 import pytest
@@ -444,3 +444,88 @@ def test_retention_passes_when_everything_is_registered_and_fresh(tmp_path):
     (base / "baidupan").mkdir()
 
     assert sc._retention(_storage_ctx(base)).status == sc.OK
+
+
+# ---- 站点证书 ----
+
+def _tls_server(tmp_path, days_valid):
+    """起一个真的 TLS 服务，证书用 openssl 现生成——取证书那段要真握手才算验过。"""
+    import shutil
+    import socket
+    import ssl
+    import subprocess
+    import threading
+
+    if shutil.which("openssl") is None:
+        pytest.skip("环境里没有 openssl，无法生成测试证书")
+    pem = tmp_path / f"cert-{days_valid}.pem"
+    key = tmp_path / f"key-{days_valid}.pem"
+    subprocess.run(
+        ["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+         "-keyout", str(key), "-out", str(pem), "-days", str(days_valid),
+         "-subj", "/CN=qsys.test", "-addext", "subjectAltName=DNS:qsys.test"],
+        check=True, capture_output=True,
+    )
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(pem, key)
+    listener = socket.socket()
+    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(4)
+
+    def serve():
+        while True:
+            try:
+                raw, _ = listener.accept()
+            except OSError:
+                return
+            try:
+                with context.wrap_socket(raw, server_side=True):
+                    pass
+            except OSError:
+                pass
+
+    threading.Thread(target=serve, daemon=True).start()
+    return listener.getsockname()[1], listener, str(pem)
+
+
+def _cert_ctx(port=8443, site="qsys.test"):
+    return CheckContext(None, None, DAY, PREV, SESSIONS, [], tls_site=site, tls_port=port)
+
+
+def test_serving_not_after_reads_the_certificate_off_a_real_handshake(tmp_path):
+    """真起一个 TLS 服务来取：解析日期格式、SNI、校验都只有真握手才验得到。"""
+    port, listener, cafile = _tls_server(tmp_path, 90)
+    try:
+        not_after = sc.serving_not_after("127.0.0.1", port, "qsys.test", cafile=cafile)
+    finally:
+        listener.close()
+
+    left = (not_after - datetime.now(timezone.utc).replace(tzinfo=None)).days
+    assert 88 <= left <= 90
+
+
+def test_certificate_check_skips_without_a_site():
+    assert sc._certificate(_cert_ctx(site=None)).status == sc.SKIP
+
+
+@pytest.mark.parametrize("left,status", [(90, "OK"), (15, "WARN"), (3, "BAD")])
+def test_certificate_status_follows_the_days_left(monkeypatch, left, status):
+    monkeypatch.setattr(sc, "serving_not_after",
+                        lambda *a, **k: datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=left, hours=1))
+
+    result = sc._certificate(_cert_ctx())
+
+    assert result.status == getattr(sc, status)
+    assert f"剩余 {left} 天" in result.actual
+
+
+def test_certificate_check_fails_when_the_site_cannot_be_reached(tmp_path):
+    """取不到就得判失败，不能因为探测本身出错而静默放过。"""
+    port, listener, _ = _tls_server(tmp_path, 90)
+    listener.close()
+
+    result = sc._certificate(_cert_ctx(port))
+
+    assert result.status == sc.BAD
+    assert "取不到证书" in result.actual

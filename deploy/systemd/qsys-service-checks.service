@@ -11,7 +11,8 @@ WorkingDirectory=/home/ubuntu/qsys
 ExecStart=/home/ubuntu/qsys/.venv/bin/python -u scripts/service_checks.py \
           --warehouse /home/ubuntu/qsys/warehouse \
           --shadow-state /home/ubuntu/qsys/var/shadow-state.sqlite3 \
-          --workbench /home/ubuntu/qsys/var/workbench/workbench.sqlite3
+          --workbench /home/ubuntu/qsys/var/workbench/workbench.sqlite3 \
+          --tls-site wanlinruo.cn --tls-port 8443
 TimeoutStartSec=1800
 NoNewPrivileges=true
 PrivateTmp=true
