@@ -59,7 +59,9 @@ SERVICES: tuple[ServiceSpec, ...] = (
         ("Tushare trade_cal", "Tushare stk_limit", "Redis 发布给盘中进程"),
         ("price_limits_daily",),
         "开盘前取当日涨跌停价，供模拟盘、影子盘撮合与行情页使用",
-        due="09:30", max_runtime=timedelta(hours=1),
+        # 截止必须早于竞价决策：策略拿涨跌停价给保护价封顶，09:25:05 起就可能用到
+        # （auction_at 的合法下限）。原本写 09:30，等于允许它比使用方还晚。
+        due="09:25", max_runtime=timedelta(hours=1),
     ),
     ServiceSpec(
         "daily-archive", "每日归档（QMT）", "timer", "Linux → Windows QMT", "qsys-daily-archive",

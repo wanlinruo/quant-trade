@@ -158,3 +158,21 @@ def test_catalog_verify_is_registered_between_sync_and_checks():
     assert "metric_checks" in spec.writes
     order = [s.id for s in SERVICES if s.kind == "timer"]
     assert order.index("tushare-sync") < order.index("catalog-verify") < order.index("service-checks")
+
+
+def test_premarket_limits_is_due_before_the_earliest_possible_auction():
+    """涨跌停价的截止时间必须早于竞价决策，否则「准时」了策略也已经用不上。
+
+    策略拿涨跌停价给保护价封顶，而竞价时刻是参数 auction_at，最早可到 09:25:05。
+    原本 due 写 09:30，等于允许这个任务比它的使用方还晚交货
+    （2026-09-28 顺着同类问题查出来的：改了 auction_at，下游没跟着改）。
+    """
+    from datetime import time
+
+    from qsys.strategy.structural.strategy import auction_time
+
+    spec = services.SERVICE_BY_ID["premarket-limits"]
+    earliest_auction = time(9, 25, 5)   # auction_time 允许的下限
+    auction_time(earliest_auction)      # 还是合法值的话这行不抛
+
+    assert time.fromisoformat(spec.due) <= earliest_auction
