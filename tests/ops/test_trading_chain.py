@@ -17,12 +17,18 @@ def shadow_db(path, events=(), runs=()):
     return path
 
 
-def paper_db(path, events=(), runs=()):
+def paper_db(path, events=(), runs=(), accounts=None):
+    """accounts: (id, 名称, config_json)；不给就是一个不设 auction_at 的账户。"""
+    accounts = accounts or [("a", "模拟一号", None)]
     with sqlite3.connect(path) as con:
-        con.execute("CREATE TABLE paper_accounts (id TEXT,name TEXT,status TEXT,activation_date TEXT)")
+        con.execute("CREATE TABLE paper_accounts (id TEXT,name TEXT,status TEXT,"
+                    "activation_date TEXT,config_json TEXT)")
         con.execute("CREATE TABLE paper_events (account_id TEXT,event_key TEXT,status TEXT,detail TEXT)")
         con.execute("CREATE TABLE paper_strategy_runs (account_id TEXT,event_key TEXT,session TEXT,error TEXT)")
-        con.execute("INSERT INTO paper_accounts VALUES ('a','模拟一号','running','2026-09-21')")
+        con.executemany(
+            "INSERT INTO paper_accounts VALUES (?,?,'running','2026-09-21',?)",
+            [(i, n, c) for i, n, c in accounts],
+        )
         con.executemany("INSERT INTO paper_events VALUES (?,?,?,?)", events)
         con.executemany("INSERT INTO paper_strategy_runs VALUES (?,?,?,?)", runs)
     return path
@@ -61,3 +67,83 @@ def test_paper_chain_checks_every_active_account_and_run_error(tmp_path):
     got = assess_paper(path, datetime(2026, 9, 21, 9, 30, 15))
     assert got.state == DOWN and "模拟一号" in got.detail
 
+
+
+# ---- 竞价时刻是参数，不是常量（2026-09-28 误报）----
+
+EARLY = '{"params": {"auction_at": "09:25:10"}}'
+
+
+def test_an_account_that_decides_at_0925_is_not_reported_as_failed(tmp_path):
+    """09-28 的误报：账户按 09:25:10 跑完了，监控却还在等 09:30:00。
+
+    整整一上午「每日业务验收」都显示事件失败，而策略三套引擎跑得完全正确。
+    """
+    start = f"{DAY}:session_start:09:15:00"
+    auction = f"{DAY}:auction:09:25:10"
+    path = paper_db(
+        tmp_path / "paper.sqlite3",
+        [("a", start, "completed", ""), ("a", auction, "completed", "")],
+        accounts=[("a", "09:25入场", EARLY)],
+    )
+
+    got = assess_paper(path, datetime(2026, 9, 21, 9, 31, 0))
+
+    assert got.state == HEALTHY, got.detail
+
+
+def test_an_early_auction_that_really_is_missing_still_fails(tmp_path):
+    """跟着参数走，不等于放宽：09:25:10 过了还没落库，照样要报。"""
+    start = f"{DAY}:session_start:09:15:00"
+    path = paper_db(
+        tmp_path / "paper.sqlite3",
+        [("a", start, "completed", "")],
+        accounts=[("a", "09:25入场", EARLY)],
+    )
+
+    got = assess_paper(path, datetime(2026, 9, 21, 9, 27, 0))
+
+    assert got.state == DOWN and "09:25:10" in got.detail
+
+
+def test_accounts_with_different_auction_times_are_judged_separately(tmp_path):
+    """09-28 现场就是这样：旧账户 09:30 默认、新账户 09:25:10，两个同时在跑。"""
+    start = f"{DAY}:session_start:09:15:00"
+    path = paper_db(
+        tmp_path / "paper.sqlite3",
+        [("old", start, "completed", ""), ("old", f"{DAY}:auction:09:30:00", "completed", ""),
+         ("new", start, "completed", ""), ("new", f"{DAY}:auction:09:25:10", "completed", "")],
+        accounts=[("old", "旧账户", None), ("new", "09:25入场", EARLY)],
+    )
+
+    got = assess_paper(path, datetime(2026, 9, 21, 9, 31, 0))
+
+    assert got.state == HEALTHY, got.detail
+    assert got.expected == 4 and got.completed == 4
+
+
+def test_the_shadow_core_follows_the_account_it_inherits_from(tmp_path):
+    """影子核心不自己填参数，监控的预期时刻也得问同一个账户。"""
+    start = f"{DAY}:session_start:09:15:00"
+    from datetime import time as _time
+
+    path = shadow_db(
+        tmp_path / "shadow.sqlite3",
+        [(start, "completed", ""), (f"{DAY}:auction:09:25:10", "completed", "")],
+    )
+
+    ok = assess_shadow(path, datetime(2026, 9, 21, 9, 31, 0), auction_at=_time(9, 25, 10))
+    stale = assess_shadow(path, datetime(2026, 9, 21, 9, 31, 0))
+
+    assert ok.state == HEALTHY, ok.detail
+    # 不传参数就退回 09:30，正是修复前的错误行为——留着这条说明差别从哪来
+    assert stale.state == DOWN and "09:30:00" in stale.detail
+
+
+def test_unreadable_params_fall_back_to_the_default_instead_of_failing(tmp_path):
+    """监控读不懂参数时退回默认值，不能因为解析失败就把整条链判死。"""
+    from qsys.ops.trading_chain import DEFAULT_AUCTION, account_auction_time
+
+    assert account_auction_time(None) == DEFAULT_AUCTION
+    assert account_auction_time("这不是 json") == DEFAULT_AUCTION
+    assert account_auction_time('{"params": {"auction_at": "09:00"}}') == DEFAULT_AUCTION

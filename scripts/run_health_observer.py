@@ -113,6 +113,34 @@ def _watchdog_state(task: dict, now: datetime) -> tuple[str, str]:
     return HEALTHY, "watchdog_fresh"
 
 
+def shadow_auction_at(config_path, workbench: Path):
+    """影子核心的竞价时刻＝它承袭的那个模拟账户的 auction_at。
+
+    影子核心不自己填参数，而是读 ``[strategy] follows_paper_account`` 指向的账户，
+    所以监控的预期时刻也必须问同一个地方；写死 09:30 会把 09:25:10 的账户
+    误报成事件失败（2026-09-28 实际发生过）。任何一步取不到就退回默认值，
+    监控解析不了参数不该让整条链判死。
+    """
+    import sqlite3
+
+    from qsys.ops.trading_chain import DEFAULT_AUCTION, account_auction_time
+
+    try:
+        from qsys.live.config import load_deploy_config
+
+        ident = load_deploy_config(config_path).strategy.follows_paper_account
+        if not ident:
+            return DEFAULT_AUCTION
+        with sqlite3.connect(f"file:{workbench}?mode=ro", uri=True) as con:
+            row = con.execute(
+                "SELECT config_json FROM paper_accounts WHERE id=?", (ident,)
+            ).fetchone()
+        return account_auction_time(row[0]) if row else DEFAULT_AUCTION
+    except Exception as exc:  # 监控自己出错不该把被观测方判死
+        log.warning("health_observer.shadow_auction_unresolved", error=str(exc))
+        return DEFAULT_AUCTION
+
+
 def observation(
     row: dict, now: datetime, phase: str,
     business: ChainAssessment | None = None,
@@ -241,7 +269,12 @@ def main() -> int:
                     if row["spec"].id == "paper":
                         business = assess_paper(Path(args.workbench), now)
                     elif row["spec"].id == "shadow-core":
-                        business = assess_shadow(Path(args.shadow_state), now)
+                        business = assess_shadow(
+                            Path(args.shadow_state), now,
+                            auction_at=shadow_auction_at(
+                                args.config, Path(args.workbench)
+                            ),
+                        )
                 item = observation(row, now, phase, business)
                 alert_tracker.update(item)
                 store.record(item)

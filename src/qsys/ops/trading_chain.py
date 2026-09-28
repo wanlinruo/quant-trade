@@ -10,9 +10,13 @@ from pathlib import Path
 from qsys.ops.health import DEGRADED, DOWN, HEALTHY
 
 
+# 竞价时刻是策略参数（auction_at），不是常量：09:25 撮合后决策的账户用 09:25:10。
+# 这里必须跟着各自的参数走，否则会把跑对了的账户报成"事件失败"
+# （2026-09-28 就这样误报了一上午：策略按 09:25:10 跑完，监控还在等 09:30:00）。
+DEFAULT_AUCTION = time(9, 30)
 EVENTS = (
     ("session_start", time(9, 15)),
-    ("auction", time(9, 30)),
+    ("auction", DEFAULT_AUCTION),
     ("checkpoint", time(11, 25)),
     ("checkpoint", time(14, 25)),
     ("checkpoint", time(14, 50)),
@@ -20,6 +24,23 @@ EVENTS = (
     ("session_end", time(15, 30)),
 )
 EVENT_WARN_AFTER_SECONDS = 10
+
+
+def account_auction_time(config_json: str | None) -> time:
+    """从模拟账户存档的配置里取 auction_at；取不到或不合法就用默认值。
+
+    解析交给策略自己的 ``auction_time``，两处各写一份迟早走样。监控读不懂参数时
+    宁可退回默认值，也不要因为解析失败就把整条链判死。
+    """
+    import json
+
+    from qsys.strategy.structural.strategy import auction_time
+
+    try:
+        params = (json.loads(config_json or "{}") or {}).get("params") or {}
+        return auction_time(params.get("auction_at"))
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return DEFAULT_AUCTION
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,9 +56,11 @@ def _key(day, phase: str, at: time) -> str:
     return f"{day}:{phase}:{at.isoformat()}"
 
 
-def _due(now: datetime, grace_seconds: float) -> list[tuple[str, time, float]]:
+def _due(now: datetime, grace_seconds: float,
+         auction_at: time = DEFAULT_AUCTION) -> list[tuple[str, time, float]]:
     result = []
     for phase, at in EVENTS:
+        at = auction_at if phase == "auction" else at
         age = (now - datetime.combine(now.date(), at)).total_seconds()
         if age >= EVENT_WARN_AFTER_SECONDS:
             result.append((phase, at, min(age, grace_seconds + 1)))
@@ -89,8 +112,10 @@ def _assess_rows(
     )
 
 
-def assess_shadow(path: Path, now: datetime, *, grace_seconds: float = 30) -> ChainAssessment:
-    due = _due(now, grace_seconds)
+def assess_shadow(path: Path, now: datetime, *, grace_seconds: float = 30,
+                  auction_at: time = DEFAULT_AUCTION) -> ChainAssessment:
+    """``auction_at`` 取影子核心承袭的那个模拟账户的参数，由调用方解析后传入。"""
+    due = _due(now, grace_seconds, auction_at)
     expected = [("", _key(now.date(), phase, at), age) for phase, at, age in due]
     if not expected:
         return ChainAssessment(HEALTHY, "strategy_events_not_due", "首个事件尚未到时")
@@ -113,12 +138,11 @@ def assess_shadow(path: Path, now: datetime, *, grace_seconds: float = 30) -> Ch
 
 
 def assess_paper(path: Path, now: datetime, *, grace_seconds: float = 90) -> ChainAssessment:
-    due = _due(now, grace_seconds)
     try:
         with sqlite3.connect(f"file:{Path(path)}?mode=ro", uri=True) as con:
             con.row_factory = sqlite3.Row
             accounts = con.execute(
-                "SELECT id,name FROM paper_accounts WHERE status='running' "
+                "SELECT id,name,config_json FROM paper_accounts WHERE status='running' "
                 "AND activation_date <= ?", (now.date().isoformat(),),
             ).fetchall()
             if not accounts:
@@ -135,12 +159,18 @@ def assess_paper(path: Path, now: datetime, *, grace_seconds: float = 90) -> Cha
             ).fetchall()
     except (OSError, sqlite3.Error) as exc:
         return ChainAssessment(DOWN, "strategy_state_unavailable", str(exc))
-    if not due:
-        return ChainAssessment(HEALTHY, "strategy_events_not_due", "首个事件尚未到时")
     names = {row["id"]: row["name"] for row in accounts}
+    # 竞价时刻逐账户算：同时在跑的账户可以用不同的 auction_at
+    # （09-28 就是旧账户 09:30、新账户 09:25:10 并存）。
+    due_by_account = {
+        row["id"]: _due(now, grace_seconds, account_auction_time(row["config_json"]))
+        for row in accounts
+    }
+    if not any(due_by_account.values()):
+        return ChainAssessment(HEALTHY, "strategy_events_not_due", "首个事件尚未到时")
     expected = [
         (ident, _key(now.date(), phase, at), age)
-        for ident in names for phase, at, age in due
+        for ident, due in due_by_account.items() for phase, at, age in due
     ]
     events = {(row["account_id"], row["event_key"]): row for row in rows}
     errors = {
