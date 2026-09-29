@@ -51,6 +51,11 @@ class CheckResult:
     detail: str = ""
     sample: pl.DataFrame | None = None
     applicable: bool = True
+    # 一条规则可以覆盖多个指标。默认它们同判——单一关注点的规则本就如此。
+    # 但像 B4.arrival 这样一条规则管好几张表的，必须说清楚是谁坏了：
+    # 否则 live_recon 的问题会把 auction_ticks、instruments 一起标成失败，
+    # 页面上看就像三个数据源同时出事（2026-09-30 维护者截图指出）。
+    failed_metrics: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,7 +152,12 @@ def run_checks(
             sample_path = str(path)
 
         for metric_id in check.metrics:
-            severity, issue = _severity_and_issue(check, metric_id, passed)
+            # 规则指名了责任方时，没被点到的指标不连坐
+            implicated = (
+                result.failed_metrics is None or metric_id in result.failed_metrics
+            )
+            metric_passed = passed or not implicated
+            severity, issue = _severity_and_issue(check, metric_id, metric_passed)
             rows.append({
                 "run_id": run_id,
                 "checked_at": now,
@@ -156,12 +166,13 @@ def run_checks(
                 "category": check.category.value,
                 "scope_start": ctx.start,
                 "scope_end": ctx.end,
-                "passed": passed,
+                "passed": metric_passed,
                 "severity": severity,
                 "known_issue": issue,
-                "violations": result.violations,
+                "violations": result.violations if implicated else 0,
                 "checked_rows": result.checked_rows,
-                "detail": result.detail,
+                "detail": result.detail if implicated else
+                          f"本指标无违规；同规则的其它指标未通过（{check.id}）",
                 "sample_path": sample_path,
             })
 

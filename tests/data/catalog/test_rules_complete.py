@@ -22,8 +22,17 @@ def _flags(rows, warehouse):
                                 for n in schema.DAILY_FLAGS.names if n not in frame.columns])
     warehouse.write("daily_flags", frame.select(schema.DAILY_FLAGS.names).to_arrow().cast(schema.DAILY_FLAGS), year=2026)
 
-def _run(cid, ctx):
-    return C.run_checks(ctx, "complete", NOW, only=[C.CHECKS[cid]], artifacts=ctx.warehouse.root/"samples").row(0, named=True)
+def _run(cid, ctx, metric=None):
+    """metric：多指标规则要指明看哪个指标的结论，不然默认第一个。
+
+    B4.arrival 一条规则管好几张表，改成按数据集点名后，没被点到的指标会正常通过
+    ——所以断言必须冲着真正相关的那个指标去（2026-09-30）。
+    """
+    rows = C.run_checks(ctx, "complete", NOW, only=[C.CHECKS[cid]],
+                        artifacts=ctx.warehouse.root/"samples")
+    if metric is not None:
+        rows = rows.filter(pl.col("metric_id") == metric)
+    return rows.row(0, named=True)
 
 def test_null_rate_has_both_denominators(ctx, warehouse):
     rows = [{"dt": D[0], "symbol": f"{i:06d}.SZ", "is_st": True} for i in range(97)]
@@ -107,7 +116,7 @@ def _arrival_misses(row, warehouse):
 
 def test_arrival_reports_first_board_without_next_day_auction(ctx, warehouse):
     _board_then_next_session(warehouse)
-    row = _run("B4.arrival", ctx)
+    row = _run("B4.arrival", ctx, metric="auction_ticks.dt")
     assert row["passed"] is False
     missed = _arrival_misses(row, warehouse)
     assert missed.select("symbol", "dt").rows() == [(BOARD, D[1])]
@@ -165,3 +174,48 @@ def test_holes_explained_by_direct_suspension_are_not_reported(warehouse):
     assert result.violations == 1
     assert result.sample.to_dicts() == [{"symbol": "000002.SZ", "dt": days[2]}]
     assert "停牌" in result.detail
+
+
+# ---- 多指标规则要点名，不能连坐（2026-09-30 维护者截图指出）----
+
+def test_the_arrival_rule_blames_only_the_dataset_that_failed():
+    """10,382 条违规全来自 live_recon，页面却把 auction_ticks 与 instruments
+    也标成失败——看上去像三个数据源同时出事。"""
+    from qsys.data.catalog.rules_complete import _blame
+
+    assert _blame([{"dataset": "live_recon"}]) == ("live_recon.is_consistent",)
+    assert _blame([{"dataset": "auction_ticks"}]) == ("auction_ticks.dt",)
+    assert _blame([{"dataset": "live_recon"}, {"dataset": "instruments"}]) == (
+        "instruments.symbol", "live_recon.is_consistent",
+    )
+
+
+def test_no_violation_means_no_blame():
+    from qsys.data.catalog.rules_complete import _blame
+
+    assert _blame([]) is None
+
+
+def test_an_unattributable_dataset_falls_back_to_blaming_everything():
+    """daily_flags / market_regime 不对应本规则声明的任何指标。
+    说不清是谁的时候，全判失败才是诚实的——别为了页面好看而漏报。"""
+    from qsys.data.catalog.rules_complete import _blame
+
+    assert _blame([{"dataset": "daily_flags"}]) is None
+    assert _blame([{"dataset": "live_recon"}, {"dataset": "market_regime"}]) is None
+
+
+def test_an_unrelated_metric_is_not_dragged_down_with_it(ctx, warehouse):
+    """竞价 tick 缺货时，live_recon 与 instruments 不该跟着标成失败。
+
+    2026-09-30 维护者截图：指标字典上三个指标都红着，而违规其实全来自一处。
+    """
+    _board_then_next_session(warehouse)
+    rows = C.run_checks(ctx, "complete", NOW, only=[C.CHECKS["B4.arrival"]],
+                        artifacts=ctx.warehouse.root / "samples")
+
+    verdict = {r["metric_id"]: r for r in rows.iter_rows(named=True)}
+    assert verdict["auction_ticks.dt"]["passed"] is False
+    assert verdict["live_recon.is_consistent"]["passed"] is True
+    assert verdict["live_recon.is_consistent"]["violations"] == 0
+    assert "其它指标" in verdict["live_recon.is_consistent"]["detail"]
