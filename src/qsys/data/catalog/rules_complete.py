@@ -157,7 +157,32 @@ def _arrival(ctx: CheckContext) -> CheckResult:
     checked = (len(sessions) * 2 + (1 if sessions else 0) + auction_checked
                + (recon.height if recon.height else 0))
     return CheckResult(len(missing), checked, f"到货或采集失败 {len(missing)} 项",
-                       pl.DataFrame(missing) if missing else None)
+                       pl.DataFrame(missing) if missing else None,
+                       failed_metrics=_blame(missing))
+
+
+# 违规里的 dataset -> 该由哪个指标担责。没列出的（daily_flags、market_regime）
+# 不对应本规则声明的任何指标，归到"说不清"，那时三个指标一起判失败才是诚实的。
+_BLAME = {
+    "live_recon": "live_recon.is_consistent",
+    "instruments": "instruments.symbol",
+    "auction_ticks": "auction_ticks.dt",
+}
+
+
+def _blame(missing: list[dict[str, object]]) -> tuple[str, ...] | None:
+    """点名真正出问题的指标。
+
+    一条规则管好几张表时，不点名就会连坐：2026-09-30 维护者截图显示
+    auction_ticks.dt 与 instruments.symbol 都标着「失败」，而 10,382 条违规
+    其实全部来自 live_recon——页面上看就像三个数据源同时出事。
+    """
+    if not missing:
+        return None
+    datasets = {str(item.get("dataset", "")) for item in missing}
+    if not datasets <= set(_BLAME):
+        return None          # 出现没法归因的数据集，保守地全判
+    return tuple(sorted({_BLAME[name] for name in datasets}))
 
 
 # D-18：原先还登记了 ingest_log / name_snapshots / suspend_daily / minute_bars，
