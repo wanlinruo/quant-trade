@@ -96,6 +96,7 @@ class LiveRuntime:
             min(self.enabled_capital, self.day_start_value * risk.max_position_weight),
         )
         self.shadow = shadow
+        self._recon_seen: tuple[bool, str] | None = None
         self.kill_switch = KillSwitch(
             transport,
             key="shadow:control:kill" if shadow else "control:kill",
@@ -186,6 +187,16 @@ class LiveRuntime:
         照常运行。
         """
         result = reconcile_positions(self.portfolio, remote, cash_tolerance=10.0)
+        # 只在结论变化时留痕与告警。对账台账要的是「什么时候坏的、什么时候好的」，
+        # 不是每次尝试都记一行：2026-09-29 一个持续存在的差异写进 10,383 条记录
+        # （每 2 秒一条），既撑爆仓库，又让 B4.arrival 永远红着。告警同理——
+        # 同一句话推一整天，几条之后人就不看了。
+        fingerprint = (result.is_consistent, result.summary())
+        if fingerprint == self._recon_seen:
+            if not result.is_consistent and not self.shadow:
+                raise LivePreflightError(result.summary())
+            return
+        self._recon_seen = fingerprint
         if not result.is_consistent:
             self.journal.record_reconciliation(
                 remote.at.date(), "intraday", is_consistent=False,
