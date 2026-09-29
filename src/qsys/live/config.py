@@ -61,8 +61,11 @@ class SafetyConfig:
 
 @dataclass(frozen=True, slots=True)
 class AlertConfig:
-    # 策略消息（影子/实盘的买卖、竞价决策、出错、收盘）
+    # 实盘策略消息（买卖、竞价决策、出错、收盘）
     webhook_url: str = field(default="", repr=False)
+    # 影子盘策略消息。两条链同跑观察期时消息会交错，分开才看得出是谁发的；
+    # 不填则退回 webhook_url。
+    shadow_webhook_url: str = field(default="", repr=False)
     # 运维消息（服务与数据故障）。单独一个机器人：运维要立刻看，
     # 混在策略消息里会被每日决策淹掉。不填则退回 webhook_url。
     ops_webhook_url: str = field(default="", repr=False)
@@ -71,6 +74,11 @@ class AlertConfig:
     @property
     def ops_url(self) -> str:
         return self.ops_webhook_url or self.webhook_url
+
+    def strategy_url(self, *, shadow: bool) -> str:
+        if shadow:
+            return self.shadow_webhook_url or self.webhook_url
+        return self.webhook_url
 
 
 @dataclass(frozen=True, slots=True)

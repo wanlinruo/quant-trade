@@ -75,3 +75,37 @@ def test_password_is_not_in_repr(tmp_path):
     path.write_text(EXAMPLE)
     cfg = load_deploy_config(path)
     assert "secret" not in repr(cfg)
+
+
+# ---- 三个机器人各走各的（2026-09-29）----
+
+def test_each_channel_resolves_to_its_own_robot():
+    from qsys.live.config import AlertConfig
+
+    alerts = AlertConfig(
+        webhook_url="https://x/live", shadow_webhook_url="https://x/shadow",
+        ops_webhook_url="https://x/ops",
+    )
+
+    assert alerts.strategy_url(shadow=False) == "https://x/live"
+    assert alerts.strategy_url(shadow=True) == "https://x/shadow"
+    assert alerts.ops_url == "https://x/ops"
+
+
+def test_unset_channels_fall_back_to_the_main_one():
+    """只配一个也能用；退回而不是静默不发。"""
+    from qsys.live.config import AlertConfig
+
+    alerts = AlertConfig(webhook_url="https://x/only")
+
+    assert alerts.strategy_url(shadow=True) == "https://x/only"
+    assert alerts.ops_url == "https://x/only"
+
+
+def test_nothing_configured_means_no_url_not_a_crash():
+    from qsys.live.config import AlertConfig
+
+    alerts = AlertConfig()
+
+    assert alerts.strategy_url(shadow=True) == ""
+    assert alerts.ops_url == ""
