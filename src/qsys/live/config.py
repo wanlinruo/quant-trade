@@ -68,7 +68,12 @@ class AlertConfig:
 @dataclass(frozen=True, slots=True)
 class RiskConfig:
     enabled_capital: float = 10_000.0
-    max_account_asset: float = 100_000.0
+    # 账户总资产上限：0 表示不限制（默认）。真正卡住敞口的是 enabled_capital——
+    # 策略能看到的现金被压到 enabled_capital - 已部署（runtime._context），
+    # 账户里有多少钱都只能动用这么多。而账户本身会因为转入资金、创业板资产门槛、
+    # 日后盈利自然长大，用它当闸门只会误伤（2026-09-28 维护者为创业板权限转入
+    # 5 万后，门禁立刻因超 10 万而失败）。
+    max_account_asset: float = 0.0
     max_position_weight: float = 0.05
     max_gross_exposure: float = 0.10
     max_order_value: float = 10_000.0

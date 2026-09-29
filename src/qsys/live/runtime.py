@@ -82,7 +82,7 @@ class LiveRuntime:
         self._fixed_position_budget = "max_position_value" in self.params
         remote = self._remote_account()
         remote_asset = float(remote.total_asset or remote.cash + remote.market_value)
-        if remote_asset > risk.max_account_asset:
+        if risk.max_account_asset and remote_asset > risk.max_account_asset:
             raise LivePreflightError(
                 f"账户总资产 {remote_asset:,.2f} 超过首期上限 "
                 f"{risk.max_account_asset:,.2f}"
@@ -168,6 +168,18 @@ class LiveRuntime:
         return snapshot
 
     def _assert_reconciled(self, remote: AccountSnapshot) -> None:
+        """对账不一致：实盘停机，影子只告警。
+
+        对账的前提是**核心是这个账户的唯一写入方**——多出它不知道的持仓，就说明
+        出事了。实盘确实如此，所以必须停。影子核心不成立：它一张单都发不出去
+        （`ShadowBroker`，`orders_enabled=false`），而那个账户维护者自己还要用来
+        转账、买国债逆回购、满足创业板的资产门槛。这些都是正当操作，却会让影子盘
+        的推演与账户对不上。
+
+        2026-09-28 就这样：维护者转入 5 万并买了 7 天逆回购，影子核心当场停机，
+        白丢了一整天观察期，而它本来连错单都发不出来。所以影子模式下记录并告警，
+        照常运行。
+        """
         result = reconcile_positions(self.portfolio, remote, cash_tolerance=10.0)
         if not result.is_consistent:
             self.journal.record_reconciliation(
@@ -175,6 +187,10 @@ class LiveRuntime:
                 cash_diff=result.cash_diff, n_mismatches=len(result.mismatches),
                 detail=result.summary(), at=remote.at,
             )
+            if self.shadow:
+                self.alerts.warning("影子盘与券商账户不一致（不停机）", result.summary())
+                log.warning("reconcile.shadow_drift", detail=result.summary())
+                return
             self.alerts.critical("实盘账户对账失败", result.summary())
             self.kill_switch.engage(result.summary())
             raise LivePreflightError(result.summary())

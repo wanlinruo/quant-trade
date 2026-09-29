@@ -24,6 +24,17 @@ log = structlog.get_logger(__name__)
 _PRICE_TOLERANCE = 1e-6
 
 
+def is_cash_equivalent(symbol: str) -> bool:
+    """国债逆回购算现金等价物，不是持仓。
+
+    深市 131xxx、沪市 204xxx。它们是闲置资金生息的常规手段，不由策略买卖，
+    却会出现在券商持仓里——当成持仓比对就会永远判不一致
+    （2026-09-28 维护者买了 7 天逆回购，对账当场判失败）。
+    """
+    code = symbol.split(".")[0]
+    return code.startswith("131") or code.startswith("204")
+
+
 @dataclass(frozen=True, slots=True)
 class PositionMismatch:
     symbol: str
@@ -50,7 +61,10 @@ def reconcile_positions(
     local: Portfolio, remote: AccountSnapshot, *, cash_tolerance: float = 1.0
 ) -> PositionReconResult:
     local_qty = {str(s): p.total_qty for s, p in local.positions.items()}
-    remote_qty = {s: p.total_qty for s, p in remote.positions.items()}
+    remote_qty = {
+        s: p.total_qty for s, p in remote.positions.items()
+        if not is_cash_equivalent(s)
+    }
 
     mismatches = [
         PositionMismatch(symbol, local_qty.get(symbol, 0), remote_qty.get(symbol, 0))
