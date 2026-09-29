@@ -48,8 +48,9 @@ def main() -> int:
     checks.append((Path(args.strategy).is_file(), f"策略文件: {args.strategy}"))
     checks.append((Path(args.warehouse).is_dir(), f"数据仓库: {args.warehouse}"))
     checks.append((cfg.risk.enabled_capital > 0, "启用资金必须大于 0"))
-    checks.append((cfg.risk.enabled_capital <= cfg.risk.max_account_asset,
-                   "启用资金未超过账户规模上限"))
+    if cfg.risk.max_account_asset:
+        checks.append((cfg.risk.enabled_capital <= cfg.risk.max_account_asset,
+                       "启用资金未超过账户规模上限"))
     checks.append((bool(cfg.redis.password) or _is_private_host(cfg.redis.host),
                    "非本机 Redis 必须设置密码"))
     checks.append((cfg.redis.tls or _is_private_host(cfg.redis.host),
@@ -66,9 +67,12 @@ def main() -> int:
     if account is not None:
         age = (datetime.now() - account.at).total_seconds()
         checks.append((-1 <= age <= 5, f"账户快照新鲜度 {age:.1f}s"))
-        total_asset = float(account.total_asset or account.cash + account.market_value)
-        checks.append((total_asset <= cfg.risk.max_account_asset,
-                       f"账户总资产不超过 {cfg.risk.max_account_asset:,.0f}"))
+        if cfg.risk.max_account_asset:
+            total_asset = float(
+                account.total_asset or account.cash + account.market_value
+            )
+            checks.append((total_asset <= cfg.risk.max_account_asset,
+                           f"账户总资产不超过 {cfg.risk.max_account_asset:,.0f}"))
 
     for source in ("agent", "market"):
         raw = transport.get_key(f"{cfg.streams.heartbeat}:{source}")

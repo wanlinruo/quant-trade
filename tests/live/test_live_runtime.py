@@ -95,9 +95,7 @@ def test_live_runtime_honors_explicit_canonical_facade(
     assert runtime.feed._market_data.config.mode is FacadeMode.CANONICAL
 
 
-def test_first_stage_rejects_an_oversized_account(warehouse, tmp_path):
-    import pytest
-
+def _oversized(warehouse, tmp_path, name, risk):
     strategy = tmp_path / "strategy.py"
     strategy.write_text(SOURCE, encoding="utf-8")
     streams = StreamConfig()
@@ -106,12 +104,30 @@ def test_first_stage_rejects_an_oversized_account(warehouse, tmp_path):
     transport.set_key(streams.account, AccountSnapshot(
         at=now, cash=100_001.0, total_asset=100_001.0, positions={}
     ).model_dump_json())
+    return LiveRuntime(
+        strategy, warehouse.root, AShareCalendar([date.today()]), Quotes(),
+        transport, streams, LiveStore(tmp_path / name),
+        local_kill_path=tmp_path / "K", risk=risk,
+    )
+
+
+def test_an_account_cap_is_enforced_when_one_is_configured(warehouse, tmp_path):
+    import pytest
+
     with pytest.raises(LivePreflightError, match="超过首期上限"):
-        LiveRuntime(
-            strategy, warehouse.root, AShareCalendar([date.today()]), Quotes(),
-            transport, streams, LiveStore(tmp_path / "too-large.sqlite3"),
-            local_kill_path=tmp_path / "K", risk=RiskConfig(),
-        )
+        _oversized(warehouse, tmp_path, "too-large.sqlite3",
+                   RiskConfig(max_account_asset=100_000.0))
+
+
+def test_no_account_cap_by_default(warehouse, tmp_path):
+    """账户总资产默认不设上限：卡住敞口的是 enabled_capital，不是账户大小。
+
+    账户会因为转入资金、创业板资产门槛、日后盈利自然长大，拿它当闸门只会误伤
+    （2026-09-28 维护者为创业板权限转入 5 万，门禁立刻因超 10 万而失败）。
+    """
+    runtime = _oversized(warehouse, tmp_path, "uncapped.sqlite3", RiskConfig())
+
+    assert runtime.enabled_capital == 10_000.0   # 敞口仍被启用资金卡住
 
 
 def test_shadow_runtime_uses_separate_broker_and_kill_key(warehouse, tmp_path):
@@ -252,3 +268,56 @@ def test_a_transient_quote_timeout_is_retried_inside_the_grace_window(
     assert len(calls) == 2
     rows = [r for r in store.strategy_runs(day) if r["phase"] == "checkpoint"]
     assert rows[-1]["error"] == ""
+
+
+# ---- 对账不一致：实盘停机，影子只告警（2026-09-28）----
+
+def _drifted(streams, cash=100_000.0):
+    """券商账户里多出核心不知道的东西——维护者转账或买逆回购就会这样。"""
+    from qsys.live.messages import PositionSnapshot
+
+    return AccountSnapshot(
+        at=datetime.now(), cash=cash, total_asset=cash + 5000.0,
+        positions={"600036.SH": PositionSnapshot(
+            total_qty=500, available_qty=500, avg_cost=10.0)},
+    )
+
+
+def test_a_drifted_account_halts_the_live_core(warehouse, tmp_path):
+    """实盘核心是账户的唯一写入方，多出持仓就说明出事了，必须停。"""
+    import pytest
+
+    runtime, _ = _runtime_with_store(warehouse, tmp_path)
+
+    with pytest.raises(LivePreflightError, match="INCONSISTENT"):
+        runtime._assert_reconciled(_drifted(runtime.streams))
+
+    assert runtime.kill_switch.is_engaged() is True
+
+
+def test_a_drifted_account_only_warns_the_shadow_core(warehouse, tmp_path):
+    """影子盘一张单都发不出去，而那个账户维护者自己还要用——停机是过度反应。
+
+    2026-09-28 维护者转入 5 万并买了 7 天国债逆回购，影子核心当场停机，
+    白丢一整天观察期。
+    """
+    strategy = tmp_path / "strategy.py"
+    strategy.write_text(SOURCE, encoding="utf-8")
+    streams = StreamConfig()
+    transport = MemoryTransport()
+    now = datetime.now()
+    transport.set_key(streams.account, AccountSnapshot(
+        at=now, cash=10_000.0, total_asset=10_000.0, positions={}
+    ).model_dump_json())
+    for source in ("agent", "market"):
+        transport.set_key(f"{streams.heartbeat}:{source}",
+                          Heartbeat(source=source, at=now).model_dump_json())
+    runtime = LiveRuntime(
+        strategy, warehouse.root, AShareCalendar([date.today()]), Quotes(),
+        transport, streams, LiveStore(tmp_path / "shadow-drift.sqlite3"),
+        local_kill_path=tmp_path / "SHADOW_KILL", shadow=True,
+    )
+
+    runtime._assert_reconciled(_drifted(streams))   # 不抛
+
+    assert runtime.kill_switch.is_engaged() is False

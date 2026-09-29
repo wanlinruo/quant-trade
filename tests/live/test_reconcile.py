@@ -142,3 +142,40 @@ def test_deviation_beyond_model_is_unexplained():
 def test_empty_comparison_is_explained():
     report = compare_sim_vs_live([], [])
     assert report.explained_by(0.002) is True
+
+
+# ---- 国债逆回购是现金等价物，不是持仓（2026-09-28）----
+
+def test_reverse_repo_is_not_treated_as_a_position():
+    """维护者用闲置资金买 7 天逆回购，对账当场判失败、影子核心停了一整天。
+
+    131xxx / 204xxx 是生息用的现金等价物，不由策略买卖，当成持仓比对永远对不上。
+    """
+    r = reconcile_positions(
+        local(100_000.0, {}),
+        remote(100_000.0, {"131801.SZ": 1000, "131990.SZ": 1000}),
+    )
+
+    assert r.is_consistent is True
+    assert r.mismatches == ()
+
+
+def test_a_real_position_is_still_flagged_alongside_repo():
+    """把逆回购放行，不等于把真正的持仓差异也放过。"""
+    r = reconcile_positions(
+        local(100_000.0, {}),
+        remote(100_000.0, {"131801.SZ": 1000, "600036.SH": 500}),
+    )
+
+    assert r.is_consistent is False
+    assert [m.symbol for m in r.mismatches] == ["600036.SH"]
+
+
+@pytest.mark.parametrize("symbol,expected", [
+    ("131801.SZ", True), ("131990.SZ", True), ("204001.SH", True),
+    ("600036.SH", False), ("000001.SZ", False), ("300750.SZ", False),
+])
+def test_which_codes_count_as_cash_equivalents(symbol, expected):
+    from qsys.live.reconcile import is_cash_equivalent
+
+    assert is_cash_equivalent(symbol) is expected
