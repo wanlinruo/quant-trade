@@ -43,10 +43,9 @@ def main() -> int:
         raise RuntimeError("实盘核心只在 [safety] mode='live' 且 orders_enabled=true 时启动")
     transport = RedisTransport.from_config(config)
     sinks = [LogAlertSink()]
-    if config.alerts.webhook_url:
-        sinks.append(WebhookAlertSink(
-            config.alerts.webhook_url, timeout=config.alerts.timeout_seconds
-        ))
+    hook = config.alerts.strategy_url(shadow=False)
+    if hook:
+        sinks.append(WebhookAlertSink(hook, timeout=config.alerts.timeout_seconds))
     source = (StrategySource(Path(args.strategy)) if args.strategy
               else resolve_strategy(config.strategy, Path(args.workspace)))
     runtime = LiveRuntime(

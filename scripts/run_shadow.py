@@ -47,10 +47,10 @@ def main() -> int:
         )
     transport = RedisTransport.from_config(config)
     sinks = [LogAlertSink()]
-    if config.alerts.webhook_url:
-        sinks.append(WebhookAlertSink(
-            config.alerts.webhook_url, timeout=config.alerts.timeout_seconds
-        ))
+    # 判断解析后的地址：只配了影子那个、没配 webhook_url 时也要能发
+    hook = config.alerts.strategy_url(shadow=True)
+    if hook:
+        sinks.append(WebhookAlertSink(hook, timeout=config.alerts.timeout_seconds))
     alerts = AlertBus(sinks)
     if args.strategy:
         source = StrategySource(Path(args.strategy))
