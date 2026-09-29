@@ -19,6 +19,15 @@
   {% if param_rows %}<dl class="param-list">{% for label, value in param_rows %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}</dl>
   {% else %}<p class="muted">这个账户没有记录策略参数（早于参数留痕的版本）。</p>{% endif %}
 </section>
+<section class="panel run-params" aria-label="通知">
+  <strong>企微通知</strong>
+  <p class="muted" style="margin:4px 0 8px">填入企业微信机器人的 Webhook 链接，这个账户在<b>有买卖、每日竞价决策、出错、收盘</b>时会推送消息。留空即关闭。链接属于凭据，保存后页面只显示尾部几位。</p>
+  <div class="toolbar">
+    <input id="notify-hook" type="password" style="flex:1;min-width:260px" placeholder="{{ notify_mask or 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=…' }}" autocomplete="off">
+    <button onclick="saveNotify()">保存</button>
+    <span id="notify-state" class="muted">{% if notify_mask %}已配置 {{ notify_mask }}{% else %}未配置{% endif %}</span>
+  </div>
+</section>
 <section class="panel update-policy" aria-label="模拟交易更新规则">
   <strong>运行与更新口径</strong>
   <div><span>收益盯市</span><b>秒级</b>：交易日 09:15–11:30、13:00–15:30 默认约每秒更新；午休约每 60 秒更新；盘外和非交易日停止更新。</div>
@@ -35,6 +44,7 @@
 {% endfor %}</pre>{% endif %}</div></section>
 <style>.run-params{padding:14px 16px;margin-bottom:12px;font-size:12px;color:var(--muted)}.run-params strong{color:var(--fg);display:block;margin-bottom:9px}.param-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:7px 18px;margin:0}.param-list div{display:flex;justify-content:space-between;gap:12px;border-bottom:1px dashed var(--line);padding-bottom:5px}.param-list dt{color:var(--muted)}.param-list dd{margin:0;color:var(--fg);font-weight:600;text-align:right}.paper-status{padding:13px 16px;display:flex;align-items:center;gap:22px;flex-wrap:wrap;margin-bottom:12px}.update-policy{padding:14px 16px;margin-bottom:16px;display:grid;grid-template-columns:auto repeat(3,minmax(0,1fr));gap:12px 20px;align-items:start;font-size:12px;line-height:1.65;color:var(--muted)}.update-policy strong{color:var(--fg);white-space:nowrap}.update-policy span{color:var(--fg);font-weight:650}.update-policy b{color:var(--primary)}.headline-metrics{margin-bottom:16px}.detail-panel{padding:0}.tab-panel h3{font-size:14px;margin:20px 0 10px}.danger{background:#dc2626}@media(max-width:900px){.update-policy{grid-template-columns:1fr}.update-policy strong{margin-bottom:-4px}}</style>
 <script>
+async function saveNotify(){const box=document.getElementById('notify-hook');const state=document.getElementById('notify-state');const response=await fetch('/api/paper-accounts/{{ account.id }}/notify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({webhook:box.value.trim()})});const result=await response.json();if(!response.ok){alert(result.detail||'保存失败');return}box.value='';state.textContent=result.notify?('已配置 '+result.notify):'未配置';box.placeholder=result.notify||'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=…'}
 async function controlPaper(action){if(action==='end'&&!confirm('结束后账户将只读，且不会自动平仓。确认结束？'))return;const response=await fetch('/api/paper-accounts/{{ account.id }}/'+action,{method:'POST'});const result=await response.json();if(!response.ok){alert(result.detail||'操作失败');return}location.reload()}
 document.querySelectorAll('.tab-button').forEach(button=>button.addEventListener('click',()=>{document.querySelectorAll('.tab-button').forEach(item=>item.classList.toggle('active',item===button));document.querySelectorAll('.tab-panel').forEach(panel=>panel.classList.toggle('active',panel.id===button.dataset.tab))}));
 </script>

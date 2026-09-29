@@ -28,6 +28,8 @@ from qsys.data.feed import HistoricalFeed
 from qsys.data.market_feed import MarketFeed
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
+from qsys.ops.alerts import AlertBus, WebhookAlertSink
+from qsys.ops.notify import StrategyNotifier
 from qsys.ops.strategy_log import RunReport, build_record
 
 
@@ -148,6 +150,11 @@ class PaperRuntime:
         account = store.account(account_id)
         if account is None:
             raise LookupError("模拟账户不存在")
+        # 每个账户各自的企微机器人；没填就静默
+        hook = str(account.config.get("notify_webhook") or "")
+        self.notifier = StrategyNotifier(
+            AlertBus([WebhookAlertSink(hook)]) if hook else None, account.name,
+        )
         wh = Warehouse(warehouse)
         query = WarehouseQuery(wh)
         market_data = CutoverMarketData(query, CutoverConfig.from_env())
@@ -332,23 +339,22 @@ class PaperRuntime:
                 * self.last_prices.get(symbol, position.avg_cost)
                 for symbol, position in self.portfolio.positions.items()
             )
-            self.store.record_run(
-                self.id,
-                build_record(
-                    report,
-                    event_key=key,
-                    session=moment.date(),
-                    phase=phase.value,
-                    started_at=started,
-                    finished_at=datetime.now(),
-                    cash=self.portfolio.cash,
-                    market_value=market_value,
-                    position_count=len(self.portfolio.positions),
-                    orders=orders,
-                    rejects=rejects,
-                    error=error,
-                ),
+            record = build_record(
+                report,
+                event_key=key,
+                session=moment.date(),
+                phase=phase.value,
+                started_at=started,
+                finished_at=datetime.now(),
+                cash=self.portfolio.cash,
+                market_value=market_value,
+                position_count=len(self.portfolio.positions),
+                orders=orders,
+                rejects=rejects,
+                error=error,
             )
+            self.store.record_run(self.id, record)
+            self.notifier.on_run(record)
         except Exception as exc:
             log.warning(
                 "strategy_run.record_failed",

@@ -260,6 +260,27 @@ class PaperStore:
                 )
         return self.account(ident)  # type: ignore[return-value]
 
+    def set_notify_webhook(self, ident: str, url: str) -> PaperAccount:
+        """设置或清空这个账户的企微通知链接（空串即关闭通知）。
+
+        只改 config_json 里这一个键，其余原样保留——账户配置里还存着回测区间、
+        策略参数这些出身信息，不能被一次改设置覆盖掉。
+        """
+        account = self.account(ident)
+        if account is None:
+            raise LookupError("模拟账户不存在")
+        config = dict(account.config)
+        if url:
+            config["notify_webhook"] = url
+        else:
+            config.pop("notify_webhook", None)
+        with self._connect() as con:
+            con.execute(
+                "UPDATE paper_accounts SET config_json=?,updated_at=? WHERE id=?",
+                (json.dumps(config, ensure_ascii=False), _now(), ident),
+            )
+        return self.account(ident)  # type: ignore[return-value]
+
     def mark_running(self, ident: str) -> bool:
         with self._connect() as con:
             cur = con.execute(

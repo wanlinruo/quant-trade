@@ -40,6 +40,7 @@ from qsys.strategy.orders import OrderApi
 from qsys.strategy.schedule import Schedule
 from qsys.ops.alerts import AlertBus, LogAlertSink
 from qsys.ops.daily_report import build_daily_report
+from qsys.ops.notify import StrategyNotifier
 from qsys.ops.journal import SessionJournal
 from qsys.ops.strategy_log import RunReport, build_record
 
@@ -101,6 +102,10 @@ class LiveRuntime:
             local_path=local_kill_path,
         )
         self.alerts = alerts or AlertBus([LogAlertSink()])
+        # 策略推送与运维告警共用同一条 AlertBus：影子/实盘各自一个机器人由部署配置决定
+        self.notifier = StrategyNotifier(
+            self.alerts, "影子盘" if shadow else "实盘",
+        )
         self.clock = RealtimeClock()
         self.clock.set(datetime.now())
         self._latest_quotes: dict[str, MarketQuote] = {}
@@ -476,22 +481,22 @@ class LiveRuntime:
                 position.total_qty * self.last_prices.get(symbol, position.avg_cost)
                 for symbol, position in self.portfolio.positions.items()
             )
-            self.store.record_run(
-                build_record(
-                    report,
-                    event_key=key,
-                    session=moment.date(),
-                    phase=phase.value,
-                    started_at=started,
-                    finished_at=datetime.now(),
-                    cash=self.portfolio.cash,
-                    market_value=market_value,
-                    position_count=len(self.portfolio.positions),
-                    orders=orders,
-                    rejects=rejects,
-                    error=error,
-                )
+            record = build_record(
+                report,
+                event_key=key,
+                session=moment.date(),
+                phase=phase.value,
+                started_at=started,
+                finished_at=datetime.now(),
+                cash=self.portfolio.cash,
+                market_value=market_value,
+                position_count=len(self.portfolio.positions),
+                orders=orders,
+                rejects=rejects,
+                error=error,
             )
+            self.store.record_run(record)
+            self.notifier.on_run(record)
         except Exception as exc:
             log.warning("strategy_run.record_failed", event_key=key, error=str(exc))
 
