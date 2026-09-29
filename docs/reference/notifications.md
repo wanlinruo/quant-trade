@@ -91,7 +91,7 @@ timeout_seconds = 5.0
 host       = "smtp.qq.com"
 port       = 465
 username   = "你的邮箱@qq.com"
-password   = "SMTP 授权码，不是登录密码"
+password   = "…"            # SMTP 授权码，不是邮箱登录密码
 recipients = ["收件人@example.com"]
 use_ssl    = true          # 465 用 SSL；587 改成 false 走 STARTTLS
 ```
