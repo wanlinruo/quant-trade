@@ -18,6 +18,8 @@ import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+import structlog
+
 from qsys.core.calendar import last_closed_session
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
@@ -27,10 +29,40 @@ from qsys.ops.service_checks import (
 from qsys.ops.services import SKIPPED, ServiceRun, load_runs
 from qsys.paper.calendar import load_trading_calendar
 
+log = structlog.get_logger("service-checks")
+
 
 def _exit_code(failed: dict[str, int]) -> int:
     """Only data-domain failures fail the data-quality systemd unit."""
     return 1 if failed.get("data", 0) else 0
+
+
+def _notify(config_path, day, problems: list[tuple[str, str, str]]) -> None:
+    """把当晚的质检结论推给运维机器人。
+
+    这一步以前完全没有：20:00 跑出失败也只写进运行记录，要人自己去翻页面
+    （2026-09-27 的证书续期失效就是这样躺了一天）。通知是旁路，失败只记日志。
+    质检每天只跑一次，不存在刷屏，所以不做去重——连续几天不好本来就该天天提醒。
+    """
+    try:
+        from qsys.live.config import load_deploy_config
+        from qsys.ops.alerts import AlertBus, WebhookAlertSink
+
+        url = load_deploy_config(config_path).alerts.ops_url
+        if not url:
+            return
+        bus = AlertBus([WebhookAlertSink(url)])
+        bad = [p for p in problems if p[0] == BAD]
+        warn = [p for p in problems if p[0] == WARN]
+        if not bad and not warn:
+            bus.info(f"服务质检通过（{day}）", f"{len(CHECKS)} 项全部正常")
+            return
+        lines = [f"{name}：{text}" for _, name, text in (bad + warn)[:10]]
+        detail = "\n".join(lines)
+        title = f"服务质检 {day}：失败 {len(bad)} 项，告警 {len(warn)} 项"
+        (bus.critical if bad else bus.warning)(title, detail)
+    except Exception as exc:  # 通知挂了不能影响质检结论
+        log.warning("service_checks.notify_failed", error=str(exc))
 
 
 def main() -> int:
@@ -81,6 +113,7 @@ def main() -> int:
             tls_site=args.tls_site, tls_port=args.tls_port,
         )
         failed = {"data": 0, "strategy": 0}
+        problems: list[tuple[str, str, str]] = []
         # 同一交易日早先的质检（本次记录已落盘，但还没有任何步骤）
         failures = earlier_failures(ctx.runs, day)
         for check in CHECKS:
@@ -93,8 +126,10 @@ def main() -> int:
                     text += f"。{result.detail}"
                 if result.status == BAD:
                     failed[check.domain] += 1
+                    problems.append((BAD, step_name(check), text))
                     step.fail(text)
                 elif result.status == WARN:
+                    problems.append((WARN, step_name(check), text))
                     step.warn(text)
                 elif result.status == SKIP:
                     step.skip(text)
@@ -105,6 +140,7 @@ def main() -> int:
                     step.detail = text
         print(f"{day} 服务质检：{len(CHECKS)} 项，数据未通过 {failed['data']} 项，"
               f"策略事件未通过 {failed['strategy']} 项")
+        _notify(args.config, day, problems)
         if run.status == SKIPPED:
             return 0
         # 策略事件仍作为失败步骤写入运行记录并挂回对应服务，但不能再让

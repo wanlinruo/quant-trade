@@ -322,3 +322,76 @@ def test_the_run_log_separates_the_pre_gate_stage_from_the_gate(warehouse, tmp_p
     assert "候选 34 只 → 入档 0 只 → 闸门通过 0 只，未下单" in page
     assert "入档前·不在低开/高开价格带 31" in page
     assert "入档前·低开·竞价量不足 3" in page
+
+
+# ---- 企微通知链接（2026-09-29）----
+
+HOOK = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=abc123def456"
+
+
+def test_the_page_offers_a_place_to_put_the_webhook(warehouse, tmp_path):
+    client, ident = _account_with_run(
+        warehouse, tmp_path, candidates=None, passed=None, reasons=None
+    )
+
+    page = client.get(f"/paper/{ident}").text
+
+    assert "企微通知" in page and "未配置" in page
+    assert "有买卖" in page and "收盘" in page
+
+
+def test_saving_a_webhook_only_ever_shows_it_masked(warehouse, tmp_path):
+    """链接是凭据：存得进去，但页面永远只回尾部几位。"""
+    client, ident = _account_with_run(
+        warehouse, tmp_path, candidates=None, passed=None, reasons=None
+    )
+
+    response = client.post(f"/api/paper-accounts/{ident}/notify", json={"webhook": HOOK})
+
+    assert response.status_code == 200
+    assert response.json()["notify"] == "…def456"
+    page = client.get(f"/paper/{ident}").text
+    assert HOOK not in page              # 完整链接绝不回显
+    assert "…def456" in page
+
+
+def test_an_empty_webhook_turns_notifications_off(warehouse, tmp_path):
+    client, ident = _account_with_run(
+        warehouse, tmp_path, candidates=None, passed=None, reasons=None
+    )
+    client.post(f"/api/paper-accounts/{ident}/notify", json={"webhook": HOOK})
+
+    client.post(f"/api/paper-accounts/{ident}/notify", json={"webhook": ""})
+
+    assert "未配置" in client.get(f"/paper/{ident}").text
+
+
+def test_a_plain_http_webhook_is_refused(warehouse, tmp_path):
+    client, ident = _account_with_run(
+        warehouse, tmp_path, candidates=None, passed=None, reasons=None
+    )
+
+    response = client.post(f"/api/paper-accounts/{ident}/notify",
+                           json={"webhook": "http://qyapi.weixin.qq.com/x"})
+
+    assert response.status_code == 400
+
+
+def test_saving_a_webhook_keeps_the_rest_of_the_account_config(warehouse, tmp_path):
+    """账户配置里还存着出身信息，一次改设置不能把它们冲掉。"""
+    from qsys.paper.store import PaperStore
+
+    client, job = make_client(warehouse, tmp_path, config={
+        "start": "2026-01-01", "end": "2026-09-22", "cash": 100_000, "jq_compat": False,
+        "params": {"auction_at": "09:25:10"},
+    })
+    ident = client.post("/api/paper-accounts", json={
+        "backtest_id": job.id, "name": "保留配置", "cash": 100_000,
+    }).json()["id"]
+
+    client.post(f"/api/paper-accounts/{ident}/notify", json={"webhook": HOOK})
+
+    config = PaperStore(tmp_path / "workbench.sqlite3").account(ident).config
+    assert config["params"]["auction_at"] == "09:25:10"
+    assert config["start"] == "2026-01-01"
+    assert config["notify_webhook"] == HOOK

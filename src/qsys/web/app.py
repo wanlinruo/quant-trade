@@ -530,6 +530,7 @@ def create_app(
                 "entry_fill_label": ENTRY_FILL_LABELS.get(
                     str(account.config.get("entry_fill", "")), "开盘价成交（原口径）"
                 ),
+                "notify_mask": _mask(str(account.config.get("notify_webhook", ""))),
                 "positions": paper.rows(ident, "positions"),
                 "orders": paper.rows(ident, "orders"),
                 "fills": paper.rows(ident, "fills"),
@@ -572,6 +573,23 @@ def create_app(
             raise HTTPException(status_code=404, detail="no such paper account")
         return {"id": ident, "status": account.status, "error": account.error,
                 "activation_date": account.activation_date, **paper.summary(ident)}
+
+    @app.post("/api/paper-accounts/{ident}/notify")
+    def set_paper_notify(ident: str, body: dict):
+        """设置这个账户的企微机器人链接；空串关闭通知。
+
+        链接是凭据，只在这里写入、页面上永远只回掩码。
+        """
+        if paper is None:
+            raise HTTPException(status_code=404, detail="paper trading not enabled")
+        url = str(body.get("webhook", "")).strip()
+        if url and not url.startswith("https://"):
+            raise HTTPException(status_code=400, detail="通知链接必须是 https")
+        try:
+            account = paper.set_notify_webhook(ident, url)
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return {"id": ident, "notify": _mask(account.config.get("notify_webhook", ""))}
 
     @app.post("/api/paper-accounts/{ident}/{action}")
     def control_paper(ident: str, action: str):
@@ -908,6 +926,13 @@ def create_app(
             if not getattr(route, "path", "").startswith("/api/paper-accounts")
         ]
     return app
+
+
+def _mask(url: str) -> str:
+    """通知链接是凭据，页面上只露尾部几位，够你认出是哪个机器人就行。"""
+    if not url:
+        return ""
+    return f"…{url[-6:]}"
 
 
 def _paper_activation(
