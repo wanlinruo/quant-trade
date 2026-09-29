@@ -321,3 +321,68 @@ def test_a_drifted_account_only_warns_the_shadow_core(warehouse, tmp_path):
     runtime._assert_reconciled(_drifted(streams))   # 不抛
 
     assert runtime.kill_switch.is_engaged() is False
+
+
+def test_a_standing_difference_is_recorded_once_not_every_tick(warehouse, tmp_path):
+    """2026-09-29：一个持续存在的差异写进 10,383 条对账记录（每 2 秒一条）。
+
+    台账要的是「什么时候坏的、什么时候好的」，不是每次尝试都记一行——
+    既撑爆仓库，又让 B4.arrival 永远红着；告警同理，同一句推一整天就没人看了。
+    """
+    from qsys.ops.alerts import AlertBus, RecordingAlertSink
+
+    strategy = tmp_path / "strategy.py"
+    strategy.write_text(SOURCE, encoding="utf-8")
+    streams = StreamConfig()
+    transport = MemoryTransport()
+    now = datetime.now()
+    transport.set_key(streams.account, AccountSnapshot(
+        at=now, cash=10_000.0, total_asset=10_000.0, positions={}
+    ).model_dump_json())
+    for source in ("agent", "market"):
+        transport.set_key(f"{streams.heartbeat}:{source}",
+                          Heartbeat(source=source, at=now).model_dump_json())
+    sink = RecordingAlertSink()
+    runtime = LiveRuntime(
+        strategy, warehouse.root, AShareCalendar([date.today()]), Quotes(),
+        transport, streams, LiveStore(tmp_path / "dedup.sqlite3"),
+        local_kill_path=tmp_path / "SHADOW_KILL", shadow=True,
+        alerts=AlertBus([sink]),
+    )
+
+    drift = _drifted(streams)
+    for _ in range(50):
+        runtime._assert_reconciled(drift)
+
+    assert len(sink.alerts) == 1
+
+
+def test_the_recovery_is_recorded_too(warehouse, tmp_path):
+    """只报变化，不等于坏了就沉默——好了也要说一声。"""
+    from qsys.ops.alerts import AlertBus, RecordingAlertSink
+
+    runtime, _ = _runtime_with_store(warehouse, tmp_path)
+    sink = RecordingAlertSink()
+    runtime.alerts = AlertBus([sink])
+    runtime.shadow = True
+
+    drift = _drifted(runtime.streams)
+    runtime._assert_reconciled(drift)
+    runtime._assert_reconciled(drift)          # 同样的差异，不再重复
+    matching = AccountSnapshot(at=datetime.now(), cash=runtime.portfolio.cash,
+                               total_asset=runtime.portfolio.cash, positions={})
+    runtime._assert_reconciled(matching)       # 恢复一致
+
+    assert len(sink.alerts) == 1               # 只有那次变坏；恢复走 journal 不告警
+
+
+def test_the_live_core_keeps_refusing_on_every_attempt(warehouse, tmp_path):
+    """去重只针对留痕与告警。实盘每次都必须挡住，不能第二次就放行。"""
+    import pytest
+
+    runtime, _ = _runtime_with_store(warehouse, tmp_path)
+    drift = _drifted(runtime.streams)
+
+    for _ in range(3):
+        with pytest.raises(LivePreflightError, match="INCONSISTENT"):
+            runtime._assert_reconciled(drift)
