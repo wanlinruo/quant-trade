@@ -97,6 +97,42 @@ class WebhookAlertSink(AlertSink):
         )
 
 
+def send_email(
+    config, subject: str, text: str, html: str = "", *, sender=None,
+) -> None:
+    """用标准库发一封信，不引入新依赖。
+
+    ``sender`` 可注入以便测试——真去连 SMTP 的测试既慢又会把密码带进 CI。
+    """
+    from email.message import EmailMessage
+
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = config.from_address
+    message["To"] = ", ".join(config.recipients)
+    message.set_content(text)
+    if html:
+        message.add_alternative(html, subtype="html")
+
+    if sender is not None:
+        sender(message)
+        return
+
+    import smtplib
+
+    if config.use_ssl:
+        client = smtplib.SMTP_SSL(
+            config.host, config.port, timeout=config.timeout_seconds
+        )
+    else:
+        client = smtplib.SMTP(config.host, config.port, timeout=config.timeout_seconds)
+    with client:
+        if not config.use_ssl:
+            client.starttls()
+        client.login(config.username, config.password)
+        client.send_message(message)
+
+
 class AlertBus:
     def __init__(self, sinks: Sequence[AlertSink]) -> None:
         self._sinks = tuple(sinks)

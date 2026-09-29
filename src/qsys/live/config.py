@@ -74,6 +74,28 @@ class AlertConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class EmailConfig:
+    """每日汇报的发件账号。口令只写节点本地配置，不入库、不进仓库。"""
+
+    host: str = ""
+    port: int = 465
+    username: str = ""
+    password: str = field(default="", repr=False)
+    sender: str = ""          # 不填则用 username
+    recipients: tuple[str, ...] = ()
+    use_ssl: bool = True      # 465 用 SSL，587 用 STARTTLS
+    timeout_seconds: float = 20.0
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.host and self.username and self.recipients)
+
+    @property
+    def from_address(self) -> str:
+        return self.sender or self.username
+
+
+@dataclass(frozen=True, slots=True)
 class RiskConfig:
     enabled_capital: float = 10_000.0
     # 账户总资产上限：0 表示不限制（默认）。真正卡住敞口的是 enabled_capital——
@@ -105,6 +127,16 @@ class StrategyConfig:
     workbench: str = "var/workbench/workbench.sqlite3"
 
 
+def _email(raw: dict) -> EmailConfig:
+    """收件人写成 TOML 数组或逗号分隔的字符串都认。"""
+    data = dict(raw)
+    people = data.get("recipients", ())
+    if isinstance(people, str):
+        people = [x.strip() for x in people.split(",") if x.strip()]
+    data["recipients"] = tuple(people)
+    return EmailConfig(**data)
+
+
 @dataclass(frozen=True, slots=True)
 class DeployConfig:
     redis: RedisConfig = field(default_factory=RedisConfig)
@@ -112,6 +144,7 @@ class DeployConfig:
     fees: FeeConfig = field(default_factory=FeeConfig)
     safety: SafetyConfig = field(default_factory=SafetyConfig)
     alerts: AlertConfig = field(default_factory=AlertConfig)
+    email: EmailConfig = field(default_factory=EmailConfig)
     risk: RiskConfig = field(default_factory=RiskConfig)
     strategy: StrategyConfig = field(default_factory=StrategyConfig)
     consumer_group: str = "core"
@@ -169,6 +202,7 @@ def load_deploy_config(path: str | Path | None = None) -> DeployConfig:
             }
         ),
         alerts=AlertConfig(**raw.get("alerts", {})),
+        email=_email(raw.get("email", {})),
         risk=RiskConfig(**raw.get("risk", {})),
         strategy=StrategyConfig(**{
             **raw.get("strategy", {}),
