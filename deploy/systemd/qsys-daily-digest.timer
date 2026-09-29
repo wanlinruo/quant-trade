@@ -1,0 +1,10 @@
+[Unit]
+Description=Email the daily operations digest after the evening checks
+
+[Timer]
+# 服务质检 20:00，汇报 20:30 —— 要等它的结论才写得出「今天正不正常」。
+OnCalendar=Mon..Fri 20:30 Asia/Shanghai
+Persistent=true
+
+[Install]
+WantedBy=timers.target

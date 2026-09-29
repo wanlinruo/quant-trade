@@ -119,6 +119,14 @@ SERVICES: tuple[ServiceSpec, ...] = (
         due="21:00", max_runtime=timedelta(minutes=30),
     ),
     ServiceSpec(
+        "daily-digest", "每日汇报（邮件）", "timer", "Linux", "qsys-daily-digest",
+        "交易日 20:30",
+        ("服务运行记录", "影子盘状态库", "模拟盘工作台", "SMTP"),
+        (),
+        "收盘后把当日策略、账户、服务与数据的整体情况发一封邮件",
+        due="21:00", max_runtime=timedelta(minutes=10),
+    ),
+    ServiceSpec(
         "paper", "模拟交易", "resident", "Linux", "qsys-paper", "常驻",
         ("Redis 行情", "price_limits_daily"), ("workbench.sqlite3",),
         "按实时行情运行模拟账户", heartbeat="paper",

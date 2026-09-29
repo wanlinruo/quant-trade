@@ -146,9 +146,14 @@ def test_load_runs_skips_unreadable_files(tmp_path, monkeypatch):
 
 
 def test_every_timer_has_a_unit_and_due_time():
+    """每个定时任务都要能挂回单元、说得出截止时间与依赖的接口。
+
+    产出表（writes）不强制：通知类任务（daily-digest）只读不写，
+    它的价值在发出去的那封信，不在落了什么表。
+    """
     for spec in SERVICES:
         if spec.kind == "timer":
-            assert spec.unit and spec.due and spec.interfaces and spec.writes
+            assert spec.unit and spec.due and spec.interfaces
 
 
 def test_catalog_verify_is_registered_between_sync_and_checks():

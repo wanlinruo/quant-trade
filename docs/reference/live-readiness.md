@@ -78,7 +78,7 @@ workbench = "var/workbench/workbench.sqlite3"
 
 **上线前维护者需提供**：至少两个企微机器人 Webhook（策略、运维各一），
 写进节点本地 `config/deploy.local.toml`；模拟账户的链接在账户详情页填。
-每日邮件汇总属第二期，需另外提供 SMTP。
+每日汇报邮件需在节点 `[email]` 段填 SMTP 发件账号与授权码；没配则只打印不发。
 
 ## 时刻轴上那几块红，哪些是真的
 
