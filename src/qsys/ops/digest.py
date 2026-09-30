@@ -348,11 +348,15 @@ def _readiness_section(readiness: dict) -> Section:
     for name, days in (readiness.get("clean_streak") or {}).items():
         lines.append(Line(f"{name}·连续零错误", f"{days} 个交易日"))
 
-    age = readiness.get("agent_beat_age_s")
-    if age is None:
+    beat = readiness.get("agent_beat") or {}
+    state = beat.get("state")
+    if state == "fresh":
+        lines.append(Line("券商代理心跳", f"{beat.get('age_s', 0.0):.1f} 秒前"))
+    elif state == "absent":
         lines.append(Line("券商代理心跳", "无心跳", Level.WARN))
     else:
-        lines.append(Line("券商代理心跳", f"{age:.1f} 秒前"))
+        # 「问不出来」不能写成「无心跳」——一次时区 bug 就让它天天报代理离线
+        lines.append(Line("券商代理心跳", "问不出来", Level.WARN))
     return Section("实盘就绪", lines)
 
 

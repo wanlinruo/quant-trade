@@ -16,8 +16,12 @@ jobs:
       - name: Require an associated merged PR
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          PUSH_REPO: ${{ github.repository }}
+          PUSH_SHA: ${{ github.sha }}
+          PUSH_REF: ${{ github.ref_name }}
+        # 同 ci.yml：经 env 传，不做 shell 插值
         run: >-
           python scripts/audit_github_push.py
-          --repo "${{ github.repository }}"
-          --sha "${{ github.sha }}"
-          --ref "${{ github.ref_name }}"
+          --repo "$PUSH_REPO"
+          --sha "$PUSH_SHA"
+          --ref "$PUSH_REF"

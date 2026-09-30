@@ -84,3 +84,16 @@ def test_days_after_the_reporting_day_do_not_count(tmp_path):
 
 def test_a_missing_state_database_is_a_zero_streak(tmp_path):
     assert clean_streak(tmp_path / "absent", "live_strategy_runs", DAY) == 0
+
+
+# ---- systemd 时间戳（2026-10-01 首次实跑，日报上显示成 11:09:0）----
+
+from scripts.send_daily_digest import _since  # noqa: E402
+
+
+def test_a_systemd_timestamp_is_trimmed_to_the_minute():
+    assert _since("Wed 2026-09-30 11:09:00 CST") == "2026-09-30 11:09"
+
+
+def test_an_absent_timestamp_is_blank_not_a_crash():
+    assert _since(None) == "" and _since("") == "" and _since("n/a") == ""

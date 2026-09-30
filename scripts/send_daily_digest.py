@@ -153,7 +153,7 @@ def readiness(config_path: str, shadow: Path, workbench: Path, day: date) -> dic
         "影子盘": clean_streak(shadow, "live_strategy_runs", day),
         "模拟盘": clean_streak(workbench, "paper_strategy_runs", day),
     }
-    out["agent_beat_age_s"] = _agent_beat_age(config_path)
+    out["agent_beat"] = _agent_beat(config_path)
     return out
 
 
@@ -171,7 +171,13 @@ def _kill_reason(config_path: str):
         return None
 
 
-def _agent_beat_age(config_path: str):
+def _agent_beat(config_path: str) -> dict:
+    """券商代理心跳。读不到写 unknown，不写 absent——那是两件事。
+
+    心跳时刻是不带时区的本地时间（`HeartbeatMonitor.is_alive` 也这么比），
+    拿 aware 的 now 去减会抛异常；第一次实跑就踩到了，而当时的写法把异常
+    吞成「无心跳」，等于每天误报代理离线（2026-10-01 修）。
+    """
     try:
         from qsys.live.config import load_deploy_config
         from qsys.live.heartbeat import HeartbeatMonitor
@@ -181,11 +187,13 @@ def _agent_beat_age(config_path: str):
         transport = RedisTransport.from_config(config)
         beat = HeartbeatMonitor(transport, prefix=config.streams.heartbeat).read("agent")
         if beat is None or beat.at is None:
-            return None
-        return max(0.0, (datetime.now(timezone.utc) - beat.at).total_seconds())
+            return {"state": "absent"}
+        at = beat.at.replace(tzinfo=None) if beat.at.tzinfo else beat.at
+        return {"state": "fresh",
+                "age_s": max(0.0, (datetime.now() - at).total_seconds())}
     except Exception as exc:
         log.warning("digest.heartbeat_failed", error=str(exc))
-        return None
+        return {"state": "unknown"}
 
 
 def quality(warehouse: Path | None, day: date) -> dict:
@@ -247,9 +255,18 @@ def infrastructure(storage_base: Path, tls_site: str | None, tls_port: int) -> d
         props = systemctl_show(unit)
         units.append({"name": name,
                       "state": props.get("ActiveState", "问不出来"),
-                      "since": (props.get("ActiveEnterTimestamp") or "")[:22]})
+                      "since": _since(props.get("ActiveEnterTimestamp"))})
     reading["units"] = units
     return reading
+
+
+def _since(stamp: str | None) -> str:
+    """systemd 的 `Wed 2026-09-30 11:09:00 CST` → `2026-09-30 11:09`。
+
+    原来按字符数截断，正好切在秒中间，日报上是 `11:09:0`。
+    """
+    parts = (stamp or "").split()
+    return f"{parts[1]} {parts[2][:5]}" if len(parts) >= 3 else ""
 
 
 def _cert_days(site: str | None, port: int) -> int | None:
