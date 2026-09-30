@@ -91,3 +91,59 @@ def test_webhook_timeout_is_configurable():
 def test_alert_is_frozen():
     with pytest.raises(Exception):
         Alert(Severity.INFO, "x", "", T).title = "y"
+
+
+# ---- 投递留账：通知链路自己挂了，得有办法发现（2026-10-01）----
+
+from datetime import date  # noqa: E402
+
+from qsys.ops.alerts import AlertLedger  # noqa: E402
+
+EMPTY_DAY = date(2024, 1, 3)
+
+
+class Broken(RecordingAlertSink):
+    def send(self, alert):
+        raise RuntimeError("webhook 40001 invalid key")
+
+
+def test_a_delivered_alert_is_written_down(tmp_path):
+    ledger = AlertLedger(tmp_path)
+    AlertBus([RecordingAlertSink()], ledger).warning("心跳超时", "90 秒无心跳")
+
+    rows = ledger.read(date.today())
+    assert len(rows) == 1
+    assert rows[0]["severity"] == "WARNING"
+    assert rows[0]["delivered"] == 1 and rows[0]["failed"] == []
+
+
+def test_a_failed_sink_is_named_in_the_ledger(tmp_path):
+    ledger = AlertLedger(tmp_path)
+    AlertBus([RecordingAlertSink(), Broken()], ledger).critical("停机")
+
+    row = ledger.read(date.today())[0]
+    assert row["delivered"] == 1
+    assert row["failed"] == ["Broken"]
+
+
+def test_an_unwritable_ledger_never_breaks_the_alert(tmp_path):
+    """留账是旁路的旁路，绝不能反过来影响主流程。"""
+    sink = RecordingAlertSink()
+    blocked = tmp_path / "file"
+    blocked.write_text("not a directory")
+    AlertBus([sink], AlertLedger(blocked / "under")).critical("停机")
+
+    assert len(sink.alerts) == 1
+
+
+def test_a_half_written_line_does_not_destroy_the_day(tmp_path):
+    """进程被 kill 会留下半行 JSON，不能让当天的账整份读不出来。"""
+    ledger = AlertLedger(tmp_path)
+    AlertBus([RecordingAlertSink()], ledger).info("开工")
+    (tmp_path / f"{date.today():%Y-%m-%d}.jsonl").open("a").write('{"at": "2024')
+
+    assert len(ledger.read(date.today())) == 1
+
+
+def test_a_day_with_no_alerts_reads_empty(tmp_path):
+    assert AlertLedger(tmp_path).read(EMPTY_DAY) == []

@@ -16,7 +16,7 @@ from qsys.live.store import LiveStore
 from qsys.agent.locking import single_instance
 from qsys.live.lineage import StrategySource, resolve_strategy
 from qsys.paper.quotes import DECISION_TIMEOUT, QuoteClient
-from qsys.ops.alerts import AlertBus, LogAlertSink, WebhookAlertSink
+from qsys.ops.alerts import AlertBus, LogAlertSink, WebhookAlertSink, ledger
 from qsys.paper.calendar import load_trading_calendar
 from qsys.data.cutover import add_facade_argument, apply_facade_argument
 
@@ -53,7 +53,7 @@ def main() -> int:
         QuoteClient(transport, config.streams, consumer="live-core",
                     timeout=DECISION_TIMEOUT),
         transport, config.streams, LiveStore(args.state),
-        alerts=AlertBus(sinks),
+        alerts=AlertBus(sinks, ledger()),
         risk=config.risk, params=dict(source.params),
     )
     with single_instance(args.lock):

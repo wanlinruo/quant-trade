@@ -28,7 +28,7 @@ from qsys.data.feed import HistoricalFeed
 from qsys.data.market_feed import MarketFeed
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
-from qsys.ops.alerts import AlertBus, WebhookAlertSink
+from qsys.ops.alerts import AlertBus, WebhookAlertSink, ledger
 from qsys.ops.notify import StrategyNotifier
 from qsys.ops.strategy_log import RunReport, build_record
 
@@ -153,7 +153,7 @@ class PaperRuntime:
         # 每个账户各自的企微机器人；没填就静默
         hook = str(account.config.get("notify_webhook") or "")
         self.notifier = StrategyNotifier(
-            AlertBus([WebhookAlertSink(hook)]) if hook else None, account.name,
+            AlertBus([WebhookAlertSink(hook)], ledger()) if hook else None, account.name,
         )
         wh = Warehouse(warehouse)
         query = WarehouseQuery(wh)

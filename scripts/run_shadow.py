@@ -16,7 +16,7 @@ from qsys.live.redis_transport import RedisTransport
 from qsys.live.runtime import LiveRuntime
 from qsys.live.store import LiveStore
 from qsys.live.tick_guard import TickFailureGuard
-from qsys.ops.alerts import AlertBus, LogAlertSink, WebhookAlertSink
+from qsys.ops.alerts import AlertBus, LogAlertSink, WebhookAlertSink, ledger
 from qsys.paper.calendar import load_trading_calendar
 from qsys.live.lineage import StrategySource, resolve_strategy
 from qsys.paper.quotes import DECISION_TIMEOUT, QuoteClient
@@ -51,7 +51,7 @@ def main() -> int:
     hook = config.alerts.strategy_url(shadow=True)
     if hook:
         sinks.append(WebhookAlertSink(hook, timeout=config.alerts.timeout_seconds))
-    alerts = AlertBus(sinks)
+    alerts = AlertBus(sinks, ledger())
     if args.strategy:
         source = StrategySource(Path(args.strategy))
     else:

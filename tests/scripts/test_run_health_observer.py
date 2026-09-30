@@ -67,3 +67,36 @@ def test_a_task_caught_mid_run_is_not_a_failure():
 
     failed = {**running, "State": "Ready", "LastTaskResult": 267009}
     assert _watchdog_state(failed, now.replace(tzinfo=None))[1] == "watchdog_failed"
+
+
+# ---- 告警要进运维群（2026-10-01 发现一直发在策略群）----
+
+def _deploy(ops="", strategy="https://x/live"):
+    from qsys.live.config import AlertConfig
+    return SimpleNamespace(alerts=AlertConfig(
+        webhook_url=strategy, ops_webhook_url=ops, timeout_seconds=5.0))
+
+
+def _urls(sinks):
+    return [s._url for s in sinks if hasattr(s, "_url")]
+
+
+def test_chain_alerts_go_to_the_ops_robot_not_the_strategy_one():
+    """链路断了是运维事故，不是策略行情——发进实盘群会把实盘群淹掉。"""
+    from scripts.run_health_observer import ops_sinks
+
+    assert _urls(ops_sinks(_deploy(ops="https://x/ops"))) == ["https://x/ops"]
+
+
+def test_a_single_robot_still_gets_everything():
+    """只配了一个机器人时不能静默——ops_url 会回落到它。"""
+    from scripts.run_health_observer import ops_sinks
+
+    assert _urls(ops_sinks(_deploy(ops="", strategy="https://x/only"))) == ["https://x/only"]
+
+
+def test_no_robot_configured_still_logs():
+    from scripts.run_health_observer import ops_sinks
+
+    sinks = ops_sinks(_deploy(ops="", strategy=""))
+    assert _urls(sinks) == [] and len(sinks) == 1

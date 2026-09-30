@@ -19,6 +19,7 @@ from pathlib import Path
 import structlog
 
 from qsys.core.calendar import AShareCalendar
+from qsys.ops.infra import systemctl_show
 from qsys.ops.service_checks import parse_step_name
 from qsys.ops.health import DEGRADED, DOWN, HEALTHY, SHANGHAI, HealthStore, assess_heartbeat
 from qsys.ops.services import (
@@ -37,10 +38,6 @@ from qsys.ops.services import (
 
 log = structlog.get_logger(__name__)
 
-_SYSTEMD_PROPS = ("ActiveState", "SubState", "Result", "ExecMainStatus",
-                  "ExecMainExitTimestamp", "ActiveEnterTimestamp",
-                  "NextElapseUSecRealtime", "LastTriggerUSec")
-
 # 看板格子：css 类与中文标签
 CELL_LABELS = {
     "ok": "成功", "warn": "有警告", "bad": "失败", "running": "运行中", "fixed": "已修复",
@@ -49,19 +46,6 @@ CELL_LABELS = {
 }
 
 
-def systemctl_show(unit: str) -> dict[str, str]:
-    """只读查询 systemd 单元属性；拿不到（非 Linux、无权限）返回空。"""
-    try:
-        out = subprocess.run(
-            ["systemctl", "show", unit, *(f"-p{p}" for p in _SYSTEMD_PROPS)],
-            capture_output=True, text=True, timeout=5,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return {}
-    if out.returncode != 0:
-        return {}
-    props = dict(line.split("=", 1) for line in out.stdout.splitlines() if "=" in line)
-    return {k: v for k, v in props.items() if v and v != "n/a"}
 
 
 # schtasks /query /fo CSV /v 的列顺序在各语言下一致，取值按位置读，不认标题文字。

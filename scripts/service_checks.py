@@ -46,12 +46,12 @@ def _notify(config_path, day, problems: list[tuple[str, str, str]]) -> None:
     """
     try:
         from qsys.live.config import load_deploy_config
-        from qsys.ops.alerts import AlertBus, WebhookAlertSink
+        from qsys.ops.alerts import AlertBus, WebhookAlertSink, ledger
 
         url = load_deploy_config(config_path).alerts.ops_url
         if not url:
             return
-        bus = AlertBus([WebhookAlertSink(url)])
+        bus = AlertBus([WebhookAlertSink(url)], ledger())
         bad = [p for p in problems if p[0] == BAD]
         warn = [p for p in problems if p[0] == WARN]
         if not bad and not warn:
