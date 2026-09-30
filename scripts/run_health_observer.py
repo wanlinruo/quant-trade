@@ -7,7 +7,7 @@ import argparse
 import os
 import sys
 import time
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import structlog
@@ -27,7 +27,9 @@ from qsys.ops.health import (
     HeartbeatPolicy,
     trading_phase,
 )
-from qsys.ops.alerts import AlertBus, LogAlertSink, WebhookAlertSink, ledger
+from qsys.ops.alerts import AlertBus, LogAlertSink, Severity, WebhookAlertSink, ledger
+from qsys.ops.infra_watch import EdgeTracker, survey
+from qsys.ops.services import SERVICE_BY_ID
 from qsys.ops.trading_chain import ChainAssessment, assess_paper, assess_shadow
 from qsys.web.service_views import ServiceConsole, windows_task_show
 
@@ -228,6 +230,101 @@ class BusinessAlertTracker:
             self.alerts.info(f"{name}交易链路已恢复", detail)
 
 
+class ProcessAlertTracker:
+    """任何一个服务进程掉线都报一次，恢复再报一次。
+
+    以前只有 paper / shadow-core 的**业务链路**有告警：Windows 上的行情网关
+    或执行代理整个停掉，一声不响——这两个恰恰是实盘的必经之路。
+
+    同样边沿触发：国庆七天 Windows 不开机应该是一条告警，不是两千条。
+    UNKNOWN（问不出来）不报——采样器自己连不上 Windows 时刷一串「离线」，
+    比不报更糟。
+    """
+
+    def __init__(self, alerts: AlertBus) -> None:
+        self.alerts = alerts
+        self.states: dict[str, str] = {}
+
+    def update(self, item: HealthObservation) -> None:
+        previous = self.states.get(item.service_id)
+        current = item.process_state
+        if current == UNKNOWN:
+            return
+        self.states[item.service_id] = current
+        name = SERVICE_BY_ID[item.service_id].name if (
+            item.service_id in SERVICE_BY_ID) else item.service_id
+        if current == DOWN and previous not in (None, DOWN):
+            self.alerts.critical(f"{name}已停止", item.reason_code)
+        elif current == HEALTHY and previous == DOWN:
+            self.alerts.info(f"{name}已恢复", item.reason_code)
+
+
+class InfraAlerts:
+    """周期性巡检基础设施，边沿触发地推给运维机器人。"""
+
+    def __init__(self, alerts: AlertBus, *, storage_base: Path, config_path,
+                 tls_site: str | None, tls_port: int, interval: float = 300.0) -> None:
+        self.alerts, self.tracker = alerts, EdgeTracker()
+        self.storage_base, self.config_path = storage_base, config_path
+        self.tls_site, self.tls_port = tls_site, tls_port
+        self.interval, self.next_at = interval, 0.0
+
+    def due(self, monotonic: float) -> bool:
+        return monotonic >= self.next_at
+
+    def run(self, monotonic: float, transport=None) -> None:
+        self.next_at = monotonic + self.interval
+        try:
+            findings = survey(self.read(transport))
+        except Exception as exc:          # 巡检自己出错不能拖垮采样循环
+            log.error("infra_watch.survey_failed", error=str(exc))
+            return
+        for notice in self.tracker.update(findings):
+            {
+                Severity.CRITICAL: self.alerts.critical,
+                Severity.WARNING: self.alerts.warning,
+                Severity.INFO: self.alerts.info,
+            }[notice.severity](notice.title, notice.detail)
+
+    def read(self, transport) -> dict:
+        from qsys.ops.infra import failed_units
+        from qsys.ops.storage import disk_status
+
+        reading: dict = {"failed_units": failed_units()}
+        try:
+            reading["disk_free_bytes"] = disk_status(self.storage_base).free
+        except OSError as exc:
+            log.info("infra_watch.disk_unavailable", error=str(exc))
+        reading["cert_days"] = _cert_days(self.tls_site, self.tls_port)
+        reading.update(_redis_state(transport, self.config_path))
+        return reading
+
+
+def _cert_days(site: str | None, port: int) -> int | None:
+    if not site:
+        return None
+    try:
+        from qsys.ops.service_checks import serving_not_after
+
+        not_after = serving_not_after("127.0.0.1", port, site)
+        return (not_after - datetime.now(timezone.utc).replace(tzinfo=None)).days
+    except Exception as exc:
+        log.info("infra_watch.cert_unavailable", error=str(exc))
+        return None
+
+
+def _redis_state(transport, config_path) -> dict:
+    """Redis 通不通，以及急停开关在不在。两件事共用一个连接。"""
+    if transport is None:
+        return {}
+    try:
+        from qsys.live.kill_switch import KillSwitch
+
+        return {"kill_switch": KillSwitch(transport).reason()}
+    except Exception as exc:
+        return {"redis_error": str(exc)}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default=None)
@@ -238,13 +335,27 @@ def main() -> int:
     parser.add_argument("--workbench", default="var/workbench/workbench.sqlite3")
     parser.add_argument("--active-interval", type=float, default=5.0)
     parser.add_argument("--idle-interval", type=float, default=30.0)
+    parser.add_argument("--infra-interval", type=float, default=300.0,
+                        help="基础设施巡检间隔；磁盘与证书都不是秒级变化的东西")
+    parser.add_argument("--storage-base", default="/data/qsys")
+    parser.add_argument("--tls-site", default=None,
+                        help="公网入口域名（作 SNI 探 127.0.0.1）；不给则不看证书")
+    parser.add_argument("--tls-port", type=int, default=8443)
     args = parser.parse_args()
 
     from qsys.live.config import load_deploy_config
     from qsys.live.redis_transport import RedisTransport
 
     deploy = load_deploy_config(args.config)
-    alert_tracker = BusinessAlertTracker(AlertBus(ops_sinks(deploy), ledger()))
+    bus = AlertBus(ops_sinks(deploy), ledger())
+    alert_tracker = BusinessAlertTracker(bus)
+    process_tracker = ProcessAlertTracker(bus)
+    infra_alerts = InfraAlerts(
+        bus, storage_base=Path(args.storage_base), config_path=args.config,
+        tls_site=args.tls_site, tls_port=args.tls_port,
+        interval=args.infra_interval,
+    )
+    transport = None
     try:
         transport = RedisTransport.from_config(deploy)
         heartbeat = _heartbeat_reader(transport, deploy.streams.heartbeat)
@@ -287,10 +398,13 @@ def main() -> int:
                         )
                 item = observation(row, now, phase, business)
                 alert_tracker.update(item)
+                process_tracker.update(item)
                 store.record(item)
         except Exception as exc:
             # 采样失败不能影响被观测服务；下一轮继续并由缺测区间呈灰色。
             log.error("health_observer.sample_failed", error=str(exc))
+        if infra_alerts.due(started):
+            infra_alerts.run(started, transport)
         active = phase in (PREPARE, MORNING, AFTERNOON, CALENDAR_UNKNOWN)
         interval = args.active_interval if active else args.idle_interval
         time.sleep(max(0.2, interval - (time.monotonic() - started)))

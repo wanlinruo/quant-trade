@@ -13,7 +13,9 @@ ExecStart=/home/ubuntu/qsys/.venv/bin/python scripts/run_health_observer.py \
           --config /home/ubuntu/qsys/config/deploy.local.toml \
           --state /home/ubuntu/qsys/var/service-health.sqlite3 \
           --shadow-state /home/ubuntu/qsys/var/shadow-state.sqlite3 \
-          --workbench /home/ubuntu/qsys/var/workbench/workbench.sqlite3
+          --workbench /home/ubuntu/qsys/var/workbench/workbench.sqlite3 \
+          --storage-base /data/qsys \
+          --tls-site wanlinruo.cn --tls-port 8443
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
