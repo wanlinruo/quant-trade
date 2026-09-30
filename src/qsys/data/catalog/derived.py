@@ -158,10 +158,11 @@ METRICS: tuple[Metric, ...] = (
     ),
     _m(
         "daily_flags.st_source",
-        "该行 ST 真值的来源：有 stock_st 行为 \"stock_st\"，否则 null。"
-        "覆盖率可直接从本列查出",
-        ("stock_st_daily.is_st",),
-        "stock_st_daily 有该行则字面量 \"stock_st\"，否则 null",
+        "该行 ST 真值的来源：已公告退市整理期为 \"delisting_pool_override\"，"
+        "否则有 stock_st 行为 \"stock_st\"，再否则 null。覆盖率可直接从本列查出",
+        ("stock_st_daily.is_st", "delisting_pool.symbol"),
+        "在已公告整理期池里则字面量 \"delisting_pool_override\"（压过 stock_st，"
+        "见 D-15）；否则 stock_st_daily 有该行则 \"stock_st\"，否则 null",
         ("A2.recompute.st_source",),
     ),
     _m(
