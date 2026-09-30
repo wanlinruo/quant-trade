@@ -27,7 +27,7 @@ from qsys.ops.health import (
     HeartbeatPolicy,
     trading_phase,
 )
-from qsys.ops.alerts import AlertBus, LogAlertSink, WebhookAlertSink
+from qsys.ops.alerts import AlertBus, LogAlertSink, WebhookAlertSink, ledger
 from qsys.ops.trading_chain import ChainAssessment, assess_paper, assess_shadow
 from qsys.web.service_views import ServiceConsole, windows_task_show
 
@@ -190,6 +190,21 @@ def observation(
     )
 
 
+def ops_sinks(deploy) -> list:
+    """本进程的告警去运维群，不去策略群。
+
+    链路断了是「系统管理者今天要处理的事」，不是某条策略的行情。发进实盘群会
+    两头吃亏：实盘群被运维噪音淹，运维群反而漏掉事故——2026-09-29 配好三个
+    机器人时这里没跟着改，一直发错群（2026-10-01 发现）。
+    """
+    sinks = [LogAlertSink()]
+    if deploy.alerts.ops_url:
+        sinks.append(WebhookAlertSink(
+            deploy.alerts.ops_url, timeout=deploy.alerts.timeout_seconds,
+        ))
+    return sinks
+
+
 class BusinessAlertTracker:
     """Emit once per chain failure/degradation and once after recovery."""
 
@@ -229,12 +244,7 @@ def main() -> int:
     from qsys.live.redis_transport import RedisTransport
 
     deploy = load_deploy_config(args.config)
-    sinks = [LogAlertSink()]
-    if deploy.alerts.webhook_url:
-        sinks.append(WebhookAlertSink(
-            deploy.alerts.webhook_url, timeout=deploy.alerts.timeout_seconds,
-        ))
-    alert_tracker = BusinessAlertTracker(AlertBus(sinks))
+    alert_tracker = BusinessAlertTracker(AlertBus(ops_sinks(deploy), ledger()))
     try:
         transport = RedisTransport.from_config(deploy)
         heartbeat = _heartbeat_reader(transport, deploy.streams.heartbeat)

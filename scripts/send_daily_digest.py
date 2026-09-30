@@ -15,12 +15,12 @@ from __future__ import annotations
 import argparse
 import sqlite3
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import structlog
 
-from qsys.core.calendar import last_closed_session
+from qsys.ops.alerts import ledger as alert_ledger
 from qsys.ops.digest import build_digest
 from qsys.ops.services import ServiceRun, load_runs
 from qsys.paper.calendar import load_trading_calendar
@@ -30,6 +30,15 @@ log = structlog.get_logger("daily-digest")
 # 每天都该留下记录的任务；缺了要在汇报里点名
 EXPECTED_SERVICES = ("premarket-limits", "daily-archive", "tushare-sync",
                      "catalog-verify", "service-checks")
+
+# 节点段要报在线状态的常驻服务
+RESIDENT_UNITS = (
+    ("影子盘核心", "qsys-shadow-core"),
+    ("模拟盘", "qsys-paper"),
+    ("健康观测", "qsys-health-observer"),
+    ("监控台", "qsys-monitor"),
+    ("Redis 隧道", "qsys-redis-tunnel"),
+)
 
 
 def _rows(path: Path, sql: str, args: tuple) -> list[dict]:
@@ -89,7 +98,8 @@ def accounts(workbench: Path, day: date) -> list[dict]:
     ]
 
 
-def checks_and_missing(service_runs: Path, day: date) -> tuple[list[dict], list[str]]:
+def checks_and_missing(service_runs: Path, day: date,
+                       trading: bool = True) -> tuple[list[dict], list[str]]:
     """当晚质检的全部步骤，外加当天没留下运行记录的任务。
 
     交全部步骤而不只是失败的：汇报要写「26 项，失败 0」，
@@ -104,8 +114,156 @@ def checks_and_missing(service_runs: Path, day: date) -> tuple[list[dict], list[
         for s in steps
     ]
     seen = {r.get("service") for r in runs}
-    missing = [name for name in EXPECTED_SERVICES if name not in seen]
+    # 休市日这些任务本来就不排，缺记录不是故障
+    missing = [name for name in EXPECTED_SERVICES if name not in seen] if trading else []
     return checks, missing
+
+
+def clean_streak(path: Path, table: str, day: date) -> int:
+    """到 day 为止，连续多少个交易日一条错误都没有。
+
+    「观察期第几天」需要一个手填的起点，会过期；「连续零错误多少天」每天都能
+    重算，过不了期，而且实盘跑起来之后依然有意义。
+    """
+    rows = _rows(path, f"SELECT session, MAX(error IS NOT NULL AND error != '')"
+                       f" AS bad FROM {table} WHERE session <= ?"
+                       f" GROUP BY session ORDER BY session DESC", (day.isoformat(),))
+    streak = 0
+    for row in rows:
+        if row["bad"]:
+            break
+        streak += 1
+    return streak
+
+
+def readiness(config_path: str, shadow: Path, workbench: Path, day: date) -> dict:
+    """离实盘还差什么。全部现查，不读任何手填的计划表。"""
+    from qsys.live.config import load_deploy_config
+
+    out: dict = {}
+    try:
+        config = load_deploy_config(config_path)
+        out["mode"] = config.safety.mode
+        out["orders_enabled"] = config.safety.orders_enabled
+    except Exception as exc:
+        log.warning("digest.safety_failed", error=str(exc))
+        out["mode"] = "问不出来"
+    out["kill_switch"] = _kill_reason(config_path)
+    out["clean_streak"] = {
+        "影子盘": clean_streak(shadow, "live_strategy_runs", day),
+        "模拟盘": clean_streak(workbench, "paper_strategy_runs", day),
+    }
+    out["agent_beat_age_s"] = _agent_beat_age(config_path)
+    return out
+
+
+def _kill_reason(config_path: str):
+    try:
+        from qsys.live.config import load_deploy_config
+        from qsys.live.kill_switch import KillSwitch
+        from qsys.live.redis_transport import RedisTransport
+
+        config = load_deploy_config(config_path)
+        switch = KillSwitch(RedisTransport.from_config(config))
+        return switch.reason()
+    except Exception as exc:
+        log.warning("digest.kill_switch_failed", error=str(exc))
+        return None
+
+
+def _agent_beat_age(config_path: str):
+    try:
+        from qsys.live.config import load_deploy_config
+        from qsys.live.heartbeat import HeartbeatMonitor
+        from qsys.live.redis_transport import RedisTransport
+
+        config = load_deploy_config(config_path)
+        transport = RedisTransport.from_config(config)
+        beat = HeartbeatMonitor(transport, prefix=config.streams.heartbeat).read("agent")
+        if beat is None or beat.at is None:
+            return None
+        return max(0.0, (datetime.now(timezone.utc) - beat.at).total_seconds())
+    except Exception as exc:
+        log.warning("digest.heartbeat_failed", error=str(exc))
+        return None
+
+
+def quality(warehouse: Path | None, day: date) -> dict:
+    """当晚指标字典验证的结论。取不到就返回空字典，由汇报判定要不要算异常。"""
+    if warehouse is None or not Path(warehouse).exists():
+        return {}
+    try:
+        import polars as pl
+
+        from qsys.data.query import WarehouseQuery
+        from qsys.data.storage import Warehouse
+
+        frame = WarehouseQuery(Warehouse(warehouse)).metric_checks()
+        today = frame.filter(pl.col("scope_end") == day)
+        if today.height == 0:
+            return {}
+        latest = today.filter(pl.col("run_id") == today["run_id"].max())
+        failed = latest.filter(~pl.col("passed"))
+        blocking = failed.filter(pl.col("severity") == "blocking")
+        return {
+            "at": latest["checked_at"].max().strftime("%H:%M"),
+            "total": latest.height,
+            "warnings": failed.height - blocking.height,
+            "known_warnings": failed.filter(
+                pl.col("known_issue").is_not_null()).height,
+            "blocking": [
+                {"metric": row["metric_id"], "detail": row["detail"]}
+                for row in blocking.iter_rows(named=True)
+            ],
+        }
+    except Exception as exc:               # 汇报不能因为取数失败而发不出去
+        log.warning("digest.quality_failed", error=str(exc))
+        return {}
+
+
+def infrastructure(storage_base: Path, tls_site: str | None, tls_port: int) -> dict:
+    """节点还撑不撑得住。任何一项取不到都记 None，不记「看起来没事」。"""
+    from qsys.ops.infra import failed_units, memory, systemctl_show
+    from qsys.ops.storage import GIB, disk_status
+
+    reading = {}
+    try:
+        usage = disk_status(storage_base)
+        reading["disk"] = {"free_gib": usage.free / GIB, "total_gib": usage.total / GIB,
+                           "used_pct": round(100 * usage.used / usage.total),
+                           "level": usage.level}
+    except OSError as exc:
+        log.warning("digest.disk_failed", error=str(exc))
+
+    ram = memory()
+    if ram is not None:
+        reading["memory"] = {"available_gib": ram.available_gib,
+                             "total_gib": ram.total_gib, "used_pct": ram.used_pct}
+
+    reading["failed_units"] = failed_units()
+    reading["cert_days"] = _cert_days(tls_site, tls_port)
+    units = []
+    for name, unit in RESIDENT_UNITS:
+        props = systemctl_show(unit)
+        units.append({"name": name,
+                      "state": props.get("ActiveState", "问不出来"),
+                      "since": (props.get("ActiveEnterTimestamp") or "")[:22]})
+    reading["units"] = units
+    return reading
+
+
+def _cert_days(site: str | None, port: int) -> int | None:
+    if not site:
+        return None
+    try:
+        from qsys.ops.service_checks import serving_not_after
+
+        not_after = serving_not_after("127.0.0.1", port, site)
+        # notAfter 解析出来是不带时区的 UTC，拿同样口径的当下来减
+        return (not_after - datetime.now(timezone.utc).replace(tzinfo=None)).days
+    except Exception as exc:
+        log.warning("digest.cert_failed", site=site, error=str(exc))
+        return None
 
 
 def main() -> int:
@@ -117,32 +275,43 @@ def main() -> int:
                         default=Path("var/shadow-state.sqlite3"))
     parser.add_argument("--workbench", type=Path,
                         default=Path("var/workbench/workbench.sqlite3"))
+    parser.add_argument("--alert-ledger", type=Path, default=None,
+                        help="告警投递流水目录；默认 var/alerts")
+    parser.add_argument("--warehouse", type=Path, default=None,
+                        help="仓库路径；给了才汇报数据质量")
+    parser.add_argument("--storage-base", type=Path, default=Path("/data/qsys"))
+    parser.add_argument("--tls-site", default=None,
+                        help="公网入口域名（作 SNI 探 127.0.0.1）；不给则不报证书")
+    parser.add_argument("--tls-port", type=int, default=8443)
     parser.add_argument("--day", type=date.fromisoformat, default=None)
     parser.add_argument("--print", action="store_true", help="只打印，不发信")
     args = parser.parse_args()
 
     calendar = load_trading_calendar(args.config)
-    day = args.day or last_closed_session(calendar, datetime.now())
-    if day is None:
-        print("没有已收盘的交易日，不发汇报")
-        return 0
-    if not calendar.is_trading_day(day):
-        print(f"{day} 不是交易日，不发汇报")
-        return 0
+    # 汇报的是**今天**，不是「最近一个已收盘交易日」。后者在假期里会把节前
+    # 最后一个交易日的日报原样重发：定时器按 Mon..Fri 触发，不认节假日，
+    # 国庆七天能发出五封一模一样的信（2026-10-01 预演发现）。
+    day = args.day or datetime.now().date()
+    trading = calendar.is_trading_day(day)
 
     with ServiceRun.open(args.service_runs, "daily-digest") as run:
         run.session = day
-        return _run(args, day, run)
+        return _run(args, day, trading, run)
 
 
-def _run(args, day, run) -> int:
-    checks, missing = checks_and_missing(args.service_runs, day)
+def _run(args, day, trading, run) -> int:
+    checks, missing = checks_and_missing(args.service_runs, day, trading)
     digest = build_digest(
         day,
-        strategy_runs=strategy_runs(args.shadow_state, args.workbench, day),
-        accounts=accounts(args.workbench, day),
+        trading=trading,
+        strategy_runs=strategy_runs(args.shadow_state, args.workbench, day) if trading else [],
+        accounts=accounts(args.workbench, day) if trading else [],
         checks=checks,
         missing_services=missing,
+        quality=quality(args.warehouse, day),
+        infra=infrastructure(args.storage_base, args.tls_site, args.tls_port),
+        deliveries=alert_ledger(args.alert_ledger).read(day),
+        readiness=readiness(args.config, args.shadow_state, args.workbench, day),
     )
 
     with run.step("汇总当日情况", interface="只读状态库与运行记录") as step:
