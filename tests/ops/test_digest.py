@@ -399,7 +399,8 @@ def test_an_undelivered_alert_is_a_failure():
 
 def _ready(**over):
     base = {"mode": "shadow", "orders_enabled": False, "kill_switch": None,
-            "clean_streak": {"影子盘": 1, "模拟盘": 5}, "agent_beat_age_s": 0.4}
+            "clean_streak": {"影子盘": 1, "模拟盘": 5},
+            "agent_beat": {"state": "fresh", "age_s": 0.4}}
     return {**base, **over}
 
 
@@ -420,6 +421,18 @@ def test_an_engaged_kill_switch_is_a_failure():
 
 def test_a_missing_agent_heartbeat_is_a_warning_not_a_failure():
     """休市日代理本来就可能没开，报失败会天天狼来了。"""
-    digest = build_digest(HOLIDAY, trading=False, readiness=_ready(agent_beat_age_s=None))
+    digest = build_digest(HOLIDAY, trading=False,
+                          readiness=_ready(agent_beat={"state": "absent"}))
 
     assert digest.tally() == (0, 1)
+    assert "无心跳" in digest.as_text()
+
+
+def test_an_unreadable_heartbeat_says_so_rather_than_claiming_it_is_down():
+    """2026-10-01 首次实跑：一个时区 bug 让读取抛异常，日报却写「无心跳」。
+    读不到和确实没有是两件事，混为一谈就等于每天误报代理离线。"""
+    digest = build_digest(HOLIDAY, trading=False,
+                          readiness=_ready(agent_beat={"state": "unknown"}))
+
+    assert "问不出来" in digest.as_text()
+    assert "无心跳" not in digest.as_text()

@@ -1,0 +1,61 @@
+"""CI 工作流里不许把 `${{ }}` 直接插进 shell。
+
+2026-10-01：一个标题里带双引号的 PR 就把 policy 检查打断了——
+`--title "${{ github.event.pull_request.title }}"` 展开后引号提前闭合。
+坏掉只是表象，真正的问题是**标题是外部输入**：`"; curl …` 这样的标题
+能在 CI runner 上执行任意命令。一律经 `env:` 传，用 "$VAR" 引用。
+"""
+
+import re
+from pathlib import Path
+
+WORKFLOWS = Path(".github/workflows")
+INTERPOLATION = re.compile(r"\$\{\{")
+STEP_START = re.compile(r"^\s*-\s+(name|uses):")
+RUN_START = re.compile(r"^\s*run:")
+
+
+def _shell_interpolations(text: str) -> list[str]:
+    """`run:` 块内出现的 `${{ }}` 行。`env:` 里的不算——那是安全的用法。"""
+    out, in_run = [], False
+    for line in text.splitlines():
+        if RUN_START.search(line):
+            in_run = True
+        elif STEP_START.match(line):
+            in_run = False
+        if in_run and INTERPOLATION.search(line):
+            out.append(line.strip())
+    return out
+
+
+def test_no_workflow_interpolates_into_a_shell_command():
+    offenders = {
+        path.name: found
+        for path in sorted(WORKFLOWS.glob("*.yml"))
+        if (found := _shell_interpolations(path.read_text(encoding="utf-8")))
+    }
+
+    assert offenders == {}
+
+
+def test_the_detector_would_have_caught_the_original():
+    original = (
+        "      - name: Validate\n"
+        "        run: >-\n"
+        "          python scripts/check_repo_policy.py\n"
+        '          --title "${{ github.event.pull_request.title }}"\n'
+    )
+
+    assert _shell_interpolations(original)
+
+
+def test_passing_the_same_value_through_env_is_fine():
+    fixed = (
+        "      - name: Validate\n"
+        "        env:\n"
+        "          PR_TITLE: ${{ github.event.pull_request.title }}\n"
+        "        run: >-\n"
+        '          python scripts/check_repo_policy.py --title "$PR_TITLE"\n'
+    )
+
+    assert _shell_interpolations(fixed) == []

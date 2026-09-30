@@ -21,13 +21,20 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      # 标题、分支名经 env 传入，不做 shell 插值：${{ }} 会把值直接拼进命令行，
+      # 一个带双引号的标题就能把它拆坏（2026-10-01 实际发生），
+      # 而带 `"; …` 的标题能在 CI 里执行任意命令。
       - name: Validate branch, PR and commit policy
         if: github.event_name == 'pull_request'
+        env:
+          PR_HEAD: ${{ github.head_ref }}
+          PR_BASE: ${{ github.base_ref }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: >-
           python scripts/check_repo_policy.py
-          --head "${{ github.head_ref }}"
-          --base "${{ github.base_ref }}"
-          --title "${{ github.event.pull_request.title }}"
+          --head "$PR_HEAD"
+          --base "$PR_BASE"
+          --title "$PR_TITLE"
           --check-commits
       - name: Validate test integration commit
         if: github.event_name == 'push'
