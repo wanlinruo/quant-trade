@@ -217,14 +217,39 @@ def _first_board(ctx: CheckContext) -> pl.DataFrame:
 _add("is_first_board", "daily_flags.is_first_board", _first_board, boolean=True)
 
 
+def _announced_pool(ctx: CheckContext) -> pl.DataFrame:
+    """当日已公告生效的退市整理期池；公告日晚于当日的行还没生效。"""
+    empty = pl.DataFrame(schema={"symbol": pl.String, "dt": pl.Date, "_pooled": pl.Boolean})
+    pool = ctx.query.delisting_pool(ctx.start, ctx.end)
+    if pool.height == 0:
+        return empty
+    return (pool.filter(pl.col("ann_date").is_null() | (pl.col("ann_date") <= pl.col("dt")))
+            .select("symbol", "dt").unique()
+            .with_columns(pl.lit(True).alias("_pooled")))
+
+
 def _direct_st(ctx: CheckContext) -> pl.DataFrame:
-    """ST 只认 stock_st（D-11）：有直取行就必须一致，没有就必须为 null。"""
+    """ST 只认 stock_st（D-11）；已公告的退市整理期压过它（D-15）。
+
+    整理期池派生自 namechange，是独立于 stock_st 的另一条直取链路，所以在池子里
+    就不是 ST、来源记池子——即便 stock_st 恰好也说 false：决定这一行的是池子那一支。
+    只认 stock_st 的旧写法会把「元道退」这样一条正确的行判成阻断（2026-09-30）。
+    """
     flags = ctx.query.daily_flags(ctx.start, ctx.end).select(
         "symbol", "dt", pl.col("is_st").alias("actual"),
         pl.col("st_source").alias("actual_source"))
     truth = ctx.query.stock_st(None, ctx.start, ctx.end).select(
-        "symbol", "dt", pl.col("is_st").alias("expected"))
-    return flags.join(truth, on=["symbol", "dt"], how="left")
+        "symbol", "dt", pl.col("is_st").alias("_stock_st"))
+    pooled = pl.col("_pooled").is_not_null()   # 左连没命中就是不在池子里
+    return (flags.join(truth, on=["symbol", "dt"], how="left")
+            .join(_announced_pool(ctx), on=["symbol", "dt"], how="left")
+            .with_columns(
+                pl.when(pooled).then(pl.lit(False))  # noqa: FBT003
+                .otherwise(pl.col("_stock_st")).alias("expected"),
+                pl.when(pooled).then(pl.lit("delisting_pool_override"))
+                .when(pl.col("_stock_st").is_not_null()).then(pl.lit("stock_st"))
+                .alias("expected_source"),
+            ))
 
 
 _add("is_st", "daily_flags.is_st", lambda c: _direct_st(c).select(
@@ -232,8 +257,7 @@ _add("is_st", "daily_flags.is_st", lambda c: _direct_st(c).select(
     _nullable(pl.col("expected")).alias("expected")), boolean=True)
 _add("st_source", "daily_flags.st_source", lambda c: _direct_st(c).select(
     _nullable(pl.col("actual_source")).alias("actual"),
-    _nullable(pl.when(pl.col("expected").is_not_null()).then(pl.lit("stock_st")))
-    .alias("expected")), boolean=True)
+    _nullable(pl.col("expected_source")).alias("expected")), boolean=True)
 
 
 def _valuation(ctx: CheckContext, column: str) -> pl.DataFrame:

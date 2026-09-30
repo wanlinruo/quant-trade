@@ -736,6 +736,14 @@ if "limit_pct" in yesterday.columns:
 `stock_st` 的正例覆盖为 false，并记录 `st_source=delisting_pool_override`。
 因此源指标仍保留 D-15 caveat，生产消费指标不再挂 D-15。
 
+**2026-10-01 补记：修复只做了一半。** 派生层照上面改了，`A2.recompute.st_source`
+这条独立重算却仍按「有 stock_st 行就该是 stock_st」判定，从没跟着改。
+2026-09-30 `301139.SZ`（元道退）进入退市整理期，成为该规则上线以来第一条真正走到
+覆盖分支的生产行，于是当晚指标字典多出一条阻断——**数据是对的，判错的是校验**。
+两边其实都说 `is_st=false`，分歧只在来源标签。现已让重算读同一个池子：在已公告
+整理期内则 `is_st=false`、来源 `delisting_pool_override`；`is_st` 那条同样补上，
+否则等 `stock_st` 真按 D-15 误报成 true 时还会再红一次。
+
 ## D-16 `share_capital` 停更观察期，以及与 `daily_basic` 股本的 4 处分歧
 
 **登记日期**：2026-09-15。**状态：观察中，不是缺陷。**

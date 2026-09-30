@@ -65,9 +65,16 @@ def test_is_st_uses_direct_st_and_the_delisting_exception():
     assert BY_ID["daily_flags.is_st"].lineage.upstream == (
         "stock_st_daily.is_st", "delisting_pool.symbol"
     )
-    assert BY_ID["daily_flags.st_source"].lineage.upstream == ("stock_st_daily.is_st",)
+    assert BY_ID["daily_flags.st_source"].lineage.upstream == (
+        "stock_st_daily.is_st", "delisting_pool.symbol"
+    )
+
+
 def test_st_source_records_which_level_won():
-    assert "来源" in BY_ID["daily_flags.st_source"].meaning
+    """来源列要说得出整理期那一支——只列 stock_st 的写法和实际生产对不上。"""
+    metric = BY_ID["daily_flags.st_source"]
+    assert "来源" in metric.meaning
+    assert "delisting_pool_override" in metric.meaning
 
 
 def test_adj_prev_close_is_a_passthrough_not_a_recomputation():

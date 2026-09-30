@@ -234,3 +234,56 @@ def test_null_st_where_stock_st_has_no_row_is_correct(ctx, warehouse):
     _stock_st([{"symbol": "600002.SH", "dt": D[0], "is_st": False}], warehouse)
     assert _run(ctx, "A2.recompute.is_st")["passed"] is True
     assert _run(ctx, "A2.recompute.st_source")["passed"] is True
+
+
+# ---- 退市整理期压过 stock_st（D-15）------------------------------------------
+
+def _delisting(rows, warehouse):
+    frame = pl.DataFrame(rows)
+    for name, dtype in (("name", pl.Utf8), ("start_date", pl.Date),
+                        ("end_date", pl.Date), ("ann_date", pl.Date)):
+        if name not in frame.columns:
+            frame = frame.with_columns(pl.lit(None, dtype=dtype).alias(name))
+    warehouse.write("delisting_pool", frame.select(schema.DELISTING_POOL.names)
+                    .to_arrow().cast(schema.DELISTING_POOL), year=2026)
+
+
+def test_a_consolidation_row_is_sourced_from_the_pool_not_stock_st(ctx, warehouse):
+    """2026-09-30「元道退」进整理期：生产记 delisting_pool_override，重算却
+    坚持 stock_st，把一条正确的行判成阻断——两边说的是同一个 false。"""
+    _flags([{"dt": D[0], "symbol": "301139.SZ", "is_st": False,
+             "st_source": "delisting_pool_override"}], warehouse)
+    _stock_st([{"symbol": "301139.SZ", "dt": D[0], "is_st": False}], warehouse)
+    _delisting([{"symbol": "301139.SZ", "dt": D[0], "ann_date": date(2026, 9, 1)}], warehouse)
+    assert _run(ctx, "A2.recompute.st_source")["passed"] is True
+    assert _run(ctx, "A2.recompute.is_st")["passed"] is True
+
+
+def test_the_pool_wins_over_a_stock_st_row_that_still_says_st(ctx, warehouse):
+    """D-15 本体：stock_st 把整理期标的错报回旧 *ST 名，整理期必须压过它。"""
+    _flags([{"dt": D[0], "symbol": "301139.SZ", "is_st": False,
+             "st_source": "delisting_pool_override"}], warehouse)
+    _stock_st([{"symbol": "301139.SZ", "dt": D[0], "is_st": True}], warehouse)
+    _delisting([{"symbol": "301139.SZ", "dt": D[0], "ann_date": date(2026, 9, 1)}], warehouse)
+    assert _run(ctx, "A2.recompute.is_st")["passed"] is True
+    assert _run(ctx, "A2.recompute.st_source")["passed"] is True
+
+
+def test_the_pool_still_decides_when_stock_st_has_no_row(ctx, warehouse):
+    """池子本身就是直取源，没有 stock_st 行也能定出 false——不违反 D-11。"""
+    _flags([{"dt": D[0], "symbol": "301139.SZ", "is_st": False,
+             "st_source": "delisting_pool_override"}], warehouse)
+    _stock_st([{"symbol": "600002.SH", "dt": D[0], "is_st": False}], warehouse)
+    _delisting([{"symbol": "301139.SZ", "dt": D[0], "ann_date": date(2026, 9, 1)}], warehouse)
+    assert _run(ctx, "A2.recompute.is_st")["passed"] is True
+    assert _run(ctx, "A2.recompute.st_source")["passed"] is True
+
+
+def test_a_pool_row_announced_later_does_not_override_yet(ctx, warehouse):
+    """公告日晚于当日的池子行还没生效，生产也是这么过滤的。"""
+    _flags([{"dt": D[0], "symbol": "301139.SZ", "is_st": True,
+             "st_source": "stock_st"}], warehouse)
+    _stock_st([{"symbol": "301139.SZ", "dt": D[0], "is_st": True}], warehouse)
+    _delisting([{"symbol": "301139.SZ", "dt": D[0], "ann_date": D[1]}], warehouse)
+    assert _run(ctx, "A2.recompute.is_st")["passed"] is True
+    assert _run(ctx, "A2.recompute.st_source")["passed"] is True
