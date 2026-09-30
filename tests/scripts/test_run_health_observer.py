@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from types import SimpleNamespace
 
 from qsys.ops.alerts import AlertBus, RecordingAlertSink, Severity
@@ -100,3 +101,116 @@ def test_no_robot_configured_still_logs():
 
     sinks = ops_sinks(_deploy(ops="", strategy=""))
     assert _urls(sinks) == [] and len(sinks) == 1
+
+
+# ---- 任何服务掉线都要报（以前只有 paper / shadow-core 的业务链路有）----
+
+from qsys.ops.health import UNKNOWN  # noqa: E402
+from scripts.run_health_observer import ProcessAlertTracker  # noqa: E402
+
+
+def _process(service, state):
+    return observation(row(service, state), datetime(2026, 10, 1, 10, 0), MORNING)
+
+
+def test_a_windows_service_going_down_is_announced():
+    """行情网关与执行代理整个停掉以前一声不响——这两个恰恰是实盘的必经之路。"""
+    sink = RecordingAlertSink()
+    tracker = ProcessAlertTracker(AlertBus([sink]))
+    tracker.update(_process("market-gateway", "ok"))
+    tracker.update(_process("market-gateway", "bad"))
+
+    assert len(sink.alerts) == 1
+    assert sink.alerts[0].severity is Severity.CRITICAL
+    assert "QMT 行情网关已停止" in sink.alerts[0].title
+
+
+def test_a_long_outage_is_still_one_alert():
+    sink = RecordingAlertSink()
+    tracker = ProcessAlertTracker(AlertBus([sink]))
+    tracker.update(_process("market-gateway", "ok"))
+    for _ in range(2016):
+        tracker.update(_process("market-gateway", "bad"))
+
+    assert len(sink.alerts) == 1
+
+
+def test_recovery_is_announced_as_well():
+    sink = RecordingAlertSink()
+    tracker = ProcessAlertTracker(AlertBus([sink]))
+    tracker.update(_process("market-gateway", "ok"))
+    tracker.update(_process("market-gateway", "bad"))
+    tracker.update(_process("market-gateway", "ok"))
+
+    assert [a.severity for a in sink.alerts] == [Severity.CRITICAL, Severity.INFO]
+
+
+def test_the_very_first_sample_does_not_alert():
+    """采样器刚起来时不该把「本来就停着」当成刚刚发生的事故补报一遍。"""
+    sink = RecordingAlertSink()
+    ProcessAlertTracker(AlertBus([sink])).update(_process("market-gateway", "bad"))
+
+    assert sink.alerts == []
+
+
+def test_an_unobservable_service_is_not_called_down():
+    """连不上 Windows 时刷一串「离线」，比不报更糟。"""
+    sink = RecordingAlertSink()
+    tracker = ProcessAlertTracker(AlertBus([sink]))
+    tracker.update(_process("market-gateway", "ok"))
+    unknown = _process("market-gateway", "unobservable")
+    assert unknown.process_state == UNKNOWN
+    tracker.update(unknown)
+
+    assert sink.alerts == []
+
+
+# ---- 基础设施巡检：按间隔跑，边沿触发 ----
+
+from qsys.ops.infra_watch import Finding  # noqa: E402
+from scripts.run_health_observer import InfraAlerts  # noqa: E402
+
+
+def _infra(sink, **kw):
+    return InfraAlerts(AlertBus([sink]), storage_base=Path("/nonexistent"),
+                       config_path=None, tls_site=None, tls_port=8443, **kw)
+
+
+def test_the_survey_runs_on_its_own_slower_clock():
+    """磁盘和证书都不是秒级变化的东西，不该跟着 5 秒的采样一起跑。"""
+    watch = _infra(RecordingAlertSink(), interval=300.0)
+
+    assert watch.due(0.0) is True
+    watch.run(0.0)
+    assert watch.due(299.0) is False
+    assert watch.due(300.0) is True
+
+
+def test_a_finding_is_pushed_once_and_its_recovery_once(monkeypatch):
+    sink = RecordingAlertSink()
+    watch = _infra(sink)
+    bad = [Finding("disk", Severity.CRITICAL, "磁盘即将写满", "剩余 6.0 GiB")]
+    findings = bad
+
+    monkeypatch.setattr("scripts.run_health_observer.survey", lambda reading: findings)
+    watch.run(0.0)
+    watch.run(300.0)
+    assert [a.title for a in sink.alerts] == ["磁盘即将写满"]
+
+    findings = []
+    watch.run(600.0)
+    assert [a.title for a in sink.alerts] == ["磁盘即将写满", "磁盘即将写满：已恢复"]
+
+
+def test_a_broken_survey_never_stops_the_sampling_loop(monkeypatch):
+    sink = RecordingAlertSink()
+    watch = _infra(sink)
+
+    def explode(reading):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("scripts.run_health_observer.survey", explode)
+    watch.run(0.0)          # 不抛
+
+    assert sink.alerts == []
+    assert watch.due(0.0) is False   # 仍然推进了下次时间，不会原地空转
