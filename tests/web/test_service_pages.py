@@ -70,6 +70,19 @@ def test_missed_and_closed(tmp_path, monkeypatch):
     assert got[date(2026, 9, 17)] == "missed"    # 截止 17:00 已过
 
 
+def test_an_everyday_job_is_not_excused_by_a_closed_day(tmp_path, monkeypatch):
+    """日报每天都发，周末缺了就是缺了——机器照跑、磁盘照涨、证书照倒计时。
+
+    交易日任务在休市日显示「休市」是对的；把这条规则套到 everyday 任务上，
+    整个国庆假期它一封没发也会全绿（2026-10-01 改成每天发时补的）。
+    """
+    record(tmp_path, "tushare-sync", datetime(2026, 9, 11, 17, 0), monkeypatch=monkeypatch)
+    got = states(console(tmp_path).board(14), "daily-digest")
+
+    assert got[date(2026, 9, 12)] == "missed"    # 周六，但它该发
+    assert got[date(2026, 9, 14)] == "missed"
+
+
 def test_pending_before_due(tmp_path, monkeypatch):
     record(tmp_path, "tushare-sync", datetime(2026, 9, 11, 17, 0), monkeypatch=monkeypatch)
     early = ServiceConsole(tmp_path, calendar=lambda: AShareCalendar(SESSIONS),

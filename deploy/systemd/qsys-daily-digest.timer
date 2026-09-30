@@ -3,7 +3,9 @@ Description=Email the daily operations digest after the evening checks
 
 [Timer]
 # 服务质检 20:00，汇报 20:30 —— 要等它的结论才写得出「今天正不正常」。
-OnCalendar=Mon..Fri 20:30 Asia/Shanghai
+# **每天**，不是 Mon..Fri：周末与节假日机器照跑、磁盘照涨、证书照倒计时，
+# 静默一周等于这一周没人看。休市日的汇报只报基础设施，不拿交易日的尺子量它。
+OnCalendar=*-*-* 20:30 Asia/Shanghai
 Persistent=true
 
 [Install]

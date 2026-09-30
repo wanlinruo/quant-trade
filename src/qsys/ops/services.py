@@ -42,8 +42,8 @@ class ServiceSpec:
     purpose: str
     # 定时任务：交易日几点前应当已有运行记录（宽限后仍无记录判「未运行」）
     due: str | None = None
-    # 执行周期：daily＝每个交易日；monthly＝每月 run_day 号。月度任务在非执行日
-    # 不应被判「未运行」，否则看板天天红。
+    # 执行周期：daily＝每个交易日；everyday＝含休市日的每一天；
+    # monthly＝每月 run_day 号。非执行日不应被判「未运行」，否则看板天天红。
     cadence: str = "daily"
     run_day: int | None = None
     # 超过这么久仍是 running，视为进程已中断
@@ -120,11 +120,12 @@ SERVICES: tuple[ServiceSpec, ...] = (
     ),
     ServiceSpec(
         "daily-digest", "每日汇报（邮件）", "timer", "Linux", "qsys-daily-digest",
-        "交易日 20:30",
-        ("服务运行记录", "影子盘状态库", "模拟盘工作台", "SMTP"),
+        "每天 20:30（含休市日）",
+        ("服务运行记录", "影子盘状态库", "模拟盘工作台", "指标字典", "节点", "SMTP"),
         (),
-        "收盘后把当日策略、账户、服务与数据的整体情况发一封邮件",
-        due="21:00", max_runtime=timedelta(minutes=10),
+        "把当日策略、账户、数据质量、服务、节点、通知与实盘就绪发一封邮件；"
+        "休市日只报基础设施——机器照跑、磁盘照涨、证书照倒计时",
+        due="21:00", max_runtime=timedelta(minutes=10), cadence="everyday",
     ),
     ServiceSpec(
         "paper", "模拟交易", "resident", "Linux", "qsys-paper", "常驻",

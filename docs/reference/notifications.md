@@ -171,6 +171,11 @@ use_ssl    = true          # 465 用 SSL；587 改成 false 走 STARTTLS
 uv run python scripts/send_daily_digest.py --day 2026-09-28 --print
 ```
 
-定时任务 `qsys-daily-digest.timer`，已登记进服务注册表，看板上能看到它跑没跑。
+定时任务 `qsys-daily-digest.timer`，`OnCalendar=*-*-* 20:30`——**每天**，
+不是 `Mon..Fri`。它在注册表里的 `cadence="everyday"`：看板对交易日任务在休市日
+显示「休市」，这条规则不能套到它身上，否则整个国庆假期一封没发也全绿。
+
+单元里的 `--warehouse` / `--tls-site` 不是可选项：缺了「数据质量」段会在交易日
+判成「当日没有验证结果」，天天误报。
 它不产出数据表——价值在发出去的那封信，所以「每个定时任务都要有产出表」
 这条不变量为它放宽了。
