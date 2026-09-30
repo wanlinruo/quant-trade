@@ -148,12 +148,49 @@ def test_the_first_session_uses_the_calendar_for_the_previous_session():
 
 
 def test_state_wins_over_the_calendar_when_it_has_one():
-    """攒到的上一交易日优先：回测/实盘连续运行时口径不变。"""
+    """攒到的上一交易日优先：连续运行时两者一致，口径不变。"""
     from qsys.core.calendar import AShareCalendar
 
     sel = FakeSelection([Pick(str(SYM), "LOW_MAIN")])
     strategy = StructuralStrategy(sel, calendar=AShareCalendar([date(2024, 1, 2), DAY]))
-    state = {"previous_session": date(2023, 12, 29), "last_session": date(2023, 12, 29)}
+    state = {"previous_session": date(2024, 1, 2), "last_session": date(2024, 1, 2)}
+    ctx = FakeCtx(datetime.combine(DAY, AUCTION_AT),
+                  market=FakeMarket(opens={str(SYM): 10.0}), state=state)
+
+    strategy.on_auction(ctx)
+
+    assert sel.calls == [(DAY, date(2024, 1, 2))]
+
+
+def test_a_stale_remembered_session_loses_to_the_calendar():
+    """攒的是「上次真正跑过的那天」，漏掉一个交易日就不再等于「上一交易日」。
+
+    2026-09-30 影子盘实况：09-29 停机没跑完 session_start，状态停在 09-28，
+    于是拿前天的首板选次日票——候选 27 只而模拟盘 44 只（09-28 首板 28、
+    09-29 有 46）。不报错、不告警，静默地在错误的股票池上交易。
+    """
+    from structlog.testing import capture_logs
+
+    from qsys.core.calendar import AShareCalendar
+
+    sel = FakeSelection([Pick(str(SYM), "LOW_MAIN")])
+    strategy = StructuralStrategy(sel, calendar=AShareCalendar([date(2024, 1, 2), DAY]))
+    state = {"previous_session": date(2023, 12, 29)}      # 过期：漏了 01-02
+    ctx = FakeCtx(datetime.combine(DAY, AUCTION_AT),
+                  market=FakeMarket(opens={str(SYM): 10.0}), state=state)
+
+    with capture_logs() as logs:
+        strategy.on_auction(ctx)
+
+    assert sel.calls == [(DAY, date(2024, 1, 2))]          # 以日历为准
+    assert any(row.get("event") == "strategy.stale_previous_session" for row in logs)
+
+
+def test_the_remembered_session_still_wins_when_the_calendar_cannot_answer():
+    """日历答不上来时仍然用攒的——那正是当初要攒它的原因。"""
+    sel = FakeSelection([Pick(str(SYM), "LOW_MAIN")])
+    strategy = StructuralStrategy(sel)                     # 没有日历
+    state = {"previous_session": date(2023, 12, 29)}
     ctx = FakeCtx(datetime.combine(DAY, AUCTION_AT),
                   market=FakeMarket(opens={str(SYM): 10.0}), state=state)
 

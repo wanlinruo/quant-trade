@@ -97,10 +97,13 @@ class StructuralStrategy(Strategy):
 
     def on_auction(self, ctx) -> None:
         today = ctx.now.date()
-        previous = ctx.state.get("previous_session") or self._previous_session(ctx, today)
+        previous, stale = self._resolve_previous(ctx, today)
         if previous is None:
             ctx.report(note="没有上一交易日，无从选股")
             return
+        if stale:
+            log.warning("strategy.stale_previous_session",
+                        remembered=str(stale), used=str(previous), today=str(today))
 
         picks = self._selection.select(today, previous)
         funnel = getattr(self._selection, "funnel", None)
@@ -147,8 +150,31 @@ class StructuralStrategy(Strategy):
                 OrderType.LIMIT, budget.protect_price,
             )
 
+    def _resolve_previous(self, ctx, today: date) -> tuple[date | None, date | None]:
+        """定出上一交易日，并说明攒的那个是不是过期了。
+
+        口径是「有攒的就用攒的」，但攒的是**上次真正跑过的那天**，不等于
+        **上一个交易日**——中间漏掉一天，两者就分叉了。2026-09-30 影子盘就这样：
+        09-29 因对账停机没跑完 session_start，状态停在 09-28，于是今天拿前天的
+        首板去选次日票，候选 27 只而模拟盘 44 只（09-28 首板 28 只、09-29 有 46 只）。
+        不报错、不告警，静默地在错误的股票池上交易。
+
+        所以攒的值要和日历对一次：一致就照常用攒的；**不一致说明漏了交易日，
+        以日历为准**并回传过期值供调用方告警。日历答不上来（新账户第一天、
+        早于日历范围）时仍然用攒的——那正是当初要攒它的原因。
+
+        返回 (用哪天, 攒的那个过期值或 None)。
+        """
+        remembered = ctx.state.get("previous_session")
+        from_calendar = self._previous_session(ctx, today)
+        if from_calendar is None:
+            return remembered, None
+        if remembered is None or remembered == from_calendar:
+            return from_calendar, None
+        return from_calendar, remembered
+
     def _previous_session(self, ctx, today: date) -> date | None:
-        """上一交易日：优先用状态里攒的，没有就查交易日历。
+        """交易日历给出的上一交易日。
 
         买的是**首板次日**，选股必须先知道 T-1。原版长期连续运行，从不遇到
         「第一天」，移植过来后新账户、状态重置与回测区间首日都会空转一天。
