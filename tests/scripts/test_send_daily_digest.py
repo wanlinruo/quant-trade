@@ -147,3 +147,21 @@ def test_a_run_without_a_session_falls_back_to_its_start_date(tmp_path):
     checks, _ = checks_and_missing(tmp_path, date(2026, 10, 1), False)
 
     assert [c["name"] for c in checks] == ["甲"]
+
+
+def test_a_skipped_check_run_is_not_counted_as_a_check(tmp_path):
+    """跳过的那次只留下一条「确定交易日」的记账步骤。
+
+    把它算成「质检 1 项，失败 0，告警 0」，休市日的日报看起来就像查过了。
+    """
+    day = tmp_path / "2026/10/01"
+    day.mkdir(parents=True)
+    (day / "service-checks-200000.json").write_text(json.dumps({
+        "service": "service-checks", "started_at": "2026-10-01T20:00:00",
+        "session": "2026-10-01", "status": "skipped",
+        "steps": [{"name": "确定交易日", "status": "succeeded", "detail": "不是交易日"}],
+    }), encoding="utf-8")
+
+    checks, _ = checks_and_missing(tmp_path, date(2026, 10, 1), False)
+
+    assert checks == []

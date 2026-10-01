@@ -22,7 +22,7 @@ import structlog
 
 from qsys.ops.alerts import ledger as alert_ledger
 from qsys.ops.digest import build_digest
-from qsys.ops.services import ServiceRun, load_runs, run_session
+from qsys.ops.services import SKIPPED, ServiceRun, load_runs, run_session
 from qsys.paper.calendar import load_trading_calendar
 
 log = structlog.get_logger("daily-digest")
@@ -110,7 +110,10 @@ def checks_and_missing(service_runs: Path, day: date,
     # 多读一天再按 session 过滤（2026-10-01 日报把 09-30 的质检当成当天的）。
     runs = [r for r in load_runs(service_runs, day, day + timedelta(days=1))
             if run_session(r) == day.isoformat()]
-    mine = [r for r in runs if r.get("service") == "service-checks"]
+    # 跳过的那次没检查任何东西，它只留下一条「确定交易日」的记账步骤；
+    # 把它算成「质检 1 项」会让休市日的日报看起来像是查过了
+    mine = [r for r in runs if r.get("service") == "service-checks"
+            and r.get("status") != SKIPPED]
     steps = mine[-1].get("steps", []) if mine else []
     checks = [
         {"name": s.get("name", ""), "status": s.get("status", ""),
