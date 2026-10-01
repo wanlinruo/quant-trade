@@ -32,6 +32,7 @@ from qsys.ops.services import (
     SUCCEEDED,
     WARNING,
     ServiceSpec,
+    run_session as _run_session,
     effective_status,
     load_runs,
 )
@@ -439,15 +440,6 @@ class ServiceConsole:
                 ],
             })
         return sorted(rows, key=lambda row: row["spec"].name)
-
-
-def _run_session(run: dict) -> str:
-    """这次执行算在哪个交易日：任务自己记的 `session`。
-
-    没记 session 的（非交易日跳过、刚起步就崩）退回启动日期——次日补跑的活
-    属于它检查的那个交易日，不属于启动那天。
-    """
-    return run.get("session") or (run.get("started_at") or "")[:10]
 
 
 def _checks_by_day(runs: list[dict]) -> dict[tuple[str, str], list[dict]]:

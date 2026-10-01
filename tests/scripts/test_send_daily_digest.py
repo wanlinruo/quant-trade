@@ -97,3 +97,53 @@ def test_a_systemd_timestamp_is_trimmed_to_the_minute():
 
 def test_an_absent_timestamp_is_blank_not_a_crash():
     assert _since(None) == "" and _since("") == "" and _since("n/a") == ""
+
+
+# ---- 运行记录按「它检查的那一天」归属，不按文件落在哪天 ----
+
+import json  # noqa: E402
+
+
+def _write_run(root: Path, started: str, session: str | None, steps):
+    day = started[:10].replace("-", "/")
+    folder = root / day
+    folder.mkdir(parents=True, exist_ok=True)
+    run = {"service": "service-checks", "started_at": started, "steps": steps}
+    if session is not None:
+        run["session"] = session
+    (folder / f"service-checks-{started[11:].replace(':', '')}.json").write_text(
+        json.dumps(run), encoding="utf-8")
+
+
+def test_a_recheck_of_an_older_day_does_not_pollute_todays_digest(tmp_path):
+    """在 10-01 复查 09-30，那次执行属于 09-30。
+
+    按文件日期取会让休市日的日报一边说「不安排验证」、一边报出 09-30 的
+    验证结论——同一封信自相矛盾（2026-10-01 实际发生）。
+    """
+    _write_run(tmp_path, "2026-10-01T20:00:00", "2026-09-30",
+               [{"name": "catalog-verify｜阻断级规则全部通过", "status": "warning",
+                 "detail": "1 条规则未通过"}])
+
+    checks, _ = checks_and_missing(tmp_path, date(2026, 10, 1), False)
+
+    assert checks == []
+
+
+def test_a_next_morning_catch_up_counts_for_the_day_it_checked(tmp_path):
+    """次日补跑的活属于它补的那个交易日，不属于启动那天。"""
+    _write_run(tmp_path, "2026-10-02T00:30:00", "2026-10-01",
+               [{"name": "tushare-sync｜日线到货", "status": "succeeded", "detail": "到齐"}])
+
+    checks, _ = checks_and_missing(tmp_path, date(2026, 10, 1), True)
+
+    assert [c["name"] for c in checks] == ["tushare-sync｜日线到货"]
+
+
+def test_a_run_without_a_session_falls_back_to_its_start_date(tmp_path):
+    _write_run(tmp_path, "2026-10-01T20:00:00", None,
+               [{"name": "甲", "status": "succeeded", "detail": ""}])
+
+    checks, _ = checks_and_missing(tmp_path, date(2026, 10, 1), False)
+
+    assert [c["name"] for c in checks] == ["甲"]

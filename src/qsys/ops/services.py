@@ -330,6 +330,16 @@ def record_step(run: ServiceRun | None, name: str, *, interface: str | None = No
         yield step
 
 
+def run_session(run: dict) -> str:
+    """这次执行算在哪个交易日：任务自己记的 `session`。
+
+    没记 session 的（非交易日跳过、刚起步就崩）退回启动日期——次日补跑的活
+    属于它检查的那个交易日，不属于启动那天。反过来也一样：在 10-01 复查
+    09-30，那次执行属于 09-30，不该出现在 10-01 的日报里（2026-10-01 踩到）。
+    """
+    return run.get("session") or (run.get("started_at") or "")[:10]
+
+
 def load_runs(root: Path, start: date, end: date) -> list[dict]:
     """读 [start, end] 自然日内开始的运行记录，按开始时间排序。坏文件跳过并记日志。"""
     runs: list[dict] = []

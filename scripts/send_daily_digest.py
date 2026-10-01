@@ -15,14 +15,14 @@ from __future__ import annotations
 import argparse
 import sqlite3
 import sys
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import structlog
 
 from qsys.ops.alerts import ledger as alert_ledger
 from qsys.ops.digest import build_digest
-from qsys.ops.services import ServiceRun, load_runs
+from qsys.ops.services import ServiceRun, load_runs, run_session
 from qsys.paper.calendar import load_trading_calendar
 
 log = structlog.get_logger("daily-digest")
@@ -105,7 +105,11 @@ def checks_and_missing(service_runs: Path, day: date,
     交全部步骤而不只是失败的：汇报要写「26 项，失败 0」，
     只给失败项就数不出分母。
     """
-    runs = load_runs(service_runs, day, day)
+    # 按**它检查的那一天**取，不按文件落在哪天：在 10-01 复查 09-30，那次执行
+    # 属于 09-30；反过来次日补跑的活属于它补的那个交易日。两头都要对，所以
+    # 多读一天再按 session 过滤（2026-10-01 日报把 09-30 的质检当成当天的）。
+    runs = [r for r in load_runs(service_runs, day, day + timedelta(days=1))
+            if run_session(r) == day.isoformat()]
     mine = [r for r in runs if r.get("service") == "service-checks"]
     steps = mine[-1].get("steps", []) if mine else []
     checks = [
