@@ -20,7 +20,6 @@ from pathlib import Path
 
 import structlog
 
-from qsys.core.calendar import last_closed_session
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
 from qsys.ops.service_checks import (
@@ -90,11 +89,15 @@ def main() -> int:
     with ServiceRun.open(args.service_runs, "service-checks") as run:
         with run.step("确定交易日", interface="Tushare trade_cal") as step:
             calendar = load_trading_calendar(args.config)
-            if args.day is not None and not calendar.is_trading_day(args.day):
-                run.skip(f"{args.day} 不是交易日")
+            # 质检的是**今天**。取「最近一个已收盘交易日」会在假期里天天重查节前
+            # 那一天：运维群连收五条一模一样的结论，日报还会把它当成当天的质检
+            # 结果，于是「休市日不安排验证」和一份验证结论出现在同一封信里
+            # （2026-10-01 国庆第一天实际发生）。交易日 20:00 跑时两者等价。
+            day = args.day or datetime.now().date()
+            if not calendar.is_trading_day(day):
+                run.skip(f"{day} 不是交易日")
                 step.detail = run.note
                 return 0
-            day = args.day or last_closed_session(calendar, datetime.now())
             step.detail = str(day)
         if day is None:
             run.skip("没有已收盘的交易日")
