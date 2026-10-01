@@ -246,3 +246,26 @@ def test_chart_queries_stay_fast_on_a_full_session_of_seconds(tmp_path):
     store.summary(ident)
 
     assert clock.monotonic() - began < 5
+
+
+# ---- 当日盈亏要有昨天做基准（2026-10-01 收盘消息加盈亏）----
+
+def test_previous_total_value_skips_today_and_takes_yesterdays_close(tmp_path):
+    store, job = seeded(tmp_path)
+    account = store.create(job.id, "模拟一号", 100_000, date(2026, 9, 17))
+    for day, at, cash in ((date(2026, 9, 28), 9, 100_000.0),
+                          (date(2026, 9, 28), 15, 101_000.0),
+                          (date(2026, 9, 29), 15, 102_000.0)):
+        store.save_snapshot(account.id, Portfolio(cash), {}, {},
+                            at=datetime(day.year, day.month, day.day, at, 0))
+
+    assert store.previous_total_value(account.id, date(2026, 9, 29)) == 101_000.0
+    assert store.previous_total_value(account.id, date(2026, 9, 30)) == 102_000.0
+
+
+def test_the_first_day_has_no_yesterday(tmp_path):
+    """没有昨天时不显示盈亏，比拿初始资金凑一个数诚实。"""
+    store, job = seeded(tmp_path)
+    account = store.create(job.id, "模拟一号", 100_000, date(2026, 9, 17))
+
+    assert store.previous_total_value(account.id, date(2026, 9, 28)) is None

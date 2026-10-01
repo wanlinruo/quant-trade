@@ -79,10 +79,10 @@ class CountingQuotes(Quotes):
         return super().request(symbols)
 
 
-def _runtime(warehouse, tmp_path, quotes):
+def _runtime(warehouse, tmp_path, quotes, source=SOURCE):
     db = tmp_path / "workbench.sqlite3"
     workbench = WorkbenchStore(db)
-    strategy = workbench.create_strategy("demo", SOURCE)
+    strategy = workbench.create_strategy("demo", source)
     job = workbench.enqueue(strategy.id, {
         "start": "2026-01-01", "end": "2026-02-01", "cash": 100_000,
         "params": {}, "jq_compat": False,
@@ -236,3 +236,46 @@ def test_paper_expired_event_leaves_a_run_row(warehouse, tmp_path):
     rows = store.strategy_runs(ident, today)
     assert [row["phase"] for row in rows] == ["session_start", "checkpoint"]
     assert rows[1]["note"] == "进程恢复时事件已过期，未补跑"
+
+
+# ---- 通知要带标的（2026-10-01：以前只说「下单 2 笔」）----
+
+BUYER = """
+from qsys.core.trading import OrderType, Side
+from qsys.core.types import Symbol
+from qsys.strategy.base import Strategy
+class Demo(Strategy):
+    def on_session_start(self, ctx):
+        ctx.order.submit(Symbol.parse("600036.SH"), Side.BUY, 300,
+                         OrderType.LIMIT, 41.07)
+"""
+
+
+def test_a_paper_order_is_announced_with_the_symbol_and_price(warehouse, tmp_path):
+    """手机上收到「下单 1 笔」是没法判断要不要干预的。"""
+    from qsys.ops.alerts import AlertBus, RecordingAlertSink
+
+    runtime, store, ident, today = _runtime(warehouse, tmp_path, Quotes(), source=BUYER)
+    sink = RecordingAlertSink()
+    runtime.notifier._alerts = AlertBus([sink])
+
+    runtime.tick(datetime.combine(today, time(9, 15, 10)))
+
+    sent = [a for a in sink.alerts if "买入" in a.title or "下单" in a.title]
+    assert sent, [a.title for a in sink.alerts]
+    assert "600036.SH" in sent[0].detail
+
+
+def test_a_context_failure_never_stops_the_notification(warehouse, tmp_path, monkeypatch):
+    """通知细节取不到就发简版，不能连带把消息整条吃掉。"""
+    from qsys.ops.alerts import AlertBus, RecordingAlertSink
+
+    runtime, store, ident, today = _runtime(warehouse, tmp_path, Quotes())
+    sink = RecordingAlertSink()
+    runtime.notifier._alerts = AlertBus([sink])
+    monkeypatch.setattr(runtime.store, "previous_total_value",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("坏了")))
+
+    runtime.tick(datetime.combine(today, time(15, 5)))
+
+    assert store.strategy_runs(ident, today)
