@@ -191,6 +191,20 @@ class PaperStore:
             )
         return self.account(ident)  # type: ignore[return-value]
 
+    def previous_total_value(self, ident: str, session) -> float | None:
+        """上一个有权益记录的交易日收盘总资产；没有上一天就返回 None。
+
+        收盘消息要回答「今天赚了多少」，而当日盈亏＝今天的总资产减昨天的。
+        第一天没有昨天，这时**不显示盈亏**比拿初始资金凑一个数诚实。
+        """
+        with self._connect() as con:
+            row = con.execute(
+                "SELECT total_value FROM paper_equity WHERE account_id=? AND session<? "
+                "ORDER BY at DESC LIMIT 1",
+                (ident, str(session)),
+            ).fetchone()
+        return float(row["total_value"]) if row else None
+
     def account(self, ident: str) -> PaperAccount | None:
         with self._connect() as con:
             row = con.execute("SELECT * FROM paper_accounts WHERE id=?", (ident,)).fetchone()

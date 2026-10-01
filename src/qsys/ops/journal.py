@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import polars as pl
 import structlog
@@ -112,6 +112,15 @@ class SessionJournal:
 
     def sessions(self) -> list[date]:
         return self.equity()["dt"].to_list()
+
+    def previous_total_value(self, session: date) -> float | None:
+        """上一个有净值记录的交易日收盘总资产；没有上一天就返回 None。
+
+        收盘消息要回答「今天赚了多少」＝今天总资产减昨天的。第一天没有昨天，
+        这时**不显示盈亏**比拿初始资金凑一个数诚实。
+        """
+        earlier = self.equity(end=session - timedelta(days=1))
+        return float(earlier["total_value"][-1]) if earlier.height else None
 
     # --- 成交 ---
 

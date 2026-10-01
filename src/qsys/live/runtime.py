@@ -40,7 +40,9 @@ from qsys.strategy.orders import OrderApi
 from qsys.strategy.schedule import Schedule
 from qsys.ops.alerts import AlertBus, LogAlertSink
 from qsys.ops.daily_report import build_daily_report
-from qsys.ops.notify import StrategyNotifier
+from qsys.ops.notify import (
+    StrategyNotifier, TradeContext, positions_of, trade_of,
+)
 from qsys.ops.journal import SessionJournal
 from qsys.ops.strategy_log import RunReport, build_record
 
@@ -104,6 +106,10 @@ class LiveRuntime:
         )
         self.alerts = alerts or AlertBus([LogAlertSink()])
         # 策略推送与运维告警共用同一条 AlertBus：影子/实盘各自一个机器人由部署配置决定
+        self._event_orders: list = []      # 本事件的委托 / 成交 / 拒单，发完就清
+        self._event_fills: list = []
+        self._event_rejects: list = []
+        self._today_fills: list = []       # 当日累计，收盘那条用
         self.notifier = StrategyNotifier(
             self.alerts, "影子盘" if shadow else "实盘",
         )
@@ -358,11 +364,15 @@ class LiveRuntime:
         started = datetime.now()
         report = RunReport()
         self.clock.set(moment)
+        self._event_orders.clear()
+        self._event_fills.clear()
+        self._event_rejects.clear()
         try:
             if phase is Phase.SESSION_START:
                 self.turnover_today = 0.0
                 self.order_times.clear()
                 self.consecutive_rejects = 0
+                self._today_fills.clear()
                 remote = self._remote_account()
                 self.day_start_value = float(remote.total_asset or self.day_start_value)
                 self.enabled_capital = min(
@@ -474,6 +484,28 @@ class LiveRuntime:
             )
             raise
 
+    def _trade_context(self, phase, record) -> TradeContext:
+        """消息里要的交易细节。取不到就给空的——通知绝不能影响交易。"""
+        try:
+            closing = phase in (Phase.SESSION_START, Phase.SESSION_END)
+            return TradeContext(
+                orders=tuple(trade_of(o.side, o.symbol, o.qty, o.limit_price)
+                             for o in self._event_orders),
+                # 收盘那条报「今天总共成交了什么」，不是最后一个事件里的那几笔
+                fills=tuple(trade_of(f.side, f.symbol, f.qty, f.price)
+                            for f in (self._today_fills
+                                      if phase is Phase.SESSION_END
+                                      else self._event_fills)),
+                rejects=tuple((str(r.symbol), r.reason) for r in self._event_rejects),
+                positions=positions_of(self.portfolio.positions, self.last_prices)
+                if closing else (),
+                prev_total_value=self.journal.previous_total_value(record.session)
+                if phase is Phase.SESSION_END else None,
+            )
+        except Exception as exc:
+            log.warning("strategy_run.context_failed", error=str(exc))
+            return TradeContext()
+
     def _record_run(
         self,
         key: str,
@@ -507,7 +539,7 @@ class LiveRuntime:
                 error=error,
             )
             self.store.record_run(record)
-            self.notifier.on_run(record)
+            self.notifier.on_run(record, self._trade_context(phase, record))
         except Exception as exc:
             log.warning("strategy_run.record_failed", event_key=key, error=str(exc))
 
@@ -542,6 +574,7 @@ class LiveRuntime:
                 order,
             )
             orders.append(sent)
+        self._event_orders.extend(orders)
         self.store.record_orders(
             event_key, orders,
             sent_ids=frozenset(order.order_id for order in self.broker.pending()),
@@ -557,6 +590,9 @@ class LiveRuntime:
             reject for reject in received_rejects
             if not self.store.reject_recorded(reject)
         )
+        self._event_fills.extend(fills)
+        self._today_fills.extend(fills)
+        self._event_rejects.extend(rejects)
         for fill in fills:
             self.portfolio.apply_fill(fill)
             self.turnover_today += fill.gross

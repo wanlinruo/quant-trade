@@ -29,7 +29,9 @@ from qsys.data.market_feed import MarketFeed
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
 from qsys.ops.alerts import AlertBus, WebhookAlertSink, ledger
-from qsys.ops.notify import StrategyNotifier
+from qsys.ops.notify import (
+    StrategyNotifier, TradeContext, positions_of, trade_of,
+)
 from qsys.ops.strategy_log import RunReport, build_record
 
 
@@ -152,6 +154,10 @@ class PaperRuntime:
             raise LookupError("模拟账户不存在")
         # 每个账户各自的企微机器人；没填就静默
         hook = str(account.config.get("notify_webhook") or "")
+        self._event_orders: list = []      # 本事件的委托 / 成交 / 拒单，发完就清
+        self._event_fills: list = []
+        self._event_rejects: list = []
+        self._today_fills: list = []       # 当日累计，收盘那条用
         self.notifier = StrategyNotifier(
             AlertBus([WebhookAlertSink(hook)], ledger()) if hook else None, account.name,
         )
@@ -253,7 +259,11 @@ class PaperRuntime:
         report = RunReport()
         self.clock.set(moment)
         try:
+            self._event_orders.clear()
+            self._event_fills.clear()
+            self._event_rejects.clear()
             if phase is Phase.SESSION_START:
+                self._today_fills.clear()
                 self.broker.begin_session()
                 self.portfolio.unfreeze()
                 if moment.date() in self.actions:
@@ -320,6 +330,28 @@ class PaperRuntime:
             )
             raise
 
+    def _trade_context(self, phase, record) -> TradeContext:
+        """消息里要的交易细节。取不到就给空的——通知绝不能影响交易。"""
+        try:
+            closing = phase in (Phase.SESSION_START, Phase.SESSION_END)
+            return TradeContext(
+                orders=tuple(trade_of(o.side, o.symbol, o.qty, o.limit_price)
+                             for o in self._event_orders),
+                # 收盘那条报「今天总共成交了什么」，不是最后一个事件里的那几笔
+                fills=tuple(trade_of(f.side, f.symbol, f.qty, f.price)
+                            for f in (self._today_fills
+                                      if phase is Phase.SESSION_END
+                                      else self._event_fills)),
+                rejects=tuple((str(r.symbol), r.reason) for r in self._event_rejects),
+                positions=positions_of(self.portfolio.positions, self.last_prices)
+                if closing else (),
+                prev_total_value=self.store.previous_total_value(self.id, record.session)
+                if phase is Phase.SESSION_END else None,
+            )
+        except Exception as exc:
+            log.warning("strategy_run.context_failed", account_id=self.id, error=str(exc))
+            return TradeContext()
+
     def _record_run(
         self,
         key: str,
@@ -354,7 +386,7 @@ class PaperRuntime:
                 error=error,
             )
             self.store.record_run(self.id, record)
-            self.notifier.on_run(record)
+            self.notifier.on_run(record, self._trade_context(phase, record))
         except Exception as exc:
             log.warning(
                 "strategy_run.record_failed",
@@ -375,6 +407,7 @@ class PaperRuntime:
             self.broker.submit(order)
             orders.append(order)
         self.store.record_orders(self.id, event_key, orders)
+        self._event_orders.extend(orders)
         return len(orders)
 
     def _refresh_quotes(self, now: datetime) -> None:
@@ -406,6 +439,9 @@ class PaperRuntime:
 
     def _record_results(self) -> int:
         fills, rejects = self.broker.poll_fills(), self.broker.poll_rejects()
+        self._event_fills.extend(fills)
+        self._today_fills.extend(fills)
+        self._event_rejects.extend(rejects)
         for fill in fills:
             ctx, api = self._context()
             self.strategy.on_fill(ctx, fill)
