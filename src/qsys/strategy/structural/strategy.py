@@ -70,6 +70,19 @@ def auction_time(value) -> time:
     return parsed
 
 
+def _holding(symbol: str, tag: str, price: float, entry: float,
+             *, applies: bool = True) -> str:
+    """「看了，没卖」这一条也要说清楚。
+
+    退出规则是 FROZEN 的，`_HOLD` 不带原因，所以这里只陈述判定用到的事实：
+    走哪条分支、现价多少、相对成本多少。某些时刻只对特定分支生效
+    （14:25 只管 LOW，14:50 只管 HIGH），那种情况直接说「本时刻不适用」。
+    """
+    move = f"{price:,.2f}" + (f"（{price / entry - 1:+.2%}）" if entry else "")
+    return (f"{symbol} {tag} {move} " +
+            ("继续持有" if applies else "本时刻规则不适用，不动"))
+
+
 class StructuralStrategy(Strategy):
     def __init__(self, selection, calendar=None) -> None:
         self._selection = selection
@@ -215,6 +228,12 @@ class StructuralStrategy(Strategy):
     # ---- 退出 ----
 
     def on_checkpoint(self, ctx, at: time) -> None:
+        """盘中离场判定。
+
+        逐只上报结论（`ctx.report`）——**只记录，不参与判定**。有持仓的那几天，
+        11:25 / 14:25 / 14:50 正是对钱做决定的时刻，「看了没卖」和「没看」
+        在消息上长得一样是不行的（2026-10-03 按交易者视角补）。
+        """
         tags = ctx.state.get("tags", {})
         held = sorted([
             s for s in ctx.portfolio.symbols
@@ -223,6 +242,7 @@ class StructuralStrategy(Strategy):
         if not held:
             return
 
+        outcomes: list[str] = []
         today = ctx.now.date()
         symbols = [str(s) for s in held]
         quotes = ctx.market.intraday(symbols, today, at)
@@ -238,6 +258,7 @@ class StructuralStrategy(Strategy):
             ]
             if tag is None and not lots:
                 # 不知道该按哪条规则退，宁可不动
+                outcomes.append(f"{key} 无分档记录，不动")
                 continue
             quote = quotes.get(key)
             if quote is None:
@@ -249,6 +270,7 @@ class StructuralStrategy(Strategy):
                     "structural.no_quote", symbol=key, at=str(at), dt=str(today),
                     qty=ctx.portfolio.position(symbol).available_qty,
                 )
+                outcomes.append(f"{key} 取不到盘中价，无法判定（持仓会卡住）")
                 continue
 
             position = ctx.portfolio.position(symbol)
@@ -265,8 +287,12 @@ class StructuralStrategy(Strategy):
                         reasons.append(decision.reason)
                 exit_qty = min(exit_qty, position.available_qty)
                 if exit_qty <= 0:
+                    outcomes.append(_holding(key, "lot", quote.price, position.avg_cost))
                     continue
                 ctx.order.submit(symbol, Side.SELL, exit_qty)
+                outcomes.append(
+                    f"{key} 卖出 {exit_qty} 股　{'、'.join(sorted(set(reasons)))}"
+                )
                 log.info("structural.exit", symbol=key, tag="lot", at=str(at),
                          reason=",".join(sorted(set(reasons))), qty=exit_qty)
             else:
@@ -275,12 +301,19 @@ class StructuralStrategy(Strategy):
                     limits.get(key), position.avg_cost,
                 )
                 if decision is None or not decision.should_exit:
+                    outcomes.append(_holding(key, tag, quote.price, position.avg_cost,
+                                             applies=decision is not None))
                     continue
                 ctx.order.submit(symbol, Side.SELL, position.available_qty)
+                outcomes.append(
+                    f"{key} 卖出 {position.available_qty} 股　{decision.reason}"
+                )
                 log.info(
                     "structural.exit", symbol=key, tag=tag, at=str(at),
                     reason=decision.reason, ret=decision.ret,
                 )
+
+        ctx.report(note=f"{at:%H:%M} 检查 {len(held)} 只｜" + "；".join(outcomes))
 
     def _decide(self, ctx, at, tag, symbol, today, price, limit_up, entry):
         branch = tag.split("_", 1)[0]

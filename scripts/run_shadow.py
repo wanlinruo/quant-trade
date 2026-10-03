@@ -16,7 +16,7 @@ from qsys.live.redis_transport import RedisTransport
 from qsys.live.runtime import LiveRuntime
 from qsys.live.store import LiveStore
 from qsys.live.tick_guard import TickFailureGuard
-from qsys.ops.alerts import AlertBus, LogAlertSink, WebhookAlertSink, ledger
+from qsys.ops.alerts import AlertBus, ledger, strategy_sinks
 from qsys.paper.calendar import load_trading_calendar
 from qsys.live.lineage import StrategySource, resolve_strategy
 from qsys.paper.quotes import DECISION_TIMEOUT, QuoteClient
@@ -46,12 +46,12 @@ def main() -> int:
             "影子核心只在 [safety] mode='shadow' 且 orders_enabled=false 时启动"
         )
     transport = RedisTransport.from_config(config)
-    sinks = [LogAlertSink()]
-    # 判断解析后的地址：只配了影子那个、没配 webhook_url 时也要能发
-    hook = config.alerts.strategy_url(shadow=True)
-    if hook:
-        sinks.append(WebhookAlertSink(hook, timeout=config.alerts.timeout_seconds))
-    alerts = AlertBus(sinks, ledger())
+    # 判断解析后的地址：只配了影子那个、没配 webhook_url 时也要能发。
+    # CRITICAL 同时进运维群——停机既是交易事件也是运维事故。
+    alerts = AlertBus(strategy_sinks(
+        config.alerts.strategy_url(shadow=True), config.alerts.ops_url,
+        timeout=config.alerts.timeout_seconds,
+    ), ledger())
     if args.strategy:
         source = StrategySource(Path(args.strategy))
     else:

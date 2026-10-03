@@ -28,9 +28,9 @@ from qsys.data.feed import HistoricalFeed
 from qsys.data.market_feed import MarketFeed
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
-from qsys.ops.alerts import AlertBus, WebhookAlertSink, ledger
+from qsys.ops.alerts import AlertBus, ledger, strategy_sinks
 from qsys.ops.notify import (
-    StrategyNotifier, TradeContext, positions_of, trade_of,
+    StrategyNotifier, TradeContext, engine_label, positions_of, trade_of,
 )
 from qsys.ops.strategy_log import RunReport, build_record
 
@@ -147,19 +147,22 @@ class PaperRuntime:
     def __init__(
         self, account_id: str, store: PaperStore, warehouse: Path,
         calendar, quote_client: QuoteClient, workspace: Path,
+        ops_webhook: str = "",
     ) -> None:
         self.id, self.store, self.calendar = account_id, store, calendar
         account = store.account(account_id)
         if account is None:
             raise LookupError("模拟账户不存在")
-        # 每个账户各自的企微机器人；没填就静默
+        # 每个账户各自的企微机器人；没填就静默。
+        # CRITICAL 同时进运维群——策略挂了既是交易事件也是运维事故。
         hook = str(account.config.get("notify_webhook") or "")
         self._event_orders: list = []      # 本事件的委托 / 成交 / 拒单，发完就清
         self._event_fills: list = []
         self._event_rejects: list = []
         self._today_fills: list = []       # 当日累计，收盘那条用
         self.notifier = StrategyNotifier(
-            AlertBus([WebhookAlertSink(hook)], ledger()) if hook else None, account.name,
+            AlertBus(strategy_sinks(hook, ops_webhook), ledger()) if hook else None,
+            engine_label(account.name, account_id),
         )
         wh = Warehouse(warehouse)
         query = WarehouseQuery(wh)
@@ -333,7 +336,9 @@ class PaperRuntime:
     def _trade_context(self, phase, record) -> TradeContext:
         """消息里要的交易细节。取不到就给空的——通知绝不能影响交易。"""
         try:
-            closing = phase in (Phase.SESSION_START, Phase.SESSION_END)
+            # 盘前、盘中三次、收盘都要带持仓明细：那几个时刻在对持仓做判定
+            closing = phase in (Phase.SESSION_START, Phase.CHECKPOINT,
+                                Phase.SESSION_END)
             return TradeContext(
                 orders=tuple(trade_of(o.side, o.symbol, o.qty, o.limit_price)
                              for o in self._event_orders),

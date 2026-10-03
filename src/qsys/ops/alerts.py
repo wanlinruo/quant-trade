@@ -66,6 +66,26 @@ class RecordingAlertSink(AlertSink):
         self.alerts.append(alert)
 
 
+_RANK = {Severity.INFO: 0, Severity.WARNING: 1, Severity.CRITICAL: 2}
+
+
+class MinSeveritySink(AlertSink):
+    """只转发够严重的告警。
+
+    实盘对账失败、心跳超时、拒单熔断**既是交易事件也是运维事故**：交易者要知道
+    钱出了问题，管理者要知道系统停了。这类 CRITICAL 两边都该收到。
+    其余的不转——每天的竞价决策推进运维群，只会把真正的事故淹掉。
+    """
+
+    def __init__(self, inner: AlertSink,
+                 minimum: Severity = Severity.CRITICAL) -> None:
+        self._inner, self._minimum = inner, minimum
+
+    def send(self, alert: Alert) -> None:
+        if _RANK[alert.severity] >= _RANK[self._minimum]:
+            self._inner.send(alert)
+
+
 def _default_poster(url: str, payload: dict, timeout: float) -> None:
     import json
     import urllib.request
@@ -178,6 +198,20 @@ class AlertLedger:
             except ValueError:            # 半行（进程被 kill）不该毁掉整份账
                 log.warning("alert.ledger_unreadable", path=str(path))
         return out
+
+
+def strategy_sinks(strategy_url: str, ops_url: str = "", *,
+                   timeout: float = 5.0) -> list[AlertSink]:
+    """一条交易链的告警去处：策略群收全部，运维群只收 CRITICAL。
+
+    两个地址相同时（只配了一个机器人）不重复装配，否则每条严重告警会发两遍。
+    """
+    sinks: list[AlertSink] = [LogAlertSink()]
+    if strategy_url:
+        sinks.append(WebhookAlertSink(strategy_url, timeout=timeout))
+    if ops_url and ops_url != strategy_url:
+        sinks.append(MinSeveritySink(WebhookAlertSink(ops_url, timeout=timeout)))
+    return sinks
 
 
 # 各进程各写各的，按天一个文件，日报统一读。相对路径，进程的工作目录都是仓库根。

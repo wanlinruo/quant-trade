@@ -487,7 +487,9 @@ class LiveRuntime:
     def _trade_context(self, phase, record) -> TradeContext:
         """消息里要的交易细节。取不到就给空的——通知绝不能影响交易。"""
         try:
-            closing = phase in (Phase.SESSION_START, Phase.SESSION_END)
+            # 盘前、盘中三次、收盘都要带持仓明细：那几个时刻在对持仓做判定
+            closing = phase in (Phase.SESSION_START, Phase.CHECKPOINT,
+                                Phase.SESSION_END)
             return TradeContext(
                 orders=tuple(trade_of(o.side, o.symbol, o.qty, o.limit_price)
                              for o in self._event_orders),
