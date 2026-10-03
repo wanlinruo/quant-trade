@@ -23,9 +23,13 @@ from qsys.ops.strategy_log import RunRecord
 
 # 这两个阶段每天固定推一条；其余阶段只有出事或有买卖才推
 _ALWAYS_PHASES = frozenset({"auction", "session_end"})
-# 盘前这条只在「今天有事要做」时推：T+1 策略手里有票就必须今天卖掉。
-# 空仓的早晨没有可反应的事，十分钟后的竞价决策那条已经说明策略活着。
+# 这两类只在**手里有票**时推。空仓时策略在这些时刻第一行就 return 了，
+# 推一条「持仓 0 只，无动作」是在报告一件没发生的事——按历史数据
+# 73% 的交易日是空仓的，那就是每天三条空消息，连推两个多月才遇上一次
+# 有内容的，人到那时已经不看了。有持仓的那几天则相反：11:25 / 14:25 /
+# 14:50 正是对钱做决定的时刻，「看了没卖」和「没看」必须分得出来。
 _PREMARKET_PHASE = "session_start"
+_WHEN_HOLDING = frozenset({_PREMARKET_PHASE, "checkpoint"})
 
 BUY, SELL = "买入", "卖出"
 
@@ -108,12 +112,22 @@ def positions_of(positions, prices) -> tuple[Position, ...]:
     return tuple(sorted(out, key=lambda p: p.symbol))
 
 
+def engine_label(name: str, ident: str = "") -> str:
+    """消息里认人的那个名字。
+
+    多个模拟账户共用一个群时，光靠账户名分不开——它们跑的是同一条策略，
+    名字只差后缀（「…-模拟」和「…-模拟-09:25入场」），在手机上扫过去几乎一样。
+    带上账户 id 前六位：既一眼能分，又能直接拿去工作台页面对上号。
+    """
+    return f"{name}#{ident[:6]}" if ident else name
+
+
 def should_notify(record: RunRecord, context: TradeContext | None = None) -> bool:
     if record.error:
         return True
     if record.orders or record.rejects:
         return True
-    if record.phase == _PREMARKET_PHASE:
+    if record.phase in _WHEN_HOLDING:
         return bool(context and context.positions)
     return record.phase in _ALWAYS_PHASES
 
@@ -157,6 +171,8 @@ def compose(name: str, record: RunRecord,
             title += f"，拒单 {record.rejects} 笔"
     elif record.phase == _PREMARKET_PHASE:
         title = f"{name}｜盘前就位"
+    elif record.phase == "checkpoint":
+        title = f"{name}｜盘中检查"
     elif record.phase == "auction":
         title = f"{name}｜竞价决策"
     else:
@@ -180,7 +196,7 @@ def compose(name: str, record: RunRecord,
     lines += [f"　{trade.as_line()}" for trade in trades]
     lines += [f"　拒单 {symbol}：{reason}" for symbol, reason in context.rejects]
 
-    if context.positions and record.phase in (_PREMARKET_PHASE, "session_end"):
+    if context.positions and record.phase in (*_WHEN_HOLDING, "session_end"):
         lines.append(f"持仓 {len(context.positions)} 只：")
         lines += [f"　{position.as_line()}" for position in context.positions]
 

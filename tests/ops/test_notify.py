@@ -124,7 +124,9 @@ def test_a_broken_sink_never_breaks_the_caller():
 
 # ---- 交易者视角：消息要能直接拿来做决定（2026-10-01 重做）----
 
-from qsys.ops.notify import BUY, SELL, Position, Trade, TradeContext  # noqa: E402
+from qsys.ops.notify import (  # noqa: E402
+    BUY, SELL, Position, Trade, TradeContext, engine_label,
+)
 
 BOUGHT = Trade("600036.SH", BUY, 300, 41.07)
 SOLD = Trade("000001.SZ", SELL, 500, 12.30)
@@ -280,3 +282,73 @@ def test_a_day_without_trades_keeps_the_plain_summary():
                       TradeContext())
 
     assert "持仓 0 只，无下单" in body
+
+
+# ---- 盘中三次：有持仓才推，并说清为什么不卖（2026-10-03）----
+
+def test_a_checkpoint_is_announced_only_while_something_is_held():
+    """空仓时策略在这些时刻第一行就 return 了，推一条等于报告没发生的事。"""
+    empty = should_notify(record(phase="checkpoint"))
+    holding = should_notify(record(phase="checkpoint"),
+                            TradeContext(positions=(HELD,)))
+
+    assert empty is False and holding is True
+
+
+def test_the_checkpoint_message_says_what_was_decided():
+    _, body = compose("实盘", record(
+        phase="checkpoint", position_count=1,
+        summary="11:25 检查 1 只｜600036.SH HIGH_MAIN 42.10（+2.51%）继续持有"),
+        TradeContext(positions=(HELD,)))
+
+    assert "11:25 检查 1 只" in body
+    assert "继续持有" in body
+    assert "600036.SH 300 股" in body      # 持仓明细也带上
+
+
+def test_a_checkpoint_that_sells_is_titled_as_a_sale():
+    title, _ = compose("实盘", record(phase="checkpoint", orders=1),
+                       TradeContext(fills=(SOLD,)))
+
+    assert "卖出 1 只" in title
+
+
+def test_a_quiet_day_still_costs_two_messages_per_engine():
+    """空仓日的消息量不能因为这次改动变多。"""
+    phases = ["session_start", "auction", "checkpoint", "checkpoint",
+              "checkpoint", "bar", "session_end"]
+    sent = [p for p in phases if should_notify(record(phase=p))]
+
+    assert sent == ["auction", "session_end"]
+
+
+def test_a_day_with_a_position_reports_every_decision_point():
+    phases = ["session_start", "auction", "checkpoint", "checkpoint",
+              "checkpoint", "bar", "session_end"]
+    holding = TradeContext(positions=(HELD,))
+    sent = [p for p in phases if should_notify(record(phase=p), holding)]
+
+    assert sent == ["session_start", "auction", "checkpoint", "checkpoint",
+                    "checkpoint", "session_end"]
+
+
+# ---- 同一个群里两个模拟账户要分得开（2026-10-03）----
+
+def test_two_accounts_of_the_same_strategy_are_told_apart():
+    """它们跑同一条策略，名字只差后缀，在手机上扫过去几乎一样。"""
+    a = engine_label("StructuralStrategy-模拟", "b5b2cfd1a0")
+    b = engine_label("StructuralStrategy-模拟-09:25入场", "29056f15bf")
+
+    assert a != b
+    assert a.endswith("#b5b2cf") and b.endswith("#29056f")
+
+
+def test_the_id_is_short_enough_to_read_and_long_enough_to_look_up():
+    """六位既一眼能分，又能直接拿去工作台页面对上号。"""
+    assert engine_label("x", "29056f15bfff415b") == "x#29056f"
+
+
+def test_an_engine_without_an_id_keeps_its_plain_name():
+    """影子盘和实盘各自独占一个群，不需要后缀。"""
+    assert engine_label("影子盘") == "影子盘"
+    assert engine_label("实盘", "") == "实盘"

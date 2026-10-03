@@ -16,7 +16,7 @@ from qsys.live.store import LiveStore
 from qsys.agent.locking import single_instance
 from qsys.live.lineage import StrategySource, resolve_strategy
 from qsys.paper.quotes import DECISION_TIMEOUT, QuoteClient
-from qsys.ops.alerts import AlertBus, LogAlertSink, WebhookAlertSink, ledger
+from qsys.ops.alerts import AlertBus, ledger, strategy_sinks
 from qsys.paper.calendar import load_trading_calendar
 from qsys.data.cutover import add_facade_argument, apply_facade_argument
 
@@ -42,10 +42,11 @@ def main() -> int:
     if config.safety.mode != "live" or not config.safety.orders_enabled:
         raise RuntimeError("实盘核心只在 [safety] mode='live' 且 orders_enabled=true 时启动")
     transport = RedisTransport.from_config(config)
-    sinks = [LogAlertSink()]
-    hook = config.alerts.strategy_url(shadow=False)
-    if hook:
-        sinks.append(WebhookAlertSink(hook, timeout=config.alerts.timeout_seconds))
+    # CRITICAL 同时进运维群——实盘停机既是交易事件也是运维事故
+    sinks = strategy_sinks(
+        config.alerts.strategy_url(shadow=False), config.alerts.ops_url,
+        timeout=config.alerts.timeout_seconds,
+    )
     source = (StrategySource(Path(args.strategy)) if args.strategy
               else resolve_strategy(config.strategy, Path(args.workspace)))
     runtime = LiveRuntime(

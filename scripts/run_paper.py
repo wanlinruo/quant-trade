@@ -165,7 +165,7 @@ def run_worker(args) -> int:
     return run_account_loop(
         store, args.account,
         lambda: PaperRuntime(args.account, store, Path(args.warehouse), calendar,
-                             client, workspace),
+                             client, workspace, deploy.alerts.ops_url),
         poll=args.poll,
     )
 

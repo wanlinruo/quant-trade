@@ -3,6 +3,7 @@ from datetime import datetime
 import pytest
 
 from qsys.ops.alerts import (
+    LogAlertSink,
     Alert,
     AlertBus,
     RecordingAlertSink,
@@ -147,3 +148,38 @@ def test_a_half_written_line_does_not_destroy_the_day(tmp_path):
 
 def test_a_day_with_no_alerts_reads_empty(tmp_path):
     assert AlertLedger(tmp_path).read(EMPTY_DAY) == []
+
+
+# ---- CRITICAL 双发：既是交易事件也是运维事故（2026-10-03）----
+
+from qsys.ops.alerts import MinSeveritySink, strategy_sinks  # noqa: E402
+
+
+def test_only_critical_crosses_into_the_ops_channel():
+    ops = RecordingAlertSink()
+    bus = AlertBus([MinSeveritySink(ops)])
+    bus.info("竞价决策"); bus.warning("订单被拒"); bus.critical("对账失败")
+
+    assert [a.title for a in ops.alerts] == ["对账失败"]
+
+
+def test_the_strategy_channel_still_gets_everything():
+    sinks = strategy_sinks("https://x/live", "https://x/ops")
+    urls = [s._url for s in sinks if hasattr(s, "_url")]
+
+    assert urls == ["https://x/live"]          # 策略群直连
+    assert any(isinstance(s, MinSeveritySink) for s in sinks)
+
+
+def test_one_robot_for_both_is_not_wired_twice():
+    """只配了一个机器人时重复装配会让每条严重告警发两遍。"""
+    sinks = strategy_sinks("https://x/only", "https://x/only")
+
+    assert sum(1 for s in sinks if hasattr(s, "_url")) == 1
+    assert not any(isinstance(s, MinSeveritySink) for s in sinks)
+
+
+def test_no_webhook_at_all_still_logs():
+    sinks = strategy_sinks("", "")
+
+    assert len(sinks) == 1 and isinstance(sinks[0], LogAlertSink)
