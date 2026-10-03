@@ -43,6 +43,14 @@ class AlertSink(ABC):
     @abstractmethod
     def send(self, alert: Alert) -> None: ...
 
+    def accepts(self, alert: Alert) -> bool:
+        """这条告警会不会真的从这个 sink 出去。
+
+        过滤掉的不算投递——留账里的「今天推了几条」要是把挡下的也算进去，
+        那个数字就不能用来判断通知链路好不好了（2026-10-03 自检时发现）。
+        """
+        return True
+
 
 class LogAlertSink(AlertSink):
     """始终装配的兜底 sink：至少日志里留得下。"""
@@ -81,8 +89,11 @@ class MinSeveritySink(AlertSink):
                  minimum: Severity = Severity.CRITICAL) -> None:
         self._inner, self._minimum = inner, minimum
 
+    def accepts(self, alert: Alert) -> bool:
+        return _RANK[alert.severity] >= _RANK[self._minimum]
+
     def send(self, alert: Alert) -> None:
-        if _RANK[alert.severity] >= _RANK[self._minimum]:
+        if self.accepts(alert):
             self._inner.send(alert)
 
 
@@ -222,6 +233,23 @@ def ledger(root=None) -> AlertLedger:
     return AlertLedger(Path(root) if root else LEDGER_DIR)
 
 
+def _accepts(sink, alert: Alert) -> bool:
+    """`accepts` 是可选约定：没有就当全收。
+
+    sink 只要有 `send` 就该能用——调用方自己写的 sink 不该因为少一个方法
+    就把整条告警链打死。问这一句本身出错也按全收处理，宁可多发不可不发。
+    """
+    try:
+        return bool(getattr(sink, "accepts", _ALWAYS)(alert))
+    except Exception as exc:
+        log.warning("alert.accepts_failed", sink=type(sink).__name__, error=str(exc))
+        return True
+
+
+def _ALWAYS(alert: Alert) -> bool:
+    return True
+
+
 class AlertBus:
     def __init__(self, sinks: Sequence[AlertSink],
                  ledger: AlertLedger | None = None) -> None:
@@ -231,6 +259,8 @@ class AlertBus:
     def publish(self, alert: Alert) -> None:
         delivered, failed = 0, []
         for sink in self._sinks:
+            if not _accepts(sink, alert):
+                continue
             try:
                 sink.send(alert)
                 delivered += 1

@@ -183,3 +183,51 @@ def test_no_webhook_at_all_still_logs():
     sinks = strategy_sinks("", "")
 
     assert len(sinks) == 1 and isinstance(sinks[0], LogAlertSink)
+
+
+def test_a_filtered_sink_is_not_counted_as_a_delivery(tmp_path):
+    """留账里的「今天推了几条」要是把挡下的也算进去，就不能用来判断链路好坏。"""
+    book = AlertLedger(tmp_path)
+    bus = AlertBus([RecordingAlertSink(), MinSeveritySink(RecordingAlertSink())], book)
+    bus.info("竞价决策")
+    bus.critical("对账失败")
+
+    rows = book.read(date.today())
+    assert [r["delivered"] for r in rows] == [1, 2]
+
+
+def test_a_filter_does_not_hide_a_real_delivery_failure(tmp_path):
+    book = AlertLedger(tmp_path)
+    AlertBus([MinSeveritySink(Broken())], book).critical("对账失败")
+
+    row = book.read(date.today())[0]
+    assert row["delivered"] == 0 and row["failed"] == ["MinSeveritySink"]
+
+
+def test_a_sink_without_accepts_still_works():
+    """sink 只要有 send 就该能用，不该因为少一个可选方法把告警链打死。"""
+    seen = []
+
+    class Minimal:
+        def send(self, alert):
+            seen.append(alert.title)
+
+    AlertBus([Minimal()]).info("开工")
+
+    assert seen == ["开工"]
+
+
+def test_a_sink_whose_accepts_explodes_is_still_sent_to():
+    """宁可多发不可不发。"""
+    seen = []
+
+    class Moody:
+        def accepts(self, alert):
+            raise RuntimeError("坏了")
+
+        def send(self, alert):
+            seen.append(alert.title)
+
+    AlertBus([Moody()]).critical("对账失败")
+
+    assert seen == ["对账失败"]
