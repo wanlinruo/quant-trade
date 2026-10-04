@@ -270,7 +270,7 @@ def _cached(answers):
     from scripts.run_health_observer import CachedWindowsTask
 
     calls = []
-    cache = CachedWindowsTask("h", Path("k"), interval=300.0, retry=60.0)
+    cache = CachedWindowsTask("h", Path("k"), interval=300.0, retry=120.0)
     seq = list(answers)
 
     def fake(task, *, host, key):
@@ -295,17 +295,22 @@ def test_a_good_answer_is_held_for_the_whole_interval(monkeypatch):
     assert len(calls) == 1          # 没有重复去问
 
 
-def test_a_failed_answer_is_retried_within_a_minute(monkeypatch):
-    """偏偏重启前后最容易偶发失败，而那正是最需要看清楚的时候。"""
+def test_a_failed_answer_is_retried_well_before_the_full_interval(monkeypatch):
+    """偏偏重启前后最容易偶发失败，而那正是最需要看清楚的时候。
+
+    但也不能太急：查询是同步的，会堵住采样主循环，所以折中到两分钟。
+    """
     cache, calls, fake, mod = _cached([{}, GOOD])
     monkeypatch.setattr(mod, "windows_task_show", fake)
     monkeypatch.setattr(mod.time, "monotonic", lambda: 0.0)
     assert cache("t") == {}
 
-    monkeypatch.setattr(mod.time, "monotonic", lambda: 59.0)
+    monkeypatch.setattr(mod.time, "monotonic", lambda: 119.0)
     assert cache("t") == {}
     assert len(calls) == 1          # 还没到重试点
 
-    monkeypatch.setattr(mod.time, "monotonic", lambda: 60.0)
-    assert cache("t") == GOOD       # 一分钟后就问到了
+    monkeypatch.setattr(mod.time, "monotonic", lambda: 120.0)
+    assert cache("t") == GOOD       # 远早于整个缓存周期
     assert len(calls) == 2
+    from scripts.run_health_observer import TASK_CACHE_SECONDS, TASK_RETRY_SECONDS
+    assert TASK_RETRY_SECONDS < TASK_CACHE_SECONDS

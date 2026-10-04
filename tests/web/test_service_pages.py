@@ -467,3 +467,13 @@ def test_unparsable_output_reports_nothing_rather_than_a_state():
     # 结果码不是数字时也不猜
     broken = ZH_TASK_CSV.replace('"0","admin"', '"—","admin"')
     assert parse_schtasks_csv(broken) == {}
+
+
+def test_the_windows_probe_allows_for_a_busy_two_core_box():
+    """实测一次 SSH + PowerShell + schtasks 要 1.5~5.3 秒（还是空闲时）。
+
+    给 8 秒会在机器忙起来时超时，把健康的看门狗报成「问不出来」。
+    """
+    from qsys.web.service_views import WINDOWS_TASK_TIMEOUT
+
+    assert WINDOWS_TASK_TIMEOUT >= 15.0
