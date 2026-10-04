@@ -261,3 +261,51 @@ def test_a_broken_survey_never_stops_the_sampling_loop(monkeypatch):
 
     assert sink.alerts == []
     assert watch.due(0.0) is False   # 仍然推进了下次时间，不会原地空转
+
+
+# ---- 查询失败要快点重试，别把盲区拖满一个缓存周期（2026-10-04）----
+
+def _cached(answers):
+    """answers 依次作为 windows_task_show 的返回值。"""
+    from scripts.run_health_observer import CachedWindowsTask
+
+    calls = []
+    cache = CachedWindowsTask("h", Path("k"), interval=300.0, retry=60.0)
+    seq = list(answers)
+
+    def fake(task, *, host, key):
+        calls.append(task)
+        return seq.pop(0) if seq else {}
+
+    import scripts.run_health_observer as mod
+    return cache, calls, fake, mod
+
+
+GOOD = {"State": "Ready", "LastTaskResult": 0, "LastRunTime": "2026-10-04T11:00:00"}
+
+
+def test_a_good_answer_is_held_for_the_whole_interval(monkeypatch):
+    cache, calls, fake, mod = _cached([GOOD, GOOD])
+    monkeypatch.setattr(mod, "windows_task_show", fake)
+    monkeypatch.setattr(mod.time, "monotonic", lambda: 0.0)
+    assert cache("t") == GOOD
+
+    monkeypatch.setattr(mod.time, "monotonic", lambda: 299.0)
+    assert cache("t") == GOOD
+    assert len(calls) == 1          # 没有重复去问
+
+
+def test_a_failed_answer_is_retried_within_a_minute(monkeypatch):
+    """偏偏重启前后最容易偶发失败，而那正是最需要看清楚的时候。"""
+    cache, calls, fake, mod = _cached([{}, GOOD])
+    monkeypatch.setattr(mod, "windows_task_show", fake)
+    monkeypatch.setattr(mod.time, "monotonic", lambda: 0.0)
+    assert cache("t") == {}
+
+    monkeypatch.setattr(mod.time, "monotonic", lambda: 59.0)
+    assert cache("t") == {}
+    assert len(calls) == 1          # 还没到重试点
+
+    monkeypatch.setattr(mod.time, "monotonic", lambda: 60.0)
+    assert cache("t") == GOOD       # 一分钟后就问到了
+    assert len(calls) == 2
