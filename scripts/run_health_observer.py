@@ -36,8 +36,13 @@ from qsys.web.service_views import ServiceConsole, windows_task_show
 log = structlog.get_logger("health-observer")
 
 
+# Windows 计划任务要走 SSH 查，贵且不稳，所以按这个间隔缓存。
+TASK_CACHE_SECONDS = 300.0
+
+
 class CachedWindowsTask:
-    def __init__(self, host: str, key: Path, interval: float = 300.0) -> None:
+    def __init__(self, host: str, key: Path,
+                 interval: float = TASK_CACHE_SECONDS) -> None:
         self.host, self.key, self.interval = host, key, interval
         self.value: dict = {}
         self.next_refresh = 0.0
@@ -92,7 +97,17 @@ def _heartbeat_reader(transport, prefix: str):
 
 
 # 0x41301：任务此刻正在运行，还没有本次结果——不是失败。
+# 0x41301：快照拍下时任务正在运行，还没有本次结果——不是失败。
 _TASK_STILL_RUNNING = 267009
+
+# 看门狗每 5 分钟跑一次，而上面的查询又按 5 分钟缓存。两者叠加，**完全健康**
+# 的看门狗观测到的「距上次运行」也能到 600 秒。阈值必须盖过这个和，否则每隔
+# 几分钟就误报一次——2026-10-04 实测到它在 healthy / degraded 之间反复横跳，
+# 并在一次重启后推出一条「Windows 进程看门狗已停止」的假 CRITICAL。
+WATCHDOG_INTERVAL_SECONDS = 300.0
+_WORST_CASE = WATCHDOG_INTERVAL_SECONDS + TASK_CACHE_SECONDS
+WATCHDOG_DELAYED_AFTER = _WORST_CASE + 300.0
+WATCHDOG_DOWN_AFTER = _WORST_CASE + 900.0
 
 
 def _watchdog_state(task: dict, now: datetime) -> tuple[str, str]:
@@ -100,17 +115,21 @@ def _watchdog_state(task: dict, now: datetime) -> tuple[str, str]:
         return UNKNOWN, "windows_task_unreachable"
     if task.get("State") == "Disabled":
         return DOWN, "watchdog_disabled"
+    if task.get("State") not in ("Ready", "Running"):
+        return DOWN, "watchdog_failed"
     result = task.get("LastTaskResult")
-    running_now = result == _TASK_STILL_RUNNING and task.get("State") == "Running"
-    if (result != 0 and not running_now) or task.get("State") not in ("Ready", "Running"):
+    # 非零即失败，只有 0x41301 例外：它表示「拍快照时在跑」。机器被断电时
+    # 这个值会连同 State=Ready 一起冻在那里，直到下一次运行才刷新——把它当成
+    # 失败，等于每次重启都误报一次看门狗死亡。真死了由下面的时长判定兜住。
+    if result not in (0, _TASK_STILL_RUNNING):
         return DOWN, "watchdog_failed"
     raw = task.get("LastRunTime")
     if not raw:
         return UNKNOWN, "watchdog_last_run_missing"
     age = (now - datetime.fromisoformat(raw)).total_seconds()
-    if age > 720:
+    if age > WATCHDOG_DOWN_AFTER:
         return DOWN, "watchdog_stale"
-    if age > 420:
+    if age > WATCHDOG_DELAYED_AFTER:
         return DEGRADED, "watchdog_delayed"
     return HEALTHY, "watchdog_fresh"
 

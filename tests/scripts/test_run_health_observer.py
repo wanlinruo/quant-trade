@@ -56,18 +56,65 @@ def test_business_alerts_fire_once_and_report_recovery():
     ]
 
 
+def _task(age_seconds=30, **over):
+    now = datetime(2026, 9, 26, 23, 30)
+    base = {"State": "Running", "LastTaskResult": 267009,
+            "LastRunTime": (now - timedelta(seconds=age_seconds)).isoformat()}
+    return {**base, **over}, now
+
+
 def test_a_task_caught_mid_run_is_not_a_failure():
-    """0x41301 是"正在运行、尚无结果"；看门狗每 5 分钟跑一次，探测可能正好撞上。"""
+    """0x41301 是「正在运行、尚无结果」；看门狗每 5 分钟跑一次，探测可能正好撞上。"""
     from scripts.run_health_observer import _watchdog_state
 
-    now = datetime(2026, 9, 26, 23, 30, tzinfo=timezone.utc)
-    running = {"State": "Running", "LastTaskResult": 267009,
-               "LastRunTime": (now - timedelta(seconds=30)).replace(tzinfo=None).isoformat()}
-    state, reason = _watchdog_state(running, now.replace(tzinfo=None))
-    assert reason == "watchdog_fresh"
+    task, now = _task()
+    assert _watchdog_state(task, now)[1] == "watchdog_fresh"
 
-    failed = {**running, "State": "Ready", "LastTaskResult": 267009}
-    assert _watchdog_state(failed, now.replace(tzinfo=None))[1] == "watchdog_failed"
+
+def test_an_interrupted_run_left_by_a_reboot_is_not_a_failure():
+    """机器断电时 0x41301 会连同 State=Ready 冻在那里，直到下次运行才刷新。
+
+    把它当失败，等于每次重启都推一条「看门狗已停止」——2026-10-04 真发过一条。
+    真死了由下面的时长判定兜住。
+    """
+    from scripts.run_health_observer import _watchdog_state
+
+    task, now = _task(State="Ready", LastTaskResult=267009)
+    assert _watchdog_state(task, now)[1] == "watchdog_fresh"
+
+
+def test_a_real_non_zero_result_is_still_a_failure():
+    from scripts.run_health_observer import _watchdog_state
+
+    task, now = _task(State="Ready", LastTaskResult=1)
+    assert _watchdog_state(task, now) == ("down", "watchdog_failed")
+
+
+def test_a_healthy_watchdog_seen_through_the_cache_is_not_called_late():
+    """任务每 300 秒跑一次，查询又按 300 秒缓存：健康状态下观测到的「距上次运行」
+    也能到 600 秒。阈值盖不住这个和，就会每几分钟误报一次。"""
+    from scripts.run_health_observer import (
+        TASK_CACHE_SECONDS, WATCHDOG_INTERVAL_SECONDS, _watchdog_state,
+    )
+
+    worst_case = WATCHDOG_INTERVAL_SECONDS + TASK_CACHE_SECONDS
+    task, now = _task(age_seconds=worst_case, State="Ready", LastTaskResult=0)
+    assert _watchdog_state(task, now)[1] == "watchdog_fresh"
+
+
+def test_a_watchdog_that_really_stopped_is_still_caught():
+    from scripts.run_health_observer import WATCHDOG_DOWN_AFTER, _watchdog_state
+
+    task, now = _task(age_seconds=WATCHDOG_DOWN_AFTER + 60,
+                      State="Ready", LastTaskResult=0)
+    assert _watchdog_state(task, now) == ("down", "watchdog_stale")
+
+
+def test_a_disabled_watchdog_is_down_regardless_of_age():
+    from scripts.run_health_observer import _watchdog_state
+
+    task, now = _task(State="Disabled", LastTaskResult=0)
+    assert _watchdog_state(task, now) == ("down", "watchdog_disabled")
 
 
 # ---- 告警要进运维群（2026-10-01 发现一直发在策略群）----
