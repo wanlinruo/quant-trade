@@ -4,7 +4,7 @@
 
 **Goal:** 让 QMT 分钟线管线不再产生昨收价填充行，清掉生产 `minute_bars` 里已有的 20,838 行，并把质检判据换成能发现这个缺陷的那一条。
 
-**Architecture:** 四步按序：先修源头（导出时丢弃首笔成交前的行），再换质检判据（「首根必须有成交」），再清历史数据（逐日重写分区），最后验证另外两个用同样区间调用的下载脚本。源头不修就清不干净，判据不换则清理后的正确数据会被误报。
+**Architecture:** Task 1–4 按序：先修源头（导出时丢弃首笔成交前的行），再换质检判据（「首根必须有成交」），再清历史数据（逐日重写分区），最后验证另外两个用同样区间调用的下载脚本。源头不修就清不干净，判据不换则清理后的正确数据会被误报。Task 5 独立，可与 Task 1 并行：下载清单扣掉直取停牌，与质检期望同源——那是 42 个整日虚构标的日的成因。
 
 **Tech Stack:** Python 3.12、polars、pyarrow、duckdb、pytest；生产节点 Linux，下载脚本运行在 Windows（xtquant）。
 
@@ -571,9 +571,167 @@ git commit -m "docs: what the other two QMT downloaders actually do"
 
 ---
 
+### Task 5: 下载清单扣掉直取停牌，与质检期望同源
+
+**Files:**
+- Modify: `src/qsys/data/pipeline/candidates.py`（新增 `drop_suspended`）
+- Modify: `scripts/daily_archive.py`（`_minute_wanted` 调用处，约 289 行）
+- Modify: `src/qsys/ops/service_checks.py`（`_archive_wanted` 改为复用）
+- Test: `tests/data/pipeline/test_candidates.py`（追加；不存在则新建）
+
+**Interfaces:**
+- Consumes: 无（与 Task 1–4 独立，可并行）
+- Produces: `drop_suspended(query: WarehouseQuery, days: pl.DataFrame) -> pl.DataFrame`，入出列均为 `symbol, dt`
+
+**为什么做：** 质检的到货期望扣掉了直取停牌（`_archive_wanted`），**而下载清单没扣**——
+`candidate_stock_days` 无停牌过滤，`daily_archive.py` 全文不提停牌。于是清单照样去要停牌股
+的分钟线，QMT 返回 241 根前收盘价，虚构的一天进了仓库；而质检的期望里已经把它扣掉了，
+所以**永远不会报**。2025-09-26 ~ 2025-12-31 的 42 个整日虚构标的日全部由此而来，
+经 Tushare `suspend_d` 确认 42/42 都是全天停牌。
+
+这个任务修的是成因；Task 3 清的是已有的 42 条。两件都要做。
+
+- [ ] **Step 1: 写失败的测试**
+
+```python
+from datetime import date
+
+import polars as pl
+
+from qsys.data.pipeline.candidates import drop_suspended
+
+DAYS = pl.DataFrame({"symbol": ["600000.SH", "600001.SH"],
+                     "dt": [date(2026, 6, 15), date(2026, 6, 15)]})
+
+
+class _Query:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def suspensions(self, symbols, start, end):
+        return pl.DataFrame(self._rows, schema={"symbol": pl.Utf8, "dt": pl.Date,
+                                                "suspend_type": pl.Utf8}, orient="row")
+
+
+def test_suspended_symbol_day_is_dropped():
+    q = _Query([("600000.SH", date(2026, 6, 15), "S")])
+    assert drop_suspended(q, DAYS)["symbol"].to_list() == ["600001.SH"]
+
+
+def test_resumption_rows_are_not_dropped():
+    """suspend_type='R' 是复牌，当天照常交易，不能扣。"""
+    q = _Query([("600000.SH", date(2026, 6, 15), "R")])
+    assert sorted(drop_suspended(q, DAYS)["symbol"].to_list()) == ["600000.SH", "600001.SH"]
+
+
+def test_suspension_on_another_day_does_not_leak():
+    q = _Query([("600000.SH", date(2026, 6, 12), "S")])
+    assert sorted(drop_suspended(q, DAYS)["symbol"].to_list()) == ["600000.SH", "600001.SH"]
+
+
+def test_empty_input_returns_empty():
+    q = _Query([])
+    empty = DAYS.clear()
+    assert drop_suspended(q, empty).height == 0
+```
+
+- [ ] **Step 2: 跑测试确认它失败**
+
+Run: `uv run pytest tests/data/pipeline/test_candidates.py -k suspend -v`
+Expected: FAIL with `ImportError: cannot import name 'drop_suspended'`
+
+- [ ] **Step 3: 实现共享函数**
+
+在 `src/qsys/data/pipeline/candidates.py` 末尾加入（并在文件顶部确认已 `import polars as pl`；
+`WarehouseQuery` 只用于类型标注，用字符串标注避免循环 import）：
+
+```python
+def drop_suspended(query: "WarehouseQuery", days: pl.DataFrame) -> pl.DataFrame:
+    """扣掉当日全天停牌的（标的, 日期）。
+
+    停牌真值只认 `suspend_daily`（Tushare ``suspend_d``），`suspend_type='S'` 为停牌、
+    `'R'` 为复牌。
+
+    **下载清单与服务质检的到货期望必须都走这一个函数。** 两边各写一份就会漂移：
+    2025 年质检扣了停牌而下载没扣，QMT 对停牌股返回 241 根前收盘价、成交量全 0，
+    42 个整日虚构的标的日因此进了仓库，而质检因为期望里已扣掉它们所以从不报警。
+    见 docs/reference/qmt-range-query-padding.md。
+    """
+    if days.height == 0:
+        return days
+    suspended = (
+        query.suspensions(None, days["dt"].min(), days["dt"].max())
+        .filter(pl.col("suspend_type") == "S")
+        .select(["symbol", "dt"])
+    )
+    return days.join(suspended, on=["symbol", "dt"], how="anti")
+```
+
+- [ ] **Step 4: 跑测试确认通过**
+
+Run: `uv run pytest tests/data/pipeline/test_candidates.py -k suspend -v`
+Expected: 4 passed
+
+- [ ] **Step 5: 接到下载清单上**
+
+`scripts/daily_archive.py` 约 289 行，把：
+
+```python
+    wanted = _minute_wanted(candidates, held)
+    print(f"分钟线清单：首板次日候选 {candidates.height} 组，模拟盘持仓 {held.height} 组，"
+          f"合并去重 {wanted.height} 组")
+```
+
+改为：
+
+```python
+    wanted = _minute_wanted(candidates, held)
+    before = wanted.height
+    wanted = drop_suspended(WarehouseQuery(warehouse), wanted)
+    print(f"分钟线清单：首板次日候选 {candidates.height} 组，模拟盘持仓 {held.height} 组，"
+          f"合并去重 {before} 组，扣掉全天停牌 {before - wanted.height} 组，"
+          f"实取 {wanted.height} 组")
+```
+
+并在文件顶部的 `from qsys.data.pipeline.candidates import (...)` 里加上 `drop_suspended`。
+
+- [ ] **Step 6: 让质检复用同一函数**
+
+`src/qsys/ops/service_checks.py` 的 `_archive_wanted`，把手写的 anti-join 换掉：
+
+```python
+def _archive_wanted(ctx: CheckContext) -> pl.DataFrame:
+    """与每日归档的下载清单同源：首板次日候选，扣掉当日直取停牌。
+
+    停牌扣除走 `drop_suspended`，与 daily_archive 同一份代码——两边各写一份正是
+    2025 年那 42 个整日虚构标的日的成因。
+    """
+    lookback = ctx.sessions[max(0, ctx.sessions.index(ctx.day) - 10)]
+    wanted = candidate_stock_days(ctx.warehouse, lookback, ctx.day, sessions=ctx.sessions)
+    return drop_suspended(ctx.query, wanted.filter(pl.col("dt") == ctx.day))
+```
+
+并在该文件的 import 里加上 `drop_suspended`。
+
+- [ ] **Step 7: 跑全量**
+
+Run: `uv run pytest`
+Expected: 退出码 0。质检相关测试若断言了 `_archive_wanted` 的内部实现，一并更新。
+
+- [ ] **Step 8: 提交**
+
+```bash
+git add src/qsys/data/pipeline/candidates.py scripts/daily_archive.py \
+        src/qsys/ops/service_checks.py tests/data/pipeline/test_candidates.py
+git commit -m "fix(data): the check excluded suspended days, the download never did"
+```
+
+
+---
+
 ## 收尾
 
-四个任务都完成后，按 §3.2 把 `fix/<slug>` squash 回 `test` 并直接 push，CI 全绿后随下一次 `test -> main` 发布 PR 上生产。生产部署按 §9.2 手工 `workflow_dispatch`。
+五个任务都完成后，按 §3.2 把 `fix/<slug>` squash 回 `test` 并直接 push，CI 全绿后随下一次 `test -> main` 发布 PR 上生产。生产部署按 §9.2 手工 `workflow_dispatch`。
 
 **本次只需重启 `qsys-web-prod`**（质检判据改动影响服务管理页）；数据同步器、paper、shadow、live core 不受影响，按 §9.2「禁止每次部署无差别重启全部服务」不重启。
 
