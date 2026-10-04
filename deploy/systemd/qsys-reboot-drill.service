@@ -1,0 +1,21 @@
+[Unit]
+Description=qsys monthly reboot drill (reboots the Windows node on purpose)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/qsys
+ExecStart=/home/ubuntu/qsys/.venv/bin/python -u scripts/reboot_drill.py \
+          --config config/deploy.local.toml \
+          --service-runs /home/ubuntu/qsys/var/service-runs
+# 重启 + 等回来 + 等看门狗拉起代理，最坏约 20 分钟
+TimeoutStartSec=1800
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+# 只写运行记录与告警流水；要读 SSH 私钥去登 Windows
+ReadWritePaths=/home/ubuntu/qsys/var

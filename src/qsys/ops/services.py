@@ -43,7 +43,8 @@ class ServiceSpec:
     # 定时任务：交易日几点前应当已有运行记录（宽限后仍无记录判「未运行」）
     due: str | None = None
     # 执行周期：daily＝每个交易日；everyday＝含休市日的每一天；
-    # monthly＝每月 run_day 号。非执行日不应被判「未运行」，否则看板天天红。
+    # monthly＝每月 run_day 号；monthly_closed＝每月最后一个休市日（由日历算，
+    # 不是固定号数）。非执行日不应被判「未运行」，否则看板天天红。
     cadence: str = "daily"
     run_day: int | None = None
     # 超过这么久仍是 running，视为进程已中断
@@ -110,6 +111,16 @@ SERVICES: tuple[ServiceSpec, ...] = (
         "按当年至今的数据重跑一次开闸门回测，并对每条 S7 判定做逐笔反事实："
         "被闸门拒掉的交易如果买了是赚是亏，供 docs/reference/gate-study.md 按月校准",
         due="23:30", max_runtime=timedelta(hours=1), cadence="monthly", run_day=1,
+    ),
+    ServiceSpec(
+        "reboot-drill", "重启演练（月度）", "timer", "Linux → Windows", "qsys-reboot-drill",
+        "每月最后一个休市日 10:00",
+        ("交易日历", "SSH Windows", "Redis 心跳"), (),
+        "把 Windows 执行节点真的重启一次，确认它能无人值守地自己回来："
+        "自动登录、QMT 自动登录、代理心跳，缺一判失败。"
+        "无人值守恢复依赖四层设置，任何一层被改掉都没有提示——定期演练是让它"
+        "坏在我们看着的时候",
+        due="11:00", max_runtime=timedelta(minutes=30), cadence="monthly_closed",
     ),
     ServiceSpec(
         "service-checks", "每日服务质检", "timer", "Linux", "qsys-service-checks",

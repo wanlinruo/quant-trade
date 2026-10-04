@@ -1,0 +1,12 @@
+[Unit]
+Description=Reboot the Windows node once a month to prove it recovers alone
+
+[Timer]
+# 每天触发，由脚本判断今天是不是「当月最后一个休市日」——执行日要查交易日历
+# 才知道，不是固定号数，systemd 的日历表达式写不出来。
+# 10:00：那天不开盘，而万一演练失败，还剩一整天在下一个交易日之前修好。
+OnCalendar=*-*-* 10:00 Asia/Shanghai
+Persistent=true
+
+[Install]
+WantedBy=timers.target

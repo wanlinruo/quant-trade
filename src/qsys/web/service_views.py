@@ -209,7 +209,8 @@ class ServiceConsole:
         self, days: int = 62,
     ) -> tuple[list[date], list[tuple[ServiceSpec, list[Cell]]], bool]:
         """月度任务看板：按月执行，天数窗口要盖到上个月的执行日。"""
-        monthly = [s for s in self.services("timer") if s.cadence == "monthly"]
+        monthly = [s for s in self.services("timer")
+                   if s.cadence in ("monthly", "monthly_closed")]
         return self._board_for(monthly, days)
 
     def acceptance_board(
@@ -314,6 +315,20 @@ class ServiceConsole:
             return "none"
         if spec.cadence == "monthly" and day.day != spec.run_day:
             return "none"      # 月度任务：不是执行日就不该有记录
+        if spec.cadence == "monthly_closed":
+            # 执行日由日历算出来（当月最后一个休市日），不是固定号数
+            from qsys.core.calendar import last_closed_day_of_month
+
+            if self._calendar is None:
+                return "none"
+            try:
+                expected = last_closed_day_of_month(self._calendar(), day.year, day.month)
+            except (ValueError, AttributeError, TypeError):
+                return "none"
+            if day != expected:
+                return "none"
+            due = datetime.combine(day, time.fromisoformat(spec.due or "23:59"))
+            return "missed" if now >= due else "pending"
         if day not in trading and spec.cadence != "everyday":
             return "closed"    # everyday 的任务休市日也该跑，缺了就是缺了
         due = datetime.combine(day, time.fromisoformat(spec.due or "23:59"))
