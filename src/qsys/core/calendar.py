@@ -8,7 +8,7 @@ from __future__ import annotations
 import bisect
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 
 
 def last_closed_session(calendar: "TradingCalendar", as_of: datetime) -> date | None:
@@ -27,6 +27,26 @@ def last_closed_session(calendar: "TradingCalendar", as_of: datetime) -> date | 
         return calendar.prev_session(day)
     except ValueError:
         return None
+
+
+def last_closed_day_of_month(calendar: "TradingCalendar", year: int, month: int) -> date:
+    """该月最后一个**休市日**：从月末往回找，第一个不开盘的日子。
+
+    月度重启演练排在这一天：重启会让整条交易链断 5 分钟左右，交易日做不得。
+
+    多数月份这天是周日，**第二天就开市**——所以演练安排在上午，留一整天反应，
+    失败要立刻告警。月末若整周连着开盘（极少，需连续 7 个交易日），会一路回退
+    到上一个周末，仍然落在本月内：A 股每周必有周末休市，所以这个函数总有解。
+    """
+    from calendar import monthrange
+
+    day = date(year, month, monthrange(year, month)[1])
+    first = date(year, month, 1)
+    while day >= first:
+        if not calendar.is_trading_day(day):
+            return day
+        day -= timedelta(days=1)
+    raise ValueError(f"{year}-{month:02d} 整月都是交易日，不可能")
 
 
 class TradingCalendar(ABC):

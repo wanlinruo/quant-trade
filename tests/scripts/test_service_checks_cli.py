@@ -30,3 +30,22 @@ def test_a_non_trading_day_is_skipped_rather_than_rechecked():
     body = source[source.index("确定交易日"):source.index("sessions = calendar")]
 
     assert "不是交易日" in body and "run.skip" in body
+
+
+# ---- 月度重启演练：这个脚本会重启生产节点，闸门必须卡死 ----
+
+def test_a_trading_day_overrides_even_force():
+    """--force 是给人用的方便，不是给人用的枪。交易日绝不重启生产节点。"""
+    source = Path("scripts/reboot_drill.py").read_text(encoding="utf-8")
+    body = source[source.index("today = args.day or date.today()"):
+                  source.index("run_it, why = should_run")]
+
+    assert "is_trading_day(today)" in body
+    assert "拒绝重启" in body
+
+
+def test_the_trading_day_check_comes_before_the_force_flag():
+    """顺序写反的话，--force 就能在交易时段把实盘打断。"""
+    source = Path("scripts/reboot_drill.py").read_text(encoding="utf-8")
+
+    assert source.index("is_trading_day(today)") < source.index("force=args.force")

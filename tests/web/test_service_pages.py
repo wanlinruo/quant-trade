@@ -426,9 +426,32 @@ def test_a_monthly_service_is_not_judged_missed_on_ordinary_days(tmp_path, wareh
 
     assert "auction-study" not in [spec.id for spec, _ in console.board()[1]]
     columns, rows, _ = console.periodic_board()
-    assert [spec.id for spec, _ in rows] == ["auction-study", "gate-study"]
+    assert [spec.id for spec, _ in rows] == [
+        "auction-study", "gate-study", "reboot-drill",
+    ]
     states = {cell.day: cell.state for cell in rows[0][1]}
     assert {state for day, state in states.items() if day.day != 1} == {"none"}
+
+
+def test_the_reboot_drill_is_expected_only_on_the_month_s_closed_day(tmp_path):
+    """它的执行日由日历算出来（当月最后一个休市日），不是固定号数。
+
+    算错就有两种坏法：天天报漏跑，或者永远不报——重启演练恰恰是那种
+    「不跑也没人知道」的任务。
+    """
+    console = ServiceConsole(tmp_path, calendar=lambda: AShareCalendar(SESSIONS),
+                             systemd=lambda unit: {}, now=lambda: NOW)
+    _, rows, _ = console.periodic_board(days=62)
+    drill = next(cells for spec, cells in rows if spec.id == "reboot-drill")
+    states = {cell.day: cell.state for cell in drill}
+
+    from qsys.core.calendar import last_closed_day_of_month
+    months = {(d.year, d.month) for d in states}
+    expected = {last_closed_day_of_month(AShareCalendar(SESSIONS), y, m)
+                for y, m in months}
+    flagged = {day for day, state in states.items() if state in ("missed", "pending")}
+
+    assert flagged <= expected          # 只会在演练日点名，其余一律 none
 
 
 
