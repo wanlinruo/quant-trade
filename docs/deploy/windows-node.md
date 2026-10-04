@@ -28,6 +28,81 @@ Python 3.11.9 @ C:\Program Files\Python311
 **内存是这台机器的瓶颈**（可用仅 1.0 GB）。任何在此运行的任务都要让路：
 采集脚本默认带 `--sleep`。
 
+## 无人值守重启（2026-10-04 验证）
+
+重启后整条链自己回来，无需任何人介入。**从开机到影子盘代理心跳恢复约 5.5 分钟。**
+
+```
+10:38:40  开机
+10:38:44  qsys-market-gateway   （SYSTEM，开机触发）
+10:39:09  qsys-qmt              （登录触发，最高权限）→ XtItClient
+10:39:34  XtMiniQmt 起来，自动登录券商
+10:44:01  qsys-agent-shadow     （看门狗拉起）
+```
+
+验证口径：`qwinsta` 显示会话是 `console`，安全日志里只有 `LogonType=2`
+（控制台自动登录）、**没有任何 `LogonType=10`（RDP）**——确实没人碰过。
+
+### 四层，缺一不可
+
+**① Windows 自动登录**。用 Sysinternals Autologon（`C:\qsys\tools\`）设置，
+密码存 LSA 密钥，**注册表里不留明文**。核对：`AutoAdminLogon=1` 且
+`Winlogon\DefaultPassword` 不存在。
+
+重设用 `C:\qsys\tools\enable-autologon.ps1`——它当场问密码，不进命令行、
+不进历史。
+
+**② Windows 不会自己重启**。`NoAutoUpdate=1`，`wuauserv`/`UsoSvc` 都是 Manual
+且停着。剩下的重启来源只有人为和宿主机故障。
+
+**③ QMT 勾上「自动登录」**。登录框上「记住密码」旁边那个——**只勾「记住密码」
+不够**，那只是帮你填好、仍然等人点「登录」。两个都要勾。
+
+另外「系统设置 → 交易设置 → 自动重启设置」里勾上「启用开机自动启动」「启用自动
+初始化」，并加一条 **08:45** 的自动重新初始化时间：自动初始化只在启动时跑一次，
+机器连开几天的话，交易前那条连接可能已经是上周建立的。08:45 给开盘前一个干净
+的起点，离 09:25 竞价还有 40 分钟余量。
+
+**④ 开机启动必须走 `XtItClient.exe`，不能直接起 `XtMiniQmt.exe`。**
+
+这一条最隐蔽，2026-10-04 查了一整夜：
+
+| | 可执行文件 |
+|---|---|
+| 桌面图标（人手点的） | `XtItClient.exe` |
+| 原来的启动文件夹快捷方式 | `XtMiniQmt.exe linkMini` |
+
+是两个不同的程序。`XtItClient` 是正规启动器，会把 `BrokerProxy` 等依赖拉起来；
+直接起 `XtMiniQmt` 就缺组件，日志里刷
+`[proxy_login_status] status = 1, message = 找不到指定的类。`，每 3 秒一次，
+**一整夜 11,447 次**，而 `Get-NetTCPConnection` 显示它一个外连都没有。
+
+所以现象是：**人手点图标必成功、开机自启必失败**。
+
+还有第二层：把启动文件夹的快捷方式改指 `XtItClient.exe` 仍然起不来——
+`UAC EnableLUA=1`，启动文件夹用的是过滤后的受限令牌，而启动器要管理员权限。
+最终用计划任务 `qsys-qmt` 解决：登录触发、延时 20 秒、`HighestAvailable`、
+`InteractiveToken`。启动文件夹那条已停用（改名 `.disabled-20261004`，原件
+`.bak-20261004` 留着可回退）。
+
+### 排错时先看什么
+
+别从 QMT 日志开始——它那句「找不到指定的类」会把人带去查 COM 和网络，
+全是弯路。先看这三样：
+
+```powershell
+Get-Process XtMiniQmt | Select-Object Id, SessionId, StartTime
+Get-NetTCPConnection -OwningProcess <pid>   # 登录正常时应有 58.34.120.85:56000
+schtasks /query /tn qsys-qmt /fo LIST /v
+```
+
+**本机能连通券商端点、而 QMT 没有任何外连**，就说明问题在 QMT 内部，不是网络。
+
+还有一条教训：SSH 进来是 session 0，QMT 在 session 1，**枚举不到它的窗口**。
+看不见界面时不要靠日志编故事——让维护者截一张图，比猜一小时快。那张登录框
+截图（「自动登录」没勾）和 `XtItClient` vs `XtMiniQmt` 这两步，才是真正解决
+问题的，前面三个结论全错了。
+
 ## qsys 的落脚点
 
 新建 `C:\qsys`，与 bridge 完全隔离：
