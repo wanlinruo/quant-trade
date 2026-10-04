@@ -291,3 +291,45 @@ def test_no_fills_means_no_held_days():
     from qsys.data.pipeline.candidates import held_stock_days
 
     assert held_stock_days(_paper_fills([]), D[0], D[-1], D).height == 0
+
+
+# --- 扣掉直取停牌 -----------------------------------------------------------
+# 2025 年质检扣了停牌而下载没扣，QMT 对停牌股返回 241 根前收盘价，42 个整日虚构的
+# 标的日因此进了仓库。见 docs/reference/qmt-range-query-padding.md。
+
+import polars as pl  # noqa: E402
+
+from qsys.data.pipeline.candidates import drop_suspended  # noqa: E402
+
+DAYS = pl.DataFrame({"symbol": ["600000.SH", "600001.SH"],
+                     "dt": [date(2026, 6, 15), date(2026, 6, 15)]})
+
+
+class _Query:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def suspensions(self, symbols, start, end):
+        return pl.DataFrame(self._rows,
+                            schema={"symbol": pl.Utf8, "dt": pl.Date, "suspend_type": pl.Utf8},
+                            orient="row")
+
+
+def test_suspended_symbol_day_is_dropped():
+    q = _Query([("600000.SH", date(2026, 6, 15), "S")])
+    assert drop_suspended(q, DAYS)["symbol"].to_list() == ["600001.SH"]
+
+
+def test_resumption_rows_are_not_dropped():
+    """suspend_type='R' 是复牌，当天照常交易，不能扣。"""
+    q = _Query([("600000.SH", date(2026, 6, 15), "R")])
+    assert sorted(drop_suspended(q, DAYS)["symbol"].to_list()) == ["600000.SH", "600001.SH"]
+
+
+def test_suspension_on_another_day_does_not_leak():
+    q = _Query([("600000.SH", date(2026, 6, 12), "S")])
+    assert sorted(drop_suspended(q, DAYS)["symbol"].to_list()) == ["600000.SH", "600001.SH"]
+
+
+def test_empty_input_returns_empty():
+    assert drop_suspended(_Query([]), DAYS.clear()).height == 0

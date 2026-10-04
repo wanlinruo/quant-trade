@@ -74,7 +74,15 @@ def read_done(path: str) -> set[str]:
 
 
 def to_rows(symbol: str, data: dict, stamps: list[str]) -> list[tuple]:
-    """把 xtdata 的 {字段: DataFrame} 摊平成行。"""
+    """把 xtdata 的 {字段: DataFrame} 摊平成行。
+
+    **丢弃每个交易日首笔成交之前的行。** `get_market_data` 按区间取数时，会把当日
+    首笔成交之前的分钟用昨收价填满、`volume=0`；按单日取则不会。那些行是填充，
+    不是行情——它们看起来是一笔可成交的价格，而市场上并没有发生过。
+    详见 docs/reference/qmt-range-query-padding.md（2026-10-04）。
+
+    首笔成交**之后**的 0 量分钟保留：那是真实的无成交分钟。
+    """
     closes = data.get("close")
     if closes is None or closes.empty:
         return []
@@ -85,8 +93,20 @@ def to_rows(symbol: str, data: dict, stamps: list[str]) -> list[tuple]:
 
     opens, highs = data["open"], data["high"]
     lows, volumes, amounts = data["low"], data["volume"], data["amount"]
+
+    # 时间戳是 YYYYMMDDHHMMSS，字典序即时序。
+    columns = sorted(columns)
+    first_traded: dict[str, str] = {}
+    for stamp in columns:
+        day = stamp[:8]
+        if day not in first_traded and int(volumes.iloc[0][stamp]) > 0:
+            first_traded[day] = stamp
+
     rows = []
     for stamp in columns:
+        start = first_traded.get(stamp[:8])
+        if start is None or stamp < start:
+            continue
         moment = datetime.strptime(stamp, "%Y%m%d%H%M%S")
         rows.append(
             (

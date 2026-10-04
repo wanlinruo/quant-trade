@@ -214,7 +214,7 @@ def test_first_bar_without_volume_is_bad(monkeypatch):
     frame = _bars([("513100.SH", datetime(2026, 9, 29, 9, 30), 0),
                    ("513100.SH", datetime(2026, 9, 29, 9, 31), 500)])
     monkeypatch.setattr(sc, "_minute_bar_rows", lambda ctx: frame)
-    assert _minutes_first_bar_traded(_Ctx(frame)).status is BAD
+    assert _minutes_first_bar_traded(_Ctx(frame)).status == BAD
 
 
 def test_late_first_trade_is_ok(monkeypatch):
@@ -224,7 +224,7 @@ def test_late_first_trade_is_ok(monkeypatch):
     frame = _bars([("513100.SH", datetime(2026, 9, 29, 10, 31), 800),
                    ("513100.SH", datetime(2026, 9, 29, 10, 32), 0)])
     monkeypatch.setattr(sc, "_minute_bar_rows", lambda ctx: frame)
-    assert _minutes_first_bar_traded(_Ctx(frame)).status is OK
+    assert _minutes_first_bar_traded(_Ctx(frame)).status == OK
 ```
 
 - [ ] **Step 3: 跑测试确认它失败**
@@ -388,19 +388,18 @@ import polars as pl
 import pyarrow as pa
 
 from qsys.data import schema
-from qsys.data.storage import Storage
+from qsys.data.storage import Warehouse
 
 
 def drop_padding(frame: pl.DataFrame) -> pl.DataFrame:
     """丢弃每个（标的，日）首笔成交之前的行；整日无成交则整日丢弃。"""
     if frame.height == 0:
         return frame
-    day = pl.col("dt").dt.date()
-    first = (frame.filter(pl.col("volume") > 0)
-                  .group_by(["symbol", day.alias("_d")])
-                  .agg(pl.col("dt").min().alias("_first")))
-    return (frame.with_columns(day.alias("_d"))
-                 .join(first, on=["symbol", "_d"], how="inner")
+    framed = frame.with_columns(pl.col("dt").dt.date().alias("_d"))
+    first = (framed.filter(pl.col("volume") > 0)
+                   .group_by(["symbol", "_d"])
+                   .agg(pl.col("dt").min().alias("_first")))
+    return (framed.join(first, on=["symbol", "_d"], how="inner")
                  .filter(pl.col("dt") >= pl.col("_first"))
                  .drop(["_d", "_first"])
                  .sort(["symbol", "dt"]))
@@ -414,14 +413,12 @@ def main() -> None:
     ap.add_argument("--apply", action="store_true", help="不加则只报告，不落盘")
     args = ap.parse_args()
 
-    storage = Storage(args.warehouse)
+    warehouse = Warehouse(args.warehouse)
     total_before = total_after = 0
     touched = []
-    for path in sorted((args.warehouse / "minute_bars").glob("year=*/date=*")):
-        day = date.fromisoformat(
-            path.name.removeprefix("date=")[:4] + "-"
-            + path.name.removeprefix("date=")[4:6] + "-"
-            + path.name.removeprefix("date=")[6:8])
+    for path in sorted((args.warehouse / "minute_bars").glob("year=*/date=*/part.parquet")):
+        stamp = path.parent.name.removeprefix("date=")
+        day = date(int(stamp[:4]), int(stamp[4:6]), int(stamp[6:8]))
         if not (args.start <= day <= args.end):
             continue
         frame = pl.read_parquet(path)
@@ -433,7 +430,7 @@ def main() -> None:
         touched.append((day, frame.height, cleaned.height))
         if args.apply:
             table = cleaned.to_arrow().cast(schema.MINUTE_BARS)
-            storage.write_day("minute_bars", table, day=day)
+            warehouse.write_day("minute_bars", table, day=day)
 
     print(f"扫描 {total_before:,} 行 -> {total_after:,} 行，"
           f"删除 {total_before - total_after:,} 行，涉及 {len(touched)} 个交易日")
@@ -642,11 +639,11 @@ Expected: FAIL with `ImportError: cannot import name 'drop_suspended'`
 
 - [ ] **Step 3: 实现共享函数**
 
-在 `src/qsys/data/pipeline/candidates.py` 末尾加入（并在文件顶部确认已 `import polars as pl`；
-`WarehouseQuery` 只用于类型标注，用字符串标注避免循环 import）：
+在 `src/qsys/data/pipeline/candidates.py` 末尾加入。顶部加 `from qsys.data.query import WarehouseQuery`
+——已确认无循环 import：`query.py` 不 import `candidates`。
 
 ```python
-def drop_suspended(query: "WarehouseQuery", days: pl.DataFrame) -> pl.DataFrame:
+def drop_suspended(query: WarehouseQuery, days: pl.DataFrame) -> pl.DataFrame:
     """扣掉当日全天停牌的（标的, 日期）。
 
     停牌真值只认 `suspend_daily`（Tushare ``suspend_d``），`suspend_type='S'` 为停牌、
