@@ -20,7 +20,7 @@ SCRIPTS = [
     "catalog_verify", "tushare_daily_sync", "tushare_premarket_limits", "verify_metrics",
     "verify_warehouse_backup",
     "publish_joinquant_minute_overrides", "publish_paid_minute_overrides",
-    "repair_paid_minute_overrides", "storage_report",
+    "repair_minute_bars_padding", "repair_paid_minute_overrides", "storage_report",
 ]
 
 

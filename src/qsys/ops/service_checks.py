@@ -30,7 +30,7 @@ from qsys.data.catalog import REGISTRY
 from qsys.data.catalog.checks import CHECKS as CATALOG_CHECKS
 from qsys.data.catalog.checks import Scope
 from qsys.data.pipeline.auction import missing_auction_days
-from qsys.data.pipeline.candidates import candidate_stock_days
+from qsys.data.pipeline.candidates import candidate_stock_days, drop_suspended
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
 from qsys.markets.ashare import board_of
@@ -49,7 +49,6 @@ OK, BAD, WARN, SKIP = SUCCEEDED, FAILED, WARNING, SKIPPED
 
 # 日线行数相对上一交易日跌幅超过 2% 视为没到齐（实测 9 月每日波动在 ±5 只以内）
 DAILY_MIN_RATIO = 0.98
-MINUTE_BARS_PER_DAY = 241
 VOLUME_TOLERANCE_LOTS = 1.0
 PRODUCTION_BOARDS = {"main", "gem", "star"}
 # 指标字典应当全部被验证；全量规则必须真的跑过，不能悄悄退回成只跑增量
@@ -419,13 +418,14 @@ def _premarket_rows(ctx: CheckContext) -> CheckResult:
 # ---- 每日归档（QMT） ----
 
 def _archive_wanted(ctx: CheckContext) -> pl.DataFrame:
-    """与每日归档的下载清单同源：首板次日候选，扣掉当日直取停牌。"""
+    """与每日归档的下载清单同源：首板次日候选，扣掉当日直取停牌。
+
+    停牌扣除走 `drop_suspended`，与 `scripts/daily_archive.py` 同一份代码——两边
+    各写一份正是 2025 年那 42 个整日虚构标的日的成因（质检扣了，下载没扣）。
+    """
     lookback = ctx.sessions[max(0, ctx.sessions.index(ctx.day) - 10)]
     wanted = candidate_stock_days(ctx.warehouse, lookback, ctx.day, sessions=ctx.sessions)
-    wanted = wanted.filter(pl.col("dt") == ctx.day)
-    suspended = (ctx.query.suspensions(None, ctx.day, ctx.day)
-                 .filter(pl.col("suspend_type") == "S").select(["symbol", "dt"]))
-    return wanted.join(suspended, on=["symbol", "dt"], how="anti")
+    return drop_suspended(ctx.query, wanted.filter(pl.col("dt") == ctx.day))
 
 
 def _auction_arrived(ctx: CheckContext) -> CheckResult:
@@ -461,15 +461,44 @@ def _minutes_arrived(ctx: CheckContext) -> CheckResult:
                        _samples(missing) if missing else "", rows=per.height)
 
 
-def _minutes_complete(ctx: CheckContext) -> CheckResult:
-    wanted, per = _minute_bars(ctx)
-    if per.height == 0:
-        return CheckResult(SKIP, f"每只 {MINUTE_BARS_PER_DAY} 根", "没有分钟线可核对")
-    bad = per.filter(pl.col("bars") != MINUTE_BARS_PER_DAY)
-    return CheckResult(BAD if bad.height else OK, f"每只 {MINUTE_BARS_PER_DAY} 根",
-                       f"{bad.height} 只不是 {MINUTE_BARS_PER_DAY} 根",
-                       _samples({f"{s}({n})" for s, n in bad.select("symbol", "bars").rows()}),
-                       rows=per.height)
+def _minute_bar_rows(ctx: CheckContext) -> pl.DataFrame:
+    """当日已归档的分钟线**明细**（schema.MINUTE_BARS 全列），供首根判据使用。
+
+    不能复用 `_minute_bars`：它返回的是按标的聚合后的 (symbol, bars, volume 合计)，
+    没有 dt，也没有逐行 volume，判不了「首根」。
+    """
+    wanted = _archive_wanted(ctx)
+    if wanted.height == 0:
+        return pl.DataFrame(schema={"symbol": pl.Utf8, "dt": pl.Datetime,
+                                    "volume": pl.Int64})
+    return ctx.query.minute_bars(
+        wanted["symbol"].to_list(),
+        datetime.combine(ctx.day, time(0, 0)),
+        datetime.combine(ctx.day, time(23, 59, 59)),
+    )
+
+
+def _minutes_first_bar_traded(ctx: CheckContext) -> CheckResult:
+    """每个标的当日的首根必须有成交。
+
+    首根 volume=0 意味着那是 QMT 区间查询的昨收价填充残留，不是行情。
+
+    取代原先的「每只 241 根」。那条判据对这个缺陷是完全盲的——**填充正是满足它的
+    手段**：填充的作用恰恰是把不足 241 根的日子补齐到 241。它还会反过来误报：
+    首笔成交晚的标的（如 513100.SH，首笔 10:31）在正确数据下本来就不足 241 根。
+    见 docs/reference/qmt-range-query-padding.md。
+    """
+    rows = _minute_bar_rows(ctx)
+    if rows.height == 0:
+        return CheckResult(SKIP, "首根有成交", "没有分钟线可核对")
+    # 组内按 dt 显式排序后取首个，而不是 `sort(...).group_by(...).first()`——
+    # 后者依赖 group_by 组内保持帧顺序这个隐式行为，不是 API 契约。
+    first = rows.group_by("symbol").agg(pl.col("volume").sort_by("dt").first())
+    bad = first.filter(pl.col("volume") <= 0)
+    return CheckResult(BAD if bad.height else OK, "首根有成交",
+                       f"{bad.height} 只首根无成交（填充残留）",
+                       _samples(set(bad["symbol"].to_list())),
+                       rows=first.height)
 
 
 def _minutes_volume(ctx: CheckContext) -> CheckResult:
@@ -573,7 +602,7 @@ CHECKS: tuple[ServiceCheck, ...] = (
     ServiceCheck("premarket-limits", "开盘前取到当日涨跌停价", "price_limits_daily", _premarket_rows),
     ServiceCheck("daily-archive", "竞价逐笔到货", "auction_ticks", _auction_arrived),
     ServiceCheck("daily-archive", "分钟线到货", "minute_bars", _minutes_arrived),
-    ServiceCheck("daily-archive", "分钟线每只 241 根", "minute_bars", _minutes_complete),
+    ServiceCheck("daily-archive", "分钟线首根有成交", "minute_bars", _minutes_first_bar_traded),
     ServiceCheck("daily-archive", "分钟线成交量对日线", "minute_bars", _minutes_volume),
     ServiceCheck("tushare-sync", "日线到货", "tushare_daily", _daily_arrived),
     ServiceCheck("tushare-sync", "涨跌停价覆盖日线", "price_limits_daily", _limits_cover_daily),

@@ -174,6 +174,49 @@ def minutes(symbol, n, volume_each=1):
                          "volume": [volume_each] * n})
 
 
+def minute_series(symbol, volumes, first="09:30"):
+    """逐分钟递增的分钟线；volumes 决定每根的成交量，首根时刻可指定。"""
+    hh, mm = (int(x) for x in first.split(":"))
+    base = datetime.combine(DAY, time(hh, mm))
+    return pl.DataFrame({"symbol": [symbol] * len(volumes),
+                         "dt": [base + timedelta(minutes=i) for i in range(len(volumes))],
+                         "volume": list(volumes)})
+
+
+def _one_candidate(monkeypatch, symbol="000001.SZ"):
+    monkeypatch.setattr(sc, "candidate_stock_days",
+                        lambda *a, **k: pl.DataFrame({"symbol": [symbol], "dt": [DAY]}))
+
+
+def test_first_bar_without_volume_is_padding_residue(monkeypatch):
+    """首根 volume=0 是 QMT 区间查询的昨收价填充残留，不是行情。"""
+    _one_candidate(monkeypatch)
+    result = sc._minutes_first_bar_traded(ctx(FakeQuery(
+        minutes=minute_series("000001.SZ", [0, 0, 500]))))
+    assert result.status == sc.BAD and "000001.SZ" in result.detail
+
+
+def test_late_first_trade_is_not_an_error(monkeypatch):
+    """513100.SH 那类首笔成交晚的标的是正确数据——旧的「241 根」判据会误报它。"""
+    _one_candidate(monkeypatch)
+    assert sc._minutes_first_bar_traded(ctx(FakeQuery(
+        minutes=minute_series("000001.SZ", [800, 0, 300], first="10:31")))).status == sc.OK
+
+
+def test_first_bar_is_found_regardless_of_row_order(monkeypatch):
+    """判据不能依赖 parquet 读回的行顺序：打乱后结论必须不变。"""
+    _one_candidate(monkeypatch)
+    shuffled = (minute_series("000001.SZ", [0, 500, 300, 700])
+                .sample(fraction=1.0, shuffle=True, seed=7))
+    assert sc._minutes_first_bar_traded(ctx(FakeQuery(minutes=shuffled))).status == sc.BAD
+
+
+def test_first_bar_check_skips_without_candidates(monkeypatch):
+    monkeypatch.setattr(sc, "candidate_stock_days",
+                        lambda *a, **k: pl.DataFrame(schema={"symbol": pl.Utf8, "dt": pl.Date}))
+    assert sc._minutes_first_bar_traded(ctx(FakeQuery())).status == sc.SKIP
+
+
 @pytest.fixture
 def archive(monkeypatch):
     wanted = pl.DataFrame({"symbol": ["000001.SZ", "000002.SZ", "000003.SZ", "000004.SZ"],
@@ -195,8 +238,8 @@ def test_archive_checks(archive):
     assert auction.status == sc.BAD and "000002.SZ" in auction.detail and "候选 3" in auction.expected
     arrived = sc._minutes_arrived(c)
     assert arrived.status == sc.BAD and "000003.SZ" in arrived.detail   # 停牌的 000004 不算缺
-    complete = sc._minutes_complete(c)
-    assert complete.status == sc.BAD and "000002.SZ(240)" in complete.detail
+    # 这批的首根都有成交，首根判据应当放行；填充残留另有专测
+    assert sc._minutes_first_bar_traded(c).status == sc.OK
     volume = sc._minutes_volume(c)
     assert volume.status == sc.BAD and "000002.SZ" in volume.detail and "000001.SZ" not in volume.detail
 
@@ -206,7 +249,7 @@ def test_archive_checks_pass_without_candidates(monkeypatch):
                         lambda *a, **k: pl.DataFrame(schema={"symbol": pl.Utf8, "dt": pl.Date}))
     c = ctx(FakeQuery())
     assert sc._minutes_arrived(c).status == sc.OK
-    assert sc._minutes_complete(c).status == sc.SKIP
+    assert sc._minutes_first_bar_traded(c).status == sc.SKIP
 
 
 def test_step_names_round_trip_and_every_check_belongs_to_a_timer():

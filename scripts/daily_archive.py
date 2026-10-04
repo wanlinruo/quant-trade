@@ -45,6 +45,7 @@ from qsys.data.pipeline.auction import (
 )
 from qsys.data.pipeline.candidates import (
     candidate_stock_days,
+    drop_suspended,
     held_stock_days,
     write_manifest,
 )
@@ -242,10 +243,14 @@ def _archive(args, service_run: ServiceRun) -> int:
     if not args.skip_auction:
         with service_run.step("竞价逐笔（首板次日）", interface="QMT 竞价逐笔（Windows）",
                               table="auction_ticks") as step:
+            # 与分钟线同样扣掉全天停牌：停牌日本就没有竞价，QMT 仍会返回全零快照。
             auction_ok = _archive_auction(
                 args, warehouse,
-                candidate_stock_days(warehouse, start, complete_through,
-                                     sessions=sessions),
+                drop_suspended(
+                    WarehouseQuery(warehouse),
+                    candidate_stock_days(warehouse, start, complete_through,
+                                         sessions=sessions),
+                ),
                 ssh, key, stamp,
             )
             if not auction_ok:
@@ -287,8 +292,13 @@ def _archive(args, service_run: ServiceRun) -> int:
     held = held_stock_days(_paper_fills(Path(args.paper_store)), start, complete_through,
                            sessions)
     wanted = _minute_wanted(candidates, held)
+    # 扣掉全天停牌：QMT 对停牌股会返回 241 根前收盘价、成交量全 0，整天是虚构的。
+    # 必须与服务质检的到货期望同源，两边各写一份就会漂移（2026-10-04）。
+    before = wanted.height
+    wanted = drop_suspended(WarehouseQuery(warehouse), wanted)
     print(f"分钟线清单：首板次日候选 {candidates.height} 组，模拟盘持仓 {held.height} 组，"
-          f"合并去重 {wanted.height} 组")
+          f"合并去重 {before} 组，扣掉全天停牌 {before - wanted.height} 组，"
+          f"实取 {wanted.height} 组")
 
     if args.skip_minutes:
         service_run.add_step("分钟线", status=SKIPPED, detail="按参数跳过")
