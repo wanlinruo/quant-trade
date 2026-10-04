@@ -5,7 +5,7 @@ from datetime import datetime
 
 import polars as pl
 
-from scripts.repair_minute_bars_padding import drop_padding
+from scripts.repair_minute_bars_padding import drop_padding, iter_partitions
 
 COLS = {"symbol": pl.Utf8, "dt": pl.Datetime, "open": pl.Float64,
         "high": pl.Float64, "low": pl.Float64, "close": pl.Float64,
@@ -53,3 +53,51 @@ def test_columns_and_order_are_preserved():
     """落盘要 cast 成 MINUTE_BARS，列名与顺序不能变。"""
     frame = _f([("600000.SH", datetime(2026, 6, 15, 9, 30), 7.1, 7.2, 7.0, 7.2, 300, 2160.0)])
     assert drop_padding(frame).columns == frame.columns
+
+
+# --- 两种落盘布局 -----------------------------------------------------------
+# minute_bars 同时存在 year=YYYY/part.parquet（整年一个文件）与
+# year=YYYY/date=YYYYMMDD/part.parquet（按日分区）。2026-10-04 的只读报告
+# 实测：只认按日那种会静默跳过 2025 全年 2,874,648 行。
+
+from datetime import date  # noqa: E402
+
+import pyarrow as pa  # noqa: E402
+
+from qsys.data import schema  # noqa: E402
+from qsys.data.storage import Warehouse  # noqa: E402
+
+
+def _table(rows):
+    cols = ["symbol", "dt", "open", "high", "low", "close", "volume", "amount"]
+    return pa.table({c: [r[i] for r in rows] for i, c in enumerate(cols)},
+                    schema=schema.MINUTE_BARS)
+
+
+def test_iter_partitions_finds_both_layouts(tmp_path):
+    w = Warehouse(tmp_path)
+    day = datetime(2026, 6, 15, 9, 30)
+    w.write_day("minute_bars",
+                _table([("600000.SH", day, 7.1, 7.1, 7.1, 7.1, 100, 710.0)]),
+                day=date(2026, 6, 15))
+    w.write("minute_bars",
+            _table([("600000.SH", datetime(2025, 3, 2, 9, 30), 7.0, 7.0, 7.0, 7.0, 50, 350.0)]),
+            year=2025)
+    found = {(p.relative_to(tmp_path / "minute_bars").as_posix(), d, y)
+             for p, d, y in iter_partitions(tmp_path / "minute_bars")}
+    assert found == {
+        ("year=2025/part.parquet", None, 2025),
+        ("year=2026/date=20260615/part.parquet", date(2026, 6, 15), 2026),
+    }
+
+
+def test_year_level_file_is_not_skipped(tmp_path):
+    """整年文件里的填充行必须也被剔除——漏了它就是静默少做事。"""
+    w = Warehouse(tmp_path)
+    w.write("minute_bars", _table([
+        ("600000.SH", datetime(2025, 3, 2, 9, 30), 7.0, 7.0, 7.0, 7.0, 0, 0.0),
+        ("600000.SH", datetime(2025, 3, 2, 9, 31), 7.0, 7.1, 7.0, 7.1, 200, 1420.0),
+    ]), year=2025)
+    parts = list(iter_partitions(tmp_path / "minute_bars"))
+    assert len(parts) == 1 and parts[0][1] is None
+    assert drop_padding(pl.read_parquet(parts[0][0])).height == 1
