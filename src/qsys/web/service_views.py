@@ -59,6 +59,12 @@ _TASK_STATES = {
 }
 
 
+# 这台 Windows 是 2 核、还跑着 QMT：一次 SSH + PowerShell + schtasks 实测
+# 1.5~5.3 秒（空闲时）。给 8 秒会在机器稍忙时超时，把健康的看门狗报成
+# 「问不出来」——2026-10-04 实测到大半时间都是 unknown。
+WINDOWS_TASK_TIMEOUT = 20.0
+
+
 def windows_task_show(task: str, *, host: str, key: Path) -> dict:
     """经 SSH 只读查询 Windows 计划任务；连接失败时返回空，避免误报为禁用。
 
@@ -75,7 +81,7 @@ def windows_task_show(task: str, *, host: str, key: Path) -> dict:
              host, "powershell", "-NoProfile", "-EncodedCommand", encoded],
             # Windows PowerShell 的 stderr 可能带 GBK 编码的 CLIXML 进度信息；
             # 只解析 stdout，不能让 text=True 因 stderr 解码失败丢掉结果。
-            capture_output=True, timeout=8,
+            capture_output=True, timeout=WINDOWS_TASK_TIMEOUT,
         )
         if out.returncode != 0:
             return {}
