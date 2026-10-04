@@ -40,18 +40,26 @@ log = structlog.get_logger("health-observer")
 TASK_CACHE_SECONDS = 300.0
 
 
+# 查询失败后多久再试。按整个缓存周期等下去，一次偶发的 SSH 失败就要换来
+# 5 分钟的「问不出来」——而偏偏重启前后最容易偶发，那正是最需要看清楚的时候。
+TASK_RETRY_SECONDS = 60.0
+
+
 class CachedWindowsTask:
     def __init__(self, host: str, key: Path,
-                 interval: float = TASK_CACHE_SECONDS) -> None:
+                 interval: float = TASK_CACHE_SECONDS,
+                 retry: float = TASK_RETRY_SECONDS) -> None:
         self.host, self.key, self.interval = host, key, interval
+        self.retry = retry
         self.value: dict = {}
         self.next_refresh = 0.0
 
     def __call__(self, task: str) -> dict:
         now = time.monotonic()
         if now >= self.next_refresh:
-            self.next_refresh = now + self.interval
             self.value = windows_task_show(task, host=self.host, key=self.key)
+            # 问到了就按正常周期歇着；没问到就快点再试，别把盲区拖满一个周期
+            self.next_refresh = now + (self.interval if self.value else self.retry)
         return self.value
 
 
