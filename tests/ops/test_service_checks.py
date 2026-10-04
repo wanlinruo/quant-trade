@@ -203,6 +203,14 @@ def test_late_first_trade_is_not_an_error(monkeypatch):
         minutes=minute_series("000001.SZ", [800, 0, 300], first="10:31")))).status == sc.OK
 
 
+def test_first_bar_is_found_regardless_of_row_order(monkeypatch):
+    """判据不能依赖 parquet 读回的行顺序：打乱后结论必须不变。"""
+    _one_candidate(monkeypatch)
+    shuffled = (minute_series("000001.SZ", [0, 500, 300, 700])
+                .sample(fraction=1.0, shuffle=True, seed=7))
+    assert sc._minutes_first_bar_traded(ctx(FakeQuery(minutes=shuffled))).status == sc.BAD
+
+
 def test_first_bar_check_skips_without_candidates(monkeypatch):
     monkeypatch.setattr(sc, "candidate_stock_days",
                         lambda *a, **k: pl.DataFrame(schema={"symbol": pl.Utf8, "dt": pl.Date}))

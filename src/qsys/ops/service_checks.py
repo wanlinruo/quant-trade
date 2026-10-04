@@ -491,7 +491,9 @@ def _minutes_first_bar_traded(ctx: CheckContext) -> CheckResult:
     rows = _minute_bar_rows(ctx)
     if rows.height == 0:
         return CheckResult(SKIP, "首根有成交", "没有分钟线可核对")
-    first = rows.sort("dt").group_by("symbol").first()
+    # 组内按 dt 显式排序后取首个，而不是 `sort(...).group_by(...).first()`——
+    # 后者依赖 group_by 组内保持帧顺序这个隐式行为，不是 API 契约。
+    first = rows.group_by("symbol").agg(pl.col("volume").sort_by("dt").first())
     bad = first.filter(pl.col("volume") <= 0)
     return CheckResult(BAD if bad.height else OK, "首根有成交",
                        f"{bad.height} 只首根无成交（填充残留）",

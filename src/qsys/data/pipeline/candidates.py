@@ -22,7 +22,6 @@ import structlog
 
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
-from qsys.data.query import WarehouseQuery
 
 log = structlog.get_logger(__name__)
 
