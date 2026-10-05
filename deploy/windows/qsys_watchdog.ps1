@@ -25,6 +25,9 @@ $log = 'C:\qsys\live_app\var\watchdog.log'
 
 $python = 'C:\qsys\.venv\Scripts\python.exe'
 $appDir = 'C:\qsys\live_app'
+# live_app 是源码快照，不是安装进 venv 的包；代理的 cmd 会设这项，SYSTEM
+# 身份运行的看门狗不会继承它，必须在这里显式设置。
+$env:PYTHONPATH = Join-Path $appDir 'src'
 
 # Heartbeat = 心跳里的 source 名；为空表示该目标只做进程存在检查。
 # 阈值 120s：主循环 1s 一轮，代理自己的停滞自检阈值是 60s，留一倍余量，

@@ -46,6 +46,12 @@ def test_it_also_checks_the_heartbeat_when_the_process_exists(raw):
     assert "Heartbeat = 'agent'" in text
 
 
+def test_heartbeat_probe_can_import_the_source_snapshot(raw):
+    """计划任务以 SYSTEM 运行，不会继承 run_agent.cmd 设置的 PYTHONPATH。"""
+    text = raw.decode("utf-8-sig")
+    assert "$env:PYTHONPATH = Join-Path $appDir 'src'" in text
+
+
 def test_an_unreadable_heartbeat_does_not_restart_anything(raw):
     """Redis 读不到不等于代理死了：重启一个好进程比留着一个死进程更坏。"""
     text = raw.decode("utf-8-sig")
