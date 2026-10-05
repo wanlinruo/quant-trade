@@ -156,6 +156,9 @@ warehouse、临时下载、编辑器文件或无解释的大型二进制文件�
 6. 禁止未解释的测试跳过、降级或阈值放宽；
 7. 数据或交易路径变更必须给出明确回滚点；
 8. `test -> main` PR 必须附测试环境验收记录和测试环境 commit SHA。
+   **当前无法满足**：§9.1 的测试环境自动部署从未建成，没有可引用的验收记录。
+   在它建成前，发布 PR 以「生产发布后的健康检查 + 页面实测」替代，并在自审清单里
+   如实标注本项未满足——不勾选、不伪装成已验收。
 
 仓库只启用 **Squash merge**，关闭 merge commit 和 rebase merge。PR 标题就是最终
 提交信息，合并后自动删除源分支，保持线性历史。
@@ -299,6 +302,10 @@ Nginx 在 8443 复用 `wanlinruo.cn` 证书，反向代理到 `127.0.0.1:8420`�
 
 ### 9.1 测试环境
 
+> **实况（2026-10-05）：本节描述的自动部署工作流从未建成。** `test` push 只触发
+> CI，不会部署任何环境；`qsys-web-test.service` 在节点上确实在跑，但更新要手工做。
+> 维护者 2026-10-05 判「优先级很低，先不做」。本节是目标形态，不是现状。
+
 触发条件：工作分支 squash 到 `test` 并直接 push，随后 CI 全绿。
 
 1. `test` push workflow 在 CI 全绿后通过 SSH 调用节点部署脚本；
@@ -320,6 +327,15 @@ Nginx 在 8443 复用 `wanlinruo.cn` 证书，反向代理到 `127.0.0.1:8420`�
 
 ### 9.2 生产环境
 
+> **实况（2026-10-05）：第 1 步的 `workflow_dispatch` 工作流从未建成**，生产发布
+> 目前是在 Mac 上手工按第 2–9 步执行（SSH 到节点、`git merge --ff-only` 到 `main`
+> 的精确 SHA、`uv sync --frozen`、入口脚本导入冒烟、按变更清单只重启受影响服务、
+> 查 8420/`healthz` 与公网 8443）。#110 的发布记录见
+> `docs/deploy/linux-core.md`「发布记录」。
+>
+> 另：第 5 步原写「重启 `qsys-web-prod.service`」，节点上不存在该单元——生产 Web
+> 是 `qsys-monitor.service`。2026-10-05 在节点实测 15 个 qsys 单元后更正。
+
 触发条件：维护者已完成 `test -> main` PR 自审、CI 全绿、测试环境验收完成且 PR 已合并。
 
 1. 生产不因 `main` push 自动发布；维护者在核对合并结果后手工触发
@@ -327,7 +343,7 @@ Nginx 在 8443 复用 `wanlinruo.cn` 证书，反向代理到 `127.0.0.1:8420`�
 2. Linux 拉取 `main` 的精确 SHA，只允许 fast-forward；
 3. 保存当前 SHA 作为 rollback target；
 4. 安装锁定依赖并执行 preflight；
-5. 重启 `qsys-web-prod.service`；
+5. 重启 `qsys-monitor.service`（生产 Web）；
 6. 本机检查 `8420/healthz`；
 7. 外部检查 `https://wanlinruo.cn:8443/healthz`；
 8. 失败则恢复上一个已验证 SHA，并记录 deployment failure；
