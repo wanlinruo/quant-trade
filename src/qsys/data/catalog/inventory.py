@@ -42,7 +42,43 @@ class SourceReference:
     datasets: tuple[str, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class WarehouseDirectoryCoverage:
+    directories: tuple[str, ...]
+    registered: tuple[str, ...]
+    auxiliary: tuple[str, ...]
+    unregistered: tuple[str, ...]
+
+
 _PARQUET_READERS = {"read_parquet", "scan_parquet", "ParquetFile", "read_schema"}
+
+# warehouse 根目录下这些名字是运维证据或中间产物，不是业务数据集。
+# 回滚快照统一使用 ``<dataset>.pre-<change>``，按命名规则识别。
+_AUXILIARY_WAREHOUSE_DIRECTORIES = frozenset({
+    "backups",
+    "paid_adjustment_bases",
+    "paid_daily_quality",
+    "paid_daily_repairs",
+    "paid_minute_quality",
+    "paid_minute_quarantine",
+})
+
+
+def warehouse_directory_coverage(root: Path) -> WarehouseDirectoryCoverage:
+    """反向盘点 warehouse 顶层目录，暴露未登记的物理资产。"""
+    root = Path(root)
+    directories = tuple(sorted(path.name for path in root.iterdir() if path.is_dir())) \
+        if root.is_dir() else ()
+    registered_ids = set(schema.ALL) | set(schema.READ_ONLY)
+    registered = tuple(name for name in directories if name in registered_ids)
+    auxiliary = tuple(
+        name for name in directories
+        if name in _AUXILIARY_WAREHOUSE_DIRECTORIES or ".pre-" in name
+    )
+    unregistered = tuple(
+        name for name in directories if name not in registered_ids and name not in auxiliary
+    )
+    return WarehouseDirectoryCoverage(directories, registered, auxiliary, unregistered)
 
 
 def _json_value(value: Any) -> Any:
@@ -257,6 +293,7 @@ def build_inventory(
     except ValueError:
         warehouse_display = str(warehouse_root)
     physical_ids = sorted(set(schema.ALL) | set(schema.READ_ONLY))
+    directory_coverage = warehouse_directory_coverage(warehouse_root)
     stats = [warehouse_stats(warehouse_root, ident) for ident in physical_ids]
     query_refs = query_method_inventory(project_root / "src/qsys/data/query.py")
     source_refs = source_references(project_root, query_refs)
@@ -282,6 +319,10 @@ def build_inventory(
             "schema_read_only": sorted(schema.READ_ONLY),
             "metric_datasets": sorted({m.dataset for m in REGISTRY.values()}),
             "registered_physical": physical_ids,
+            "warehouse_directories": list(directory_coverage.directories),
+            "registered_directories": list(directory_coverage.registered),
+            "auxiliary_directories": list(directory_coverage.auxiliary),
+            "unregistered_physical": list(directory_coverage.unregistered),
             "registered_logical": sorted(
                 ident for ident, item in DATASETS.items() if not item.physical
             ),

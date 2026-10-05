@@ -111,19 +111,20 @@ def test_unknown_asset_routes_are_404(warehouse):
 def test_table_detail_no_longer_renders_table_ids_as_sources(warehouse):
     """commit 708889f 在域详情页修掉的缺陷，逐表页面还原封不动地留着。
 
-    `/data/tables/bar_minute_1m` 曾显示「来源：paid_minute_bars、minute_bars、
-    显式异常覆盖」——两个表 id 配一句备注，一个源都没有。而域详情页的表格
-    主动链到这个页面，于是用户被送到一个仍在撒谎的页面上。
+    `/data/tables/bar_minute_1m` 曾把覆盖层写成一句自由文本。现在四个上游
+    都必须是已登记、可点击并能递归解析到接口的表。
     """
     text = _client(warehouse).get("/data/tables/bar_minute_1m").text
     # 表 id 带「表：」前缀并可点，不是裸 join
     assert "表：minute_bars" in text
     assert "paid_minute_bars、minute_bars、显式异常覆盖" not in text
-    # 自由文本标成备注
-    assert '<span class="pill todo">备注</span>' in text
+    assert "表：tushare_minute_bars" in text
+    assert "表：joinquant_minute_bars" in text
+    assert '<span class="pill todo">备注</span>' not in text
     # 真正的答案：递归解出的根源接口，带 SourceStatus 措辞
     assert "百度网盘付费源" in text
     assert "已停采，历史仍在读" in text
+    assert "聚宽（JQData）" in text
 
 
 def test_table_detail_shows_the_business_domain(warehouse):

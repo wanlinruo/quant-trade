@@ -519,19 +519,17 @@ def test_sources_page_says_the_paid_source_is_still_being_read(tmp_path, warehou
 
 
 def test_domain_detail_tells_sources_tables_and_notes_apart(tmp_path, warehouse):
-    """bar_minute_1m.sources 是 ('paid_minute_bars', 'minute_bars', '显式异常覆盖')——
-
-    两个表 id 配一句备注，一个源字符串都没有。详情页必须把它们分开渲染，
-    不能把表 id 或备注原样当成「源」显示。"""
+    """分钟覆盖层必须显示为已登记表，并递归解析到真实源。"""
     http = client(tmp_path / "runs", warehouse)
     body = http.get("/data/domains/market").text
     # 真源：有 provider 与状态 pill
     assert "百度网盘付费源" in body and "已停采，历史仍在读" in body
     # 另一张表：带「表：」前缀，不是裸 id
     assert "表：minute_bars" in body
-    # 自由文本：标成「备注」，不混进源列表
-    assert '<span class="pill todo">备注</span>' in body
-    assert "显式异常覆盖" in body
+    assert "表：tushare_minute_bars" in body
+    assert "表：joinquant_minute_bars" in body
+    assert '<span class="pill todo">备注</span>' not in body
+    assert "显式异常覆盖" not in body
 
 
 def test_domain_labels_stay_bound_to_the_enum():
