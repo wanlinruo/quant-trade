@@ -475,6 +475,35 @@ transient 单元。记录在 `/data/qsys/var-deployments/20260927-linux-reboot-d
 （见 `docs/deploy/windows-node.md`）。**控制面（Redis、行情网关、看门狗）能自动恢复，
 断的只是下单执行这一段。**
 
+## 发布记录
+
+治理 §11 要求每次部署留记录。§9.2 的 `workflow_dispatch` 工作流从未建成，所以
+没有自动回写的 GitHub deployment 状态，记录手工写在这里。
+
+### #110 数据域目录（2026-10-05 19:31）
+
+| 项 | 值 |
+|---|---|
+| environment | 生产 |
+| branch / PR | `main` / [#110](https://github.com/wanlinruo/quant-trade/pull/110) `test -> main` |
+| 部署前 SHA（回滚点） | `a28ae1f5452638afdba217d5554d0a19f43b4a1f` |
+| 部署后 SHA | `1e225b130dec8bbeba5430f161b88eb41759d818` |
+| CI | 四项全绿（`policy` / `test` / `secret-scan` / `package`），全量 2437 passed |
+| 依赖锁 | `uv sync --frozen` → `Checked 67 packages`，无漂移 |
+| preflight | `tests/scripts/test_scripts_import.py` 23 项全过 |
+| 重启范围 | **仅** `qsys-monitor.service`（纯 Web + 目录改动）。同步器、paper、shadow-core、health-observer、redis-tunnel 未动 |
+| 健康检查 | 本机 `127.0.0.1:8420/healthz` → 200 `{"status":"ok"}`；公网 `https://wanlinruo.cn:8443/healthz` → 401（Basic Auth 在前，预期） |
+| 页面实测 | `/data/domains` 200，合计 47 张表、七域齐全；`/data/tables/bar_minute_1m` 的「根源接口」显示「百度网盘付费源（余哈哈数据仓库）·minute」 |
+| 自审 | 由 Claude 代维护者勾选，PR 正文中如实标注代行依据与两项未满足项 |
+| 维护者验收 | 2026-10-05 线上自行验证通过 |
+
+发布内容除目录本体外，还随 `test -> main` 带走了三份此前积压在 `test` 的纯文档
+（ETF 日内探查、D-19 结案、本支 spec/plan）。`test -> main` 是整体发布，无法只带
+一部分；不影响运行时。
+
+部署后按 §3.1.1 立即把 `main` 对齐回 `test`（内容一致前提下 `--force-with-lease`），
+核验 `origin/main...origin/test` 为 `0 0`。
+
 ## 待办
 
 - [ ] **Web 应用层登录（TOTP）替换 Nginx Basic Auth**，并按用户做登录失败限流
