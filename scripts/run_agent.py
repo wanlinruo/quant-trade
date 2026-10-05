@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import os
 import re
 import sys
 import time
@@ -18,6 +19,7 @@ import structlog
 from qsys.agent.execution_agent import ExecutionAgent
 from qsys.agent.locking import single_instance
 from qsys.agent.report_ledger import SQLiteReportLedger
+from qsys.agent.stall_guard import StallGuard
 from qsys.backtest.fees import AShareFeeModel
 from qsys.live.config import load_deploy_config
 from qsys.live.redis_transport import RedisTransport
@@ -62,6 +64,10 @@ def main() -> int:
     parser.add_argument("--config", default=None)
     parser.add_argument("--ledger", default="var/agent-ledger.sqlite3")
     parser.add_argument("--lock", default="var/agent.lock")
+    parser.add_argument(
+        "--stall-timeout", type=float, default=60.0,
+        help="主循环多少秒没有推进就判停滞并退出进程（0 表示关闭）",
+    )
     args = parser.parse_args()
 
     if args.runtime_yaml:
@@ -93,8 +99,24 @@ def main() -> int:
         ),
     )
 
+    def _die_on_stall(reason: str) -> None:
+        # xtquant 的同步调用在 miniQMT 重启后永久阻塞，卡住的线程杀不掉，
+        # 下面那个 except 永远不触发——所以只能让进程自己死，由 Windows
+        # 看门狗把它拉回来。os._exit 跳过清理是故意的：阻塞的线程无法收束，
+        # 而 single_instance 用的是 OS 级文件锁，进程消失时自动释放。
+        log.error("agent.stalled", reason=reason, account=args.account)
+        os._exit(1)
+
+    guard = (
+        StallGuard(args.stall_timeout, _die_on_stall)
+        if args.stall_timeout > 0 else None
+    )
+
     with single_instance(args.lock):
-        log.info("agent.started", account=args.account, mode=cfg.safety.mode)
+        log.info("agent.started", account=args.account, mode=cfg.safety.mode,
+                 stall_timeout_s=args.stall_timeout)
+        if guard is not None:
+            guard.start()
         ticks = 0
         consecutive_errors = 0
         while True:
@@ -117,6 +139,11 @@ def main() -> int:
                     except Exception as cancel_exc:
                         log.error("agent.cancel_after_failure_failed", error=str(cancel_exc))
             ticks += 1
+            # 判据是「循环还在转」，不是「循环干成了事」：抛异常那轮也算推进，
+            # 因为那种故障有 consecutive_errors 落闸、且在日志里看得见。
+            # 本行只负责那种什么都不说的卡死。
+            if guard is not None:
+                guard.progress()
             time.sleep(POLL_SECONDS)
 
 
