@@ -10,6 +10,7 @@ from qsys.ops.health import DOWN, HEALTHY, MORNING, HealthObservation, HealthSto
 from qsys.ops.services import ServiceRun
 from qsys.ops.journal import SessionJournal
 from qsys.web.app import create_app
+from qsys.web.catalog_views import CatalogService
 from qsys.web.config import WebConfig
 from qsys.web.service_views import ServiceConsole, windows_task_show
 from qsys.web.views import MonitorService
@@ -103,10 +104,11 @@ def test_skipped_only_day_shows_closed(tmp_path, monkeypatch):
     assert states(console(tmp_path).board(14), "premarket-limits")[date(2026, 9, 12)] == "closed"
 
 
-def client(root, warehouse, **kwargs):
+def client(root, warehouse, *, catalog=None, **kwargs):
     config = WebConfig()
     return TestClient(create_app(
         MonitorService(SessionJournal(warehouse), config=config), config,
+        catalog=catalog,
         services=console(root, **kwargs),
     ))
 
@@ -500,3 +502,90 @@ def test_the_windows_probe_allows_for_a_busy_two_core_box():
     from qsys.web.service_views import WINDOWS_TASK_TIMEOUT
 
     assert WINDOWS_TASK_TIMEOUT >= 15.0
+
+
+def test_domains_page_lists_empty_domains_with_their_reason(tmp_path, warehouse):
+    http = client(tmp_path / "runs", warehouse)
+    body = http.get("/data/domains").text
+    assert "宏观 Macro" in body and "另类 Alternative" in body
+    assert "当前积分内可得" in body
+
+
+def test_sources_page_says_the_paid_source_is_still_being_read(tmp_path, warehouse):
+    http = client(tmp_path / "runs", warehouse, catalog=CatalogService(warehouse))
+    body = http.get("/data/catalog/sources").text
+    assert "已停采，历史仍在读" in body
+    assert "paid" in body        # 别名可见，按表里的名字也能找到
+
+
+def test_domain_detail_tells_sources_tables_and_notes_apart(tmp_path, warehouse):
+    """bar_minute_1m.sources 是 ('paid_minute_bars', 'minute_bars', '显式异常覆盖')——
+
+    两个表 id 配一句备注，一个源字符串都没有。详情页必须把它们分开渲染，
+    不能把表 id 或备注原样当成「源」显示。"""
+    http = client(tmp_path / "runs", warehouse)
+    body = http.get("/data/domains/market").text
+    # 真源：有 provider 与状态 pill
+    assert "百度网盘付费源" in body and "已停采，历史仍在读" in body
+    # 另一张表：带「表：」前缀，不是裸 id
+    assert "表：minute_bars" in body
+    # 自由文本：标成「备注」，不混进源列表
+    assert '<span class="pill todo">备注</span>' in body
+    assert "显式异常覆盖" in body
+
+
+def test_domain_labels_stay_bound_to_the_enum():
+    """加第 8 个域忘了加标签，炸的是既有的 `/data/catalog/sources` 页面：
+    那里对**所有**行无条件 `DOMAIN_LABELS[str(...)]`，会 500。"""
+    from qsys.data.catalog.types import DataDomain
+    from qsys.web.domain_views import DOMAIN_LABELS
+
+    assert set(DOMAIN_LABELS) == {d.value for d in DataDomain}
+
+
+def test_domain_overview_totals_every_table(tmp_path, warehouse):
+    from qsys.data.catalog import DATASETS
+
+    body = client(tmp_path / "runs", warehouse).get("/data/domains").text
+    assert f"合计 {len(DATASETS)} 张表" in body
+
+
+def test_an_unclassified_table_never_vanishes_from_the_overview(
+    tmp_path, warehouse, monkeypatch
+):
+    """实测过的失效路径：把一张表改成 UNCLASSIFIED 后，域页面合计只显示
+    46 张表，且没有任何提示。那张表从所有页面彻底消失了。"""
+    from dataclasses import replace
+
+    from qsys.data.catalog import DATASETS
+    from qsys.data.catalog.types import UNCLASSIFIED
+
+    monkeypatch.setitem(
+        DATASETS, "strategy",
+        replace(DATASETS["strategy"], domain=UNCLASSIFIED("策略决策量，待判")),
+    )
+    body = client(tmp_path / "runs", warehouse).get("/data/domains").text
+    assert "未归类 Unclassified" in body
+    assert "策略决策量，待判" in body
+    assert "/data/tables/strategy" in body
+    assert f"合计 {len(DATASETS)} 张表" in body
+
+
+def test_domain_detail_resolves_the_root_interfaces_behind_each_table(
+    tmp_path, warehouse
+):
+    """域总览说了实话，往下点一层以前又回到一跳。
+
+    `bar_minute_1m` 的「登记来源」是两张表 + 一句备注；同一行的「根源接口」
+    必须把它解到付费源与 QMT。
+    """
+    body = client(tmp_path / "runs", warehouse).get("/data/domains/market").text
+    assert "根源接口" in body
+    assert "表：minute_bars" in body           # 登记来源那一格照旧
+    assert "百度网盘付费源（余哈哈数据仓库）·minute" in body
+
+
+def test_fundamental_detail_names_tushare_not_only_qmt(tmp_path, warehouse):
+    """spec §5.1 的预期是基本面来自 Tushare Pro。一跳只能看到 QMT·capital。"""
+    body = client(tmp_path / "runs", warehouse).get("/data/domains/fundamental").text
+    assert "Tushare Pro·daily_basic" in body

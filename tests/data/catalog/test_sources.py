@@ -1,7 +1,11 @@
 """源清单。字典里每一条直取血缘都要指到这里的某个 id。"""
 
+from collections.abc import Iterable
+
+import pytest
+
 from qsys.data.catalog.sources import SOURCES
-from qsys.data.catalog.types import Access, SourceStatus
+from qsys.data.catalog.types import Access, Source, SourceStatus
 
 
 def test_ids_match_their_provider_and_api():
@@ -26,7 +30,10 @@ def test_registers_every_known_source():
     R12/R14 补登 qmt.capital（share_capital 的真实源）与
     qmt.dividends（corporate_actions 的真实源，草案原先误记成
     akshare.stock_fhps_detail_em），Task 8 再登记系统自身 qsys.runtime，
-    2026-09-15 直取换源补登 tushare.stock_st。
+    2026-09-15 直取换源补登 tushare.stock_st。2026-10-05 Task 3 补登
+    joinquant.minute：bar_minute_1m.source 的 distinct 值里一直有
+    joinquant，但源清单从未登记过它（scripts/publish_joinquant_minute_overrides.py
+    按需补 QMT 退市证券零价格分钟记录），对账质检靠它才能把这个值对上号。
     """
     assert set(SOURCES) == {
         "tushare.daily", "tushare.daily_basic", "tushare.adj_factor",
@@ -37,6 +44,7 @@ def test_registers_every_known_source():
         "akshare.stock_info_sh_delist", "akshare.stock_info_sz_delist",
         "akshare.stock_zh_a_spot_em", "akshare.stock_fhps_detail_em",
         "qmt.minute", "qmt.tick", "qmt.capital", "qmt.dividends",
+        "joinquant.minute",
         "baidupan.daily", "baidupan.minute",
         "mootdx.kline",
         "qsys.runtime",
@@ -81,3 +89,46 @@ def test_paid_daily_is_frozen_but_still_the_only_historical_name_source():
     assert s.status is SourceStatus.FROZEN
     assert s.access is Access.FILE
     assert "名称" in s.caveat
+
+
+def test_paid_minute_source_is_findable_by_the_name_the_data_uses():
+    """bar_minute_1m.source 列写的是 paid，目录 id 是 baidupan.minute。
+    2026-10-05 的教训：按 paid 查不到任何东西。"""
+    assert "paid" in SOURCES["baidupan.minute"].aliases
+
+
+def _assert_no_alias_collisions(sources: Iterable[Source]) -> None:
+    """别名既不能互相重复，也不能撞上任何源的 id——与定义顺序无关。
+
+    之前的写法只检查「自己的 id 是否已经出现在 seen（别名）集合里」，
+    被撞的 id 定义在被撞别名之前时测试会静默通过（评审发现 1）：
+    ``seen`` 只在遍历途中累积，先定义的 id 永远不会被后面的别名拿去比对。
+    这里改成先收集全部 id 的静态集合，每个别名直接对这个集合做全量比对，
+    不再依赖「走到这一条时 seen 里已经有什么」。
+    """
+    sources = list(sources)
+    ids = {source.id for source in sources}
+    seen: dict[str, str] = {}
+    for source in sources:
+        for alias in source.aliases:
+            assert alias not in ids, f"别名 {alias}（属于 {source.id}）与某个源 id 相同"
+            assert alias not in seen, f"别名 {alias} 同时属于 {seen[alias]} 与 {source.id}"
+            seen[alias] = source.id
+
+
+def test_aliases_do_not_collide():
+    _assert_no_alias_collisions(SOURCES.values())
+
+
+def test_alias_colliding_with_an_earlier_defined_id_is_caught():
+    """定义顺序不能决定抓不抓得到：被撞的 id 排在带冲突别名的源之前也必须报。
+
+    用构造的 Source 列表复现评审给的最小反例，不碰 sources.py 的真实数据。
+    """
+    earlier = Source(id="x.probe", provider="probe", api="probe",
+                      access=Access.API, status=SourceStatus.ACTIVE)
+    later = Source(id="y.probe", provider="probe", api="probe",
+                   access=Access.API, status=SourceStatus.ACTIVE,
+                   aliases=("x.probe",))
+    with pytest.raises(AssertionError, match="x.probe"):
+        _assert_no_alias_collisions([earlier, later])

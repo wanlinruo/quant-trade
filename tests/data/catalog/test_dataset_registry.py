@@ -1,8 +1,10 @@
 """表级契约和依赖图的守护测试。"""
 
+from collections import Counter
+
 from qsys.data import schema
 from qsys.data.catalog import DATASETS, DEPENDENCIES, REGISTRY, lineage_edges
-from qsys.data.catalog.types import DatasetLayer, DatasetStatus, UNKNOWN
+from qsys.data.catalog.types import DataDomain, DatasetLayer, DatasetStatus, UNKNOWN, Unclassified
 
 
 def test_every_physical_dataset_is_registered_exactly_once():
@@ -82,3 +84,29 @@ def test_read_only_evidence_is_frozen_and_not_writable():
         item = DATASETS[ident]
         assert item.status is DatasetStatus.FROZEN
     assert DATASETS["paid_daily"].layer is DatasetLayer.RAW
+
+
+def test_every_dataset_declares_a_domain():
+    """新表不标 domain 就建不起来；Unclassified 必须带理由，不能是空字符串。"""
+    for ident, item in DATASETS.items():
+        assert isinstance(item.domain, (DataDomain, Unclassified)), ident
+        if isinstance(item.domain, Unclassified):
+            assert item.domain.reason.strip(), f"{ident}: UNCLASSIFIED 必须说明理由"
+
+
+def test_domain_distribution_matches_the_spec():
+    """数目对不上说明有表漏标或归错——spec §4.2 的表是这份测试的唯一依据。"""
+    counts = Counter(
+        item.domain.value for item in DATASETS.values() if isinstance(item.domain, DataDomain)
+    )
+    assert counts == {
+        "reference": 11, "market": 16, "fundamental": 4, "factor": 6, "runtime": 10,
+    }
+    assert sum(counts.values()) == len(DATASETS) == 47
+
+
+def test_empty_domains_have_no_datasets():
+    """宏观与另类当前为空，若将来接入，这条测试会提醒更新 spec 与页面说明。"""
+    present = {item.domain for item in DATASETS.values() if isinstance(item.domain, DataDomain)}
+    assert DataDomain.MACRO not in present
+    assert DataDomain.ALTERNATIVE not in present

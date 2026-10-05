@@ -91,6 +91,7 @@ _ALL = [
         credential="Windows 节点 xtquant", tier="券商账户",
         acquired="实时行情通道", cadence="每交易日收盘后导出",
         caveat="分钟线滚动保留约一年，漏一天丢一天",
+        aliases=("qmt",),
     ),
     Source(
         id="qmt.tick", provider="QMT", api="tick",
@@ -138,6 +139,20 @@ _ALL = [
                "标准增量链路走的是这个源",
     ),
 
+    # ---- 聚宽（JQData），按需补数，不进定时任务 ----
+    Source(
+        id="joinquant.minute", provider="聚宽（JQData）", api="minute",
+        access=Access.API, status=SourceStatus.ACTIVE,
+        credential="config/deploy.local.toml [joinquant]", tier=None,
+        acquired="jqdatasdk 1.9.8，scripts/publish_joinquant_minute_overrides.py 按需运行",
+        cadence="按需运行，覆盖 QMT 退市证券的分钟零价格记录",
+        caveat="09:31 为聚宽原生收盘时刻、含集合竞价与首分钟成交，不可拆成 "
+               "09:30/09:31 两根（minute_repairs.py）；入库前须过 240 根原生网格、"
+               "数值有效与 Tushare 日线对账（量/额/价相对偏差 ≤ 5%）三项校验，"
+               "写入独立数据集 joinquant_minute_bars，不改写 QMT",
+        aliases=("joinquant",),
+    ),
+
     # ---- 百度网盘付费源，人工转存，已冻结 ----
     Source(
         id="baidupan.daily", provider="百度网盘付费源（余哈哈数据仓库）", api="daily",
@@ -154,6 +169,7 @@ _ALL = [
         credential="人工转存", tier="付费",
         acquired="2009–2025 历史分钟", cadence="已停止更新",
         caveat="历史分钟线一次性导入，增量走 qmt.minute",
+        aliases=("paid",),
     ),
 
     # ---- mootdx，已死 ----

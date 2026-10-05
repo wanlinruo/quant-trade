@@ -8,6 +8,7 @@ from enum import StrEnum
 from pathlib import Path
 
 from qsys.data.catalog import REGISTRY, SOURCES, consumers, root_sources
+from qsys.data.catalog.domains import domain_summary, unclassified_summary
 from qsys.data.catalog.types import (
     UNKNOWN,
     Computed,
@@ -19,6 +20,7 @@ from qsys.data.catalog.types import (
 )
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
+from qsys.web.domain_views import DOMAIN_LABELS, STATUS_LABELS
 
 
 class Status(StrEnum):
@@ -102,6 +104,9 @@ class SourceRow:
     source: Source
     metric_count: int
     metric_ids: tuple[str, ...]
+    status_label: str          # domain_views.STATUS_LABELS[source.status]
+    alias_text: str            # "表内写作 paid"，无别名时为空串
+    domains: tuple[str, ...]   # 该源支撑的域（由 domain_summary 反查）
 
 
 def _source_label(metric_id: str) -> str:
@@ -227,8 +232,27 @@ class CatalogService:
         for metric_id, metric in REGISTRY.items():
             if isinstance(metric.lineage, Direct):
                 by_source.setdefault(metric.lineage.source_id, []).append(metric_id)
+        domains_by_source: dict[str, list[str]] = {}
+        for domain_row in domain_summary():
+            label = DOMAIN_LABELS[str(domain_row.domain)]
+            for source in domain_row.sources:
+                domains_by_source.setdefault(source.id, []).append(label)
+        # 未归类的表也要算：只被它们引用的源，若不算进来会显示「—」，
+        # 与「没有任何表用它」无从区分——那正是本次要消灭的那种看不见。
+        for source in unclassified_summary().sources:
+            domains_by_source.setdefault(source.id, []).append("未归类")
         rows = [
-            SourceRow(SOURCES[source_id], len(metric_ids), tuple(sorted(metric_ids)))
+            SourceRow(
+                source=SOURCES[source_id],
+                metric_count=len(metric_ids),
+                metric_ids=tuple(sorted(metric_ids)),
+                status_label=STATUS_LABELS[SOURCES[source_id].status],
+                alias_text=(
+                    f"表内写作 {'、'.join(SOURCES[source_id].aliases)}"
+                    if SOURCES[source_id].aliases else ""
+                ),
+                domains=tuple(domains_by_source.get(source_id, ())),
+            )
             for source_id, metric_ids in by_source.items()
             if source_id in SOURCES
         ]

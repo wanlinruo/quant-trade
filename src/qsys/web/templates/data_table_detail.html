@@ -1,8 +1,10 @@
 {% extends "base.html" %}
+{% import "_source_refs.html" as refs %}
 {% block content %}
 <div class="page-head"><div><h2><span class="mono">{{ d.row.dataset.id }}</span> · {{ d.row.dataset.name }}</h2><p>{{ d.row.dataset.purpose }}</p></div><span class="pill {{ d.row.status.value }}">{{ d.row.status_label }}</span></div>
 <div class="metric-grid">
   <div class="metric"><div class="label">层 / 角色</div><div class="value" style="font-size:15px">{{ d.row.dataset.layer.value }} / {{ d.row.dataset.role.value }}</div></div>
+  <div class="metric"><div class="label">业务域</div><div class="value" style="font-size:15px">{{ d.domain_label }}</div></div>
   <div class="metric"><div class="label">粒度</div><div class="value" style="font-size:15px">{{ d.row.dataset.grain }}</div></div>
   <div class="metric"><div class="label">主键</div><div class="value mono" style="font-size:14px">{{ d.row.dataset.primary_key|join(', ') or '未登记' }}</div></div>
   <div class="metric"><div class="label">覆盖</div><div class="value" style="font-size:15px">{% if d.row.coverage %}{{ "{:,}".format(d.row.coverage.rows) }} 行{% else %}未落盘{% endif %}</div></div>
@@ -11,7 +13,9 @@
   <tr><th>构建器</th><td class="mono">{{ d.row.dataset.builder }}</td></tr><tr><th>更新方式</th><td>{{ d.row.dataset.update_mode }}</td></tr>
   <tr><th>定稿条件</th><td>{{ d.row.dataset.finalized_at }}</td></tr><tr><th>生命周期</th><td>{{ d.row.dataset.lifecycle }}</td></tr>
   <tr><th>分区 / 排序</th><td class="mono">{{ d.row.dataset.partition_keys|join(', ') or '无' }} / {{ d.row.dataset.sort_keys|join(', ') or '无' }}</td></tr>
-  <tr><th>兼容约定</th><td>{{ d.row.dataset.compatibility }}</td></tr><tr><th>来源</th><td>{{ d.row.dataset.sources|join('、') or '未登记' }}</td></tr>
+  <tr><th>兼容约定</th><td>{{ d.row.dataset.compatibility }}</td></tr>
+  <tr><th>登记来源</th><td style="font-size:13px">{{ refs.source_refs(d.source_refs, status_labels, "未登记") }}</td></tr>
+  <tr><th>根源接口</th><td style="font-size:13px">{{ refs.source_refs(d.root_refs, status_labels, "解不出（上游未登记到源）") }}</td></tr>
   <tr><th>消费方</th><td>{{ d.row.dataset.consumers|join('、') or '未登记' }}</td></tr>
 </table></div>
 <div class="card"><h2>五维健康</h2>{% if d.dimensions %}<div class="kpis">{% for name, state in d.dimensions %}<div class="kpi"><div class="label">{{ name }}</div><div><span class="pill {{ state.value }}">{{ state.value }}</span></div></div>{% endfor %}</div>{% else %}<div class="empty">未登记健康策略。</div>{% endif %}

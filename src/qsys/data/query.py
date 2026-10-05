@@ -536,6 +536,21 @@ class WarehouseQuery:
                 )
         return self.bar_minute_1m(symbols, start, end, columns=columns)
 
+    def bar_minute_1m_sources(self) -> pl.DataFrame:
+        """canonical 分钟层出现过的 source 取值。只扫元数据列，不读行情列。
+
+        ``bar_minute_1m`` 按 ``year=*/date=*/part.parquet`` 两级分区，
+        与 ``self._glob`` 假设的单级 ``year=*/part.parquet`` 不同——直接用
+        该布局的通配符，不借 ``_glob``（否则永远匹配不到，检查会假装通过）。
+        """
+        base = self._wh.root / "bar_minute_1m"
+        files = [str(path) for path in sorted(base.glob("year=*/date=*/part.parquet"))]
+        if not files:
+            return pl.DataFrame(schema={"source": pl.Utf8})
+        return pl.from_arrow(
+            self._con.execute(f"SELECT DISTINCT source FROM {_read(files)}").arrow()
+        )
+
     def minute_bars(
         self,
         symbols: Sequence[str] | None,

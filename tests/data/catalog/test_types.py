@@ -19,6 +19,9 @@ from qsys.data.catalog.types import (
     SourceStatus,
     Validity,
 )
+from qsys.data.catalog.types import (
+    DataDomain, DatasetLayer, DatasetRole, DatasetStatus, UNCLASSIFIED, Unclassified,
+)
 
 
 def _direct_metric(**over) -> Metric:
@@ -84,3 +87,22 @@ def test_source_carries_access_and_expiry():
     )
     assert s.access is Access.API
     assert s.expires is None
+
+
+def test_factor_domain_is_not_named_derived():
+    """衍生域叫 FACTOR，与 DatasetLayer.DERIVED 区分——同名会让页面出现两个 derived。"""
+    assert DataDomain.FACTOR.value == "factor"
+    assert "derived" not in {d.value for d in DataDomain}
+    assert DatasetLayer.DERIVED.value == "derived"
+
+
+def test_all_seven_domains_exist():
+    assert {d.value for d in DataDomain} == {
+        "reference", "market", "fundamental", "factor", "macro", "alternative", "runtime",
+    }
+
+
+def test_unclassified_carries_a_reason():
+    sentinel = UNCLASSIFIED("跨行情与基础，待定")
+    assert isinstance(sentinel, Unclassified)
+    assert sentinel.reason == "跨行情与基础，待定"

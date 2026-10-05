@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% macro source_cell(sources, status_labels) %}
+  {% for source in sources %}
+  <div style="margin-bottom:4px">
+    <strong>{{ source.provider }}</strong>·{{ source.api }}
+    {% if source.aliases %}
+      <span style="font-size:12px;color:var(--muted)">
+        （表内写作 {{ source.aliases|join('、') }}）</span>
+    {% endif %}
+    <span class="pill {{ 'ok' if source.status == 'active' else 'bad' if source.status == 'dead' else 'warn' }}">
+      {{ status_labels[source.status] }}</span>
+  </div>
+  {% endfor %}
+{% endmacro %}
+{% block content %}
+<div class="card">
+  <h2>数据域总览</h2>
+  <p style="color:var(--muted);font-size:12px;margin:0 0 12px">
+    按业务含义分类，不是按供应商或存储介质。空域也列出来——
+    「没接」本身是一条信息，不是缺省就该隐藏的东西。
+    <a href="/data/catalog/sources">按源查看 →</a>
+  </p>
+  <table>
+    <tr><th>域</th><th>表数</th><th>数据来自</th></tr>
+    {% for row in rows %}
+    <tr>
+      <td><a href="/data/domains/{{ row.domain }}" style="color:var(--fg)">
+        <strong>{{ domain_labels[row.domain] }}</strong></a></td>
+      <td>{{ row.datasets|length }}</td>
+      <td>
+        {% if row.sources %}
+          {{ source_cell(row.sources, status_labels) }}
+        {% elif row.domain in not_ingested %}
+          <span class="pill todo">未接入</span>
+          <span style="font-size:12px;color:var(--muted)">
+            {{ not_ingested[row.domain][0] }}（登记于 {{ not_ingested[row.domain][1] }}）</span>
+        {% else %}
+          <span class="empty">—</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    {% if unclassified.datasets %}
+    {#
+      `for domain in DataDomain` 遍历不到的那些表。少了这一行，一张写成
+      UNCLASSIFIED(理由) 的表会从所有页面彻底消失、且不给任何提示——
+      spec §3.2 换来的承诺是「页面上永远不会有归属不明的表」，不是
+      「归属不明的表不会在页面上」。
+    #}
+    <tr>
+      <td>
+        <strong>未归类 Unclassified</strong>
+        {% for dataset_id, reason in unclassified.reasons %}
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">
+          <a href="/data/tables/{{ dataset_id }}" class="mono">{{ dataset_id }}</a>：{{ reason }}
+        </div>
+        {% endfor %}
+      </td>
+      <td>{{ unclassified.datasets|length }}</td>
+      <td>
+        {% if unclassified.sources %}{{ source_cell(unclassified.sources, status_labels) }}
+        {% else %}<span class="empty">—</span>{% endif %}
+      </td>
+    </tr>
+    {% endif %}
+    <tr>
+      <td colspan="2" style="color:var(--muted);font-size:12px">
+        合计 {{ total_datasets }} 张表（七域 + 未归类，与 <code>DATASETS</code> 等量）
+      </td>
+      <td></td>
+    </tr>
+  </table>
+</div>
+{% endblock %}

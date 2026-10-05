@@ -27,6 +27,7 @@ from qsys.web.backtest_views import BacktestService, param_rows
 from qsys.web.asset_views import DataAssetService
 from qsys.web.catalog_views import CatalogService, Status
 from qsys.web.config import WebConfig
+from qsys.web.domain_views import DOMAIN_LABELS, NOT_INGESTED, STATUS_LABELS, DomainService
 from qsys.web.data_views import DataService, MarketService
 from qsys.web.paper_chart import history_series, intraday_series
 from qsys.web.service_views import ServiceConsole
@@ -211,7 +212,8 @@ def create_app(
         return TEMPLATES.TemplateResponse(
             request=request, name="data_table_detail.html",
             context={"title": config.title, "session": None,
-                     "page": "data_tables", "d": detail},
+                     "page": "data_tables", "d": detail,
+                     "status_labels": STATUS_LABELS},
         )
 
     @app.get("/data/relations/{upstream}/{downstream}", response_class=HTMLResponse)
@@ -420,6 +422,42 @@ def create_app(
                 "page": "data_catalog",
                 "d": detail,
                 "chart": line_chart(points) if points else "",
+            },
+        )
+
+    @app.get("/data/domains", response_class=HTMLResponse)
+    def domain_overview(request: Request):
+        return TEMPLATES.TemplateResponse(
+            request=request,
+            name="domains.html",
+            context={
+                "title": config.title,
+                "session": None,
+                "page": "data_domains",
+                "rows": DomainService.rows(),
+                "unclassified": DomainService.unclassified(),
+                "total_datasets": DomainService.total_datasets(),
+                "domain_labels": DOMAIN_LABELS,
+                "status_labels": STATUS_LABELS,
+                "not_ingested": NOT_INGESTED,
+            },
+        )
+
+    @app.get("/data/domains/{domain}", response_class=HTMLResponse)
+    def domain_detail(request: Request, domain: str):
+        detail = DomainService.detail(domain)
+        if detail is None:
+            raise HTTPException(status_code=404, detail=f"unknown domain {domain}")
+        return TEMPLATES.TemplateResponse(
+            request=request,
+            name="domain_detail.html",
+            context={
+                "title": config.title,
+                "session": None,
+                "page": "data_domains",
+                "d": detail,
+                "not_ingested": NOT_INGESTED,
+                "status_labels": STATUS_LABELS,
             },
         )
 
