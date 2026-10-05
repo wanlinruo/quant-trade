@@ -364,6 +364,42 @@ def test_catalog_verify_counts_metrics_and_requires_the_full_scope_rules(monkeyp
     assert only.status == sc.BAD and "B2.holes" in only.detail
 
 
+def test_unknown_source_value_in_data_is_bad(monkeypatch):
+    """表里出现目录不认识的源值就报——这是「有人加了源却没登记」的唯一信号。"""
+    monkeypatch.setattr(sc, "_minute_source_values", lambda ctx: {"paid", "qmt", "newvendor"})
+    result = sc._source_aliases_resolve(ctx(FakeQuery()))
+    assert result.status == sc.BAD and "newvendor" in result.detail
+
+
+def test_all_known_source_values_pass(monkeypatch):
+    monkeypatch.setattr(sc, "_minute_source_values", lambda ctx: {"paid", "qmt", "joinquant"})
+    assert sc._source_aliases_resolve(ctx(FakeQuery())).status == sc.OK
+
+
+def test_no_minute_partitions_found_is_a_warning_not_a_pass(monkeypatch):
+    """`bar_minute_1m_sources()` 扫不到分区就返回空表 ⇒ seen=∅ ⇒ unknown=∅
+    ⇒ 旧实现判 OK、rows=0。生产那张表有 1636 个分区文件，rows=0 在真值上
+    不可能，只可能是仓库根指错或分区布局变了。"""
+    monkeypatch.setattr(sc, "_minute_source_values", lambda ctx: set())
+    result = sc._source_aliases_resolve(ctx(FakeQuery()))
+    assert result.status == sc.WARN
+    assert result.rows == 0
+    assert "没扫到" in result.actual
+
+
+def test_the_empty_source_frame_really_does_reach_that_branch(tmp_path):
+    """真正走一遍 `_minute_source_values`：空仓库里它必须是空集合。
+
+    只 monkeypatch 那个函数证不了「空仓库会触发 WARN」——这条把两段接上。
+    """
+    from qsys.data.query import WarehouseQuery
+    from qsys.data.storage import Warehouse
+
+    query = WarehouseQuery(Warehouse(tmp_path))
+    assert query.bar_minute_1m_sources().height == 0
+    assert sc._minute_source_values(ctx(query)) == set()
+
+
 def _live_state(path, rows):
     import sqlite3
     con = sqlite3.connect(path)

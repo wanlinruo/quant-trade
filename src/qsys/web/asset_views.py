@@ -35,6 +35,12 @@ from qsys.data.catalog.types import (
 from qsys.data.coverage import DatasetCoverage, coverage
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
+from qsys.web.domain_views import (
+    SourceRef,
+    classify_sources,
+    domain_label,
+    root_source_refs,
+)
 
 
 _STATUS_LABELS = {
@@ -77,6 +83,9 @@ class DatasetRow:
 @dataclass(frozen=True, slots=True)
 class DatasetDetail:
     row: DatasetRow
+    domain_label: str
+    source_refs: tuple[SourceRef, ...]
+    root_refs: tuple[SourceRef, ...]
     dimensions: tuple[tuple[str, HealthStatus], ...]
     reasons: tuple[HealthReason, ...]
     evidence: tuple[dict, ...]
@@ -234,6 +243,9 @@ class DataAssetService:
         )
         return DatasetDetail(
             DatasetRow(dataset, assessment.status, cover.get(dataset_id)),
+            domain_label(dataset.domain),
+            classify_sources(dataset.sources),
+            root_source_refs(dataset_id),
             tuple((_DIMENSION_LABELS[dim], state) for dim, state in assessment.dimensions),
             assessment.reasons, tuple(raw_evidence), upstream, downstream, fields,
             tuple(rules), suggestion, related,

@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from enum import StrEnum
 
@@ -76,6 +76,22 @@ class DatasetRole(StrEnum):
     LOGICAL = "logical"
 
 
+class DataDomain(StrEnum):
+    """业务含义上的数据分类，与 layer（架构层）、role（建模角色）正交。
+
+    `layer.DERIVED` 说「这张表是算出来的」，`domain.FACTOR` 说「这是信号类数据」。
+    `adj_factors` 同时是 layer=RAW 与 domain=FACTOR，两者不是一回事，故不同名。
+    """
+
+    REFERENCE = "reference"       # 基础：标的、日历、状态、公司行为
+    MARKET = "market"             # 行情：K线、Tick、竞价、涨跌停价
+    FUNDAMENTAL = "fundamental"   # 基本面：财报、财务指标、估值、股本
+    FACTOR = "factor"             # 衍生：复权因子、技术指标、信号、特征
+    MACRO = "macro"               # 宏观：利率、汇率、GDP、CPI
+    ALTERNATIVE = "alternative"   # 另类：新闻、舆情、资金流、龙虎榜
+    RUNTIME = "runtime"           # 运行与质检：质检结果、成交回报、净值
+
+
 class DatasetStatus(StrEnum):
     ACTIVE = "active"
     FROZEN = "frozen"
@@ -132,6 +148,7 @@ class Dataset:
     sources: tuple[str, ...]
     consumers: tuple[str, ...]
     health_policy: str | None
+    domain: "DataDomain | Unclassified" = field(kw_only=True)
     physical: bool = True
 
     def __post_init__(self) -> None:
@@ -143,6 +160,16 @@ class Dataset:
             raise ValueError(f"{self.id}: schema_version 必须大于 0")
         if len(set(self.primary_key)) != len(self.primary_key):
             raise ValueError(f"{self.id}: 主键列重复")
+        # spec §3.2：必填且由构造期强制。裸字符串（`domain="market"`）尤其危险——
+        # 页面按 `isinstance(..., DataDomain)` 过滤，它会静默从所有域页面消失，
+        # 既不报错也不出现，正是本任务要消灭的那类「看不见」。
+        if not isinstance(self.domain, (DataDomain, Unclassified)):
+            raise ValueError(
+                f"{self.id}: domain 必须是 DataDomain 或 UNCLASSIFIED(理由)，"
+                f"收到 {self.domain!r}"
+            )
+        if isinstance(self.domain, Unclassified) and not self.domain.reason.strip():
+            raise ValueError(f"{self.id}: UNCLASSIFIED 必须写明理由")
 
 
 @dataclass(frozen=True, slots=True)
@@ -193,6 +220,21 @@ def UNCOVERED(reason: str) -> Uncovered:
 
 
 @dataclass(frozen=True, slots=True)
+class Unclassified:
+    """显式声明「这张表归不进任何业务域」及其理由。
+
+    不设默认值：默认值会把「没想清楚」伪装成「已归类」，而这两者在页面上
+    必须能区分。
+    """
+
+    reason: str
+
+
+def UNCLASSIFIED(reason: str) -> Unclassified:
+    return Unclassified(reason)
+
+
+@dataclass(frozen=True, slots=True)
 class Source:
     id: str                    # "tushare.daily_basic"
     provider: str              # "Tushare Pro"
@@ -205,6 +247,7 @@ class Source:
     cadence: str | None = None
     caveat: str | None = None  # 已知的时点/口径坑
     expires: date | None = None  # C5 凭据过期告警用
+    aliases: tuple[str, ...] = ()   # 别处对同一个源的称呼，如表内 source 列的取值
 
 
 @dataclass(frozen=True, slots=True)

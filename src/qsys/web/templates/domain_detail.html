@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% import "_source_refs.html" as refs %}
+{% block content %}
+<div class="card">
+  <h2>{{ d.label }}</h2>
+  <p style="color:var(--muted);font-size:12px;margin:0 0 12px">
+    下面三列并列显示是有意的：<code>layer</code>（架构层）、<code>role</code>
+    （建模角色）、登记来源，三者正交，组合异常（比如 <code>layer=raw</code>
+    配因子类数据）一眼就能看出来。「登记来源」是 <code>Dataset.sources</code>
+    原样展示，混有源、另一张表、纯文字备注三种东西——下面按能不能在源表/
+    数据集表里查到分开渲染。「根源接口」是沿这些上游表递归到底算出来的，
+    才是「这张表的数据到底从哪来」的答案：<code>bar_minute_1m</code> 登记来源
+    一个源字符串都没有，根源却是百度网盘付费源与 QMT。
+    <a href="/data/domains">返回域总览 →</a>
+  </p>
+  {% if d.dataset_rows %}
+  <table>
+    <tr><th>表</th><th>layer</th><th>role</th><th>登记来源</th><th>根源接口</th></tr>
+    {% for row in d.dataset_rows %}
+    <tr>
+      <td><a href="/data/tables/{{ row.dataset.id }}" style="color:var(--fg)">{{ row.dataset.id }}</a></td>
+      <td>{{ row.dataset.layer }}</td>
+      <td>{{ row.dataset.role }}</td>
+      <td style="font-size:12px">{{ refs.source_refs(row.source_refs, status_labels) }}</td>
+      <td style="font-size:12px">{{ refs.source_refs(row.root_refs, status_labels, "解不出（上游未登记到源）") }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% elif d.row.domain in not_ingested %}
+  <div class="empty">
+    <span class="pill todo">未接入</span>
+    {{ not_ingested[d.row.domain][0] }}（登记于 {{ not_ingested[d.row.domain][1] }}）
+  </div>
+  {% else %}
+  <div class="empty">没有表归在这个域下。</div>
+  {% endif %}
+</div>
+{% endblock %}

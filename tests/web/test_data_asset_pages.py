@@ -106,3 +106,53 @@ def test_unknown_asset_routes_are_404(warehouse):
     assert client.get("/data/tables/nope").status_code == 404
     assert client.get("/data/relations/nope/nope").status_code == 404
     assert client.get("/data/quality/rules/nope").status_code == 404
+
+
+def test_table_detail_no_longer_renders_table_ids_as_sources(warehouse):
+    """commit 708889f 在域详情页修掉的缺陷，逐表页面还原封不动地留着。
+
+    `/data/tables/bar_minute_1m` 曾显示「来源：paid_minute_bars、minute_bars、
+    显式异常覆盖」——两个表 id 配一句备注，一个源都没有。而域详情页的表格
+    主动链到这个页面，于是用户被送到一个仍在撒谎的页面上。
+    """
+    text = _client(warehouse).get("/data/tables/bar_minute_1m").text
+    # 表 id 带「表：」前缀并可点，不是裸 join
+    assert "表：minute_bars" in text
+    assert "paid_minute_bars、minute_bars、显式异常覆盖" not in text
+    # 自由文本标成备注
+    assert '<span class="pill todo">备注</span>' in text
+    # 真正的答案：递归解出的根源接口，带 SourceStatus 措辞
+    assert "百度网盘付费源" in text
+    assert "已停采，历史仍在读" in text
+
+
+def test_table_detail_shows_the_business_domain(warehouse):
+    """`Dataset.domain` 是 Task 2 做成的必填字段，却一直没有页面消费它。"""
+    text = _client(warehouse).get("/data/tables/bar_minute_1m").text
+    assert "业务域" in text and "行情 Market" in text
+
+
+def test_table_detail_names_the_unclassified_reason(warehouse, monkeypatch):
+    from dataclasses import replace
+
+    from qsys.data.catalog import DATASETS
+    from qsys.data.catalog.types import UNCLASSIFIED
+
+    monkeypatch.setitem(
+        DATASETS, "bar_minute_1m",
+        replace(DATASETS["bar_minute_1m"], domain=UNCLASSIFIED("跨域，待判")),
+    )
+    text = _client(warehouse).get("/data/tables/bar_minute_1m").text
+    assert "未归类：跨域，待判" in text
+
+
+def test_a_table_whose_root_sources_cannot_be_resolved_says_so(warehouse):
+    """`daily_flags.sources` 只有「规范日线与状态事实」一句话。
+
+    解不出就写解不出——不许反推出一个最像的源（MEMORY：禁任何反推与填充）。
+    文案只说「未登记到源」而不说是哪种成因：空结果有三种来路（上游只有自由
+    文本、上游 id 不在 DATASETS、环被 seen 截断），页面没有派生出是哪一种，
+    就不许替它选一个说出来——那本身就是一次反推。
+    """
+    text = _client(warehouse).get("/data/tables/daily_flags").text
+    assert "解不出（上游未登记到源）" in text

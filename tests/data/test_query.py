@@ -335,3 +335,51 @@ def test_delisting_symbols_refuse_days_the_pool_has_not_built(warehouse):
         q.delisting_symbols(date(2023, 6, 15), announced_by=date(2023, 6, 14))
     _name_history(warehouse, [], sessions=[date(2023, 6, 14), date(2023, 6, 15)])
     assert q.delisting_symbols(date(2023, 6, 15), announced_by=date(2023, 6, 14)) == set()
+
+
+def _bar_minute_1m_row(symbol: str, ts, source: str) -> dict:
+    return {
+        "symbol": symbol, "ts": ts, "open": 10.0, "high": 10.0, "low": 10.0,
+        "close": 10.0, "volume": 100.0, "amount": 1000.0, "source": source,
+        "visible_at": ts,
+    }
+
+
+def test_bar_minute_1m_sources_reads_distinct_values_from_the_real_partition_layout(
+    warehouse: Warehouse,
+):
+    """`bar_minute_1m` 按 year=*/date=*/part.parquet 两层分区——用 ``write_day``
+    落两个真实交易日的真实分区，走真实 glob + DuckDB 读取路径，不 mock
+    任何东西。曾经照抄 brief 给的 ``self._glob`` 实现会让这个方法永远读到
+    空表（单层分区的假设和这张表的真实两层布局不一致），这里要是走错路径，
+    distinct 出来的 source 集合就会是空集而不是 {"paid", "qmt", "joinquant"}。
+    """
+    from datetime import datetime
+
+    day1 = date(2024, 1, 2)
+    table1 = pa.Table.from_pylist(
+        [
+            _bar_minute_1m_row("600000.SH", datetime(2024, 1, 2, 9, 31), "paid"),
+            _bar_minute_1m_row("600001.SH", datetime(2024, 1, 2, 9, 31), "qmt"),
+        ],
+        schema=schema.BAR_MINUTE_1M,
+    )
+    warehouse.write_day("bar_minute_1m", table1, day=day1)
+
+    day2 = date(2025, 3, 10)
+    table2 = pa.Table.from_pylist(
+        [_bar_minute_1m_row("600002.SH", datetime(2025, 3, 10, 9, 31), "joinquant")],
+        schema=schema.BAR_MINUTE_1M,
+    )
+    warehouse.write_day("bar_minute_1m", table2, day=day2)
+
+    got = WarehouseQuery(warehouse).bar_minute_1m_sources()
+    assert set(got["source"].to_list()) == {"paid", "qmt", "joinquant"}
+
+
+def test_bar_minute_1m_sources_on_empty_warehouse_returns_empty_frame_with_columns(
+    warehouse: Warehouse,
+):
+    got = WarehouseQuery(warehouse).bar_minute_1m_sources()
+    assert got.height == 0
+    assert got.columns == ["source"]

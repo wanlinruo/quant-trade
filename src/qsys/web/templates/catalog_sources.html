@@ -4,15 +4,19 @@
   <h2>数据源</h2>
   <p style="color:var(--muted);font-size:12px;margin:0 0 12px">
     这一页回答反向问题：<strong>这个源挂了会影响什么。</strong>非在用源排在最前。
+    <a href="/data/domains">按业务域查看 →</a>
   </p>
   <table>
-    <tr><th>源</th><th>状态</th><th>获取</th><th>门槛</th><th>到货节奏</th>
+    <tr><th>源</th><th>别名</th><th>状态</th><th>所属域</th><th>获取</th><th>门槛</th><th>到货节奏</th>
         <th>支撑指标</th><th>已知坑</th></tr>
     {% for row in rows %}
     <tr>
-      <td><strong>{{ row.source.provider }}</strong>·{{ row.source.api }}</td>
-      <td><span class="pill {{ 'ok' if row.source.status == 'active' else 'bad' }}">
-        {{ {'active':'在用','dead':'已失效','frozen':'已冻结'}[row.source.status] }}</span></td>
+      <td><strong>{{ row.source.provider }}</strong>·{{ row.source.api }}
+        <br><span style="font-size:11px;color:var(--muted)">{{ row.source.id }}</span></td>
+      <td style="font-size:12px;color:var(--muted)">{{ row.alias_text or "—" }}</td>
+      <td><span class="pill {{ 'ok' if row.source.status == 'active' else 'bad' if row.source.status == 'dead' else 'warn' }}">
+        {{ row.status_label }}</span></td>
+      <td style="font-size:12px">{{ row.domains|join('、') if row.domains else "—" }}</td>
       <td>{{ {'api':'自动接口','file':'人工转存','realtime':'实时自采'}[row.source.access] }}</td>
       <td>{{ row.source.tier or "—" }}</td>
       <td>{{ row.source.cadence or "—" }}

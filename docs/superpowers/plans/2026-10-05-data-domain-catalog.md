@@ -259,7 +259,8 @@ from qsys.data.catalog.types import (
 
 - [ ] **Step 4: 逐条登记**
 
-43 个 `_physical(...)` 调用各加一个 `domain=D.XXX`，5 个直接 `Dataset(...)` 调用各加 `domain=D.XXX`
+42 个 `_physical(...)` 调用各加一个 `domain=D.XXX`，5 个直接 `Dataset(...)` 调用各加 `domain=D.XXX`
+（`grep -c '_physical('` 会数到 43，其中一处是函数定义本身）
 （后者是位置参数调用，`domain` 为 kw_only，追加在末尾即可）。按上方归属表取值。
 
 两个已完成的样例：

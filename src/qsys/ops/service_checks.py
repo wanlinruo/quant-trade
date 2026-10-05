@@ -26,7 +26,7 @@ from pathlib import Path
 
 import polars as pl
 
-from qsys.data.catalog import REGISTRY
+from qsys.data.catalog import REGISTRY, SOURCES
 from qsys.data.catalog.checks import CHECKS as CATALOG_CHECKS
 from qsys.data.catalog.checks import Scope
 from qsys.data.pipeline.auction import missing_auction_days
@@ -264,6 +264,37 @@ def _metric_checks(ctx: CheckContext) -> CheckResult:
                            f"{len(rules)} 条规则未通过（{blocking.height} 条指标结果）",
                            _samples(rules), rows=latest.height)
     return CheckResult(OK, "阻断级规则全部通过", f"{latest.height} 项全部通过", rows=latest.height)
+
+
+def _minute_source_values(ctx: CheckContext) -> set[str]:
+    """canonical 分钟层 source 列的全部取值。单独成函数便于测试替换。"""
+    frame = ctx.query.bar_minute_1m_sources()
+    return set(frame["source"].to_list())
+
+
+def _source_aliases_resolve(ctx: CheckContext) -> CheckResult:
+    """数据里出现的每个 source 值都必须能在目录里找到归属。
+
+    目录按技术 id 登记（`baidupan.minute`），而表里写的是别名（`paid`）。
+    两边对不上时，页面按任一个名字都查不到那个源——2026-10-05 实际发生过。
+    """
+    known = {s.id for s in SOURCES.values()} | {a for s in SOURCES.values() for a in s.aliases}
+    seen = _minute_source_values(ctx)
+    if not seen:
+        # 空结果不是通过。生产的 bar_minute_1m 有上千个分区文件，扫出 0 个
+        # source 值在真值上不可能，只可能是仓库根指错或分区布局变了——
+        # 而那恰恰是「检查假装通过」最危险的一种：空集合减任何集合都是空集。
+        return CheckResult(
+            WARN, "源别名对得上数据", "分钟线一个 source 值都没扫到",
+            "空结果不能判通过：要么仓库根指错，要么分区布局变了，检查实际没覆盖任何数据",
+            rows=0,
+        )
+    unknown = sorted(seen - known)
+    return CheckResult(
+        BAD if unknown else OK, "源别名对得上数据",
+        f"{len(unknown)} 个源值在目录里查无此源",
+        _samples(set(unknown)), rows=len(seen),
+    )
 
 
 def _today_results(ctx: CheckContext) -> pl.DataFrame:
@@ -623,6 +654,7 @@ CHECKS: tuple[ServiceCheck, ...] = (
     ServiceCheck("catalog-verify", "全量规则已执行", "metric_checks",
                  _catalog_verify_ran_full_scope),
     ServiceCheck("catalog-verify", "阻断级规则全部通过", "metric_checks", _metric_checks),
+    ServiceCheck("catalog-verify", "源别名对得上数据", "bar_minute_1m", _source_aliases_resolve),
     ServiceCheck("service-checks", "磁盘剩余容量", "/data/qsys", _disk_capacity),
     ServiceCheck("service-checks", "存储保留策略", "/data/qsys", _retention),
     ServiceCheck("service-checks", "站点证书有效期", "wanlinruo.cn:8443", _certificate),

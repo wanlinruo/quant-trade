@@ -1,0 +1,22 @@
+{#
+  `SourceRef` 列表的唯一渲染处。
+
+  commit 708889f 修掉的缺陷是「把表 id 和自由文本原样 join 成『来源』显示」。
+  它当时只在域详情页修掉了，逐表页面还在原样 join——同一个谎言写在两个模板里，
+  修一处不算修。所以这段只写一次，两边共用。
+#}
+{% macro source_refs(refs, status_labels, empty="—") %}
+  {% if refs %}
+    {% for ref in refs %}
+      {% if ref.kind == 'source' %}
+        <span>{{ ref.label }}</span>
+        <span class="pill {{ 'ok' if ref.status == 'active' else 'bad' if ref.status == 'dead' else 'warn' }}">{{ status_labels[ref.status] }}</span>
+      {% elif ref.kind == 'table' %}
+        <a href="{{ ref.href }}" style="color:var(--muted)">{{ ref.label }}</a>
+      {% else %}
+        <span class="pill todo">备注</span> <span style="color:var(--muted)">{{ ref.label }}</span>
+      {% endif %}
+      {% if not loop.last %}<br>{% endif %}
+    {% endfor %}
+  {% else %}<span class="empty">{{ empty }}</span>{% endif %}
+{% endmacro %}
