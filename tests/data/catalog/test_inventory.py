@@ -68,14 +68,17 @@ def test_inventory_coverage_equals_schema_and_read_only(tmp_path):
 
 
 def test_reverse_inventory_surfaces_unregistered_physical_directories(tmp_path):
-    for name in ("joinquant_minute_bars", "paid_minute_quality",
+    for name in ("joinquant_minute_bars", "minute_bars-candidate-backup",
+                 "paid_minute_quality",
                  "minute_bars.pre-d20", "forgotten_fact"):
         (tmp_path / name).mkdir()
 
     got = warehouse_directory_coverage(tmp_path)
 
     assert got.registered == ("joinquant_minute_bars",)
-    assert got.auxiliary == ("minute_bars.pre-d20", "paid_minute_quality")
+    assert got.auxiliary == (
+        "minute_bars-candidate-backup", "minute_bars.pre-d20", "paid_minute_quality",
+    )
     assert got.unregistered == ("forgotten_fact",)
 
 

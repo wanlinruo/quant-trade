@@ -56,6 +56,7 @@ _PARQUET_READERS = {"read_parquet", "scan_parquet", "ParquetFile", "read_schema"
 # 回滚快照统一使用 ``<dataset>.pre-<change>``，按命名规则识别。
 _AUXILIARY_WAREHOUSE_DIRECTORIES = frozenset({
     "backups",
+    "minute_bars-candidate-backup",
     "paid_adjustment_bases",
     "paid_daily_quality",
     "paid_daily_repairs",
