@@ -100,8 +100,12 @@ git config --local core.sshCommand \
 ### 4. 装依赖并验证
 
 ```bash
-cd ~/qsys && uv sync && uv run pytest -q
+cd ~/qsys && ./scripts/preflight_linux_deploy.sh
 ```
+
+部署节点配置了腾讯镜像，而入库的 `uv.lock` 由 CI 使用官方 PyPI 生成。不能执行裸
+`uv run`：它会按节点镜像重新锁定，把整份 lock 的 registry URL 改写并污染生产工作树。
+统一 preflight 对 `uv sync` 和每次 `uv run` 都传 `--frozen`，并在前后拒绝脏工作树。
 
 ### 5. 初始化数据仓库
 
