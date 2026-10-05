@@ -39,14 +39,14 @@ def test_empty_domains_have_no_sources():
 # ---------------------------------------------------------------- 递归血缘
 
 
-def test_minute_canonical_resolves_through_two_upstream_tables():
-    """`bar_minute_1m.sources` 一个源字符串都没有：两个表 id + 一句备注。
+def test_minute_canonical_resolves_through_all_upstream_tables():
+    """`bar_minute_1m.sources` 全部使用已登记的数据集 id。
 
     只走一跳它会显示「无源」——而它正是 2026-10-05 那次「以为付费源已停用」
-    的那张表。递归必须解出付费源与 QMT 两个接口。
+    的那张表。递归必须解出四个分钟来源接口。
     """
     assert dataset_root_sources("bar_minute_1m") == (
-        "baidupan.minute", "qmt.minute",
+        "baidupan.minute", "joinquant.minute", "qmt.minute", "tushare.minute",
     )
 
 
@@ -88,7 +88,7 @@ def test_factor_domain_reaches_every_leaf_interface():
 def test_only_free_text_upstreams_stay_unresolved():
     """解不出就是解不出：自由文本不许反推成某个源（见 MEMORY 的禁反推规则）。
 
-    47 张表里只有这三张的上游**全部**是自由文本，它们必须解出空集，
+    当前只有这三张表的上游**全部**是自由文本，它们必须解出空集，
     而不是被猜成最像的那个源。
     """
     unresolved = {d.id for d in DATASETS.values() if not dataset_root_sources(d.id)}
@@ -102,7 +102,7 @@ def test_every_resolved_root_is_a_real_registered_source():
 
 
 def test_recursion_terminates_even_when_the_lineage_has_a_cycle(monkeypatch):
-    """当前 47 张表无环，但「无环」是事实不是约束。加一张表就可能不成立，
+    """当前注册表无环，但「无环」是事实不是约束。加一张表就可能不成立，
     而没有 `seen` 的递归遇到环就是无限递归，不是错结果。"""
     monkeypatch.setitem(
         DATASETS, "bar_daily",
@@ -144,7 +144,7 @@ def test_an_unclassified_table_is_surfaced_with_its_reason(monkeypatch):
     row = unclassified_summary()
     assert [d.id for d in row.datasets] == ["strategy"]
     assert row.reasons == (("strategy", "策略决策量，待判"),)
-    # 并且它不再被算进 runtime 域，合计仍然是 47
+    # 并且它不再被算进 runtime 域，合计仍覆盖全部数据集
     runtime = next(r for r in domain_summary() if r.domain is DataDomain.RUNTIME)
     assert "strategy" not in {d.id for d in runtime.datasets}
     assert sum(len(r.datasets) for r in domain_summary()) + 1 == len(DATASETS)
@@ -156,7 +156,7 @@ def test_unclassified_rows_still_resolve_their_root_sources(monkeypatch):
         replace(DATASETS["bar_minute_1m"], domain=UNCLASSIFIED("跨域，待判")),
     )
     assert {s.id for s in unclassified_summary().sources} == {
-        "baidupan.minute", "qmt.minute",
+        "baidupan.minute", "joinquant.minute", "qmt.minute", "tushare.minute",
     }
 
 

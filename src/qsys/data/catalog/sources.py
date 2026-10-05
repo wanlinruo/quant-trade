@@ -1,4 +1,4 @@
-"""全库 24 个源。
+"""全库数据源清单。
 
 「来源＝Tushare」这种粒度会把真问题盖掉：tushare_daily 那 28 列里 9 列来自
 `daily`、15 列来自 `daily_basic`、1 列来自 `adj_factor`，到货时点也不同
@@ -38,7 +38,7 @@ def _akshare(api: str, caveat: str | None = None) -> Source:
 
 
 _ALL = [
-    # ---- Tushare Pro，11 个接口 ----
+    # ---- Tushare Pro，12 个接口（minute 仅预留，尚未采购） ----
     _tushare("daily", "2000 积分", _WORKDAY_TWICE,
              "vol 单位是手且带小数（582305.98），取整会丢真实精度；"
              "amount 单位千元，入库 ×1000 转元"),
@@ -73,6 +73,17 @@ _ALL = [
              "只记录变更事件不是逐日快照；2006-10-08 之后大量标的没有后继区间"
              "（D-10 的 2006 断层），单日实测 96 只无名称"),
     _tushare("trade_cal", "120 积分", "按需调用", None),
+    Source(
+        id="tushare.minute", provider="Tushare Pro", api="minute",
+        access=Access.API, status=SourceStatus.ACTIVE,
+        credential=_TUSHARE_CRED, tier="未购买分钟权限",
+        acquired="当前未购买；仅预留物理契约与来源标识",
+        cadence="无生产采集任务",
+        caveat="生产 warehouse 当前没有 tushare_minute_bars 分区；只有在采购权限、"
+               "实现采集并通过分钟质量门禁后才允许发布，不能把预留表误报成已有数据",
+        expires=_TUSHARE_EXPIRES,
+        aliases=("tushare",),
+    ),
 
     # ---- akshare，6 个端点，免费 ----
     _akshare("tool_trade_date_hist_sina"),

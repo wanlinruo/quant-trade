@@ -11,20 +11,22 @@ from qsys.data.catalog.types import Direct, Kind, MetricStatus, UNKNOWN, Validit
 BY_ID = {m.id: m for m in METRICS}
 
 
-def test_owns_the_seven_market_datasets():
+def test_owns_the_nine_market_datasets():
     assert DATASETS == frozenset(
         {"tushare_daily", "bars_daily", "paid_daily", "paid_minute_bars",
-         "index_bars", "minute_bars", "auction_ticks"}
+         "index_bars", "minute_bars", "tushare_minute_bars",
+         "joinquant_minute_bars", "auction_ticks"}
     )
 
 
 def test_registers_every_market_column():
-    """七张表的列数逐表核对，缺列时直接指出数据集。"""
+    """九张表的列数逐表核对，缺列时直接指出数据集。"""
     from collections import Counter
     got = Counter(m.dataset for m in METRICS)
     assert dict(got) == {
         "tushare_daily": 28, "paid_daily": 28, "index_bars": 8,
         "minute_bars": 8, "paid_minute_bars": 9,
+        "tushare_minute_bars": 8, "joinquant_minute_bars": 8,
         "auction_ticks": 10, "bars_daily": 8,
     }
 

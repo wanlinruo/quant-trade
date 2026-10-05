@@ -100,9 +100,9 @@ def test_domain_distribution_matches_the_spec():
         item.domain.value for item in DATASETS.values() if isinstance(item.domain, DataDomain)
     )
     assert counts == {
-        "reference": 11, "market": 16, "fundamental": 4, "factor": 6, "runtime": 10,
+        "reference": 11, "market": 18, "fundamental": 4, "factor": 6, "runtime": 10,
     }
-    assert sum(counts.values()) == len(DATASETS) == 47
+    assert sum(counts.values()) == len(DATASETS) == 49
 
 
 def test_empty_domains_have_no_datasets():
