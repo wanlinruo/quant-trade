@@ -21,6 +21,7 @@ def test_covers_every_tushare_api_the_pipeline_uses():
         "daily", "daily_basic", "adj_factor", "stk_limit", "suspend_d",
         "limit_list_d", "index_daily", "stock_basic", "namechange", "trade_cal",
         "stock_st",
+        "minute",
     }
 
 
@@ -40,6 +41,7 @@ def test_registers_every_known_source():
         "tushare.stk_limit", "tushare.suspend_d", "tushare.limit_list_d",
         "tushare.index_daily", "tushare.stock_basic", "tushare.namechange",
         "tushare.trade_cal", "tushare.stock_st",
+        "tushare.minute",
         "akshare.tool_trade_date_hist_sina", "akshare.stock_info_a_code_name",
         "akshare.stock_info_sh_delist", "akshare.stock_info_sz_delist",
         "akshare.stock_zh_a_spot_em", "akshare.stock_fhps_detail_em",
@@ -95,6 +97,14 @@ def test_paid_minute_source_is_findable_by_the_name_the_data_uses():
     """bar_minute_1m.source 列写的是 paid，目录 id 是 baidupan.minute。
     2026-10-05 的教训：按 paid 查不到任何东西。"""
     assert "paid" in SOURCES["baidupan.minute"].aliases
+
+
+def test_reserved_tushare_minute_source_cannot_be_mistaken_for_landed_data():
+    source = SOURCES["tushare.minute"]
+    assert source.tier == "未购买分钟权限"
+    assert source.cadence == "无生产采集任务"
+    assert "没有 tushare_minute_bars" in source.caveat
+    assert "tushare" in source.aliases
 
 
 def _assert_no_alias_collisions(sources: Iterable[Source]) -> None:

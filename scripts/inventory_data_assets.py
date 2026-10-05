@@ -19,11 +19,12 @@ def main() -> None:
         help="已独立执行的测试结论，例如 '1842 passed, 2 warnings in 53.07s'",
     )
     args = parser.parse_args()
-    write_inventory(
-        build_inventory(args.project, args.warehouse, test_result=args.test_result),
-        args.output,
-    )
+    report = build_inventory(args.project, args.warehouse, test_result=args.test_result)
+    write_inventory(report, args.output)
     print(args.output)
+    unknown = report["coverage"]["unregistered_physical"]
+    if unknown:
+        raise SystemExit(f"warehouse 存在未登记物理目录：{', '.join(unknown)}")
 
 
 if __name__ == "__main__":

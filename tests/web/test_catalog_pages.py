@@ -49,7 +49,7 @@ def test_a_source_reached_only_through_an_unclassified_table_still_shows_a_domai
 
     不算的话，只被未归类表引用的源会显示「—」，与「没有任何表用它」在页面上
     长得一样——那正是本支要消灭的那种看不见。这条路径只在有表未归类时才亮，
-    当前 47 张全部归类，所以没有测试就等于没修。
+    当前 49 张全部归类，所以没有测试就等于没修。
     """
     from dataclasses import replace
 

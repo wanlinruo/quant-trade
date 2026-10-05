@@ -181,6 +181,22 @@ MINUTE_BARS = pa.schema(
     ]
 )
 
+# 经质量门禁后发布的外部分钟补数。两张覆盖表共用物理契约：时间戳是分钟
+# 收盘时刻，成交量单位为股（进入 BAR_MINUTE_1M 时再除以 100 转手）。
+# symbol 使用 large_string，与聚宽生产分区的实际 Parquet schema 一致。
+MINUTE_OVERRIDE_BARS = pa.schema(
+    [
+        ("symbol", pa.large_string()),
+        ("dt", pa.timestamp("us")),
+        ("open", pa.float64()),
+        ("high", pa.float64()),
+        ("low", pa.float64()),
+        ("close", pa.float64()),
+        ("volume", pa.int64()),
+        ("amount", pa.float64()),
+    ]
+)
+
 # 冻结的付费分钟源。与 QMT MINUTE_BARS 的关键区别是：成交量单位为股，
 # 并且源文件逐分钟携带后复权累计因子。它和 PAID_DAILY 一样只读，不能
 # 注册进 PARTITIONED，否则 Warehouse.write 会获得覆盖历史证据的能力。
@@ -632,6 +648,8 @@ PARTITIONED: dict[str, pa.Schema] = {
     "market_regime_daily": MARKET_REGIME_DAILY,
     "index_bars": INDEX_BARS,
     "minute_bars": MINUTE_BARS,
+    "tushare_minute_bars": MINUTE_OVERRIDE_BARS,
+    "joinquant_minute_bars": MINUTE_OVERRIDE_BARS,
     "bar_minute_1m": BAR_MINUTE_1M,
     "auction_ticks": AUCTION_TICKS,
     "daily_flags": DAILY_FLAGS,

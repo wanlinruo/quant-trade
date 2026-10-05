@@ -8,6 +8,7 @@ from qsys.data import schema
 from qsys.data.catalog.inventory import (
     build_inventory,
     query_method_inventory,
+    warehouse_directory_coverage,
     warehouse_stats,
 )
 
@@ -64,3 +65,28 @@ def test_inventory_coverage_equals_schema_and_read_only(tmp_path):
         item["kind"] == "query_call" and item["name"] == "daily_bars"
         for item in report["source_references"]
     )
+
+
+def test_reverse_inventory_surfaces_unregistered_physical_directories(tmp_path):
+    for name in ("joinquant_minute_bars", "minute_bars-candidate-backup",
+                 "paid_minute_quality",
+                 "minute_bars.pre-d20", "forgotten_fact"):
+        (tmp_path / name).mkdir()
+
+    got = warehouse_directory_coverage(tmp_path)
+
+    assert got.registered == ("joinquant_minute_bars",)
+    assert got.auxiliary == (
+        "minute_bars-candidate-backup", "minute_bars.pre-d20", "paid_minute_quality",
+    )
+    assert got.unregistered == ("forgotten_fact",)
+
+
+def test_inventory_report_exposes_reverse_coverage(tmp_path):
+    (tmp_path / "joinquant_minute_bars").mkdir()
+    (tmp_path / "unknown_table").mkdir()
+
+    coverage = build_inventory(PROJECT, tmp_path)["coverage"]
+
+    assert coverage["registered_directories"] == ["joinquant_minute_bars"]
+    assert coverage["unregistered_physical"] == ["unknown_table"]

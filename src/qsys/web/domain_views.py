@@ -53,7 +53,8 @@ class SourceRef:
     这个字段本身是混的：源 id、另一张表的 id、纯自由文本（如「显式异常
     覆盖」）都写在同一个 tuple 里。详情页曾经把三者原样 join 成一行显示
     成「根源」，结果 `bar_minute_1m.sources` 是
-    `('paid_minute_bars', 'minute_bars', '显式异常覆盖')`——两个表 id
+    `('paid_minute_bars', 'tushare_minute_bars', 'joinquant_minute_bars',
+    'minute_bars')`——四个表 id
     配一句备注，一个源字符串都没有，而它正是触发本任务的那张表。
     这里只分类、不新增推导：命中 `SOURCES` 才当源渲染。
     """

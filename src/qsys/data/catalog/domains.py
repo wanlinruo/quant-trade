@@ -4,7 +4,7 @@
 2026-10-05 那次「以为付费源已停用」的成因之一。
 
 算法是 spec §3.3 的 `domain → datasets → root_sources()`：**递归到源叶子**。
-只走一跳会把 20/47 张表显示成「无源」——包括 `bar_minute_1m`（上游写的是
+只走一跳会把多张表显示成「无源」——包括 `bar_minute_1m`（上游写的是
 `paid_minute_bars`/`minute_bars` 两张表）和 `bar_daily`（上游写的是
 `tushare_daily`）。写上游表 id 是本仓库的既定写法，不是缺陷，所以要递归，
 不是改数据。
@@ -48,7 +48,7 @@ def dataset_root_sources(
     """沿 `Dataset.sources` 递归到源叶子，给出这张表的**根源接口** id。
 
     与 `qsys.data.catalog.root_sources`（指标级，沿 `Computed.upstream` 走）
-    同一个思路的表级版本。`_seen` 防环：当前 47 张表无环，但「无环」是事实
+    同一个思路的表级版本。`_seen` 防环：当前注册表无环，但「无环」是事实
     不是约束，加一张表就可能不成立，而无环假设一旦破掉就是无限递归。
 
     自由文本项解不出源，按定义丢弃——编一个听起来合理的源才是违规。

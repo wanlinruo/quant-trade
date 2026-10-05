@@ -178,17 +178,21 @@ def _metrics() -> list[Metric]:
         )
         for column in schema.MARKET_REGIME_DAILY.names
     )
+    minute_sources = (
+        "paid_minute_bars", "tushare_minute_bars",
+        "joinquant_minute_bars", "minute_bars",
+    )
     minute_upstream = {
-        "symbol": ("paid_minute_bars.symbol", "minute_bars.symbol"),
-        "ts": ("paid_minute_bars.dt", "minute_bars.dt"),
-        "open": ("paid_minute_bars.open", "minute_bars.open"),
-        "high": ("paid_minute_bars.high", "minute_bars.high"),
-        "low": ("paid_minute_bars.low", "minute_bars.low"),
-        "close": ("paid_minute_bars.close", "minute_bars.close"),
-        "volume": ("paid_minute_bars.volume", "minute_bars.volume"),
-        "amount": ("paid_minute_bars.amount", "minute_bars.amount"),
-        "source": ("paid_minute_bars.symbol", "minute_bars.symbol"),
-        "visible_at": ("paid_minute_bars.dt", "minute_bars.dt"),
+        "symbol": tuple(f"{dataset}.symbol" for dataset in minute_sources),
+        "ts": tuple(f"{dataset}.dt" for dataset in minute_sources),
+        "open": tuple(f"{dataset}.open" for dataset in minute_sources),
+        "high": tuple(f"{dataset}.high" for dataset in minute_sources),
+        "low": tuple(f"{dataset}.low" for dataset in minute_sources),
+        "close": tuple(f"{dataset}.close" for dataset in minute_sources),
+        "volume": tuple(f"{dataset}.volume" for dataset in minute_sources),
+        "amount": tuple(f"{dataset}.amount" for dataset in minute_sources),
+        "source": tuple(f"{dataset}.symbol" for dataset in minute_sources),
+        "visible_at": tuple(f"{dataset}.dt" for dataset in minute_sources),
     }
     out.extend(
         Metric(

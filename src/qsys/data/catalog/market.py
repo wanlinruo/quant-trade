@@ -49,7 +49,8 @@ from qsys.data.pipeline.tushare_daily import _FROM_BASIC, _FROM_DAILY
 
 DATASETS = frozenset(
     {"tushare_daily", "bars_daily", "paid_daily", "paid_minute_bars",
-     "index_bars", "minute_bars", "auction_ticks"}
+     "index_bars", "minute_bars", "tushare_minute_bars",
+     "joinquant_minute_bars", "auction_ticks"}
 )
 
 _FROZEN_CHECKS = ("C4.frozen_unchanged",)
@@ -269,6 +270,17 @@ _MINUTE_MEANING = {
     "volume": "该分钟成交量（手）", "amount": "该分钟成交额（元）",
 }
 
+_MINUTE_OVERRIDE_MEANING = {
+    "symbol": "标的代码，带交易所后缀",
+    "dt": "该分钟的收盘时刻；覆盖发布前必须验证交易时段与 240 根原生网格",
+    "open": "该分钟不复权开盘价（元）",
+    "high": "该分钟不复权最高价（元）",
+    "low": "该分钟不复权最低价（元）",
+    "close": "该分钟不复权收盘价（元）",
+    "volume": "该分钟成交量（股；进入规范表时除以 100 转手）",
+    "amount": "该分钟成交额（元）",
+}
+
 _PAID_MINUTE_MEANING = {
     "symbol": "标的代码，带交易所后缀",
     "dt": "源文件分钟时间；原样保留，不平移时间戳",
@@ -358,6 +370,12 @@ METRICS: tuple[Metric, ...] = tuple(
               MetricStatus.ACTIVE, ("B1.calendar", "B5.span"))
     + _simple("minute_bars", "qmt.minute", _MINUTE_MEANING,
               MetricStatus.ACTIVE, ("A3.minute_vs_daily",))
+    + _simple("tushare_minute_bars", "tushare.minute", _MINUTE_OVERRIDE_MEANING,
+              MetricStatus.ACTIVE, ("B2.canonical_minute_override_inclusion",),
+              Validity.POINT)
+    + _simple("joinquant_minute_bars", "joinquant.minute", _MINUTE_OVERRIDE_MEANING,
+              MetricStatus.ACTIVE, ("B2.canonical_minute_override_inclusion",),
+              Validity.POINT)
     + _simple("auction_ticks", "qmt.tick", _AUCTION_MEANING,
               MetricStatus.ACTIVE, ("B4.arrival",))
     + _simple("bars_daily", "mootdx.kline", _BARS_MEANING,
