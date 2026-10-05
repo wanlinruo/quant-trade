@@ -329,7 +329,8 @@ Nginx 在 8443 复用 `wanlinruo.cn` 证书，反向代理到 `127.0.0.1:8420`�
 
 > **实况（2026-10-05）：第 1 步的 `workflow_dispatch` 工作流从未建成**，生产发布
 > 目前是在 Mac 上手工按第 2–9 步执行（SSH 到节点、`git merge --ff-only` 到 `main`
-> 的精确 SHA、`uv sync --frozen`、入口脚本导入冒烟、按变更清单只重启受影响服务、
+> 的精确 SHA、`scripts/preflight_linux_deploy.sh`（内部所有 `uv sync/run` 均为
+> `--frozen`）、按变更清单只重启受影响服务、
 > 查 8420/`healthz` 与公网 8443）。#110 的发布记录见
 > `docs/deploy/linux-core.md`「发布记录」。
 >
