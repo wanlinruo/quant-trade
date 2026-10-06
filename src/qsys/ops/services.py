@@ -68,8 +68,8 @@ SERVICES: tuple[ServiceSpec, ...] = (
         "daily-archive", "每日归档（QMT）", "timer", "Linux → Windows QMT", "qsys-daily-archive",
         "交易日 15:40",
         ("Tushare trade_cal", "QMT 竞价逐笔", "QMT 1 分钟线"),
-        ("auction_ticks", "minute_bars"),
-        "收盘后采集 QMT 独有、会滚动过期的数据：首板次日候选的竞价逐笔与分钟线",
+        ("auction_ticks", "minute_bars", "bar_minute_1m"),
+        "收盘后采集 QMT 独有、会滚动过期的数据：首板次日候选的竞价逐笔与全市场分钟线",
         due="17:00", max_runtime=timedelta(hours=2),
     ),
     ServiceSpec(

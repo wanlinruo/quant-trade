@@ -196,10 +196,12 @@ def drop_suspended(query: WarehouseQuery, days: pl.DataFrame) -> pl.DataFrame:
     停牌真值只认 `suspend_daily`（Tushare ``suspend_d``），`suspend_type='S'` 为停牌、
     `'R'` 为复牌。
 
-    **下载清单与服务质检的到货期望必须都走这一个函数。** 两边各写一份就会漂移：
-    2025 年质检扣了停牌而下载没扣，于是清单照样去要停牌股的分钟线，QMT 返回 241 根
-    前收盘价、成交量全 0，42 个整日虚构的标的日因此进了仓库——而质检因为期望里已把
-    它们扣掉，所以从不报警。见 docs/reference/qmt-range-query-padding.md。
+    **竞价下载清单与竞价质检必须都走这一个函数。** 分钟下载也在这里先剔除已知停牌，
+    但分钟到货质检刻意不复用清单，而以 Tushare 当日实际有成交股票为独立期望。
+
+    2025 年下载没扣停牌，QMT 返回 241 根前收盘价、成交量全 0，42 个整日虚构的标的日
+    因此进了仓库；质检却已扣掉它们，所以从不报警。见
+    docs/reference/qmt-range-query-padding.md。
     """
     if days.height == 0:
         return days
