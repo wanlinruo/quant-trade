@@ -39,6 +39,10 @@ QMT」的优先级逐标的日选源。常驻规则：`B2.paid_minute_structure`
 2026 年分钟文件已知缺陷：03-03..03-11 约 68% 证券成交量错误而成交额正常，
 详见 `production-data-management-audit-20260921.md` 5.3。
 
+2020—2025 年年度差异、2025 QMT 重叠区间和 2026 日期覆盖的分层归因，见
+`paid-minute-d20-attribution.md`。跨源逐分钟不相等不自动等于整日数值失真；确认的
+源差异仍保留警告，禁止用其他来源反向改写本表。
+
 ```text
 paid_minute_bars/year=YYYY/shard=NNNN/part.parquet
 paid_minute_bars/year=YYYY/date=YYYYMMDD/part.parquet
