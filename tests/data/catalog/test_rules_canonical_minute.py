@@ -7,6 +7,7 @@ from qsys.data.query import WarehouseQuery
 
 DAY = date(2025, 7, 22)
 CHECK = "B2.canonical_minute_override_inclusion"
+PADDING_CHECK = "B2.canonical_qmt_leading_padding"
 
 
 def _write(warehouse, dataset, rows, day=DAY):
@@ -35,6 +36,27 @@ def _run(warehouse):
         ctx, "canonical-minute-test", datetime(2026, 9, 22),
         only=[C.CHECKS[CHECK]], artifacts=warehouse.root / "artifacts",
     ).row(0, named=True)
+
+
+def _run_padding(warehouse, day=DAY):
+    ctx = C.CheckContext(WarehouseQuery(warehouse), warehouse, day, day)
+    return C.run_checks(
+        ctx, "canonical-padding-test", datetime(2026, 10, 6),
+        only=[C.CHECKS[PADDING_CHECK]], artifacts=warehouse.root / "artifacts",
+    ).row(0, named=True)
+
+
+def _canonical_bars(warehouse, source, volumes, day=DAY):
+    rows = []
+    for index, volume in enumerate(volumes):
+        ts = datetime.combine(day, datetime.min.time()).replace(hour=9, minute=30 + index)
+        rows.append({
+            "symbol": "600000.SH", "ts": ts,
+            "open": 10.0, "high": 10.0, "low": 10.0, "close": 10.0,
+            "volume": float(volume), "amount": float(volume) * 10,
+            "source": source, "visible_at": ts,
+        })
+    _write(warehouse, "bar_minute_1m", rows, day)
 
 
 def test_override_symbol_days_in_canonical_pass(warehouse):
@@ -72,4 +94,25 @@ def test_missing_canonical_partition_counts_every_override(warehouse):
 
 def test_no_overrides_is_not_applicable(warehouse):
     row = _run(warehouse)
+    assert row["checked_rows"] == 0
+
+
+def test_qmt_multiple_leading_zeros_block(warehouse):
+    _canonical_bars(warehouse, "qmt", [0, 0, 10])
+    row = _run_padding(warehouse)
+    assert row["passed"] is False
+    assert row["severity"] == "blocking"
+    assert row["violations"] == 1
+
+
+def test_single_or_paid_leading_zeros_do_not_create_noise(warehouse):
+    _canonical_bars(warehouse, "qmt", [0, 10])
+    assert _run_padding(warehouse)["passed"] is True
+    _canonical_bars(warehouse, "paid", [0, 0, 10])
+    assert _run_padding(warehouse)["passed"] is True
+
+
+def test_padding_check_without_a_canonical_partition_is_not_applicable(warehouse):
+    row = _run_padding(warehouse)
+    assert row["passed"] is True
     assert row["checked_rows"] == 0

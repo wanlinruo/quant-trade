@@ -81,6 +81,7 @@ def test_all_completeness_rules_are_registered():
     assert ids == {
         "B1.calendar", "B2.holes", "B2.paid_minute_override_structure",
         "B2.canonical_minute_override_inclusion",
+        "B2.canonical_qmt_leading_padding",
         "B2.paid_minute_known_symbol_gap", "B2.paid_minute_structure",
         "B2.paid_minute_symbol_coverage",
         "B3.null_rate", "B4.arrival", "B4.zero_limit_up", "B5.span",
