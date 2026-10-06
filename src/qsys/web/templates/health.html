@@ -10,7 +10,9 @@
     <tr><td>{{ r.at }}</td><td>{{ r.layer }}</td>
         <td><span class="pill {{ 'ok' if r.is_consistent else 'bad' }}">
             {{ '一致' if r.is_consistent else '不一致' }}</span></td>
-        <td class="num">{{ "{:,.2f}".format(r.cash_diff) }}</td>
+        {# 现金差为 null 表示判不了（现金等价物缺市值，#134），不是 0 #}
+        <td class="num">{{ "无法判定" if r.cash_diff is none
+                           else "{:,.2f}".format(r.cash_diff) }}</td>
         <td class="num">{{ r.n_mismatches }}</td>
         <td>{{ r.detail }}</td></tr>
     {% endfor %}

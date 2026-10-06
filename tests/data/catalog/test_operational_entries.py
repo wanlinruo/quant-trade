@@ -27,14 +27,14 @@ def test_registers_all_runtime_columns():
         "ingest_log": 7,
         "live_equity": 4,
         "live_fills": 10,
-        "live_recon": 7,
+        "live_recon": 8,   # +mode（#134，2026-10-06）
         "live_rejects": 6,
         "metric_checks": 14,
         "metric_evidence": 10,
         "dataset_checks": 14,
         "relation_checks": 18,
     }
-    assert len(METRICS) == 90
+    assert len(METRICS) == 91
 
 
 def test_all_are_operational_status():

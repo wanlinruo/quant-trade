@@ -41,7 +41,7 @@ _REJECTS_SCHEMA = {
     "qty": pl.Int64, "reason": pl.Utf8, "at": pl.Datetime("us"),
 }
 _RECON_SCHEMA = {
-    "dt": pl.Date, "at": pl.Datetime("us"), "layer": pl.Utf8,
+    "dt": pl.Date, "at": pl.Datetime("us"), "layer": pl.Utf8, "mode": pl.Utf8,
     "is_consistent": pl.Boolean, "cash_diff": pl.Float64,
     "n_mismatches": pl.Int64, "detail": pl.Utf8,
 }
@@ -179,12 +179,18 @@ class SessionJournal:
 
     def record_reconciliation(
         self, dt: date, layer: str, *, is_consistent: bool,
-        cash_diff: float = 0.0, n_mismatches: int = 0, detail: str = "",
+        mode: str | None = None,
+        cash_diff: float | None = 0.0, n_mismatches: int = 0, detail: str = "",
         at: datetime | None = None,
     ) -> None:
+        """`mode` 是运行模式（shadow / live）。不传就是 null——不知道就留空，
+        不替调用方猜；质检据它分级（影子漂移是正当的，实盘不一致是事故）。
+        `cash_diff` 允许为 None：现金等价物缺市值时现金差判不了（#134）。
+        """
         fresh = pl.DataFrame(
             {
                 "dt": [dt], "at": [at or datetime.now()], "layer": [layer],
+                "mode": [mode],
                 "is_consistent": [is_consistent], "cash_diff": [cash_diff],
                 "n_mismatches": [n_mismatches], "detail": [detail],
             },

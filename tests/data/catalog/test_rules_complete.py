@@ -220,3 +220,95 @@ def test_an_unrelated_metric_is_not_dragged_down_with_it(ctx, warehouse):
     assert verdict["live_recon.is_consistent"]["passed"] is True
     assert verdict["live_recon.is_consistent"]["violations"] == 0
     assert "其它指标" in verdict["live_recon.is_consistent"]["detail"]
+
+
+# ---- 对账违规按运行模式分级（#134，2026-10-06）--------------------------------
+
+def _recon(warehouse, rows):
+    frame = pl.DataFrame(rows, schema={
+        "dt": pl.Date, "at": pl.Datetime("us"), "layer": pl.Utf8, "mode": pl.Utf8,
+        "is_consistent": pl.Boolean, "cash_diff": pl.Float64,
+        "n_mismatches": pl.Int64, "detail": pl.Utf8,
+    })
+    warehouse.write("live_recon", frame.to_arrow().cast(schema.LIVE_RECON), year=D[0].year)
+
+
+def _row(mode, *, consistent=False, layer="intraday"):
+    return {"dt": D[-1], "at": datetime(D[-1].year, D[-1].month, D[-1].day, 11, 9),
+            "layer": layer, "mode": mode, "is_consistent": consistent,
+            "cash_diff": 49_998.69, "n_mismatches": 0, "detail": "INCONSISTENT"}
+
+
+def test_shadow_drift_is_not_an_arrival_violation(ctx, warehouse):
+    """影子盘与账户对不上是正当的：维护者自己要转账、买逆回购，而影子一张单都发不出去。
+
+    设计上影子模式只告警不停机（`runtime._assert_reconciled`），可 B4.arrival 却把
+    任何 `is_consistent=false` 当阻断违规——2026-09-28 起生产每天多出一条假阻断，
+    真正的持仓不一致被它掩盖。
+    """
+    _recon(warehouse, [_row("shadow")])
+
+    row = _run("B4.arrival", ctx, metric="live_recon.is_consistent")
+
+    assert row["passed"] is True
+    assert row["violations"] == 0
+    assert "影子" in row["detail"]
+
+
+def test_a_live_mode_inconsistency_still_blocks(ctx, warehouse):
+    """实盘核心是账户的唯一写入方，对不上就是事故，必须照旧阻断。"""
+    _recon(warehouse, [_row("live")])
+
+    row = _run("B4.arrival", ctx, metric="live_recon.is_consistent")
+
+    assert row["passed"] is False
+    assert row["violations"] == 1
+
+
+def test_a_reconciliation_without_a_mode_is_reported_as_undetermined(ctx, warehouse):
+    """2026-10-06 之前的行没有 mode。不知道就说不知道，别替它假设成影子。"""
+    _recon(warehouse, [_row(None)])
+
+    row = _run("B4.arrival", ctx, metric="live_recon.is_consistent")
+
+    assert row["passed"] is True
+    assert "模式未记录" in row["detail"]
+
+
+def test_a_shadow_position_mismatch_is_still_a_violation(ctx, warehouse):
+    """影子豁免只豁免现金那一类，不能把持仓差一起放过。
+
+    `ShadowBroker.poll_fills` 恒为空、`on_market_data` 不撮合——影子盘永远不会
+    有自己的成交，所以它的持仓差只可能来自「账户里出现了核心不知道的持仓」。
+    那是真信号，必须照旧阻断。
+    """
+    row = dict(_row("shadow"))
+    row["n_mismatches"] = 1
+    row["detail"] = "600036.SH: local=0 remote=500"
+    _recon(warehouse, [row])
+
+    verdict = _run("B4.arrival", ctx, metric="live_recon.is_consistent")
+
+    assert verdict["passed"] is False
+    assert verdict["violations"] == 1
+
+
+def test_old_and_new_recon_partitions_can_coexist(ctx, warehouse):
+    """`journal._merge` 只重写它写入的那一年，所以 2026 分区会一直没有 `mode`，
+    而 2027 分区有。直接 `pl.concat` 两个宽度不同的表会抛 ShapeError，
+    规则从跨年后第一次写入起就整条挂掉——而它是唯一的到货阻断规则。
+    """
+    old = pl.DataFrame({
+        "dt": [D[0]], "at": [datetime(D[0].year, D[0].month, D[0].day, 10, 0)],
+        "layer": ["intraday"], "is_consistent": [True], "cash_diff": [0.0],
+        "n_mismatches": [0], "detail": [""],
+    })
+    (ctx.warehouse.root / "live_recon").mkdir(parents=True, exist_ok=True)
+    old_dir = ctx.warehouse.root / "live_recon" / "year=2025"
+    old_dir.mkdir(parents=True, exist_ok=True)
+    old.write_parquet(old_dir / "part.parquet")
+    _recon(warehouse, [_row("live")])
+
+    verdict = _run("B4.arrival", ctx, metric="live_recon.is_consistent")
+
+    assert verdict["violations"] == 1

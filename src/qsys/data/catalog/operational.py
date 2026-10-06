@@ -55,8 +55,12 @@ _MEANING = {
     "live_recon.dt": "对账归属的交易日",
     "live_recon.at": "对账执行时刻；同一层每次执行都保留",
     "live_recon.layer": "对账层：intraday / eod / sim_vs_live",
+    "live_recon.mode": "写入时的运行模式：shadow / live。影子盘与账户对不上是正当的"
+    "（维护者自行转账、买逆回购），实盘对不上是事故，质检据此分级；"
+    "2026-10-06 之前的行为 null，当时未记录",
     "live_recon.is_consistent": "该层本次对账是否一致",
-    "live_recon.cash_diff": "本地与远端资金差额的绝对值（元）",
+    "live_recon.cash_diff": "本地现金与可比现金（远端现金 + 现金等价物直取市值）的"
+    "差额绝对值（元）；现金等价物缺市值时为 null，表示判不了，不是 0",
     "live_recon.n_mismatches": "不一致的持仓或成交条目数",
     "live_recon.detail": "差异明细文本",
     "ingest_log.dataset": "本次采集或处理写入的数据集名",

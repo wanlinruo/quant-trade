@@ -1,5 +1,7 @@
 from datetime import date, datetime
 
+import pytest
+
 from qsys.live.messages import AccountSnapshot, PositionSnapshot
 from qsys.live.store import LiveStore
 from qsys.core.trading import Order, OrderType, Side
@@ -114,3 +116,82 @@ def test_strategy_runs_round_trip_and_rerun_overwrites(tmp_path):
     assert rows[0]["candidates"] is None
     assert store.run_sessions() == [day]
     assert store.strategy_runs(date(2026, 9, 17)) == []
+
+
+# ---- 停在逆回购里的钱是现金，不是持仓（#134，2026-10-06）----
+
+def test_money_parked_in_reverse_repo_starts_as_cash_not_as_a_position(tmp_path):
+    """维护者把闲置资金买成逆回购，账户快照里现金只剩 1.31 元。
+
+    照搬快照会让核心以为自己只有 1.31 元可用，而那 10 万明明是随时可取的现金
+    等价物；逆回购也会被当成策略持仓带进本地账本，对账两侧口径就此分叉。
+    """
+    now = datetime(2026, 10, 6, 9, 30)
+    store = LiveStore(tmp_path / "live.sqlite3")
+
+    store.initialize(AccountSnapshot(
+        at=now, cash=1.31, total_asset=100_001.31, positions={
+            "131990.SZ": PositionSnapshot(
+                total_qty=1000, available_qty=0, avg_cost=100.0,
+                market_value=100_000.0),
+        },
+    ))
+    portfolio, _, _, initial = store.load()
+
+    assert portfolio.cash == pytest.approx(100_001.31)
+    assert portfolio.positions == {}
+    assert initial == pytest.approx(100_001.31)
+
+
+def test_a_repo_without_a_market_value_refuses_to_set_a_starting_balance(tmp_path):
+    """市值取不到就不知道起始资金是多少。按 1.31 元开张等于把 10 万当没有，
+    按成本反推又是编数——此时必须明确失败，让人先去修代理上报。"""
+    now = datetime(2026, 10, 6, 9, 30)
+    store = LiveStore(tmp_path / "live.sqlite3")
+
+    with pytest.raises(ValueError, match="市值"):
+        store.initialize(AccountSnapshot(
+            at=now, cash=1.31, total_asset=100_001.31, positions={
+                "131990.SZ": PositionSnapshot(
+                    total_qty=1000, available_qty=0, avg_cost=100.0),
+            },
+        ))
+
+
+def test_starting_value_never_falls_back_to_cost_inference(tmp_path):
+    """`total_asset` 缺失时原本按 `qty × avg_cost` 兜底算起始资金——正是本次
+    判定为错的那个反推（逆回购 1000×100 = 20 万，直取市值只有 10 万）。
+
+    而且这条兜底在生产里真的会触发：`xtquant_adapter.query_account_details` 把
+    缺失的 `total_asset` 转成 `0.0`，`or` 判它为假。改成只用直取市值求和。
+    """
+    now = datetime(2026, 10, 6, 9, 30)
+    store = LiveStore(tmp_path / "live.sqlite3")
+
+    store.initialize(AccountSnapshot(
+        at=now, cash=1.31, total_asset=0.0, positions={
+            "131990.SZ": PositionSnapshot(
+                total_qty=1000, available_qty=0, avg_cost=100.0,
+                market_value=100_000.0),
+            "600036.SH": PositionSnapshot(
+                total_qty=500, available_qty=500, avg_cost=10.0,
+                market_value=6_000.0),
+        },
+    ))
+    _, _, _, initial = store.load()
+
+    assert initial == pytest.approx(106_001.31)
+
+
+def test_a_position_without_a_market_value_blocks_the_starting_value(tmp_path):
+    """普通持仓缺市值同样算不出起始资金。按成本充当市值是另一种编数。"""
+    now = datetime(2026, 10, 6, 9, 30)
+    store = LiveStore(tmp_path / "live.sqlite3")
+
+    with pytest.raises(ValueError, match="市值"):
+        store.initialize(AccountSnapshot(
+            at=now, cash=1.31, total_asset=0.0, positions={
+                "600036.SH": PositionSnapshot(
+                    total_qty=500, available_qty=500, avg_cost=10.0),
+            },
+        ))

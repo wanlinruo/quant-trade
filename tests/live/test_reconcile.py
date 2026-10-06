@@ -2,7 +2,7 @@ from datetime import datetime
 
 import pytest
 
-from qsys.core.portfolio import Portfolio
+from qsys.core.portfolio import Portfolio, Position
 from qsys.core.trading import Fill, Side
 from qsys.core.types import Market, Symbol
 from qsys.live.messages import AccountSnapshot, PositionSnapshot
@@ -150,10 +150,20 @@ def test_reverse_repo_is_not_treated_as_a_position():
     """维护者用闲置资金买 7 天逆回购，对账当场判失败、影子核心停了一整天。
 
     131xxx / 204xxx 是生息用的现金等价物，不由策略买卖，当成持仓比对永远对不上。
+
+    2026-10-06（#134）按新语义改写了场景：买逆回购会把现金挪进去，所以
+    「现金 10 万、另有两笔逆回购」这种账面本身不自洽——原版之所以能过，
+    是因为当时根本不比现金等价物占用的那部分资金。现在给出自洽的账面：
+    10 万全在逆回购里、现金为 0，两侧才真正可比。
     """
     r = reconcile_positions(
         local(100_000.0, {}),
-        remote(100_000.0, {"131801.SZ": 1000, "131990.SZ": 1000}),
+        AccountSnapshot(at=T, cash=0.0, positions={
+            "131801.SZ": PositionSnapshot(
+                total_qty=500, available_qty=0, avg_cost=100.0, market_value=50_000.0),
+            "131990.SZ": PositionSnapshot(
+                total_qty=500, available_qty=0, avg_cost=100.0, market_value=50_000.0),
+        }),
     )
 
     assert r.is_consistent is True
@@ -179,3 +189,111 @@ def test_which_codes_count_as_cash_equivalents(symbol, expected):
     from qsys.live.reconcile import is_cash_equivalent
 
     assert is_cash_equivalent(symbol) is expected
+
+
+# ---- 逆回购占用的资金要计回可比现金（#134，2026-10-06）----
+
+def test_cash_moved_into_reverse_repo_is_still_comparable_cash():
+    """2026-09-28 的修复只做了一半：逆回购不再算持仓，占用的资金却没计回现金。
+
+    生产实测：账户现金 1.31 元、其余 10 万在两笔逆回购里，影子本地现金 5 万，
+    于是 `cash_diff` 恒为 49,998.69，对账从 09-28 起每天判不一致，
+    连 B4.arrival 一起红着。
+    """
+    r = reconcile_positions(
+        local(100_000.0, {}),
+        AccountSnapshot(at=T, cash=1.31, positions={
+            "131990.SZ": PositionSnapshot(
+                total_qty=1000, available_qty=0, avg_cost=100.0,
+                market_value=99_998.69,
+            ),
+        }),
+        cash_tolerance=10.0,
+    )
+
+    assert r.is_consistent is True
+    assert r.cash_diff == pytest.approx(0.0)
+
+
+def test_a_cash_equivalent_without_a_market_value_is_not_assumed_to_be_zero():
+    """取不到市值就是取不到。
+
+    按 0 算等于把逆回购里的钱当凭空消失，对账会报一个编出来的现金差；
+    按 `qty × avg_cost` 反推是另一种编数（生产实测两笔各 1000×100 得 20 万，
+    而券商直取的 `market_value` 只有 10 万，反推值本身就是错的）。
+    那一刻唯一诚实的结论是「现金差判不了」——`cash_diff` 为 null，
+    而判不了在对账上必须保守地算不一致。
+    """
+    r = reconcile_positions(
+        local(100_000.0, {}),
+        AccountSnapshot(at=T, cash=1.31, positions={
+            "131990.SZ": PositionSnapshot(
+                total_qty=1000, available_qty=0, avg_cost=100.0,
+            ),
+        }),
+        cash_tolerance=10.0,
+    )
+
+    assert r.cash_diff is None
+    assert r.is_consistent is False
+    assert "131990.SZ" in r.summary()
+
+
+def test_a_repo_in_the_local_book_is_not_compared_as_a_position():
+    """本地账本也可能带着逆回购：`LiveStore.initialize` 直接按券商快照建本地持仓，
+    而维护者买的逆回购就在那份快照里（#134）。
+
+    远端过滤了、本地没过滤，就会反过来报「本地有、远端没有」——
+    同一个品种在两侧必须同一套口径。
+    """
+    book = local(0.0, {})
+    book.positions[Symbol("131990", Market.SZ)] = Position(
+        symbol=Symbol("131990", Market.SZ), total_qty=1000, available_qty=0,
+        cost_basis=100_000.0,
+    )
+
+    r = reconcile_positions(
+        book,
+        AccountSnapshot(at=T, cash=0.0, positions={
+            "131990.SZ": PositionSnapshot(
+                total_qty=1000, available_qty=0, avg_cost=100.0,
+                market_value=100_000.0),
+        }),
+    )
+
+    assert r.mismatches == ()
+
+
+def test_an_undeterminable_cash_diff_is_never_silent_even_in_shadow_mode():
+    """影子模式下现金差不参与判定，于是结论是「一致」——但「判不了」这件事
+    不能跟着消失，否则生产里唯一在跑的那个模式会把数据缺口咽掉（#134 自审 6）。"""
+    r = reconcile_positions(
+        local(100_000.0, {}),
+        AccountSnapshot(at=T, cash=1.31, positions={
+            "131990.SZ": PositionSnapshot(
+                total_qty=1000, available_qty=0, avg_cost=100.0),
+        }),
+        cash_tolerance=10.0, cash_decides=False,
+    )
+
+    assert r.is_consistent is True
+    assert r.cash_diff is None
+    assert "判不了" in r.summary() and "131990.SZ" in r.summary()
+
+
+def test_a_zero_market_value_on_a_held_position_is_not_a_reading():
+    """有量却报市值 0，就不是「直取到 0」，而是没取到。
+
+    照收会退回本次要修掉的那个行为：逆回购的钱当凭空消失，现金差等于整笔金额。
+    """
+    r = reconcile_positions(
+        local(100_000.0, {}),
+        AccountSnapshot(at=T, cash=1.31, positions={
+            "131990.SZ": PositionSnapshot(
+                total_qty=1000, available_qty=0, avg_cost=100.0, market_value=0.0),
+        }),
+        cash_tolerance=10.0,
+    )
+
+    assert r.cash_diff is None
+    assert r.unvalued_cash_equivalents == ("131990.SZ",)

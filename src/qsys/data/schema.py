@@ -461,6 +461,7 @@ LIVE_RECON = pa.schema(
         ("dt", pa.date32()),
         ("at", pa.timestamp("us")),
         ("layer", pa.string()),  # intraday / eod / sim_vs_live
+        ("mode", pa.string()),   # 运行模式 shadow / live；旧行为 null（当时未记录）
         ("is_consistent", pa.bool_()),
         ("cash_diff", pa.float64()),
         ("n_mismatches", pa.int64()),

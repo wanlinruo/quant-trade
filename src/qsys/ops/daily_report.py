@@ -89,8 +89,11 @@ class DailyReport:
             status = "一致" if r["is_consistent"] else "不一致"
             lines.append(f"  [{r['layer']}] {status}")
             if not r["is_consistent"]:
+                # 现金差为 null 表示判不了（现金等价物缺市值，#134），不是 0
+                diff = ("无法判定" if r["cash_diff"] is None
+                        else f"{r['cash_diff']:,.2f}")
                 lines.append(
-                    f"      现金差 {r['cash_diff']:,.2f} · 持仓不符 {r['n_mismatches']} 项"
+                    f"      现金差 {diff} · 持仓不符 {r['n_mismatches']} 项"
                 )
                 if r["detail"]:
                     lines.append(f"      {r['detail']}")

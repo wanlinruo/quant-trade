@@ -27,6 +27,11 @@ def _ours(client_order_id: str) -> bool:
     return bool(_QSYS_ORDER_ID.fullmatch(client_order_id))
 
 
+def _optional_float(value: object) -> float | None:
+    """缺字段就是 None。别把「券商没给」写成 0——那是编数，不是取数。"""
+    return None if value is None else float(value)
+
+
 class XtQuantAdapter:
     def __init__(self, account_id: str, mini_qmt_path: str) -> None:
         from xtquant.xttrader import XtQuantTrader
@@ -110,6 +115,9 @@ class XtQuantAdapter:
             p.stock_code: PositionSnapshot(
                 total_qty=p.volume, available_qty=p.can_use_volume,
                 avg_cost=p.open_price,
+                # 直取券商市值。对账用它算现金等价物占用的可比现金；
+                # 字段缺失就报 None，不补 0、不用 qty×avg_cost 反推（#134）。
+                market_value=_optional_float(getattr(p, "market_value", None)),
             )
             for p in self._trader.query_stock_positions(self._account)
         }

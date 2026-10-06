@@ -221,3 +221,23 @@ def test_live_page_shows_the_followed_paper_account_and_compares_returns(warehou
     assert "影子盘 vs 模拟交易" in body
     assert "+1.00%" in body      # 影子盘 50,000 → 50,500
     assert "+2.00%" in body      # 模拟盘 100,000 → 102,000
+
+
+def test_health_page_survives_a_null_cash_diff(warehouse):
+    """现金等价物缺市值时 `cash_diff` 是 null（#134）。模板直接 format 会抛
+    TypeError，让 /health 变成 500——而那正是对账判不了时运维第一个打开的页面。"""
+    journal = SessionJournal(warehouse)
+    journal.record_equity(D, cash=100_000.0, market_value=0.0)
+    journal.record_reconciliation(
+        D, "intraday", mode="shadow", is_consistent=False, cash_diff=None,
+        n_mismatches=0, detail="1 个现金等价物缺市值", at=T,
+    )
+    cfg = WebConfig()
+    service = MonitorService(journal, config=cfg, transport=MemoryTransport(),
+                             quality_summary_provider=lambda: "quality: clean")
+    client = TestClient(create_app(service, cfg))
+
+    r = client.get(f"/s/{D}/health")
+
+    assert r.status_code == 200
+    assert "无法判定" in r.text

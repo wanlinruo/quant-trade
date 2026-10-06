@@ -13,6 +13,7 @@ from qsys.core.portfolio import Portfolio, Position
 from qsys.core.trading import Fill, Order
 from qsys.core.types import Symbol
 from qsys.live.messages import AccountSnapshot, OrderStatusEvent
+from qsys.live.reconcile import has_usable_market_value, is_cash_equivalent
 from qsys.ops.strategy_log import RUN_COLUMNS, RunRecord, decode_run, run_values
 from qsys.paper.store import _decode, _encode
 
@@ -132,16 +133,52 @@ class LiveStore:
         if self.exists():
             return
         portfolio = self._portfolio_from_remote(remote)
-        initial = float(remote.total_asset or (
-            remote.cash + sum(p.total_qty * p.avg_cost for p in remote.positions.values())
-        ))
+        initial = float(remote.total_asset or self._total_from_direct_values(remote))
         self.save(portfolio, {}, {s: p.avg_cost for s, p in portfolio.positions.items()},
                   at=remote.at, initial_value=initial)
 
     @staticmethod
-    def _portfolio_from_remote(remote: AccountSnapshot) -> Portfolio:
-        portfolio = Portfolio(remote.cash)
+    def _total_from_direct_values(remote: AccountSnapshot) -> float:
+        """券商没给 `total_asset` 时按直取市值求和。
+
+        原先按 `qty × avg_cost` 兜底，那是本项判定为错的反推（逆回购 1000×100
+        得 20 万，直取市值只有 10 万）。而且它在生产里真会触发：
+        `xtquant_adapter.query_account_details` 把缺失的 `total_asset` 转成 0.0，
+        `or` 判其为假。缺市值就算不出起始资金，明确失败（#134）。
+        """
+        total = remote.cash
         for raw_symbol, snapshot in remote.positions.items():
+            if not has_usable_market_value(snapshot):
+                raise ValueError(
+                    f"{raw_symbol} 没有可用的券商市值，算不出起始资金；"
+                    "先让执行代理上报持仓市值，不要按成本反推"
+                )
+            total += snapshot.market_value
+        return total
+
+    @staticmethod
+    def _portfolio_from_remote(remote: AccountSnapshot) -> Portfolio:
+        """现金等价物（国债逆回购）算起始现金，不进策略持仓。
+
+        照搬快照会有两个后果：核心以为自己只有券商现金那点钱可用（生产实测
+        账户现金 1.31 元、10 万在逆回购里），而逆回购还会被当成策略持仓带进
+        本地账本，让对账两侧口径分叉（#134）。
+        市值一律直取券商；取不到就不知道起始资金，明确失败而不是按 0 开张。
+        """
+        parked = 0.0
+        for raw_symbol, snapshot in remote.positions.items():
+            if not is_cash_equivalent(raw_symbol):
+                continue
+            if not has_usable_market_value(snapshot):
+                raise ValueError(
+                    f"{raw_symbol} 是现金等价物但券商未给可用市值，无法确定起始资金；"
+                    "先让执行代理上报持仓市值，不要按 0 或成本反推"
+                )
+            parked += snapshot.market_value
+        portfolio = Portfolio(remote.cash + parked)
+        for raw_symbol, snapshot in remote.positions.items():
+            if is_cash_equivalent(raw_symbol):
+                continue
             symbol = Symbol.parse(raw_symbol)
             portfolio.positions[symbol] = Position(
                 symbol=symbol, total_qty=snapshot.total_qty,

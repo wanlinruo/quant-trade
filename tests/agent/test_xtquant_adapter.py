@@ -43,3 +43,62 @@ def test_xtquant_trader_session_is_compatible_with_positional_only_api(
     assert calls[0][0] == r"C:\\qmt\\userdata_mini"
     assert 1 <= calls[0][1] < 2**31
     assert adapter._account.account_id == "123456789"
+
+
+class _Position:
+    def __init__(self, code: str, volume: int, can_use: int, open_price: float,
+                 **extra: object) -> None:
+        self.stock_code = code
+        self.volume = volume
+        self.can_use_volume = can_use
+        self.open_price = open_price
+        for key, value in extra.items():
+            setattr(self, key, value)
+
+
+class _Asset:
+    cash = 1.31
+    frozen_cash = 0.0
+    market_value = 100_000.0
+    total_asset = 100_001.31
+
+
+def _adapter_with_positions(monkeypatch, positions: list[_Position]) -> XtQuantAdapter:
+    adapter = XtQuantAdapter.__new__(XtQuantAdapter)
+
+    class FakeTrader:
+        def query_stock_asset(self, account: object) -> _Asset:
+            return _Asset()
+
+        def query_stock_positions(self, account: object) -> list[_Position]:
+            return positions
+
+    adapter._trader = FakeTrader()          # type: ignore[attr-defined]
+    adapter._account = object()             # type: ignore[attr-defined]
+    return adapter
+
+
+def test_position_market_value_is_taken_straight_from_the_broker(monkeypatch) -> None:
+    """对账要用现金等价物的市值算可比现金，所以代理必须把它报上来（#134）。
+
+    不能让核心用 `qty × avg_cost` 反推：生产实测两笔逆回购各 1000 张、
+    成本 100，反推得 20 万，而券商直取的市值合计只有 10 万。
+    """
+    adapter = _adapter_with_positions(monkeypatch, [
+        _Position("131990.SZ", 1000, 0, 100.0, market_value=99_998.69),
+    ])
+
+    _, positions = adapter.query_account()
+
+    assert positions["131990.SZ"].market_value == 99_998.69
+
+
+def test_a_position_without_a_market_value_field_reports_null(monkeypatch) -> None:
+    """券商没给市值就报 null。报 0 会让对账把逆回购里的钱当凭空消失。"""
+    adapter = _adapter_with_positions(monkeypatch, [
+        _Position("600036.SH", 500, 500, 10.0),
+    ])
+
+    _, positions = adapter.query_account()
+
+    assert positions["600036.SH"].market_value is None
