@@ -305,6 +305,16 @@ def test_step_names_round_trip_and_every_check_belongs_to_a_timer():
     assert sc.parse_step_name("日线") is None
 
 
+def test_d18_service_checks_own_minutes_and_suspend_receipt():
+    owned = {(check.table, check.name) for check in sc.CHECKS}
+    assert {
+        ("minute_bars", "分钟线到货"),
+        ("minute_bars", "分钟线首根有成交"),
+        ("minute_bars", "分钟线成交量对日线"),
+        ("suspend_daily", "停牌采集成功"),
+    } <= owned
+
+
 def test_strategy_checks_are_separate_from_data_checks():
     strategy = {check.service for check in sc.CHECKS if check.domain == "strategy"}
     assert strategy == {"shadow-core", "paper"}

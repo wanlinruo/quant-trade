@@ -4,6 +4,7 @@ from datetime import date, datetime
 import polars as pl
 import pytest
 from qsys.data import schema
+from qsys.data.catalog import REGISTRY
 from qsys.data.catalog import checks as C
 from qsys.data.catalog import rules_complete  # noqa: F401
 from qsys.data.query import WarehouseQuery
@@ -87,6 +88,19 @@ def test_all_completeness_rules_are_registered():
         "B3.null_rate", "B4.arrival", "B4.zero_limit_up", "B5.span",
     }
     assert all(C.CHECKS[cid].category is C.Category.COMPLETENESS for cid in ids)
+
+
+def test_d18_arrival_ownership_has_no_nominal_coverage():
+    assert C.CHECKS["B4.arrival"].metrics == (
+        "live_recon.is_consistent", "instruments.symbol", "auction_ticks.dt",
+    )
+    withdrawn = {
+        "minute_bars.dt", "suspend_daily.dt", "name_snapshots.dt",
+        *(f"ingest_log.{name}" for name in schema.INGEST_LOG.names),
+    }
+    for metric_id in withdrawn:
+        checks = REGISTRY[metric_id].checks
+        assert not isinstance(checks, tuple) or "B4.arrival" not in checks, metric_id
 
 
 # --- D-7：竞价 tick 到货 ------------------------------------------------------

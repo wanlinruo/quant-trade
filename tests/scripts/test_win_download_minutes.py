@@ -2,8 +2,10 @@
 docs/reference/qmt-range-query-padding.md）。导出时必须丢弃那些行。"""
 
 import pandas as pd
+import pytest
 
-from scripts.win_download_minutes import read_done, to_rows
+from scripts import win_download_minutes as downloader
+from scripts.win_download_minutes import pending_manifest, read_done, to_rows
 
 
 def _frames(stamps, opens, highs, lows, closes, volumes, amounts):
@@ -66,3 +68,45 @@ def test_resume_ledger_is_keyed_by_symbol_and_day(tmp_path):
         ("600000.SH", "20260928"),
         ("600000.SH", "20260929"),
     }
+
+
+def test_a_completed_day_does_not_skip_the_same_symbol_on_another_day():
+    wanted = {"600000.SH": ["20260928", "20260929"]}
+    pending = pending_manifest(wanted, {("600000.SH", "20260928")})
+    assert pending == {"600000.SH": ["20260929"]}
+
+
+def test_checkpoint_never_advances_ledger_before_parquet_lands(monkeypatch, tmp_path):
+    events = []
+
+    def land(rows, out, index):
+        events.append("parquet")
+        return str(tmp_path / "minutes_00000.parquet")
+
+    def account(path, keys):
+        events.append("ledger")
+
+    monkeypatch.setattr(downloader, "flush", land)
+    monkeypatch.setattr(downloader, "append_done", account)
+    downloader.flush_checkpoint(
+        [("600000.SH",)], [("600000.SH", "20260928")],
+        str(tmp_path), 0, str(tmp_path / "done.csv"),
+    )
+    assert events == ["parquet", "ledger"]
+
+
+def test_failed_parquet_write_does_not_advance_ledger(monkeypatch, tmp_path):
+    def boom(rows, out, index):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(downloader, "flush", boom)
+
+    def should_not_run(path, keys):
+        raise AssertionError("ledger advanced")
+
+    monkeypatch.setattr(downloader, "append_done", should_not_run)
+    with pytest.raises(OSError, match="disk full"):
+        downloader.flush_checkpoint(
+            [("600000.SH",)], [("600000.SH", "20260928")],
+            str(tmp_path), 0, str(tmp_path / "done.csv"),
+        )
