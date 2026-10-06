@@ -311,23 +311,31 @@ class _Query:
 
     def suspensions(self, symbols, start, end):
         return pl.DataFrame(self._rows,
-                            schema={"symbol": pl.Utf8, "dt": pl.Date, "suspend_type": pl.Utf8},
+                            schema={"symbol": pl.Utf8, "dt": pl.Date,
+                                    "suspend_type": pl.Utf8, "suspend_timing": pl.Utf8},
                             orient="row")
 
 
 def test_suspended_symbol_day_is_dropped():
-    q = _Query([("600000.SH", date(2026, 6, 15), "S")])
+    q = _Query([("600000.SH", date(2026, 6, 15), "S", None)])
     assert drop_suspended(q, DAYS)["symbol"].to_list() == ["600001.SH"]
+
+
+def test_intraday_suspension_is_not_dropped():
+    q = _Query([("600000.SH", date(2026, 6, 15), "S", "9:30-9:40")])
+    assert sorted(drop_suspended(q, DAYS)["symbol"].to_list()) == [
+        "600000.SH", "600001.SH"
+    ]
 
 
 def test_resumption_rows_are_not_dropped():
     """suspend_type='R' 是复牌，当天照常交易，不能扣。"""
-    q = _Query([("600000.SH", date(2026, 6, 15), "R")])
+    q = _Query([("600000.SH", date(2026, 6, 15), "R", None)])
     assert sorted(drop_suspended(q, DAYS)["symbol"].to_list()) == ["600000.SH", "600001.SH"]
 
 
 def test_suspension_on_another_day_does_not_leak():
-    q = _Query([("600000.SH", date(2026, 6, 12), "S")])
+    q = _Query([("600000.SH", date(2026, 6, 12), "S", None)])
     assert sorted(drop_suspended(q, DAYS)["symbol"].to_list()) == ["600000.SH", "600001.SH"]
 
 

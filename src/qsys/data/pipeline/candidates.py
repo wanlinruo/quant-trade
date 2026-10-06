@@ -205,9 +205,15 @@ def drop_suspended(query: WarehouseQuery, days: pl.DataFrame) -> pl.DataFrame:
     """
     if days.height == 0:
         return days
+    receipts = query.suspensions(None, days["dt"].min(), days["dt"].max())
     suspended = (
-        query.suspensions(None, days["dt"].min(), days["dt"].max())
-        .filter(pl.col("suspend_type") == "S")
+        receipts
+        # suspend_timing=null 的 S 才是全天停牌；有具体时段的是盘中临停，
+        # 当天有真实成交，不能从全市场分钟清单里整日删除。
+        .filter(
+            (pl.col("suspend_type") == "S")
+            & pl.col("suspend_timing").is_null()
+        )
         .select(["symbol", "dt"])
     )
     return days.join(suspended, on=["symbol", "dt"], how="anti")

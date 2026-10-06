@@ -32,7 +32,8 @@ class FakeQuery:
 
     def suspensions(self, symbols, start, end):
         frame = self.frames.get("suspend", pl.DataFrame(
-            schema={"symbol": pl.Utf8, "dt": pl.Date, "suspend_type": pl.Utf8}))
+            schema={"symbol": pl.Utf8, "dt": pl.Date, "suspend_type": pl.Utf8,
+                    "suspend_timing": pl.Utf8}))
         return frame.filter(pl.col("dt") == start)
 
     def limit_list(self, symbols, start, end):
@@ -130,7 +131,8 @@ def test_blocking_metric_checks_warn():
 def test_unrun_sync_passes_on_suspend_rows_but_not_on_an_empty_table():
     empty = sc._suspend_receipt(ctx(FakeQuery()))
     assert empty.status == sc.BAD and "服务未执行" in empty.actual
-    suspend = pl.DataFrame({"symbol": ["000001.SZ"], "dt": [DAY], "suspend_type": ["S"]})
+    suspend = pl.DataFrame({"symbol": ["000001.SZ"], "dt": [DAY],
+                            "suspend_type": ["S"], "suspend_timing": [None]})
     got = sc._suspend_receipt(ctx(FakeQuery(suspend=suspend)))
     assert got.status == sc.OK and got.detail == sc.NOT_RUN_NOTE and "1 只" in got.actual
 
@@ -230,7 +232,8 @@ def archive(monkeypatch):
     return FakeQuery(
         daily=pl.DataFrame({"symbol": ["000001.SZ", "000002.SZ", "000003.SZ"], "dt": [DAY] * 3,
                             "volume": [241.0, 250.0, 241.0]}),
-        suspend=pl.DataFrame({"symbol": ["000004.SZ"], "dt": [DAY], "suspend_type": ["S"]}),
+        suspend=pl.DataFrame({"symbol": ["000004.SZ"], "dt": [DAY],
+                              "suspend_type": ["S"], "suspend_timing": [None]}),
         minutes=pl.concat([minutes("000001.SZ", 241), minutes("000002.SZ", 240)]),
     )
 
@@ -245,6 +248,32 @@ def test_archive_checks(archive):
     assert sc._minutes_first_bar_traded(c).status == sc.OK
     volume = sc._minutes_volume(c)
     assert volume.status == sc.BAD and "000002.SZ" in volume.detail and "000001.SZ" not in volume.detail
+
+
+def test_bj_closing_bar_volume_explains_daily_difference():
+    query = FakeQuery(
+        daily=daily(DAY, ["920161.BJ"], volume=44_619.3),
+        minutes=pl.concat([
+            minute_series("920161.BJ", [44_619], first="09:30"),
+            pl.DataFrame({"symbol": ["920161.BJ"],
+                          "dt": [datetime.combine(DAY, time(15, 0))],
+                          "volume": [8_000]}),
+        ]),
+    )
+    assert sc._minutes_volume(ctx(query)).status == sc.OK
+
+
+def test_bj_volume_outside_closing_bar_band_still_fails():
+    query = FakeQuery(
+        daily=daily(DAY, ["920161.BJ"], volume=20_000.0),
+        minutes=pl.concat([
+            minute_series("920161.BJ", [44_619], first="09:30"),
+            pl.DataFrame({"symbol": ["920161.BJ"],
+                          "dt": [datetime.combine(DAY, time(15, 0))],
+                          "volume": [8_000]}),
+        ]),
+    )
+    assert sc._minutes_volume(ctx(query)).status == sc.BAD
 
 
 def test_archive_checks_pass_without_candidates(monkeypatch):
