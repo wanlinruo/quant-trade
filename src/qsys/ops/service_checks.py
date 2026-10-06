@@ -51,6 +51,7 @@ OK, BAD, WARN, SKIP = SUCCEEDED, FAILED, WARNING, SKIPPED
 # 日线行数相对上一交易日跌幅超过 2% 视为没到齐（实测 9 月每日波动在 ±5 只以内）
 DAILY_MIN_RATIO = 0.98
 VOLUME_TOLERANCE_LOTS = 1.0
+BJ_VOLUME_TOLERANCE = 0.01
 PRODUCTION_BOARDS = {"main", "gem", "star"}
 # 指标字典应当全部被验证；全量规则必须真的跑过，不能悄悄退回成只跑增量
 EXPECTED_METRIC_IDS = frozenset(REGISTRY)
@@ -486,7 +487,13 @@ def _minute_bars(ctx: CheckContext) -> tuple[pl.DataFrame, pl.DataFrame]:
         wanted["symbol"].to_list(),
         datetime.combine(ctx.day, time(0, 0)), datetime.combine(ctx.day, time(23, 59, 59)),
     )
-    per = bars.group_by("symbol").agg(pl.len().alias("bars"), pl.col("volume").sum())
+    per = bars.group_by("symbol").agg(
+        pl.len().alias("bars"),
+        pl.col("volume").sum(),
+        pl.col("volume").filter(
+            pl.col("dt").dt.time() == time(15, 0)
+        ).sum().alias("closing_volume"),
+    )
     return wanted, per
 
 
@@ -548,7 +555,20 @@ def _minutes_volume(ctx: CheckContext) -> CheckResult:
     daily = ctx.daily().select("symbol", pl.col("volume").alias("daily_volume"))
     joined = per.join(daily, on="symbol", how="left")
     no_daily = joined.filter(pl.col("daily_volume").is_null())
-    bad = joined.filter((pl.col("volume") - pl.col("daily_volume")).abs() > VOLUME_TOLERANCE_LOTS)
+    ordinary_bad = (
+        (pl.col("volume") - pl.col("daily_volume")).abs()
+        > VOLUME_TOLERANCE_LOTS
+    )
+    # 北交所盘后固定价格交易被 QMT 合并进 15:00 bar，而 Tushare 日线不计；
+    # 日线量落在「扣掉/包含整根 15:00 bar」之间时属于已知口径，不是漏采。
+    bj_explained = (
+        pl.col("symbol").str.ends_with(".BJ")
+        & (pl.col("daily_volume") >= (
+            pl.col("volume") - pl.col("closing_volume")
+        ) * (1 - BJ_VOLUME_TOLERANCE))
+        & (pl.col("daily_volume") <= pl.col("volume") * (1 + BJ_VOLUME_TOLERANCE))
+    )
+    bad = joined.filter(ordinary_bad & ~bj_explained)
     if no_daily.height:
         return CheckResult(BAD, "全天成交量与日线一致", f"{no_daily.height} 只没有日线可对",
                            _samples(set(no_daily["symbol"].to_list())), rows=per.height)
