@@ -368,7 +368,7 @@ def _minute_vs_daily(ctx: CheckContext) -> CheckResult:
                 daily.select("symbol").unique(), on="symbol", how="inner"
             ).height
             for issue in check_minute_bars(ctx.warehouse, day):
-                if issue.rule in cross_rules:
+                if issue.rule in cross_rules and issue.known_issue is None:
                     rows.append({
                         "symbol": issue.symbol,
                         "dt": issue.dt,
@@ -390,6 +390,38 @@ register(Check(
     ("minute_bars.open", "minute_bars.high", "minute_bars.volume",
      "tushare_daily.open", "tushare_daily.high", "tushare_daily.volume"),
     (), "分钟聚合与独立日线的开盘、最高和成交量一致", _minute_vs_daily,
+))
+
+
+def _minute_known_source_difference(ctx: CheckContext) -> CheckResult:
+    """D-24：仅报告已逐项登记的 QMT 源差异，不能吞掉新异常。"""
+    rows: list[dict[str, object]] = []
+    checked = 0
+    day = ctx.start
+    while day <= ctx.end:
+        issues = check_minute_bars(ctx.warehouse, day)
+        checked += sum(issue.rule == "high_vs_daily" for issue in issues)
+        rows.extend({
+            "symbol": issue.symbol,
+            "dt": issue.dt,
+            "rule": issue.rule,
+            "detail": issue.detail,
+            "known_issue": issue.known_issue,
+        } for issue in issues if issue.known_issue == "D-24")
+        day += timedelta(days=1)
+    return CheckResult(
+        len(rows), max(checked, len(rows)),
+        f"{len(rows)} 个已登记的 QMT 分钟源差异（D-24）",
+        pl.DataFrame(rows) if rows else None,
+        applicable=bool(checked),
+    )
+
+
+register(Check(
+    "A3.minute_known_source_difference", Category.TRUTHFULNESS, Scope.INCREMENTAL,
+    ("minute_bars.high",), ("D-24",),
+    "精确登记的 QMT 分钟源差异保持可见，但不放宽其它差异的门禁",
+    _minute_known_source_difference,
 ))
 
 

@@ -122,6 +122,13 @@ def test_minute_dt_means_the_closing_minute():
     assert "收盘" in BY_ID["minute_bars.dt"].meaning
 
 
+def test_qmt_high_registers_only_the_exact_d24_rule():
+    metric = BY_ID["minute_bars.high"]
+    assert "A3.minute_known_source_difference" in metric.checks
+    assert metric.known_issues == ("D-24",)
+    assert BY_ID["minute_bars.open"].known_issues == ()
+
+
 def test_auction_quote_columns_record_the_identity():
     """竞价期间 bid1 == ask1 == 虚拟开盘价，bid_vol1 == ask_vol1 == 匹配量。
     09:25 撮合完成后这条恒等式才失效。"""

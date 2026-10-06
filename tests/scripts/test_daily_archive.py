@@ -87,3 +87,46 @@ def test_full_market_stock_days_respect_board_and_listing_boundaries():
         ("300001.SZ", date(2026, 9, 17)),
         ("600001.SH", date(2026, 9, 17)),
     ]
+
+
+def test_no_missing_rerun_republishes_the_whole_wanted_range():
+    wanted = pl.DataFrame({
+        "symbol": ["600001.SH", "600001.SH"],
+        "dt": [date(2026, 9, 21), date(2026, 9, 30)],
+    })
+    assert daily_archive._wanted_date_range(wanted, DAY) == (
+        date(2026, 9, 21), date(2026, 9, 30)
+    )
+
+
+def test_known_minute_difference_does_not_hide_blocking_issues():
+    from qsys.data.quality.minute_rules import MinuteIssue
+
+    known = MinuteIssue("920055.BJ", date(2026, 9, 21), "high_vs_daily", "x", "D-24")
+    blocking = MinuteIssue("600001.SH", DAY, "high_vs_daily", "y")
+    got_blocking, got_known = daily_archive._split_minute_issues([known, blocking])
+    assert got_blocking == [blocking]
+    assert got_known == [known]
+
+
+def test_shared_minute_gate_blocks_unknown_but_not_d24(monkeypatch):
+    from qsys.data.quality.minute_rules import MinuteIssue
+
+    known = MinuteIssue("920055.BJ", date(2026, 9, 21), "high_vs_daily", "x", "D-24")
+    blocking = MinuteIssue("600001.SH", DAY, "high_vs_daily", "y")
+    monkeypatch.setattr(
+        daily_archive, "check_minute_bars",
+        lambda warehouse, day: [known, blocking],
+    )
+
+    class Run:
+        def __init__(self):
+            self.steps = []
+
+        def add_step(self, *args, **kwargs):
+            self.steps.append((args, kwargs))
+
+    run = Run()
+    assert daily_archive._check_minute_days(None, [DAY], run) == 1
+    assert run.steps[0][1]["status"] == daily_archive.FAILED
+    assert "已知差异 1" in run.steps[0][1]["detail"]

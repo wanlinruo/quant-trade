@@ -273,12 +273,35 @@ def test_minute_rule_reports_daily_high_disagreement(ctx, warehouse, tmp_path):
     assert _run("A3.minute_vs_daily", ctx, tmp_path)["violations"] == 1
 
 
+def test_exact_d24_minute_difference_is_warning_not_global_bypass(
+    warehouse, tmp_path,
+):
+    day = date(2026, 9, 21)
+    _daily([{"symbol": "920055.BJ", "dt": day, "open": 25.82, "high": 26.16,
+             "low": 25.76, "close": 26.07, "volume": 1735.0,
+             "amount": 4_514_900.0}], warehouse)
+    minute = pl.DataFrame({
+        "symbol": ["920055.BJ"], "dt": [datetime(2026, 9, 21, 9, 30)],
+        "open": [25.82], "high": [26.15], "low": [25.76], "close": [26.07],
+        "volume": [1735], "amount": [4_514_827.0],
+    })
+    warehouse.write("minute_bars", minute.to_arrow().cast(schema.MINUTE_BARS), year=2026)
+    exact = C.CheckContext(WarehouseQuery(warehouse), warehouse, day, day)
+
+    assert _run("A3.minute_vs_daily", exact, tmp_path)["violations"] == 0
+    known = _run("A3.minute_known_source_difference", exact, tmp_path)
+    assert known["violations"] == 1
+    assert known["severity"] == "warning"
+    assert known["known_issue"] == "D-24"
+
+
 def test_truth_rules_are_registered():
     expected = {
         "A1.dimension.amount_vs_volume_close", "A3.change_identity",
         "A3.pct_change_identity", "A3.turnover_identity", "A3.market_cap_vs_shares",
         "A3.missed_exdiv", "A3.limit_list_vs_selfcalc",
         "A3.limit_price_vs_selfcalc", "A3.minute_vs_daily",
+        "A3.minute_known_source_difference",
     }
     assert expected <= set(C.CHECKS)
     assert all(C.CHECKS[item].category is C.Category.TRUTHFULNESS for item in expected)

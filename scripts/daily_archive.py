@@ -53,7 +53,7 @@ from qsys.data.pipeline.capital import import_share_capital
 from qsys.data.pipeline.instruments import alive_on
 from qsys.data.pipeline.minutes import import_minute_bars, missing_stock_days
 from qsys.data.pipeline.canonical_publish import publish_minutes
-from qsys.data.quality.minute_rules import check_minute_bars
+from qsys.data.quality.minute_rules import MinuteIssue, check_minute_bars
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
 from qsys.ops.services import FAILED, SKIPPED, SUCCEEDED, ServiceRun
@@ -144,6 +144,46 @@ def _publish_canonical_minutes(
         step.rows = rows
         step.detail = f"{start}..{end} 写后逐键逐字段对账通过"
         return rows
+
+
+def _wanted_date_range(wanted: pl.DataFrame, fallback: date) -> tuple[date, date]:
+    """返回本轮应发布的完整日期范围；重跑也不能只发布最后一天。"""
+    days = wanted["dt"].to_list()
+    return (min(days), max(days)) if days else (fallback, fallback)
+
+
+def _split_minute_issues(
+    found: list[MinuteIssue],
+) -> tuple[list[MinuteIssue], list[MinuteIssue]]:
+    """精确登记的源差异保留可见性，但不阻断整批 canonical 发布。"""
+    blocking = [issue for issue in found if issue.known_issue is None]
+    known = [issue for issue in found if issue.known_issue is not None]
+    return blocking, known
+
+
+def _check_minute_days(
+    warehouse: Warehouse, days: list[date], service_run: ServiceRun,
+) -> int:
+    """校验整段分钟分区；首次下载和无缺口重跑必须走同一道门禁。"""
+    issues = 0
+    known_issues = 0
+    for day in days:
+        blocking, known = _split_minute_issues(check_minute_bars(warehouse, day))
+        issues += len(blocking)
+        known_issues += len(known)
+        for issue in blocking[:3]:
+            print(f"  [质量] {day} {issue.symbol} {issue.rule}: {issue.detail}")
+        for issue in known[:3]:
+            print(f"  [已知差异 {issue.known_issue}] {day} {issue.symbol} "
+                  f"{issue.rule}: {issue.detail}")
+    print(f"跨源校验 {len(days)} 天，阻断问题 {issues} 个，已知差异 {known_issues} 个")
+    service_run.add_step(
+        "分钟线校验", status=FAILED if issues else SUCCEEDED,
+        interface="仓库内规则", table="minute_bars",
+        detail=f"校验 {len(days)} 天，阻断问题 {issues} 个，"
+               f"已知差异 {known_issues} 个",
+    )
+    return issues
 
 
 def _archive_auction(args, warehouse, wanted, ssh, key, stamp) -> bool:
@@ -347,9 +387,14 @@ def _archive(args, service_run: ServiceRun) -> int:
                              interface="QMT 1 分钟线（Windows）", table="minute_bars", rows=0,
                              detail=f"全市场及补充集合 {wanted.height} 组，均已到货")
         print("分钟线已齐，无需下载")
-        _publish_canonical_minutes(
-            warehouse, complete_through, complete_through, service_run
-        )
+        publish_start, publish_end = _wanted_date_range(wanted, complete_through)
+        days = sorted(set(wanted["dt"].to_list())) or [complete_through]
+        issues = _check_minute_days(warehouse, days, service_run)
+        if issues:
+            print(f"=== 校验失败，未发布 canonical，耗时 "
+                  f"{(time.time()-started)/60:.1f} 分钟 ===")
+            return _exit_code(1, auction_ok=auction_ok)
+        _publish_canonical_minutes(warehouse, publish_start, publish_end, service_run)
         print(f"=== 完成，耗时 {(time.time()-started)/60:.1f} 分钟 ===")
         return _exit_code(0, auction_ok=auction_ok)
 
@@ -399,16 +444,7 @@ def _archive(args, service_run: ServiceRun) -> int:
 
     # --- 7. 跨源校验 ---
     days = sorted({d for d in missing["dt"].to_list()})
-    issues = 0
-    for day in days:
-        found = check_minute_bars(warehouse, day)
-        issues += len(found)
-        for issue in found[:3]:
-            print(f"  [质量] {day} {issue.symbol} {issue.rule}: {issue.detail}")
-    print(f"跨源校验 {len(days)} 天，问题 {issues} 个")
-    service_run.add_step("分钟线校验", status=FAILED if issues else SUCCEEDED,
-                         interface="仓库内规则", table="minute_bars",
-                         detail=f"校验 {len(days)} 天，问题 {issues} 个")
+    issues = _check_minute_days(warehouse, days, service_run)
 
     if not result.errors and not issues:
         _publish_canonical_minutes(

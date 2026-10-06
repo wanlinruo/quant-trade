@@ -363,14 +363,33 @@ def _simple(
     ]
 
 
+def _minute_metrics() -> list[Metric]:
+    out = _simple(
+        "minute_bars", "qmt.minute", _MINUTE_MEANING,
+        MetricStatus.ACTIVE, ("A3.minute_vs_daily",),
+    )
+    return [
+        Metric(
+            id=metric.id,
+            kind=metric.kind,
+            validity=metric.validity,
+            status=metric.status,
+            meaning=metric.meaning,
+            lineage=metric.lineage,
+            checks=metric.checks + ("A3.minute_known_source_difference",),
+            known_issues=("D-24",),
+        ) if metric.id == "minute_bars.high" else metric
+        for metric in out
+    ]
+
+
 METRICS: tuple[Metric, ...] = tuple(
     _tushare_daily_metrics()
     + _paid_daily_metrics()
     + _paid_minute_metrics()
     + _simple("index_bars", "tushare.index_daily", _INDEX_MEANING,
               MetricStatus.ACTIVE, ("B1.calendar", "B5.span"))
-    + _simple("minute_bars", "qmt.minute", _MINUTE_MEANING,
-              MetricStatus.ACTIVE, ("A3.minute_vs_daily",))
+    + _minute_metrics()
     + _simple("tushare_minute_bars", "tushare.minute", _MINUTE_OVERRIDE_MEANING,
               MetricStatus.ACTIVE, ("B2.canonical_minute_override_inclusion",),
               Validity.POINT)
