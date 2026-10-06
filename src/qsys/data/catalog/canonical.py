@@ -204,7 +204,8 @@ def _metrics() -> list[Metric]:
                 "阶段 6 按标的日唯一选源；成交量统一为手并显式保留来源与可见时刻",
             ),
             # 覆盖补数纳入规则；其余字段契约仍由阶段 4 的逐键对账与表契约验证
-            checks=("B2.canonical_minute_override_inclusion",),
+            checks=("B2.canonical_minute_override_inclusion",
+                    "B2.canonical_qmt_leading_padding"),
         )
         for column in schema.BAR_MINUTE_1M.names
     )
