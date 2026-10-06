@@ -3,6 +3,7 @@
 from datetime import date, datetime
 
 import polars as pl
+import pyarrow as pa
 import pytest
 
 from qsys.data import schema
@@ -164,6 +165,30 @@ def test_missed_exdiv_accepts_matching_jump(ctx, warehouse, tmp_path):
         {"symbol": "600036.SH", "dt": D[1], "close": 8.0, "pre_close": 8.0, "factor": 2.5},
     ], warehouse)
     assert _run("A3.missed_exdiv", ctx, tmp_path)["violations"] == 0
+
+
+def test_missed_exdiv_does_not_cross_official_listing_boundary(
+    ctx, warehouse, tmp_path,
+):
+    """920 的挂牌历史与北交所上市历史不能连成同一条因子时间序列。"""
+    _daily([
+        {"symbol": "920001.BJ", "dt": D[0], "close": 1.0,
+         "pre_close": 1.0, "factor": 1.0},
+        {"symbol": "920001.BJ", "dt": D[1], "close": 10.0,
+         "pre_close": 10.0, "factor": 9.0},
+    ], warehouse)
+    warehouse.write(
+        "security_master",
+        pa.table({
+            "symbol": ["920001.BJ"], "name": ["x"], "market": ["BJ"],
+            "list_date": [D[1]], "delist_date": [None], "board": ["bse"],
+            "as_of": [None],
+        }, schema=schema.SECURITY_MASTER),
+    )
+
+    row = _run("A3.missed_exdiv", ctx, tmp_path)
+    assert row["violations"] == 0
+    assert row["checked_rows"] == 0
 
 
 @pytest.mark.parametrize("symbol,rows,violations", [
