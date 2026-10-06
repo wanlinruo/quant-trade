@@ -78,6 +78,7 @@ def build_market_regime(
 ) -> int:
     """构建市场生态因子；`boards` 是固定广度股票池之上的二次限制。"""
     query = WarehouseQuery(warehouse)
+    security_master = query.security_master()
 
     written = 0
     for year in range(start.year, end.year + 1):
@@ -88,12 +89,19 @@ def build_market_regime(
             continue
 
         back = lo - timedelta(days=_LOOKBACK_DAYS)
-        bars = _keep_boards(_in_breadth_universe(query.daily_bars(None, back, hi)), boards)
-        flags = _keep_boards(_in_breadth_universe(query.daily_flags(back, hi)), boards)
+        bars = _keep_boards(_after_official_listing(
+            _in_breadth_universe(query.daily_bars(None, back, hi)), security_master
+        ), boards)
+        flags = _keep_boards(_after_official_listing(
+            _in_breadth_universe(query.daily_flags(back, hi)), security_master
+        ), boards)
         if bars.height == 0 or flags.height == 0:
             continue
 
-        daily = _aggregate(bars, flags, query.adj_factors()).filter(
+        factors = _after_official_listing(
+            query.adj_factors(None, back, hi), security_master
+        )
+        daily = _aggregate(bars, flags, factors).filter(
             pl.col("dt").is_between(lo, hi)
         )
         if daily.height == 0:
@@ -128,6 +136,32 @@ def _in_breadth_universe(frame: pl.DataFrame) -> pl.DataFrame:
         return frame
     code = pl.col("symbol").str.split(".").list.first()
     return frame.filter(~code.str.starts_with("900") & ~code.str.starts_with("200"))
+
+
+def _after_official_listing(
+    frame: pl.DataFrame, security_master: pl.DataFrame
+) -> pl.DataFrame:
+    """排除规范上市日前的同代码历史；未知上市日保持原状。
+
+    Tushare 会把北交所证券的全国股转历史统一映射为当前 ``920`` 代码。若直接按
+    symbol 连续 shift，会把正式上市前/上市首日的身份边界误判为收益或复权跳变。
+    """
+    if frame.height == 0 or security_master.height == 0:
+        return frame
+    listing = security_master.select("symbol", "list_date").unique("symbol")
+    result = frame.join(listing, on="symbol", how="left").filter(
+        pl.col("list_date").is_null() | (pl.col("dt") >= pl.col("list_date"))
+    )
+    # daily_flags 的 prev_close 来自源数据；仅删除上市前行不会切断它在上市首日
+    # 指向挂牌期末价的引用。置空后该证券首日不进入涨跌家数和收益中位数。
+    if "prev_close" in result.columns:
+        result = result.with_columns(
+            pl.when(pl.col("dt") == pl.col("list_date"))
+            .then(None)
+            .otherwise(pl.col("prev_close"))
+            .alias("prev_close")
+        )
+    return result.drop("list_date")
 
 
 def _aggregate(

@@ -68,6 +68,46 @@ def regime_of(warehouse, dt):
     return df.row(0, named=True)
 
 
+def write_security_master(warehouse: Warehouse, rows: list[dict]) -> None:
+    defaults = {
+        "name": "x", "market": "SH", "list_date": None,
+        "delist_date": None, "board": "main", "as_of": None,
+    }
+    frame = pl.DataFrame([defaults | row for row in rows]).select(
+        schema.SECURITY_MASTER.names
+    )
+    warehouse.write(
+        "security_master", frame.to_arrow().cast(schema.SECURITY_MASTER)
+    )
+
+
+def test_regime_excludes_history_before_official_listing(
+    warehouse, write_daily_bars,
+):
+    """920 映射包含挂牌历史，不能跨北交所正式上市边界计算收益。"""
+    seed(
+        warehouse, write_daily_bars,
+        [
+            ("600001.SH", D[0], 10.0, 10.0, 10.0, 10.0, 1e8),
+            ("600001.SH", D[1], 10.0, 10.0, 10.0, 10.0, 1e8),
+            ("920001.BJ", D[0], 1.0, 1.0, 1.0, 1.0, 1e6),
+            ("920001.BJ", D[1], 10.0, 10.0, 10.0, 10.0, 1e7),
+        ],
+    )
+    write_security_master(warehouse, [
+        {"symbol": "600001.SH", "list_date": D[0]},
+        {"symbol": "920001.BJ", "market": "BJ", "board": "bse",
+         "list_date": D[1]},
+    ])
+
+    build_market_regime(warehouse, D[0], D[1])
+
+    assert regime_of(warehouse, D[0])["valid_stock_count"] == 1
+    listing_day = regime_of(warehouse, D[1])
+    assert listing_day["valid_stock_count"] == 2
+    assert listing_day["market_advance_ratio"] == pytest.approx(0.0)
+
+
 def test_counts_limit_ups(warehouse, write_daily_bars):
     seed(
         warehouse, write_daily_bars,

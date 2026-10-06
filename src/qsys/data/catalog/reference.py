@@ -708,9 +708,10 @@ def _adj_factors() -> list[Metric]:
             meaning=(
                 "后复权累计因子（价格用，schema.py 注释）。直取 "
                 "tushare.adj_factor 的 adj_factor 列（pipeline/adjust.py:6、"
-                "106-115）。**源字段自身不自洽**：非股改期有 688 条价格反推"
-                "对不上直取值，另有因子该跳而未跳的漏除权（D-1）；920 号段"
-                "北交所另有独立异常簇（D-2）。价格反推降级为校验"
+                "106-115）。QMT 独立验真后，非股改期 D-1 为 319 条，其中"
+                "16 条确认不支持 Tushare、87 条支持、216 条证据不足；920 号段"
+                "D-2 是规范上市日前历史被映射到当前代码形成的身份边界。"
+                "价格反推降级为校验"
                 "（verify_computed_factors），不得覆盖真值"
             ),
             lineage=Direct("tushare.adj_factor", "adj_factor"),

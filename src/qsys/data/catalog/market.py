@@ -133,8 +133,9 @@ _DAILY_CHECKS = {
 }
 _DAILY_DEFAULT_CHECKS = ("B1.calendar", "B5.span")
 
-# D-1/D-2 是源字段自身的事实（付费源与 Tushare 同源零差异，见 sources.py），
-# 两张表的 factor 列共用同一条已知问题。
+# D-1 是源字段事实（付费源与 Tushare 同源零差异，见 sources.py）；D-2 是
+# Tushare 把上市前全国股转历史映射为当前北交所代码形成的身份边界。原始字段仍保留
+# 两条已知问题，消费方由 security_master.list_date 切断边界。
 # pre_close 也挂 D-1：A3.missed_exdiv 报的是「价格缺口没有匹配的因子跳变」，
 # 而按 D-1 的判据价格是仲裁者（300091.SZ 2026-02-12 的前收价与转增 0.132616
 # 逐位吻合，不跳的是因子），所以这类不一致不该记在前收价头上判阻断。

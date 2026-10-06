@@ -202,9 +202,18 @@ _identity(
 
 def _missed_exdiv(ctx: CheckContext) -> CheckResult:
     start = ctx.start - timedelta(days=10)
-    frame = ctx.query.tushare_daily(
+    source = ctx.query.tushare_daily(
         None, start, ctx.end, columns=["symbol", "dt", "close", "pre_close", "factor"]
-    ).sort(["symbol", "dt"]).with_columns(
+    )
+    security = ctx.query.security_master()
+    if security.height:
+        source = source.join(
+            security.select("symbol", "list_date").unique("symbol"),
+            on="symbol", how="left",
+        ).filter(
+            pl.col("list_date").is_null() | (pl.col("dt") >= pl.col("list_date"))
+        ).drop("list_date")
+    frame = source.sort(["symbol", "dt"]).with_columns(
         pl.col("close").shift(1).over("symbol").alias("previous_close"),
         pl.col("factor").shift(1).over("symbol").alias("previous_factor"),
     ).filter(
