@@ -297,3 +297,67 @@ def test_a_zero_market_value_on_a_held_position_is_not_a_reading():
 
     assert r.cash_diff is None
     assert r.unvalued_cash_equivalents == ("131990.SZ",)
+
+
+# ---- 逐笔市值之和与账户层吻合时，0 是真值（#134，2026-10-06 生产实测）----
+
+def test_a_zero_is_trusted_when_per_position_values_add_up_to_the_account_total():
+    """生产实测：`131801.SZ` 报 10 万、`131990.SZ` 报 0，两者之和正好等于券商
+    账户层直取的 `market_value` 10 万；账户总共只入金 10 万，按面值算两笔会是
+    20 万，所以那个 0 是已结算残留行的真实市值，不是取数失败。
+
+    判据不靠猜：**逐笔之和 == 账户层直取市值**，说明逐笔读数是完整的。
+    """
+    r = reconcile_positions(
+        local(100_000.0, {}),
+        AccountSnapshot(at=T, cash=1.31, market_value=100_000.0, total_asset=100_001.31,
+                        positions={
+                            "131801.SZ": PositionSnapshot(
+                                total_qty=1000, available_qty=0, avg_cost=100.0,
+                                market_value=100_000.0),
+                            "131990.SZ": PositionSnapshot(
+                                total_qty=1000, available_qty=0, avg_cost=100.0,
+                                market_value=0.0),
+                        }),
+        cash_tolerance=10.0,
+    )
+
+    assert r.unvalued_cash_equivalents == ()
+    assert r.cash_diff == pytest.approx(1.31)
+    assert r.is_consistent is True
+
+
+def test_a_zero_stays_unusable_when_the_totals_disagree():
+    """账户层说有 20 万、逐笔只加出 10 万——那就是真有一笔没读到，照旧判不了。"""
+    r = reconcile_positions(
+        local(100_000.0, {}),
+        AccountSnapshot(at=T, cash=1.31, market_value=200_000.0,
+                        positions={
+                            "131801.SZ": PositionSnapshot(
+                                total_qty=1000, available_qty=0, avg_cost=100.0,
+                                market_value=100_000.0),
+                            "131990.SZ": PositionSnapshot(
+                                total_qty=1000, available_qty=0, avg_cost=100.0,
+                                market_value=0.0),
+                        }),
+        cash_tolerance=10.0,
+    )
+
+    assert r.unvalued_cash_equivalents == ("131990.SZ",)
+    assert r.cash_diff is None
+
+
+def test_two_zeros_agreeing_is_not_corroboration():
+    """账户层市值也是 0 时，「逐笔之和 == 账户层」退化成 0 == 0——那不是佐证，
+    是没有证据。有量的持仓市值为 0 本身不合常理，此时仍判不了。"""
+    r = reconcile_positions(
+        local(100_000.0, {}),
+        AccountSnapshot(at=T, cash=1.31, market_value=0.0, positions={
+            "131990.SZ": PositionSnapshot(
+                total_qty=1000, available_qty=0, avg_cost=100.0, market_value=0.0),
+        }),
+        cash_tolerance=10.0,
+    )
+
+    assert r.unvalued_cash_equivalents == ("131990.SZ",)
+    assert r.cash_diff is None

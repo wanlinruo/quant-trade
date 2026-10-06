@@ -13,7 +13,7 @@ from qsys.core.portfolio import Portfolio, Position
 from qsys.core.trading import Fill, Order
 from qsys.core.types import Symbol
 from qsys.live.messages import AccountSnapshot, OrderStatusEvent
-from qsys.live.reconcile import has_usable_market_value, is_cash_equivalent
+from qsys.live.reconcile import is_cash_equivalent, unusable_market_values
 from qsys.ops.strategy_log import RUN_COLUMNS, RunRecord, decode_run, run_values
 from qsys.paper.store import _decode, _encode
 
@@ -146,9 +146,10 @@ class LiveStore:
         `xtquant_adapter.query_account_details` 把缺失的 `total_asset` 转成 0.0，
         `or` 判其为假。缺市值就算不出起始资金，明确失败（#134）。
         """
+        unusable = unusable_market_values(remote)
         total = remote.cash
         for raw_symbol, snapshot in remote.positions.items():
-            if not has_usable_market_value(snapshot):
+            if raw_symbol in unusable:
                 raise ValueError(
                     f"{raw_symbol} 没有可用的券商市值，算不出起始资金；"
                     "先让执行代理上报持仓市值，不要按成本反推"
@@ -165,11 +166,12 @@ class LiveStore:
         本地账本，让对账两侧口径分叉（#134）。
         市值一律直取券商；取不到就不知道起始资金，明确失败而不是按 0 开张。
         """
+        unusable = unusable_market_values(remote)
         parked = 0.0
         for raw_symbol, snapshot in remote.positions.items():
             if not is_cash_equivalent(raw_symbol):
                 continue
-            if not has_usable_market_value(snapshot):
+            if raw_symbol in unusable:
                 raise ValueError(
                     f"{raw_symbol} 是现金等价物但券商未给可用市值，无法确定起始资金；"
                     "先让执行代理上报持仓市值，不要按 0 或成本反推"
