@@ -35,16 +35,42 @@ def is_cash_equivalent(symbol: str) -> bool:
     return code.startswith("131") or code.startswith("204")
 
 
-def has_usable_market_value(snapshot) -> bool:
-    """券商市值可用吗。
+#: 账户层市值与逐笔之和的允许偏差（元）。只用来判「读数是否完整」，不参与金额计算。
+_MARKET_VALUE_TOLERANCE = 0.01
 
-    有量却报 0 不是「直取到 0」，是没取到——某些 QMT 版本对国债逆回购就这么报。
-    照收等于把那笔钱当凭空消失（#134）。
+
+def unusable_market_values(remote: AccountSnapshot) -> frozenset[str]:
+    """哪些持仓的市值不能用来算钱。
+
+    两条判据，都不靠猜：
+
+    1. **缺字段**就是没取到。
+    2. **有量却报 0**，默认也算没取到——某些 QMT 版本对国债逆回购就这么报，
+       照收等于把那笔钱当凭空消失。**例外**：逐笔市值之和与券商账户层直取的
+       `market_value` 吻合时，说明逐笔读数是完整的，其中的 0 是券商自己的账。
+
+    第 2 条的例外来自生产实测（2026-10-06）：`131801.SZ` 报 10 万、`131990.SZ`
+    报 0，两者之和正好等于账户层的 10 万，而账户总共只入金 10 万——按面值算
+    两笔会是 20 万，所以那个 0 是已结算残留行的真实市值。缺字段时做不了这个
+    核对（和算不出来），所以第 1 条优先，零值一并不可信。
+
+    例外还要求账户层市值**为正**：两个 0 相等不是佐证，是没有证据。有量的持仓
+    市值为 0 本身就不合常理，只有当券商自己给出一个正的账户市值、并且逐笔恰好
+    加到那个数时，这个 0 才有依据。
     """
-    value = snapshot.market_value
-    if value is None:
-        return False
-    return not (snapshot.total_qty > 0 and value == 0)
+    zeros = frozenset(
+        symbol for symbol, p in remote.positions.items()
+        if p.market_value is not None and p.total_qty > 0 and p.market_value == 0
+    )
+    missing = frozenset(
+        symbol for symbol, p in remote.positions.items() if p.market_value is None
+    )
+    if missing:
+        return missing | zeros
+    total = sum(p.market_value for p in remote.positions.values())
+    corroborated = (remote.market_value > 0
+                    and abs(total - remote.market_value) <= _MARKET_VALUE_TOLERANCE)
+    return frozenset() if corroborated else zeros
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,11 +147,8 @@ def reconcile_positions(
     # 现金差就恒等于逆回购金额（2026-09-28 起生产每天判不一致的真因）。
     # 市值一律直取券商快照；缺一个就判不了，不按 0 也不按 qty×avg_cost 反推。
     equivalents = {s: p for s, p in remote.positions.items() if is_cash_equivalent(s)}
-    # 有量却报市值 0 不是「直取到 0」，是没取到：某些 QMT 版本对逆回购就这么报。
-    # 照收会退回本次要修的那个行为——把那笔钱当凭空消失。
-    unvalued = tuple(sorted(
-        s for s, p in equivalents.items() if not has_usable_market_value(p)
-    ))
+    unusable = unusable_market_values(remote)
+    unvalued = tuple(sorted(s for s in equivalents if s in unusable))
     if unvalued:
         cash_diff = None
         cash_ok = False

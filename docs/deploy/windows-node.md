@@ -437,6 +437,29 @@ uv run python scripts/run_market_gateway.py --config config/deploy.local.toml
   用 `get_instrument_detail` 与 Tushare stk_limit 逐只核对，结果写
   `state:price_limits_check:YYYYMMDD`，行情页「涨跌停价核对」展示（D-19）。
 
+### 执行代理与行情网关是两份源码（2026-10-06 澄清）
+
+| 任务 | 目录 | 自带 src | 这次是否要停 |
+|---|---|---|---|
+| `qsys-agent-shadow` | `C:\qsys\live_app` | 有 | 要 |
+| `qsys-market-gateway` | `C:\qsys\paper_app` | 有 | **不要** |
+
+所以**只更新执行代理时不必停行情网关，不会有行情断流**。`live_app` 还有
+`DEPLOYED_SHA` 记录当前部署的提交，更新时把旧值另存 `DEPLOYED_SHA.prev-<旧 sha>`。
+
+**换文件前必须先停看门狗**：`qsys-watchdog` 每 5 分钟检查一次，进程不在就触发计划
+任务，会在换到一半时把代理拉起来，跑起一份残缺的 `src`。顺序是
+`schtasks /change /tn qsys-watchdog /disable` → 换 → `/enable`。这一条 2026-10-06
+之前没写在文档里。
+
+**换前换后都做逐文件哈希核对**（按 LF 归一后比对 `git ls-tree` 的内容哈希）：
+换前确认机器上的 `src`/`scripts` 与 `DEPLOYED_SHA` 逐文件一致，证明没有脱离 git 的
+本地改动；换后确认与目标提交逐文件一致，证明拷贝完整。2026-10-06 实测换前 266 个
+py 文件对 `f7b6690` 零差异、换后 272 个对 `ddf7bc4` 零差异。
+
+写 `DEPLOYED_SHA` 时**用 `git rev-parse` 取全长 SHA**，不要手敲——2026-10-06 就写错过
+一次尾部，代码本体是对的，但那个标记文件会误导下一个接手的人。
+
 更新网关代码时按这个顺序，不要只替换个别文件：
 
 1. **先核对本地修改**：把 `src/`、`scripts/` 打包取回，按文件与 git 历史比对（忽略 CRLF）。
