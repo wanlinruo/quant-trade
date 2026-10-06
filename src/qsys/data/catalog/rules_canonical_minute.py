@@ -12,7 +12,7 @@ symbol/source 两列，不重扫分钟事实，也不受当年范围限制。
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import polars as pl
@@ -26,6 +26,7 @@ from qsys.data.catalog.checks import (
     Scope,
     register,
 )
+from qsys.data.quality.minute_padding import leading_zero_cases
 
 # 覆盖数据集 -> 规范表 source 取值中允许出现的来源（覆盖本身及更高优先级）
 OVERRIDES = {
@@ -92,9 +93,49 @@ def override_inclusion(ctx: CheckContext) -> CheckResult:
     return CheckResult(len(problems), checked, detail, sample)
 
 
+def qmt_leading_padding(ctx: CheckContext) -> CheckResult:
+    """只拦截已由 QMT 源表修复证实的多根前导填充。
+
+    paid 同形案例尚未归因，单根零成交很可能是竞价无成交；两者都不能仅凭
+    形状判错，因此不进入这条日常规则。
+    """
+    checked = 0
+    samples: list[pl.DataFrame] = []
+    day = ctx.start
+    while day <= ctx.end:
+        path = ctx.warehouse.root / "bar_minute_1m" / f"year={day.year}" \
+            / f"date={day:%Y%m%d}" / "part.parquet"
+        if path.exists():
+            frame = pl.read_parquet(path, columns=["symbol", "ts", "volume", "source"])
+            checked += frame["symbol"].n_unique()
+            bad = leading_zero_cases(frame).filter(
+                (pl.col("source") == "qmt") & (pl.col("leading_rows") >= 2)
+            )
+            if bad.height:
+                samples.append(bad)
+        day += timedelta(days=1)
+    if checked == 0:
+        return CheckResult(0, 0, "本次范围没有 canonical 分钟分区", applicable=False)
+    sample = pl.concat(samples).sort(["day", "symbol"]) if samples else None
+    violations = sample.height if sample is not None else 0
+    return CheckResult(
+        violations,
+        checked,
+        f"检查 {checked:,} 个标的日，发现 {violations:,} 个 QMT 多根前导零填充",
+        sample.head(100) if sample is not None else None,
+    )
+
+
 register(Check(
     "B2.canonical_minute_override_inclusion", Category.COMPLETENESS, Scope.FULL,
     tuple(f"bar_minute_1m.{name}" for name in schema.BAR_MINUTE_1M.names), (),
     "Tushare/聚宽分钟覆盖的每个标的日都按优先级进入规范一分钟线",
     override_inclusion,
+))
+
+register(Check(
+    "B2.canonical_qmt_leading_padding", Category.COMPLETENESS, Scope.INCREMENTAL,
+    tuple(f"bar_minute_1m.{name}" for name in schema.BAR_MINUTE_1M.names), (),
+    "canonical 只能拦截已有来源证据的 QMT 多根前导填充；paid 与单根不按形状判错",
+    qmt_leading_padding,
 ))
