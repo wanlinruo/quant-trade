@@ -12,7 +12,14 @@ from qsys.data.storage import Warehouse
 DAY = date(2024, 1, 2)
 
 
-def seed(warehouse: Warehouse, write_daily_bars, minutes, daily=None, symbol="600036.SH"):
+def seed(
+    warehouse: Warehouse,
+    write_daily_bars,
+    minutes,
+    daily=None,
+    symbol="600036.SH",
+    day=DAY,
+):
     """minutes: [(hh, mm, o, h, l, c, vol)]；daily: (o,h,l,c,vol) 或 None"""
     n = len(minutes)
     warehouse.write(
@@ -20,7 +27,9 @@ def seed(warehouse: Warehouse, write_daily_bars, minutes, daily=None, symbol="60
         pa.table(
             {
                 "symbol": [symbol] * n,
-                "dt": [datetime(2024, 1, 2, m[0], m[1]) for m in minutes],
+                "dt": [datetime.combine(day, datetime.min.time()).replace(
+                    hour=m[0], minute=m[1]
+                ) for m in minutes],
                 "open": [float(m[2]) for m in minutes],
                 "high": [float(m[3]) for m in minutes],
                 "low": [float(m[4]) for m in minutes],
@@ -30,12 +39,12 @@ def seed(warehouse: Warehouse, write_daily_bars, minutes, daily=None, symbol="60
             },
             schema=schema.MINUTE_BARS,
         ),
-        year=2024,
+        year=day.year,
     )
     if daily is not None:
         write_daily_bars(warehouse, pl.DataFrame({
             "symbol": [symbol],
-            "dt": [DAY],
+            "dt": [day],
             "open": [float(daily[0])],
             "high": [float(daily[1])],
             "low": [float(daily[2])],
@@ -98,6 +107,30 @@ def test_high_mismatch_against_the_daily_bar_is_flagged(warehouse, write_daily_b
         daily=(10.0, 99.0, 9.9, 10.1, 1000),
     )
     assert "high_vs_daily" in rules_of(check_minute_bars(warehouse, DAY))
+
+
+def test_only_the_exact_d24_source_difference_is_known(warehouse, write_daily_bars):
+    day = date(2026, 9, 21)
+    seed(
+        warehouse, write_daily_bars,
+        [(9, 31, 25.82, 26.15, 25.76, 26.07, 1735)],
+        daily=(25.82, 26.16, 25.76, 26.07, 1735),
+        symbol="920055.BJ",
+        day=day,
+    )
+    issue = next(i for i in check_minute_bars(warehouse, day) if i.rule == "high_vs_daily")
+    assert issue.known_issue == "D-24"
+
+
+def test_d24_does_not_hide_the_same_shape_on_another_day(warehouse, write_daily_bars):
+    seed(
+        warehouse, write_daily_bars,
+        [(9, 31, 25.82, 26.15, 25.76, 26.07, 1735)],
+        daily=(25.82, 26.16, 25.76, 26.07, 1735),
+        symbol="920055.BJ",
+    )
+    issue = next(i for i in check_minute_bars(warehouse, DAY) if i.rule == "high_vs_daily")
+    assert issue.known_issue is None
 
 
 def test_first_bar_open_must_equal_the_daily_open(warehouse, write_daily_bars):

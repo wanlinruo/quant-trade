@@ -46,6 +46,14 @@ class MinuteIssue:
     dt: date
     rule: str
     detail: str
+    known_issue: str | None = None
+
+
+# 精确到证券、交易日和规则。这里不是容差白名单：任何其它证券、日期或规则的
+# 差异仍会阻断。D-24 的证据与处置见 deferred-corrections.md。
+_KNOWN_SOURCE_DIFFERENCES = {
+    ("920055.BJ", date(2026, 9, 21), "high_vs_daily"): "D-24",
+}
 
 
 def _bj_after_hours_explains(
@@ -138,12 +146,14 @@ def check_minute_bars(warehouse: Warehouse, day: date) -> list[MinuteIssue]:
             continue  # 全天无成交 bar：没有可比的成交价
         minute_high = float(traded["high"].max())
         if abs(minute_high - reference["high"]) > _PRICE_TOLERANCE:
+            rule = "high_vs_daily"
             issues.append(
                 MinuteIssue(
                     symbol,
                     day,
-                    "high_vs_daily",
+                    rule,
                     f"分钟最高 {minute_high} vs 日线 {reference['high']}",
+                    _KNOWN_SOURCE_DIFFERENCES.get((symbol, day, rule)),
                 )
             )
 
