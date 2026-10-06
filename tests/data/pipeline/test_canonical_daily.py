@@ -85,13 +85,31 @@ def test_null_valuation_is_preserved_not_filled(warehouse):
     assert got["dividend_yield"].null_count() == 2
 
 
-def test_share_capital_uses_effective_events_not_daily_snapshot(warehouse):
+def test_share_capital_uses_first_visible_daily_basic_snapshot(warehouse):
     _seed(warehouse)
     build_share_capital_history(warehouse)
     got = WarehouseQuery(warehouse).share_capital_history()
     assert got.height == 1
     assert got["effective_date"].to_list() == [D1]
-    assert got["announcement_date"].to_list() == [date(2026, 9, 10)]
+    assert got["announcement_date"].to_list() == [None]
+
+
+def test_share_capital_compresses_daily_basic_changes_and_ignores_frozen_qmt(warehouse):
+    _seed(warehouse)
+    third = _daily_row("000001.SZ", date(2026, 9, 19), 10.7)
+    third["total_shares"] = 1_100_000.0
+    daily = pl.DataFrame([
+        _daily_row("000001.SZ", D1, 10.0),
+        _daily_row("000001.SZ", D2, 10.5),
+        third,
+    ]).select(schema.TUSHARE_DAILY.names).to_arrow().cast(schema.TUSHARE_DAILY)
+    warehouse.write("tushare_daily", daily, year=2026)
+
+    assert build_share_capital_history(warehouse) == 2
+    got = WarehouseQuery(warehouse).share_capital_history()
+    assert got["effective_date"].to_list() == [D1, date(2026, 9, 19)]
+    assert got["total_shares"].to_list() == [1_000_000.0, 1_100_000.0]
+    assert got["announcement_date"].null_count() == 2
 
 
 def test_existing_daily_bars_consumer_is_not_switched(warehouse):
@@ -119,7 +137,6 @@ def test_duplicate_source_keys_block_publication(warehouse):
 def test_preflight_reports_every_missing_source_before_partial_publish(warehouse):
     issues = canonical_daily_preflight(warehouse, D1, D2)
     assert any("tushare_daily" in item for item in issues)
-    assert any("share_capital" in item for item in issues)
     assert any("adj_factors" in item for item in issues)
     assert not (warehouse.root / "bar_daily").exists()
 

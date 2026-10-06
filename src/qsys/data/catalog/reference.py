@@ -604,7 +604,9 @@ def _corporate_actions() -> list[Metric]:
 # scripts/win_download_capital.py。
 # ---------------------------------------------------------------------------
 
-_SHARE_CAPITAL_CHECKS = ("B5.span",)
+_SHARE_CAPITAL_CHECKS = UNCOVERED(
+    "2026-09-16 冻结的 QMT 历史证据，不再要求持续到货；规范股本已换到 daily_basic"
+)
 
 _CAPITAL_FILL_NOTE = (
     "scripts/win_download_capital.py 用 `float(row.get(...) or 0.0)` 兜底"
@@ -618,7 +620,7 @@ def _share_capital() -> list[Metric]:
     return [
         Metric(
             id="share_capital.symbol", kind=Kind.DIRECT, validity=Validity.SESSION,
-            status=MetricStatus.ACTIVE,
+            status=MetricStatus.FROZEN,
             meaning=(
                 "标的代码。与 corporate_actions.symbol 不同：这里 "
                 "get_financial_data(chunk, ...) 是**批量**调用"
@@ -640,7 +642,7 @@ def _share_capital() -> list[Metric]:
         ),
         Metric(
             id="share_capital.dt", kind=Kind.DIRECT, validity=Validity.SESSION,
-            status=MetricStatus.ACTIVE,
+            status=MetricStatus.FROZEN,
             meaning="股本**生效日**（QMT m_timetag）。股本是公开可即时观察的"
                     "事实，交易所每日据此发布总市值，故以生效日而非公告日为准"
                     "（schema.py SHARE_CAPITAL 注释，"
@@ -650,7 +652,7 @@ def _share_capital() -> list[Metric]:
         ),
         Metric(
             id="share_capital.ann_date", kind=Kind.DIRECT, validity=Validity.SESSION,
-            status=MetricStatus.ACTIVE,
+            status=MetricStatus.FROZEN,
             meaning="公告日，留作更严格 PIT 口径的口子（schema.py 注释），"
                     "直取 QMT m_anntime",
             lineage=Direct("qmt.capital", "m_anntime"),
@@ -658,7 +660,7 @@ def _share_capital() -> list[Metric]:
         ),
         Metric(
             id="share_capital.total", kind=Kind.DIRECT, validity=Validity.SESSION,
-            status=MetricStatus.ACTIVE,
+            status=MetricStatus.FROZEN,
             meaning="总股本（股）（schema.py 注释），直取 QMT total_capital。"
                     + _CAPITAL_FILL_NOTE,
             lineage=Direct("qmt.capital", "total_capital"),
@@ -666,7 +668,7 @@ def _share_capital() -> list[Metric]:
         ),
         Metric(
             id="share_capital.circulating", kind=Kind.DIRECT, validity=Validity.SESSION,
-            status=MetricStatus.ACTIVE,
+            status=MetricStatus.FROZEN,
             meaning="流通股本（股）（schema.py 注释），直取 QMT "
                     "circulating_capital。" + _CAPITAL_FILL_NOTE,
             lineage=Direct("qmt.capital", "circulating_capital"),

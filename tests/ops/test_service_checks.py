@@ -45,6 +45,13 @@ class FakeQuery:
     def valuation(self, start, end):
         return self._dated("valuation", start)
 
+    def share_capital_history(self):
+        return self.frames.get("capital", pl.DataFrame(schema={
+            "symbol": pl.Utf8, "effective_date": pl.Date,
+            "announcement_date": pl.Date, "total_shares": pl.Float64,
+            "circulating_shares": pl.Float64,
+        }))
+
     def name_history(self):
         return self.frames.get("history", pl.DataFrame(schema={
             "symbol": pl.Utf8, "change_reason": pl.Utf8, "start_date": pl.Date, "end_date": pl.Date}))
@@ -98,6 +105,28 @@ def test_limits_must_cover_every_daily_symbol_and_name_the_missing():
 def test_flags_are_only_expected_for_production_boards():
     query = FakeQuery(daily=daily(DAY, ["000001.SZ", "920077.BJ"]), flags=daily(DAY, ["000001.SZ"]))
     assert sc._flags_cover_daily(ctx(query)).status == sc.OK
+
+
+def test_share_capital_history_must_match_current_daily_basic_values():
+    current = daily(DAY, ["000001.SZ", "600000.SH"]).with_columns(
+        pl.Series("total_shares", [100.0, 200.0]),
+        pl.Series("circulating_shares", [80.0, 150.0]),
+    )
+    history = pl.DataFrame({
+        "symbol": ["000001.SZ", "600000.SH"],
+        "effective_date": [PREV, PREV],
+        "announcement_date": [None, None],
+        "total_shares": [100.0, 199.0],
+        "circulating_shares": [80.0, 150.0],
+    })
+    bad = sc._share_capital_matches_daily(ctx(FakeQuery(daily=current, capital=history)))
+    assert bad.status == sc.BAD and "600000.SH" in bad.detail
+    history = history.with_columns(
+        pl.when(pl.col("symbol") == "600000.SH").then(200.0)
+        .otherwise(pl.col("total_shares")).alias("total_shares")
+    )
+    good = sc._share_capital_matches_daily(ctx(FakeQuery(daily=current, capital=history)))
+    assert good.status == sc.OK and "2 只全部一致" in good.actual
 
 
 def sync_run(status="succeeded", *, with_step=True, error=""):

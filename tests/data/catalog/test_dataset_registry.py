@@ -97,6 +97,17 @@ def test_d18_retired_datasets_do_not_claim_active_daily_arrival():
     assert "运维检查" not in ingest.consumers
 
 
+def test_d16_qmt_capital_is_frozen_and_canonical_uses_tushare_daily():
+    legacy = DATASETS["share_capital"]
+    assert legacy.status is DatasetStatus.FROZEN
+    assert legacy.health_policy == "frozen"
+    assert "退出每日归档" in legacy.lifecycle
+
+    canonical = DATASETS["share_capital_history"]
+    assert canonical.sources == ("tushare_daily",)
+    assert "announcement_date 恒 null" in canonical.lifecycle
+
+
 def test_every_dataset_declares_a_domain():
     """新表不标 domain 就建不起来；Unclassified 必须带理由，不能是空字符串。"""
     for ident, item in DATASETS.items():

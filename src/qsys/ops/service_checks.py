@@ -223,6 +223,48 @@ def _valuation_covers_daily(ctx: CheckContext) -> CheckResult:
     return _covers(ctx, ctx.query.valuation(ctx.day, ctx.day), "估值")
 
 
+def _share_capital_matches_daily(ctx: CheckContext) -> CheckResult:
+    """规范股本的当日 as-of 值必须逐只等于 daily_basic 直取值。"""
+    daily = ctx.query.tushare_daily(
+        None, ctx.day, ctx.day,
+        columns=["symbol", "dt", "total_shares", "circulating_shares"],
+    )
+    if daily.height == 0:
+        return CheckResult(BAD, "规范股本与当日 daily_basic 一致", "当日日线为空", rows=0)
+    history = ctx.query.share_capital_history()
+    if history.height == 0:
+        return CheckResult(BAD, "规范股本与当日 daily_basic 一致", "规范股本为空", rows=0)
+    asof = (
+        history.filter(pl.col("effective_date") <= ctx.day)
+        .sort(["symbol", "effective_date"])
+        .unique("symbol", keep="last")
+    )
+    compared = daily.select(
+        "symbol", "total_shares", "circulating_shares"
+    ).join(
+        asof.select("symbol", "effective_date", "total_shares", "circulating_shares"),
+        on="symbol", how="left", suffix="_history",
+    )
+    bad = compared.filter(
+        pl.col("effective_date").is_null()
+        | pl.col("total_shares").ne_missing(pl.col("total_shares_history"))
+        | pl.col("circulating_shares").ne_missing(
+            pl.col("circulating_shares_history")
+        )
+    )
+    latest = asof["effective_date"].max() if asof.height else None
+    if bad.height:
+        return CheckResult(
+            BAD, f"规范股本覆盖并匹配当日 daily_basic {daily.height} 只",
+            f"{bad.height} 只缺失或不一致（最新变化点 {latest or '无'}）",
+            _samples(set(bad["symbol"].to_list())), rows=asof.height,
+        )
+    return CheckResult(
+        OK, f"规范股本覆盖并匹配当日 daily_basic {daily.height} 只",
+        f"{daily.height} 只全部一致（最新变化点 {latest}）", rows=asof.height,
+    )
+
+
 def _delisting_pool(ctx: CheckContext) -> CheckResult:
     """独立重算：不调用 pipeline.delisting，直接按 namechange 区间判当天。"""
     history = ctx.query.name_history()
@@ -674,6 +716,8 @@ CHECKS: tuple[ServiceCheck, ...] = (
     ServiceCheck("tushare-sync", "派生标记覆盖日线", "daily_flags", _flags_cover_daily),
     ServiceCheck("tushare-sync", "市场广度到货", "market_regime", _regime_arrived),
     ServiceCheck("tushare-sync", "估值覆盖日线", "valuation_snapshot", _valuation_covers_daily),
+    ServiceCheck("tushare-sync", "规范股本与日线一致", "share_capital_history",
+                 _share_capital_matches_daily),
     ServiceCheck("tushare-sync", "退市整理期池与 namechange 一致", "delisting_pool", _delisting_pool),
     ServiceCheck("shadow-core", "当日策略事件已执行", "live_events", _shadow_events, "strategy"),
     ServiceCheck("paper", "当日策略事件已执行", "paper_events", _paper_events, "strategy"),

@@ -757,14 +757,15 @@ if "limit_pct" in yesterday.columns:
 整理期内则 `is_st=false`、来源 `delisting_pool_override`；`is_st` 那条同样补上，
 否则等 `stock_st` 真按 D-15 误报成 true 时还会再红一次。
 
-## D-16 `share_capital` 停更观察期，以及与 `daily_basic` 股本的 4 处分歧
+## D-16 `share_capital` 停更观察期，以及与 `daily_basic` 股本的 4 处分歧（已了结）
 
-**登记日期**：2026-09-15。**状态：观察中，不是缺陷。**
+**登记日期**：2026-09-15。**状态：已于 2026-10-06 结案。**
 
-**背景**：`valuation_snapshot` 于 2026-09-15 改为 `daily_basic` 纯投影后，
-`share_capital` 失去了全部消费者——grep 全仓只剩 `capital.py` 写它、
-`query.py` 读它，没有第三处。而下载它是每日归档最慢的一步（实测 237.9 秒，
-占 5 分钟总耗时的 4 分钟），数据还来自 QMT 这条需要驱动 Windows 的链路。
+**背景与更正**：`valuation_snapshot` 于 2026-09-15 改为 `daily_basic` 纯投影后，
+QMT `share_capital` 不再参与估值；但 2026-10-06 复核发现它仍被
+`build_share_capital_history()` 用来重建规范股本表。因为 QMT 源已经停更，规范表也
+随之静默停在 2026-09-16，而同步任务每天仍把同一份 219,427 行旧数据重写一遍。
+原先“没有第三处消费者”的判断不成立。
 
 **实测等价性**（2026-09-14，5,550 只可比标的）：
 
@@ -776,9 +777,8 @@ if "limit_pct" in yesterday.columns:
 `tushare_daily.total_shares` / `circulating_shares` / `free_shares` 直接来自
 `daily_basic` 的 `total_share` / `float_share` / `free_share`（万股 ×10000）。
 
-**已做**：给 `qsys-daily-archive.service` 的 ExecStart 加了 `--skip-capital`，
-**只停更新，表原地保留不删**。去掉该参数即可立刻恢复。
-原 unit 备份在节点 `/home/ubuntu/scratch/qsys-daily-archive.service.bak-20260915`。
+**观察期做法**：曾给 `qsys-daily-archive.service` 加 `--skip-capital`，只停更新、
+表原地保留。结案后该临时开关与 QMT 股本下载步骤已从每日归档正式移除。
 
 **4 处分歧逐只**（`cap_dt` 是 QMT 的股本生效日，`ann_date` 是公告日）：
 
@@ -789,7 +789,7 @@ if "limit_pct" in yesterday.columns:
 | `003038.SZ` | 2.43305377e8 | 2.43659765e8 | 2026-08-12 | 2026-08-12 | 0.15% |
 | `300133.SZ` | 1.8748e9 | 1.8748e9 | 2026-08-21 | 2026-08-21 | 0.0022% |
 
-**两例看下来是 QMT 更差，不是更好**：
+**抽样结论是 QMT 更差，不是更好**：
 
 - `301297.SZ` 的公告日（09-15）**晚于**生效日（09-11）。按生效日 asof 连接
   会把 09-11~09-14 四天都用上一个直到 09-15 才公开的股本——那是未来函数。
@@ -797,18 +797,25 @@ if "limit_pct" in yesterday.columns:
   但当前 `_valuation` 的 asof 用的是 `dt` 而非 `ann_date`。
 - `600292.SH` 的 QMT 记录停在 2026-07-31 没再更新，而 `daily_basic` 有更新值。
 
-逐日快照本身就是 PIT 正确的：它记的是「那一天公开的股本是多少」。
+逐日快照本身就是 PIT 正确的：它记的是「那一天公开的股本是多少」。2026-10-06
+生产全量复核进一步确认：`tushare_daily` 在 2023-01-03～2026-09-30 有
+4,862,749 行，`total_shares` 与 `circulating_shares` 均无 null；按证券压缩相邻
+快照变化后为 49,875 个变化点，最新变化点是 2026-09-30。四只原分歧证券的新变化
+点均能从 daily_basic 得到；其中 `301297.SZ` 在 09-15 才切换到新值，避免旧 QMT
+用 09-11 生效日造成四天前视。
 
-**观察期要做什么**：
+**最终处置**：
 
-1. 盯一两周，确认没有任何消费者因为 `share_capital` 不再更新而出问题。
-2. 把上面 4 只逐个回源查清楚谁对——尤其 `600292.SH` 那 8.77%，
-   市值算错会直接影响选股。
-3. 两条都过了，再决定是否连 `capital.py`、`SHARE_CAPITAL` schema 与
-   `share_capital` 表一起下线。**下线前必须先确认历史回测不依赖它**。
-
-**不要在观察期里删表。** 它是 2020-01-01 ~ 2026-09-16 共 219,427 行的
-既有观测，删了就没了；而它现在只占 1.7M，留着不花什么代价。
+1. `share_capital_history` 改由 `tushare_daily` 的 daily_basic 股本列生成；逐证券
+   只保留相邻快照的变化点。`effective_date` 明确定义为“新值首次可见的交易日”，
+   不再冒充法律生效日。
+2. daily_basic 没有公告日，`announcement_date` 恒为 null；不得把旧 QMT 公告日
+   拼接到新来源。
+3. QMT 下载步骤和 `--skip-capital` 临时开关退出每日归档；`share_capital` 表、
+   Schema、只读查询与导入恢复入口保留，目录及五个指标均标为 `FROZEN`。它只有
+   约 1.7 MB，删除没有容量收益，保留能维持 2020-01-01～2026-09-16 的证据链。
+4. 每日服务质检逐只比较规范股本的当日 as-of 值与 daily_basic 直取值；缺失或任一
+   股本列不一致即失败并列出证券，避免再次出现“任务成功、规范表静默陈旧”。
 
 ## D-17 `688235.SH` 的总市值与总股本连续不自洽（已了结）
 

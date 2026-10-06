@@ -9,15 +9,11 @@ User=ubuntu
 Group=ubuntu
 WorkingDirectory=/home/ubuntu/qsys
 # 直接用 venv 解释器。用 `uv run` 会因 ProtectHome=read-only 挡住 uv 缓存而失败。
-# --skip-capital（2026-09-15）：股本已由 Tushare daily_basic 落进
-# tushare_daily 的 total_shares/circulating_shares/free_shares，实测 5,550 只
-# 里仅 4 只相对差 >1e-6、中位差为 0。QMT 这条链路是整个归档最慢的一步。
-# **只是停止更新，share_capital 表原地保留、不删**——观察期内若发现
-# daily_basic 的股本不够用，去掉本参数即可立刻恢复。
+# QMT 股本采集已于 D-16 结案时正式退出编排；冻结的 share_capital 表保留。
+# 规范 share_capital_history 由 tushare-sync 从 daily_basic 变化点构建。
 ExecStart=/usr/bin/flock --exclusive --nonblock /home/ubuntu/qsys/var/warehouse-write.lock \
           /home/ubuntu/qsys/.venv/bin/python -u scripts/daily_archive.py \
-          --warehouse /home/ubuntu/qsys/warehouse --lookback-days 8 \
-          --skip-capital
+          --warehouse /home/ubuntu/qsys/warehouse --lookback-days 8
 TimeoutStartSec=7200
 NoNewPrivileges=true
 PrivateTmp=true

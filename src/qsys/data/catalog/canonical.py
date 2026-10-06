@@ -69,17 +69,32 @@ def _metrics() -> list[Metric]:
         for column, meaning in _VALUATION_MEANING.items()
     )
     capital = {
-        "symbol": ("share_capital.symbol", "证券代码"),
-        "effective_date": ("share_capital.dt", "股本生效日，不是每日快照观测日"),
-        "announcement_date": ("share_capital.ann_date", "公告日"),
-        "total_shares": ("share_capital.total", "总股本（股）"),
-        "circulating_shares": ("share_capital.circulating", "流通股本（股）"),
+        "symbol": (("tushare_daily.symbol",), "证券代码",
+                   "保留每个证券股本变化点的证券代码"),
+        "effective_date": (
+            ("tushare_daily.dt", "tushare_daily.total_shares",
+             "tushare_daily.circulating_shares"),
+            "daily_basic 新股本值首次可见的交易日，不是法律生效日",
+            "按证券比较相邻 daily_basic 快照，值变化时取当日 dt",
+        ),
+        "announcement_date": (
+            (), "daily_basic 不提供公告日，恒为 null",
+            "恒 null；不沿用已冻结 QMT 路径的公告日",
+        ),
+        "total_shares": (("tushare_daily.total_shares",), "总股本（股）",
+                         "保留变化点的 daily_basic 总股本直取值"),
+        "circulating_shares": (
+            ("tushare_daily.circulating_shares",), "流通股本（股）",
+            "保留变化点的 daily_basic 流通股本直取值",
+        ),
     }
     out.extend(
-        _passthrough(
-            "share_capital_history", column, upstream, meaning, Validity.SPAN
+        Metric(
+            id=f"share_capital_history.{column}", kind=Kind.DERIVED,
+            validity=Validity.SPAN, status=MetricStatus.ACTIVE, meaning=meaning,
+            lineage=Computed(upstream, formula), checks=_CHECKS,
         )
-        for column, (upstream, meaning) in capital.items()
+        for column, (upstream, meaning, formula) in capital.items()
     )
     factors = {
         "symbol": ("adj_factors.symbol", "证券代码"),

@@ -311,14 +311,13 @@ ConnectionError（东财主动断连），与开发机的 ProxyError 是两种�
 -> 回传 parquet -> 导入 -> 跨源校验
 ```
 
-股本那步已于 2026-09-15 用 `--skip-capital` 停更（见 D-16）：`daily_basic`
-的 `total_share`/`float_share`/`free_share` 已落进 `tushare_daily`，实测
-5,550 只里仅 4 只相对差 >1e-6、中位差为 0，而它是整个归档最慢的一步
-（237.9 秒）。**只停更新，`share_capital` 表原地保留。** 去掉该参数即可恢复，
-原 unit 备份在节点 `/home/ubuntu/scratch/qsys-daily-archive.service.bak-20260915`。
+股本链路已于 D-16 结案：QMT 股本下载正式退出每日归档，旧 `share_capital`
+表冻结保留为历史证据；规范 `share_capital_history` 由 Tushare 同步从
+`daily_basic` 的每日股本快照压缩变化点生成。`effective_date` 表示新值首次可见的
+交易日，`daily_basic` 没有公告日，因此 `announcement_date` 保持 null。
 
-**本脚本只做 QMT 链路。** 日线、指数与四张派生表（`adj_factors` /
-`daily_flags` / `market_regime` / `valuation_snapshot`）自 2026-09-14 起
+**本脚本只做 QMT 链路。** 日线、规范股本、指数与派生表（`adj_factors` /
+`daily_flags` / `market_regime` / `valuation_snapshot` / `share_capital_history`）
 归 `qsys-tushare-sync.timer`（每天 17:00 与 19:00），不在这里。
 
 2026-09-15 删掉了这里的 mootdx 日线分支。mootdx 的 K 线接口 2026-09-10 起

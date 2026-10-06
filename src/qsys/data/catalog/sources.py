@@ -114,14 +114,15 @@ _ALL = [
                "撮合完成后的结果，口径对不上，替代会引入前视偏差（D-7）",
     ),
 
-    # ---- QMT 按需全量重跑，2 个（R12/R14：share_capital / corporate_actions
+    # ---- QMT 财务事实，1 个冻结历史源 + 1 个按需全量源（R12/R14
     # 的真实源，草案原先分别错记成 qmt.minute 与 akshare.stock_fhps_detail_em）----
     Source(
         id="qmt.capital", provider="QMT", api="capital",
-        access=Access.REALTIME, status=SourceStatus.ACTIVE,
+        access=Access.REALTIME, status=SourceStatus.FROZEN,
         credential="Windows 节点 xtquant", tier="券商账户",
-        acquired="download_financial_data", cadence="按需全量重跑",
-        caveat="scripts/win_download_capital.py 实测：download_financial_data "
+        acquired="download_financial_data", cadence="2026-09-16 起停止采集",
+        caveat="2026-09-16 起冻结为历史证据，已退出每日归档与规范层血缘。"
+               "scripts/win_download_capital.py 实测：download_financial_data "
                "0.11 秒/只，全市场约 10 分钟，磁盘约 4 MB；抽样 15 只全部有"
                "股本变动，且粒度是事件级（增发/解禁/回购注销都有独立记录），"
                "必须按记录逐条落盘，不能只取季末快照。字段对照：m_timetag"
