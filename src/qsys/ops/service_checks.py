@@ -9,7 +9,8 @@
 - 服务当天**没有运行记录**（没按时执行）时，改验它该产出的数据：数据到齐且核对通过
   即判成功，备注「数据质检成功，但服务未执行」；执行了但失败的，仍判失败；
 - 同一交易日早先的质检未通过、修复后重跑通过的，记「已修复」并保留当时的失败原因。
-- 分钟线与竞价的应到集合与每日归档的下载清单同源（首板次日候选），扣掉直取停牌。
+- 竞价的应到集合是首板次日候选，扣掉直取停牌；分钟线以 Tushare 当日日线中实际
+  有成交的全部股票为独立期望集合，避免下载清单本身变薄时质检仍错误放行。
 - 节点存储：磁盘剩余容量低于 10 GiB 判失败、低于 20 GiB 告警；保留策略到期项与未登记
   目录只告警，删除需维护者逐项批准（见 ``qsys.ops.storage``）。
 - 站点证书验的是**实际提供出来的**那张，不是磁盘上的文件：续期成功但 Nginx 没重载
@@ -471,7 +472,13 @@ def _auction_arrived(ctx: CheckContext) -> CheckResult:
 
 
 def _minute_bars(ctx: CheckContext) -> tuple[pl.DataFrame, pl.DataFrame]:
-    wanted = _archive_wanted(ctx)
+    wanted = (
+        ctx.daily()
+        .filter(pl.col("volume") > 0)
+        .select("symbol", "dt")
+        .unique()
+        .sort("symbol")
+    )
     if wanted.height == 0:
         return wanted, pl.DataFrame(schema={"symbol": pl.Utf8, "bars": pl.UInt32,
                                             "volume": pl.Int64})
@@ -486,9 +493,11 @@ def _minute_bars(ctx: CheckContext) -> tuple[pl.DataFrame, pl.DataFrame]:
 def _minutes_arrived(ctx: CheckContext) -> CheckResult:
     wanted, per = _minute_bars(ctx)
     if wanted.height == 0:
-        return CheckResult(OK, "首板次日候选都有分钟线", "当日没有候选", rows=0)
+        return CheckResult(BAD, "全市场当日有成交股票都有分钟线",
+                           "日线为空或没有成交量，无法核对", rows=0)
     missing = set(wanted["symbol"].to_list()) - set(per["symbol"].to_list())
-    return CheckResult(BAD if missing else OK, f"候选 {wanted.height} 只", f"缺 {len(missing)} 只",
+    return CheckResult(BAD if missing else OK, f"有成交股票 {wanted.height} 只",
+                       f"缺 {len(missing)} 只",
                        _samples(missing) if missing else "", rows=per.height)
 
 
@@ -498,7 +507,7 @@ def _minute_bar_rows(ctx: CheckContext) -> pl.DataFrame:
     不能复用 `_minute_bars`：它返回的是按标的聚合后的 (symbol, bars, volume 合计)，
     没有 dt，也没有逐行 volume，判不了「首根」。
     """
-    wanted = _archive_wanted(ctx)
+    wanted = ctx.daily().filter(pl.col("volume") > 0).select("symbol").unique()
     if wanted.height == 0:
         return pl.DataFrame(schema={"symbol": pl.Utf8, "dt": pl.Datetime,
                                     "volume": pl.Int64})

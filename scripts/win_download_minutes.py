@@ -1,7 +1,7 @@
 """Windows 侧：按清单下载分钟线并导出 parquet。
 
-**只在 Windows 上运行**（依赖 xtquant）。可中断可续传：已完成的标的记入
-done.csv，重跑跳过。
+**只在 Windows 上运行**（依赖 xtquant）。可中断可续传：已完成的「标的 + 日期」
+记入 done.csv，重跑只跳过已经完成的股日。
 
 策略依据 2026-09-09 的实测：
   · 按标的整年下载 0.69s/只，比按股-日（0.60s/组）**看起来**更快
@@ -66,11 +66,16 @@ def read_manifest(path: str) -> dict[str, list[str]]:
     return dict(wanted)
 
 
-def read_done(path: str) -> set[str]:
+def read_done(path: str) -> set[tuple[str, str]]:
     if not os.path.exists(path):
         return set()
     with open(path, encoding="utf-8") as handle:
-        return {line.strip() for line in handle if line.strip()}
+        done: set[tuple[str, str]] = set()
+        for line in handle:
+            parts = [part.strip() for part in line.split(",")]
+            if len(parts) == 2 and parts[0] and parts[1]:
+                done.add((parts[0], parts[1].replace("-", "")))
+        return done
 
 
 def to_rows(symbol: str, data: dict, stamps: list[str]) -> list[tuple]:
@@ -148,8 +153,8 @@ def main() -> int:
     parser.add_argument("--sleep", type=float, default=0.0,
                         help="每只之间歇多久，给同机的其它进程让路")
     parser.add_argument("--whole-window", action="store_true",
-                        help="按标的整年下载。快，但会把整年灌进 QMT 本地缓存——"
-                             "磁盘不宽裕时不要用")
+                        help="每只标的一次下载本次起止窗口。适合稠密的全市场短窗口；"
+                             "长窗口会显著占用 QMT 本地缓存")
     args = parser.parse_args()
 
     from xtquant import xtdata
@@ -160,11 +165,18 @@ def main() -> int:
 
     wanted = read_manifest(args.manifest)
     done = read_done(done_path)
-    todo = [s for s in sorted(wanted) if s not in done]
+    pending = {
+        symbol: [stamp for stamp in stamps if (symbol, stamp) not in done]
+        for symbol, stamps in wanted.items()
+    }
+    todo = [symbol for symbol in sorted(pending) if pending[symbol]]
     if args.limit:
         todo = todo[: args.limit]
 
-    print(f"清单 {len(wanted)} 只 / 已完成 {len(done)} 只 / 本次 {len(todo)} 只")
+    wanted_days = sum(len(stamps) for stamps in wanted.values())
+    pending_days = sum(len(pending[symbol]) for symbol in todo)
+    print(f"清单 {len(wanted)} 只、{wanted_days} 股日 / 已完成 {len(done)} 股日 / "
+          f"本次 {len(todo)} 只、{pending_days} 股日")
     if not todo:
         print("没有要做的")
         return 0
@@ -177,7 +189,7 @@ def main() -> int:
     ok = failed = empty = 0
 
     for position, symbol in enumerate(todo, 1):
-        stamps = wanted[symbol]
+        stamps = pending[symbol]
         try:
             if args.whole_window:
                 xtdata.download_history_data(
@@ -211,7 +223,8 @@ def main() -> int:
             empty += 1  # 停牌整段或该日无数据，不是失败
 
         with open(done_path, "a", encoding="utf-8") as handle:
-            handle.write(symbol + "\n")
+            for stamp in stamps:
+                handle.write(f"{symbol},{stamp}\n")
 
         if len(buffer) >= args.flush_rows:
             path = flush(buffer, args.out, file_index)
@@ -238,7 +251,7 @@ def main() -> int:
 
     print(f"完成：有数据 {ok} 只 / 空 {empty} 只 / 失败 {failed} 只")
     print(f"耗时 {(time.time()-started)/60:.1f} 分钟")
-    return 0
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

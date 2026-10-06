@@ -50,6 +50,7 @@ from qsys.data.pipeline.candidates import (
     write_manifest,
 )
 from qsys.data.pipeline.capital import import_share_capital
+from qsys.data.pipeline.instruments import alive_on
 from qsys.data.pipeline.minutes import import_minute_bars, missing_stock_days
 from qsys.data.pipeline.canonical_publish import publish_minutes
 from qsys.data.quality.minute_rules import check_minute_bars
@@ -95,9 +96,35 @@ def _paper_fills(store: Path) -> pl.DataFrame:
     return pl.DataFrame(rows, schema=columns, orient="row")
 
 
-def _minute_wanted(candidates: pl.DataFrame, held: pl.DataFrame) -> pl.DataFrame:
-    """分钟线要归档的股-日 = 首板次日候选 ∪ 模拟盘持仓日。"""
-    return pl.concat([candidates.select("symbol", "dt"), held.select("symbol", "dt")]) \
+def _full_market_stock_days(
+    instruments: pl.DataFrame,
+    sessions: list[date],
+    boards: set[str],
+) -> pl.DataFrame:
+    """按上市/退市边界生成全市场应采的股票日。"""
+    frames = [
+        alive_on(instruments, day)
+        .filter(pl.col("board").is_in(list(boards)))
+        .select("symbol")
+        .with_columns(pl.lit(day, dtype=pl.Date).alias("dt"))
+        for day in sessions
+    ]
+    if not frames:
+        return pl.DataFrame(schema={"symbol": pl.Utf8, "dt": pl.Date})
+    return pl.concat(frames).unique().sort(["dt", "symbol"])
+
+
+def _minute_wanted(
+    full_market: pl.DataFrame,
+    candidates: pl.DataFrame,
+    held: pl.DataFrame,
+) -> pl.DataFrame:
+    """分钟线归档集合 = 全市场股票日 ∪ 首板次日候选 ∪ 模拟盘持仓日。"""
+    return pl.concat([
+        full_market.select("symbol", "dt"),
+        candidates.select("symbol", "dt"),
+        held.select("symbol", "dt"),
+    ]) \
         .unique().sort(["dt", "symbol"])
 
 
@@ -172,8 +199,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="每日数据归档")
     parser.add_argument("--warehouse", default="warehouse")
     parser.add_argument("--lookback-days", type=int, default=10,
-                        help="日线与候选各回看几个日历日，用于补缺口")
-    parser.add_argument("--boards", default="main,gem,star")
+                        help="全市场分钟、候选与持仓各回看几个日历日，用于补缺口")
+    parser.add_argument("--boards", default="main,gem,star,bse",
+                        help="每日全市场分钟归档包含的股票板块")
     parser.add_argument("--skip-minutes", action="store_true")
     parser.add_argument("--skip-auction", action="store_true")
     parser.add_argument("--only-auction", action="store_true",
@@ -291,12 +319,16 @@ def _archive(args, service_run: ServiceRun) -> int:
     candidates = candidate_stock_days(warehouse, start, complete_through, sessions=sessions)
     held = held_stock_days(_paper_fills(Path(args.paper_store)), start, complete_through,
                            sessions)
-    wanted = _minute_wanted(candidates, held)
+    archive_sessions = [day for day in sessions if start <= day <= complete_through]
+    full_market = _full_market_stock_days(instruments, archive_sessions, boards)
+    wanted = _minute_wanted(full_market, candidates, held)
     # 扣掉全天停牌：QMT 对停牌股会返回 241 根前收盘价、成交量全 0，整天是虚构的。
-    # 必须与服务质检的到货期望同源，两边各写一份就会漂移（2026-10-04）。
+    # 下载侧先剔除已知停牌，避免 QMT 返回整日虚构数据；晚间服务质检另用
+    # Tushare 当日实际有成交集合作独立期望，不能再让下载清单自证完整。
     before = wanted.height
     wanted = drop_suspended(WarehouseQuery(warehouse), wanted)
-    print(f"分钟线清单：首板次日候选 {candidates.height} 组，模拟盘持仓 {held.height} 组，"
+    print(f"分钟线清单：全市场股票 {full_market.height} 组，"
+          f"首板次日候选 {candidates.height} 组，模拟盘持仓 {held.height} 组，"
           f"合并去重 {before} 组，扣掉全天停牌 {before - wanted.height} 组，"
           f"实取 {wanted.height} 组")
 
@@ -308,15 +340,12 @@ def _archive(args, service_run: ServiceRun) -> int:
 
     # --- 5. 算出还缺哪些股-日的分钟线 ---
     missing = missing_stock_days(warehouse, wanted)
-    print(f"候选 {wanted.height} 组，其中缺分钟线 {missing.height} 组")
+    print(f"全市场及补充集合 {wanted.height} 组，其中缺分钟线 {missing.height} 组")
     minutes_started = datetime.now()
     if missing.height == 0:
-        service_run.add_step("分钟线（首板次日候选）", status=SUCCEEDED,
+        service_run.add_step("分钟线（全市场）", status=SUCCEEDED,
                              interface="QMT 1 分钟线（Windows）", table="minute_bars", rows=0,
-                             detail=f"候选 {wanted.height} 组，均已到货")
-        # 候选由 daily_flags 的首板推出，而 daily_flags 现在由 tushare_sync
-        # 维护。本脚本 15:41 跑、同步 17:00 才跑，所以这里读到的是**昨日**
-        # 收盘后那次同步的结果——候选为空是正常的「已齐」，不是算不出来。
+                             detail=f"全市场及补充集合 {wanted.height} 组，均已到货")
         print("分钟线已齐，无需下载")
         _publish_canonical_minutes(
             warehouse, complete_through, complete_through, service_run
@@ -343,7 +372,7 @@ def _archive(args, service_run: ServiceRun) -> int:
         f'$env:PYTHONIOENCODING="utf-8"; {args.win_python} -u {args.win_script} '
         f'--manifest {win_dir}\\manifest.csv --out {win_dir} '
         f'--window-start {lo.strftime("%Y%m%d")} --window-end {hi.strftime("%Y%m%d")} '
-        f'--sleep 0.1'
+        f'--sleep 0.1 --whole-window'
     )
     output = run(ssh + [download], what="Windows 下载分钟线", timeout=7200)
     for line in output.strip().splitlines()[-4:]:
@@ -358,10 +387,11 @@ def _archive(args, service_run: ServiceRun) -> int:
     )
     print(f"导入 {result.files} 文件 / {result.rows:,} 行 / {result.errors} 错误")
     service_run.add_step(
-        "分钟线（首板次日候选）", status=FAILED if result.errors else SUCCEEDED,
+        "分钟线（全市场）", status=FAILED if result.errors else SUCCEEDED,
         interface="QMT 1 分钟线（Windows）", table="minute_bars", rows=result.rows,
         started_at=minutes_started,
-        detail=f"候选 {wanted.height} 组，缺 {missing.height} 组；导入 {result.files} 个文件、"
+        detail=f"全市场及补充集合 {wanted.height} 组，缺 {missing.height} 组；"
+               f"导入 {result.files} 个文件、"
                f"{result.errors} 个坏文件",
     )
     if result.errors:
@@ -391,7 +421,7 @@ def _archive(args, service_run: ServiceRun) -> int:
     print(f"=== 完成，耗时 {(time.time()-started)/60:.1f} 分钟 ===")
     log.info("archive.done", days=len(days), rows=result.rows, issues=issues,
              minutes=round((time.time()-started)/60, 1))
-    return _exit_code(1 if issues else 0, auction_ok=auction_ok)
+    return _exit_code(1 if result.errors or issues else 0, auction_ok=auction_ok)
 
 
 if __name__ == "__main__":

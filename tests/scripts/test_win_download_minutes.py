@@ -3,7 +3,7 @@ docs/reference/qmt-range-query-padding.md）。导出时必须丢弃那些行。
 
 import pandas as pd
 
-from scripts.win_download_minutes import to_rows
+from scripts.win_download_minutes import read_done, to_rows
 
 
 def _frames(stamps, opens, highs, lows, closes, volumes, amounts):
@@ -54,3 +54,15 @@ def test_each_day_is_judged_on_its_own_first_trade():
     rows = to_rows("513100.SH", data, ["20260928", "20260929"])
     assert [r[1].strftime("%m-%d %H:%M") for r in rows] == [
         "09-28 09:31", "09-29 09:30", "09-29 09:31"]
+
+
+def test_resume_ledger_is_keyed_by_symbol_and_day(tmp_path):
+    ledger = tmp_path / "done.csv"
+    ledger.write_text(
+        "600000.SH,20260928\n600000.SH,2026-09-29\n600001.SH\n",
+        encoding="utf-8",
+    )
+    assert read_done(str(ledger)) == {
+        ("600000.SH", "20260928"),
+        ("600000.SH", "20260929"),
+    }

@@ -61,9 +61,29 @@ def test_minute_manifest_includes_paper_holdings(tmp_path):
                      "14.78, '2026-09-15T09:30:03')")
     fills = daily_archive._paper_fills(store)
     held = daily_archive.held_stock_days(fills, DAY, DAY, [DAY])
-    wanted = daily_archive._minute_wanted(WANTED, held)
+    wanted = daily_archive._minute_wanted(WANTED.clear(), WANTED, held)
     assert sorted(wanted["symbol"].to_list()) == ["001399.SZ", "600036.SH"]
 
 
 def test_missing_paper_store_is_not_an_error(tmp_path):
     assert daily_archive._paper_fills(tmp_path / "absent.sqlite3").height == 0
+
+
+def test_full_market_stock_days_respect_board_and_listing_boundaries():
+    instruments = pl.DataFrame({
+        "symbol": ["600001.SH", "300001.SZ", "920001.BJ", "200001.SZ"],
+        "board": ["main", "gem", "bse", "b_share"],
+        "list_date": [date(2026, 9, 15), date(2026, 9, 17), None, None],
+        "delist_date": [None, None, date(2026, 9, 16), None],
+    })
+    got = daily_archive._full_market_stock_days(
+        instruments,
+        [date(2026, 9, 16), date(2026, 9, 17)],
+        {"main", "gem", "bse"},
+    )
+    assert got.rows() == [
+        ("600001.SH", date(2026, 9, 16)),
+        ("920001.BJ", date(2026, 9, 16)),
+        ("300001.SZ", date(2026, 9, 17)),
+        ("600001.SH", date(2026, 9, 17)),
+    ]
