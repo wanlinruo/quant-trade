@@ -86,6 +86,17 @@ def test_read_only_evidence_is_frozen_and_not_writable():
     assert DATASETS["paid_daily"].layer is DatasetLayer.RAW
 
 
+def test_d18_retired_datasets_do_not_claim_active_daily_arrival():
+    snapshots = DATASETS["name_snapshots"]
+    assert snapshots.status is DatasetStatus.FROZEN
+    assert snapshots.health_policy == "frozen"
+    assert "不再要求每日到货" in snapshots.lifecycle
+
+    ingest = DATASETS["ingest_log"]
+    assert "每日服务管理不读取" in ingest.lifecycle
+    assert "运维检查" not in ingest.consumers
+
+
 def test_every_dataset_declares_a_domain():
     """新表不标 domain 就建不起来；Unclassified 必须带理由，不能是空字符串。"""
     for ident, item in DATASETS.items():

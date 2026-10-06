@@ -214,7 +214,7 @@ C:\qsys\.venv\Scripts\python.exe -m pip install `
 #    uv run python scripts/export_minute_manifest.py \
 #        --start 2025-09-09 --end 2026-09-08 --out var/minute_manifest.csv
 
-# 2) Windows 下载并导出 parquet（可中断可续传，done.csv 记账）
+# 2) Windows 下载并导出 parquet（可中断可续传；Parquet 落盘后才按证券+日期记 done.csv）
 C:\qsys\.venv\Scripts\python.exe -u C:\qsys\win_download_minutes.py `
     --manifest C:\qsys\minute_manifest.csv --out C:\qsys\outgoing `
     --window-start 20250909 --window-end 20260908 --sleep 0.2

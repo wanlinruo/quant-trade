@@ -1,7 +1,7 @@
 """Windows 侧：按清单下载分钟线并导出 parquet。
 
-**只在 Windows 上运行**（依赖 xtquant）。可中断可续传：已完成的「标的 + 日期」
-记入 done.csv，重跑只跳过已经完成的股日。
+**只在 Windows 上运行**（依赖 xtquant）。可中断可续传：Parquet 成功落盘后才把
+已完成的「标的 + 日期」记入 done.csv，重跑只跳过已经持久化的股日；空结果不记账。
 
 策略依据 2026-09-09 的实测：
   · 按标的整年下载 0.69s/只，比按股-日（0.60s/组）**看起来**更快
@@ -78,6 +78,23 @@ def read_done(path: str) -> set[tuple[str, str]]:
         return done
 
 
+def pending_manifest(
+    wanted: dict[str, list[str]], done: set[tuple[str, str]],
+) -> dict[str, list[str]]:
+    """只跳过已经按「证券 + 日期」落盘完成的股日。"""
+    return {
+        symbol: [stamp for stamp in stamps if (symbol, stamp) not in done]
+        for symbol, stamps in wanted.items()
+    }
+
+
+def append_done(path: str, keys: list[tuple[str, str]]) -> None:
+    """Parquet 成功落盘后才追加账本；反过来会在崩溃时制造假完成。"""
+    with open(path, "a", encoding="utf-8") as handle:
+        for symbol, stamp in keys:
+            handle.write(f"{symbol},{stamp}\n")
+
+
 def to_rows(symbol: str, data: dict, stamps: list[str]) -> list[tuple]:
     """把 xtdata 的 {字段: DataFrame} 摊平成行。
 
@@ -137,7 +154,19 @@ def flush(rows: list[tuple], out_dir: str, index: int) -> str:
         schema=_arrow_schema(),
     )
     path = os.path.join(out_dir, f"minutes_{index:05d}.parquet")
-    pq.write_table(table, path)
+    temporary = path + ".tmp"
+    pq.write_table(table, temporary)
+    os.replace(temporary, path)
+    return path
+
+
+def flush_checkpoint(
+    rows: list[tuple], keys: list[tuple[str, str]],
+    out_dir: str, index: int, done_path: str,
+) -> str:
+    """先持久化数据、再持久化完成键；失败时账本绝不能前进。"""
+    path = flush(rows, out_dir, index)
+    append_done(done_path, keys)
     return path
 
 
@@ -165,10 +194,7 @@ def main() -> int:
 
     wanted = read_manifest(args.manifest)
     done = read_done(done_path)
-    pending = {
-        symbol: [stamp for stamp in stamps if (symbol, stamp) not in done]
-        for symbol, stamps in wanted.items()
-    }
+    pending = pending_manifest(wanted, done)
     todo = [symbol for symbol in sorted(pending) if pending[symbol]]
     if args.limit:
         todo = todo[: args.limit]
@@ -182,6 +208,7 @@ def main() -> int:
         return 0
 
     buffer: list[tuple] = []
+    buffer_done: list[tuple[str, str]] = []
     file_index = len(
         [f for f in os.listdir(args.out) if f.endswith(".parquet")]
     )
@@ -216,28 +243,32 @@ def main() -> int:
             print(f"  [失败] {symbol}: {type(exc).__name__}: {exc}", flush=True)
             continue
 
+        completed = sorted({row[1].strftime("%Y%m%d") for row in rows})
+        missing_stamps = sorted(set(stamps) - set(completed))
         if rows:
             buffer.extend(rows)
+            buffer_done.extend((symbol, stamp) for stamp in completed)
             ok += 1
-        else:
-            empty += 1  # 停牌整段或该日无数据，不是失败
-
-        with open(done_path, "a", encoding="utf-8") as handle:
-            for stamp in stamps:
-                handle.write(f"{symbol},{stamp}\n")
+        if missing_stamps:
+            empty += len(missing_stamps)
+            print(f"  [空] {symbol}: {','.join(missing_stamps)}", flush=True)
 
         if len(buffer) >= args.flush_rows:
-            path = flush(buffer, args.out, file_index)
+            path = flush_checkpoint(
+                buffer, buffer_done, args.out, file_index, done_path
+            )
             print(f"  写出 {os.path.basename(path)}  {len(buffer):,} 行", flush=True)
             file_index += 1
             buffer = []
+            buffer_done = []
 
         if position % 100 == 0:
             elapsed = time.time() - started
             rate = position / elapsed
             left = (len(todo) - position) / rate if rate else 0
             print(
-                f"  {position}/{len(todo)}  有数据 {ok} 空 {empty} 失败 {failed}  "
+                f"  {position}/{len(todo)}  有数据 {ok} 只 空 {empty} 股日 "
+                f"失败 {failed} 只  "
                 f"{rate:.1f} 只/秒  剩余约 {left/60:.0f} 分钟",
                 flush=True,
             )
@@ -246,12 +277,12 @@ def main() -> int:
             time.sleep(args.sleep)
 
     if buffer:
-        path = flush(buffer, args.out, file_index)
+        path = flush_checkpoint(buffer, buffer_done, args.out, file_index, done_path)
         print(f"  写出 {os.path.basename(path)}  {len(buffer):,} 行")
 
-    print(f"完成：有数据 {ok} 只 / 空 {empty} 只 / 失败 {failed} 只")
+    print(f"完成：有数据 {ok} 只 / 空 {empty} 股日 / 失败 {failed} 只")
     print(f"耗时 {(time.time()-started)/60:.1f} 分钟")
-    return 1 if failed else 0
+    return 1 if failed or empty else 0
 
 
 if __name__ == "__main__":
