@@ -35,6 +35,18 @@ def is_cash_equivalent(symbol: str) -> bool:
     return code.startswith("131") or code.startswith("204")
 
 
+def has_usable_market_value(snapshot) -> bool:
+    """券商市值可用吗。
+
+    有量却报 0 不是「直取到 0」，是没取到——某些 QMT 版本对国债逆回购就这么报。
+    照收等于把那笔钱当凭空消失（#134）。
+    """
+    value = snapshot.market_value
+    if value is None:
+        return False
+    return not (snapshot.total_qty > 0 and value == 0)
+
+
 @dataclass(frozen=True, slots=True)
 class PositionMismatch:
     symbol: str
@@ -55,12 +67,19 @@ class PositionReconResult:
 
     def summary(self) -> str:
         if self.is_consistent:
+            # 「一致」不能把判不了咽掉：影子模式下现金差不参与判定，结论就是一致，
+            # 可缺市值这件事必须留在台账里，否则生产里唯一在跑的模式会静默。
+            if self.unvalued_cash_equivalents:
+                return ("reconcile: consistent（现金差判不了："
+                        f"{len(self.unvalued_cash_equivalents)} 个现金等价物缺市值 "
+                        f"{', '.join(self.unvalued_cash_equivalents)}；"
+                        "现金差不参与判定：账户非核心独占）")
             if not self.cash_decided and self.cash_diff:
                 return (f"reconcile: consistent（现金差 {self.cash_diff:,.2f} "
                         "不参与判定：账户非核心独占）")
             return "reconcile: consistent"
         if self.cash_diff is None:
-            head = ("reconcile: INCONSISTENT (cash diff 无法判定："
+            head = ("reconcile: INCONSISTENT (cash diff 判不了："
                     f"{len(self.unvalued_cash_equivalents)} 个现金等价物缺市值 "
                     f"{', '.join(self.unvalued_cash_equivalents)})")
         else:
@@ -102,7 +121,11 @@ def reconcile_positions(
     # 现金差就恒等于逆回购金额（2026-09-28 起生产每天判不一致的真因）。
     # 市值一律直取券商快照；缺一个就判不了，不按 0 也不按 qty×avg_cost 反推。
     equivalents = {s: p for s, p in remote.positions.items() if is_cash_equivalent(s)}
-    unvalued = tuple(sorted(s for s, p in equivalents.items() if p.market_value is None))
+    # 有量却报市值 0 不是「直取到 0」，是没取到：某些 QMT 版本对逆回购就这么报。
+    # 照收会退回本次要修的那个行为——把那笔钱当凭空消失。
+    unvalued = tuple(sorted(
+        s for s, p in equivalents.items() if not has_usable_market_value(p)
+    ))
     if unvalued:
         cash_diff = None
         cash_ok = False
@@ -115,6 +138,9 @@ def reconcile_positions(
     if not consistent:
         log.error("reconcile.inconsistent", cash_diff=cash_diff,
                   mismatches=len(mismatches), unvalued_cash_equivalents=len(unvalued))
+    elif unvalued:
+        # 判为一致但现金差判不了：不报错，但不能不出声。
+        log.warning("reconcile.cash_undeterminable", unvalued_cash_equivalents=unvalued)
 
     return PositionReconResult(consistent, cash_diff, tuple(mismatches), unvalued,
                                cash_decided=cash_decides)

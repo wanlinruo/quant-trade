@@ -273,3 +273,42 @@ def test_a_reconciliation_without_a_mode_is_reported_as_undetermined(ctx, wareho
 
     assert row["passed"] is True
     assert "模式未记录" in row["detail"]
+
+
+def test_a_shadow_position_mismatch_is_still_a_violation(ctx, warehouse):
+    """影子豁免只豁免现金那一类，不能把持仓差一起放过。
+
+    `ShadowBroker.poll_fills` 恒为空、`on_market_data` 不撮合——影子盘永远不会
+    有自己的成交，所以它的持仓差只可能来自「账户里出现了核心不知道的持仓」。
+    那是真信号，必须照旧阻断。
+    """
+    row = dict(_row("shadow"))
+    row["n_mismatches"] = 1
+    row["detail"] = "600036.SH: local=0 remote=500"
+    _recon(warehouse, [row])
+
+    verdict = _run("B4.arrival", ctx, metric="live_recon.is_consistent")
+
+    assert verdict["passed"] is False
+    assert verdict["violations"] == 1
+
+
+def test_old_and_new_recon_partitions_can_coexist(ctx, warehouse):
+    """`journal._merge` 只重写它写入的那一年，所以 2026 分区会一直没有 `mode`，
+    而 2027 分区有。直接 `pl.concat` 两个宽度不同的表会抛 ShapeError，
+    规则从跨年后第一次写入起就整条挂掉——而它是唯一的到货阻断规则。
+    """
+    old = pl.DataFrame({
+        "dt": [D[0]], "at": [datetime(D[0].year, D[0].month, D[0].day, 10, 0)],
+        "layer": ["intraday"], "is_consistent": [True], "cash_diff": [0.0],
+        "n_mismatches": [0], "detail": [""],
+    })
+    (ctx.warehouse.root / "live_recon").mkdir(parents=True, exist_ok=True)
+    old_dir = ctx.warehouse.root / "live_recon" / "year=2025"
+    old_dir.mkdir(parents=True, exist_ok=True)
+    old.write_parquet(old_dir / "part.parquet")
+    _recon(warehouse, [_row("live")])
+
+    verdict = _run("B4.arrival", ctx, metric="live_recon.is_consistent")
+
+    assert verdict["violations"] == 1

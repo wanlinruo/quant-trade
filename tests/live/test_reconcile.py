@@ -262,3 +262,38 @@ def test_a_repo_in_the_local_book_is_not_compared_as_a_position():
     )
 
     assert r.mismatches == ()
+
+
+def test_an_undeterminable_cash_diff_is_never_silent_even_in_shadow_mode():
+    """影子模式下现金差不参与判定，于是结论是「一致」——但「判不了」这件事
+    不能跟着消失，否则生产里唯一在跑的那个模式会把数据缺口咽掉（#134 自审 6）。"""
+    r = reconcile_positions(
+        local(100_000.0, {}),
+        AccountSnapshot(at=T, cash=1.31, positions={
+            "131990.SZ": PositionSnapshot(
+                total_qty=1000, available_qty=0, avg_cost=100.0),
+        }),
+        cash_tolerance=10.0, cash_decides=False,
+    )
+
+    assert r.is_consistent is True
+    assert r.cash_diff is None
+    assert "判不了" in r.summary() and "131990.SZ" in r.summary()
+
+
+def test_a_zero_market_value_on_a_held_position_is_not_a_reading():
+    """有量却报市值 0，就不是「直取到 0」，而是没取到。
+
+    照收会退回本次要修掉的那个行为：逆回购的钱当凭空消失，现金差等于整笔金额。
+    """
+    r = reconcile_positions(
+        local(100_000.0, {}),
+        AccountSnapshot(at=T, cash=1.31, positions={
+            "131990.SZ": PositionSnapshot(
+                total_qty=1000, available_qty=0, avg_cost=100.0, market_value=0.0),
+        }),
+        cash_tolerance=10.0,
+    )
+
+    assert r.cash_diff is None
+    assert r.unvalued_cash_equivalents == ("131990.SZ",)

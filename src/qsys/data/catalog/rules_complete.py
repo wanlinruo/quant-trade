@@ -147,20 +147,33 @@ def _arrival(ctx: CheckContext) -> CheckResult:
         if ctx.query.instruments().height == 0:
             missing.append({"dataset": "instruments", "dt": ctx.end, "reason": "空表"})
     recon_parts = sorted((ctx.warehouse.root / "live_recon").glob("year=*/part.parquet"))
-    recon = pl.concat([pl.read_parquet(path) for path in recon_parts]) if recon_parts else pl.DataFrame()
+    # diagonal：`journal._merge` 只重写它写入的那一年，所以老分区会一直缺 `mode`，
+    # 新分区有。默认的纵向拼接遇到宽度不同直接抛 ShapeError，会让这条唯一的到货
+    # 阻断规则从跨年后第一次写入起整条挂掉。
+    recon = (pl.concat([pl.read_parquet(path) for path in recon_parts], how="diagonal")
+             if recon_parts else pl.DataFrame())
     notes: list[str] = []
     if recon.height:
         if "mode" not in recon.columns:          # 2026-10-06 之前落盘的行没有这一列
             recon = recon.with_columns(pl.lit(None, dtype=pl.Utf8).alias("mode"))
         failed = recon.filter(pl.col("dt").is_between(ctx.start, ctx.end) & ~pl.col("is_consistent"))
-        # 影子盘与账户对不上是正当的：维护者自己要转账、买国债逆回购，而影子核心
-        # 一张单都发不出去，所以 `runtime._assert_reconciled` 在影子模式下只告警。
-        # 这里必须跟着分级，否则一条正当的漂移会每天伪装成阻断违规，把真正的
-        # 持仓不一致盖掉（2026-09-28 起生产实际发生，#134）。
-        # 未知模式一律按实盘处理——保守，而不是替它假设成影子。
-        shadow = failed.filter(pl.col("mode") == "shadow").height
+        # 影子盘的**资金**与账户对不上是正当的：维护者自己要转账、买国债逆回购，
+        # 到期回款与利息也都入账，而影子核心一张单都发不出去，所以
+        # `runtime._assert_reconciled` 在影子模式下不拿现金判一致性。这里跟着分级，
+        # 否则一条正当的漂移会每天伪装成阻断违规（2026-09-28 起生产实际发生，#134）。
+        #
+        # 但**持仓差不在豁免之内**：`ShadowBroker.poll_fills` 恒为空、
+        # `on_market_data` 不撮合，影子盘永远不会有自己的成交，所以它的持仓差只
+        # 可能来自「账户里出现了核心不知道的持仓」——那是真信号，照旧阻断。
+        #
+        # 模式为 null 的是 2026-10-06 之前落盘的行，当时还没有这一列。它们不计入
+        # 违规，只报「判不了」：实盘核心从未启用过（`qsys-live-core` 一直停用），
+        # 所以历史上不存在被这条豁免掉的实盘不一致。未来若出现 null，detail 会把
+        # 它报出来，不会静默。
+        exempt = (pl.col("mode") == "shadow") & (pl.col("n_mismatches") == 0)
+        shadow = failed.filter(exempt).height
         undetermined = failed.filter(pl.col("mode").is_null()).height
-        blocking = failed.filter(pl.col("mode").is_not_null() & (pl.col("mode") != "shadow"))
+        blocking = failed.filter(pl.col("mode").is_not_null() & ~exempt)
         missing.extend({"dataset": "live_recon", "dt": row["dt"], "reason": row["layer"]}
                        for row in blocking.iter_rows(named=True))
         if shadow:
