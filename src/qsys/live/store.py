@@ -13,6 +13,7 @@ from qsys.core.portfolio import Portfolio, Position
 from qsys.core.trading import Fill, Order
 from qsys.core.types import Symbol
 from qsys.live.messages import AccountSnapshot, OrderStatusEvent
+from qsys.live.reconcile import is_cash_equivalent
 from qsys.ops.strategy_log import RUN_COLUMNS, RunRecord, decode_run, run_values
 from qsys.paper.store import _decode, _encode
 
@@ -140,8 +141,27 @@ class LiveStore:
 
     @staticmethod
     def _portfolio_from_remote(remote: AccountSnapshot) -> Portfolio:
-        portfolio = Portfolio(remote.cash)
+        """现金等价物（国债逆回购）算起始现金，不进策略持仓。
+
+        照搬快照会有两个后果：核心以为自己只有券商现金那点钱可用（生产实测
+        账户现金 1.31 元、10 万在逆回购里），而逆回购还会被当成策略持仓带进
+        本地账本，让对账两侧口径分叉（#134）。
+        市值一律直取券商；取不到就不知道起始资金，明确失败而不是按 0 开张。
+        """
+        parked = 0.0
         for raw_symbol, snapshot in remote.positions.items():
+            if not is_cash_equivalent(raw_symbol):
+                continue
+            if snapshot.market_value is None:
+                raise ValueError(
+                    f"{raw_symbol} 是现金等价物但券商未给市值，无法确定起始资金；"
+                    "先让执行代理上报持仓市值，不要按 0 或成本反推"
+                )
+            parked += snapshot.market_value
+        portfolio = Portfolio(remote.cash + parked)
+        for raw_symbol, snapshot in remote.positions.items():
+            if is_cash_equivalent(raw_symbol):
+                continue
             symbol = Symbol.parse(raw_symbol)
             portfolio.positions[symbol] = Position(
                 symbol=symbol, total_qty=snapshot.total_qty,

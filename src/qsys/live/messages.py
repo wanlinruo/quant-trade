@@ -110,6 +110,9 @@ class PositionSnapshot(BaseModel):
     total_qty: int
     available_qty: int
     avg_cost: float
+    # 券商直取的持仓市值。取不到就是 None，**不得按 0 或 qty×avg_cost 反推**——
+    # 现金等价物的可比现金要用它，推错就会把对账判反。
+    market_value: float | None = None
 
 
 class AccountSnapshot(Message):

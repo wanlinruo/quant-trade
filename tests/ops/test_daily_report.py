@@ -105,3 +105,16 @@ def test_headline_is_short_and_actionable(journal):
     headline = build_daily_report(journal, D).headline
     assert len(headline) < 120
     assert headline.startswith("异常") or headline.startswith("正常")
+
+
+def test_a_null_cash_diff_is_rendered_as_undetermined(journal):
+    """现金等价物缺市值时现金差是 null（#134）。日报直接格式化会抛 TypeError，
+    把整封运营日报打掉——而那封日报正是维护者唯一会看的地方。"""
+    journal.record_reconciliation(
+        D, "intraday", mode="shadow", is_consistent=False, cash_diff=None,
+        n_mismatches=0, detail="1 个现金等价物缺市值", at=T,
+    )
+
+    text = build_daily_report(journal, D).as_text()
+
+    assert "现金差 无法判定" in text

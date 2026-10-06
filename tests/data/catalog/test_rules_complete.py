@@ -220,3 +220,56 @@ def test_an_unrelated_metric_is_not_dragged_down_with_it(ctx, warehouse):
     assert verdict["live_recon.is_consistent"]["passed"] is True
     assert verdict["live_recon.is_consistent"]["violations"] == 0
     assert "其它指标" in verdict["live_recon.is_consistent"]["detail"]
+
+
+# ---- 对账违规按运行模式分级（#134，2026-10-06）--------------------------------
+
+def _recon(warehouse, rows):
+    frame = pl.DataFrame(rows, schema={
+        "dt": pl.Date, "at": pl.Datetime("us"), "layer": pl.Utf8, "mode": pl.Utf8,
+        "is_consistent": pl.Boolean, "cash_diff": pl.Float64,
+        "n_mismatches": pl.Int64, "detail": pl.Utf8,
+    })
+    warehouse.write("live_recon", frame.to_arrow().cast(schema.LIVE_RECON), year=D[0].year)
+
+
+def _row(mode, *, consistent=False, layer="intraday"):
+    return {"dt": D[-1], "at": datetime(D[-1].year, D[-1].month, D[-1].day, 11, 9),
+            "layer": layer, "mode": mode, "is_consistent": consistent,
+            "cash_diff": 49_998.69, "n_mismatches": 0, "detail": "INCONSISTENT"}
+
+
+def test_shadow_drift_is_not_an_arrival_violation(ctx, warehouse):
+    """影子盘与账户对不上是正当的：维护者自己要转账、买逆回购，而影子一张单都发不出去。
+
+    设计上影子模式只告警不停机（`runtime._assert_reconciled`），可 B4.arrival 却把
+    任何 `is_consistent=false` 当阻断违规——2026-09-28 起生产每天多出一条假阻断，
+    真正的持仓不一致被它掩盖。
+    """
+    _recon(warehouse, [_row("shadow")])
+
+    row = _run("B4.arrival", ctx, metric="live_recon.is_consistent")
+
+    assert row["passed"] is True
+    assert row["violations"] == 0
+    assert "影子" in row["detail"]
+
+
+def test_a_live_mode_inconsistency_still_blocks(ctx, warehouse):
+    """实盘核心是账户的唯一写入方，对不上就是事故，必须照旧阻断。"""
+    _recon(warehouse, [_row("live")])
+
+    row = _run("B4.arrival", ctx, metric="live_recon.is_consistent")
+
+    assert row["passed"] is False
+    assert row["violations"] == 1
+
+
+def test_a_reconciliation_without_a_mode_is_reported_as_undetermined(ctx, warehouse):
+    """2026-10-06 之前的行没有 mode。不知道就说不知道，别替它假设成影子。"""
+    _recon(warehouse, [_row(None)])
+
+    row = _run("B4.arrival", ctx, metric="live_recon.is_consistent")
+
+    assert row["passed"] is True
+    assert "模式未记录" in row["detail"]

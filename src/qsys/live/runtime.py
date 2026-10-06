@@ -179,6 +179,11 @@ class LiveRuntime:
             raise LivePreflightError(f"券商账户快照已过期: {age:.1f}s")
         return snapshot
 
+    @property
+    def _mode(self) -> str:
+        """写进对账台账的运行模式。`shadow` 可在运行中被改，所以每次现算。"""
+        return "shadow" if self.shadow else "live"
+
     def _assert_reconciled(self, remote: AccountSnapshot) -> None:
         """对账不一致：实盘停机，影子只告警。
 
@@ -192,7 +197,8 @@ class LiveRuntime:
         白丢了一整天观察期，而它本来连错单都发不出来。所以影子模式下记录并告警，
         照常运行。
         """
-        result = reconcile_positions(self.portfolio, remote, cash_tolerance=10.0)
+        result = reconcile_positions(self.portfolio, remote, cash_tolerance=10.0,
+                                     cash_decides=not self.shadow)
         # 只在结论变化时留痕与告警。对账台账要的是「什么时候坏的、什么时候好的」，
         # 不是每次尝试都记一行：2026-09-29 一个持续存在的差异写进 10,383 条记录
         # （每 2 秒一条），既撑爆仓库，又让 B4.arrival 永远红着。告警同理——
@@ -205,7 +211,7 @@ class LiveRuntime:
         self._recon_seen = fingerprint
         if not result.is_consistent:
             self.journal.record_reconciliation(
-                remote.at.date(), "intraday", is_consistent=False,
+                remote.at.date(), "intraday", mode=self._mode, is_consistent=False,
                 cash_diff=result.cash_diff, n_mismatches=len(result.mismatches),
                 detail=result.summary(), at=remote.at,
             )
@@ -217,8 +223,10 @@ class LiveRuntime:
             self.kill_switch.engage(result.summary())
             raise LivePreflightError(result.summary())
         self.journal.record_reconciliation(
-            remote.at.date(), "intraday", is_consistent=True,
-            cash_diff=result.cash_diff, at=remote.at,
+            remote.at.date(), "intraday", mode=self._mode, is_consistent=True,
+            # 一致也要留口径：影子模式下现金差不参与判定，台账得说出这件事，
+            # 否则「一致」会被读成「现金也对得上」。
+            cash_diff=result.cash_diff, detail=result.summary(), at=remote.at,
         )
 
     def _preflight(self, *, require_market: bool = True) -> None:
@@ -436,7 +444,8 @@ class LiveRuntime:
                 if self.shadow:
                     self.store.record_statuses(self.broker.poll_statuses())
                 remote = self._remote_account()
-                result = reconcile_positions(self.portfolio, remote, cash_tolerance=10.0)
+                result = reconcile_positions(self.portfolio, remote, cash_tolerance=10.0,
+                                     cash_decides=not self.shadow)
                 # 影子意图从未到达券商，cancel_all 后自然没有真实在途委托。
                 open_orders = () if self.shadow else self.store.pending_orders()
                 eod_consistent = result.is_consistent and not open_orders
@@ -446,7 +455,7 @@ class LiveRuntime:
                         f"; {len(open_orders)} orders still non-terminal after cancel request"
                     )
                 self.journal.record_reconciliation(
-                    moment.date(), "eod", is_consistent=eod_consistent,
+                    moment.date(), "eod", mode=self._mode, is_consistent=eod_consistent,
                     cash_diff=result.cash_diff, n_mismatches=len(result.mismatches),
                     detail=detail, at=remote.at,
                 )

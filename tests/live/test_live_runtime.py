@@ -386,3 +386,59 @@ def test_the_live_core_keeps_refusing_on_every_attempt(warehouse, tmp_path):
     for _ in range(3):
         with pytest.raises(LivePreflightError, match="INCONSISTENT"):
             runtime._assert_reconciled(drift)
+
+
+# ---- 对账留痕要带运行模式（#134，2026-10-06）----
+
+def test_the_shadow_core_records_its_mode_in_the_ledger(warehouse, tmp_path):
+    """质检要按模式分级，台账就得说清这条是谁写的。
+
+    不写模式，影子盘的正当漂移会被 B4.arrival 当成阻断违规——生产 2026-09-28
+    起每天一条假阻断就是这么来的。
+    """
+    runtime, _ = _runtime_with_store(warehouse, tmp_path)
+    runtime.shadow = True
+
+    runtime._assert_reconciled(_drifted(runtime.streams))
+
+    # 构造 runtime 时已经记过一条一致的 live 行，这里要看的是刚写的那条
+    row = runtime.journal.reconciliations(date.today()).tail(1).row(0, named=True)
+    assert row["mode"] == "shadow"
+
+
+def test_the_live_core_records_its_mode_in_the_ledger(warehouse, tmp_path):
+    """实盘那条必须认得出来，否则分级会把它一起放过。"""
+    import pytest
+
+    runtime, _ = _runtime_with_store(warehouse, tmp_path)
+
+    with pytest.raises(LivePreflightError):
+        runtime._assert_reconciled(_drifted(runtime.streams))
+
+    row = runtime.journal.reconciliations(date.today()).tail(1).row(0, named=True)
+    assert row["mode"] == "live"
+
+
+def test_the_shadow_core_records_a_cash_gap_but_does_not_call_it_inconsistent(
+    warehouse, tmp_path
+):
+    """影子盘的账户不是核心独占的，现金会因为正当原因一直动：维护者转账、
+    国债逆回购的利息、逆回购到期回款。把这些算进「不一致」，红灯就永远不灭——
+    2026-09-28 转入 5 万那次是转账，10-13 逆回购到期还会再来一次（利息约 29 元，
+    超过 10 元容差）。
+
+    所以影子模式只比持仓；现金差照样记进台账与明细，但不参与判定。
+    """
+    runtime, _ = _runtime_with_store(warehouse, tmp_path)
+    runtime.shadow = True
+    richer = AccountSnapshot(
+        at=datetime.now(), cash=runtime.portfolio.cash + 29.0,
+        total_asset=runtime.portfolio.cash + 29.0, positions={},
+    )
+
+    runtime._assert_reconciled(richer)
+
+    row = runtime.journal.reconciliations(date.today()).tail(1).row(0, named=True)
+    assert row["is_consistent"] is True
+    assert row["cash_diff"] == pytest.approx(29.0)
+    assert "不参与判定" in row["detail"]

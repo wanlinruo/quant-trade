@@ -30,7 +30,8 @@ def test_live_rejects_columns():
 
 def test_live_recon_columns():
     assert [f.name for f in schema.LIVE_RECON] == [
-        "dt", "at", "layer", "is_consistent", "cash_diff", "n_mismatches", "detail",
+        "dt", "at", "layer", "mode", "is_consistent", "cash_diff", "n_mismatches",
+        "detail",
     ]
 
 
@@ -187,3 +188,26 @@ def test_sessions_lists_recorded_days(journal):
 
 def test_sessions_is_empty_on_a_fresh_journal(journal):
     assert journal.sessions() == []
+
+
+# --- 对账台账要记运行模式（#134，2026-10-06）---
+
+def test_reconciliation_records_the_running_mode(journal):
+    """影子盘与账户对不上是正当的（维护者自己要转账、买逆回购），实盘对不上是事故。
+
+    不把模式写进台账，质检就只能看 `is_consistent`，把影子漂移当成阻断违规——
+    生产 2026-09-28 起每天因此多出一条假阻断。
+    """
+    journal.record_reconciliation(
+        D, "intraday", mode="shadow", is_consistent=False,
+        cash_diff=49_998.69, detail="reconcile: INCONSISTENT", at=T,
+    )
+
+    assert journal.reconciliations(D).row(0, named=True)["mode"] == "shadow"
+
+
+def test_reconciliation_mode_defaults_to_null_not_to_a_guess(journal):
+    """没传模式就是不知道。写成 "shadow" 等于替调用方编一个运行模式。"""
+    journal.record_reconciliation(D, "eod", is_consistent=True, at=T)
+
+    assert journal.reconciliations(D).row(0, named=True)["mode"] is None
