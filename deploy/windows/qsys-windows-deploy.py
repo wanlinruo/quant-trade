@@ -13,6 +13,7 @@ import csv
 import hashlib
 import io
 import json
+import locale
 import os
 import re
 import shutil
@@ -185,8 +186,13 @@ def load_config(path: Path = CONFIG_PATH) -> Config:
 class WindowsHost:
     def run(self, command: list[str], *, check: bool = True, cwd: Path | None = None,
             env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+        # OpenSSH can enable Python UTF-8 mode even though native Windows tools
+        # such as schtasks still emit the machine ANSI code page (GBK on the
+        # production node).  Decode child output with the actual Windows code
+        # page; configure_output_encoding separately keeps our JSON protocol
+        # to the Linux coordinator deterministic UTF-8.
         return subprocess.run(command, check=check, cwd=cwd, env=env, text=True,
-                              capture_output=True)
+                              encoding=locale.getencoding(), capture_output=True)
 
     def task(self, action: str, name: str, *options: str,
              check: bool = True) -> subprocess.CompletedProcess[str]:
