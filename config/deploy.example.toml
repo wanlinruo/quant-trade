@@ -13,6 +13,10 @@ port = 6379
 password = ""
 tls = false
 db = 0
+# 建连失败与单次短命令分别最多等待 5 秒。不要设为 0/无限；若增加 Redis
+# Streams BLOCK 长轮询，应使用独立客户端并单独配置大于 BLOCK 的读取超时。
+connect_timeout_seconds = 5.0
+command_timeout_seconds = 5.0
 
 [streams]
 orders = "cmd:orders"       # 核心 -> Windows：下单指令

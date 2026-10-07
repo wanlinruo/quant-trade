@@ -23,6 +23,11 @@ class RedisConfig:
     password: str = field(default="", repr=False)  # 不进 repr / 日志
     tls: bool = False
     db: int = 0
+    # 公共客户端只执行短命令（包括非阻塞 XREADGROUP），必须给连接建立和单次
+    # 命令各自设上限。这样半开 TCP 不会让常驻服务永久失去心跳；下一轮调用由
+    # redis-py 的连接池重新建连。若将来增加 BLOCK 长轮询，须使用独立客户端。
+    connect_timeout_seconds: float = 5.0
+    command_timeout_seconds: float = 5.0
 
 
 @dataclass(frozen=True, slots=True)
