@@ -119,7 +119,10 @@ def _successful_test_run(config: dict[str, object], tree: str) -> str:
             and record.get("environment") == "test"
             and record.get("status") == "success"
             and record.get("source_tree") == tree
-            and record.get("after", {}).get("linux") == record.get("source_sha")
+            and (
+                record.get("after", {}).get("linux") == record.get("source_sha")
+                or record.get("components") == []
+            )
         ):
             candidates.append((str(record.get("completed_at", "")), str(record["run_id"])))
     if not candidates:

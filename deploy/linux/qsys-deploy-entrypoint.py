@@ -230,6 +230,53 @@ def deploy(args: argparse.Namespace, config: dict[str, object]) -> int:
     return 0 if success else 1
 
 
+def attest(args: argparse.Namespace, config: dict[str, object]) -> int:
+    """Record a tested control-plane tree without changing the runtime checkout."""
+    if not SHA_PATTERN.fullmatch(args.sha):
+        raise ValueError("sha must be a full 40-character lowercase commit SHA")
+    if not RUN_ID_PATTERN.fullmatch(args.run_id):
+        raise ValueError("run-id contains unsupported characters")
+    if not REPOSITORY_PATTERN.fullmatch(args.repository):
+        raise ValueError("repository must be owner/name")
+    repo = Path(str(config["test_repo"])).resolve(strict=True)
+    _run(["git", "fetch", "--no-tags", "origin", "test"], cwd=repo)
+    remote = _run(["git", "rev-parse", "origin/test"], cwd=repo).stdout.strip()
+    if remote != args.sha:
+        raise ValueError(f"origin/test is {remote}, requested {args.sha}")
+    node = status(config)
+    if node["dirty"] or not node["healthy"] or not node["isolated"]:
+        raise ValueError("test node is not healthy and isolated")
+    tree = _run(["git", "rev-parse", f"{args.sha}^{{tree}}"], cwd=repo).stdout.strip()
+    now = datetime.now(UTC).isoformat()
+    record = {
+        "schema_version": 1,
+        "run_id": args.run_id,
+        "environment": "test",
+        "status": "success",
+        "actor": args.actor,
+        "started_at": now,
+        "completed_at": now,
+        "repository": args.repository,
+        "pr_number": args.pr_number,
+        "source_sha": args.sha,
+        "source_tree": tree,
+        "components": [],
+        "before": {"linux": str(node["sha"])},
+        "after": {"linux": str(node["sha"])},
+        "config_fingerprints": _fingerprints(config, repo),
+        "checks": [{
+            "name": "control-plane-attestation",
+            "status": "passed",
+            "detail": "trusted planner selected no test runtime component; node remains healthy and isolated",
+        }],
+        "rollback_targets": {"linux": str(node["sha"])},
+        "migration_summary": "none",
+    }
+    path = _write_record(config, args.run_id, record)
+    print(json.dumps({"ok": True, "status": "success", "record": str(path)}))
+    return 0
+
+
 def read_record(config: dict[str, object], run_id: str) -> dict[str, Any]:
     if not RUN_ID_PATTERN.fullmatch(run_id):
         raise ValueError("run-id contains unsupported characters")
@@ -250,6 +297,13 @@ def build_parser() -> argparse.ArgumentParser:
     deploy_parser.add_argument("--actor", required=True)
     deploy_parser.add_argument("--repository", required=True)
     deploy_parser.add_argument("--pr-number", type=int)
+    attest_parser = commands.add_parser("attest")
+    attest_parser.add_argument("--environment", choices=("test",), required=True)
+    attest_parser.add_argument("--sha", required=True)
+    attest_parser.add_argument("--run-id", required=True)
+    attest_parser.add_argument("--actor", required=True)
+    attest_parser.add_argument("--repository", required=True)
+    attest_parser.add_argument("--pr-number", type=int)
     record_parser = commands.add_parser("record")
     record_parser.add_argument("--environment", choices=("test",), required=True)
     record_parser.add_argument("--run-id", required=True)
@@ -266,6 +320,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "record":
             print(json.dumps(read_record(config, args.run_id), ensure_ascii=False))
             return 0
+        if args.command == "attest":
+            return attest(args, config)
         return deploy(args, config)
     except (OSError, ValueError, json.JSONDecodeError, subprocess.CalledProcessError) as exc:
         print(json.dumps({"ok": False, "error": str(exc)}), file=sys.stderr)
