@@ -179,11 +179,11 @@ def test_shared_redis_change_targets_both_nodes() -> None:
 
 def test_docs_only_change_is_recorded_without_a_runtime_deployment() -> None:
     plan = DeploymentManifest.load(MANIFEST).plan(
-        ["docs/deploy/linux-core.md"], environment="production",
+        ["HANDOFF.md", "docs/deploy/linux-core.md"], environment="production",
     )
 
     assert plan.components == ()
-    assert plan.ignored_paths == ("docs/deploy/linux-core.md",)
+    assert plan.ignored_paths == ("HANDOFF.md", "docs/deploy/linux-core.md")
     assert plan.deployable is False
 
 
