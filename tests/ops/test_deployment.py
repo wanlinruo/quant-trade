@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import importlib.util
 import subprocess
@@ -31,6 +32,15 @@ def _entrypoint_module():
 def _dispatcher_module():
     path = Path("deploy/linux/qsys-deploy-ssh.py")
     spec = importlib.util.spec_from_file_location("qsys_deploy_ssh", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _key_installer_module():
+    path = Path("deploy/linux/install-test-deploy-key.py")
+    spec = importlib.util.spec_from_file_location("qsys_install_test_key", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -214,6 +224,28 @@ def test_restricted_ssh_dispatcher_never_invokes_a_shell(monkeypatch) -> None:
     monkeypatch.setenv("SSH_ORIGINAL_COMMAND", "bash -c whoami")
     with pytest.raises(ValueError, match="not allowed"):
         dispatcher.command_from_environment()
+
+
+def test_test_deploy_key_is_forced_and_rotated_atomically(tmp_path) -> None:
+    installer = _key_installer_module()
+    public = tmp_path / "deploy.pub"
+    authorized = tmp_path / ".ssh" / "authorized_keys"
+    encoded = base64.b64encode(b"a" * 32).decode()
+    public.write_text(f"ssh-ed25519 {encoded} generated\n", encoding="utf-8")
+    authorized.parent.mkdir()
+    authorized.write_text("ssh-ed25519 YWJj existing\n", encoding="utf-8")
+
+    installer.install(public, authorized)
+    installer.install(public, authorized)
+
+    lines = authorized.read_text(encoding="utf-8").splitlines()
+    assert lines[0] == "ssh-ed25519 YWJj existing"
+    assert lines[1].startswith(
+        'restrict,command="/usr/local/libexec/qsys-deploy-ssh" ssh-ed25519 '
+    )
+    assert lines[1].endswith(" qsys-github-testing")
+    assert len(lines) == 2
+    assert authorized.stat().st_mode & 0o777 == 0o600
 
 
 def test_failed_deployment_rollback_restores_code_dependencies_and_service(monkeypatch, tmp_path) -> None:
