@@ -759,7 +759,7 @@ if "limit_pct" in yesterday.columns:
 
 ## D-16 `share_capital` 停更观察期，以及与 `daily_basic` 股本的 4 处分歧（已了结）
 
-**登记日期**：2026-09-15。**状态：已于 2026-10-06 结案。**
+**登记日期**：2026-09-15。**状态：已于 2026-10-07 结案。**
 
 **背景与更正**：`valuation_snapshot` 于 2026-09-15 改为 `daily_basic` 纯投影后，
 QMT `share_capital` 不再参与估值；但 2026-10-06 复核发现它仍被
