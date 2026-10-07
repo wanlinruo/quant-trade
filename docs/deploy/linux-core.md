@@ -35,6 +35,9 @@ Ubuntu 24.04.4 LTS · x86_64 · 2 核 / 1.9 GB 内存 / 40 GB 磁盘
 
 ## 部署步骤
 
+> 当前标准生产发布入口见 [production-linux-release.md](production-linux-release.md)。
+> 下方手工命令只保留为历史说明和只读应急参考，不再作为日常写入流程。
+
 ### 1. 镜像配置（必须最先做）
 
 ```bash

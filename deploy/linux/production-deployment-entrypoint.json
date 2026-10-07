@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "production_repo": "/home/ubuntu/qsys",
+  "production_record_root": "/data/qsys/var-deployments/github",
+  "test_record_root": "/data/qsys-test/var/deployments",
+  "fingerprint_key": "/etc/qsys/config-fingerprint.key",
+  "uv_bin": "/home/ubuntu/.local/bin/uv",
+  "health_url": "http://127.0.0.1:8420/healthz"
+}
