@@ -130,7 +130,7 @@ def test_windows_controller_emits_utf8_without_changing_child_locale(monkeypatch
     assert encodings == ["utf-8", "utf-8"]
 
 
-def test_windows_host_decodes_native_tools_with_the_system_code_page(monkeypatch) -> None:
+def test_windows_host_decodes_native_tools_with_the_oem_code_page(monkeypatch) -> None:
     entrypoint = _entrypoint()
     calls: list[dict] = []
 
@@ -138,14 +138,13 @@ def test_windows_host_decodes_native_tools_with_the_system_code_page(monkeypatch
         calls.append(kwargs)
         return subprocess.CompletedProcess(command, 0, "", "")
 
-    monkeypatch.setattr(entrypoint.locale, "getencoding", lambda: "cp936")
     monkeypatch.setattr(entrypoint.subprocess, "run", run)
 
     entrypoint.WindowsHost().run(["schtasks", "/query"])
 
     assert calls == [{
         "check": True, "cwd": None, "env": None, "text": True,
-        "encoding": "cp936", "capture_output": True,
+        "encoding": "oem", "capture_output": True,
         "timeout": entrypoint.NATIVE_COMMAND_TIMEOUT_S,
     }]
 
