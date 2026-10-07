@@ -268,6 +268,17 @@ def test_failed_deployment_rollback_restores_code_dependencies_and_service(monke
     ]
 
 
+def test_rollback_health_wait_tolerates_service_startup(monkeypatch, tmp_path) -> None:
+    entrypoint = _entrypoint_module()
+    states = iter((False, False, True))
+    sleeps: list[int] = []
+    monkeypatch.setattr(entrypoint, "_healthy", lambda config, repo: next(states))
+    monkeypatch.setattr(entrypoint.time, "sleep", sleeps.append)
+
+    assert entrypoint._wait_healthy({}, tmp_path, attempts=3) is True
+    assert sleeps == [1, 1]
+
+
 def test_privileged_workflow_uses_trusted_main_controller() -> None:
     workflow = Path(".github/workflows/deploy-test.yml").read_text(encoding="utf-8")
 

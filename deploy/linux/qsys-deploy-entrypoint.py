@@ -10,6 +10,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
@@ -94,6 +95,17 @@ def _isolated(config: dict[str, object], repo: Path) -> bool:
     )
 
 
+def _wait_healthy(
+    config: dict[str, object], repo: Path, *, attempts: int = 20,
+) -> bool:
+    for attempt in range(attempts):
+        if _healthy(config, repo):
+            return True
+        if attempt + 1 < attempts:
+            time.sleep(1)
+    return False
+
+
 def status(config: dict[str, object]) -> dict[str, object]:
     repo = Path(str(config["test_repo"])).resolve(strict=True)
     dirty = bool(_run(
@@ -120,7 +132,7 @@ def _rollback(config: dict[str, object], repo: Path, before: str) -> bool:
             _run(command, cwd=repo)
     except subprocess.CalledProcessError:
         return False
-    return _healthy(config, repo)
+    return _wait_healthy(config, repo)
 
 
 def _fingerprints(config: dict[str, object], repo: Path) -> dict[str, str]:
@@ -173,9 +185,10 @@ def deploy(args: argparse.Namespace, config: dict[str, object]) -> int:
     if completed.returncode != 0:
         rollback_ok = _rollback(config, repo, before)
     after = _head(repo)
+    target_health = _wait_healthy(config, repo)
     success = (
         completed.returncode == 0 and after == args.sha
-        and _healthy(config, repo) and _isolated(config, repo)
+        and target_health and _isolated(config, repo)
     )
     if not success and not rollback_ok and after != before:
         rollback_ok = _rollback(config, repo, before)
