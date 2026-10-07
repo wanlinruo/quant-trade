@@ -54,7 +54,69 @@ PR 和 CI 门禁的目标 SHA 提取该版本的 `qsys-windows-deploy.py`，复�
 修复无需先手工覆盖固定入口，也不会出现“新归档由旧控制器验证”的自举环；控制器仍位于
 应用目录之外，应用切换和回滚不会替换本次操作所使用的控制器。
 
+这里有一个必须显式处理的首次自举边界：如果 Linux 上已安装的
+`qsys-production-deploy-entrypoint` 早于“从目标 SHA 提取协调器”的实现，那么仓库里的新代码
+不会自动生效。旧固定入口会继续调用旧协调器，旧协调器又会调用 Windows 固定旧入口，形成
+自举悖论。首次启用或修复自举逻辑时，必须先逐文件审查目标入口、备份已安装文件、仅更新该
+固定入口并核对 SHA256；不得把一次性引导误认为普通目标 SHA 已经能够自行完成。
+
 安装动作和真实发布都是生产写操作；执行前必须保存当前状态并核对精确文件。
+
+## 2026-10-07 编码故障复盘与强制排障顺序
+
+### 现象与真正根因
+
+Windows 现场直接发布已经成功，目标控制器记录的两个应用、进程、心跳和 watchdog 均正常；
+但 GitHub dry-run 连续在 Linux 协调阶段报
+`'utf-8' codec can't decode byte 0xd5 ...`。两者看似矛盾，实际走的不是同一版本链路：
+
+- Windows 固定旧入口把包含“正在运行”的 JSON 按 CP936 输出，中文起始字节为
+  `d5 fd d4 da ...`；
+- 第一次现场发布使用的目标 SHA 控制器按 UTF-8 输出，同一文字起始字节为
+  `e6 ad a3 e5 9c a8 ...`；
+- Linux 已安装的 production 固定入口仍停留在旧版本，尚不具备从目标 SHA 自举协调器的能力；
+- 因而 GitHub 实际调用的是旧协调器和 Windows 固定旧入口，而不是已经修复的目标控制器。
+
+更新 Linux 固定入口后，同一目标 SHA 的 GitHub dry-run 立即成功。由此确认：主要故障是
+**执行版本漂移和自举断点**，编码异常只是旧链路暴露出的表象。
+
+随后真实 workflow 还有一个独立的响应契约问题：节点操作和 record 都已成功，但入口成功响应
+缺少 `"dry_run": false`，被 workflow 的 fail-closed 校验拒绝。该问题与字符编码无关，必须
+通过比较节点 record、入口响应和 Actions 失败步骤分别判断，不能把所有失败归为同一根因。
+
+### 本次排查为什么耗时
+
+最初根据异常文本直接假设目标 Windows 控制器解码错误，在没有先证明 GitHub 实际执行文件
+版本的情况下修改了编码层。该修改通过单元测试，但无法修复旧入口仍被执行的事实，导致又跑了
+一轮完整 CI、PR 和 dry-run。直到比较服务器固定入口 SHA256、检查 Windows `incoming` 文件，
+并捕获 SSH 原始 stdout 字节后，才确认执行路径与预期不一致。
+
+### 以后必须按此顺序排查
+
+1. **先画实际调用链**：GitHub workflow → Linux forced command → Linux production 固定入口
+   → 目标协调器或固定协调器 → 目标 Windows 控制器或固定控制器。不得只看仓库 HEAD 推断
+   服务器执行版本。
+2. **先核对版本再改代码**：记录已安装入口 SHA256，与目标 commit 中对应 blob 的 SHA256
+   比较；同时确认目标控制器是否真的出现在 Windows `incoming` 目录。
+3. **保留原始字节证据**：SSH stdout/stderr 先按 bytes 落到受控临时文件，只报告长度、是否可
+   按 UTF-8 解码及必要的短十六进制片段。不要让本地 `text=True` 在证据采集前替你选择编码。
+4. **对比固定入口和目标入口**：用相同只读 `status` 参数分别调用，确认问题属于旧 bootstrap、
+   transport，还是目标控制器内部。直接现场成功不能自动证明 GitHub 链路也使用同一入口。
+5. **先做最短现场验证**：目标协调器 direct dry-run 成功后，再决定是否需要一次性更新固定
+   bootstrap；更新前保留带旧 SHA 的备份，只替换已审查的单文件，不覆盖配置或 SSH wrapper。
+6. **再走标准门禁**：依次验证目标 SHA 的 CI、test deployment、GitHub dry-run；真实发布后
+   同时核对 workflow、GitHub Deployment、节点 record 和现场 status。
+7. **分开判断三类结果**：Windows 操作结果、Linux 节点 record、Actions 编排结果各自可能
+   成功或失败。必须定位第一个不一致的契约字段，禁止仅凭最终红灯推断节点已回滚或服务异常。
+
+### 禁止的捷径
+
+- 不得看到 UnicodeDecodeError 就在多层同时增加 fallback 或 `errors="replace"`；这会掩盖到底
+  执行了哪个版本，还可能破坏“已禁用”等安全状态的精确判断。
+- 不得在尚未确认目标控制器被调用前反复触发完整 Actions；先做哈希、原始字节和 direct
+  `status`/dry-run，通常几十秒即可区分版本漂移与真实编码缺陷。
+- 不得为了修复 bootstrap 整包重装并覆盖生产配置；固定入口、配置、forced-command wrapper
+  和 Windows key 必须分别处理。
 
 ## 应急人工回滚
 
