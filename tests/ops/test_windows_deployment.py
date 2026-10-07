@@ -114,6 +114,22 @@ def test_windows_config_fingerprint_redacts_secret_values(tmp_path: Path) -> Non
     assert entrypoint.config_public_fingerprint(first) == entrypoint.config_public_fingerprint(second)
 
 
+def test_windows_controller_emits_utf8_without_changing_child_locale(monkeypatch) -> None:
+    entrypoint = _entrypoint()
+    encodings: list[str] = []
+
+    class Stream:
+        def reconfigure(self, *, encoding: str) -> None:
+            encodings.append(encoding)
+
+    monkeypatch.setattr(entrypoint.sys, "stdout", Stream())
+    monkeypatch.setattr(entrypoint.sys, "stderr", Stream())
+
+    entrypoint.configure_output_encoding()
+
+    assert encodings == ["utf-8", "utf-8"]
+
+
 def test_identical_sha_deployment_is_noop_and_does_not_touch_tasks(tmp_path: Path) -> None:
     entrypoint = _entrypoint()
     app = entrypoint.App("live_app", tmp_path / "live", "agent-task", "scripts/run_agent.py", "agent")
