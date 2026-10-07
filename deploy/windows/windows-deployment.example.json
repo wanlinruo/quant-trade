@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "python": "C:\\qsys\\.venv\\Scripts\\python.exe",
+  "staging_root": "C:\\qsys\\deployments\\staging",
+  "release_root": "C:\\qsys\\deployments\\releases",
+  "watchdog_task": "qsys-watchdog",
+  "apps": {
+    "live_app": {
+      "root": "C:\\qsys\\live_app",
+      "task": "qsys-agent-shadow",
+      "entrypoint": "scripts\\run_agent.py",
+      "heartbeat": "agent"
+    },
+    "paper_app": {
+      "root": "C:\\qsys\\paper_app",
+      "task": "qsys-market-gateway",
+      "entrypoint": "scripts\\run_market_gateway.py",
+      "heartbeat": "market"
+    }
+  }
+}
