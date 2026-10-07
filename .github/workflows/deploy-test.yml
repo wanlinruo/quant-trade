@@ -1,0 +1,176 @@
+name: Deploy test
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [test]
+
+permissions:
+  actions: read
+  contents: read
+  deployments: write
+
+concurrency:
+  group: deploy-testing
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'test'
+    runs-on: ubuntu-24.04
+    environment: testing
+    env:
+      TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
+      DEPLOY_HOST: ${{ vars.TEST_DEPLOY_HOST }}
+      DEPLOY_USER: ${{ vars.TEST_DEPLOY_USER }}
+      RUN_KEY: github-${{ github.run_id }}-${{ github.run_attempt }}
+      UPSTREAM_RUN_ID: ${{ github.event.workflow_run.id }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out trusted deployment controller
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Install dedicated SSH identity
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.TEST_DEPLOY_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.TEST_DEPLOY_KNOWN_HOSTS }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          root = Path.home() / ".ssh"
+          root.mkdir(mode=0o700, exist_ok=True)
+          key = root / "test-deploy"
+          key.write_text(os.environ["SSH_PRIVATE_KEY"].rstrip() + "\n", encoding="utf-8")
+          key.chmod(0o600)
+          known = root / "known_hosts"
+          known.write_text(os.environ["SSH_KNOWN_HOSTS"].rstrip() + "\n", encoding="utf-8")
+          known.chmod(0o600)
+          PY
+
+      - name: Verify exact source and node state
+        id: source
+        run: |
+          set -eu
+          python3 - <<'PY'
+          import os
+          import re
+
+          if not re.fullmatch(r"[0-9a-f]{40}", os.environ["TARGET_SHA"]):
+              raise SystemExit("workflow_run did not provide an exact lowercase SHA")
+          PY
+          remote_sha=$(git ls-remote origin refs/heads/test | awk '{print $1}')
+          test "$remote_sha" = "$TARGET_SHA"
+          git fetch --no-tags origin "$TARGET_SHA"
+          node_json=$(ssh -i ~/.ssh/test-deploy -o BatchMode=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" 'status --environment test')
+          NODE_JSON="$node_json" python3 - <<'PY' >>"$GITHUB_OUTPUT"
+          import json
+          import os
+
+          state = json.loads(os.environ["NODE_JSON"])
+          if (
+              state["branch"] != "test" or state["dirty"]
+              or not state["healthy"] or not state["isolated"]
+          ):
+              raise SystemExit(f"test node is not deployable: {state}")
+          print(f'before_sha={state["sha"]}')
+          PY
+
+      - name: Plan from trusted main controller
+        id: plan
+        env:
+          BEFORE_SHA: ${{ steps.source.outputs.before_sha }}
+        run: |
+          PYTHONPATH=src python3 scripts/deployment_contract.py plan \
+            --environment test --base "$BEFORE_SHA" --target "$TARGET_SHA" >plan.json
+          python3 - <<'PY' >>"$GITHUB_OUTPUT"
+          import json
+
+          plan = json.load(open("plan.json", encoding="utf-8"))
+          print("deployable=" + ("true" if plan["deployable"] else "false"))
+          print("components=" + ",".join(plan["components"]))
+          PY
+
+      - name: Create GitHub deployment
+        id: deployment
+        run: |
+          jq -n \
+            --arg ref "$TARGET_SHA" \
+            --arg description "test deployment after CI run $UPSTREAM_RUN_ID" \
+            '{ref: $ref, environment: "testing", auto_merge: false, required_contexts: [], description: $description}' \
+            >deployment.json
+          deployment_id=$(gh api --method POST \
+            "repos/$GITHUB_REPOSITORY/deployments" --input deployment.json --jq .id)
+          echo "id=$deployment_id" >>"$GITHUB_OUTPUT"
+          gh api --method POST \
+            "repos/$GITHUB_REPOSITORY/deployments/$deployment_id/statuses" \
+            -f state=in_progress \
+            -f log_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" >/dev/null
+
+      - name: Deploy exact SHA through restricted gateway
+        id: deploy
+        if: steps.plan.outputs.deployable == 'true'
+        run: |
+          ssh -i ~/.ssh/test-deploy -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "deploy --environment test --sha $TARGET_SHA --component test-runtime --run-id $RUN_KEY --actor $GITHUB_ACTOR --repository $GITHUB_REPOSITORY"
+          ssh -i ~/.ssh/test-deploy -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "record --environment test --run-id $RUN_KEY" >record.json
+          PYTHONPATH=src python3 scripts/deployment_contract.py validate-record record.json
+          RUN_KEY="$RUN_KEY" TARGET_SHA="$TARGET_SHA" python3 - <<'PY'
+          import json
+          import os
+
+          record = json.load(open("record.json", encoding="utf-8"))
+          if record["run_id"] != os.environ["RUN_KEY"]:
+              raise SystemExit("node record run_id mismatch")
+          if record["source_sha"] != os.environ["TARGET_SHA"]:
+              raise SystemExit("node record SHA mismatch")
+          if record["status"] != "success":
+              raise SystemExit(f'node record status is {record["status"]}')
+          PY
+
+      - name: Mark deployment successful
+        if: success()
+        env:
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.id }}
+        run: |
+          gh api --method POST \
+            "repos/$GITHUB_REPOSITORY/deployments/$DEPLOYMENT_ID/statuses" \
+            -f state=success \
+            -f log_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" >/dev/null
+
+      - name: Mark deployment failed
+        if: failure() && steps.deployment.outputs.id != ''
+        env:
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.id }}
+        run: |
+          gh api --method POST \
+            "repos/$GITHUB_REPOSITORY/deployments/$DEPLOYMENT_ID/statuses" \
+            -f state=failure \
+            -f log_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" >/dev/null
+
+      - name: Write deployment summary
+        if: always()
+        env:
+          BEFORE_SHA: ${{ steps.source.outputs.before_sha }}
+          DEPLOYABLE: ${{ steps.plan.outputs.deployable }}
+          COMPONENTS: ${{ steps.plan.outputs.components }}
+        run: |
+          {
+            echo "## Testing deployment"
+            echo "- CI run: $UPSTREAM_RUN_ID"
+            echo "- Target: \`$TARGET_SHA\`"
+            echo "- Before: \`$BEFORE_SHA\`"
+            echo "- Deployable: \`$DEPLOYABLE\`"
+            echo "- Components: \`$COMPONENTS\`"
+            echo "- Node record key: \`$RUN_KEY\`"
+          } >>"$GITHUB_STEP_SUMMARY"

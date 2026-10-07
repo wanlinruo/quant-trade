@@ -302,13 +302,12 @@ Nginx 在 8443 复用 `wanlinruo.cn` 证书，反向代理到 `127.0.0.1:8420`�
 
 ### 9.1 测试环境
 
-> **实况（2026-10-05）：本节描述的自动部署工作流从未建成。** `test` push 只触发
-> CI，不会部署任何环境；`qsys-web-test.service` 在节点上确实在跑，但更新要手工做。
-> 维护者 2026-10-05 判「优先级很低，先不做」。本节是目标形态，不是现状。
+> **实况（2026-10-07）：自动部署已建成。** `.github/workflows/deploy-test.yml` 只接收
+> `test` push 对应的成功 CI `workflow_run`；PR CI、失败 CI、其他分支和浮动 ref 均不部署。
 
 触发条件：工作分支 squash 到 `test` 并直接 push，随后 CI 全绿。
 
-1. `test` push workflow 在 CI 全绿后通过 SSH 调用节点部署脚本；
+1. `test` push 的 CI 全绿后，独立特权 workflow 才通过 SSH 调用节点固定入口；
 2. Linux 使用只读 deploy key 执行 `git fetch origin test`；
 3. 校验待部署 SHA 与 GitHub job 的 SHA 完全一致；
 4. 工作区必须干净，执行 `git merge --ff-only origin/test`；
@@ -318,12 +317,19 @@ Nginx 在 8443 复用 `wanlinruo.cn` 证书，反向代理到 `127.0.0.1:8420`�
 7. 重启 `qsys-web-test.service`；
 8. 检查 `127.0.0.1:8421/healthz`；
 9. 通过 Mac 隧道进行人工验收；
-10. 回写 GitHub deployment 状态。
+10. 以同一 run ID 写节点 `record.json`，校验后回写 GitHub deployment 状态。
 
-节点端统一执行 `scripts/deploy_test_linux.sh <完整 commit SHA>`。脚本只接受远程
-`origin/test` 当前指向的 40 位 SHA，且会拒绝错误分支和脏工作区；这保证部署输入不是
-浮动分支名。首次部署使用 `/data/qsys-test/warehouse-current` 指向一个只读数据快照，
-测试服务只有 `/data/qsys-test/var` 的写权限。
+Actions 只持有测试专用 SSH key。该 key 在节点 `authorized_keys` 中被固定到工作树外的
+`qsys-deploy-ssh`，不能取得 shell 或做端口/agent 转发；dispatcher 只允许查询状态、部署
+白名单组件和读取指定 run 的脱敏记录。特权 workflow 从 `main` checkout 可信 planner，
+不执行触发它的 `test` 版本控制代码。节点内部再执行
+`scripts/deploy_test_linux.sh <完整 commit SHA>`；脚本只接受 `origin/test` 当前 40 位 SHA，
+拒绝错误分支和脏工作区。任何配置、smoke 或 health 失败均恢复部署前 SHA、依赖与服务，
+并把结果写入 `/data/qsys-test/var/deployments/<run-id>/record.json`。
+
+`/data/qsys-test/warehouse-current` 是只读数据快照，测试服务只有
+`/data/qsys-test/var` 的写权限；测试配置固定 `safety.mode=disabled`、独立 Redis DB/namespace
+与独立状态路径。
 
 ### 9.2 生产环境
 

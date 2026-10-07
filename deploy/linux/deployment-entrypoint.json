@@ -1,4 +1,9 @@
 {
   "schema_version": 1,
-  "test_repo": "/home/ubuntu/qsys-test"
+  "test_repo": "/home/ubuntu/qsys-test",
+  "test_record_root": "/data/qsys-test/var/deployments",
+  "fingerprint_key": "/etc/qsys/config-fingerprint.key",
+  "uv_bin": "/home/ubuntu/.local/bin/uv",
+  "test_service": "qsys-web-test.service",
+  "test_health_url": "http://127.0.0.1:8421/healthz"
 }

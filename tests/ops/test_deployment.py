@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import importlib.util
 import subprocess
@@ -22,6 +23,24 @@ MANIFEST = Path("deploy/deployment.toml")
 def _entrypoint_module():
     path = Path("deploy/linux/qsys-deploy-entrypoint.py")
     spec = importlib.util.spec_from_file_location("qsys_deploy_entrypoint", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _dispatcher_module():
+    path = Path("deploy/linux/qsys-deploy-ssh.py")
+    spec = importlib.util.spec_from_file_location("qsys_deploy_ssh", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _key_installer_module():
+    path = Path("deploy/linux/install-test-deploy-key.py")
+    spec = importlib.util.spec_from_file_location("qsys_install_test_key", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -186,6 +205,88 @@ def test_fixed_node_entrypoint_accepts_only_test_runtime() -> None:
         entrypoint.validate_request("test", "a" * 40, ["windows-agent"])
     with pytest.raises(ValueError, match="not enabled"):
         entrypoint.validate_request("production", "a" * 40, ["linux-web"])
+
+
+def test_restricted_ssh_dispatcher_never_invokes_a_shell(monkeypatch) -> None:
+    dispatcher = _dispatcher_module()
+    monkeypatch.setenv(
+        "SSH_ORIGINAL_COMMAND",
+        "deploy --environment test --sha " + "a" * 40 + " --component test-runtime",
+    )
+
+    command = dispatcher.command_from_environment()
+
+    assert command[0] == "/usr/local/libexec/qsys-deploy-entrypoint"
+    assert command[1:] == [
+        "deploy", "--environment", "test", "--sha", "a" * 40,
+        "--component", "test-runtime",
+    ]
+    monkeypatch.setenv("SSH_ORIGINAL_COMMAND", "bash -c whoami")
+    with pytest.raises(ValueError, match="not allowed"):
+        dispatcher.command_from_environment()
+
+
+def test_test_deploy_key_is_forced_and_rotated_atomically(tmp_path) -> None:
+    installer = _key_installer_module()
+    public = tmp_path / "deploy.pub"
+    authorized = tmp_path / ".ssh" / "authorized_keys"
+    encoded = base64.b64encode(b"a" * 32).decode()
+    public.write_text(f"ssh-ed25519 {encoded} generated\n", encoding="utf-8")
+    authorized.parent.mkdir()
+    authorized.write_text("ssh-ed25519 YWJj existing\n", encoding="utf-8")
+
+    installer.install(public, authorized)
+    installer.install(public, authorized)
+
+    lines = authorized.read_text(encoding="utf-8").splitlines()
+    assert lines[0] == "ssh-ed25519 YWJj existing"
+    assert lines[1].startswith(
+        'restrict,command="/usr/local/libexec/qsys-deploy-ssh" ssh-ed25519 '
+    )
+    assert lines[1].endswith(" qsys-github-testing")
+    assert len(lines) == 2
+    assert authorized.stat().st_mode & 0o777 == 0o600
+
+
+def test_failed_deployment_rollback_restores_code_dependencies_and_service(monkeypatch, tmp_path) -> None:
+    entrypoint = _entrypoint_module()
+    calls: list[list[str]] = []
+
+    def fake_run(command, *, cwd, check=True):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, "active\n", "")
+
+    monkeypatch.setattr(entrypoint, "_run", fake_run)
+    monkeypatch.setattr(entrypoint, "_healthy", lambda config, repo: True)
+    config = {"uv_bin": "/opt/uv", "test_service": "qsys-web-test.service"}
+
+    assert entrypoint._rollback(config, tmp_path, "b" * 40) is True
+    assert calls == [
+        ["git", "reset", "--hard", "b" * 40],
+        ["/opt/uv", "sync", "--frozen"],
+        ["sudo", "-n", "systemctl", "restart", "qsys-web-test.service"],
+    ]
+
+
+def test_rollback_health_wait_tolerates_service_startup(monkeypatch, tmp_path) -> None:
+    entrypoint = _entrypoint_module()
+    states = iter((False, False, True))
+    sleeps: list[int] = []
+    monkeypatch.setattr(entrypoint, "_healthy", lambda config, repo: next(states))
+    monkeypatch.setattr(entrypoint.time, "sleep", sleeps.append)
+
+    assert entrypoint._wait_healthy({}, tmp_path, attempts=3) is True
+    assert sleeps == [1, 1]
+
+
+def test_privileged_workflow_uses_trusted_main_controller() -> None:
+    workflow = Path(".github/workflows/deploy-test.yml").read_text(encoding="utf-8")
+
+    assert "github.event.workflow_run.event == 'push'" in workflow
+    assert "github.event.workflow_run.head_branch == 'test'" in workflow
+    assert "ref: main" in workflow
+    assert "cancel-in-progress: false" in workflow
+    assert "TEST_DEPLOY_SSH_KEY" in workflow
 
 
 def test_repeated_test_deployment_is_a_noop(tmp_path) -> None:
