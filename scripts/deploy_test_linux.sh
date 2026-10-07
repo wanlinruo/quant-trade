@@ -42,7 +42,11 @@ if [ "$remote_sha" != "$target_sha" ]; then
     echo "origin/test is $remote_sha, requested $target_sha" >&2
     exit 1
 fi
-git merge --ff-only "$target_sha"
+# `test` is periodically squash-merged and force-aligned with `main`, so the
+# currently deployed commit is not guaranteed to be an ancestor of the next
+# verified target. The clean-worktree check above and exact origin/test match
+# make an exact reset deterministic while retaining fail-closed target checks.
+git reset --hard "$target_sha"
 
 uv_bin=${QSYS_UV_BIN:-/home/ubuntu/.local/bin/uv}
 # GitHub CI 已用官方 PyPI 配置执行 `uv sync --locked`。节点使用腾讯云镜像，

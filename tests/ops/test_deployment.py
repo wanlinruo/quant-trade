@@ -484,6 +484,15 @@ def test_repeated_test_deployment_is_a_noop(tmp_path) -> None:
     assert completed.stdout.strip() == f"test deployment already at target: {sha}"
 
 
+def test_test_deployment_switches_to_the_verified_exact_sha() -> None:
+    script = Path("scripts/deploy_test_linux.sh").read_text(encoding="utf-8")
+
+    assert 'remote_sha=$(git rev-parse origin/test)' in script
+    assert 'if [ "$remote_sha" != "$target_sha" ]; then' in script
+    assert 'git reset --hard "$target_sha"' in script
+    assert "git merge --ff-only" not in script
+
+
 def test_test_plan_never_targets_windows() -> None:
     plan = DeploymentManifest.load(MANIFEST).plan(
         ["src/qsys/live/redis_transport.py", "scripts/run_agent.py"],
