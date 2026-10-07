@@ -310,7 +310,9 @@ Nginx 在 8443 复用 `wanlinruo.cn` 证书，反向代理到 `127.0.0.1:8420`�
 1. `test` push 的 CI 全绿后，独立特权 workflow 才通过 SSH 调用节点固定入口；
 2. Linux 使用只读 deploy key 执行 `git fetch origin test`；
 3. 校验待部署 SHA 与 GitHub job 的 SHA 完全一致；
-4. 工作区必须干净，执行 `git merge --ff-only origin/test`；
+4. 工作区必须干净；确认 `origin/test` 等于请求的完整 SHA 后，精确执行
+   `git reset --hard <完整 SHA>`。`test` 会因 squash/对齐形成非祖先历史，不能依赖
+   fast-forward；
 5. GitHub CI 执行 `uv sync --locked`；Linux 因使用腾讯云 PyPI 镜像而执行
    `uv sync --frozen`，精确使用 CI 已验证且入库的 lock，不在节点重写 registry URL；
 6. 运行配置检查与 smoke tests；
