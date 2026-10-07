@@ -466,7 +466,18 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def configure_output_encoding() -> None:
+    # Windows OpenSSH inherits the machine's legacy console code page.  Keep
+    # child-process decoding on that native code page, but make the controller's
+    # JSON protocol deterministic for the UTF-8 Linux coordinator.
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8")
+
+
 def main(argv: list[str] | None = None) -> int:
+    configure_output_encoding()
     args = build_parser().parse_args(argv)
     try:
         config = load_config(args.config)
