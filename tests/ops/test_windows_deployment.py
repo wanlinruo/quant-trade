@@ -323,8 +323,8 @@ def test_linux_coordinator_prepares_both_apps_without_switching_on_dry_run(
             return {"source_tree": "c" * 40, "files": {"src/new.py": "1" * 64}}
 
     class Transport:
-        def command(self, *args, check=True):
-            calls.append(("command", *args))
+        def command(self, *args, check=True, entrypoint=None):
+            calls.append(("command", entrypoint, *args))
             if args == ("status",):
                 body = {"ok": True, "apps": {
                     "live_app": {"deployed_sha": "a" * 40},
@@ -341,6 +341,7 @@ def test_linux_coordinator_prepares_both_apps_without_switching_on_dry_run(
             return "C:/incoming/" + remote_name
 
     monkeypatch.setattr(coordinator, "_builder_module", lambda repo, sha: Builder)
+    monkeypatch.setattr(coordinator, "_git_blob", lambda repo, sha, path: b"controller")
     result = coordinator.coordinate(
         tmp_path, sha, "run-3", ["live_app", "paper_app"],
         dry_run=True, transport=Transport(),
@@ -348,5 +349,7 @@ def test_linux_coordinator_prepares_both_apps_without_switching_on_dry_run(
 
     assert result["dry_run"] is True
     assert set(result["apps"]) == {"live_app", "paper_app"}
-    assert not any(call[0] == "command" and call[1] == "deploy" for call in calls)
-    assert sum(call[0] == "copy" for call in calls) == 4
+    assert not any(call[0] == "command" and call[2] == "deploy" for call in calls)
+    assert sum(call[0] == "copy" for call in calls) == 5
+    entrypoints = {call[1] for call in calls if call[0] == "command"}
+    assert entrypoints == {"C:/incoming/run-3-qsys-windows-deploy.py"}

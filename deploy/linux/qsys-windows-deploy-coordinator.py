@@ -17,6 +17,7 @@ CONFIG_PATH = Path("/etc/qsys/windows-deployment-coordinator.json")
 SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 APP_COMPONENTS = {"live_app": "windows-agent", "paper_app": "windows-gateway"}
+WINDOWS_CONTROLLER_PATH = "deploy/windows/qsys-windows-deploy.py"
 
 
 def _builder_module(repo: Path, sha: str):
@@ -28,6 +29,10 @@ def _builder_module(repo: Path, sha: str):
     sys.modules[module.__name__] = module
     exec(compile(source, module.__file__, "exec"), module.__dict__)
     return module
+
+
+def _git_blob(repo: Path, sha: str, path: str) -> bytes:
+    return subprocess.check_output(["git", "show", f"{sha}:{path}"], cwd=repo)
 
 
 def load_config(path: Path = CONFIG_PATH) -> dict[str, Any]:
@@ -54,9 +59,12 @@ class Transport:
             self.config["windows_host"],
         ]
 
-    def command(self, *arguments: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    def command(
+        self, *arguments: str, check: bool = True, entrypoint: str | None = None,
+    ) -> subprocess.CompletedProcess[str]:
         command = [
-            *self._ssh, self.config["windows_python"], self.config["windows_entrypoint"],
+            *self._ssh, self.config["windows_python"],
+            entrypoint or self.config["windows_entrypoint"],
             "--config", self.config["windows_config"], *arguments,
         ]
         return subprocess.run(command, check=check, text=True, capture_output=True)
@@ -87,11 +95,19 @@ def coordinate(
         raise ValueError("target SHA or run-id is invalid")
     if not apps or len(apps) != len(set(apps)) or set(apps) - set(APP_COMPONENTS):
         raise ValueError("apps must be a unique non-empty supported subset")
-    status = _json_result(transport.command("status"))
     builder = _builder_module(repo, sha)
     plans: dict[str, dict[str, Any]] = {}
     with tempfile.TemporaryDirectory(prefix="qsys-windows-release-") as temporary:
         root = Path(temporary)
+        # Always execute the controller from the exact reviewed target SHA.
+        # The installed controller remains an external bootstrap/emergency
+        # entrypoint, but cannot otherwise update itself before a dry-run.
+        controller_path = root / "qsys-windows-deploy.py"
+        controller_path.write_bytes(_git_blob(repo, sha, WINDOWS_CONTROLLER_PATH))
+        remote_controller = transport.copy(
+            controller_path, f"{run_id}-qsys-windows-deploy.py",
+        )
+        status = _json_result(transport.command("status", entrypoint=remote_controller))
         for app in apps:
             current = status["apps"][app]["deployed_sha"]
             if not SHA_PATTERN.fullmatch(current):
@@ -109,6 +125,7 @@ def coordinate(
             prepared = _json_result(transport.command(
                 "prepare", "--run-id", run_id, "--app", app,
                 "--archive", remote_archive, "--baseline-manifest", remote_baseline,
+                entrypoint=remote_controller,
             ))
             plans[app] = {
                 "component": APP_COMPONENTS[app], "before_sha": current,
@@ -120,9 +137,11 @@ def coordinate(
         deployed_run = transport.command(
             "deploy", "--run-id", run_id,
             *(argument for app in apps for argument in ("--app", app)),
-            check=False,
+            check=False, entrypoint=remote_controller,
         )
-        record_run = transport.command("record", "--run-id", run_id, check=False)
+        record_run = transport.command(
+            "record", "--run-id", run_id, check=False, entrypoint=remote_controller,
+        )
         record = json.loads(record_run.stdout) if record_run.stdout.strip() else {
             "ok": False, "status": "failure", "error": record_run.stderr.strip()[:500],
         }

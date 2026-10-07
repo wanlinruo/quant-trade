@@ -48,6 +48,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File `
 scripts/install_windows_deployment_coordinator.sh
 ```
 
+固定入口是首次引导和应急回退点。正常 GitHub 发布时，Linux 协调器还会从已经通过来源、
+PR 和 CI 门禁的目标 SHA 提取该版本的 `qsys-windows-deploy.py`，复制到 Windows 的
+`incoming` 目录，并让 status / prepare / deploy / record 全部调用这一精确版本。这样控制器
+修复无需先手工覆盖固定入口，也不会出现“新归档由旧控制器验证”的自举环；控制器仍位于
+应用目录之外，应用切换和回滚不会替换本次操作所使用的控制器。
+
 安装动作和真实发布都是生产写操作；执行前必须保存当前状态并核对精确文件。
 
 ## 应急人工回滚
