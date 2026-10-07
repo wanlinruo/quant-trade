@@ -28,7 +28,7 @@ def _changed_paths(base: str, target: str) -> list[str]:
             check=True, capture_output=True, text=True,
         )
     result = subprocess.run(
-        ["git", "diff", "--name-only", "-z", "--diff-filter=ACMRTUXB", base, target, "--"],
+        ["git", "diff", "--name-only", "-z", "--diff-filter=ACDMRTUXB", base, target, "--"],
         check=True, capture_output=True,
     )
     return [item.decode() for item in result.stdout.split(b"\0") if item]

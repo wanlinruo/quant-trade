@@ -20,6 +20,15 @@ from qsys.ops.deployment import (
 MANIFEST = Path("deploy/deployment.toml")
 
 
+def _contract_module():
+    path = Path("scripts/deployment_contract.py")
+    spec = importlib.util.spec_from_file_location("qsys_deployment_contract", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def _entrypoint_module():
     path = Path("deploy/linux/qsys-deploy-entrypoint.py")
     spec = importlib.util.spec_from_file_location("qsys_deploy_entrypoint", path)
@@ -198,6 +207,36 @@ def test_contract_change_does_not_restart_runtime_services() -> None:
         "scripts/deployment_contract.py", "src/qsys/ops/deployment.py",
     )
     assert plan.unknown_paths == ()
+
+
+def test_changed_paths_includes_deleted_runtime_files(tmp_path, monkeypatch) -> None:
+    contract = _contract_module()
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-b", "test"], cwd=repo, check=True,
+                   capture_output=True)
+    subprocess.run(["git", "config", "user.name", "test"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.invalid"],
+                   cwd=repo, check=True)
+    marker = repo / "src" / "qsys" / "data" / "marker.py"
+    marker.parent.mkdir(parents=True)
+    marker.write_text("DRILL = True\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "add marker"], cwd=repo, check=True,
+                   capture_output=True)
+    base = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo,
+                                   text=True).strip()
+    marker.unlink()
+    subprocess.run(["git", "add", "-u"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "delete marker"], cwd=repo, check=True,
+                   capture_output=True)
+    target = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo,
+                                     text=True).strip()
+    monkeypatch.chdir(repo)
+
+    assert contract._changed_paths(base, target) == [
+        "src/qsys/data/marker.py",
+    ]
 
 
 def test_every_tracked_path_is_explicitly_classified() -> None:
