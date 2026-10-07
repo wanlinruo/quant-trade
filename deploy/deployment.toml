@@ -23,6 +23,8 @@ ignored_paths = [
   "deploy/linux/qsys-deploy-ssh.py",
   "deploy/linux/qsys-production-deploy-entrypoint.py",
   "deploy/linux/qsys-production-deploy-ssh.py",
+  "deploy/linux/qsys-windows-deploy-coordinator.py",
+  "deploy/linux/windows-deployment-coordinator.example.json",
   "deploy/record.schema.json",
   "docs/**",
   "jq/**",
