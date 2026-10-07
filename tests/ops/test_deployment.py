@@ -415,7 +415,9 @@ def test_production_workflow_is_manual_and_fail_closed() -> None:
     assert "ref: main" in workflow
     assert "DEPLOY_PRODUCTION" in workflow
     assert "git merge-base --is-ancestor" in workflow
-    assert "check-runs?per_page=100" in workflow
+    assert "actions/workflows/ci.yml/runs?head_sha=$pr_head&event=pull_request" in workflow
+    assert "check-suites/$check_suite_id/check-runs?per_page=100" in workflow
+    assert '.status == "completed" and .conclusion == "success"' in workflow
     assert "PRODUCTION_DEPLOY_SSH_KEY" in workflow
     assert "cancel-in-progress: false" in workflow
 

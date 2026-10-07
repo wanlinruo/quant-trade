@@ -94,8 +94,15 @@ jobs:
           test "$pr_json" != null
           pr_number=$(printf '%s' "$pr_json" | jq -r .number)
           pr_head=$(printf '%s' "$pr_json" | jq -r .head.sha)
+          pr_ci=$(gh api -H 'Accept: application/vnd.github+json' \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$pr_head&event=pull_request&per_page=100" \
+            --jq '.workflow_runs | max_by(.id)')
+          test "$pr_ci" != null
+          printf '%s' "$pr_ci" | jq -e --arg head "$pr_head" \
+            '.head_sha == $head and .status == "completed" and .conclusion == "success"' >/dev/null
+          check_suite_id=$(printf '%s' "$pr_ci" | jq -r .check_suite_id)
           checks=$(gh api -H 'Accept: application/vnd.github+json' \
-            "repos/$GITHUB_REPOSITORY/commits/$pr_head/check-runs?per_page=100")
+            "repos/$GITHUB_REPOSITORY/check-suites/$check_suite_id/check-runs?per_page=100")
           printf '%s' "$checks" | jq -e '
             [.check_runs[] | select(.name == "policy" or .name == "secret-scan" or .name == "test" or .name == "package")]
             | length == 4 and all(.conclusion == "success")' >/dev/null
