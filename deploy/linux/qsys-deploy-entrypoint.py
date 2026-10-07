@@ -165,6 +165,20 @@ def _write_record(config: dict[str, object], run_id: str, record: dict[str, Any]
     return root / "record.json"
 
 
+def _target_deployer(repo: Path, sha: str) -> str:
+    """Load the deployer from the exact verified test target.
+
+    The node checkout can legitimately have divergent ancestry after `test` is
+    squash-aligned. Loading the script from the target lets deployment logic
+    bootstrap its own checkout transition without trusting a floating ref.
+    """
+    _run(["git", "fetch", "--no-tags", "origin", "test"], cwd=repo)
+    remote = _run(["git", "rev-parse", "origin/test"], cwd=repo).stdout.strip()
+    if remote != sha:
+        raise ValueError(f"origin/test is {remote}, requested {sha}")
+    return _run(["git", "show", f"{sha}:scripts/deploy_test_linux.sh"], cwd=repo).stdout
+
+
 def deploy(args: argparse.Namespace, config: dict[str, object]) -> int:
     validate_request(args.environment, args.sha, args.components)
     if not RUN_ID_PATTERN.fullmatch(args.run_id):
@@ -177,10 +191,10 @@ def deploy(args: argparse.Namespace, config: dict[str, object]) -> int:
         print(json.dumps({"ok": True, "noop": True, "sha": args.sha}))
         return 0
     started = datetime.now(UTC).isoformat()
-    deployer = repo / "scripts" / "deploy_test_linux.sh"
-    if not deployer.is_file():
-        raise ValueError(f"fixed deployer is missing: {deployer}")
-    completed = subprocess.run(["/bin/sh", os.fspath(deployer), args.sha], cwd=repo)
+    deployer = _target_deployer(repo, args.sha)
+    completed = subprocess.run(
+        ["/bin/sh", "-s", "--", args.sha], cwd=repo, text=True, input=deployer,
+    )
     rollback_ok = False
     if completed.returncode != 0:
         rollback_ok = _rollback(config, repo, before)
