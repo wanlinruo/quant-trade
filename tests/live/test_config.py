@@ -41,7 +41,22 @@ def test_defaults_are_local_and_safe(tmp_path):
     cfg = load_deploy_config(path)
     assert cfg.redis.port == 6379
     assert cfg.redis.tls is False
+    assert cfg.redis.connect_timeout_seconds == 5.0
+    assert cfg.redis.command_timeout_seconds == 5.0
     assert cfg.streams.fills == "evt:fills"
+
+
+def test_redis_timeouts_are_configurable(tmp_path):
+    path = tmp_path / "deploy.toml"
+    path.write_text(
+        "[redis]\nhost = \"127.0.0.1\"\n"
+        "connect_timeout_seconds = 2.5\ncommand_timeout_seconds = 3.5\n"
+    )
+
+    cfg = load_deploy_config(path)
+
+    assert cfg.redis.connect_timeout_seconds == 2.5
+    assert cfg.redis.command_timeout_seconds == 3.5
 
 
 def test_missing_file_raises_with_a_helpful_message(tmp_path):
