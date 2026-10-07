@@ -202,6 +202,65 @@ def test_switch_failure_rolls_back_and_always_reenables_watchdog(
     assert saved["watchdog_restored"] is True
 
 
+def test_switch_failure_restarts_apps_that_were_stopped_but_not_switched(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    entrypoint = _entrypoint()
+    live = entrypoint.App(
+        "live_app", tmp_path / "live", "agent-task", "scripts/run_agent.py", "agent",
+    )
+    paper = entrypoint.App(
+        "paper_app", tmp_path / "paper", "gateway-task",
+        "scripts/run_market_gateway.py", "market",
+    )
+    config = entrypoint.Config(
+        tmp_path / "python", tmp_path / "stage", tmp_path / "releases", "watchdog",
+        {"live_app": live, "paper_app": paper},
+    )
+    items = {
+        "live_app": {"state": "prepared", "before_sha": "a" * 40},
+        "paper_app": {"state": "prepared", "before_sha": "b" * 40},
+    }
+    operation = {
+        "schema_version": 1, "run_id": "run-partial", "status": "prepared", "apps": items,
+    }
+    path = config.staging_root / "run-partial" / "operation.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(operation), encoding="utf-8")
+    events: list[tuple] = []
+
+    class Host:
+        def task(self, *args, **kwargs):
+            events.append(("task", *args))
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        def task_status(self, name):
+            return {"state": "Ready", "last_run": "now", "last_result": 0}
+
+    monkeypatch.setattr(entrypoint, "_wait_stopped", lambda *args: None)
+    monkeypatch.setattr(
+        entrypoint, "_swap_in",
+        lambda config, run_id, app, item: (_ for _ in ()).throw(RuntimeError("switch")),
+    )
+
+    verified: list[tuple[str, str]] = []
+
+    def verify(config, app, item, host):
+        verified.append((app.name, item["target_sha"]))
+
+    monkeypatch.setattr(entrypoint, "_verify", verify)
+
+    with pytest.raises(RuntimeError, match="switch"):
+        entrypoint.deploy(config, "run-partial", ["live_app", "paper_app"], Host())
+
+    assert ("task", "run", "agent-task") in events
+    assert ("task", "run", "gateway-task") in events
+    assert verified == [("live_app", "a" * 40), ("paper_app", "b" * 40)]
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    assert saved["status"] == "rolled_back"
+    assert saved["watchdog_restored"] is True
+
+
 class _HeartbeatMonitor:
     def __init__(self, value: datetime):
         self.value = value
