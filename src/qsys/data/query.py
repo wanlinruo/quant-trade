@@ -185,6 +185,44 @@ class WarehouseQuery:
             "tushare_daily", ", ".join(names), selected_schema, symbols, start, end
         )
 
+    def share_capital_changes(self) -> pl.DataFrame:
+        """在 DuckDB 内把 daily_basic 股本快照压缩为首次可见变化点。
+
+        先做窗口比较、再只把变化行传回 Python，避免每日同步把一千多万行
+        全量快照搬进 Polars；生产首版曾因此达到约 4.3 GiB 峰值内存。
+        """
+        glob = self._glob("tushare_daily", partitioned=True)
+        if glob is None:
+            return _empty(schema.SHARE_CAPITAL_HISTORY)
+        return self._con.execute(f"""
+            WITH observed AS (
+                SELECT
+                    symbol,
+                    dt,
+                    total_shares,
+                    circulating_shares,
+                    row_number() OVER (PARTITION BY symbol ORDER BY dt) AS position,
+                    lag(total_shares) OVER (
+                        PARTITION BY symbol ORDER BY dt
+                    ) AS previous_total,
+                    lag(circulating_shares) OVER (
+                        PARTITION BY symbol ORDER BY dt
+                    ) AS previous_circulating
+                FROM {_read(glob)}
+            )
+            SELECT
+                symbol,
+                dt AS effective_date,
+                CAST(NULL AS DATE) AS announcement_date,
+                total_shares,
+                circulating_shares
+            FROM observed
+            WHERE position = 1
+               OR total_shares IS DISTINCT FROM previous_total
+               OR circulating_shares IS DISTINCT FROM previous_circulating
+            ORDER BY symbol, effective_date
+        """).pl()
+
     def bar_daily(
         self, symbols: Sequence[str] | None, start: date, end: date, *,
         columns: Sequence[str] | None = None,

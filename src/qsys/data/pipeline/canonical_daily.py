@@ -124,50 +124,14 @@ def _share_capital_changes(query: WarehouseQuery) -> pl.DataFrame:
     ``effective_date`` 是新值首次出现在 daily_basic 的交易日，并非公司行为的
     法律生效日。该接口没有公告日，所以必须保留 null，不能沿用旧 QMT 值。
     """
-    bounds = query.dataset_bounds("tushare_daily")
-    if bounds is None:
-        return pl.DataFrame(schema={
-            "symbol": pl.Utf8,
-            "effective_date": pl.Date,
-            "announcement_date": pl.Date,
-            "total_shares": pl.Float64,
-            "circulating_shares": pl.Float64,
-        })
-    source = query.tushare_daily(
-        None, bounds[0], bounds[1],
-        columns=["symbol", "dt", "total_shares", "circulating_shares"],
-    ).sort(["symbol", "dt"])
-    if source.height == 0:
-        return pl.DataFrame(schema={
-            "symbol": pl.Utf8,
-            "effective_date": pl.Date,
-            "announcement_date": pl.Date,
-            "total_shares": pl.Float64,
-            "circulating_shares": pl.Float64,
-        })
-    _require_unique(source, ("symbol", "dt"), "tushare_daily")
-    previous_symbol = pl.col("symbol").shift(1)
-    first = previous_symbol.is_null() | (pl.col("symbol") != previous_symbol)
-    changed = (
-        first
-        | pl.col("total_shares").ne_missing(pl.col("total_shares").shift(1))
-        | pl.col("circulating_shares").ne_missing(
-            pl.col("circulating_shares").shift(1)
-        )
-    )
-    return source.filter(changed).select(
-        "symbol",
-        pl.col("dt").alias("effective_date"),
-        pl.lit(None, dtype=pl.Date).alias("announcement_date"),
-        "total_shares",
-        "circulating_shares",
-    ).sort(["symbol", "effective_date"])
+    return query.share_capital_changes()
 
 
 def build_share_capital_history(warehouse: Warehouse) -> int:
     target = _share_capital_changes(WarehouseQuery(warehouse))
     if target.height == 0:
         return 0
+    _require_unique(target, ("symbol", "effective_date"), "share_capital_history")
     warehouse.write(
         "share_capital_history",
         target.to_arrow().cast(schema.SHARE_CAPITAL_HISTORY),
