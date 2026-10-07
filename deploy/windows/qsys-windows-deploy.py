@@ -396,19 +396,32 @@ def deploy(config: Config, run_id: str, app_names: list[str], host: WindowsHost)
             _verify(config, config.apps[name], items[name], host)
         operation["status"] = "success"
     except Exception:
-        rollback_items: list[tuple[App, dict[str, Any]]] = []
+        rollback_ok = True
         for name in reversed(switched):
-            host.task("end", config.apps[name].task, check=False)
-            _wait_stopped(host, config.apps[name])
-            _restore(config.apps[name], items[name])
-            items[name]["switched_at"] = str(time.time())
-            host.task("run", config.apps[name].task, check=False)
-            rollback_items.append((config.apps[name], items[name]))
-        rollback_ok = bool(switched)
-        for app, item in rollback_items:
+            app = config.apps[name]
+            item = items[name]
+            try:
+                host.task("end", app.task, check=False)
+                _wait_stopped(host, app)
+                _restore(app, item)
+            except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError) as exc:
+                item["rollback_error"] = str(exc)[:500]
+                item["state"] = "rollback_failed"
+                rollback_ok = False
+        # Every changed task was stopped before switching began.  Restart and
+        # verify apps whose files were restored as well as apps that never
+        # reached the switch, otherwise a partial switch failure can leave the
+        # untouched application offline.
+        for name in changed:
+            app = config.apps[name]
+            item = items[name]
+            if item["state"] == "rollback_failed":
+                continue
             rollback_probe = dict(item)
             rollback_probe["target_sha"] = item["before_sha"]
             try:
+                rollback_probe["switched_at"] = str(time.time())
+                host.task("run", app.task, check=False)
                 _verify(config, app, rollback_probe, host)
                 item["rollback_task"] = rollback_probe.get("task", {})
                 item["state"] = "rolled_back"
