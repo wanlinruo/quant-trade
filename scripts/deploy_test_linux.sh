@@ -30,6 +30,12 @@ if [ -n "$(git status --porcelain --untracked-files=normal)" ]; then
     exit 1
 fi
 
+current_sha=$(git rev-parse HEAD)
+if [ "$current_sha" = "$target_sha" ]; then
+    echo "test deployment already at target: $target_sha"
+    exit 0
+fi
+
 git fetch --prune origin test
 remote_sha=$(git rev-parse origin/test)
 if [ "$remote_sha" != "$target_sha" ]; then
