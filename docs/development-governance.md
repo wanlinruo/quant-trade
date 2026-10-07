@@ -333,12 +333,10 @@ Actions 只持有测试专用 SSH key。该 key 在节点 `authorized_keys` 中�
 
 ### 9.2 生产环境
 
-> **实况（2026-10-05）：第 1 步的 `workflow_dispatch` 工作流从未建成**，生产发布
-> 目前是在 Mac 上手工按第 2–9 步执行（SSH 到节点、`git merge --ff-only` 到 `main`
-> 的精确 SHA、`scripts/preflight_linux_deploy.sh`（内部所有 `uv sync/run` 均为
-> `--frozen`）、按变更清单只重启受影响服务、
-> 查 8420/`healthz` 与公网 8443）。#110 的发布记录见
-> `docs/deploy/linux-core.md`「发布记录」。
+> **实况（2026-10-07）：`Deploy production Linux` 的 `workflow_dispatch`、独立
+> forced-command key、来源/CI/测试 tree 门禁、dry-run、审计记录与代码自动回滚均已建成。**
+> #154 的正向 dry-run 已通过，但首次 `dry_run=false` 正式发布和生产回滚演练尚未执行，
+> 必须等待维护者新的明确确认。实时状态见根目录 `HANDOFF.md` 和 #154 最新评论。
 >
 > 另：第 5 步原写「重启 `qsys-web-prod.service`」，节点上不存在该单元——生产 Web
 > 是 `qsys-monitor.service`。2026-10-05 在节点实测 15 个 qsys 单元后更正。
@@ -347,10 +345,10 @@ Actions 只持有测试专用 SSH key。该 key 在节点 `authorized_keys` 中�
 
 1. 生产不因 `main` push 自动发布；维护者在核对合并结果后手工触发
    `workflow_dispatch`，输入待部署 commit SHA 和确认短语；
-2. Linux 拉取 `main` 的精确 SHA，只允许 fast-forward；
+2. 节点入口 fetch 并校验目标是 `origin/main` 的祖先，拒绝错误来源与脏工作区；
 3. 保存当前 SHA 作为 rollback target；
 4. 安装锁定依赖并执行 preflight；
-5. 重启 `qsys-monitor.service`（生产 Web）；
+5. 只重启 manifest 判定受影响且发布前已 active 的 unit，不启动原本 inactive 的 unit；
 6. 本机检查 `8420/healthz`；
 7. 外部检查 `https://wanlinruo.cn:8443/healthz`；
 8. 失败则恢复上一个已验证 SHA，并记录 deployment failure；
