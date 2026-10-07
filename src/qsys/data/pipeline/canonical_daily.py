@@ -30,19 +30,17 @@ def _require_unique(frame: pl.DataFrame, keys: tuple[str, ...], source: str) -> 
 def canonical_daily_preflight(
     warehouse: Warehouse, start: date, end: date
 ) -> tuple[str, ...]:
-    """在任何目标写入前验证四张来源表均具备可对账输入。"""
+    """在任何目标写入前验证规范日线来源均具备可对账输入。"""
     if start > end:
         return ("start 晚于 end",)
     query = WarehouseQuery(warehouse)
     daily = query.tushare_daily(
         None, start, end, columns=["symbol", "dt"]
     )
-    capital = query.share_capital()
     factors = query.adj_factors(start=start, end=end)
     issues: list[str] = []
     for name, frame, keys in (
         ("tushare_daily", daily, ("symbol", "dt")),
-        ("share_capital", capital, ("symbol", "dt")),
         ("adj_factors", factors, ("symbol", "dt")),
     ):
         if frame.height == 0:
@@ -120,18 +118,56 @@ def build_valuation_daily(warehouse: Warehouse, start: date, end: date) -> int:
     )
 
 
-def build_share_capital_history(warehouse: Warehouse) -> int:
-    source = WarehouseQuery(warehouse).share_capital()
+def _share_capital_changes(query: WarehouseQuery) -> pl.DataFrame:
+    """把 daily_basic 每日股本快照压缩成 PIT 正确的观测变化点。
+
+    ``effective_date`` 是新值首次出现在 daily_basic 的交易日，并非公司行为的
+    法律生效日。该接口没有公告日，所以必须保留 null，不能沿用旧 QMT 值。
+    """
+    bounds = query.dataset_bounds("tushare_daily")
+    if bounds is None:
+        return pl.DataFrame(schema={
+            "symbol": pl.Utf8,
+            "effective_date": pl.Date,
+            "announcement_date": pl.Date,
+            "total_shares": pl.Float64,
+            "circulating_shares": pl.Float64,
+        })
+    source = query.tushare_daily(
+        None, bounds[0], bounds[1],
+        columns=["symbol", "dt", "total_shares", "circulating_shares"],
+    ).sort(["symbol", "dt"])
     if source.height == 0:
-        return 0
-    _require_unique(source, ("symbol", "dt"), "share_capital")
-    target = source.select(
+        return pl.DataFrame(schema={
+            "symbol": pl.Utf8,
+            "effective_date": pl.Date,
+            "announcement_date": pl.Date,
+            "total_shares": pl.Float64,
+            "circulating_shares": pl.Float64,
+        })
+    _require_unique(source, ("symbol", "dt"), "tushare_daily")
+    previous_symbol = pl.col("symbol").shift(1)
+    first = previous_symbol.is_null() | (pl.col("symbol") != previous_symbol)
+    changed = (
+        first
+        | pl.col("total_shares").ne_missing(pl.col("total_shares").shift(1))
+        | pl.col("circulating_shares").ne_missing(
+            pl.col("circulating_shares").shift(1)
+        )
+    )
+    return source.filter(changed).select(
         "symbol",
         pl.col("dt").alias("effective_date"),
-        pl.col("ann_date").alias("announcement_date"),
-        pl.col("total").alias("total_shares"),
-        pl.col("circulating").alias("circulating_shares"),
+        pl.lit(None, dtype=pl.Date).alias("announcement_date"),
+        "total_shares",
+        "circulating_shares",
     ).sort(["symbol", "effective_date"])
+
+
+def build_share_capital_history(warehouse: Warehouse) -> int:
+    target = _share_capital_changes(WarehouseQuery(warehouse))
+    if target.height == 0:
+        return 0
     warehouse.write(
         "share_capital_history",
         target.to_arrow().cast(schema.SHARE_CAPITAL_HISTORY),
@@ -168,12 +204,7 @@ def daily_reconciliation(
     valuation_source = query.tushare_daily(
         None, start, end, columns=schema.VALUATION_DAILY.names
     )
-    capital_source = query.share_capital().select(
-        "symbol", pl.col("dt").alias("effective_date"),
-        pl.col("ann_date").alias("announcement_date"),
-        pl.col("total").alias("total_shares"),
-        pl.col("circulating").alias("circulating_shares"),
-    )
+    capital_source = _share_capital_changes(query)
     factor_source = query.adj_factors(start=start, end=end).select(
         "symbol", "dt", pl.col("cum_factor").alias("price_factor"),
         pl.col("cum_share_factor").alias("share_factor"),

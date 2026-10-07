@@ -65,6 +65,12 @@ def test_qmt_sources_are_realtime_and_say_so():
         assert SOURCES[sid].caveat
 
 
+def test_qmt_capital_is_a_frozen_historical_source():
+    source = SOURCES["qmt.capital"]
+    assert source.status is SourceStatus.FROZEN
+    assert "退出每日归档" in source.caveat
+
+
 def test_every_dead_or_frozen_source_explains_itself():
     for s in SOURCES.values():
         if s.status is not SourceStatus.ACTIVE:

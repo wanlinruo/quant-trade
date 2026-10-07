@@ -17,8 +17,10 @@ ST 真值。策略生产区间从 2023-01-01 开始，因此可以完整替代
 | 停牌 | `suspend_daily` (`suspend_d`) | 无显式策略过滤 |
 | 市值、流通市值、换手率 | `tushare_daily` (`daily_basic`) | 收盘价 × QMT 股本反算 |
 
-`name_history`、`name_snapshots`、`share_capital` 和 `corporate_actions` 仍保留：
-它们分别描述名称、股本事件和持仓除权，不与 ST 布尔真值重复。
+`name_history`、`name_snapshots`、`share_capital` 和 `corporate_actions` 仍保留。
+其中 `share_capital` 已于 2026-09-16 冻结，只作 QMT 历史换源证据；生产规范股本
+由 `tushare_daily` 中 daily_basic 直取值的变化点生成。其余表继续分别描述名称与
+持仓除权，不与 ST 布尔真值重复。
 
 ## 完整性设计
 

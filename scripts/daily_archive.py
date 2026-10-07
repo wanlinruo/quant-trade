@@ -1,7 +1,7 @@
-"""每日归档：竞价 tick -> 股本 -> 分钟线补齐 -> 导入校验。
+"""每日归档：竞价 tick -> 分钟线补齐 -> 导入校验。
 
-**本脚本只做 QMT 链路**（竞价 tick、股本、分钟线），它们都来自 Windows 上的
-QMT，Tushare 给不了。日线、指数与四张派生表（adj_factors / daily_flags /
+**本脚本只做 QMT 链路**（竞价 tick、分钟线）。日线、股本、指数与派生表
+（adj_factors / daily_flags /
 market_regime / valuation_snapshot）自 2026-09-14 起全部归 `tushare_sync`，
 由 `qsys-tushare-sync.timer` 每天 17:00 与 19:00 驱动。
 
@@ -49,7 +49,6 @@ from qsys.data.pipeline.candidates import (
     held_stock_days,
     write_manifest,
 )
-from qsys.data.pipeline.capital import import_share_capital
 from qsys.data.pipeline.instruments import alive_on
 from qsys.data.pipeline.minutes import import_minute_bars, missing_stock_days
 from qsys.data.pipeline.canonical_publish import publish_minutes
@@ -248,8 +247,6 @@ def main() -> int:
                         help="只做竞价 tick。窗口只有 20 天，出问题要能单独重试")
     parser.add_argument("--win-auction-script",
                         default=r"C:\qsys\win_download_auction_ticks.py")
-    parser.add_argument("--skip-capital", action="store_true")
-    parser.add_argument("--win-capital-script", default=r"C:\qsys\win_download_capital.py")
     parser.add_argument("--win-host", default="Administrator@118.25.42.149")
     parser.add_argument("--win-key", default="~/.ssh/id_ed25519_winnode")
     parser.add_argument("--win-python", default=r"C:\qsys\.venv\Scripts\python.exe")
@@ -326,33 +323,6 @@ def _archive(args, service_run: ServiceRun) -> int:
     if args.only_auction:
         print(f"=== 只做竞价 tick，完成，耗时 {(time.time()-started)/60:.1f} 分钟 ===")
         return _exit_code(0, auction_ok=auction_ok)
-
-    # --- 3b. 股本与估值 ---
-    if not args.skip_capital:
-        # 股本变动是事件驱动的，全市场重下只要约 5 分钟，比算增量更省事
-        cap_dir = f"{args.win_root}/capital_{stamp}"
-        cap_local = Path("var/capital-incoming")
-        cap_local.mkdir(parents=True, exist_ok=True)
-        symbols_csv = Path("var/symbols.csv")
-        instruments.select("symbol").write_csv(symbols_csv)
-
-        run(ssh + [f"New-Item -ItemType Directory -Force -Path {cap_dir} | Out-Null"],
-            what="建股本目录")
-        run(["scp", "-i", key, "-o", "BatchMode=yes", str(symbols_csv),
-             f"{args.win_host}:{cap_dir}/symbols.csv"], what="上传标的清单")
-        run(ssh + [
-            f'$env:PYTHONIOENCODING="utf-8"; {args.win_python} -u '
-            f'{args.win_capital_script} --symbols {cap_dir}\\symbols.csv '
-            f'--out {cap_dir}'
-        ], what="Windows 下载股本", timeout=3600)
-        run(["scp", "-i", key, "-o", "BatchMode=yes",
-             f"{args.win_host}:{cap_dir}/*.parquet", str(cap_local)],
-            what="回传股本")
-        cap_result = import_share_capital(
-            warehouse, cap_local, archive_dir=Path("var/capital-done")
-        )
-        print(f"股本 {cap_result.files} 文件 / {cap_result.rows:,} 行 / "
-              f"{cap_result.errors} 错误")
 
     # 与竞价同样显式传入交易日历：15:40 时 daily_flags 还没有今天，不传的话
     # 昨日首板找不到「下一个交易日」，今天的候选分钟线要拖到明天才下（服务质检发现）

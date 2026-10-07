@@ -27,13 +27,15 @@ def test_owns_and_covers_stage4_and_stage5_canonical_tables():
     }
 
 
-def test_capital_effective_date_is_not_derived_from_daily_snapshots():
+def test_capital_history_is_derived_from_daily_basic_change_points():
     metric = BY_ID["share_capital_history.effective_date"]
     assert metric.validity is Validity.SPAN
     assert metric.lineage == Computed(
-        ("share_capital.dt",),
-        "阶段 4 并行迁移逐值投影 share_capital.dt",
+        ("tushare_daily.dt", "tushare_daily.total_shares",
+         "tushare_daily.circulating_shares"),
+        "按证券比较相邻 daily_basic 快照，值变化时取当日 dt",
     )
+    assert BY_ID["share_capital_history.announcement_date"].lineage.upstream == ()
 
 
 def test_daily_topics_have_distinct_upstreams():

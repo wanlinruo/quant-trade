@@ -264,5 +264,5 @@ def _span(ctx: CheckContext) -> CheckResult:
 
 register(Check("B5.span", Category.COMPLETENESS, Scope.FULL,
                ("tushare_daily.dt", "bars_daily.dt", "paid_daily.dt",
-                "index_bars.dt", "corporate_actions.ex_date", "share_capital.dt"), (),
+                "index_bars.dt", "corporate_actions.ex_date"), (),
                "历史数据首末日期覆盖声明区间", _span))
