@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "windows_host": "Administrator@118.25.42.149",
+  "windows_key": "/home/ubuntu/.ssh/id_ed25519_winnode",
+  "windows_python": "C:\\qsys\\.venv\\Scripts\\python.exe",
+  "windows_entrypoint": "C:\\ProgramData\\qsys\\qsys-windows-deploy.py",
+  "windows_config": "C:\\ProgramData\\qsys\\windows-deployment.json",
+  "windows_incoming": "C:\\qsys\\deployments\\incoming"
+}

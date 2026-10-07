@@ -1,0 +1,221 @@
+name: Deploy production Windows
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Full commit SHA reachable from main
+        required: true
+        type: string
+      components:
+        description: Comma-separated Windows components, or auto
+        required: true
+        default: auto
+        type: string
+      dry_run:
+        description: Prepare and validate without switching Windows applications
+        required: true
+        default: true
+        type: boolean
+      confirmation:
+        description: Type DEPLOY_WINDOWS
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  checks: read
+  contents: read
+  deployments: write
+  pull-requests: read
+
+concurrency:
+  group: deploy-production-windows
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    environment: production
+    env:
+      TARGET_SHA: ${{ inputs.target_sha }}
+      REQUESTED_COMPONENTS: ${{ inputs.components }}
+      DRY_RUN: ${{ inputs.dry_run }}
+      CONFIRMATION: ${{ inputs.confirmation }}
+      DEPLOY_HOST: ${{ vars.PRODUCTION_DEPLOY_HOST }}
+      DEPLOY_USER: ${{ vars.PRODUCTION_DEPLOY_USER }}
+      RUN_KEY: github-${{ github.run_id }}-${{ github.run_attempt }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out trusted production controller
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Install Linux production SSH identity
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_DEPLOY_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.PRODUCTION_DEPLOY_KNOWN_HOSTS }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          root = Path.home() / ".ssh"
+          root.mkdir(mode=0o700, exist_ok=True)
+          key = root / "production-deploy"
+          key.write_text(os.environ["SSH_PRIVATE_KEY"].rstrip() + "\n", encoding="utf-8")
+          key.chmod(0o600)
+          known = root / "known_hosts"
+          known.write_text(os.environ["SSH_KNOWN_HOSTS"].rstrip() + "\n", encoding="utf-8")
+          known.chmod(0o600)
+          PY
+
+      - name: Validate confirmation, source, merged PR and CI
+        id: source
+        run: |
+          set -eu
+          test "$CONFIRMATION" = DEPLOY_WINDOWS
+          python3 - <<'PY'
+          import os
+          import re
+
+          if not re.fullmatch(r"[0-9a-f]{40}", os.environ["TARGET_SHA"]):
+              raise SystemExit("target_sha must be an exact lowercase SHA")
+          PY
+          git fetch --no-tags origin main
+          git cat-file -e "$TARGET_SHA^{commit}"
+          git merge-base --is-ancestor "$TARGET_SHA" origin/main
+          pr_json=$(gh api -H 'Accept: application/vnd.github+json' \
+            "repos/$GITHUB_REPOSITORY/commits/$TARGET_SHA/pulls" \
+            --jq '[.[] | select(.merged_at != null and .base.ref == "main")] | max_by(.merged_at)')
+          test "$pr_json" != null
+          pr_number=$(printf '%s' "$pr_json" | jq -r .number)
+          pr_head=$(printf '%s' "$pr_json" | jq -r .head.sha)
+          pr_ci=$(gh api -H 'Accept: application/vnd.github+json' \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$pr_head&event=pull_request&per_page=100" \
+            --jq '.workflow_runs | max_by(.id)')
+          test "$pr_ci" != null
+          printf '%s' "$pr_ci" | jq -e --arg head "$pr_head" \
+            '.head_sha == $head and .status == "completed" and .conclusion == "success"' >/dev/null
+          check_suite_id=$(printf '%s' "$pr_ci" | jq -r .check_suite_id)
+          checks=$(gh api -H 'Accept: application/vnd.github+json' \
+            "repos/$GITHUB_REPOSITORY/check-suites/$check_suite_id/check-runs?per_page=100")
+          printf '%s' "$checks" | jq -e '
+            [.check_runs[] | select(.name == "policy" or .name == "secret-scan" or .name == "test" or .name == "package")]
+            | length == 4 and all(.conclusion == "success")' >/dev/null
+          echo "pr_number=$pr_number" >>"$GITHUB_OUTPUT"
+
+      - name: Verify Linux coordinator and calculate exact plan
+        id: plan
+        run: |
+          set -eu
+          node_json=$(ssh -i ~/.ssh/production-deploy -o BatchMode=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" status)
+          NODE_JSON="$node_json" python3 - <<'PY' >>"$GITHUB_OUTPUT"
+          import json
+          import os
+
+          state = json.loads(os.environ["NODE_JSON"])
+          if state["branch"] != "main" or state["dirty"] or not state["healthy"]:
+              raise SystemExit(f"production Linux coordinator is not deployable: {state}")
+          print(f'before_sha={state["sha"]}')
+          PY
+          before_sha=$(printf '%s' "$node_json" | jq -r .sha)
+          PYTHONPATH=src python3 scripts/deployment_contract.py plan \
+            --environment production --base "$before_sha" --target "$TARGET_SHA" >plan.json
+          test "$(jq '.unknown_paths | length' plan.json)" -eq 0
+          components=$(jq -r '[.components[] | select(startswith("windows-"))] | sort | join(",")' plan.json)
+          test -n "$components"
+          requested=$(printf '%s' "$REQUESTED_COMPONENTS" | tr -d ' ')
+          if [ "$requested" != auto ]; then
+            normalized=$(printf '%s' "$requested" | tr ',' '\n' | sort -u | paste -sd, -)
+            test "$normalized" = "$components"
+          fi
+          echo "components=$components" >>"$GITHUB_OUTPUT"
+          echo "apps=$(jq -r '.windows_apps | join(",")' plan.json)" >>"$GITHUB_OUTPUT"
+          echo "health_checks=$(jq -r '[.health_checks[] | select(startswith("windows-") or endswith("heartbeat") or . == "watchdog-enabled")] | join(",")' plan.json)" >>"$GITHUB_OUTPUT"
+
+      - name: Create GitHub deployment
+        if: inputs.dry_run == false
+        id: deployment
+        run: |
+          jq -n --arg ref "$TARGET_SHA" --arg description "manual production Windows release" \
+            '{ref: $ref, environment: "production", auto_merge: false, required_contexts: [], description: $description}' \
+            >deployment.json
+          deployment_id=$(gh api --method POST \
+            "repos/$GITHUB_REPOSITORY/deployments" --input deployment.json --jq .id)
+          echo "id=$deployment_id" >>"$GITHUB_OUTPUT"
+          gh api --method POST \
+            "repos/$GITHUB_REPOSITORY/deployments/$deployment_id/statuses" \
+            -f state=in_progress \
+            -f log_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" >/dev/null
+
+      - name: Run through Linux coordinator
+        env:
+          COMPONENTS: ${{ steps.plan.outputs.components }}
+          PR_NUMBER: ${{ steps.source.outputs.pr_number }}
+        run: |
+          set -eu
+          set -- windows-deploy --sha "$TARGET_SHA" --run-id "$RUN_KEY" \
+            --actor "$GITHUB_ACTOR" --repository "$GITHUB_REPOSITORY" --pr-number "$PR_NUMBER"
+          old_ifs=$IFS
+          IFS=,
+          for component in $COMPONENTS; do
+            set -- "$@" --component "$component"
+          done
+          IFS=$old_ifs
+          if [ "$DRY_RUN" = true ]; then
+            set -- "$@" --dry-run
+          fi
+          ssh -i ~/.ssh/production-deploy -o BatchMode=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" "$*" | tee result.json
+          if [ "$DRY_RUN" = false ]; then
+            ssh -i ~/.ssh/production-deploy -o BatchMode=yes \
+              "$DEPLOY_USER@$DEPLOY_HOST" "record --run-id $RUN_KEY" >record.json
+            PYTHONPATH=src python3 scripts/deployment_contract.py validate-record record.json
+            jq -e --arg run "$RUN_KEY" --arg sha "$TARGET_SHA" \
+              '.run_id == $run and .source_sha == $sha and .status == "success"' record.json >/dev/null
+          fi
+
+      - name: Mark deployment successful
+        if: success() && inputs.dry_run == false
+        env:
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.id }}
+        run: |
+          gh api --method POST \
+            "repos/$GITHUB_REPOSITORY/deployments/$DEPLOYMENT_ID/statuses" \
+            -f state=success \
+            -f log_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" >/dev/null
+
+      - name: Mark deployment failed
+        if: failure() && inputs.dry_run == false && steps.deployment.outputs.id != ''
+        env:
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.id }}
+        run: |
+          gh api --method POST \
+            "repos/$GITHUB_REPOSITORY/deployments/$DEPLOYMENT_ID/statuses" \
+            -f state=failure \
+            -f log_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" >/dev/null
+
+      - name: Write release summary
+        if: always()
+        env:
+          BEFORE_SHA: ${{ steps.plan.outputs.before_sha }}
+          COMPONENTS: ${{ steps.plan.outputs.components }}
+          APPS: ${{ steps.plan.outputs.apps }}
+          HEALTH_CHECKS: ${{ steps.plan.outputs.health_checks }}
+          PR_NUMBER: ${{ steps.source.outputs.pr_number }}
+        run: |
+          {
+            echo "## Production Windows release"
+            echo "- Dry run: \`$DRY_RUN\`"
+            echo "- PR: \`#$PR_NUMBER\`"
+            echo "- Linux coordinator SHA: \`$BEFORE_SHA\`"
+            echo "- Target: \`$TARGET_SHA\`"
+            echo "- Components: \`$COMPONENTS\`"
+            echo "- Apps: \`$APPS\`"
+            echo "- Health checks: \`$HEALTH_CHECKS\`"
+            echo "- Node record key: \`$RUN_KEY\`"
+          } >>"$GITHUB_STEP_SUMMARY"

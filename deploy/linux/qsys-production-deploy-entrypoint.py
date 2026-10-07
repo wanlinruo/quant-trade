@@ -25,6 +25,10 @@ ALLOWED_COMPONENTS = frozenset({
     "linux-dependencies", "linux-web", "linux-resident", "linux-data-jobs",
     "linux-systemd",
 })
+ALLOWED_WINDOWS_COMPONENTS = frozenset({
+    "windows-agent", "windows-gateway", "windows-control",
+})
+WINDOWS_COORDINATOR = "/usr/local/libexec/qsys-windows-deploy-coordinator"
 ALLOWED_UNITS = frozenset({
     "qsys-monitor.service", "qsys-paper.service", "qsys-shadow-core.service",
     "qsys-health-observer.service", "qsys-live-core.service",
@@ -156,6 +160,17 @@ def _validate_components(plan: dict[str, Any], requested: list[str]) -> list[str
     return planned
 
 
+def _validate_windows_components(plan: dict[str, Any], requested: list[str]) -> list[str]:
+    if len(requested) != len(set(requested)) or set(requested) - ALLOWED_WINDOWS_COMPONENTS:
+        raise ValueError("components must be unique production Windows components")
+    planned = sorted(set(plan["components"]) & ALLOWED_WINDOWS_COMPONENTS)
+    if sorted(requested) != planned:
+        raise ValueError(f"requested components do not match plan: expected {','.join(planned)}")
+    if plan["unknown_paths"]:
+        raise ValueError("deployment plan contains unknown paths")
+    return planned
+
+
 def _fingerprints(config: dict[str, object], repo: Path) -> dict[str, str]:
     result = json.loads(_run([
         str(config["uv_bin"]), "run", "--frozen", "python",
@@ -272,6 +287,93 @@ def deploy(args: argparse.Namespace, config: dict[str, object]) -> int:
     return 0 if success else 1
 
 
+def windows_deploy(args: argparse.Namespace, config: dict[str, object]) -> int:
+    if not RUN_ID_PATTERN.fullmatch(args.run_id):
+        raise ValueError("run-id contains unsupported characters")
+    if not ACTOR_PATTERN.fullmatch(args.actor):
+        raise ValueError("actor contains unsupported characters")
+    if not REPOSITORY_PATTERN.fullmatch(args.repository):
+        raise ValueError("repository must be owner/name")
+    repo = Path(str(config["production_repo"])).resolve(strict=True)
+    if _branch(repo) != "main" or _dirty(repo):
+        raise ValueError("production checkout must be a clean main worktree")
+    before_linux = _head(repo)
+    tree = _fetch_and_validate_target(repo, args.sha)
+    test_run = _successful_test_run(config, tree)
+    plan = _plan(repo, before_linux, args.sha)
+    components = _validate_windows_components(plan, args.components)
+    apps = sorted(set(plan["windows_apps"]) & {"live_app", "paper_app"})
+    if not apps:
+        raise ValueError("production plan contains no Windows application")
+    command = [
+        WINDOWS_COORDINATOR, "--repo", str(repo), "--sha", args.sha,
+        "--run-id", args.run_id,
+        *(argument for app in apps for argument in ("--app", app)),
+    ]
+    if args.dry_run:
+        command.append("--dry-run")
+    started = datetime.now(UTC).isoformat()
+    completed = _run(command, cwd=repo, check=False)
+    stream = completed.stdout if completed.stdout.strip() else completed.stderr
+    try:
+        result = json.loads(stream)
+    except json.JSONDecodeError as exc:
+        raise ValueError("Windows coordinator returned invalid JSON") from exc
+    result.update({
+        "source_sha": args.sha, "source_tree": tree, "test_run_id": test_run,
+        "components": components,
+    })
+    if args.dry_run:
+        print(json.dumps(result, ensure_ascii=False))
+        return completed.returncode
+
+    windows_record = result.get("record", {})
+    operation_apps = windows_record.get("apps", {})
+    before = {
+        f"windows:{app}": str(result.get("apps", {}).get(app, {}).get("before_sha", ""))
+        for app in apps
+    }
+    state = str(windows_record.get("status", "failure"))
+    success = completed.returncode == 0 and state == "success"
+    after: dict[str, str] = {}
+    checks: list[dict[str, str]] = []
+    rollback_targets = dict(before)
+    for app in apps:
+        item = operation_apps.get(app, {})
+        item_state = str(item.get("state", "unknown"))
+        after[f"windows:{app}"] = (
+            args.sha if item_state in {"verified", "noop"} else before[f"windows:{app}"]
+        )
+        checks.append({
+            "name": f"{app}-release", "status": "passed" if item_state in {"verified", "noop"} else "failed",
+            "detail": f"state={item_state}; task, manifest, DEPLOYED_SHA and fresh heartbeat",
+        })
+    checks.append({
+        "name": "watchdog-restored",
+        "status": "passed" if windows_record.get("watchdog_restored") is True or success else "failed",
+        "detail": "qsys-watchdog must be re-enabled after success or compensation",
+    })
+    fingerprints = {
+        f"windows_{app}_public_sha256": str(
+            operation_apps.get(app, {}).get("config_public_sha256", "")
+        )
+        for app in apps if operation_apps.get(app, {}).get("config_public_sha256")
+    }
+    record = {
+        "schema_version": 1, "run_id": args.run_id, "environment": "production",
+        "status": "success" if success else ("rolled_back" if state == "rolled_back" else "failure"),
+        "actor": args.actor, "started_at": started,
+        "completed_at": datetime.now(UTC).isoformat(), "repository": args.repository,
+        "pr_number": args.pr_number, "source_sha": args.sha, "source_tree": tree,
+        "components": components, "before": before, "after": after,
+        "config_fingerprints": fingerprints, "checks": checks,
+        "rollback_targets": rollback_targets, "migration_summary": "none",
+    }
+    path = _write_record(config, args.run_id, record)
+    print(json.dumps({"ok": success, "status": record["status"], "record": str(path)}))
+    return 0 if success else 1
+
+
 def read_record(config: dict[str, object], run_id: str) -> dict[str, Any]:
     if not RUN_ID_PATTERN.fullmatch(run_id):
         raise ValueError("run-id contains unsupported characters")
@@ -291,6 +393,14 @@ def build_parser() -> argparse.ArgumentParser:
     deploy_parser.add_argument("--repository", required=True)
     deploy_parser.add_argument("--pr-number", type=int)
     deploy_parser.add_argument("--dry-run", action="store_true")
+    windows_parser = commands.add_parser("windows-deploy")
+    windows_parser.add_argument("--sha", required=True)
+    windows_parser.add_argument("--component", action="append", dest="components", required=True)
+    windows_parser.add_argument("--run-id", required=True)
+    windows_parser.add_argument("--actor", required=True)
+    windows_parser.add_argument("--repository", required=True)
+    windows_parser.add_argument("--pr-number", type=int)
+    windows_parser.add_argument("--dry-run", action="store_true")
     record_parser = commands.add_parser("record")
     record_parser.add_argument("--run-id", required=True)
     return parser
@@ -306,6 +416,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "record":
             print(json.dumps(read_record(config, args.run_id), ensure_ascii=False))
             return 0
+        if args.command == "windows-deploy":
+            return windows_deploy(args, config)
         return deploy(args, config)
     except (OSError, ValueError, json.JSONDecodeError, subprocess.CalledProcessError) as exc:
         print(json.dumps({"ok": False, "error": str(exc)}), file=sys.stderr)

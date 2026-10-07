@@ -345,6 +345,13 @@ def test_production_dispatcher_rejects_shell_commands(monkeypatch) -> None:
     monkeypatch.setenv("SSH_ORIGINAL_COMMAND", "bash -c id")
     with pytest.raises(ValueError, match="not allowed"):
         dispatcher.command_from_environment()
+    monkeypatch.setenv(
+        "SSH_ORIGINAL_COMMAND",
+        "windows-deploy --sha " + "a" * 40 + " --component windows-agent",
+    )
+    assert dispatcher.command_from_environment()[:2] == [
+        "/usr/local/libexec/qsys-production-deploy-entrypoint", "windows-deploy",
+    ]
 
 
 def test_production_requires_exact_planned_linux_components() -> None:
@@ -356,6 +363,22 @@ def test_production_requires_exact_planned_linux_components() -> None:
         entrypoint._validate_components(plan, ["linux-resident"])
     with pytest.raises(ValueError, match="production Linux"):
         entrypoint._validate_components(plan, ["windows-agent"])
+
+
+def test_production_requires_exact_planned_windows_components() -> None:
+    entrypoint = _production_entrypoint_module()
+    plan = {
+        "components": ["linux-web", "windows-agent", "windows-control"],
+        "unknown_paths": [],
+    }
+
+    assert entrypoint._validate_windows_components(
+        plan, ["windows-control", "windows-agent"],
+    ) == ["windows-agent", "windows-control"]
+    with pytest.raises(ValueError, match="do not match"):
+        entrypoint._validate_windows_components(plan, ["windows-agent"])
+    with pytest.raises(ValueError, match="production Windows"):
+        entrypoint._validate_windows_components(plan, ["linux-web"])
 
 
 def test_production_target_requires_successful_test_tree(tmp_path) -> None:
@@ -491,6 +514,21 @@ def test_production_workflow_is_manual_and_fail_closed() -> None:
     assert "check-suites/$check_suite_id/check-runs?per_page=100" in workflow
     assert '.status == "completed" and .conclusion == "success"' in workflow
     assert "PRODUCTION_DEPLOY_SSH_KEY" in workflow
+    assert "cancel-in-progress: false" in workflow
+
+
+def test_windows_workflow_uses_only_the_linux_production_credential() -> None:
+    workflow = Path(".github/workflows/deploy-production-windows.yml").read_text(
+        encoding="utf-8",
+    )
+
+    assert "workflow_dispatch:" in workflow
+    assert "push:" not in workflow
+    assert "ref: main" in workflow
+    assert "DEPLOY_WINDOWS" in workflow
+    assert "windows-deploy" in workflow
+    assert "PRODUCTION_DEPLOY_SSH_KEY" in workflow
+    assert "WINDOWS_DEPLOY_SSH_KEY" not in workflow
     assert "cancel-in-progress: false" in workflow
 
 

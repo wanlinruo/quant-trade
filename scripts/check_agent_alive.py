@@ -31,7 +31,8 @@ UNREACHABLE = 4
 
 
 def decide(
-    monitor: HeartbeatMonitor, source: str, max_age_s: float, now: datetime
+    monitor: HeartbeatMonitor, source: str, max_age_s: float, now: datetime,
+    *, not_before_epoch: float | None = None,
 ) -> tuple[int, str]:
     """返回 (退出码, 说明)。看门狗只看退出码，说明进日志。"""
     last = monitor.last_beat(source)
@@ -43,6 +44,8 @@ def decide(
         return STALE, f"{source} 心跳时间戳在未来 {-age:.1f}s，判为不可信"
     if age > max_age_s:
         return STALE, f"{source} 心跳已过期 {age:.1f}s（阈值 {max_age_s:.0f}s）"
+    if not_before_epoch is not None and last.timestamp() < not_before_epoch:
+        return STALE, f"{source} 心跳早于本次启动，尚未证明新进程就绪"
     return ALIVE, f"{source} 心跳新鲜，{age:.1f}s 前"
 
 
@@ -70,11 +73,16 @@ def main() -> int:
     parser.add_argument("--source", default="agent")
     parser.add_argument("--max-age", type=float, default=120.0)
     parser.add_argument("--redis-timeout", type=float, default=5.0)
+    parser.add_argument("--not-before-epoch", type=float, default=None,
+                        help="要求心跳时间不早于该 Unix 时间；用于发布后证明新进程已就绪")
     args = parser.parse_args()
 
     try:
         monitor = _monitor_with_timeout(args.config, args.redis_timeout)
-        code, detail = decide(monitor, args.source, args.max_age, datetime.now())
+        code, detail = decide(
+            monitor, args.source, args.max_age, datetime.now(),
+            not_before_epoch=args.not_before_epoch,
+        )
     except Exception as exc:
         # Redis 读不到不等于代理死了。重启一个好进程比留着一个死进程更坏，
         # 所以这里单独一个退出码，由看门狗决定只记日志、不重启。
