@@ -381,6 +381,17 @@ def test_production_requires_exact_planned_windows_components() -> None:
         entrypoint._validate_windows_components(plan, ["linux-web"])
 
 
+def test_production_windows_bootstraps_the_coordinator_from_the_target() -> None:
+    source = Path("deploy/linux/qsys-production-deploy-entrypoint.py").read_text(
+        encoding="utf-8",
+    )
+
+    assert 'WINDOWS_COORDINATOR_PATH = "deploy/linux/qsys-windows-deploy-coordinator.py"' in source
+    assert '_git_blob(repo, args.sha, WINDOWS_COORDINATOR_PATH)' in source
+    assert 'sys.executable, str(coordinator)' in source
+    assert 'WINDOWS_COORDINATOR = "/usr/local/libexec/' not in source
+
+
 def test_production_target_requires_successful_test_tree(tmp_path) -> None:
     entrypoint = _production_entrypoint_module()
     root = tmp_path / "records"

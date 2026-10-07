@@ -53,11 +53,16 @@ GitHub 使用另一把测试专用 key；其 `authorized_keys` 条目强制进�
 - `/etc/qsys/production-deployment-entrypoint.json`；
 - forced command `/usr/local/libexec/qsys-production-deploy-ssh`。
 
-生产入口只接受 `status`、`deploy` 和 `record`。它再次校验 `main` 来源、成功测试 tree、
+生产入口只接受 `status`、`deploy`、`windows-deploy` 和 `record`。它再次校验 `main` 来源、成功测试 tree、
 精确组件集合、干净工作区与节点健康；testing key 不能调用生产入口。生产发布仍必须由
 维护者通过 `Deploy production Linux` 手工触发，不能把入口已安装理解为自动发布授权。
 同一 SHA 重复请求会在依赖同步、服务重启和历史记录之前返回成功，因此不会制造重复
 副作用。
+
+Windows 发布同样不信任节点上已安装的旧协调器：固定生产入口从已经通过上述门禁的目标
+SHA 提取 Linux 协调器，协调器再从同一 SHA 提取 Windows 控制器并上传执行。健康探针以
+切换后应用的 `src` 设置 `PYTHONPATH`，并同时要求目标文件清单、`DEPLOYED_SHA`、进程和
+切换后新心跳通过；失败时恢复两个应用各自的部署前 SHA，并在退出前恢复 watchdog。
 
 ## 配置检查与指纹
 
