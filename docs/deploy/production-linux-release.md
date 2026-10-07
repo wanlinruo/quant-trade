@@ -1,6 +1,6 @@
 # 生产 Linux 发布
 
-接手当前未完成发布前，先阅读仓库根目录 `HANDOFF.md` 和 GitHub #154 最新评论。
+执行后续发布前，先阅读仓库根目录 `HANDOFF.md` 和 GitHub #154 最新评论。
 本文描述稳定流程；具体 SHA、run ID 和待授权操作以交接快照及实时检查为准。
 
 生产发布只通过 GitHub Actions 的 `Deploy production Linux` 手工触发。合并或推送

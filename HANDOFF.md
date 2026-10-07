@@ -7,7 +7,7 @@
 
 按以下顺序建立上下文：
 
-1. GitHub [#154](https://github.com/wanlinruo/quant-trade/issues/154) 最新评论：当前实施状态与未完成项；
+1. GitHub [#154](https://github.com/wanlinruo/quant-trade/issues/154) 最新评论：Linux 发布与回滚验收证据；
 2. GitHub [#151](https://github.com/wanlinruo/quant-trade/issues/151)：跨 Linux/Windows CI/CD 总依赖图；
 3. `docs/deploy/production-linux-release.md`：生产 Linux 发布规则；
 4. `docs/reference/deployment-contract.md` 和 `deploy/deployment.toml`：机器可读部署边界；
@@ -20,17 +20,16 @@
 
 ## 当前状态
 
-- `main` 与 `test` 均为 `514ae39d8466470f3374bd08002754108c0f1bfb`。
-- 生产 Linux checkout 仍为 `01e41414903f0f55414f935adbe9116001ebdc56`；尚未正式发布上述目标。
-- #154 为 `status:in-progress`，不是已完成状态。
-- 工作流实现已由 PR #160、#163 合入。
-- CI run `37574939589` 成功。
-- 自动测试发布 run `37575050426` 成功；节点记录为
-  `/data/qsys-test/var/deployments/github-37575050426-1/record.json`。
-- 生产 dry-run `37575107404` 成功：目标 `514ae39`、组件 `linux-data-jobs`、
-  `restart_units=[]`、rollback target `01e4141`。
-- run `37575616469` 是故意使用错误确认短语的负向演练；它按预期失败，节点步骤全部跳过，
-  不代表系统故障。
+- #154 的生产发布和受控健康失败回滚验收均已完成；最终证据以 Issue 最新评论为准。
+- 生产 Linux 稳定 checkout 为 `c1c266e76aaf3b599cbe0753737a52b4be8a676a`，工作区干净。
+- 正式生产发布 run `37583240020` 成功，GitHub Deployment `6903543850` 成功；节点记录为
+  `/data/qsys/var-deployments/github/github-37583240020-1/record.json`。
+- 受控回滚演练 run `37588622279` 按设计因 health gate 失败；GitHub Deployment
+  `6904416793` 标记失败，节点记录状态为 `rolled_back`，代码恢复至 `c1c266e`。
+- 演练未包含 migration 或 schema 反向操作；生产 `qsys-monitor.service` 已恢复 active，
+  `8420/healthz` 返回 200。
+- 自动化后续修复已合入：PR #169 补取测试部署基准、PR #170 识别删除路径、PR #171
+  支持将干净测试 checkout 精确切换到已验证的 `origin/test` SHA。
 - 生产配置已补 `schema_version=1`，旧运行时加载和新契约校验均通过；变更前备份在
   `/data/qsys/var-deployments/issue-154-config-prep/`。
 
@@ -47,7 +46,7 @@
 - 不得把密码、私钥、token、完整配置或其他秘密写入 Git、Issue、Actions 日志或交接文档。
 - 不得把代码回滚扩展成数据/schema 自动反向操作。
 
-## #154 已完成与未完成
+## #154 完成状态
 
 已经完成：
 
@@ -57,15 +56,12 @@
 - dry-run、GitHub Deployment、Actions Summary、节点 `record.json` 和代码自动回滚实现；
 - control-plane-only 变更的节点 attestation；
 - 正向 dry-run 与错误确认短语负向演练；
+- 正式 `dry_run=false` 发布、GitHub Deployment、节点 record 与发布后健康核验；
+- 受控健康失败、自动代码回滚、服务恢复与回滚后健康核验；
 - Linux `PasswordAuthentication=yes` 保持不变，Windows 未改动。
 
-仍未完成：
-
-1. 经维护者明确确认后执行 `dry_run=false` 的正式生产发布；
-2. 经维护者明确确认后执行受控健康失败和自动代码回滚演练；
-3. 核验正式发布/回滚的 GitHub Deployment、节点 record、最终 SHA、服务与 health；
-4. 证据写回 #154，满足验收标准后才关闭 Issue；
-5. #155 的 Windows 自动发布是后续独立工作，不包含在 #154 内。
+后续范围：#155 的 Windows 自动发布是独立工作，不包含在 #154 内。任何新的生产发布或
+故障注入仍需维护者针对该次操作明确确认。
 
 ## 只读接手检查
 
@@ -80,7 +76,7 @@ gh run list --workflow deploy-production-linux.yml --limit 5
 ```
 
 Linux 节点只读检查应确认生产 SHA、工作区、监控、health 和密码认证状态；不要在检查命令中
-打印配置内容或任何 secret。预期快照是：生产 `01e4141`、工作区干净、
+打印配置内容或任何 secret。预期快照是：生产 `c1c266e`、工作区干净、
 `qsys-monitor.service` active、`8420/healthz` 为 200、`PasswordAuthentication=yes`。
 
 ## GitHub 与节点名称
@@ -99,5 +95,5 @@ Linux 节点只读检查应确认生产 SHA、工作区、监控、health 和密
 
 ## 交接完成判据
 
-接手者应先向维护者复述：当前生产 SHA、目标 SHA、dry-run 证据、预计重启范围、rollback
-target、两项待授权操作，以及密码登录保留要求。信息不一致时停止写操作，先更新 Issue。
+接手者应先核对：当前生产 SHA、最近发布/回滚节点记录、服务与 health、Windows 心跳，
+以及密码登录保留要求。信息不一致时停止写操作，先更新 Issue。
