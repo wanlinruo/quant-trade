@@ -42,7 +42,9 @@ GitHub 使用另一把测试专用 key；其 `authorized_keys` 条目强制进�
 `/usr/local/libexec/qsys-deploy-ssh`，只接受 `status`、`deploy`、`attest` 和 `record`，
 不提供交互 shell、端口转发或 agent 转发。`attest` 只用于可信 planner 判定无测试运行时
 组件的 control-plane-only tree；它校验 exact `origin/test`、健康与存储隔离，记录证据但
-不切换代码或重启服务。
+不切换代码或重启服务。执行运行时部署时，固定入口先校验 exact `origin/test`，再从该
+完整 SHA 读取部署脚本；因此脚本自身的 checkout 修复可跨 squash/对齐后的非祖先历史
+生效，同时不会执行浮动分支或节点旧 checkout 中的部署逻辑。
 
 生产使用完全独立的安装脚本、入口、配置和 key：
 

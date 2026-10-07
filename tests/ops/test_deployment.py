@@ -422,6 +422,38 @@ def test_failed_deployment_rollback_restores_code_dependencies_and_service(monke
     ]
 
 
+def test_test_gateway_loads_deployer_from_exact_verified_target(monkeypatch, tmp_path) -> None:
+    entrypoint = _entrypoint_module()
+    sha = "a" * 40
+    commands: list[list[str]] = []
+
+    def fake_run(command, *, cwd, check=True):
+        commands.append(command)
+        stdout = sha if command == ["git", "rev-parse", "origin/test"] else "deployer\n"
+        return subprocess.CompletedProcess(command, 0, stdout, "")
+
+    monkeypatch.setattr(entrypoint, "_run", fake_run)
+
+    assert entrypoint._target_deployer(tmp_path, sha) == "deployer\n"
+    assert commands == [
+        ["git", "fetch", "--no-tags", "origin", "test"],
+        ["git", "rev-parse", "origin/test"],
+        ["git", "show", f"{sha}:scripts/deploy_test_linux.sh"],
+    ]
+
+
+def test_test_gateway_rejects_deployer_from_moved_target(monkeypatch, tmp_path) -> None:
+    entrypoint = _entrypoint_module()
+
+    def fake_run(command, *, cwd, check=True):
+        return subprocess.CompletedProcess(command, 0, "b" * 40, "")
+
+    monkeypatch.setattr(entrypoint, "_run", fake_run)
+
+    with pytest.raises(ValueError, match="origin/test is"):
+        entrypoint._target_deployer(tmp_path, "a" * 40)
+
+
 def test_rollback_health_wait_tolerates_service_startup(monkeypatch, tmp_path) -> None:
     entrypoint = _entrypoint_module()
     states = iter((False, False, True))
