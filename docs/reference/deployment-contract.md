@@ -50,7 +50,9 @@ uv run python scripts/deployment_contract.py validate-config \
 ```
 
 配置文件必须在首个 section 前声明 `schema_version = 1`；未知版本和未知顶层 section
-都会失败关闭。结构契约同时保存在 `deploy/config.schema.json`。
+都会失败关闭。结构契约同时保存在 `deploy/config.schema.json`。测试节点从
+`config/deploy.test.example.toml` 初始化本地 `config/deploy.local.toml`，模板自身不含
+凭据且永久禁用下单。
 
 测试配置额外强制：
 

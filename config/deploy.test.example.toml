@@ -1,0 +1,39 @@
+# 测试节点模板：不得填写生产账户，真实凭据只写 gitignored 的 deploy.local.toml。
+schema_version = 1
+
+[redis]
+host = "127.0.0.1"
+port = 6379
+password = ""
+tls = false
+db = 9
+connect_timeout_seconds = 5.0
+command_timeout_seconds = 5.0
+
+[streams]
+orders = "test:cmd:orders"
+control = "test:cmd:control"
+fills = "test:evt:fills"
+rejects = "test:evt:rejects"
+order_status = "test:evt:order_status"
+account = "test:state:account"
+heartbeat = "test:state:heartbeat"
+quote_requests = "test:cmd:quote_requests"
+quote_snapshots = "test:evt:quote_snapshots"
+quote_latest = "test:state:quote_realtime_latest"
+market_snapshot = "test:state:market_overview"
+market_schedule = "test:state:market_schedule"
+price_limits = "test:state:price_limits"
+
+[agent]
+consumer_group = "test:core"
+consumer_name = "test:core-1"
+
+[strategy]
+workbench = "/data/qsys-test/var/workbench/workbench.sqlite3"
+
+[safety]
+mode = "disabled"
+orders_enabled = false
+protected_account_ids = []
+local_kill_path = "/data/qsys-test/var/AGENT_KILL"

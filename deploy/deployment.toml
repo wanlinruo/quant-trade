@@ -11,6 +11,7 @@ ignored_paths = [
   ".gitignore",
   "artifacts/**",
   "config/deploy.example.toml",
+  "config/deploy.test.example.toml",
   "deploy/config.schema.json",
   "deploy/deployment.toml",
   "deploy/linux/deployment-entrypoint.json",
