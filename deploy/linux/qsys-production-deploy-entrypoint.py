@@ -28,7 +28,7 @@ ALLOWED_COMPONENTS = frozenset({
 ALLOWED_WINDOWS_COMPONENTS = frozenset({
     "windows-agent", "windows-gateway", "windows-control",
 })
-WINDOWS_COORDINATOR = "/usr/local/libexec/qsys-windows-deploy-coordinator"
+WINDOWS_COORDINATOR_PATH = "deploy/linux/qsys-windows-deploy-coordinator.py"
 ALLOWED_UNITS = frozenset({
     "qsys-monitor.service", "qsys-paper.service", "qsys-shadow-core.service",
     "qsys-health-observer.service", "qsys-live-core.service",
@@ -56,6 +56,10 @@ def _run(
     command: list[str], *, cwd: Path, check: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(command, cwd=cwd, check=check, text=True, capture_output=True)
+
+
+def _git_blob(repo: Path, sha: str, path: str) -> bytes:
+    return subprocess.check_output(["git", "show", f"{sha}:{path}"], cwd=repo)
 
 
 def _head(repo: Path) -> str:
@@ -305,15 +309,21 @@ def windows_deploy(args: argparse.Namespace, config: dict[str, object]) -> int:
     apps = sorted(set(plan["windows_apps"]) & {"live_app", "paper_app"})
     if not apps:
         raise ValueError("production plan contains no Windows application")
-    command = [
-        WINDOWS_COORDINATOR, "--repo", str(repo), "--sha", args.sha,
-        "--run-id", args.run_id,
-        *(argument for app in apps for argument in ("--app", app)),
-    ]
-    if args.dry_run:
-        command.append("--dry-run")
     started = datetime.now(UTC).isoformat()
-    completed = _run(command, cwd=repo, check=False)
+    # The fixed SSH entrypoint is only a bootstrap. Execute the Windows
+    # coordinator from the exact validated target SHA so it can update itself
+    # before either a dry-run or a real switch.
+    with tempfile.TemporaryDirectory(prefix="qsys-windows-coordinator-") as temporary:
+        coordinator = Path(temporary) / "qsys-windows-deploy-coordinator.py"
+        coordinator.write_bytes(_git_blob(repo, args.sha, WINDOWS_COORDINATOR_PATH))
+        command = [
+            sys.executable, str(coordinator), "--repo", str(repo), "--sha", args.sha,
+            "--run-id", args.run_id,
+            *(argument for app in apps for argument in ("--app", app)),
+        ]
+        if args.dry_run:
+            command.append("--dry-run")
+        completed = _run(command, cwd=repo, check=False)
     stream = completed.stdout if completed.stdout.strip() else completed.stderr
     try:
         result = json.loads(stream)

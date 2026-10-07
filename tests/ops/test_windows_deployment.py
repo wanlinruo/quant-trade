@@ -146,7 +146,33 @@ def test_windows_host_decodes_native_tools_with_the_system_code_page(monkeypatch
     assert calls == [{
         "check": True, "cwd": None, "env": None, "text": True,
         "encoding": "cp936", "capture_output": True,
+        "timeout": entrypoint.NATIVE_COMMAND_TIMEOUT_S,
     }]
+
+
+def test_heartbeat_probe_imports_the_switched_application_source(
+    tmp_path: Path,
+) -> None:
+    entrypoint = _entrypoint()
+    root = tmp_path / "live"
+    app = entrypoint.App("live_app", root, "agent-task", "scripts/run_agent.py", "agent")
+    config = entrypoint.Config(
+        tmp_path / "python", tmp_path / "stage", tmp_path / "releases", "watchdog",
+        {"live_app": app},
+    )
+    calls: list[dict] = []
+
+    class Host:
+        def run(self, command, **kwargs):
+            calls.append({"command": command, **kwargs})
+            return subprocess.CompletedProcess(command, 0, "alive", "")
+
+    result = entrypoint._heartbeat_probe(config, app, "123.5", Host())
+
+    assert result.returncode == 0
+    assert calls[0]["cwd"] == root
+    assert calls[0]["env"]["PYTHONPATH"] == str(root / "src")
+    assert calls[0]["check"] is False
 
 
 def test_identical_sha_deployment_is_noop_and_does_not_touch_tasks(tmp_path: Path) -> None:

@@ -36,6 +36,7 @@ IGNORED_NAMES = frozenset({"__pycache__"})
 SENSITIVE_PARTS = (
     "account", "credential", "password", "secret", "token", "username", "webhook",
 )
+NATIVE_COMMAND_TIMEOUT_S = 30
 
 
 def normalized_sha256(data: bytes) -> str:
@@ -192,7 +193,8 @@ class WindowsHost:
         # page; configure_output_encoding separately keeps our JSON protocol
         # to the Linux coordinator deterministic UTF-8.
         return subprocess.run(command, check=check, cwd=cwd, env=env, text=True,
-                              encoding=locale.getencoding(), capture_output=True)
+                              encoding=locale.getencoding(), capture_output=True,
+                              timeout=NATIVE_COMMAND_TIMEOUT_S)
 
     def task(self, action: str, name: str, *options: str,
              check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -342,13 +344,16 @@ def _restore(app: App, item: dict[str, Any]) -> None:
     item["state"] = "rolled_back"
 
 
-def _heartbeat_ok(config: Config, app: App, switched_at: str, host: WindowsHost) -> bool:
+def _heartbeat_probe(
+    config: Config, app: App, switched_at: str, host: WindowsHost,
+) -> subprocess.CompletedProcess[str]:
     script = app.root / "scripts" / "check_agent_alive.py"
-    result = host.run([
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(app.root / "src")
+    return host.run([
         str(config.python), str(script), "--config", str(app.root / "config" / "deploy.local.toml"),
         "--source", app.heartbeat, "--max-age", "120", "--not-before-epoch", switched_at,
-    ], cwd=app.root, check=False)
-    return result.returncode == 0
+    ], cwd=app.root, env=env, check=False)
 
 
 def _verify(config: Config, app: App, item: dict[str, Any], host: WindowsHost,
@@ -358,9 +363,15 @@ def _verify(config: Config, app: App, item: dict[str, Any], host: WindowsHost,
         raise ValueError(f"{app.name} target markers do not match")
     verify_files(app.root, target)
     for attempt in range(attempts):
-        if host.process_count(Path(app.entrypoint).name) > 0 and _heartbeat_ok(
-            config, app, item["switched_at"], host,
-        ):
+        process_count = host.process_count(Path(app.entrypoint).name)
+        heartbeat = _heartbeat_probe(config, app, item["switched_at"], host)
+        item["verification"] = {
+            "attempt": attempt + 1,
+            "process_count": process_count,
+            "heartbeat_returncode": heartbeat.returncode,
+            "heartbeat_detail": (heartbeat.stdout or heartbeat.stderr).strip()[:500],
+        }
+        if process_count > 0 and heartbeat.returncode == 0:
             item["task"] = host.task_status(app.task)
             item["state"] = "verified"
             return
@@ -462,6 +473,7 @@ def status(config: Config, host: WindowsHost) -> dict[str, object]:
         apps[name] = {
             "deployed_sha": deployed,
             "task": host.task_status(app.task),
+            "process_count": host.process_count(Path(app.entrypoint).name),
             "manifest_present": manifest_path.is_file(),
         }
     return {"ok": True, "apps": apps, "watchdog": host.task_status(config.watchdog_task)}
