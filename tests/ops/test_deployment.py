@@ -28,6 +28,15 @@ def _entrypoint_module():
     return module
 
 
+def _dispatcher_module():
+    path = Path("deploy/linux/qsys-deploy-ssh.py")
+    spec = importlib.util.spec_from_file_location("qsys_deploy_ssh", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def _test_config(path: Path, *, password: str = "test-secret") -> Path:
     streams = (
         "orders", "control", "fills", "rejects", "order_status", "account",
@@ -186,6 +195,55 @@ def test_fixed_node_entrypoint_accepts_only_test_runtime() -> None:
         entrypoint.validate_request("test", "a" * 40, ["windows-agent"])
     with pytest.raises(ValueError, match="not enabled"):
         entrypoint.validate_request("production", "a" * 40, ["linux-web"])
+
+
+def test_restricted_ssh_dispatcher_never_invokes_a_shell(monkeypatch) -> None:
+    dispatcher = _dispatcher_module()
+    monkeypatch.setenv(
+        "SSH_ORIGINAL_COMMAND",
+        "deploy --environment test --sha " + "a" * 40 + " --component test-runtime",
+    )
+
+    command = dispatcher.command_from_environment()
+
+    assert command[0] == "/usr/local/libexec/qsys-deploy-entrypoint"
+    assert command[1:] == [
+        "deploy", "--environment", "test", "--sha", "a" * 40,
+        "--component", "test-runtime",
+    ]
+    monkeypatch.setenv("SSH_ORIGINAL_COMMAND", "bash -c whoami")
+    with pytest.raises(ValueError, match="not allowed"):
+        dispatcher.command_from_environment()
+
+
+def test_failed_deployment_rollback_restores_code_dependencies_and_service(monkeypatch, tmp_path) -> None:
+    entrypoint = _entrypoint_module()
+    calls: list[list[str]] = []
+
+    def fake_run(command, *, cwd, check=True):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, "active\n", "")
+
+    monkeypatch.setattr(entrypoint, "_run", fake_run)
+    monkeypatch.setattr(entrypoint, "_healthy", lambda config, repo: True)
+    config = {"uv_bin": "/opt/uv", "test_service": "qsys-web-test.service"}
+
+    assert entrypoint._rollback(config, tmp_path, "b" * 40) is True
+    assert calls == [
+        ["git", "reset", "--hard", "b" * 40],
+        ["/opt/uv", "sync", "--frozen"],
+        ["sudo", "-n", "systemctl", "restart", "qsys-web-test.service"],
+    ]
+
+
+def test_privileged_workflow_uses_trusted_main_controller() -> None:
+    workflow = Path(".github/workflows/deploy-test.yml").read_text(encoding="utf-8")
+
+    assert "github.event.workflow_run.event == 'push'" in workflow
+    assert "github.event.workflow_run.head_branch == 'test'" in workflow
+    assert "ref: main" in workflow
+    assert "cancel-in-progress: false" in workflow
+    assert "TEST_DEPLOY_SSH_KEY" in workflow
 
 
 def test_repeated_test_deployment_is_a_noop(tmp_path) -> None:

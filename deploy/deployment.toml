@@ -16,6 +16,7 @@ ignored_paths = [
   "deploy/deployment.toml",
   "deploy/linux/deployment-entrypoint.json",
   "deploy/linux/qsys-deploy-entrypoint.py",
+  "deploy/linux/qsys-deploy-ssh.py",
   "deploy/record.schema.json",
   "docs/**",
   "jq/**",

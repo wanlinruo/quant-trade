@@ -49,6 +49,11 @@ uv_bin=${QSYS_UV_BIN:-/home/ubuntu/.local/bin/uv}
 # `--locked` 会仅因 registry URL 不同而要求重写整份 lock；部署端因此按 CI 已验证的
 # 现有 lock 精确安装，且禁止在节点重新解析或修改 lock。
 "$uv_bin" sync --frozen
+"$uv_bin" run --frozen python scripts/deployment_contract.py validate-config \
+    --environment test \
+    --config config/deploy.local.toml \
+    --fingerprint-key-file /etc/qsys/config-fingerprint.key
+"$uv_bin" run --frozen pytest -q tests/scripts/test_scripts_import.py
 sudo -n systemctl restart qsys-web-test.service
 
 attempt=0
