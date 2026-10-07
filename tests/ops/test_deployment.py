@@ -47,6 +47,33 @@ def _key_installer_module():
     return module
 
 
+def _production_entrypoint_module():
+    path = Path("deploy/linux/qsys-production-deploy-entrypoint.py")
+    spec = importlib.util.spec_from_file_location("qsys_production_entrypoint", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _production_dispatcher_module():
+    path = Path("deploy/linux/qsys-production-deploy-ssh.py")
+    spec = importlib.util.spec_from_file_location("qsys_production_ssh", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _production_key_installer_module():
+    path = Path("deploy/linux/install-production-deploy-key.py")
+    spec = importlib.util.spec_from_file_location("qsys_install_production_key", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def _test_config(path: Path, *, password: str = "test-secret") -> Path:
     streams = (
         "orders", "control", "fills", "rejects", "order_status", "account",
@@ -248,6 +275,68 @@ def test_test_deploy_key_is_forced_and_rotated_atomically(tmp_path) -> None:
     assert authorized.stat().st_mode & 0o777 == 0o600
 
 
+def test_production_key_uses_a_distinct_forced_command(tmp_path) -> None:
+    installer = _production_key_installer_module()
+    public = tmp_path / "production.pub"
+    authorized = tmp_path / "authorized_keys"
+    encoded = base64.b64encode(b"p" * 32).decode()
+    public.write_text(f"ssh-ed25519 {encoded} generated\n", encoding="utf-8")
+
+    installer.install(public, authorized)
+
+    line = authorized.read_text(encoding="utf-8").strip()
+    assert line.startswith(
+        'restrict,command="/usr/local/libexec/qsys-production-deploy-ssh" '
+    )
+    assert line.endswith(" qsys-github-production")
+    assert "qsys-deploy-ssh\"" not in line
+
+
+def test_production_dispatcher_rejects_shell_commands(monkeypatch) -> None:
+    dispatcher = _production_dispatcher_module()
+    monkeypatch.setenv("SSH_ORIGINAL_COMMAND", "status")
+    assert dispatcher.command_from_environment() == [
+        "/usr/local/libexec/qsys-production-deploy-entrypoint", "status",
+    ]
+    monkeypatch.setenv("SSH_ORIGINAL_COMMAND", "bash -c id")
+    with pytest.raises(ValueError, match="not allowed"):
+        dispatcher.command_from_environment()
+
+
+def test_production_requires_exact_planned_linux_components() -> None:
+    entrypoint = _production_entrypoint_module()
+    plan = {"components": ["linux-web", "windows-agent"], "unknown_paths": []}
+
+    assert entrypoint._validate_components(plan, ["linux-web"]) == ["linux-web"]
+    with pytest.raises(ValueError, match="do not match"):
+        entrypoint._validate_components(plan, ["linux-resident"])
+    with pytest.raises(ValueError, match="production Linux"):
+        entrypoint._validate_components(plan, ["windows-agent"])
+
+
+def test_production_target_requires_successful_test_tree(tmp_path) -> None:
+    entrypoint = _production_entrypoint_module()
+    root = tmp_path / "records"
+    record_dir = root / "github-1"
+    record_dir.mkdir(parents=True)
+    sha = "a" * 40
+    tree = "b" * 40
+    (record_dir / "record.json").write_text(json.dumps({
+        "schema_version": 1,
+        "run_id": "github-1",
+        "environment": "test",
+        "status": "success",
+        "source_sha": sha,
+        "source_tree": tree,
+        "after": {"linux": sha},
+        "completed_at": "2026-10-07T00:00:00+00:00",
+    }), encoding="utf-8")
+
+    assert entrypoint._successful_test_run({"test_record_root": str(root)}, tree) == "github-1"
+    with pytest.raises(ValueError, match="no successful test deployment"):
+        entrypoint._successful_test_run({"test_record_root": str(root)}, "c" * 40)
+
+
 def test_failed_deployment_rollback_restores_code_dependencies_and_service(monkeypatch, tmp_path) -> None:
     entrypoint = _entrypoint_module()
     calls: list[list[str]] = []
@@ -287,6 +376,21 @@ def test_privileged_workflow_uses_trusted_main_controller() -> None:
     assert "ref: main" in workflow
     assert "cancel-in-progress: false" in workflow
     assert "TEST_DEPLOY_SSH_KEY" in workflow
+
+
+def test_production_workflow_is_manual_and_fail_closed() -> None:
+    workflow = Path(".github/workflows/deploy-production-linux.yml").read_text(
+        encoding="utf-8",
+    )
+
+    assert "workflow_dispatch:" in workflow
+    assert "push:" not in workflow
+    assert "ref: main" in workflow
+    assert "DEPLOY_PRODUCTION" in workflow
+    assert "git merge-base --is-ancestor" in workflow
+    assert "check-runs?per_page=100" in workflow
+    assert "PRODUCTION_DEPLOY_SSH_KEY" in workflow
+    assert "cancel-in-progress: false" in workflow
 
 
 def test_repeated_test_deployment_is_a_noop(tmp_path) -> None:
