@@ -28,7 +28,7 @@ uv run python scripts/deployment_contract.py plan \
 节点不直接向 Actions 暴露 shell。Linux 固定入口通过
 `scripts/install_deployment_entrypoint.sh` 安装到工作树外的
 `/usr/local/libexec/qsys-deploy-entrypoint`，配置固定在
-`/etc/qsys/deployment-entrypoint.json`。当前只启用测试环境和 `test-runtime`：
+`/etc/qsys/deployment-entrypoint.json`。测试入口只启用测试环境和 `test-runtime`：
 
 ```bash
 /usr/local/libexec/qsys-deploy-entrypoint deploy \
@@ -39,10 +39,21 @@ uv run python scripts/deployment_contract.py plan \
 入口由节点部署用户执行；它内部只对固定的 `systemctl` 操作使用免密 sudo。不要用 root
 运行整个入口，否则 Git 的只读 deploy key、仓库 ownership 与审计身份都会错位。
 GitHub 使用另一把测试专用 key；其 `authorized_keys` 条目强制进入
-`/usr/local/libexec/qsys-deploy-ssh`，只接受 `status`、`deploy` 和 `record`，不提供
-交互 shell、端口转发或 agent 转发。
+`/usr/local/libexec/qsys-deploy-ssh`，只接受 `status`、`deploy`、`attest` 和 `record`，
+不提供交互 shell、端口转发或 agent 转发。`attest` 只用于可信 planner 判定无测试运行时
+组件的 control-plane-only tree；它校验 exact `origin/test`、健康与存储隔离，记录证据但
+不切换代码或重启服务。
 
-生产组件会失败关闭，待生产发布 workflow 与授权边界在后续 Issue 中完成后才开放。
+生产使用完全独立的安装脚本、入口、配置和 key：
+
+- `scripts/install_production_deployment_entrypoint.sh`；
+- `/usr/local/libexec/qsys-production-deploy-entrypoint`；
+- `/etc/qsys/production-deployment-entrypoint.json`；
+- forced command `/usr/local/libexec/qsys-production-deploy-ssh`。
+
+生产入口只接受 `status`、`deploy` 和 `record`。它再次校验 `main` 来源、成功测试 tree、
+精确组件集合、干净工作区与节点健康；testing key 不能调用生产入口。生产发布仍必须由
+维护者通过 `Deploy production Linux` 手工触发，不能把入口已安装理解为自动发布授权。
 同一 SHA 重复请求会在依赖同步、服务重启和历史记录之前返回成功，因此不会制造重复
 副作用。
 
