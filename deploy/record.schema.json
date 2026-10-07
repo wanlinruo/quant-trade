@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsys.local/schemas/deployment-record-v1.json",
+  "title": "qsys deployment record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "run_id", "environment", "status", "actor",
+    "started_at", "completed_at", "repository", "pr_number", "source_sha",
+    "source_tree", "components", "before", "after", "config_fingerprints",
+    "checks", "rollback_targets", "migration_summary"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "run_id": {"type": "string", "minLength": 1},
+    "environment": {"enum": ["test", "production"]},
+    "status": {"enum": ["queued", "in_progress", "success", "failure", "rolled_back"]},
+    "actor": {"type": "string", "minLength": 1},
+    "started_at": {"type": "string", "format": "date-time"},
+    "completed_at": {"type": ["string", "null"], "format": "date-time"},
+    "repository": {"type": "string", "minLength": 1},
+    "pr_number": {"type": ["integer", "null"], "minimum": 1},
+    "source_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "source_tree": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "components": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "before": {"type": "object", "additionalProperties": {"type": "string"}},
+    "after": {"type": "object", "additionalProperties": {"type": "string"}},
+    "config_fingerprints": {"type": "object", "additionalProperties": {"type": "string"}},
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "status", "detail"],
+        "properties": {
+          "name": {"type": "string"},
+          "status": {"enum": ["passed", "failed", "skipped"]},
+          "detail": {"type": "string"}
+        }
+      }
+    },
+    "rollback_targets": {"type": "object", "additionalProperties": {"type": "string"}},
+    "migration_summary": {"type": "string"}
+  }
+}

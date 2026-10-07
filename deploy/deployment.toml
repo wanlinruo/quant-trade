@@ -1,0 +1,181 @@
+schema_version = 1
+
+[planning]
+# These paths affect the control plane or evidence only; deploying them to an
+# application node would add no runtime behavior. Every other changed path must
+# match at least one component below or planning fails closed.
+ignored_paths = [
+  ".github/**",
+  ".githooks/**",
+  ".gitattributes",
+  ".gitignore",
+  "artifacts/**",
+  "config/deploy.example.toml",
+  "deploy/config.schema.json",
+  "deploy/deployment.toml",
+  "deploy/linux/deployment-entrypoint.json",
+  "deploy/linux/qsys-deploy-entrypoint.py",
+  "deploy/record.schema.json",
+  "docs/**",
+  "jq/**",
+  "scripts/deployment_contract.py",
+  "scripts/install_deployment_entrypoint.sh",
+  "src/qsys/ops/deployment.py",
+  "tests/**",
+]
+
+[environments.production]
+branch = "main"
+config_path = "config/deploy.local.toml"
+record_root = "/data/qsys/var-deployments"
+web_health = "http://127.0.0.1:8420/healthz"
+
+[environments.test]
+branch = "test"
+config_path = "config/deploy.local.toml"
+record_root = "/data/qsys-test/var/deployments"
+web_health = "http://127.0.0.1:8421/healthz"
+
+[[components]]
+name = "linux-dependencies"
+environments = ["production"]
+paths = ["pyproject.toml", "uv.lock"]
+nodes = ["linux"]
+linux_units = [
+  "qsys-monitor.service",
+  "qsys-paper.service",
+  "qsys-shadow-core.service",
+  "qsys-health-observer.service",
+  "qsys-live-core.service",
+]
+health_checks = ["preflight", "resident-services", "web-health"]
+manual_gate = true
+rollback = "previous-successful-sha"
+
+[[components]]
+name = "linux-web"
+environments = ["production"]
+paths = [
+  "src/qsys/__init__.py",
+  "src/qsys/backtest/**",
+  "src/qsys/core/**",
+  "src/qsys/markets/**",
+  "src/qsys/strategy/**",
+  "src/qsys/web/**",
+  "scripts/run_backtest.py",
+  "scripts/run_monitor.py",
+  "strategies/**",
+]
+nodes = ["linux"]
+linux_units = ["qsys-monitor.service"]
+health_checks = ["web-health"]
+rollback = "previous-successful-sha"
+
+[[components]]
+name = "linux-resident"
+environments = ["production"]
+paths = [
+  "src/qsys/live/**",
+  "src/qsys/ops/**",
+  "src/qsys/paper/**",
+  "scripts/run_health_observer.py",
+  "scripts/run_live.py",
+  "scripts/run_paper.py",
+  "scripts/run_shadow.py",
+]
+nodes = ["linux"]
+linux_units = [
+  "qsys-monitor.service",
+  "qsys-paper.service",
+  "qsys-shadow-core.service",
+  "qsys-health-observer.service",
+  "qsys-live-core.service",
+]
+health_checks = ["resident-services", "redis-heartbeats", "web-health"]
+rollback = "previous-successful-sha"
+
+[[components]]
+name = "linux-data-jobs"
+environments = ["production"]
+paths = ["src/qsys/data/**", "scripts/*.py", "scripts/*.sh"]
+nodes = ["linux"]
+linux_units = []
+health_checks = ["preflight"]
+rollback = "previous-successful-sha"
+
+[[components]]
+name = "linux-systemd"
+environments = ["production"]
+paths = ["deploy/systemd/**"]
+nodes = ["linux"]
+linux_units = []
+health_checks = ["systemd-verify"]
+manual_gate = true
+rollback = "restore-unit-backup"
+
+[[components]]
+name = "windows-agent"
+environments = ["production"]
+paths = [
+  "src/qsys/agent/**",
+  "src/qsys/backtest/fees.py",
+  "src/qsys/live/config.py",
+  "src/qsys/live/heartbeat.py",
+  "src/qsys/live/messages.py",
+  "src/qsys/live/redis_transport.py",
+  "src/qsys/live/safety.py",
+  "src/qsys/live/transport.py",
+  "scripts/run_agent.py",
+]
+nodes = ["windows"]
+windows_apps = ["live_app"]
+windows_tasks = ["qsys-agent-shadow"]
+health_checks = ["windows-file-manifest", "agent-heartbeat"]
+rollback = "previous-successful-release"
+
+[[components]]
+name = "windows-gateway"
+environments = ["production"]
+paths = [
+  "src/qsys/data/pipeline/premarket.py",
+  "src/qsys/live/config.py",
+  "src/qsys/live/messages.py",
+  "src/qsys/live/redis_transport.py",
+  "src/qsys/live/transport.py",
+  "src/qsys/paper/quotes.py",
+  "scripts/run_market_gateway.py",
+]
+nodes = ["windows"]
+windows_apps = ["paper_app"]
+windows_tasks = ["qsys-market-gateway"]
+health_checks = ["windows-file-manifest", "market-heartbeat"]
+rollback = "previous-successful-release"
+
+[[components]]
+name = "windows-control"
+environments = ["production"]
+paths = ["deploy/windows/**", "scripts/check_agent_alive.py"]
+nodes = ["windows"]
+windows_apps = ["live_app"]
+windows_tasks = ["qsys-watchdog"]
+health_checks = ["watchdog-enabled"]
+manual_gate = true
+rollback = "restore-file-backup"
+
+[[components]]
+name = "test-runtime"
+environments = ["test"]
+paths = [
+  "deploy/systemd/**",
+  "deploy/windows/**",
+  "pyproject.toml",
+  "scripts/*.py",
+  "scripts/*.sh",
+  "src/**",
+  "strategies/**",
+  "uv.lock",
+]
+nodes = ["linux"]
+linux_units = ["qsys-web-test.service"]
+health_checks = ["preflight", "test-config", "test-web-health"]
+rollback = "previous-successful-sha"

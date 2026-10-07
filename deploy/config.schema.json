@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsys.local/schemas/deployment-config-v1.json",
+  "title": "qsys deployment configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "redis"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "redis": {"type": "object"},
+    "streams": {"type": "object"},
+    "agent": {"type": "object"},
+    "fees": {"type": "object"},
+    "strategy": {"type": "object"},
+    "safety": {"type": "object"},
+    "alerts": {"type": "object"},
+    "email": {"type": "object"},
+    "risk": {"type": "object"},
+    "tushare": {"type": "object"},
+    "joinquant": {"type": "object"}
+  }
+}
