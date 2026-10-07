@@ -392,6 +392,14 @@ def test_production_windows_bootstraps_the_coordinator_from_the_target() -> None
     assert 'WINDOWS_COORDINATOR = "/usr/local/libexec/' not in source
 
 
+def test_production_windows_real_result_declares_not_dry_run() -> None:
+    source = Path("deploy/linux/qsys-production-deploy-entrypoint.py").read_text(
+        encoding="utf-8",
+    )
+
+    assert '"ok": success, "dry_run": False,' in source
+
+
 def test_production_target_requires_successful_test_tree(tmp_path) -> None:
     entrypoint = _production_entrypoint_module()
     root = tmp_path / "records"

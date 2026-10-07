@@ -380,7 +380,10 @@ def windows_deploy(args: argparse.Namespace, config: dict[str, object]) -> int:
         "rollback_targets": rollback_targets, "migration_summary": "none",
     }
     path = _write_record(config, args.run_id, record)
-    print(json.dumps({"ok": success, "status": record["status"], "record": str(path)}))
+    print(json.dumps({
+        "ok": success, "dry_run": False,
+        "status": record["status"], "record": str(path),
+    }))
     return 0 if success else 1
 
 
