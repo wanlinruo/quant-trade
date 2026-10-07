@@ -31,9 +31,12 @@ uv run python scripts/deployment_contract.py plan \
 `/etc/qsys/deployment-entrypoint.json`。当前只启用测试环境和 `test-runtime`：
 
 ```bash
-sudo -n /usr/local/libexec/qsys-deploy-entrypoint \
+/usr/local/libexec/qsys-deploy-entrypoint \
   --environment test --sha <40位完整SHA> --component test-runtime
 ```
+
+入口由节点部署用户执行；它内部只对固定的 `systemctl` 操作使用免密 sudo。不要用 root
+运行整个入口，否则 Git 的只读 deploy key、仓库 ownership 与审计身份都会错位。
 
 生产组件会失败关闭，待生产发布 workflow 与授权边界在后续 Issue 中完成后才开放。
 同一 SHA 重复请求会在依赖同步、服务重启和历史记录之前返回成功，因此不会制造重复
