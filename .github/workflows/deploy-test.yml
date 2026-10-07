@@ -122,6 +122,15 @@ jobs:
         run: |
           ssh -i ~/.ssh/test-deploy -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
             "deploy --environment test --sha $TARGET_SHA --component test-runtime --run-id $RUN_KEY --actor $GITHUB_ACTOR --repository $GITHUB_REPOSITORY"
+
+      - name: Attest control-plane-only target
+        if: steps.plan.outputs.deployable == 'false'
+        run: |
+          ssh -i ~/.ssh/test-deploy -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "attest --environment test --sha $TARGET_SHA --run-id $RUN_KEY --actor $GITHUB_ACTOR --repository $GITHUB_REPOSITORY"
+
+      - name: Verify node deployment record
+        run: |
           ssh -i ~/.ssh/test-deploy -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
             "record --environment test --run-id $RUN_KEY" >record.json
           PYTHONPATH=src python3 scripts/deployment_contract.py validate-record record.json

@@ -252,6 +252,11 @@ def test_restricted_ssh_dispatcher_never_invokes_a_shell(monkeypatch) -> None:
     with pytest.raises(ValueError, match="not allowed"):
         dispatcher.command_from_environment()
 
+    monkeypatch.setenv("SSH_ORIGINAL_COMMAND", "attest --environment test")
+    assert dispatcher.command_from_environment()[:2] == [
+        "/usr/local/libexec/qsys-deploy-entrypoint", "attest",
+    ]
+
 
 def test_test_deploy_key_is_forced_and_rotated_atomically(tmp_path) -> None:
     installer = _key_installer_module()
@@ -337,6 +342,27 @@ def test_production_target_requires_successful_test_tree(tmp_path) -> None:
         entrypoint._successful_test_run({"test_record_root": str(root)}, "c" * 40)
 
 
+def test_production_accepts_control_plane_test_attestation(tmp_path) -> None:
+    entrypoint = _production_entrypoint_module()
+    root = tmp_path / "records"
+    record_dir = root / "github-control"
+    record_dir.mkdir(parents=True)
+    tree = "d" * 40
+    (record_dir / "record.json").write_text(json.dumps({
+        "schema_version": 1,
+        "run_id": "github-control",
+        "environment": "test",
+        "status": "success",
+        "source_sha": "a" * 40,
+        "source_tree": tree,
+        "components": [],
+        "after": {"linux": "b" * 40},
+        "completed_at": "2026-10-07T00:00:00+00:00",
+    }), encoding="utf-8")
+
+    assert entrypoint._successful_test_run({"test_record_root": str(root)}, tree) == "github-control"
+
+
 def test_failed_deployment_rollback_restores_code_dependencies_and_service(monkeypatch, tmp_path) -> None:
     entrypoint = _entrypoint_module()
     calls: list[list[str]] = []
@@ -376,6 +402,7 @@ def test_privileged_workflow_uses_trusted_main_controller() -> None:
     assert "ref: main" in workflow
     assert "cancel-in-progress: false" in workflow
     assert "TEST_DEPLOY_SSH_KEY" in workflow
+    assert "Attest control-plane-only target" in workflow
 
 
 def test_production_workflow_is_manual_and_fail_closed() -> None:
