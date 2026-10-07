@@ -530,6 +530,27 @@ def test_windows_workflow_uses_only_the_linux_production_credential() -> None:
     assert "PRODUCTION_DEPLOY_SSH_KEY" in workflow
     assert "WINDOWS_DEPLOY_SSH_KEY" not in workflow
     assert "cancel-in-progress: false" in workflow
+    assert "set -euo pipefail" in workflow
+    assert "jq -e '.ok == true' result.json" in workflow
+
+
+def test_windows_control_targets_both_independent_apps() -> None:
+    plan = DeploymentManifest.load(MANIFEST).plan(
+        ["scripts/check_agent_alive.py"], environment="production",
+    )
+
+    assert plan.components == ("linux-data-jobs", "windows-control")
+    assert plan.windows_apps == ("live_app", "paper_app")
+    assert plan.windows_tasks == ("qsys-watchdog",)
+
+
+def test_windows_coordinator_config_is_readable_by_forced_command_user() -> None:
+    installer = Path("scripts/install_windows_deployment_coordinator.sh").read_text(
+        encoding="utf-8",
+    )
+
+    assert "-m 0644" in installer
+    assert "-m 0600" not in installer
 
 
 def test_repeated_test_deployment_is_a_noop(tmp_path) -> None:

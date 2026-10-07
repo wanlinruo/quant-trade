@@ -157,7 +157,7 @@ jobs:
           COMPONENTS: ${{ steps.plan.outputs.components }}
           PR_NUMBER: ${{ steps.source.outputs.pr_number }}
         run: |
-          set -eu
+          set -euo pipefail
           set -- windows-deploy --sha "$TARGET_SHA" --run-id "$RUN_KEY" \
             --actor "$GITHUB_ACTOR" --repository "$GITHUB_REPOSITORY" --pr-number "$PR_NUMBER"
           old_ifs=$IFS
@@ -171,6 +171,8 @@ jobs:
           fi
           ssh -i ~/.ssh/production-deploy -o BatchMode=yes \
             "$DEPLOY_USER@$DEPLOY_HOST" "$*" | tee result.json
+          jq -e '.ok == true' result.json >/dev/null
+          jq -e --argjson expected "$DRY_RUN" '.dry_run == $expected' result.json >/dev/null
           if [ "$DRY_RUN" = false ]; then
             ssh -i ~/.ssh/production-deploy -o BatchMode=yes \
               "$DEPLOY_USER@$DEPLOY_HOST" "record --run-id $RUN_KEY" >record.json
