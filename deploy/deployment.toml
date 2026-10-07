@@ -9,6 +9,7 @@ ignored_paths = [
   ".githooks/**",
   ".gitattributes",
   ".gitignore",
+  "HANDOFF.md",
   "artifacts/**",
   "config/deploy.example.toml",
   "config/deploy.test.example.toml",
