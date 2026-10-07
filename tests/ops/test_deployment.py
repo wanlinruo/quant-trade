@@ -402,6 +402,7 @@ def test_privileged_workflow_uses_trusted_main_controller() -> None:
     assert "ref: main" in workflow
     assert "cancel-in-progress: false" in workflow
     assert "TEST_DEPLOY_SSH_KEY" in workflow
+    assert 'git fetch --no-tags origin "$BEFORE_SHA"' in workflow
     assert "Attest control-plane-only target" in workflow
 
 

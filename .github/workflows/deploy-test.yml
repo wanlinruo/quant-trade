@@ -90,6 +90,7 @@ jobs:
         env:
           BEFORE_SHA: ${{ steps.source.outputs.before_sha }}
         run: |
+          git fetch --no-tags origin "$BEFORE_SHA"
           PYTHONPATH=src python3 scripts/deployment_contract.py plan \
             --environment test --base "$BEFORE_SHA" --target "$TARGET_SHA" >plan.json
           python3 - <<'PY' >>"$GITHUB_OUTPUT"
