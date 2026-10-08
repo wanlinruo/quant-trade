@@ -15,10 +15,8 @@ from datetime import date, datetime, time
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from qsys.data.pipeline.premarket import (
-    run_premarket_limits,
-    sync_premarket_suspensions,
-)
+from qsys.data.pipeline.premarket import run_premarket_limits
+from qsys.data.pipeline.premarket_suspensions import sync_premarket_suspensions
 from qsys.data.pipeline.canonical_publish import publish_premarket
 from qsys.data.providers.tushare import TushareProvider
 from qsys.data.providers.tushare_client import TushareClient

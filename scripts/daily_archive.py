@@ -52,7 +52,7 @@ from qsys.data.pipeline.candidates import (
 from qsys.data.pipeline.instruments import alive_on
 from qsys.data.pipeline.canonical_publish import publish_minutes
 from qsys.data.pipeline.minutes import import_minute_bars, missing_stock_days
-from qsys.data.pipeline.premarket import sync_premarket_suspensions
+from qsys.data.pipeline.premarket_suspensions import sync_premarket_suspensions
 from qsys.data.providers.tushare import TushareProvider
 from qsys.data.providers.tushare_client import TushareClient
 from qsys.data.quality.minute_rules import MinuteIssue, check_minute_bars

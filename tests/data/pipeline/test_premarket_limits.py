@@ -14,8 +14,8 @@ from qsys.data.pipeline.premarket import (
     publish_key,
     run_premarket_limits,
     sync_premarket_limits,
-    sync_premarket_suspensions,
 )
+from qsys.data.pipeline.premarket_suspensions import sync_premarket_suspensions
 from qsys.data.query import WarehouseQuery
 from qsys.live.config import StreamConfig
 from qsys.live.transport import MemoryTransport
