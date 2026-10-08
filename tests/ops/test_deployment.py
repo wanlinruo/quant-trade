@@ -742,6 +742,17 @@ def test_post_merge_alignment_is_evidence_bound_and_lease_safe() -> None:
     assert '--force-with-lease="refs/heads/test:$PR_HEAD"' in workflow
 
 
+def test_pr_ci_reuses_valid_tree_evidence_or_runs_full_checks() -> None:
+    workflow = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
+
+    assert "reuse-evidence:" in workflow
+    assert "scripts/verify_github_release_evidence.py" in workflow
+    assert "Evidence unavailable or mismatched; full PR verification is required." in workflow
+    assert "needs.reuse-evidence.outputs.reusable != 'true'" in workflow
+    assert "Reuse full-suite evidence for the identical tree" in workflow
+    assert "Reuse package evidence for the identical tree" in workflow
+
+
 def test_production_workflow_is_manual_and_fail_closed() -> None:
     workflow = Path(".github/workflows/deploy-production-linux.yml").read_text(
         encoding="utf-8",

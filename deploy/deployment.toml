@@ -34,6 +34,7 @@ ignored_paths = [
   "scripts/install_production_deployment_entrypoint.sh",
   "scripts/install_windows_deployment_coordinator.sh",
   "scripts/release_evidence.py",
+  "scripts/verify_github_release_evidence.py",
   "src/qsys/ops/deployment.py",
   "tests/**",
 ]
