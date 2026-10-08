@@ -56,6 +56,7 @@ class Selection:
 class SelectionFunnel:
     """一次选股的漏斗：池子 → 入档 → 闸门通过。只汇总本次已有的判定结果。
 
+    `excluded` 是进入入档计算前由权威状态剔除的原因（例如全天停牌）；
     `skipped` 是**走到闸门之前**就被筛掉的原因（价格带、竞价量、数据缺失），
     `reasons` 是**闸门**拒绝的原因。两段分开，才看得出"没买"是哪一步决定的：
     2026-09-24 模拟盘 34 个池子标的全部在入档前被筛掉，页面却只显示
@@ -67,6 +68,7 @@ class SelectionFunnel:
     allowed: int
     reasons: dict[str, int]
     skipped: dict[str, int] = field(default_factory=dict)
+    excluded: dict[str, int] = field(default_factory=dict)
 
 
 class MissingAuctionDataError(ValueError):
@@ -124,14 +126,20 @@ class StructuralSelection:
             previous=previous,
             delisting=self._query.delisting_symbols(day, announced_by=previous),
         )
+        original_pool_size = len(pool.first_boards)
         suspended = market.suspended_symbols(pool.first_boards, day)
+        excluded: Counter[str] = Counter()
         if suspended:
+            excluded["权威确认停牌"] = len(suspended)
             pool = type(pool)(
                 [s for s in pool.first_boards if s not in suspended],
                 [s for s in pool.broken_boards if s not in suspended],
             )
         if not pool.first_boards:
-            self.funnel = SelectionFunnel(pool=0, routed=0, allowed=0, reasons={})
+            self.funnel = SelectionFunnel(
+                pool=original_pool_size, routed=0, allowed=0, reasons={},
+                excluded=dict(excluded),
+            )
             return []
         skipped: Counter[str] = Counter()
 
@@ -182,11 +190,12 @@ class StructuralSelection:
             decision.reason for decision in self.decisions if not decision.allow
         )
         self.funnel = SelectionFunnel(
-            pool=len(pool.first_boards),
+            pool=original_pool_size,
             routed=len(self.decisions),
             allowed=len(picks),
             reasons=dict(rejected),
             skipped=dict(skipped),
+            excluded=dict(excluded),
         )
         return picks
 

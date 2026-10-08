@@ -223,6 +223,32 @@ def test_auction_reports_the_funnel():
     assert report.reasons["闸门·高开超过阈值"] == 12
 
 
+def test_auction_reports_authoritative_suspension_at_the_candidate_stage():
+    from qsys.ops.strategy_log import RunReport
+    from qsys.strategy.structural.selection import SelectionFunnel
+
+    report = RunReport()
+    funnel = SelectionFunnel(
+        pool=42, routed=1, allowed=0, reasons={},
+        excluded={"权威确认停牌": 1},
+        skipped={"不在低开/高开价格带": 40},
+    )
+    selection = FakeSelection([], funnel=funnel)
+    strategy = StructuralStrategy(selection)
+    ctx = FakeCtx(
+        datetime.combine(DAY, AUCTION_AT),
+        state={"previous_session": date(2024, 1, 3)}, report=report,
+    )
+
+    strategy.on_auction(ctx)
+
+    assert report.candidates == 42
+    assert report.reasons == {
+        "候选池·权威确认停牌": 1,
+        "入档前·不在低开/高开价格带": 40,
+    }
+
+
 def test_auction_without_a_previous_session_says_so():
     from qsys.ops.strategy_log import RunReport
 

@@ -413,13 +413,16 @@ akshare 的交易日历。
 uv run python scripts/daily_archive.py --only-auction
 ```
 
-## 盘前涨跌停价（systemd timer）
+## 盘前涨跌停价与停复牌事实（systemd timer）
 
-`deploy/systemd/qsys-premarket-limits.{service,timer}`：交易日 08:58 触发
+`deploy/systemd/qsys-premarket-limits.{service,timer}`：交易日 08:58、09:15、09:24 触发
 `scripts/tushare_premarket_limits.py`，取当日 Tushare `stk_limit`（官方约 09:00 更新），
 每分钟重试到 09:25。完整才写 `price_limits_daily` 并发布 Redis `state:price_limits:YYYYMMDD`；
 到点仍取不到以非零退出（`systemctl status` 可见）。模拟盘/影子盘/实盘的盘中涨停价、
-行情页涨停统计都依赖它；缺价标的不自算（D-19）。
+行情页涨停统计都依赖它；缺价标的不自算（D-19）。每次触发还查询一次官方更新时间为
+“不定期”的 `suspend_d`，把观测时间、行数和内容 hash 写入运行记录并按交易日幂等更新
+`suspend_daily`；查询成功的空集合与调用失败严格区分，较小的后续响应不会删除已有真值。
+每日归档在 15:40 开始时再次刷新当日停复牌记录，吸收盘中晚到信息。
 
 ```bash
 sudo cp deploy/systemd/qsys-premarket-limits.{service,timer} /etc/systemd/system/

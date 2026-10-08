@@ -119,6 +119,37 @@ def test_low_branch_selects_a_valid_candidate(warehouse, write_daily_bars):
     assert picks[0].tag == "LOW_MAIN"
 
 
+def test_authoritative_all_day_suspension_is_removed_and_explained(
+    warehouse, write_daily_bars,
+):
+    low_setup(warehouse, write_daily_bars)
+    warehouse.write("suspend_daily", pa.table({
+        "symbol": ["600001.SH"], "dt": [TODAY],
+        "suspend_type": ["S"], "suspend_timing": [None],
+    }, schema=schema.SUSPEND_DAILY), year=TODAY.year)
+    selection = selector(warehouse, require_auction_volume=False)
+
+    assert selection.select(TODAY, YESTERDAY) == []
+    assert selection.funnel is not None
+    assert selection.funnel.pool == 1
+    assert selection.funnel.excluded == {"权威确认停牌": 1}
+    assert selection.funnel.skipped == {}
+
+
+def test_intraday_suspension_is_not_removed_as_an_all_day_suspension(
+    warehouse, write_daily_bars,
+):
+    low_setup(warehouse, write_daily_bars)
+    warehouse.write("suspend_daily", pa.table({
+        "symbol": ["600001.SH"], "dt": [TODAY],
+        "suspend_type": ["S"], "suspend_timing": ["10:00-10:30"],
+    }, schema=schema.SUSPEND_DAILY), year=TODAY.year)
+
+    picks = selector(warehouse, require_auction_volume=False).select(TODAY, YESTERDAY)
+
+    assert [pick.symbol for pick in picks] == ["600001.SH"]
+
+
 def test_low_main_needs_the_auction_volume_filter_when_required(warehouse, write_daily_bars):
     """忠实版：缺竞价量必须失败，不能静默剔除并产出失真的低交易报告。"""
     low_setup(warehouse, write_daily_bars)

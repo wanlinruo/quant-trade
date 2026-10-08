@@ -13,8 +13,8 @@
 
 | 服务 | 时间 | 接口 | 写入 |
 |---|---|---|---|
-| 盘前涨跌停价 `qsys-premarket-limits` | 交易日 08:58，重试到 09:25 | Tushare trade_cal、stk_limit；Redis 发布 | price_limits_daily |
-| 每日归档 `qsys-daily-archive` | 交易日 15:40 | Tushare trade_cal；QMT 竞价逐笔、全市场 1 分钟线 | auction_ticks、minute_bars、bar_minute_1m |
+| 盘前交易事实 `qsys-premarket-limits` | 交易日 08:58、09:15、09:24；涨跌停价单次运行内重试到 09:25 | Tushare trade_cal、stk_limit、suspend_d；Redis 发布涨跌停价 | price_limits_daily、suspend_daily |
+| 每日归档 `qsys-daily-archive` | 交易日 15:40 | Tushare trade_cal、suspend_d；QMT 竞价逐笔、全市场 1 分钟线 | suspend_daily、auction_ticks、minute_bars、bar_minute_1m |
 | Tushare 收盘同步 `qsys-tushare-sync` | 交易日 17:00，19:00 补跑 | Tushare 11 个接口 | 9 张事实表、4 张派生表、metric_checks |
 | 每日服务质检 `qsys-service-checks` | 交易日 20:00 | 仓库只读、运行记录 | 运行记录 |
 | 竞价挂单时点研究 `qsys-auction-study` | **每月 1 日 20:30** | 仓库只读 | /data/qsys/research/auction-timing/<年月>/report.json |
@@ -39,7 +39,7 @@ Windows 进程看门狗每 5 分钟执行一次，属于周期守护任务：不
 
 | 任务 | 检查 | 期望来源 |
 |---|---|---|
-| 盘前涨跌停价 | 开盘前取到当日涨跌停价 | 盘前运行记录 |
+| 盘前交易事实 | 开盘前取到当日涨跌停价；停复牌查询成功（允许真实空集合，但失败不得伪装为空） | 盘前运行记录 |
 | 每日归档 | 竞价逐笔到货、全市场分钟线到货、**首根有成交**、全天成交量对日线 | 竞价取首板次日候选并扣直取停牌；分钟线独立取 Tushare 当日日线中实际有成交的全部股票，避免下载集合变薄时自证通过。非北交所成交量差额 ≤1 手；北交所允许 Tushare 日线落在「扣除/包含 QMT 15:00 bar」区间内（盘后固定价口径） |
 | Tushare 同步 | 退市整理期池与 namechange 独立重算一致；日线到货（≥ 上一交易日 98%）、涨跌停价/ST/估值覆盖日线、规范股本逐只等于当日 daily_basic、派生标记覆盖主板创业板科创板日线、停牌采集成功、涨停列表非空、沪深300、主表已更新、市场广度、增量质检阻断项 | Tushare 日线；同步运行记录（停牌当天可以真为 0 只，只认采集成功） |
 
