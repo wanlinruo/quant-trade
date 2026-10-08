@@ -198,6 +198,23 @@ def test_premarket_reads_its_own_run_record():
     assert got.status == sc.OK and "5644" in got.actual
 
 
+def test_premarket_suspension_receipt_accepts_a_successful_empty_snapshot():
+    run = {"service": "premarket-limits", "session": DAY.isoformat(), "error": "",
+           "steps": [{"table": "suspend_daily", "status": "succeeded", "rows": 0,
+                      "finished_at": "2026-09-17T09:24:02",
+                      "detail": "query_status=success; rows=0; content_hash=abc"}]}
+    got = sc._premarket_suspensions(ctx(FakeQuery(), [run]))
+    assert got.status == sc.OK and "0 条" in got.actual
+
+
+def test_premarket_suspension_query_failure_cannot_masquerade_as_empty():
+    run = {"service": "premarket-limits", "session": DAY.isoformat(), "error": "",
+           "steps": [{"table": "suspend_daily", "status": "failed", "rows": 0,
+                      "finished_at": "2026-09-17T09:24:02",
+                      "detail": "TimeoutError"}]}
+    assert sc._premarket_suspensions(ctx(FakeQuery(), [run])).status == sc.BAD
+
+
 def minutes(symbol, n, volume_each=1):
     start = datetime.combine(DAY, time(9, 30))
     return pl.DataFrame({"symbol": [symbol] * n,

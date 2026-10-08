@@ -26,6 +26,7 @@ from qsys.data.catalog.health import (
     policy_for,
 )
 from qsys.data.query import WarehouseQuery
+from qsys.data.suspensions import full_day_suspensions
 
 
 class FacadeMode(StrEnum):
@@ -152,15 +153,10 @@ class CutoverMarketData:
         return self._query.price_limit_daily(symbols, start, end)
 
     def suspended_symbols(self, symbols: Sequence[str], day: date) -> set[str]:
-        if self.config.mode is FacadeMode.LEGACY:
-            rows = self._query.suspensions(symbols, day, day)
-            return set(rows.filter(
-                pl.col("suspend_type") == "S"
-            )["symbol"].to_list())
-        rows = self._query.security_status_daily(symbols, day, day)
-        return set(rows.filter(
-            pl.col("is_suspended") == True  # noqa: E712
-        )["symbol"].to_list())
+        # security_status_daily 的“曾发生停牌”日状态会包含盘中临停，不能据此
+        # 在 09:25 把整日剔除。交易资格必须读取保留 suspend_timing 的事件真值。
+        rows = self._query.suspensions(symbols, day, day)
+        return set(full_day_suspensions(rows)["symbol"].to_list())
 
     def intraday_bars(
         self, symbols: Sequence[str], day: date

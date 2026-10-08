@@ -122,7 +122,8 @@ class StructuralStrategy(Strategy):
         funnel = getattr(self._selection, "funnel", None)
         if funnel is not None:
             # 入档前与闸门的拒绝原因分开标注：没买是哪一步决定的，页面要看得出
-            reasons = {f"入档前·{k}": v for k, v in funnel.skipped.items()}
+            reasons = {f"候选池·{k}": v for k, v in funnel.excluded.items()}
+            reasons.update({f"入档前·{k}": v for k, v in funnel.skipped.items()})
             reasons.update({f"闸门·{k}": v for k, v in funnel.reasons.items()})
             ctx.report(
                 candidates=funnel.pool,

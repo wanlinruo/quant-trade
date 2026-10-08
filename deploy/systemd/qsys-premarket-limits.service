@@ -1,5 +1,5 @@
 [Unit]
-Description=qsys premarket Tushare stk_limit for intraday processes (D-19)
+Description=qsys premarket Tushare price limits and suspension facts
 After=network-online.target
 Wants=network-online.target
 

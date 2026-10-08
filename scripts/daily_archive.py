@@ -50,11 +50,15 @@ from qsys.data.pipeline.candidates import (
     write_manifest,
 )
 from qsys.data.pipeline.instruments import alive_on
-from qsys.data.pipeline.minutes import import_minute_bars, missing_stock_days
 from qsys.data.pipeline.canonical_publish import publish_minutes
+from qsys.data.pipeline.minutes import import_minute_bars, missing_stock_days
+from qsys.data.pipeline.premarket import sync_premarket_suspensions
+from qsys.data.providers.tushare import TushareProvider
+from qsys.data.providers.tushare_client import TushareClient
 from qsys.data.quality.minute_rules import MinuteIssue, check_minute_bars
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
+from qsys.live.config import load_tushare_config
 from qsys.ops.services import FAILED, SKIPPED, SUCCEEDED, ServiceRun
 from qsys.paper.calendar import load_trading_calendar
 
@@ -76,9 +80,11 @@ def run(cmd: list[str], *, what: str, timeout: int = 3600) -> str:
     return result.stdout
 
 
-def _exit_code(rc: int, *, auction_ok: bool) -> int:
-    """竞价失败时不中断后续步骤，但最终必须让 systemd 看到失败（D-7）。"""
-    return rc or (0 if auction_ok else 1)
+def _exit_code(
+    rc: int, *, auction_ok: bool, suspension_refresh_ok: bool = True,
+) -> int:
+    """非阻断步骤失败时继续归档，但最终必须让 systemd 看到失败。"""
+    return rc or (0 if auction_ok and suspension_refresh_ok else 1)
 
 
 def _paper_fills(store: Path) -> pl.DataFrame:
@@ -283,6 +289,30 @@ def _archive(args, service_run: ServiceRun) -> int:
     start = complete_through - timedelta(days=args.lookback_days)
     print(f"=== 归档至 {complete_through}（回看 {args.lookback_days} 天）===")
 
+    # suspend_d 官方为“不定期更新”。盘前快照服务 09:25 的策略判断；归档前
+    # 必须再刷新一次，才能吸收盘中新增记录，避免把全天停牌交给 QMT 下载后
+    # 误判成数据故障。查询失败不伪装成空集合，也不阻止可恢复的竞价/分钟采集，
+    # 但最终退出码保持失败，等待 #187 的部分成功收敛状态机处理。
+    suspension_refresh_ok = True
+    with service_run.step(
+        "归档前停复牌刷新", interface="Tushare suspend_d", table="suspend_daily"
+    ) as step:
+        try:
+            token = load_tushare_config(args.config).token
+            snapshot = sync_premarket_suspensions(
+                TushareProvider(TushareClient(token)), warehouse, complete_through
+            )
+            step.rows = snapshot.row_count
+            step.detail = snapshot.detail
+            if not snapshot.accepted:
+                step.warn("接口响应少于已有快照，已保留已有数据；" + snapshot.detail)
+        except Exception as exc:
+            suspension_refresh_ok = False
+            step.fail(
+                f"查询失败，继续采集但不得把未知空洞解释为停牌："
+                f"{type(exc).__name__}: {exc}"
+            )
+
     # --- 2. 标的主表与日线增量 ---
     # instruments 已由 16:30 的 Tushare 同步维护（含退市股）。这里若继续调用
     # AkShare，会在每天 15:40 把真值表覆盖回不含退市股的旧源。
@@ -322,7 +352,10 @@ def _archive(args, service_run: ServiceRun) -> int:
                 step.fail("竞价采集或导入失败；QMT 只留约 20 个交易日，需尽快补采")
     if args.only_auction:
         print(f"=== 只做竞价 tick，完成，耗时 {(time.time()-started)/60:.1f} 分钟 ===")
-        return _exit_code(0, auction_ok=auction_ok)
+        return _exit_code(
+            0, auction_ok=auction_ok,
+            suspension_refresh_ok=suspension_refresh_ok,
+        )
 
     # 与竞价同样显式传入交易日历：15:40 时 daily_flags 还没有今天，不传的话
     # 昨日首板找不到「下一个交易日」，今天的候选分钟线要拖到明天才下（服务质检发现）
@@ -346,7 +379,10 @@ def _archive(args, service_run: ServiceRun) -> int:
         service_run.add_step("分钟线", status=SKIPPED, detail="按参数跳过")
         print("按要求跳过分钟线")
         print(f"=== 完成，耗时 {(time.time()-started)/60:.1f} 分钟 ===")
-        return _exit_code(0, auction_ok=auction_ok)
+        return _exit_code(
+            0, auction_ok=auction_ok,
+            suspension_refresh_ok=suspension_refresh_ok,
+        )
 
     # --- 5. 算出还缺哪些股-日的分钟线 ---
     missing = missing_stock_days(warehouse, wanted)
@@ -363,10 +399,16 @@ def _archive(args, service_run: ServiceRun) -> int:
         if issues:
             print(f"=== 校验失败，未发布 canonical，耗时 "
                   f"{(time.time()-started)/60:.1f} 分钟 ===")
-            return _exit_code(1, auction_ok=auction_ok)
+            return _exit_code(
+                1, auction_ok=auction_ok,
+                suspension_refresh_ok=suspension_refresh_ok,
+            )
         _publish_canonical_minutes(warehouse, publish_start, publish_end, service_run)
         print(f"=== 完成，耗时 {(time.time()-started)/60:.1f} 分钟 ===")
-        return _exit_code(0, auction_ok=auction_ok)
+        return _exit_code(
+            0, auction_ok=auction_ok,
+            suspension_refresh_ok=suspension_refresh_ok,
+        )
 
     local_dir = Path("var/minutes-incoming")
     local_dir.mkdir(parents=True, exist_ok=True)
@@ -427,7 +469,11 @@ def _archive(args, service_run: ServiceRun) -> int:
     print(f"=== 完成，耗时 {(time.time()-started)/60:.1f} 分钟 ===")
     log.info("archive.done", days=len(days), rows=result.rows, issues=issues,
              minutes=round((time.time()-started)/60, 1))
-    return _exit_code(1 if result.errors or issues else 0, auction_ok=auction_ok)
+    return _exit_code(
+        1 if result.errors or issues else 0,
+        auction_ok=auction_ok,
+        suspension_refresh_ok=suspension_refresh_ok,
+    )
 
 
 if __name__ == "__main__":

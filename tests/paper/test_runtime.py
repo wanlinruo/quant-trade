@@ -144,6 +144,25 @@ def test_realtime_limit_up_comes_from_the_warehouse_not_the_qmt_tick(
     assert bound.limit_up_price(["600036.SH", "000001.SZ"], today) == {"600036.SH": 44.0}
 
 
+def test_realtime_suspension_truth_overrides_a_stale_qmt_price(
+    warehouse, tmp_path, monkeypatch,
+):
+    """停牌股的 QMT tick 可能保留前收盘价并报 suspended=False。"""
+    import pyarrow as pa
+    from qsys.data import schema
+
+    monkeypatch.setenv("QSYS_MARKET_DATA_FACADE", "legacy")
+    runtime, _, _, today = _runtime(warehouse, tmp_path, CountingQuotes())
+    warehouse.write("suspend_daily", pa.table({
+        "symbol": ["600036.SH"], "dt": [today],
+        "suspend_type": ["S"], "suspend_timing": [None],
+    }, schema=schema.SUSPEND_DAILY), year=today.year)
+
+    bound = runtime.market.bind(datetime.combine(today, time(9, 25, 10)))
+
+    assert bound.suspended_symbols(["600036.SH"], today) == {"600036.SH"}
+
+
 def test_runtime_limits_reload_until_the_premarket_job_has_written_today(
     warehouse, tmp_path, monkeypatch
 ):

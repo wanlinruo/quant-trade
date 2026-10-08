@@ -334,6 +334,16 @@ def test_resumption_rows_are_not_dropped():
     assert sorted(drop_suspended(q, DAYS)["symbol"].to_list()) == ["600000.SH", "600001.SH"]
 
 
+def test_same_day_resumption_prevents_an_all_day_drop():
+    q = _Query([
+        ("600000.SH", date(2026, 6, 15), "S", None),
+        ("600000.SH", date(2026, 6, 15), "R", None),
+    ])
+    assert sorted(drop_suspended(q, DAYS)["symbol"].to_list()) == [
+        "600000.SH", "600001.SH",
+    ]
+
+
 def test_suspension_on_another_day_does_not_leak():
     q = _Query([("600000.SH", date(2026, 6, 12), "S", None)])
     assert sorted(drop_suspended(q, DAYS)["symbol"].to_list()) == ["600000.SH", "600001.SH"]

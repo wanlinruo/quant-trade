@@ -25,7 +25,7 @@ WEAK 家族在 S7 Gate 之前整体删除（`_v12_keep_non_weak`），炸板池�
 |---|---|---|---|---|
 | `get_call_auction(fields=['time','volume','current'])` | **三个入场判定 + 09:24 早单** | `auction_ticks`（QMT，9 秒快照） | **无等价接口** | — |
 | `get_price(..., 'high_limit','low_limit')` | 涨停判定、挂单价上界 | `price_limits_daily` / `WarehouseQuery.price_limits()`；`daily_flags` 暂保留可重算派生 | `stk_limit` + 同源 `daily.pre_close` | 2000 积分 |
-| `get_price(..., 'paused')` | 停牌过滤 | `suspend_daily` / `WarehouseQuery.suspensions()` | `suspend_d` | 2000 积分 |
+| `get_price(..., 'paused')` | 停牌过滤 | `suspend_daily` / `WarehouseQuery.suspensions()`；08:58、09:15、09:24 盘前观测，15:40 归档前刷新 | `suspend_d` | 2000 积分 |
 | `attribute_history(N,'1d',...)` | 历史 OHLCV/money | `tushare_daily` / `WarehouseQuery.daily_bars()` | `daily` + `adj_factor` | 2000 积分 |
 | `get_valuation(turnover_ratio, market_cap, circulating_market_cap)` | HIGH/WEAK 市值过滤 | `tushare_daily` 估值列 | `daily_basic` | 2000 积分 |
 | `get_all_securities('stock', date)` | 股票池 | `instruments`（Tushare，含退市） | `stock_basic` | 2000 积分 |

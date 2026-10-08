@@ -490,6 +490,32 @@ def _premarket_rows(ctx: CheckContext) -> CheckResult:
                        f"{step.get('finished_at', '')[11:]} 完成，{rows} 只", rows=rows)
 
 
+def _premarket_suspensions(ctx: CheckContext) -> CheckResult:
+    expected = "09:24 前 suspend_d 查询成功（允许真实空集合）"
+    run = ctx.last_run("premarket-limits")
+    if run is None:
+        return CheckResult(BAD, expected, "没有盘前运行记录")
+    step = next(
+        (item for item in run.get("steps", []) if item.get("table") == "suspend_daily"),
+        None,
+    )
+    if step is None or step.get("status") not in (SUCCEEDED, WARNING):
+        return CheckResult(
+            BAD, expected, "未执行" if step is None else f"步骤 {step.get('status')}",
+            (step or {}).get("detail", "") or run.get("error", ""),
+        )
+    detail = step.get("detail", "")
+    if "query_status=success" not in detail:
+        return CheckResult(BAD, expected, "运行记录缺少成功查询证据", detail)
+    rows = step.get("rows") or 0
+    return CheckResult(
+        WARN if step.get("status") == WARNING else OK,
+        expected,
+        f"{step.get('finished_at', '')[11:]} 完成，{rows} 条；{detail}",
+        rows=rows,
+    )
+
+
 # ---- 每日归档（QMT） ----
 
 def _archive_wanted(ctx: CheckContext) -> pl.DataFrame:
@@ -702,6 +728,7 @@ def _certificate(ctx: CheckContext) -> CheckResult:
 
 CHECKS: tuple[ServiceCheck, ...] = (
     ServiceCheck("premarket-limits", "开盘前取到当日涨跌停价", "price_limits_daily", _premarket_rows),
+    ServiceCheck("premarket-limits", "盘前停复牌查询成功", "suspend_daily", _premarket_suspensions),
     ServiceCheck("daily-archive", "竞价逐笔到货", "auction_ticks", _auction_arrived),
     ServiceCheck("daily-archive", "分钟线到货", "minute_bars", _minutes_arrived),
     ServiceCheck("daily-archive", "分钟线首根有成交", "minute_bars", _minutes_first_bar_traded),

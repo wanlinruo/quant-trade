@@ -55,11 +55,12 @@ class ServiceSpec:
 
 SERVICES: tuple[ServiceSpec, ...] = (
     ServiceSpec(
-        "premarket-limits", "盘前涨跌停价", "timer", "Linux", "qsys-premarket-limits",
-        "交易日 08:58，每分钟重试到 09:25",
-        ("Tushare trade_cal", "Tushare stk_limit", "Redis 发布给盘中进程"),
-        ("price_limits_daily",),
-        "开盘前取当日涨跌停价，供模拟盘、影子盘撮合与行情页使用",
+        "premarket-limits", "盘前交易事实", "timer", "Linux", "qsys-premarket-limits",
+        "交易日 08:58、09:15、09:24；涨跌停价重试到 09:25",
+        ("Tushare trade_cal", "Tushare stk_limit", "Tushare suspend_d",
+         "Redis 发布给盘中进程"),
+        ("price_limits_daily", "suspend_daily"),
+        "开盘前取当日涨跌停价与停复牌事实，供模拟盘、影子盘和行情页使用",
         # 截止必须早于竞价决策：策略拿涨跌停价给保护价封顶，09:25:05 起就可能用到
         # （auction_at 的合法下限）。原本写 09:30，等于允许它比使用方还晚。
         due="09:25", max_runtime=timedelta(hours=1),
@@ -67,8 +68,8 @@ SERVICES: tuple[ServiceSpec, ...] = (
     ServiceSpec(
         "daily-archive", "每日归档（QMT）", "timer", "Linux → Windows QMT", "qsys-daily-archive",
         "交易日 15:40",
-        ("Tushare trade_cal", "QMT 竞价逐笔", "QMT 1 分钟线"),
-        ("auction_ticks", "minute_bars", "bar_minute_1m"),
+        ("Tushare trade_cal", "Tushare suspend_d", "QMT 竞价逐笔", "QMT 1 分钟线"),
+        ("suspend_daily", "auction_ticks", "minute_bars", "bar_minute_1m"),
         "收盘后采集 QMT 独有、会滚动过期的数据：首板次日候选的竞价逐笔与全市场分钟线",
         due="17:00", max_runtime=timedelta(hours=2),
     ),

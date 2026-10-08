@@ -1,11 +1,15 @@
 [Unit]
-Description=Fetch today's Tushare stk_limit before the open
+Description=Fetch today's Tushare price limits and suspension facts before the open
 
 [Timer]
 # Tushare stk_limit 约 09:00 更新当日涨跌停价；脚本每分钟重试到 09:25。
+# suspend_d 官方更新时间为“不定期”，所以在 08:58、09:15、09:24 留三次
+# 带 hash 的观测；同日幂等替换，较小响应不会覆盖较完整快照。
 # 非交易日由脚本查 trade_cal 后直接退出。Persistent=true：节点在触发时刻
 # 关机时开机补跑——盘中晚到的直取价仍对后续检查点有用。
 OnCalendar=Mon..Fri 08:58 Asia/Shanghai
+OnCalendar=Mon..Fri 09:15 Asia/Shanghai
+OnCalendar=Mon..Fri 09:24 Asia/Shanghai
 Persistent=true
 
 [Install]

@@ -10,7 +10,12 @@ import polars as pl
 import pytest
 
 from qsys.data import schema
-from qsys.data.pipeline.premarket import publish_key, run_premarket_limits, sync_premarket_limits
+from qsys.data.pipeline.premarket import (
+    publish_key,
+    run_premarket_limits,
+    sync_premarket_limits,
+    sync_premarket_suspensions,
+)
 from qsys.data.query import WarehouseQuery
 from qsys.live.config import StreamConfig
 from qsys.live.transport import MemoryTransport
@@ -34,6 +39,16 @@ class Provider:
     def stk_limit(self, trade_date):
         self.calls += 1
         return self.responses.pop(0) if len(self.responses) > 1 else self.responses[0]
+
+
+class SuspensionProvider:
+    def __init__(self, response=None, error=None):
+        self.response, self.error = response, error
+
+    def suspend_d(self, trade_date):
+        if self.error:
+            raise self.error
+        return self.response if self.response is not None else pl.DataFrame()
 
 
 def _seed_previous(warehouse, n):
@@ -94,3 +109,58 @@ def test_gives_up_with_failure_after_the_deadline(warehouse):
     )
     assert code == 1
     assert WarehouseQuery(warehouse).price_limits(None, DAY, DAY).height == 0
+
+
+def test_suspension_snapshot_keeps_type_timing_hash_and_observation(warehouse):
+    observed = datetime(2026, 9, 17, 8, 58)
+    raw = pl.DataFrame({
+        "ts_code": ["000001.SZ", "000002.SZ"],
+        "trade_date": ["20260917", "20260917"],
+        "suspend_type": ["S", "R"],
+        "suspend_timing": [None, "09:30-10:00"],
+    })
+
+    snapshot = sync_premarket_suspensions(
+        SuspensionProvider(raw), warehouse, DAY, observed_at=observed,
+    )
+
+    assert snapshot.observed_at == observed
+    assert snapshot.row_count == 2 and snapshot.accepted
+    assert len(snapshot.content_hash) == 64
+    assert "query_status=success" in snapshot.detail
+    got = WarehouseQuery(warehouse).suspensions(None, DAY, DAY).sort("symbol")
+    assert got["suspend_type"].to_list() == ["S", "R"]
+    assert got["suspend_timing"].to_list() == [None, "09:30-10:00"]
+
+
+def test_successful_empty_suspension_snapshot_is_not_a_query_failure(warehouse):
+    snapshot = sync_premarket_suspensions(
+        SuspensionProvider(pl.DataFrame()), warehouse, DAY,
+    )
+    assert snapshot.row_count == 0 and snapshot.accepted
+    assert WarehouseQuery(warehouse).suspensions(None, DAY, DAY).height == 0
+
+
+def test_smaller_later_suspension_response_does_not_erase_existing_truth(warehouse):
+    full = pl.DataFrame({
+        "ts_code": ["000001.SZ", "000002.SZ"],
+        "trade_date": ["20260917", "20260917"],
+        "suspend_type": ["S", "S"],
+        "suspend_timing": [None, None],
+    })
+    sync_premarket_suspensions(SuspensionProvider(full), warehouse, DAY)
+
+    snapshot = sync_premarket_suspensions(
+        SuspensionProvider(full.head(1)), warehouse, DAY,
+    )
+
+    assert not snapshot.accepted and snapshot.previous_rows == 2
+    assert WarehouseQuery(warehouse).suspensions(None, DAY, DAY).height == 2
+
+
+def test_suspension_query_failure_is_not_written_as_an_empty_snapshot(warehouse):
+    with pytest.raises(TimeoutError):
+        sync_premarket_suspensions(
+            SuspensionProvider(error=TimeoutError("slow source")), warehouse, DAY,
+        )
+    assert WarehouseQuery(warehouse).suspensions(None, DAY, DAY).height == 0

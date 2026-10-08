@@ -133,7 +133,11 @@ class RealtimeBoundMarket:
         return self._historical.limit_up_price(symbols, day)
 
     def suspended_symbols(self, symbols, day):
-        return {s for s, q in self._today(symbols, day).items() if q.suspended}
+        # Tushare 盘前快照是停牌真值；QMT 只作为额外的实时收紧信号。
+        # QMT 对停牌股可能保留前收盘价，不能再让 q.suspended=False 覆盖权威事实。
+        authoritative = self._historical.suspended_symbols(symbols, day)
+        realtime = {s for s, q in self._today(symbols, day).items() if q.suspended}
+        return authoritative | realtime
 
     def auction_volume(self, symbols, day):
         return {s: q.volume // 100 for s, q in self._today(symbols, day).items()}
