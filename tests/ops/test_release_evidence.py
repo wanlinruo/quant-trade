@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+from scripts import verify_github_release_evidence as github_evidence
+
 
 def _module():
     path = Path("scripts/release_evidence.py")
@@ -49,6 +51,7 @@ def test_release_evidence_binds_tree_workflows_lock_and_runs(tmp_path) -> None:
     )
 
     assert evidence["kind"] == "qsys-test-release-evidence"
+    assert evidence["schema_version"] == 2
     assert evidence["source_sha"] == sha
     assert evidence["tree_sha"] == subprocess.check_output(
         ["git", "rev-parse", "HEAD^{tree}"], cwd=repo, text=True,
@@ -109,4 +112,80 @@ def test_release_evidence_fast_path_rejects_changed_deploy_controller(tmp_path) 
         module.validate_evidence(
             evidence, repo=repo, source_sha=source, tree_sha=evidence["tree_sha"],
             require_controller_match=True,
+        )
+
+
+def test_github_verifier_requires_successful_deployment_and_four_checks(
+    monkeypatch, tmp_path,
+) -> None:
+    module = _module()
+    repo, sha = _repo(tmp_path)
+    evidence = module.build_evidence(
+        repo, source_sha=sha, controller_sha=sha, ci_run_id=123,
+        ci_check_suite_id=456, node_record_run_id="github-789-1",
+    )
+    tree = evidence["tree_sha"]
+
+    def fake_api(repository, path, token):
+        if path.startswith("deployments?"):
+            return [{
+                "id": 10, "sha": sha, "environment": "testing",
+                "payload": evidence,
+            }]
+        if path.startswith("deployments/10/statuses"):
+            return [{"id": 11, "state": "success"}]
+        if path == "actions/runs/123":
+            return {
+                "event": "push", "head_branch": "test", "head_sha": sha,
+                "status": "completed", "conclusion": "success",
+                "check_suite_id": 456,
+            }
+        if path.startswith("check-suites/456/check-runs"):
+            return {"check_runs": [
+                {"name": name, "conclusion": "success"}
+                for name in github_evidence.CHECK_NAMES
+            ]}
+        raise AssertionError(path)
+
+    monkeypatch.setattr(github_evidence, "_api", fake_api)
+
+    result = github_evidence.verify(
+        repo="owner/repo", source_sha=sha, tree_sha=tree, checkout=repo,
+        token="token",
+    )
+
+    assert result["deployment_id"] == 10
+    assert result["node_record_run_id"] == "github-789-1"
+
+
+def test_github_verifier_rejects_incomplete_check_suite(monkeypatch, tmp_path) -> None:
+    module = _module()
+    repo, sha = _repo(tmp_path)
+    evidence = module.build_evidence(
+        repo, source_sha=sha, controller_sha=sha, ci_run_id=123,
+        ci_check_suite_id=456, node_record_run_id="github-789-1",
+    )
+
+    def fake_api(repository, path, token):
+        if path.startswith("deployments?"):
+            return [{
+                "id": 10, "sha": sha, "environment": "testing",
+                "payload": evidence,
+            }]
+        if path.startswith("deployments/10/statuses"):
+            return [{"id": 11, "state": "success"}]
+        if path == "actions/runs/123":
+            return {
+                "event": "push", "head_branch": "test", "head_sha": sha,
+                "status": "completed", "conclusion": "success",
+                "check_suite_id": 456,
+            }
+        return {"check_runs": [{"name": "policy", "conclusion": "success"}]}
+
+    monkeypatch.setattr(github_evidence, "_api", fake_api)
+
+    with pytest.raises(ValueError, match="four successful checks"):
+        github_evidence.verify(
+            repo="owner/repo", source_sha=sha, tree_sha=evidence["tree_sha"],
+            checkout=repo, token="token",
         )

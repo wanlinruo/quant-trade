@@ -64,7 +64,7 @@ jobs:
           deployments=$(gh api -H 'Accept: application/vnd.github+json' \
             "repos/$REPOSITORY/deployments?sha=$PR_HEAD&environment=testing&per_page=100")
           deployment=$(printf '%s' "$deployments" | jq \
-            '[.[] | select(.payload.kind == "qsys-test-release-evidence" and .payload.schema_version == 1)] | max_by(.id)')
+            '[.[] | select(.payload.kind == "qsys-test-release-evidence" and .payload.schema_version == 2)] | max_by(.id)')
           test "$deployment" != null
           deployment_id=$(printf '%s' "$deployment" | jq -r .id)
           printf '%s' "$deployment" | jq '.payload' >evidence.json

@@ -7,13 +7,56 @@ on:
     branches: [test]
 
 permissions:
+  actions: read
+  checks: read
   contents: read
+  deployments: read
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  reuse-evidence:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'test' &&
+      github.base_ref == 'main'
+    runs-on: ubuntu-24.04
+    outputs:
+      reusable: ${{ steps.gate.outputs.reusable }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Check out trusted evidence verifier
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: .trusted-controller
+          persist-credentials: false
+      - name: Verify tree-bound test evidence
+        id: gate
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          EVIDENCE_REPO: ${{ github.repository }}
+        run: |
+          tree_sha=$(git rev-parse "$SOURCE_SHA^{tree}")
+          if python3 .trusted-controller/scripts/verify_github_release_evidence.py \
+            --repo "$EVIDENCE_REPO" --source-sha "$SOURCE_SHA" --tree-sha "$tree_sha" \
+            --checkout "$GITHUB_WORKSPACE" \
+            >evidence-result.json
+          then
+            echo "reusable=true" >>"$GITHUB_OUTPUT"
+            cat evidence-result.json
+          else
+            echo "reusable=false" >>"$GITHUB_OUTPUT"
+            echo "Evidence unavailable or mismatched; full PR verification is required."
+          fi
+
   policy:
     runs-on: ubuntu-24.04
     steps:
@@ -51,23 +94,39 @@ jobs:
         run: python scripts/check_secrets.py
 
   test:
+    needs: reuse-evidence
+    if: always()
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - name: Install uv
+        if: needs.reuse-evidence.outputs.reusable != 'true'
         run: python3 -m pip install uv==0.12.10
       - name: Sync locked environment
+        if: needs.reuse-evidence.outputs.reusable != 'true'
         run: uv sync --locked
       - name: Run full suite
+        if: needs.reuse-evidence.outputs.reusable != 'true'
         run: uv run pytest
+      - name: Reuse full-suite evidence for the identical tree
+        if: needs.reuse-evidence.outputs.reusable == 'true'
+        run: echo "Full suite already passed for this exact tree; reusable evidence verified."
 
   package:
+    needs: reuse-evidence
+    if: always()
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - name: Install uv
+        if: needs.reuse-evidence.outputs.reusable != 'true'
         run: python3 -m pip install uv==0.12.10
       - name: Build wheel and source distribution
+        if: needs.reuse-evidence.outputs.reusable != 'true'
         run: uv build
       - name: Import package from source tree
+        if: needs.reuse-evidence.outputs.reusable != 'true'
         run: PYTHONPATH=src python3 -c "import qsys"
+      - name: Reuse package evidence for the identical tree
+        if: needs.reuse-evidence.outputs.reusable == 'true'
+        run: echo "Package checks already passed for this exact tree; reusable evidence verified."

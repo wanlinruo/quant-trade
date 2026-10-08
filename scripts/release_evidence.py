@@ -14,7 +14,7 @@ from typing import Any
 
 SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 EVIDENCE_KIND = "qsys-test-release-evidence"
-EVIDENCE_SCHEMA_VERSION = 1
+EVIDENCE_SCHEMA_VERSION = 2
 CI_WORKFLOW = ".github/workflows/ci.yml"
 DEPLOY_WORKFLOW = ".github/workflows/deploy-test.yml"
 
@@ -54,6 +54,9 @@ def build_evidence(
             _blob(repo, source_sha, DEPLOY_WORKFLOW)
         ),
         "controller_sha": controller_sha,
+        "controller_ci_workflow_sha256": _sha256(
+            _blob(repo, controller_sha, CI_WORKFLOW)
+        ),
         "controller_deploy_workflow_sha256": _sha256(
             _blob(repo, controller_sha, DEPLOY_WORKFLOW)
         ),
@@ -74,11 +77,14 @@ def validate_evidence(
     expected_keys = {
         "schema_version", "kind", "source_sha", "tree_sha", "lockfile_sha256",
         "source_ci_workflow_sha256", "source_deploy_workflow_sha256",
-        "controller_sha", "controller_deploy_workflow_sha256", "ci_run_id",
-        "ci_check_suite_id", "node_record_run_id",
+        "controller_sha", "controller_ci_workflow_sha256",
+        "controller_deploy_workflow_sha256", "ci_run_id", "ci_check_suite_id",
+        "node_record_run_id",
     }
     if set(evidence) != expected_keys:
-        raise ValueError("release evidence fields do not match schema version 1")
+        raise ValueError(
+            f"release evidence fields do not match schema version {EVIDENCE_SCHEMA_VERSION}"
+        )
     if evidence["schema_version"] != EVIDENCE_SCHEMA_VERSION:
         raise ValueError("unsupported release evidence schema")
     if evidence["kind"] != EVIDENCE_KIND:
@@ -104,6 +110,9 @@ def validate_evidence(
         "source_deploy_workflow_sha256": _sha256(
             _blob(repo, source_sha, DEPLOY_WORKFLOW)
         ),
+        "controller_ci_workflow_sha256": _sha256(
+            _blob(repo, controller_sha, CI_WORKFLOW)
+        ),
         "controller_deploy_workflow_sha256": _sha256(
             _blob(repo, controller_sha, DEPLOY_WORKFLOW)
         ),
@@ -113,10 +122,14 @@ def validate_evidence(
             raise ValueError(f"release evidence {key} mismatch")
     if (
         require_controller_match
-        and evidence["source_deploy_workflow_sha256"]
-        != evidence["controller_deploy_workflow_sha256"]
+        and (
+            evidence["source_ci_workflow_sha256"]
+            != evidence["controller_ci_workflow_sha256"]
+            or evidence["source_deploy_workflow_sha256"]
+            != evidence["controller_deploy_workflow_sha256"]
+        )
     ):
-        raise ValueError("test deployment controller differs from source workflow")
+        raise ValueError("validation controller differs from source workflows")
 
 
 def main() -> int:
