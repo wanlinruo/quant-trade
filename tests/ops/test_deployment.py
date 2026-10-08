@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import importlib.util
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -444,6 +445,130 @@ def test_production_accepts_control_plane_test_attestation(tmp_path) -> None:
     assert entrypoint._successful_test_run({"test_record_root": str(root)}, tree) == "github-control"
 
 
+def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, tmp_path) -> None:
+    entrypoint = _production_entrypoint_module()
+    monkeypatch.setattr(entrypoint, "_head", lambda repo: "a" * 40)
+    monkeypatch.setattr(entrypoint, "_branch", lambda repo: "main")
+    monkeypatch.setattr(entrypoint, "_dirty", lambda repo: False)
+    monkeypatch.setattr(entrypoint, "_active", lambda unit, repo: True)
+    monkeypatch.setattr(entrypoint, "_web_healthy", lambda config: True)
+
+    state = entrypoint.status({"production_repo": str(tmp_path)})
+
+    assert state["entrypoint_version"] == 2
+    assert set(state["capabilities"]) == {"systemd-apply-v1", "systemd-rollback-v1"}
+
+
+def test_systemd_artifact_mapping_is_explicit_and_excludes_test_unit(monkeypatch, tmp_path) -> None:
+    entrypoint = _production_entrypoint_module()
+    unit_root = tmp_path / "etc" / "systemd" / "system"
+    qsys_etc = tmp_path / "etc" / "qsys"
+    monkeypatch.setattr(entrypoint, "SYSTEMD_UNIT_ROOT", unit_root)
+    monkeypatch.setattr(entrypoint, "QSYS_ETC_ROOT", qsys_etc)
+
+    assert entrypoint._systemd_targets("deploy/systemd/qsys-daily-archive.timer") == (
+        unit_root / "qsys-daily-archive.timer",
+    )
+    assert entrypoint._systemd_targets("deploy/systemd/qsys-market-data.env") == (
+        qsys_etc / "market-data.env",
+    )
+    assert entrypoint._systemd_targets("deploy/systemd/qsys-web-test.service") == ()
+    assert len(entrypoint._systemd_targets("deploy/systemd/qsys-market-data.conf")) == 4
+
+
+def test_systemd_verify_rejects_repository_unit_not_installed_to_etc(tmp_path) -> None:
+    entrypoint = _production_entrypoint_module()
+    source = tmp_path / "repo.timer"
+    target = tmp_path / "etc.timer"
+    source.write_text("OnCalendar=09:24\n", encoding="utf-8")
+    target.write_text("OnCalendar=08:58\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="differs from target"):
+        entrypoint._verify_systemd_artifacts({target: source}, [], {}, tmp_path)
+
+
+def _fake_systemd_run(command, *, cwd, check=True):
+    if command[:4] == ["sudo", "-n", "install", "-D"]:
+        source, target = Path(command[-2]), Path(command[-1])
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+        return subprocess.CompletedProcess(command, 0, "", "")
+    if command[:4] == ["sudo", "-n", "rm", "-f"]:
+        Path(command[-1]).unlink(missing_ok=True)
+        return subprocess.CompletedProcess(command, 0, "", "")
+    if command[:2] == ["systemctl", "is-active"]:
+        return subprocess.CompletedProcess(command, 0, "active\n", "")
+    if command[:2] == ["systemctl", "show"]:
+        value = "loaded\n" if "--property=LoadState" in command else "simple\n"
+        return subprocess.CompletedProcess(command, 0, value, "")
+    return subprocess.CompletedProcess(command, 0, "", "")
+
+
+def test_systemd_apply_installs_reloads_verifies_and_preserves_backup(
+    monkeypatch, tmp_path,
+) -> None:
+    entrypoint = _production_entrypoint_module()
+    repo = tmp_path / "repo"
+    source_root = repo / "deploy" / "systemd"
+    source_root.mkdir(parents=True)
+    source = source_root / "qsys-example.timer"
+    source.write_text("[Timer]\nOnCalendar=09:24\n", encoding="utf-8")
+    target_root = tmp_path / "etc" / "systemd" / "system"
+    target_root.mkdir(parents=True)
+    target = target_root / source.name
+    target.write_text("[Timer]\nOnCalendar=08:58\n", encoding="utf-8")
+    monkeypatch.setattr(entrypoint, "SYSTEMD_UNIT_ROOT", target_root)
+    monkeypatch.setattr(entrypoint, "QSYS_ETC_ROOT", tmp_path / "etc" / "qsys")
+    monkeypatch.setattr(entrypoint, "_run", _fake_systemd_run)
+    config = {"production_record_root": str(tmp_path / "records" / "github")}
+
+    check, backup = entrypoint._apply_systemd(
+        config, repo, "github-1", ["deploy/systemd/qsys-example.timer"],
+    )
+
+    assert check["name"] == "systemd-verify" and check["status"] == "passed"
+    assert target.read_bytes() == source.read_bytes()
+    assert (backup / target.relative_to("/")).read_text(encoding="utf-8").endswith(
+        "OnCalendar=08:58\n"
+    )
+    manifest = json.loads((backup / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["active_units"] == {"qsys-example.timer": True}
+
+
+def test_systemd_verify_failure_restores_installed_files(monkeypatch, tmp_path) -> None:
+    entrypoint = _production_entrypoint_module()
+    repo = tmp_path / "repo"
+    source_root = repo / "deploy" / "systemd"
+    source_root.mkdir(parents=True)
+    source = source_root / "qsys-example.service"
+    source.write_text("[Service]\nExecStart=/bin/true\n", encoding="utf-8")
+    target_root = tmp_path / "etc" / "systemd" / "system"
+    target_root.mkdir(parents=True)
+    target = target_root / source.name
+    old = b"[Service]\nExecStart=/bin/false\n"
+    target.write_bytes(old)
+    monkeypatch.setattr(entrypoint, "SYSTEMD_UNIT_ROOT", target_root)
+    monkeypatch.setattr(entrypoint, "QSYS_ETC_ROOT", tmp_path / "etc" / "qsys")
+    failed = False
+
+    def fail_verify_once(command, *, cwd, check=True):
+        nonlocal failed
+        result = _fake_systemd_run(command, cwd=cwd, check=check)
+        if command[0] == "systemd-analyze" and not failed:
+            failed = True
+            raise subprocess.CalledProcessError(1, command, stderr="invalid unit")
+        return result
+
+    monkeypatch.setattr(entrypoint, "_run", fail_verify_once)
+    config = {"production_record_root": str(tmp_path / "records" / "github")}
+
+    with pytest.raises(RuntimeError, match="rollback=succeeded"):
+        entrypoint._apply_systemd(
+            config, repo, "github-2", ["deploy/systemd/qsys-example.service"],
+        )
+    assert target.read_bytes() == old
+
+
 def test_failed_deployment_rollback_restores_code_dependencies_and_service(monkeypatch, tmp_path) -> None:
     entrypoint = _entrypoint_module()
     calls: list[list[str]] = []
@@ -534,6 +659,7 @@ def test_production_workflow_is_manual_and_fail_closed() -> None:
     assert '.status == "completed" and .conclusion == "success"' in workflow
     assert "PRODUCTION_DEPLOY_SSH_KEY" in workflow
     assert "cancel-in-progress: false" in workflow
+    assert "production entrypoint lacks required deployment capabilities" in workflow
 
 
 def test_windows_workflow_uses_only_the_linux_production_credential() -> None:
@@ -551,6 +677,16 @@ def test_windows_workflow_uses_only_the_linux_production_credential() -> None:
     assert "cancel-in-progress: false" in workflow
     assert "set -euo pipefail" in workflow
     assert "jq -e '.ok == true' result.json" in workflow
+    assert "production entrypoint lacks required deployment capabilities" in workflow
+
+
+def test_production_entrypoint_installer_preserves_bootstrap_backup() -> None:
+    installer = Path("scripts/install_production_deployment_entrypoint.sh").read_text(
+        encoding="utf-8",
+    )
+
+    assert "/data/qsys/var-deployments/bootstrap-backups" in installer
+    assert "cp -p" in installer
 
 
 def test_windows_control_targets_both_independent_apps() -> None:

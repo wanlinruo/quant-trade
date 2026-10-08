@@ -59,6 +59,19 @@ GitHub 使用另一把测试专用 key；其 `authorized_keys` 条目强制进�
 同一 SHA 重复请求会在依赖同步、服务重启和历史记录之前返回成功，因此不会制造重复
 副作用。
 
+固定生产入口通过 `status` 声明版本和 capability。Linux/Windows workflow 在计算计划前
+要求 `systemd-apply-v1` 与 `systemd-rollback-v1`；旧入口必须先由维护者运行
+`scripts/install_production_deployment_entrypoint.sh` 显式升级，不能继续执行并产生假成功。
+安装脚本会先把旧入口、dispatcher 和配置备份到
+`/data/qsys/var-deployments/bootstrap-backups/`。
+
+`linux-systemd` 不是路径标签，而是有实际 apply/verify/rollback 的部署组件：目标 SHA 的
+生产 unit、timer、行情门面环境文件与 drop-in 会先备份 `/etc` 实况，再按白名单安装；随后
+执行 `daemon-reload`，只重启安装前 active 且确受影响的 timer/非 oneshot service。安装后
+逐文件 SHA256 等价检查、`systemd-analyze verify`、LoadState 与原 active 状态缺一不可。
+失败时恢复原文件、重新 reload 并恢复原 active 状态；备份路径写入 deployment record 的
+rollback target。`qsys-web-test.service` 明确不属于生产安装集合。
+
 Windows 发布同样不信任节点上已安装的旧协调器：固定生产入口从已经通过上述门禁的目标
 SHA 提取 Linux 协调器，协调器再从同一 SHA 提取 Windows 控制器并上传执行。健康探针以
 切换后应用的 `src` 设置 `PYTHONPATH`，并同时要求目标文件清单、`DEPLOYED_SHA`、进程和

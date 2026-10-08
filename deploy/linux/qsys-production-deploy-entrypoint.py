@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -29,10 +31,26 @@ ALLOWED_WINDOWS_COMPONENTS = frozenset({
     "windows-agent", "windows-gateway", "windows-control",
 })
 WINDOWS_COORDINATOR_PATH = "deploy/linux/qsys-windows-deploy-coordinator.py"
+ENTRYPOINT_VERSION = 2
+ENTRYPOINT_CAPABILITIES = ("systemd-apply-v1", "systemd-rollback-v1")
 ALLOWED_UNITS = frozenset({
     "qsys-monitor.service", "qsys-paper.service", "qsys-shadow-core.service",
     "qsys-health-observer.service", "qsys-live-core.service",
 })
+SYSTEMD_SOURCE_ROOT = Path("deploy/systemd")
+SYSTEMD_UNIT_ROOT = Path("/etc/systemd/system")
+QSYS_ETC_ROOT = Path("/etc/qsys")
+SYSTEMD_EXCLUDED = frozenset({"qsys-web-test.service"})
+MARKET_DATA_CONSUMERS = (
+    "qsys-monitor.service", "qsys-paper.service",
+    "qsys-shadow-core.service", "qsys-live-core.service",
+)
+
+
+class SystemdApplyError(RuntimeError):
+    def __init__(self, message: str, *, backup_root: Path) -> None:
+        super().__init__(message)
+        self.backup_root = backup_root
 
 
 def load_config() -> dict[str, object]:
@@ -97,6 +115,8 @@ def status(config: dict[str, object]) -> dict[str, object]:
         "branch": _branch(repo),
         "dirty": _dirty(repo),
         "healthy": _active("qsys-monitor.service", repo) and _web_healthy(config),
+        "entrypoint_version": ENTRYPOINT_VERSION,
+        "capabilities": list(ENTRYPOINT_CAPABILITIES),
     }
 
 
@@ -196,6 +216,210 @@ def _wait_healthy(config: dict[str, object], units: list[str], repo: Path) -> bo
     return False
 
 
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _systemd_targets(relative: str) -> tuple[Path, ...]:
+    """Map one repository artifact to its production-owned destinations."""
+    path = Path(relative)
+    if path.parent != SYSTEMD_SOURCE_ROOT:
+        raise ValueError(f"unsupported systemd artifact path: {relative}")
+    if path.name in SYSTEMD_EXCLUDED:
+        return ()
+    if path.name == "qsys-market-data.env":
+        return (QSYS_ETC_ROOT / "market-data.env",)
+    if path.name == "qsys-market-data.conf":
+        return tuple(
+            SYSTEMD_UNIT_ROOT / f"{unit}.d" / "market-data.conf"
+            for unit in MARKET_DATA_CONSUMERS
+        )
+    if path.suffix in {".service", ".timer"}:
+        return (SYSTEMD_UNIT_ROOT / path.name,)
+    raise ValueError(f"unsupported systemd artifact: {relative}")
+
+
+def _systemd_artifacts(
+    repo: Path, changed_paths: list[str],
+) -> dict[Path, Path | None]:
+    """Return the complete desired production systemd state plus explicit deletions."""
+    source_root = repo / SYSTEMD_SOURCE_ROOT
+    desired: dict[Path, Path | None] = {}
+    for source in sorted(source_root.iterdir()):
+        if not source.is_file():
+            continue
+        relative = str(source.relative_to(repo))
+        for target in _systemd_targets(relative):
+            desired[target] = source
+    for relative in changed_paths:
+        if not relative.startswith(f"{SYSTEMD_SOURCE_ROOT}/"):
+            continue
+        source = repo / relative
+        if source.exists():
+            continue
+        for target in _systemd_targets(relative):
+            desired[target] = None
+    if not desired:
+        raise ValueError("linux-systemd selected but no production artifact is managed")
+    return desired
+
+
+def _systemd_restart_units(artifacts: dict[Path, Path | None]) -> list[str]:
+    units: set[str] = set()
+    for target, source in artifacts.items():
+        changed = target.exists() if source is None else (
+            not target.is_file() or _sha256(target) != _sha256(source)
+        )
+        if not changed:
+            continue
+        if target.name == "market-data.conf" or target == QSYS_ETC_ROOT / "market-data.env":
+            units.update(MARKET_DATA_CONSUMERS)
+        elif target.parent == SYSTEMD_UNIT_ROOT and target.suffix in {".service", ".timer"}:
+            units.add(target.name)
+    return sorted(units)
+
+
+def _backup_systemd(
+    config: dict[str, object], run_id: str, artifacts: dict[Path, Path | None],
+    active: dict[str, bool],
+) -> tuple[Path, dict[str, object]]:
+    root = (
+        Path(str(config["production_record_root"])).parent
+        / "systemd-backups" / run_id
+    )
+    root.mkdir(parents=True, exist_ok=False)
+    entries: list[dict[str, object]] = []
+    for target in sorted(artifacts, key=str):
+        existed = target.is_file()
+        entries.append({"path": str(target), "existed": existed})
+        if existed:
+            backup = root / target.relative_to("/")
+            backup.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(target, backup)
+    manifest: dict[str, object] = {
+        "schema_version": 1,
+        "targets": entries,
+        "active_units": active,
+    }
+    (root / "manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8",
+    )
+    return root, manifest
+
+
+def _restart_previously_active(
+    units: list[str], active: dict[str, bool], repo: Path,
+) -> None:
+    for unit in units:
+        if not active.get(unit, False):
+            continue
+        if unit.endswith(".service"):
+            service_type = _run(
+                ["systemctl", "show", unit, "--property=Type", "--value"],
+                cwd=repo, check=False,
+            ).stdout.strip()
+            if service_type == "oneshot":
+                continue
+        _run(["sudo", "-n", "systemctl", "restart", unit], cwd=repo)
+
+
+def _verify_systemd_artifacts(
+    artifacts: dict[Path, Path | None], units: list[str],
+    active: dict[str, bool], repo: Path,
+) -> None:
+    for target, source in artifacts.items():
+        if source is None:
+            if target.exists():
+                raise ValueError(f"deleted systemd artifact still exists: {target}")
+        elif not target.is_file() or _sha256(target) != _sha256(source):
+            raise ValueError(f"installed systemd artifact differs from target: {target}")
+    installed_units = sorted(
+        str(target) for target, source in artifacts.items()
+        if source is not None and target.parent == SYSTEMD_UNIT_ROOT
+        and target.suffix in {".service", ".timer"}
+    )
+    if installed_units:
+        _run(["systemd-analyze", "verify", *installed_units], cwd=repo)
+    for unit in units:
+        load_state = _run(
+            ["systemctl", "show", unit, "--property=LoadState", "--value"],
+            cwd=repo, check=False,
+        ).stdout.strip()
+        if load_state != "loaded":
+            raise ValueError(f"systemd unit is not loaded: {unit} ({load_state or 'unknown'})")
+        if active.get(unit, False) and not _active(unit, repo):
+            raise ValueError(f"previously active systemd unit is not active: {unit}")
+
+
+def _restore_systemd(
+    backup_root: Path, manifest: dict[str, object], units: list[str], repo: Path,
+) -> bool:
+    try:
+        for item in manifest["targets"]:
+            target = Path(str(item["path"]))
+            if item["existed"]:
+                source = backup_root / target.relative_to("/")
+                _run([
+                    "sudo", "-n", "install", "-D", "-o", "root", "-g", "root",
+                    "-m", "0644", str(source), str(target),
+                ], cwd=repo)
+            else:
+                _run(["sudo", "-n", "rm", "-f", "--", str(target)], cwd=repo)
+        _run(["sudo", "-n", "systemctl", "daemon-reload"], cwd=repo)
+        active = {str(key): bool(value) for key, value in manifest["active_units"].items()}
+        _restart_previously_active(units, active, repo)
+        for item in manifest["targets"]:
+            target = Path(str(item["path"]))
+            if item["existed"]:
+                backup = backup_root / target.relative_to("/")
+                if not target.is_file() or _sha256(target) != _sha256(backup):
+                    return False
+            elif target.exists():
+                return False
+        return all(not active.get(unit, False) or _active(unit, repo) for unit in units)
+    except (OSError, subprocess.CalledProcessError, ValueError):
+        return False
+
+
+def _apply_systemd(
+    config: dict[str, object], repo: Path, run_id: str, changed_paths: list[str],
+) -> tuple[dict[str, str], Path]:
+    """Install, reload and verify the declared systemd state, rolling back on failure."""
+    artifacts = _systemd_artifacts(repo, changed_paths)
+    units = _systemd_restart_units(artifacts)
+    active = {unit: _active(unit, repo) for unit in units}
+    backup_root, manifest = _backup_systemd(config, run_id, artifacts, active)
+    try:
+        for target, source in artifacts.items():
+            if source is None:
+                _run(["sudo", "-n", "rm", "-f", "--", str(target)], cwd=repo)
+            else:
+                _run([
+                    "sudo", "-n", "install", "-D", "-o", "root", "-g", "root",
+                    "-m", "0644", str(source), str(target),
+                ], cwd=repo)
+        _run(["sudo", "-n", "systemctl", "daemon-reload"], cwd=repo)
+        _restart_previously_active(units, active, repo)
+        _verify_systemd_artifacts(artifacts, units, active, repo)
+    except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as exc:
+        rollback_ok = _restore_systemd(backup_root, manifest, units, repo)
+        raise SystemdApplyError(
+            f"systemd apply failed; rollback={'succeeded' if rollback_ok else 'failed'}: {exc}",
+            backup_root=backup_root,
+        ) from exc
+    return ({
+        "name": "systemd-verify", "status": "passed",
+        "detail": (
+            f"installed and byte-verified {len(artifacts)} targets; "
+            f"preserved active state for {len(units)} affected units"
+        ),
+    }, backup_root)
+
+
 def _restore(
     config: dict[str, object], repo: Path, before: str, units: list[str],
 ) -> bool:
@@ -206,7 +430,7 @@ def _restore(
             _run(["sudo", "-n", "systemctl", "restart", unit], cwd=repo)
     except subprocess.CalledProcessError:
         return False
-    return _wait_healthy(config, units, repo)
+    return True
 
 
 def _write_record(config: dict[str, object], run_id: str, record: dict[str, Any]) -> Path:
@@ -259,22 +483,64 @@ def deploy(args: argparse.Namespace, config: dict[str, object]) -> int:
     success = False
     rollback_ok = False
     fingerprints: dict[str, str] = {}
+    systemd_backup: Path | None = None
     try:
         if before != args.sha:
             _run(["git", "reset", "--hard", args.sha], cwd=repo)
+        # Preserve the historical fail-closed preflight for every code switch,
+        # even when a component's manifest only adds a narrower health check.
+        if before != args.sha or "preflight" in plan["health_checks"]:
             _run(["/bin/sh", "scripts/preflight_linux_deploy.sh"], cwd=repo)
-            fingerprints = _fingerprints(config, repo)
-            for unit in active_units:
-                _run(["sudo", "-n", "systemctl", "restart", unit], cwd=repo)
-        success = _head(repo) == args.sha and _wait_healthy(config, active_units, repo)
+            checks.append({
+                "name": "preflight", "status": "passed",
+                "detail": "locked dependencies, imports and production entrypoints verified",
+            })
+        fingerprints = _fingerprints(config, repo)
+        if "linux-systemd" in components:
+            systemd_check, systemd_backup = _apply_systemd(
+                config, repo, args.run_id, list(plan["changed_paths"]),
+            )
+            checks.append(systemd_check)
+        for unit in active_units:
+            _run(["sudo", "-n", "systemctl", "restart", unit], cwd=repo)
+        healthy = _wait_healthy(config, active_units, repo)
+        success = (
+            _head(repo) == args.sha and healthy
+            and all(item["status"] == "passed" for item in checks)
+        )
         checks.append({
             "name": "production-health", "status": "passed" if success else "failed",
             "detail": "active affected units and local health endpoint must be healthy",
         })
-    except (OSError, ValueError, subprocess.CalledProcessError) as exc:
+    except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as exc:
+        if isinstance(exc, SystemdApplyError):
+            systemd_backup = exc.backup_root
         checks.append({"name": "deploy-command", "status": "failed", "detail": str(exc)[:500]})
+    code_rollback_ok = True
     if not success and _head(repo) != before:
-        rollback_ok = _restore(config, repo, before, active_units)
+        code_rollback_ok = _restore(config, repo, before, active_units)
+    systemd_rollback_ok = True
+    if not success and systemd_backup is not None:
+        try:
+            systemd_manifest = json.loads(
+                (systemd_backup / "manifest.json").read_text(encoding="utf-8")
+            )
+            systemd_units = sorted(systemd_manifest["active_units"])
+            systemd_rollback_ok = _restore_systemd(
+                systemd_backup, systemd_manifest, systemd_units, repo,
+            )
+        except (OSError, ValueError, json.JSONDecodeError):
+            systemd_rollback_ok = False
+        checks.append({
+            "name": "systemd-rollback",
+            "status": "passed" if systemd_rollback_ok else "failed",
+            "detail": f"restore /etc artifacts and active state from {systemd_backup}",
+        })
+    if not success:
+        rollback_ok = (
+            code_rollback_ok and systemd_rollback_ok and _head(repo) == before
+            and _wait_healthy(config, active_units, repo)
+        )
     state = "success" if success else ("rolled_back" if rollback_ok else "failure")
     after = _head(repo)
     record = {
@@ -284,7 +550,11 @@ def deploy(args: argparse.Namespace, config: dict[str, object]) -> int:
         "pr_number": args.pr_number, "source_sha": args.sha, "source_tree": tree,
         "components": components, "before": {"linux": before}, "after": {"linux": after},
         "config_fingerprints": fingerprints, "checks": checks,
-        "rollback_targets": {"linux": before}, "migration_summary": "none",
+        "rollback_targets": {
+            "linux": before,
+            **({"systemd": str(systemd_backup)} if systemd_backup is not None else {}),
+        },
+        "migration_summary": "none",
     }
     path = _write_record(config, args.run_id, record)
     print(json.dumps({"ok": success, "status": state, "record": str(path)}))

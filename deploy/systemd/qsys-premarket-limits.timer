@@ -1,3 +1,4 @@
+# Managed by the linux-systemd deployment contract; edit the repository copy only.
 [Unit]
 Description=Fetch today's Tushare price limits and suspension facts before the open
 
