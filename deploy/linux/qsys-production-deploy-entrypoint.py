@@ -31,8 +31,13 @@ ALLOWED_WINDOWS_COMPONENTS = frozenset({
     "windows-agent", "windows-gateway", "windows-control",
 })
 WINDOWS_COORDINATOR_PATH = "deploy/linux/qsys-windows-deploy-coordinator.py"
-ENTRYPOINT_VERSION = 2
-ENTRYPOINT_CAPABILITIES = ("systemd-apply-v1", "systemd-rollback-v1")
+ENTRYPOINT_VERSION = 3
+ENTRYPOINT_CAPABILITIES = (
+    "systemd-apply-v1",
+    "systemd-changed-artifacts-v1",
+    "systemd-preview-v1",
+    "systemd-rollback-v1",
+)
 ALLOWED_UNITS = frozenset({
     "qsys-monitor.service", "qsys-paper.service", "qsys-shadow-core.service",
     "qsys-health-observer.service", "qsys-live-core.service",
@@ -40,7 +45,14 @@ ALLOWED_UNITS = frozenset({
 SYSTEMD_SOURCE_ROOT = Path("deploy/systemd")
 SYSTEMD_UNIT_ROOT = Path("/etc/systemd/system")
 QSYS_ETC_ROOT = Path("/etc/qsys")
-SYSTEMD_EXCLUDED = frozenset({"qsys-web-test.service"})
+# These are repository templates, not canonical production artifacts.  The two
+# strategy-core units are deliberately customized for the site's user and
+# checkout path after copying; the web-test unit belongs only to test.
+SYSTEMD_EXCLUDED = frozenset({
+    "qsys-live-core.service",
+    "qsys-shadow-core.service",
+    "qsys-web-test.service",
+})
 MARKET_DATA_CONSUMERS = (
     "qsys-monitor.service", "qsys-paper.service",
     "qsys-shadow-core.service", "qsys-live-core.service",
@@ -246,25 +258,18 @@ def _systemd_targets(relative: str) -> tuple[Path, ...]:
 def _systemd_artifacts(
     repo: Path, changed_paths: list[str],
 ) -> dict[Path, Path | None]:
-    """Return the complete desired production systemd state plus explicit deletions."""
-    source_root = repo / SYSTEMD_SOURCE_ROOT
+    """Return deployable production systemd artifacts changed by this release."""
     desired: dict[Path, Path | None] = {}
-    for source in sorted(source_root.iterdir()):
-        if not source.is_file():
-            continue
-        relative = str(source.relative_to(repo))
-        for target in _systemd_targets(relative):
-            desired[target] = source
-    for relative in changed_paths:
+    for relative in sorted(changed_paths):
         if not relative.startswith(f"{SYSTEMD_SOURCE_ROOT}/"):
             continue
         source = repo / relative
-        if source.exists():
-            continue
         for target in _systemd_targets(relative):
-            desired[target] = None
+            desired[target] = source if source.is_file() else None
     if not desired:
-        raise ValueError("linux-systemd selected but no production artifact is managed")
+        raise ValueError(
+            "linux-systemd selected but no deployable production artifact changed"
+        )
     return desired
 
 
@@ -281,6 +286,29 @@ def _systemd_restart_units(artifacts: dict[Path, Path | None]) -> list[str]:
         elif target.parent == SYSTEMD_UNIT_ROOT and target.suffix in {".service", ".timer"}:
             units.add(target.name)
     return sorted(units)
+
+
+def _preview_systemd(
+    repo: Path, target: str, changed_paths: list[str],
+) -> dict[str, list[str]]:
+    """Inspect target artifacts against /etc without changing either one."""
+    with tempfile.TemporaryDirectory(prefix="qsys-production-systemd-preview-") as temporary:
+        worktree = Path(temporary) / "target"
+        _run(["git", "worktree", "add", "--detach", str(worktree), target], cwd=repo)
+        try:
+            artifacts = _systemd_artifacts(worktree, changed_paths)
+            units = _systemd_restart_units(artifacts)
+            active_units = [unit for unit in units if _active(unit, repo)]
+            return {
+                "targets": sorted(str(target_path) for target_path in artifacts),
+                "restart_units": active_units,
+                "inactive_units": sorted(set(units) - set(active_units)),
+            }
+        finally:
+            _run(
+                ["git", "worktree", "remove", "--force", str(worktree)],
+                cwd=repo, check=False,
+            )
 
 
 def _backup_systemd(
@@ -467,12 +495,17 @@ def deploy(args: argparse.Namespace, config: dict[str, object]) -> int:
     components = _validate_components(plan, args.components)
     units = sorted(set(plan["linux_units"]) & ALLOWED_UNITS)
     active_units = [unit for unit in units if _active(unit, repo)]
+    systemd_preview = (
+        _preview_systemd(repo, args.sha, list(plan["changed_paths"]))
+        if "linux-systemd" in components else None
+    )
     preview = {
         "ok": True, "dry_run": args.dry_run, "before_sha": before,
         "target_sha": args.sha, "source_tree": tree, "test_run_id": test_run,
         "components": components, "restart_units": active_units,
         "inactive_units": sorted(set(units) - set(active_units)),
         "health_checks": plan["health_checks"], "rollback_sha": before,
+        **({"systemd": systemd_preview} if systemd_preview is not None else {}),
     }
     if args.dry_run:
         print(json.dumps(preview, ensure_ascii=False))

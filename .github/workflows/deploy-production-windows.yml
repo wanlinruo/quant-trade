@@ -120,8 +120,11 @@ jobs:
           state = json.loads(os.environ["NODE_JSON"])
           if state["branch"] != "main" or state["dirty"] or not state["healthy"]:
               raise SystemExit(f"production Linux coordinator is not deployable: {state}")
-          required = {"systemd-apply-v1", "systemd-rollback-v1"}
-          if state.get("entrypoint_version", 0) < 2 or not required <= set(state.get("capabilities", [])):
+          required = {
+              "systemd-apply-v1", "systemd-changed-artifacts-v1",
+              "systemd-preview-v1", "systemd-rollback-v1",
+          }
+          if state.get("entrypoint_version", 0) < 3 or not required <= set(state.get("capabilities", [])):
               raise SystemExit("production entrypoint lacks required deployment capabilities")
           print(f'before_sha={state["sha"]}')
           PY
