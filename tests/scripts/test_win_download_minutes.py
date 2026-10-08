@@ -1,6 +1,11 @@
 """QMT 区间查询会把首笔成交前的分钟用昨收价填满（见
 docs/reference/qmt-range-query-padding.md）。导出时必须丢弃那些行。"""
 
+import csv
+import json
+import sys
+from types import SimpleNamespace
+
 import pandas as pd
 import pytest
 
@@ -110,3 +115,50 @@ def test_failed_parquet_write_does_not_advance_ledger(monkeypatch, tmp_path):
             [("600000.SH",)], [("600000.SH", "20260928")],
             str(tmp_path), 0, str(tmp_path / "done.csv"),
         )
+
+
+def test_main_writes_atomic_result_and_empty_is_not_a_process_failure(
+    monkeypatch, tmp_path, capsys,
+):
+    manifest = tmp_path / "manifest.csv"
+    with manifest.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["symbol", "dt"])
+        writer.writeheader()
+        writer.writerows([
+            {"symbol": "600001.SH", "dt": "2026-09-29"},
+            {"symbol": "600002.SH", "dt": "2026-09-29"},
+        ])
+
+    class XtData:
+        @staticmethod
+        def download_history_data(*args, **kwargs):
+            return None
+
+        @staticmethod
+        def get_market_data(*, stock_list, **kwargs):
+            if stock_list == ["600002.SH"]:
+                return {}
+            return _frames(
+                ["20260929093000"], [10.0], [10.0], [10.0], [10.0],
+                [100], [1000.0],
+            )
+
+    monkeypatch.setitem(sys.modules, "xtquant", SimpleNamespace(xtdata=XtData()))
+    monkeypatch.setattr(sys, "argv", [
+        "win_download_minutes.py", "--manifest", str(manifest),
+        "--out", str(tmp_path), "--window-start", "20260929",
+        "--window-end", "20260929", "--flush-rows", "1",
+        "--progress-every", "1", "--run-id", "run-1",
+    ])
+
+    assert downloader.main() == 0
+    result = json.loads((tmp_path / "result.json").read_text(encoding="utf-8"))
+    assert result["run_id"] == "run-1"
+    assert result["status"] == "completed_with_empty"
+    assert result["downloaded"] == 1
+    assert result["empty"] == [{"symbol": "600002.SH", "dt": "20260929"}]
+    assert result["failed"] == []
+    assert downloader.read_done(str(tmp_path / "done.csv")) == {
+        ("600001.SH", "20260929")
+    }
+    assert downloader.PROGRESS_PREFIX in capsys.readouterr().out

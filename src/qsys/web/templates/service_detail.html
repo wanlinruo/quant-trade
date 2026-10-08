@@ -5,6 +5,7 @@
 <p class="muted">{{ spec.purpose }}</p></div><a class="button secondary" href="/services">← 服务管理</a></div>
 
 {% if run %}
+{% if run.effective_status == "running" %}<script>setTimeout(() => location.reload(), 10000);</script>{% endif %}
 <div class="card">
   <h2>运行明细 <span class="mono" style="font-weight:400">{{ run.run_id }}</span></h2>
   {% set st = labels.get(run.effective_status, ("bad", run.effective_status)) %}

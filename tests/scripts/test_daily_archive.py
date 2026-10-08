@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from argparse import Namespace
+import json
+import sys
 from datetime import date
 
 import polars as pl
 
 from qsys.data.pipeline.auction import ImportResult
+from qsys.data import schema
 from scripts import daily_archive
 
 DAY = date(2026, 9, 16)
@@ -130,3 +133,71 @@ def test_shared_minute_gate_blocks_unknown_but_not_d24(monkeypatch):
     assert daily_archive._check_minute_days(None, [DAY], run) == 1
     assert run.steps[0][1]["status"] == daily_archive.FAILED
     assert "已知差异 1" in run.steps[0][1]["detail"]
+
+
+def test_structured_minute_progress_is_parsed_and_human_readable():
+    payload = {
+        "total_stock_days": 5572, "completed_stock_days": 2500,
+        "downloaded_stock_days": 2490, "empty_stock_days": 10,
+        "failed_symbols": 0, "parquet_files": 3,
+        "last_progress_at": "2026-10-08T16:01:02+08:00",
+        "estimated_remaining_seconds": 720,
+    }
+    got = daily_archive.parse_minute_progress(
+        daily_archive.PROGRESS_PREFIX + json.dumps(payload)
+    )
+    assert got == payload
+    detail = daily_archive.minute_progress_detail(got)
+    assert "2,500/5,572" in detail and "预计剩余 12 分钟" in detail
+    assert daily_archive.parse_minute_progress("普通日志") is None
+    assert daily_archive.parse_minute_progress("QSYS_PROGRESS {") is None
+
+
+def test_empty_results_are_split_by_authoritative_full_day_suspensions(warehouse):
+    import pyarrow as pa
+
+    warehouse.write("suspend_daily", pa.table({
+        "symbol": ["600001.SH", "600002.SH", "600003.SH"],
+        "dt": [DAY, DAY, DAY],
+        "suspend_type": ["S", "S", "R"],
+        "suspend_timing": [None, "10:00-10:30", None],
+    }, schema=schema.SUSPEND_DAILY), year=DAY.year)
+    authoritative, unknown = daily_archive.classify_minute_empties(warehouse, [
+        {"symbol": "600001.SH", "dt": "20260916"},
+        {"symbol": "600002.SH", "dt": "20260916"},
+        {"symbol": "600003.SH", "dt": "20260916"},
+        {"symbol": "600004.SH", "dt": "20260916"},
+    ])
+    assert authoritative == [("600001.SH", DAY)]
+    assert unknown == [
+        ("600002.SH", DAY), ("600003.SH", DAY), ("600004.SH", DAY),
+    ]
+
+
+def test_streaming_command_forwards_progress_without_waiting_for_exit(tmp_path):
+    payload = {
+        "total_stock_days": 10, "completed_stock_days": 5,
+        "empty_stock_days": 0, "failed_symbols": 0, "parquet_files": 1,
+        "last_progress_at": "2026-10-08T16:00:00+08:00",
+        "estimated_remaining_seconds": 10,
+    }
+    seen = []
+    result = daily_archive.run_streaming(
+        [sys.executable, "-c", (
+            "import json; print('QSYS_PROGRESS ' + json.dumps(" + repr(payload) + "), flush=True)"
+        )],
+        what="test", timeout=10, stall_timeout=5,
+        on_line=lambda line: seen.append(daily_archive.parse_minute_progress(line)) or True,
+    )
+    assert result.returncode == 0
+    assert seen == [payload]
+
+
+def test_streaming_command_distinguishes_a_stall_from_process_failure():
+    result = daily_archive.run_streaming(
+        [sys.executable, "-c", "import time; time.sleep(5)"],
+        what="test", timeout=10, stall_timeout=1,
+        on_line=lambda line: False,
+    )
+    assert result.returncode == 125
+    assert "没有进度" in result.error

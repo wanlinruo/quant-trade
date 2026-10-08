@@ -283,6 +283,23 @@ def test_run_detail_page(tmp_path, warehouse, monkeypatch):
     assert http.get("/services/runs/2026-09-16/missing").status_code == 404
 
 
+def test_running_run_detail_auto_refreshes_and_shows_live_progress(
+    tmp_path, warehouse, monkeypatch,
+):
+    root = tmp_path / "runs"
+    monkeypatch.setattr("qsys.ops.services._now", lambda: datetime(2026, 9, 17, 19, 50))
+    run = ServiceRun(root, "daily-archive")
+    run.session = date(2026, 9, 17)
+    step = services.Step("分钟线（全市场）")
+    run.steps.append(step)
+    run.update_step(step, detail="已完成 250/1000 组，预计剩余 12 分钟")
+    page = client(root, warehouse).get(
+        f"/services/runs/2026-09-17/{run.run_id}"
+    )
+    assert "location.reload" in page.text
+    assert "已完成 250/1000 组" in page.text
+
+
 def test_services_route_is_404_when_not_enabled(warehouse):
     config = WebConfig()
     http = TestClient(create_app(MonitorService(SessionJournal(warehouse), config=config), config))

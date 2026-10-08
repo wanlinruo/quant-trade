@@ -28,10 +28,13 @@ exit-code，分辨不出来。现在退出码只反映 `issues`。
 from __future__ import annotations
 
 import argparse
+import json
+import selectors
 import sqlite3
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -51,7 +54,7 @@ from qsys.data.pipeline.candidates import (
 )
 from qsys.data.pipeline.instruments import alive_on
 from qsys.data.pipeline.canonical_publish import publish_minutes
-from qsys.data.pipeline.minutes import import_minute_bars, missing_stock_days
+from qsys.data.pipeline.minutes import ImportResult, import_minute_bars, missing_stock_days
 from qsys.data.pipeline.premarket_suspensions import sync_premarket_suspensions
 from qsys.data.providers.tushare import TushareProvider
 from qsys.data.providers.tushare_client import TushareClient
@@ -63,6 +66,144 @@ from qsys.ops.services import FAILED, SKIPPED, SUCCEEDED, ServiceRun
 from qsys.paper.calendar import load_trading_calendar
 
 log = structlog.get_logger("daily_archive")
+PROGRESS_PREFIX = "QSYS_PROGRESS "
+
+
+@dataclass(frozen=True, slots=True)
+class StreamResult:
+    returncode: int
+    output: str
+    error: str = ""
+
+
+def run_streaming(
+    cmd: list[str], *, what: str, timeout: int, stall_timeout: int,
+    on_line=None,
+) -> StreamResult:
+    """逐行转发子进程输出，并区分总超时与“进程活着但没有业务进展”。"""
+    started = last_progress = time.monotonic()
+    process = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        bufsize=0,
+    )
+    assert process.stdout is not None
+    selector = selectors.DefaultSelector()
+    selector.register(process.stdout, selectors.EVENT_READ)
+    lines: list[str] = []
+    buffered = b""
+    failure = ""
+
+    def accept(raw: bytes) -> None:
+        nonlocal last_progress
+        line = raw.rstrip(b"\r").decode("utf-8", errors="replace")
+        lines.append(line)
+        progressed = bool(on_line(line)) if on_line is not None else True
+        if progressed:
+            last_progress = time.monotonic()
+
+    try:
+        while True:
+            now = time.monotonic()
+            if now - started > timeout:
+                failure = f"{what} 总超时（{timeout} 秒）"
+                break
+            if now - last_progress > stall_timeout:
+                failure = f"{what} 超过 {stall_timeout} 秒没有进度"
+                break
+            events = selector.select(timeout=1.0)
+            for key, _ in events:
+                chunk = key.fileobj.read(65_536)
+                if not chunk:
+                    continue
+                buffered += chunk
+                while b"\n" in buffered:
+                    raw, buffered = buffered.split(b"\n", 1)
+                    accept(raw)
+            if process.poll() is not None:
+                remainder = process.stdout.read()
+                buffered += remainder
+                for raw in buffered.splitlines():
+                    accept(raw)
+                break
+    except BaseException:
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+        raise
+    finally:
+        selector.close()
+    if failure:
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+        log.error("step.failed", step=what, rc=process.returncode, error=failure)
+        return StreamResult(124 if "总超时" in failure else 125, "\n".join(lines), failure)
+    elapsed = time.monotonic() - started
+    log.info("step.finished", step=what, rc=process.returncode, seconds=round(elapsed, 1))
+    return StreamResult(process.returncode, "\n".join(lines))
+
+
+def parse_minute_progress(line: str) -> dict | None:
+    """解析 Windows 下载器协议；普通日志和畸形行都不能污染运行记录。"""
+    if not line.startswith(PROGRESS_PREFIX):
+        return None
+    try:
+        payload = json.loads(line[len(PROGRESS_PREFIX):])
+    except (TypeError, ValueError):
+        return None
+    required = {
+        "total_stock_days", "completed_stock_days", "empty_stock_days",
+        "failed_symbols", "parquet_files", "last_progress_at",
+        "estimated_remaining_seconds",
+    }
+    return payload if isinstance(payload, dict) and required <= payload.keys() else None
+
+
+def minute_progress_detail(progress: dict) -> str:
+    remaining = progress.get("estimated_remaining_seconds")
+    eta = "未知" if remaining is None else f"{max(int(remaining), 0) // 60} 分钟"
+    return (
+        f"已完成 {int(progress['completed_stock_days']):,}/"
+        f"{int(progress['total_stock_days']):,} 股日；"
+        f"有数据 {int(progress.get('downloaded_stock_days', 0)):,}，"
+        f"空 {int(progress['empty_stock_days']):,}，"
+        f"失败 {int(progress['failed_symbols']):,}，"
+        f"Parquet {int(progress['parquet_files']):,}；"
+        f"最近推进 {progress['last_progress_at']}，预计剩余 {eta}"
+    )
+
+
+def _read_minute_result(path: Path, *, expected_run_id: str) -> dict:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if payload.get("schema_version") != 1:
+        raise ValueError("Windows 分钟结果协议版本不受支持")
+    if payload.get("run_id") != expected_run_id:
+        raise ValueError("Windows 分钟结果不属于本次运行")
+    if not isinstance(payload.get("empty"), list) or not isinstance(payload.get("failed"), list):
+        raise ValueError("Windows 分钟结果缺少 empty/failed 清单")
+    return payload
+
+
+def classify_minute_empties(
+    warehouse: Warehouse, items: list[dict],
+) -> tuple[list[tuple[str, date]], list[tuple[str, date]]]:
+    """用与候选清单相同的全天停牌契约拆分权威空结果与未知空结果。"""
+    keys = sorted({
+        (str(item["symbol"]), datetime.strptime(str(item["dt"]), "%Y%m%d").date())
+        for item in items
+    })
+    if not keys:
+        return [], []
+    frame = pl.DataFrame(keys, schema={"symbol": pl.Utf8, "dt": pl.Date}, orient="row")
+    unknown_frame = drop_suspended(WarehouseQuery(warehouse), frame)
+    unknown = set(unknown_frame.iter_rows())
+    return [key for key in keys if key not in unknown], [key for key in keys if key in unknown]
 
 
 def run(cmd: list[str], *, what: str, timeout: int = 3600) -> str:
@@ -256,8 +397,13 @@ def main() -> int:
     parser.add_argument("--win-host", default="Administrator@118.25.42.149")
     parser.add_argument("--win-key", default="~/.ssh/id_ed25519_winnode")
     parser.add_argument("--win-python", default=r"C:\qsys\.venv\Scripts\python.exe")
-    parser.add_argument("--win-script", default=r"C:\qsys\win_download_minutes.py")
+    parser.add_argument("--win-script-source", default="scripts/win_download_minutes.py",
+                        help="随本次任务上传到 Windows 的分钟下载器；必须来自当前版本")
     parser.add_argument("--win-root", default="C:/qsys/daily")
+    # systemd 整轮上限是 7200 秒；下载器必须提前退出，给回传、导入、校验留时间。
+    parser.add_argument("--minute-timeout", type=int, default=6000)
+    parser.add_argument("--minute-stall-timeout", type=int, default=900,
+                        help="结构化进度多久不前进就判 stalled")
     parser.add_argument("--config", default="config/deploy.local.toml")
     parser.add_argument("--paper-store", default="var/workbench/workbench.sqlite3",
                         help="模拟盘库；其持仓期间的分钟线一并归档")
@@ -387,7 +533,6 @@ def _archive(args, service_run: ServiceRun) -> int:
     # --- 5. 算出还缺哪些股-日的分钟线 ---
     missing = missing_stock_days(warehouse, wanted)
     print(f"全市场及补充集合 {wanted.height} 组，其中缺分钟线 {missing.height} 组")
-    minutes_started = datetime.now()
     if missing.height == 0:
         service_run.add_step("分钟线（全市场）", status=SUCCEEDED,
                              interface="QMT 1 分钟线（Windows）", table="minute_bars", rows=0,
@@ -410,7 +555,8 @@ def _archive(args, service_run: ServiceRun) -> int:
             suspension_refresh_ok=suspension_refresh_ok,
         )
 
-    local_dir = Path("var/minutes-incoming")
+    # 每次运行使用独立目录，旧 result.json 不能在 SSH 中断时冒充本次结果。
+    local_dir = Path("var/minutes-incoming") / service_run.run_id
     local_dir.mkdir(parents=True, exist_ok=True)
     manifest = Path("var") / f"manifest_{stamp}.csv"
     write_manifest(missing, manifest)
@@ -418,47 +564,172 @@ def _archive(args, service_run: ServiceRun) -> int:
     win_dir = f"{args.win_root}/{stamp}"
     win_manifest = f"{win_dir}/manifest.csv"
 
-    # --- 5. 驱动 Windows 下载 ---
-    run(ssh + [f"New-Item -ItemType Directory -Force -Path {win_dir} | Out-Null"],
-        what="建 Windows 目录")
-    run(["scp", "-i", key, "-o", "BatchMode=yes", str(manifest),
-         f"{args.win_host}:{win_manifest}"], what="上传清单")
-
     lo, hi = min(missing["dt"].to_list()), max(missing["dt"].to_list())
-    download = (
-        f'$env:PYTHONIOENCODING="utf-8"; {args.win_python} -u {args.win_script} '
-        f'--manifest {win_dir}\\manifest.csv --out {win_dir} '
-        f'--window-start {lo.strftime("%Y%m%d")} --window-end {hi.strftime("%Y%m%d")} '
-        f'--sleep 0.1 --whole-window'
-    )
-    output = run(ssh + [download], what="Windows 下载分钟线", timeout=7200)
-    for line in output.strip().splitlines()[-4:]:
-        print("  " + line)
+    result = ImportResult(0, 0, 0)
+    download_blocked = False
+    with service_run.step(
+        "分钟线（全市场）", interface="QMT 1 分钟线（Windows）",
+        table="minute_bars",
+    ) as minute_step:
+        initial_progress = {
+            "status": "starting", "total_stock_days": missing.height,
+            "completed_stock_days": 0, "downloaded_stock_days": 0,
+            "empty_stock_days": 0, "failed_symbols": 0, "parquet_files": 0,
+            "last_progress_at": datetime.now().isoformat(timespec="seconds"),
+            "estimated_remaining_seconds": None,
+        }
+        service_run.update_step(
+            minute_step, detail=minute_progress_detail(initial_progress),
+            progress=initial_progress,
+        )
 
-    # --- 6. 取回并导入 ---
-    run(["scp", "-i", key, "-o", "BatchMode=yes",
-         f"{args.win_host}:{win_dir}/*.parquet", str(local_dir)],
-        what="回传 parquet")
-    result = import_minute_bars(
-        warehouse, local_dir, archive_dir=Path("var/minutes-done")
-    )
-    print(f"导入 {result.files} 文件 / {result.rows:,} 行 / {result.errors} 错误")
-    service_run.add_step(
-        "分钟线（全市场）", status=FAILED if result.errors else SUCCEEDED,
-        interface="QMT 1 分钟线（Windows）", table="minute_bars", rows=result.rows,
-        started_at=minutes_started,
-        detail=f"全市场及补充集合 {wanted.height} 组，缺 {missing.height} 组；"
-               f"导入 {result.files} 个文件、"
-               f"{result.errors} 个坏文件",
-    )
-    if result.errors:
-        log.warning("archive.import_errors", errors=result.errors)
+        protocol: dict | None = None
+        stream_result = StreamResult(126, "", "下载尚未启动")
+        transfer_error = ""
+        setup_error = ""
+        source_script = Path(args.win_script_source)
+        remote_script = f"{win_dir}/win_download_minutes.py"
+        try:
+            if not source_script.is_file():
+                raise FileNotFoundError(f"分钟下载器不存在：{source_script}")
+            run(ssh + [f"New-Item -ItemType Directory -Force -Path {win_dir} | Out-Null"],
+                what="建 Windows 目录")
+            run(["scp", "-i", key, "-o", "BatchMode=yes", str(manifest),
+                 f"{args.win_host}:{win_manifest}"], what="上传清单")
+            # 固定入口只负责执行；业务下载器来自当前目标版本，杜绝 Windows 旧脚本漂移。
+            run(["scp", "-i", key, "-o", "BatchMode=yes", str(source_script),
+                 f"{args.win_host}:{remote_script}"], what="上传分钟下载器")
+
+            remote_windows = remote_script.replace("/", "\\")
+            manifest_windows = win_manifest.replace("/", "\\")
+            out_windows = win_dir.replace("/", "\\")
+            download = (
+                f'$env:PYTHONIOENCODING="utf-8"; {args.win_python} -u {remote_windows} '
+                f'--manifest {manifest_windows} --out {out_windows} '
+                f'--window-start {lo.strftime("%Y%m%d")} '
+                f'--window-end {hi.strftime("%Y%m%d")} '
+                f'--run-id {service_run.run_id} --sleep 0.1 --whole-window'
+            )
+
+            def on_line(line: str) -> bool:
+                progress = parse_minute_progress(line)
+                if progress is None:
+                    print("  " + line, flush=True)
+                    return False
+                detail = minute_progress_detail(progress)
+                service_run.update_step(
+                    minute_step,
+                    rows=int(progress.get("downloaded_stock_days", 0)),
+                    detail=detail,
+                    progress=progress,
+                )
+                print("  [分钟进度] " + detail, flush=True)
+                return True
+
+            stream_result = run_streaming(
+                ssh + [download], what="Windows 下载分钟线",
+                timeout=args.minute_timeout,
+                stall_timeout=args.minute_stall_timeout,
+                on_line=on_line,
+            )
+        except Exception as exc:
+            setup_error = f"{type(exc).__name__}: {exc}"
+            log.error("archive.minute_setup_failed", error=setup_error)
+
+        # 不论下载器返回什么状态，都先回收已经原子落盘的 Parquet、续传账本和摘要。
+        if not setup_error:
+            try:
+                run(["scp", "-i", key, "-o", "BatchMode=yes",
+                     f"{args.win_host}:{win_dir}/*", str(local_dir)],
+                    what="回传分钟产物")
+            except Exception as exc:
+                transfer_error = f"{type(exc).__name__}: {exc}"
+                log.error("archive.minute_transfer_failed", error=transfer_error)
+
+        result_path = local_dir / "result.json"
+        result_error = ""
+        if result_path.is_file():
+            try:
+                protocol = _read_minute_result(
+                    result_path, expected_run_id=service_run.run_id,
+                )
+            except Exception as exc:
+                result_error = f"{type(exc).__name__}: {exc}"
+        elif not setup_error:
+            result_error = "Windows 未产出 result.json（进程或传输中断）"
+
+        # 已经取回的成功文件始终先做幂等导入；少量空洞不能浪费大批成功产物。
+        result = import_minute_bars(
+            warehouse, local_dir, archive_dir=Path("var/minutes-done")
+        )
+        print(f"导入 {result.files} 文件 / {result.rows:,} 行 / {result.errors} 错误")
+
+        authoritative: list[tuple[str, date]] = []
+        unknown: list[tuple[str, date]] = []
+        failures: list[dict] = []
+        if protocol is not None:
+            authoritative, unknown = classify_minute_empties(
+                warehouse, protocol.get("empty", [])
+            )
+            failures = protocol.get("failed", [])
+
+        transport_failed = stream_result.returncode not in (0, 2)
+        unexpected_rc = stream_result.returncode == 2 and not failures
+        process_error = ""
+        if transport_failed:
+            tail = " | ".join(stream_result.output.splitlines()[-3:])[-800:]
+            process_error = f"SSH/Windows 下载进程异常 rc={stream_result.returncode}"
+            if tail:
+                process_error += f"，末尾输出：{tail}"
+        elif unexpected_rc:
+            process_error = "Windows 返回 rc=2，但结果没有单股异常明细"
+        download_blocked = any((
+            setup_error, transfer_error, result_error, stream_result.error,
+            process_error, failures, unknown, result.errors,
+        ))
+        samples = ", ".join(f"{symbol}:{day}" for symbol, day in unknown[:5])
+        parts = [
+            f"清单 {missing.height:,} 股日",
+            f"导入 {result.files} 个文件/{result.rows:,} 行",
+            f"权威停牌空结果 {len(authoritative)}",
+            f"未知空结果 {len(unknown)}",
+            f"单股异常 {len(failures)}",
+            f"坏文件 {result.errors}",
+        ]
+        if samples:
+            parts.append(f"未知样例 {samples}")
+        if failures:
+            parts.append("异常样例 " + ", ".join(
+                f"{item.get('symbol')}: {item.get('error')}" for item in failures[:3]
+            ))
+        for error in (
+            setup_error, stream_result.error, process_error, transfer_error, result_error,
+        ):
+            if error:
+                parts.append(error)
+        detail = "；".join(parts)
+        final_progress = dict(protocol or initial_progress)
+        final_progress.update({
+            "status": "failed" if download_blocked else "succeeded",
+            "empty_authoritative": len(authoritative),
+            "empty_unknown": len(unknown),
+            "imported_files": result.files,
+            "imported_rows": result.rows,
+            "import_errors": result.errors,
+        })
+        service_run.update_step(
+            minute_step, rows=result.rows, detail=detail, progress=final_progress,
+        )
+        if download_blocked:
+            minute_step.fail(detail)
+        if result.errors:
+            log.warning("archive.import_errors", errors=result.errors)
 
     # --- 7. 跨源校验 ---
     days = sorted({d for d in missing["dt"].to_list()})
     issues = _check_minute_days(warehouse, days, service_run)
 
-    if not result.errors and not issues:
+    if not download_blocked and not issues:
         _publish_canonical_minutes(
             warehouse,
             min(days) if days else complete_through,
@@ -470,7 +741,7 @@ def _archive(args, service_run: ServiceRun) -> int:
     log.info("archive.done", days=len(days), rows=result.rows, issues=issues,
              minutes=round((time.time()-started)/60, 1))
     return _exit_code(
-        1 if result.errors or issues else 0,
+        1 if download_blocked or issues else 0,
         auction_ok=auction_ok,
         suspension_refresh_ok=suspension_refresh_ok,
     )
