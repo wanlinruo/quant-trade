@@ -321,6 +321,15 @@ Nginx 在 8443 复用 `wanlinruo.cn` 证书，反向代理到 `127.0.0.1:8420`�
 9. 通过 Mac 隧道进行人工验收；
 10. 以同一 run ID 写节点 `record.json`，校验后回写 GitHub deployment 状态。
 
+成功的测试部署还会把结构化 release evidence 写入 GitHub Deployment `payload`：绑定
+source commit/tree、`uv.lock`、CI/测试部署 workflow 哈希、可信 main controller SHA、原始
+push CI/check suite 与节点 record run ID。`main` squash merge 后，
+`Align test after main` workflow 要求 merge tree 与 PR head tree 相同，并重新验证上述字段、
+PR CI 四项、Deployment 成功状态和受限入口返回的节点 record；只有全部一致时才以 PR head
+作为预期旧 SHA 执行 `force-with-lease` 对齐 `test`。该 push 使用受限 `GITHUB_TOKEN`，不会
+递归触发第三次 CI/test deployment；workflow 自身执行 policy、secret scan 与 evidence
+attestation。证据缺失、workflow/lock/tree 漂移或 lease 冲突均失败关闭，不自动降级成功。
+
 Actions 只持有测试专用 SSH key。该 key 在节点 `authorized_keys` 中被固定到工作树外的
 `qsys-deploy-ssh`，不能取得 shell 或做端口/agent 转发；dispatcher 只允许查询状态、部署
 白名单组件和读取指定 run 的脱敏记录。特权 workflow 从 `main` checkout 可信 planner，

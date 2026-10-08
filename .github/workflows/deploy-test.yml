@@ -8,6 +8,7 @@ on:
 
 permissions:
   actions: read
+  checks: read
   contents: read
   deployments: write
 
@@ -29,6 +30,7 @@ jobs:
       DEPLOY_USER: ${{ vars.TEST_DEPLOY_USER }}
       RUN_KEY: github-${{ github.run_id }}-${{ github.run_attempt }}
       UPSTREAM_RUN_ID: ${{ github.event.workflow_run.id }}
+      CI_CHECK_SUITE_ID: ${{ github.event.workflow_run.check_suite_id }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Check out trusted deployment controller
@@ -70,6 +72,17 @@ jobs:
           remote_sha=$(git ls-remote origin refs/heads/test | awk '{print $1}')
           test "$remote_sha" = "$TARGET_SHA"
           git fetch --no-tags origin "$TARGET_SHA"
+          ci_run=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$UPSTREAM_RUN_ID")
+          printf '%s' "$ci_run" | jq -e \
+            --arg sha "$TARGET_SHA" --argjson suite "$CI_CHECK_SUITE_ID" \
+            '.event == "push" and .head_branch == "test" and .head_sha == $sha
+             and .status == "completed" and .conclusion == "success"
+             and .check_suite_id == $suite' >/dev/null
+          checks=$(gh api \
+            "repos/$GITHUB_REPOSITORY/check-suites/$CI_CHECK_SUITE_ID/check-runs?per_page=100")
+          printf '%s' "$checks" | jq -e '
+            [.check_runs[] | select(.name == "policy" or .name == "secret-scan" or .name == "test" or .name == "package")]
+            | length == 4 and all(.conclusion == "success")' >/dev/null
           node_json=$(ssh -i ~/.ssh/test-deploy -o BatchMode=yes \
             "$DEPLOY_USER@$DEPLOY_HOST" 'status --environment test')
           NODE_JSON="$node_json" python3 - <<'PY' >>"$GITHUB_OUTPUT"
@@ -84,6 +97,8 @@ jobs:
               raise SystemExit(f"test node is not deployable: {state}")
           print(f'before_sha={state["sha"]}')
           PY
+          echo "source_tree=$(git rev-parse "$TARGET_SHA^{tree}")" >>"$GITHUB_OUTPUT"
+          echo "controller_sha=$(git rev-parse HEAD)" >>"$GITHUB_OUTPUT"
 
       - name: Plan from trusted main controller
         id: plan
@@ -103,11 +118,16 @@ jobs:
 
       - name: Create GitHub deployment
         id: deployment
+        env:
+          CONTROLLER_SHA: ${{ steps.source.outputs.controller_sha }}
         run: |
-          jq -n \
-            --arg ref "$TARGET_SHA" \
-            --arg description "test deployment after CI run $UPSTREAM_RUN_ID" \
-            '{ref: $ref, environment: "testing", auto_merge: false, required_contexts: [], description: $description}' \
+          python3 scripts/release_evidence.py create-deployment \
+            --source-sha "$TARGET_SHA" \
+            --controller-sha "$CONTROLLER_SHA" \
+            --ci-run-id "$UPSTREAM_RUN_ID" \
+            --ci-check-suite-id "$CI_CHECK_SUITE_ID" \
+            --node-record-run-id "$RUN_KEY" \
+            --description "test deployment after CI run $UPSTREAM_RUN_ID" \
             >deployment.json
           deployment_id=$(gh api --method POST \
             "repos/$GITHUB_REPOSITORY/deployments" --input deployment.json --jq .id)
@@ -131,6 +151,8 @@ jobs:
             "attest --environment test --sha $TARGET_SHA --run-id $RUN_KEY --actor $GITHUB_ACTOR --repository $GITHUB_REPOSITORY"
 
       - name: Verify node deployment record
+        env:
+          SOURCE_TREE: ${{ steps.source.outputs.source_tree }}
         run: |
           ssh -i ~/.ssh/test-deploy -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
             "record --environment test --run-id $RUN_KEY" >record.json
@@ -144,6 +166,8 @@ jobs:
               raise SystemExit("node record run_id mismatch")
           if record["source_sha"] != os.environ["TARGET_SHA"]:
               raise SystemExit("node record SHA mismatch")
+          if record["source_tree"] != os.environ["SOURCE_TREE"]:
+              raise SystemExit("node record tree mismatch")
           if record["status"] != "success":
               raise SystemExit(f'node record status is {record["status"]}')
           PY
