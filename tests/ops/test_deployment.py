@@ -746,7 +746,9 @@ def test_pr_ci_reuses_valid_tree_evidence_or_runs_full_checks() -> None:
     workflow = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
 
     assert "reuse-evidence:" in workflow
-    assert "scripts/verify_github_release_evidence.py" in workflow
+    assert "ref: ${{ github.event.pull_request.base.sha }}" in workflow
+    assert ".trusted-controller/scripts/verify_github_release_evidence.py" in workflow
+    assert '--checkout "$GITHUB_WORKSPACE"' in workflow
     assert "Evidence unavailable or mismatched; full PR verification is required." in workflow
     assert "needs.reuse-evidence.outputs.reusable != 'true'" in workflow
     assert "Reuse full-suite evidence for the identical tree" in workflow

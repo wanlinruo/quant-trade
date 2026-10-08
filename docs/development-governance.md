@@ -331,7 +331,8 @@ PR CI 四项、Deployment 成功状态和受限入口返回的节点 record；�
 attestation。证据缺失、workflow/lock/tree 漂移或 lease 冲突均失败关闭，不自动降级成功。
 `test -> main` PR 的 `test`/`package` check 会先验证同一份 v2 evidence；有效时保留原 check
 名称并执行轻量复用证明，不再重复全量测试或构建。evidence 缺失或不一致时自动回退完整
-`uv sync`、`pytest` 与 package build；policy 和 secret scan 始终真实运行，不能复用跳过。
+`uv sync`、`pytest` 与 package build。复用判定器从 PR base SHA 单独检出，PR head 不能通过
+修改判定脚本给自己背书；policy 和 secret scan 始终真实运行，不能复用跳过。
 
 Actions 只持有测试专用 SSH key。该 key 在节点 `authorized_keys` 中被固定到工作树外的
 `qsys-deploy-ssh`，不能取得 shell 或做端口/agent 转发；dispatcher 只允许查询状态、部署

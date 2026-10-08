@@ -82,7 +82,9 @@ def validate_evidence(
         "node_record_run_id",
     }
     if set(evidence) != expected_keys:
-        raise ValueError("release evidence fields do not match schema version 1")
+        raise ValueError(
+            f"release evidence fields do not match schema version {EVIDENCE_SCHEMA_VERSION}"
+        )
     if evidence["schema_version"] != EVIDENCE_SCHEMA_VERSION:
         raise ValueError("unsupported release evidence schema")
     if evidence["kind"] != EVIDENCE_KIND:
