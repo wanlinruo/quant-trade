@@ -1,0 +1,189 @@
+name: Align test after main
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  actions: read
+  checks: read
+  contents: write
+  deployments: read
+  pull-requests: read
+
+concurrency:
+  group: align-test-after-main
+  cancel-in-progress: false
+
+jobs:
+  align:
+    runs-on: ubuntu-24.04
+    environment: testing
+    env:
+      MAIN_SHA: ${{ github.sha }}
+      REPOSITORY: ${{ github.repository }}
+      DEPLOY_HOST: ${{ vars.TEST_DEPLOY_HOST }}
+      DEPLOY_USER: ${{ vars.TEST_DEPLOY_USER }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out merged main controller
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Resolve merged test PR and prove tree equality
+        id: source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$MAIN_SHA"
+          pulls=$(gh api -H 'Accept: application/vnd.github+json' \
+            "repos/$REPOSITORY/commits/$MAIN_SHA/pulls")
+          pr=$(printf '%s' "$pulls" | jq --arg main "$MAIN_SHA" \
+            '[.[] | select(.merged_at != null and .merge_commit_sha == $main and .base.ref == "main" and .head.ref == "test")] | max_by(.merged_at)')
+          test "$pr" != null
+          pr_number=$(printf '%s' "$pr" | jq -r .number)
+          pr_head=$(printf '%s' "$pr" | jq -r .head.sha)
+          git fetch --no-tags origin "$pr_head" test
+          remote_test=$(git ls-remote origin refs/heads/test | awk '{print $1}')
+          test "$remote_test" = "$pr_head"
+          main_tree=$(git rev-parse "$MAIN_SHA^{tree}")
+          head_tree=$(git rev-parse "$pr_head^{tree}")
+          test "$main_tree" = "$head_tree"
+          echo "pr_number=$pr_number" >>"$GITHUB_OUTPUT"
+          echo "pr_head=$pr_head" >>"$GITHUB_OUTPUT"
+          echo "tree_sha=$main_tree" >>"$GITHUB_OUTPUT"
+
+      - name: Verify reusable CI and test deployment evidence
+        id: evidence
+        env:
+          PR_HEAD: ${{ steps.source.outputs.pr_head }}
+          TREE_SHA: ${{ steps.source.outputs.tree_sha }}
+        run: |
+          set -euo pipefail
+          deployments=$(gh api -H 'Accept: application/vnd.github+json' \
+            "repos/$REPOSITORY/deployments?sha=$PR_HEAD&environment=testing&per_page=100")
+          deployment=$(printf '%s' "$deployments" | jq \
+            '[.[] | select(.payload.kind == "qsys-test-release-evidence" and .payload.schema_version == 1)] | max_by(.id)')
+          test "$deployment" != null
+          deployment_id=$(printf '%s' "$deployment" | jq -r .id)
+          printf '%s' "$deployment" | jq '.payload' >evidence.json
+          python3 scripts/release_evidence.py validate \
+            --source-sha "$PR_HEAD" --tree-sha "$TREE_SHA" --evidence evidence.json
+          status=$(gh api -H 'Accept: application/vnd.github+json' \
+            "repos/$REPOSITORY/deployments/$deployment_id/statuses?per_page=100" \
+            --jq 'max_by(.id).state')
+          test "$status" = success
+
+          ci_run_id=$(jq -r .ci_run_id evidence.json)
+          ci_suite_id=$(jq -r .ci_check_suite_id evidence.json)
+          ci_run=$(gh api "repos/$REPOSITORY/actions/runs/$ci_run_id")
+          printf '%s' "$ci_run" | jq -e \
+            --arg sha "$PR_HEAD" --argjson suite "$ci_suite_id" \
+            '.event == "push" and .head_branch == "test" and .head_sha == $sha
+             and .status == "completed" and .conclusion == "success"
+             and .check_suite_id == $suite' >/dev/null
+          push_checks=$(gh api \
+            "repos/$REPOSITORY/check-suites/$ci_suite_id/check-runs?per_page=100")
+          printf '%s' "$push_checks" | jq -e '
+            [.check_runs[] | select(.name == "policy" or .name == "secret-scan" or .name == "test" or .name == "package")]
+            | length == 4 and all(.conclusion == "success")' >/dev/null
+
+          pr_ci=$(gh api \
+            "repos/$REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$PR_HEAD&event=pull_request&per_page=100" \
+            --jq '.workflow_runs | max_by(.id)')
+          test "$pr_ci" != null
+          printf '%s' "$pr_ci" | jq -e --arg head "$PR_HEAD" \
+            '.head_sha == $head and .status == "completed" and .conclusion == "success"' >/dev/null
+          pr_suite_id=$(printf '%s' "$pr_ci" | jq -r .check_suite_id)
+          pr_checks=$(gh api \
+            "repos/$REPOSITORY/check-suites/$pr_suite_id/check-runs?per_page=100")
+          printf '%s' "$pr_checks" | jq -e '
+            [.check_runs[] | select(.name == "policy" or .name == "secret-scan" or .name == "test" or .name == "package")]
+            | length == 4 and all(.conclusion == "success")' >/dev/null
+
+          controller_sha=$(jq -r .controller_sha evidence.json)
+          git fetch --no-tags origin "$controller_sha"
+          git merge-base --is-ancestor "$controller_sha" "$MAIN_SHA"
+          echo "deployment_id=$deployment_id" >>"$GITHUB_OUTPUT"
+          echo "ci_run_id=$ci_run_id" >>"$GITHUB_OUTPUT"
+          echo "node_record_run_id=$(jq -r .node_record_run_id evidence.json)" >>"$GITHUB_OUTPUT"
+
+      - name: Install dedicated SSH identity
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.TEST_DEPLOY_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.TEST_DEPLOY_KNOWN_HOSTS }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          root = Path.home() / ".ssh"
+          root.mkdir(mode=0o700, exist_ok=True)
+          key = root / "test-deploy"
+          key.write_text(os.environ["SSH_PRIVATE_KEY"].rstrip() + "\n", encoding="utf-8")
+          key.chmod(0o600)
+          known = root / "known_hosts"
+          known.write_text(os.environ["SSH_KNOWN_HOSTS"].rstrip() + "\n", encoding="utf-8")
+          known.chmod(0o600)
+          PY
+
+      - name: Verify exact node record and lightweight gates
+        env:
+          PR_HEAD: ${{ steps.source.outputs.pr_head }}
+          TREE_SHA: ${{ steps.source.outputs.tree_sha }}
+          NODE_RECORD_RUN_ID: ${{ steps.evidence.outputs.node_record_run_id }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/test-deploy -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "record --environment test --run-id $NODE_RECORD_RUN_ID" >record.json
+          PYTHONPATH=src python3 scripts/deployment_contract.py validate-record record.json
+          python3 - <<'PY'
+          import json
+          import os
+
+          record = json.load(open("record.json", encoding="utf-8"))
+          if record["environment"] != "test" or record["status"] != "success":
+              raise SystemExit("test node record is not successful")
+          if record["run_id"] != os.environ["NODE_RECORD_RUN_ID"]:
+              raise SystemExit("test node record run ID mismatch")
+          if record["source_sha"] != os.environ["PR_HEAD"]:
+              raise SystemExit("test node record source SHA mismatch")
+          if record["source_tree"] != os.environ["TREE_SHA"]:
+              raise SystemExit("test node record tree mismatch")
+          PY
+          python scripts/check_secrets.py
+          python scripts/check_repo_policy.py \
+            --head test --subject "$(git log -1 --format=%s "$MAIN_SHA")"
+
+      - name: Align test with an exact lease
+        env:
+          PR_HEAD: ${{ steps.source.outputs.pr_head }}
+        run: |
+          set -euo pipefail
+          remote_test=$(git ls-remote origin refs/heads/test | awk '{print $1}')
+          test "$remote_test" = "$PR_HEAD"
+          git push --force-with-lease="refs/heads/test:$PR_HEAD" \
+            origin "${MAIN_SHA}:refs/heads/test"
+          test "$(git ls-remote origin refs/heads/test | awk '{print $1}')" = "$MAIN_SHA"
+
+      - name: Write alignment summary
+        if: always()
+        env:
+          PR_NUMBER: ${{ steps.source.outputs.pr_number }}
+          PR_HEAD: ${{ steps.source.outputs.pr_head }}
+          TREE_SHA: ${{ steps.source.outputs.tree_sha }}
+          EVIDENCE_DEPLOYMENT: ${{ steps.evidence.outputs.deployment_id }}
+          EVIDENCE_CI_RUN: ${{ steps.evidence.outputs.ci_run_id }}
+          NODE_RECORD_RUN_ID: ${{ steps.evidence.outputs.node_record_run_id }}
+        run: |
+          {
+            echo "## Post-merge test alignment"
+            echo "- PR: #$PR_NUMBER"
+            echo "- PR head before alignment: \`$PR_HEAD\`"
+            echo "- Main/test after alignment: \`$MAIN_SHA\`"
+            echo "- Tree: \`$TREE_SHA\`"
+            echo "- Evidence CI run: \`$EVIDENCE_CI_RUN\`"
+            echo "- Evidence deployment: \`$EVIDENCE_DEPLOYMENT\`"
+            echo "- Node record: \`$NODE_RECORD_RUN_ID\`"
+          } >>"$GITHUB_STEP_SUMMARY"

@@ -720,6 +720,26 @@ def test_privileged_workflow_uses_trusted_main_controller() -> None:
     assert "TEST_DEPLOY_SSH_KEY" in workflow
     assert 'git fetch --no-tags origin "$BEFORE_SHA"' in workflow
     assert "Attest control-plane-only target" in workflow
+    assert "scripts/release_evidence.py create-deployment" in workflow
+    assert "CI_CHECK_SUITE_ID" in workflow
+    assert 'record["source_tree"]' in workflow
+
+
+def test_post_merge_alignment_is_evidence_bound_and_lease_safe() -> None:
+    workflow = Path(".github/workflows/align-test-after-main.yml").read_text(
+        encoding="utf-8",
+    )
+
+    assert "contents: write" in workflow
+    assert 'merge_commit_sha == $main' in workflow
+    assert "qsys-test-release-evidence" in workflow
+    assert "scripts/release_evidence.py validate" in workflow
+    assert "ci_check_suite_id" in workflow
+    assert "event=pull_request" in workflow
+    assert "record --environment test" in workflow
+    assert "scripts/check_secrets.py" in workflow
+    assert "scripts/check_repo_policy.py" in workflow
+    assert '--force-with-lease="refs/heads/test:$PR_HEAD"' in workflow
 
 
 def test_production_workflow_is_manual_and_fail_closed() -> None:
