@@ -455,11 +455,16 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
 
     state = entrypoint.status({"production_repo": str(tmp_path)})
 
-    assert state["entrypoint_version"] == 2
-    assert set(state["capabilities"]) == {"systemd-apply-v1", "systemd-rollback-v1"}
+    assert state["entrypoint_version"] == 3
+    assert set(state["capabilities"]) == {
+        "systemd-apply-v1", "systemd-changed-artifacts-v1",
+        "systemd-preview-v1", "systemd-rollback-v1",
+    }
 
 
-def test_systemd_artifact_mapping_is_explicit_and_excludes_test_unit(monkeypatch, tmp_path) -> None:
+def test_systemd_artifact_mapping_is_explicit_and_excludes_site_templates(
+    monkeypatch, tmp_path,
+) -> None:
     entrypoint = _production_entrypoint_module()
     unit_root = tmp_path / "etc" / "systemd" / "system"
     qsys_etc = tmp_path / "etc" / "qsys"
@@ -473,7 +478,80 @@ def test_systemd_artifact_mapping_is_explicit_and_excludes_test_unit(monkeypatch
         qsys_etc / "market-data.env",
     )
     assert entrypoint._systemd_targets("deploy/systemd/qsys-web-test.service") == ()
+    assert entrypoint._systemd_targets("deploy/systemd/qsys-shadow-core.service") == ()
+    assert entrypoint._systemd_targets("deploy/systemd/qsys-live-core.service") == ()
     assert len(entrypoint._systemd_targets("deploy/systemd/qsys-market-data.conf")) == 4
+
+
+def test_systemd_artifacts_only_include_changed_deployable_files(
+    monkeypatch, tmp_path,
+) -> None:
+    entrypoint = _production_entrypoint_module()
+    repo = tmp_path / "repo"
+    source_root = repo / "deploy" / "systemd"
+    source_root.mkdir(parents=True)
+    changed = source_root / "qsys-example.timer"
+    changed.write_text("[Timer]\nOnCalendar=09:24\n", encoding="utf-8")
+    unrelated = source_root / "qsys-unrelated.service"
+    unrelated.write_text("[Service]\nExecStart=/bin/false\n", encoding="utf-8")
+    target_root = tmp_path / "etc" / "systemd" / "system"
+    monkeypatch.setattr(entrypoint, "SYSTEMD_UNIT_ROOT", target_root)
+    monkeypatch.setattr(entrypoint, "QSYS_ETC_ROOT", tmp_path / "etc" / "qsys")
+
+    artifacts = entrypoint._systemd_artifacts(
+        repo, ["deploy/systemd/qsys-example.timer"],
+    )
+
+    assert artifacts == {target_root / changed.name: changed}
+    assert target_root / unrelated.name not in artifacts
+
+
+def test_systemd_artifacts_fail_closed_for_only_excluded_template(
+    monkeypatch, tmp_path,
+) -> None:
+    entrypoint = _production_entrypoint_module()
+    source_root = tmp_path / "repo" / "deploy" / "systemd"
+    source_root.mkdir(parents=True)
+    (source_root / "qsys-shadow-core.service").write_text(
+        "[Service]\nExecStart=/bin/true\n", encoding="utf-8",
+    )
+    monkeypatch.setattr(entrypoint, "SYSTEMD_UNIT_ROOT", tmp_path / "etc")
+
+    with pytest.raises(ValueError, match="no deployable production artifact changed"):
+        entrypoint._systemd_artifacts(
+            tmp_path / "repo", ["deploy/systemd/qsys-shadow-core.service"],
+        )
+
+
+def test_systemd_preview_reports_dynamic_restart_and_inactive_units(
+    monkeypatch, tmp_path,
+) -> None:
+    entrypoint = _production_entrypoint_module()
+    source = tmp_path / "source.timer"
+    source.write_text("[Timer]\nOnCalendar=09:24\n", encoding="utf-8")
+    active_target = tmp_path / "qsys-active.timer"
+    inactive_target = tmp_path / "qsys-inactive.timer"
+    active_target.write_text("[Timer]\nOnCalendar=08:58\n", encoding="utf-8")
+    inactive_target.write_text("[Timer]\nOnCalendar=08:58\n", encoding="utf-8")
+    artifacts = {active_target: source, inactive_target: source}
+    monkeypatch.setattr(entrypoint, "SYSTEMD_UNIT_ROOT", tmp_path)
+    monkeypatch.setattr(entrypoint, "_systemd_artifacts", lambda repo, paths: artifacts)
+    monkeypatch.setattr(entrypoint, "_active", lambda unit, repo: unit == active_target.name)
+
+    def fake_run(command, *, cwd, check=True):
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(entrypoint, "_run", fake_run)
+
+    preview = entrypoint._preview_systemd(
+        tmp_path, "a" * 40, ["deploy/systemd/qsys-active.timer"],
+    )
+
+    assert preview == {
+        "targets": sorted((str(active_target), str(inactive_target))),
+        "restart_units": [active_target.name],
+        "inactive_units": [inactive_target.name],
+    }
 
 
 def test_systemd_verify_rejects_repository_unit_not_installed_to_etc(tmp_path) -> None:

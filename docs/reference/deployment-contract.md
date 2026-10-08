@@ -60,17 +60,23 @@ GitHub 使用另一把测试专用 key；其 `authorized_keys` 条目强制进�
 副作用。
 
 固定生产入口通过 `status` 声明版本和 capability。Linux/Windows workflow 在计算计划前
-要求 `systemd-apply-v1` 与 `systemd-rollback-v1`；旧入口必须先由维护者运行
+要求 v3 及 `systemd-apply-v1`、`systemd-changed-artifacts-v1`、`systemd-preview-v1` 与
+`systemd-rollback-v1`；旧入口必须先由维护者运行
 `scripts/install_production_deployment_entrypoint.sh` 显式升级，不能继续执行并产生假成功。
 安装脚本会先把旧入口、dispatcher 和配置备份到
 `/data/qsys/var-deployments/bootstrap-backups/`。
 
-`linux-systemd` 不是路径标签，而是有实际 apply/verify/rollback 的部署组件：目标 SHA 的
-生产 unit、timer、行情门面环境文件与 drop-in 会先备份 `/etc` 实况，再按白名单安装；随后
+`linux-systemd` 不是路径标签，而是有实际 apply/verify/rollback 的部署组件：目标 SHA 中
+本次实际变化的生产 unit、timer、行情门面环境文件与 drop-in 会先备份 `/etc` 实况，再按
+白名单安装；不会借一次无关 timer 发布顺带覆盖其他现场差异。随后
 执行 `daemon-reload`，只重启安装前 active 且确受影响的 timer/非 oneshot service。安装后
 逐文件 SHA256 等价检查、`systemd-analyze verify`、LoadState 与原 active 状态缺一不可。
 失败时恢复原文件、重新 reload 并恢复原 active 状态；备份路径写入 deployment record 的
-rollback target。`qsys-web-test.service` 明确不属于生产安装集合。
+rollback target。`qsys-web-test.service` 属于测试环境；`qsys-shadow-core.service` 与
+`qsys-live-core.service` 是需按站点用户和路径修改的模板，三者均不属于生产安装集合。若
+一次生产变更只涉及这些排除项，入口会失败关闭，不能把未部署内容记录为成功。
+dry-run 会列出这次实际安装的 `/etc` 目标，以及因内容变化将在正式发布中重启或保持
+inactive 的 unit，不能仅依赖 manifest 的常规服务列表推断 systemd 副作用。
 
 Windows 发布同样不信任节点上已安装的旧协调器：固定生产入口从已经通过上述门禁的目标
 SHA 提取 Linux 协调器，协调器再从同一 SHA 提取 Windows 控制器并上传执行。健康探针以
