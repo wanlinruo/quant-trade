@@ -203,6 +203,9 @@ class Step:
     rows: int | None = None
     detail: str = ""
     error: str = ""
+    # 长步骤的结构化进度。保持为可扩展字典，运行详情在任务结束前就能读取；
+    # detail 仍保存给人看的摘要，日报和旧页面无需理解每个任务的专有字段。
+    progress: dict[str, object] = field(default_factory=dict)
     # Some checks belong to another health domain. Keep their own status for
     # drill-down dashboards without contaminating this run's aggregate status.
     affects_run: bool = True
@@ -222,6 +225,7 @@ class Step:
             "name": self.name, "interface": self.interface, "table": self.table,
             "started_at": _stamp(self.started_at), "finished_at": _stamp(self.finished_at),
             "status": self.status, "rows": self.rows, "detail": self.detail, "error": self.error,
+            "progress": self.progress,
             "affects_run": self.affects_run,
         }
 
@@ -284,6 +288,29 @@ class ServiceRun:
         self.steps.append(done)
         self._save()
         return done
+
+    def update_step(
+        self,
+        step: Step,
+        *,
+        rows: int | None = None,
+        detail: str | None = None,
+        progress: dict[str, object] | None = None,
+    ) -> None:
+        """原子持久化一个仍在运行的步骤。
+
+        调用方先取得 ``with run.step(...) as step``，长循环中再用本方法更新。
+        不允许写入不属于本次运行的 Step，避免误把并行任务状态串到别的记录。
+        """
+        if not any(item is step for item in self.steps):
+            raise ValueError("step does not belong to this service run")
+        if rows is not None:
+            step.rows = rows
+        if detail is not None:
+            step.detail = detail
+        if progress is not None:
+            step.progress = dict(progress)
+        self._save()
 
     def skip(self, note: str) -> None:
         """整次执行无事可做（例如非交易日）。"""

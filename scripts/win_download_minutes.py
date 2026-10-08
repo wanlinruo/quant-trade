@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import os
 import sys
 import time
@@ -38,6 +39,24 @@ from collections import defaultdict
 from datetime import datetime
 
 COLUMNS = ["symbol", "dt", "open", "high", "low", "close", "volume", "amount"]
+PROGRESS_PREFIX = "QSYS_PROGRESS "
+RESULT_SCHEMA_VERSION = 1
+
+
+def atomic_write_json(path: str, payload: dict) -> None:
+    """结果与进度必须原子替换，Linux 永远不能读到半个 JSON。"""
+    temporary = f"{path}.{os.getpid()}.tmp"
+    with open(temporary, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=False, indent=2)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temporary, path)
+
+
+def publish_progress(path: str, payload: dict) -> None:
+    atomic_write_json(path, payload)
+    print(PROGRESS_PREFIX + json.dumps(payload, ensure_ascii=False), flush=True)
 
 
 def _arrow_schema():
@@ -176,6 +195,8 @@ def main() -> int:
     parser.add_argument("--out", required=True)
     parser.add_argument("--window-start", required=True, help="YYYYMMDD")
     parser.add_argument("--window-end", required=True, help="YYYYMMDD")
+    parser.add_argument("--run-id", default="manual",
+                        help="Linux ServiceRun id；用于拒绝旧 result.json")
     parser.add_argument("--limit", type=int, default=0, help="只做前 N 只，用于试跑")
     parser.add_argument("--flush-rows", type=int, default=200_000,
                         help="攒够多少行写一个 parquet")
@@ -184,6 +205,8 @@ def main() -> int:
     parser.add_argument("--whole-window", action="store_true",
                         help="每只标的一次下载本次起止窗口。适合稠密的全市场短窗口；"
                              "长窗口会显著占用 QMT 本地缓存")
+    parser.add_argument("--progress-every", type=int, default=25,
+                        help="每处理多少只输出一次结构化进度")
     args = parser.parse_args()
 
     from xtquant import xtdata
@@ -191,6 +214,11 @@ def main() -> int:
     os.makedirs(args.out, exist_ok=True)
     done_path = os.path.join(args.out, "done.csv")
     failed_path = os.path.join(args.out, "failed.csv")
+    progress_path = os.path.join(args.out, "progress.json")
+    result_path = os.path.join(args.out, "result.json")
+    # 旧 result 不能在本次异常退出时冒充新结果；进度文件随后会原子覆盖。
+    if os.path.exists(result_path):
+        os.remove(result_path)
 
     wanted = read_manifest(args.manifest)
     done = read_done(done_path)
@@ -201,9 +229,50 @@ def main() -> int:
 
     wanted_days = sum(len(stamps) for stamps in wanted.values())
     pending_days = sum(len(pending[symbol]) for symbol in todo)
-    print(f"清单 {len(wanted)} 只、{wanted_days} 股日 / 已完成 {len(done)} 股日 / "
+    completed_before = sum(
+        (symbol, stamp) in done
+        for symbol, stamps in wanted.items() for stamp in stamps
+    )
+    print(f"清单 {len(wanted)} 只、{wanted_days} 股日 / 已完成 {completed_before} 股日 / "
           f"本次 {len(todo)} 只、{pending_days} 股日")
+    started = time.time()
+    attempted_days = downloaded_days = persisted_days = 0
+    empty_keys: list[dict[str, str]] = []
+    failures: list[dict[str, str]] = []
+    parquet_files = 0
+    processed_symbols = 0
+
+    def progress(status: str = "running") -> dict:
+        elapsed = max(time.time() - started, 0.001)
+        rate = processed_symbols / elapsed
+        remaining = ((len(todo) - processed_symbols) / rate) if rate else None
+        return {
+            "schema_version": RESULT_SCHEMA_VERSION,
+            "run_id": args.run_id,
+            "status": status,
+            "total_symbols": len(todo),
+            "completed_symbols": processed_symbols,
+            "total_stock_days": wanted_days,
+            "completed_stock_days": completed_before + attempted_days,
+            "downloaded_stock_days": downloaded_days,
+            "persisted_stock_days": completed_before + persisted_days,
+            "empty_stock_days": len(empty_keys),
+            "failed_symbols": len(failures),
+            "parquet_files": parquet_files,
+            "last_progress_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "estimated_remaining_seconds": round(remaining) if remaining is not None else None,
+        }
+
+    publish_progress(progress_path, progress())
     if not todo:
+        result = {
+            **progress("succeeded"),
+            "downloaded": 0,
+            "empty": [],
+            "failed": [],
+        }
+        atomic_write_json(result_path, result)
+        publish_progress(progress_path, result)
         print("没有要做的")
         return 0
 
@@ -212,7 +281,6 @@ def main() -> int:
     file_index = len(
         [f for f in os.listdir(args.out) if f.endswith(".parquet")]
     )
-    started = time.time()
     ok = failed = empty = 0
 
     for position, symbol in enumerate(todo, 1):
@@ -238,19 +306,31 @@ def main() -> int:
             rows = to_rows(symbol, data, stamps) if isinstance(data, dict) else []
         except Exception as exc:  # 单只失败不中断整轮
             failed += 1
+            attempted_days += len(stamps)
+            failures.append({
+                "symbol": symbol,
+                "error": f"{type(exc).__name__}: {exc}"[:500],
+            })
             with open(failed_path, "a", encoding="utf-8") as handle:
                 handle.write(f"{symbol},{type(exc).__name__},{exc}\n")
             print(f"  [失败] {symbol}: {type(exc).__name__}: {exc}", flush=True)
+            processed_symbols = position
+            publish_progress(progress_path, progress())
             continue
 
         completed = sorted({row[1].strftime("%Y%m%d") for row in rows})
         missing_stamps = sorted(set(stamps) - set(completed))
+        attempted_days += len(stamps)
+        downloaded_days += len(completed)
         if rows:
             buffer.extend(rows)
             buffer_done.extend((symbol, stamp) for stamp in completed)
             ok += 1
         if missing_stamps:
             empty += len(missing_stamps)
+            empty_keys.extend(
+                {"symbol": symbol, "dt": stamp} for stamp in missing_stamps
+            )
             print(f"  [空] {symbol}: {','.join(missing_stamps)}", flush=True)
 
         if len(buffer) >= args.flush_rows:
@@ -259,10 +339,13 @@ def main() -> int:
             )
             print(f"  写出 {os.path.basename(path)}  {len(buffer):,} 行", flush=True)
             file_index += 1
+            parquet_files += 1
+            persisted_days += len(buffer_done)
             buffer = []
             buffer_done = []
 
-        if position % 100 == 0:
+        processed_symbols = position
+        if position % max(args.progress_every, 1) == 0 or missing_stamps:
             elapsed = time.time() - started
             rate = position / elapsed
             left = (len(todo) - position) / rate if rate else 0
@@ -272,17 +355,33 @@ def main() -> int:
                 f"{rate:.1f} 只/秒  剩余约 {left/60:.0f} 分钟",
                 flush=True,
             )
+            publish_progress(progress_path, progress())
 
         if args.sleep:
             time.sleep(args.sleep)
 
     if buffer:
+        persisted_now = len(buffer_done)
         path = flush_checkpoint(buffer, buffer_done, args.out, file_index, done_path)
         print(f"  写出 {os.path.basename(path)}  {len(buffer):,} 行")
+        parquet_files += 1
+        persisted_days += persisted_now
 
+    final_status = "failed" if failures else (
+        "completed_with_empty" if empty_keys else "succeeded"
+    )
+    result = {
+        **progress(final_status),
+        "downloaded": downloaded_days,
+        "empty": empty_keys,
+        "failed": failures,
+    }
+    atomic_write_json(result_path, result)
+    publish_progress(progress_path, result)
     print(f"完成：有数据 {ok} 只 / 空 {empty} 股日 / 失败 {failed} 只")
     print(f"耗时 {(time.time()-started)/60:.1f} 分钟")
-    return 1 if failed or empty else 0
+    # 空结果交给 Linux 用权威停牌真值分类；只有单股异常才是下载器失败。
+    return 2 if failed else 0
 
 
 if __name__ == "__main__":

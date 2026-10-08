@@ -129,6 +129,35 @@ def test_add_step_records_a_finished_step(tmp_path):
     assert data["steps"][0]["rows"] == 10
 
 
+def test_running_step_progress_is_persisted_before_the_step_finishes(tmp_path):
+    run = ServiceRun(tmp_path, "daily-archive")
+    with run.step("分钟线（全市场）") as step:
+        run.update_step(
+            step,
+            rows=1200,
+            detail="已完成 25/100 组，最近推进 16:01:02，预计剩余 3 分钟",
+            progress={
+                "total_stock_days": 100,
+                "completed_stock_days": 25,
+                "last_progress_at": "2026-10-08T16:01:02",
+                "estimated_remaining_seconds": 180,
+            },
+        )
+        data = _only_run(tmp_path)
+        saved = data["steps"][0]
+        assert saved["status"] == "running" and saved["finished_at"] is None
+        assert saved["rows"] == 1200
+        assert saved["progress"]["completed_stock_days"] == 25
+    assert _only_run(tmp_path)["steps"][0]["status"] == "succeeded"
+
+
+def test_cannot_update_a_step_from_another_run(tmp_path):
+    run = ServiceRun(tmp_path, "daily-archive")
+    foreign = services.Step("别的任务")
+    with pytest.raises(ValueError, match="does not belong"):
+        run.update_step(foreign, progress={"completed": 1})
+
+
 def test_long_running_record_is_interrupted():
     started = datetime(2026, 9, 17, 17, 0)
     run = {"service": "tushare-sync", "status": "running", "started_at": started.isoformat()}

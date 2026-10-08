@@ -310,9 +310,21 @@ ConnectionError（东财主动断连），与开发机的 ProxyError 是两种�
 `scripts/daily_archive.py` 在 Linux 上编排整条链路，通过 SSH 驱动 Windows：
 
 ```
-竞价 tick -> 算出缺哪些股-日 -> 驱动 Windows 下载
--> 回传 parquet -> 导入 -> 跨源校验
+竞价 tick -> 算出缺哪些股-日 -> 上传当前版本下载器 -> Windows 续传
+-> 流式进度/结果分类 -> 回传已落盘产物 -> 幂等导入 -> 跨源校验
 ```
+
+分钟下载开始前，ServiceRun 就会创建“分钟线（全市场）”运行中步骤。Windows
+每 25 只输出并原子写入一份结构化进度，Linux 同步记录 completed/total、空结果、
+单股异常、Parquet 数、最近推进时间和预计剩余量；运行详情页每 10 秒刷新。连续
+15 分钟没有结构化进展判为 stalled，总下载超过 100 分钟判为 timeout，两者都与
+单股异常分开记录。
+
+空数据本身不再作为 Windows 进程失败。Linux 回收全部已原子落盘的 Parquet 后，
+用 `suspend_daily` 的共同契约分类：仅 `S` 且 `suspend_timing` 为空、同日没有 `R`
+的记录可解释为全天停牌；其余都是 unknown empty，必须阻止 canonical 发布。即使存在
+未知空洞、单股异常或 SSH 中断，已回收文件仍先幂等导入，重跑依靠 Windows `done.csv`
+只处理 pending 股日。`result.json` 绑定本次 ServiceRun id，旧摘要不能冒充新结果。
 
 股本链路已于 D-16 结案：QMT 股本下载正式退出每日归档，旧 `share_capital`
 表冻结保留为历史证据；规范 `share_capital_history` 由 Tushare 同步从
@@ -368,7 +380,8 @@ sudo journalctl -u qsys-daily-archive.service -n 50 --no-pager
 | 跨源校验 | 2 天，**0 问题** |
 | 总耗时 | 5.7 分钟（CPU 4 分钟） |
 
-退出码非 0 表示跨源校验发现问题，systemd 会记为失败。
+退出码非 0 表示下载/传输/导入、未知空结果、停牌刷新、竞价链路或跨源校验仍有
+问题，systemd 会记为失败；运行详情会给出具体类别而不是共用一个模糊退出码。
 
 
 ## 每日归档的实测节奏
