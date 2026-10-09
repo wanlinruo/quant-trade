@@ -16,15 +16,18 @@ import secrets
 
 from qsys.agent.adapter import BrokerAccount
 from qsys.agent.fill_tracker import BrokerOrder, BrokerTrade
+from qsys.live.commissioning import is_commissioning_order_id
 from qsys.live.messages import PositionSnapshot
 
 _SIDE_TO_XT = {"buy": 23, "sell": 24}  # xtquant 委托方向常量，接入时以官方文档为准
-_QSYS_ORDER_ID = re.compile(r"^q\d{9}[0-9a-f]{12}$")
+_STRATEGY_ORDER_ID = re.compile(r"q\d{9}[0-9a-f]{12}")
 
 
 def _ours(client_order_id: str) -> bool:
-    """只接管本版本生成的委托，隔离旧 bridge 与人工委托。"""
-    return bool(_QSYS_ORDER_ID.fullmatch(client_order_id))
+    """只接管策略或验证单委托，隔离旧 bridge 与人工委托。"""
+    return bool(_STRATEGY_ORDER_ID.fullmatch(client_order_id)) or is_commissioning_order_id(
+        client_order_id
+    )
 
 
 def _optional_float(value: object) -> float | None:

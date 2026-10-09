@@ -152,6 +152,7 @@ class Heartbeat(Message):
     orders_enabled: bool | None = None
     account_protected: bool | None = None
     local_kill_engaged: bool | None = None
+    commissioning_lease_active: bool | None = None
 
 
 class QuoteRequest(Message):

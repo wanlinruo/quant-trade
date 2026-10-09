@@ -2,6 +2,7 @@ from datetime import datetime
 
 from qsys.agent.adapter import FakeAdapter
 from qsys.agent.execution_agent import ExecutionAgent
+from qsys.live.commissioning import COMMISSIONING_KEY, CommissioningLease
 from qsys.live.config import StreamConfig
 from qsys.live.messages import (
     AccountSnapshot,
@@ -166,6 +167,84 @@ def test_fresh_but_timed_out_core_event_fails_closed_on_windows(tmp_path):
     adapter.cancelled = False
     assert agent.enforce_core_heartbeat() is False
     assert adapter.cancelled is False  # 同一超时事件不每轮重复撤单
+
+
+def test_bounded_commissioning_lease_allows_stopped_core_and_is_reported(tmp_path):
+    transport = MemoryTransport()
+    adapter = FakeAdapter(auto_fill=False)
+    safety = SafetyPolicy(
+        TradingMode.LIVE, account_id="A1", protected_account_ids=("A1",),
+        orders_enabled=True, local_kill_path=tmp_path / "K",
+    )
+    agent = ExecutionAgent(transport, adapter, STREAMS, safety=safety)
+    transport.set_key(
+        COMMISSIONING_KEY, CommissioningLease.arm().model_dump_json(),
+    )
+
+    assert agent.enforce_core_heartbeat(startup_grace_seconds=0) is True
+    assert adapter.cancelled is False
+    agent.beat()
+    beat = Heartbeat.model_validate_json(
+        transport.get_key(f"{STREAMS.heartbeat}:agent")
+    )
+    assert beat.commissioning_lease_active is True
+
+
+def test_commissioning_lease_blocks_strategy_but_accepts_the_fixed_order(tmp_path):
+    transport = MemoryTransport()
+    adapter = FakeAdapter(auto_fill=False)
+    safety = SafetyPolicy(
+        TradingMode.LIVE, account_id="A1", protected_account_ids=("A1",),
+        orders_enabled=True, local_kill_path=tmp_path / "K",
+    )
+    agent = ExecutionAgent(transport, adapter, STREAMS, safety=safety)
+    transport.set_key(COMMISSIONING_KEY, CommissioningLease.arm().model_dump_json())
+    transport.append(STREAMS.orders, cmd().to_payload())
+    commission = OrderCommand(
+        client_order_id="commission-20261012-100000-abcdef",
+        strategy_id="commissioning", symbol="511380.SH", side="buy", qty=100,
+        order_type="limit", limit_price=12.8, created_at=datetime.now(),
+    )
+    transport.append(STREAMS.orders, commission.to_payload())
+
+    agent.run_once()
+
+    assert adapter.placed == [("511380.SH", "buy", 100, "limit", 12.8)]
+    rejects = drain(transport, STREAMS.rejects, RejectEvent)
+    assert any("blocked during commissioning" in item.reason for item in rejects)
+
+
+def test_commissioning_rejects_forged_id_and_partial_buy_but_allows_reducing_sell(
+    tmp_path,
+):
+    transport = MemoryTransport()
+    adapter = FakeAdapter(auto_fill=False)
+    safety = SafetyPolicy(
+        TradingMode.LIVE, account_id="A1", protected_account_ids=("A1",),
+        orders_enabled=True, local_kill_path=tmp_path / "K",
+    )
+    agent = ExecutionAgent(transport, adapter, STREAMS, safety=safety)
+    transport.set_key(COMMISSIONING_KEY, CommissioningLease.arm().model_dump_json())
+    base = OrderCommand(
+        client_order_id="commission-20261012-100000-abcdef",
+        strategy_id="commissioning", symbol="511380.SH", side="buy", qty=100,
+        order_type="limit", limit_price=12.8, created_at=datetime.now(),
+    )
+    transport.append(
+        STREAMS.orders,
+        base.model_copy(update={"client_order_id": "commission-forged"}).to_payload(),
+    )
+    transport.append(STREAMS.orders, base.model_copy(update={"qty": 50}).to_payload())
+    transport.append(
+        STREAMS.orders,
+        base.model_copy(update={"side": "sell", "qty": 50}).to_payload(),
+    )
+
+    agent.run_once()
+
+    assert adapter.placed == [("511380.SH", "sell", 50, "limit", 12.8)]
+    rejects = drain(transport, STREAMS.rejects, RejectEvent)
+    assert len(rejects) == 2
 
 
 def test_malformed_command_is_rejected_not_fatal():
