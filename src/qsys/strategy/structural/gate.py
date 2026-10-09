@@ -65,20 +65,23 @@ def classify(
     tag: str,
     env: Mapping[str, Any],
     stock_factors: Mapping[str, Any],
+    *,
+    thresholds: Mapping[str, float] | None = None,
 ) -> Classification:
     """冻结的结构化分类。绝不改变候选列表本身，只给 Gate 用。"""
     if tag == "LOW_MAIN":
-        return _classify_low_main(env, stock_factors)
+        return _classify_low_main(env, stock_factors, thresholds or {})
     if tag == "HIGH_MAIN":
-        return _classify_high_main(env)
+        return _classify_high_main(env, thresholds or {})
     if tag == "HIGH_CHINEXT":
-        return _classify_high_chinext(env)
+        return _classify_high_chinext(env, thresholds or {})
     # LOW_CHINEXT 等样本不足的分支保持基线
     return Classification("UNCHANGED", True, "SAMPLE_INSUFFICIENT_KEEP_BASELINE")
 
 
 def _classify_low_main(
-    env: Mapping[str, Any], stock_factors: Mapping[str, Any]
+    env: Mapping[str, Any], stock_factors: Mapping[str, Any],
+    thresholds: Mapping[str, float],
 ) -> Classification:
     slope = _num(env.get("index_ma20_slope_5d"))
     heat = _num(env.get("prior_limitup_nextday_return_mean"))
@@ -89,7 +92,8 @@ def _classify_low_main(
         None
         if slope is None or heat is None
         else bool(
-            slope > S6_LOW_TREND_WEAK_THRESHOLD and heat > S6_LOW_HEAT_LOW_THRESHOLD
+            slope > thresholds.get("low_trend_weak", S6_LOW_TREND_WEAK_THRESHOLD)
+            and heat > thresholds.get("low_heat_low", S6_LOW_HEAT_LOW_THRESHOLD)
         )
     )
     stock_bad = (
@@ -111,20 +115,30 @@ def _classify_low_main(
     return Classification("UNKNOWN_ALLOW", False, "LOW_MAIN_DATA_UNKNOWN_ALLOW")
 
 
-def _classify_high_main(env: Mapping[str, Any]) -> Classification:
+def _classify_high_main(
+    env: Mapping[str, Any], thresholds: Mapping[str, float]
+) -> Classification:
     breadth = _num(env.get("market_median_return_1d"))
     if breadth is None:
         return Classification("UNKNOWN_ALLOW", False, "BREADTH_UNKNOWN_ALLOW")
-    if breadth > S6_HIGH_MAIN_BREADTH_HIGH:
+    if breadth > thresholds.get(
+        "high_main_breadth_high", S6_HIGH_MAIN_BREADTH_HIGH
+    ):
         return Classification("FAVORABLE", True, "BREADTH_STRONG")
     return Classification("OTHER", True, "BREADTH_OTHER")
 
 
-def _classify_high_chinext(env: Mapping[str, Any]) -> Classification:
+def _classify_high_chinext(
+    env: Mapping[str, Any], thresholds: Mapping[str, float]
+) -> Classification:
     touched = _num(env.get("touched_limit_up_count"))
     advance = _num(env.get("market_advance_ratio"))
     a = None if touched is None else bool(touched > S6_HC_TOUCHED_NOT_LOW)
-    b = None if advance is None else bool(advance > S6_HC_ADVANCE_NOT_LOW)
+    b = None if advance is None else bool(
+        advance > thresholds.get(
+            "high_chinext_advance_not_low", S6_HC_ADVANCE_NOT_LOW
+        )
+    )
     favorable = three_and(a, b)
 
     if favorable is True:

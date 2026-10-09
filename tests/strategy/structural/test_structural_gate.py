@@ -139,6 +139,16 @@ def test_high_main_other_on_weak_breadth():
     assert gate_allow("HIGH_MAIN", cls) is False
 
 
+def test_research_threshold_overrides_do_not_change_defaults():
+    env = {"market_median_return_1d": S6_HIGH_MAIN_BREADTH_HIGH + 0.001}
+    assert classify("HIGH_MAIN", env, {}).state == "FAVORABLE"
+    overridden = classify(
+        "HIGH_MAIN", env, {},
+        thresholds={"high_main_breadth_high": S6_HIGH_MAIN_BREADTH_HIGH + 0.002},
+    )
+    assert overridden.state == "OTHER"
+
+
 def test_high_main_unknown_allows():
     cls = classify("HIGH_MAIN", {"market_median_return_1d": None}, {})
     assert cls.state == "UNKNOWN_ALLOW"

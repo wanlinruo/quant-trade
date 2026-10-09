@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import time as _time
 from datetime import date, datetime, time
@@ -51,6 +52,24 @@ from qsys.strategy.structural.strategy import (
     CHECKPOINTS,
     StructuralStrategy,
 )
+
+RESEARCH_THRESHOLD_KEYS = {
+    "low_trend_weak", "low_heat_low", "high_main_breadth_high",
+    "high_chinext_advance_not_low",
+}
+
+
+def load_research_thresholds(path: Path | None) -> dict[str, float]:
+    if path is None:
+        return {}
+    value = json.loads(path.read_text(encoding="utf-8"))
+    raw = value.get("candidate_thresholds") if isinstance(value, dict) else None
+    if not isinstance(raw, dict) or set(raw) != RESEARCH_THRESHOLD_KEYS:
+        raise ValueError(
+            "research threshold file must contain exactly candidate_thresholds: "
+            f"{sorted(RESEARCH_THRESHOLD_KEYS)}"
+        )
+    return {key: float(raw[key]) for key in sorted(raw)}
 
 
 def _cost_model(jq_compat: bool):
@@ -107,6 +126,15 @@ def main() -> int:
         help="关闭 S7 生态闸门（只用于研究对照；S6 判定照常记录）",
     )
     parser.add_argument(
+        "--research-gate-thresholds", type=Path, default=None,
+        help="仅研究：读取 recalibration.json 的四个候选阈值，不写回生产参数",
+    )
+    parser.add_argument(
+        "--disable-gate-tag", action="append", default=[],
+        choices=("LOW_MAIN", "HIGH_MAIN", "HIGH_CHINEXT"),
+        help="仅研究消融：放行指定分支，仍保留原分类留痕；可重复",
+    )
+    parser.add_argument(
         "--jq-compat", action="store_true",
         help="成本口径切成聚宽默认值，用于逐笔对账（见下方 _cost_model）",
     )
@@ -133,6 +161,7 @@ def main() -> int:
     add_facade_argument(parser)
     args = parser.parse_args()
     apply_facade_argument(args.market_data_facade)
+    research_thresholds = load_research_thresholds(args.research_gate_thresholds)
 
     start, end = date.fromisoformat(args.start), date.fromisoformat(args.end)
     warehouse = Warehouse(Path(args.warehouse))
@@ -178,6 +207,8 @@ def main() -> int:
         feed, market, query,
         require_auction_volume=args.require_auction_volume,
         gate_enabled=args.gate,
+        gate_thresholds=research_thresholds,
+        disabled_gate_tags=args.disable_gate_tag,
     )
     strategy = StructuralStrategy(selection, calendar=calendar)
 
@@ -260,6 +291,10 @@ def main() -> int:
             "jq_compat": args.jq_compat,
             "require_auction_volume": args.require_auction_volume,
             "gate_enabled": args.gate,
+            "research_gate_thresholds": json.dumps(
+                research_thresholds, sort_keys=True
+            ) if research_thresholds else "",
+            "disabled_gate_tags": ",".join(sorted(args.disable_gate_tag)),
             "auction_at": auction_label,
             "checkpoints": ",".join(t.strftime("%H:%M") for t in CHECKPOINTS),
             "universe_size": len(universe),
