@@ -3,7 +3,14 @@ from __future__ import annotations
 import sys
 from types import ModuleType
 
-from qsys.agent.xtquant_adapter import XtQuantAdapter
+from qsys.agent.xtquant_adapter import XtQuantAdapter, _ours
+
+
+def test_adapter_collects_strategy_and_commissioning_reports_only() -> None:
+    assert _ours("q2610120010123456789ab")
+    assert _ours("commission-20261012-100000-abcdef")
+    assert not _ours("manual-order")
+    assert not _ours("commission-20261012-100000-abcdef-extra")
 
 
 def test_xtquant_trader_session_is_compatible_with_positional_only_api(

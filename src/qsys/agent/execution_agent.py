@@ -19,6 +19,11 @@ from qsys.agent.fill_tracker import FillTracker
 from qsys.agent.report_ledger import MemoryReportLedger, ReportLedger
 from qsys.backtest.fees import AShareFeeModel, FeeModel
 from qsys.live.config import StreamConfig
+from qsys.live.commissioning import (
+    commissioning_qty_allowed,
+    is_commissioning_order_id,
+    read_commissioning_lease,
+)
 from qsys.live.idempotency import IdempotencyGuard
 from qsys.live.messages import (
     AccountSnapshot,
@@ -89,6 +94,11 @@ class ExecutionAgent:
         """LIVE 模式下核心失联即撤单并在 Windows 本地落闸。"""
         if self._safety is None or self._safety.mode is not TradingMode.LIVE:
             return True
+        # The first real round-trip is intentionally executed with the core
+        # stopped so it cannot reconcile against a position it did not create.
+        # Only a bounded, Redis-visible commissioning lease permits that gap.
+        if read_commissioning_lease(self._t) is not None:
+            return True
         raw = self._t.get_key(f"{self._s.heartbeat}:core")
         alive = False
         event_timed_out = False
@@ -138,6 +148,25 @@ class ExecutionAgent:
         return handled
 
     def _execute(self, command: OrderCommand) -> None:
+        lease = read_commissioning_lease(self._t)
+        if command.strategy_id == "commissioning":
+            if lease is None:
+                self._reject(command, "commissioning lease is absent or expired")
+                return
+            notional = command.qty * float(command.limit_price or 0.0)
+            if (
+                not is_commissioning_order_id(command.client_order_id)
+                or command.symbol != lease.symbol
+                or not commissioning_qty_allowed(command.side, command.qty)
+                or command.order_type != "limit"
+                or notional <= 0
+                or notional > lease.max_notional
+            ):
+                self._reject(command, "commissioning order exceeds the armed lease")
+                return
+        elif lease is not None:
+            self._reject(command, "regular strategy orders are blocked during commissioning")
+            return
         reducing = command.side == "sell"
         if self._t.get_key("control:kill") is not None and not reducing:
             self._reject(command, "safety: remote kill switch is engaged")
@@ -277,6 +306,9 @@ class ExecutionAgent:
                 local_kill_engaged=(
                     safety.local_kill_path.exists()
                     if safety is not None and safety.local_kill_path is not None else False
+                ),
+                commissioning_lease_active=(
+                    read_commissioning_lease(self._t) is not None
                 ),
             ).model_dump_json(),
         )
