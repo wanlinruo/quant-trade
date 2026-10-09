@@ -35,6 +35,9 @@ IDENTITY_COLUMNS = (
     "prediction_date", "target_session", "symbol", "board", "market_state", "split",
     "actual_touch", "actual_close", "opened_at_limit", "one_price_limit",
 )
+PREDICTION_COLUMNS = IDENTITY_COLUMNS + (
+    "model", "p_touch", "p_seal_given_touch", "p_close", "rank",
+)
 
 STOCK_FEATURES = (
     "ret_1d", "ret_3d", "ret_5d", "ret_10d", "ret_20d", "ret_60d",
@@ -552,7 +555,7 @@ def baseline_predictions(dataset: pl.DataFrame) -> pl.DataFrame:
             pl.lit(None, dtype=pl.Float64).alias("p_touch"),
             pl.lit(None, dtype=pl.Float64).alias("p_seal_given_touch"),
             pl.lit(None, dtype=pl.Float64).alias("p_close"),
-        ).drop("score")
+        ).drop("score").select(*PREDICTION_COLUMNS)
         frames.append(rank)
     return pl.concat(frames, how="vertical_relaxed")
 
