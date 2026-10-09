@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import argparse
 import base64
 import json
 import importlib.util
 import shutil
 import subprocess
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -455,10 +457,59 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
 
     state = entrypoint.status({"production_repo": str(tmp_path)})
 
-    assert state["entrypoint_version"] == 3
+    assert state["entrypoint_version"] == 4
     assert set(state["capabilities"]) == {
         "systemd-apply-v1", "systemd-changed-artifacts-v1",
         "systemd-preview-v1", "systemd-rollback-v1",
+        "release-checklist-v1", "controlled-failure-injection-v1",
+        "successful-release-index-v1",
+    }
+
+
+def test_failure_injection_requires_explicit_drill_identity() -> None:
+    entrypoint = _production_entrypoint_module()
+    valid = argparse.Namespace(
+        failure_point="linux-health", run_id="drill-156-linux",
+        drill_confirmation="DRILL_ROLLBACK",
+    )
+
+    entrypoint._validate_drill(valid, expected="linux-health")
+    valid.run_id = "release-156-linux"
+    with pytest.raises(ValueError, match="requires a drill run-id"):
+        entrypoint._validate_drill(valid, expected="linux-health")
+
+
+def test_success_history_indexes_latest_ten_and_last_thirty_days(tmp_path) -> None:
+    entrypoint = _production_entrypoint_module()
+    root = tmp_path / "github"
+    now = datetime.now(UTC)
+    for index in range(12):
+        folder = root / f"release-{index}"
+        folder.mkdir(parents=True)
+        completed = now - timedelta(days=index * 4)
+        (folder / "record.json").write_text(json.dumps({
+            "run_id": f"release-{index}", "status": "success",
+            "completed_at": completed.isoformat(), "source_sha": f"{index:040x}",
+            "after": {"linux": f"{index:040x}"},
+        }), encoding="utf-8")
+    failed = root / "failed"
+    failed.mkdir()
+    (failed / "record.json").write_text(json.dumps({
+        "run_id": "failed", "status": "failure", "completed_at": now.isoformat(),
+    }), encoding="utf-8")
+
+    history = entrypoint.deployment_history({"production_record_root": str(root)})
+
+    assert len(history["latest_successes"]) == 10
+    assert [item["run_id"] for item in history["latest_successes"][:2]] == [
+        "release-0", "release-1",
+    ]
+    assert all(
+        datetime.fromisoformat(item["completed_at"]) >= now - timedelta(days=30)
+        for item in history["successes_within_30_days"]
+    )
+    assert history["policy"] == {
+        "minimum_successes": 10, "minimum_days": 30, "records_pruned": False,
     }
 
 
@@ -771,6 +822,9 @@ def test_production_workflow_is_manual_and_fail_closed() -> None:
     assert "PRODUCTION_DEPLOY_SSH_KEY" in workflow
     assert "cancel-in-progress: false" in workflow
     assert "production entrypoint lacks required deployment capabilities" in workflow
+    assert "successful-release-index-v1" in workflow
+    assert "release=$RELEASE_ID node=linux" in workflow
+    assert "DRILL_ROLLBACK" in workflow
 
 
 def test_windows_workflow_uses_only_the_linux_production_credential() -> None:
@@ -789,6 +843,9 @@ def test_windows_workflow_uses_only_the_linux_production_credential() -> None:
     assert "set -euo pipefail" in workflow
     assert "jq -e '.ok == true' result.json" in workflow
     assert "production entrypoint lacks required deployment capabilities" in workflow
+    assert "successful-release-index-v1" in workflow
+    assert "release=$RELEASE_ID node=windows" in workflow
+    assert "DRILL_ROLLBACK" in workflow
 
 
 def test_production_entrypoint_installer_preserves_bootstrap_backup() -> None:

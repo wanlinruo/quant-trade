@@ -12,6 +12,9 @@
 - `components`：默认 `auto`；显式填写时必须与 manifest 计算出的 Linux 组件完全一致。
 - `dry_run`：默认开启，只验证门禁并输出计划。
 - `confirmation`：固定填写 `DEPLOY_PRODUCTION`。
+- `release_id`：Linux/Windows 共用的发布关联 ID；节点记录自动增加节点后缀。
+- 三个人工确认项：业务风险、迁移方案和外部验收负责人均已核对。
+- `failure_injection`：日常必须为 `none`；仅按演练清单使用。
 
 正式发布前必须先成功执行同一目标的 dry-run。GitHub workflow 和节点固定入口会分别
 校验目标来源；节点还会按 Git tree 查找测试环境的成功发布记录，避免 `test -> main`
@@ -36,6 +39,10 @@ inactive 的服务。发布后校验受影响服务和本机 `8420/healthz`。�
 每次正式发布写 GitHub Deployment、Actions Summary 和节点 `record.json`。dry-run
 只产生 Actions 日志与 Summary，不冒充一次生产 Deployment。
 
+完整机器/人工清单、故障注入和跨节点补偿顺序见
+[production-release-checklist.md](production-release-checklist.md)。跨节点发布必须 Linux
+先行、Windows 后行；不得自行交换顺序。
+
 ## 应急访问
 
 日常不再通过交互式 SSH 执行 `git reset`、依赖同步或服务重启。维护者的密码/密钥
@@ -47,4 +54,5 @@ systemctl status qsys-monitor.service --no-pager
 curl --fail http://127.0.0.1:8420/healthz
 ```
 
-若自动入口本身不可用，先保留现场和发布记录，再由维护者明确批准应急写操作。
+若自动入口本身不可用，先保留现场和发布记录，再由维护者明确批准应急写操作。该方式明确
+属于应急路径，恢复后必须补写审计证据，不能替代标准 workflow。

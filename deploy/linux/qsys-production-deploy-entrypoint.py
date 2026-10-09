@@ -14,7 +14,7 @@ import sys
 import tempfile
 import time
 import urllib.request
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -31,13 +31,17 @@ ALLOWED_WINDOWS_COMPONENTS = frozenset({
     "windows-agent", "windows-gateway", "windows-control",
 })
 WINDOWS_COORDINATOR_PATH = "deploy/linux/qsys-windows-deploy-coordinator.py"
-ENTRYPOINT_VERSION = 3
+ENTRYPOINT_VERSION = 4
 ENTRYPOINT_CAPABILITIES = (
     "systemd-apply-v1",
     "systemd-changed-artifacts-v1",
     "systemd-preview-v1",
     "systemd-rollback-v1",
+    "release-checklist-v1",
+    "controlled-failure-injection-v1",
+    "successful-release-index-v1",
 )
+FAILURE_POINTS = frozenset({"none", "linux-health", "windows-switch"})
 ALLOWED_UNITS = frozenset({
     "qsys-monitor.service", "qsys-paper.service", "qsys-shadow-core.service",
     "qsys-health-observer.service", "qsys-live-core.service",
@@ -130,6 +134,158 @@ def status(config: dict[str, object]) -> dict[str, object]:
         "entrypoint_version": ENTRYPOINT_VERSION,
         "capabilities": list(ENTRYPOINT_CAPABILITIES),
     }
+
+
+def _restart_window(repo: Path) -> dict[str, object]:
+    """Use the local canonical calendar; never infer a holiday from weekdays."""
+    code = """
+import json
+from datetime import datetime, time
+from zoneinfo import ZoneInfo
+from qsys.data.query import WarehouseQuery
+from qsys.data.storage import Warehouse
+
+now = datetime.now(ZoneInfo("Asia/Shanghai"))
+rows = WarehouseQuery(Warehouse("warehouse")).trading_calendar(
+    now.date(), now.date(), market="SSE", open_only=True,
+)
+trading = rows.height > 0
+blocked = trading and time(8, 45) <= now.time() < time(15, 40)
+print(json.dumps({
+    "checked_at": now.isoformat(), "trading_day": trading,
+    "restart_allowed": not blocked,
+}))
+"""
+    python = repo / ".venv" / "bin" / "python"
+    result = _run([str(python), "-c", code], cwd=repo)
+    value = json.loads(result.stdout)
+    if set(value) != {"checked_at", "trading_day", "restart_allowed"}:
+        raise ValueError("restart-window probe returned an invalid contract")
+    return value
+
+
+def _resources(config: dict[str, object]) -> dict[str, object]:
+    disk = shutil.disk_usage(Path(str(config["production_record_root"])).parent)
+    fields: dict[str, int] = {}
+    for line in Path("/proc/meminfo").read_text(encoding="utf-8").splitlines():
+        key, _, rest = line.partition(":")
+        parts = rest.split()
+        if parts and parts[0].isdigit():
+            fields[key] = int(parts[0]) * 1024
+    available = fields.get("MemAvailable", 0)
+    return {
+        "disk_free_bytes": disk.free,
+        "memory_available_bytes": available,
+        "ok": disk.free >= 5 * 1024 ** 3 and available >= 512 * 1024 ** 2,
+    }
+
+
+def _rollback_ready(config: dict[str, object], sha: str) -> bool:
+    root = Path(str(config["production_record_root"]))
+    for path in root.glob("*/record.json"):
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if record.get("status") == "success" and sha in record.get("after", {}).values():
+            return True
+    return False
+
+
+def _checklist_checks(
+    restart_window: dict[str, object], resources: dict[str, object],
+    rollback_ready: bool, test_run: str, *, needs_rollback: bool,
+) -> list[dict[str, str]]:
+    return [
+        {
+            "name": "test-tree-evidence", "status": "passed",
+            "detail": f"successful test deployment run={test_run}",
+        },
+        {
+            "name": "restart-window",
+            "status": "passed" if restart_window["restart_allowed"] else "failed",
+            "detail": (
+                f"checked_at={restart_window['checked_at']}; "
+                f"trading_day={str(restart_window['trading_day']).lower()}"
+            ),
+        },
+        {
+            "name": "resource-headroom",
+            "status": "passed" if resources["ok"] else "failed",
+            "detail": (
+                f"disk_free_bytes={resources['disk_free_bytes']}; "
+                f"memory_available_bytes={resources['memory_available_bytes']}"
+            ),
+        },
+        {
+            "name": "rollback-target",
+            "status": "passed" if rollback_ready or not needs_rollback else "failed",
+            "detail": "previous SHA is a recorded successful release" if needs_rollback else "no version switch",
+        },
+    ]
+
+
+def deployment_history(config: dict[str, object]) -> dict[str, object]:
+    """Build the non-secret successful-release index used by rollback audits."""
+    root = Path(str(config["production_record_root"]))
+    successes: list[dict[str, object]] = []
+    for path in root.glob("*/record.json"):
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+            completed = datetime.fromisoformat(str(record["completed_at"]))
+        except (KeyError, OSError, ValueError, json.JSONDecodeError):
+            continue
+        if record.get("status") != "success" or completed.tzinfo is None:
+            continue
+        successes.append({
+            "run_id": str(record.get("run_id", "")),
+            "completed_at": completed.isoformat(),
+            "source_sha": str(record.get("source_sha", "")),
+            "nodes": sorted(record.get("after", {})),
+            "record": str(path),
+            "_completed": completed.astimezone(UTC),
+        })
+    successes.sort(key=lambda item: item["_completed"], reverse=True)
+    cutoff = datetime.now(UTC) - timedelta(days=30)
+    recent_30_days = [item for item in successes if item["_completed"] >= cutoff]
+    for item in successes:
+        item.pop("_completed")
+    return {
+        "schema_version": 1,
+        "generated_at": datetime.now(UTC).isoformat(),
+        "policy": {"minimum_successes": 10, "minimum_days": 30, "records_pruned": False},
+        "latest_successes": successes[:10],
+        "successes_within_30_days": recent_30_days,
+    }
+
+
+def _refresh_success_index(config: dict[str, object]) -> Path:
+    target = Path(str(config["production_record_root"])).parent / "success-index.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix="success-index.", suffix=".json", dir=target.parent)
+    path = Path(temporary)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(deployment_history(config), stream, ensure_ascii=False, indent=2)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        path.replace(target)
+    finally:
+        path.unlink(missing_ok=True)
+    return target
+
+
+def _validate_drill(args: argparse.Namespace, *, expected: str) -> None:
+    failure = getattr(args, "failure_point", "none")
+    if failure not in FAILURE_POINTS:
+        raise ValueError("unsupported failure injection point")
+    if failure != "none" and (
+        failure != expected
+        or not args.run_id.startswith("drill-")
+        or getattr(args, "drill_confirmation", "") != "DRILL_ROLLBACK"
+    ):
+        raise ValueError("failure injection requires a drill run-id and DRILL_ROLLBACK")
 
 
 def _fetch_and_validate_target(repo: Path, sha: str) -> str:
@@ -475,6 +631,7 @@ def _write_record(config: dict[str, object], run_id: str, record: dict[str, Any]
         path.replace(root / "record.json")
     finally:
         path.unlink(missing_ok=True)
+    _refresh_success_index(config)
     return root / "record.json"
 
 
@@ -485,6 +642,7 @@ def deploy(args: argparse.Namespace, config: dict[str, object]) -> int:
         raise ValueError("actor contains unsupported characters")
     if not REPOSITORY_PATTERN.fullmatch(args.repository):
         raise ValueError("repository must be owner/name")
+    _validate_drill(args, expected="linux-health")
     repo = Path(str(config["production_repo"])).resolve(strict=True)
     if _branch(repo) != "main" or _dirty(repo):
         raise ValueError("production checkout must be a clean main worktree")
@@ -495,6 +653,9 @@ def deploy(args: argparse.Namespace, config: dict[str, object]) -> int:
     components = _validate_components(plan, args.components)
     units = sorted(set(plan["linux_units"]) & ALLOWED_UNITS)
     active_units = [unit for unit in units if _active(unit, repo)]
+    restart_window = _restart_window(repo)
+    resources = _resources(config)
+    rollback_ready = _rollback_ready(config, before)
     systemd_preview = (
         _preview_systemd(repo, args.sha, list(plan["changed_paths"]))
         if "linux-systemd" in components else None
@@ -505,14 +666,25 @@ def deploy(args: argparse.Namespace, config: dict[str, object]) -> int:
         "components": components, "restart_units": active_units,
         "inactive_units": sorted(set(units) - set(active_units)),
         "health_checks": plan["health_checks"], "rollback_sha": before,
+        "restart_window": restart_window, "resources": resources,
+        "rollback_ready": rollback_ready,
         **({"systemd": systemd_preview} if systemd_preview is not None else {}),
     }
     if args.dry_run:
         print(json.dumps(preview, ensure_ascii=False))
         return 0
+    if active_units and not restart_window["restart_allowed"]:
+        raise ValueError("production restart is prohibited during the trading window")
+    if not resources["ok"]:
+        raise ValueError("production node lacks minimum disk or memory headroom")
+    if before != args.sha and not rollback_ready:
+        raise ValueError("current production SHA is not a recorded successful rollback target")
 
     started = datetime.now(UTC).isoformat()
-    checks: list[dict[str, str]] = []
+    checks = _checklist_checks(
+        restart_window, resources, rollback_ready, test_run,
+        needs_rollback=before != args.sha,
+    )
     success = False
     rollback_ok = False
     fingerprints: dict[str, str] = {}
@@ -536,6 +708,8 @@ def deploy(args: argparse.Namespace, config: dict[str, object]) -> int:
             checks.append(systemd_check)
         for unit in active_units:
             _run(["sudo", "-n", "systemctl", "restart", unit], cwd=repo)
+        if args.failure_point == "linux-health":
+            raise RuntimeError("injected Linux health failure after switch")
         healthy = _wait_healthy(config, active_units, repo)
         success = (
             _head(repo) == args.sha and healthy
@@ -601,10 +775,14 @@ def windows_deploy(args: argparse.Namespace, config: dict[str, object]) -> int:
         raise ValueError("actor contains unsupported characters")
     if not REPOSITORY_PATTERN.fullmatch(args.repository):
         raise ValueError("repository must be owner/name")
+    _validate_drill(args, expected="windows-switch")
     repo = Path(str(config["production_repo"])).resolve(strict=True)
     if _branch(repo) != "main" or _dirty(repo):
         raise ValueError("production checkout must be a clean main worktree")
     before_linux = _head(repo)
+    restart_window = _restart_window(repo)
+    resources = _resources(config)
+    rollback_ready = _rollback_ready(config, before_linux)
     tree = _fetch_and_validate_target(repo, args.sha)
     test_run = _successful_test_run(config, tree)
     plan = _plan(repo, before_linux, args.sha)
@@ -612,6 +790,13 @@ def windows_deploy(args: argparse.Namespace, config: dict[str, object]) -> int:
     apps = sorted(set(plan["windows_apps"]) & {"live_app", "paper_app"})
     if not apps:
         raise ValueError("production plan contains no Windows application")
+    if not args.dry_run:
+        if not restart_window["restart_allowed"]:
+            raise ValueError("production restart is prohibited during the trading window")
+        if not resources["ok"]:
+            raise ValueError("production node lacks minimum disk or memory headroom")
+        if before_linux != args.sha and not rollback_ready:
+            raise ValueError("current production SHA is not a recorded successful rollback target")
     started = datetime.now(UTC).isoformat()
     # The fixed SSH entrypoint is only a bootstrap. Execute the Windows
     # coordinator from the exact validated target SHA so it can update itself
@@ -626,6 +811,8 @@ def windows_deploy(args: argparse.Namespace, config: dict[str, object]) -> int:
         ]
         if args.dry_run:
             command.append("--dry-run")
+        if args.failure_point == "windows-switch":
+            command.extend(["--failure-point", "after-first-switch"])
         completed = _run(command, cwd=repo, check=False)
     stream = completed.stdout if completed.stdout.strip() else completed.stderr
     try:
@@ -637,6 +824,10 @@ def windows_deploy(args: argparse.Namespace, config: dict[str, object]) -> int:
         "components": components,
     })
     if args.dry_run:
+        result.update({
+            "restart_window": restart_window, "resources": resources,
+            "rollback_ready": rollback_ready,
+        })
         print(json.dumps(result, ensure_ascii=False))
         return completed.returncode
 
@@ -649,7 +840,10 @@ def windows_deploy(args: argparse.Namespace, config: dict[str, object]) -> int:
     state = str(windows_record.get("status", "failure"))
     success = completed.returncode == 0 and state == "success"
     after: dict[str, str] = {}
-    checks: list[dict[str, str]] = []
+    checks = _checklist_checks(
+        restart_window, resources, rollback_ready, test_run,
+        needs_rollback=before_linux != args.sha,
+    )
     rollback_targets = dict(before)
     for app in apps:
         item = operation_apps.get(app, {})
@@ -709,6 +903,8 @@ def build_parser() -> argparse.ArgumentParser:
     deploy_parser.add_argument("--repository", required=True)
     deploy_parser.add_argument("--pr-number", type=int)
     deploy_parser.add_argument("--dry-run", action="store_true")
+    deploy_parser.add_argument("--failure-point", default="none")
+    deploy_parser.add_argument("--drill-confirmation", default="")
     windows_parser = commands.add_parser("windows-deploy")
     windows_parser.add_argument("--sha", required=True)
     windows_parser.add_argument("--component", action="append", dest="components", required=True)
@@ -717,8 +913,11 @@ def build_parser() -> argparse.ArgumentParser:
     windows_parser.add_argument("--repository", required=True)
     windows_parser.add_argument("--pr-number", type=int)
     windows_parser.add_argument("--dry-run", action="store_true")
+    windows_parser.add_argument("--failure-point", default="none")
+    windows_parser.add_argument("--drill-confirmation", default="")
     record_parser = commands.add_parser("record")
     record_parser.add_argument("--run-id", required=True)
+    commands.add_parser("history")
     return parser
 
 
@@ -731,6 +930,9 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "record":
             print(json.dumps(read_record(config, args.run_id), ensure_ascii=False))
+            return 0
+        if args.command == "history":
+            print(json.dumps(deployment_history(config), ensure_ascii=False))
             return 0
         if args.command == "windows-deploy":
             return windows_deploy(args, config)

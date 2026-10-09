@@ -305,6 +305,69 @@ def test_switch_failure_restarts_apps_that_were_stopped_but_not_switched(
     assert saved["watchdog_restored"] is True
 
 
+def test_controlled_failure_after_first_switch_restores_both_apps_and_watchdog(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    entrypoint = _entrypoint()
+    apps = {
+        "live_app": entrypoint.App(
+            "live_app", tmp_path / "live", "agent-task", "scripts/run_agent.py", "agent",
+        ),
+        "paper_app": entrypoint.App(
+            "paper_app", tmp_path / "paper", "gateway-task",
+            "scripts/run_market_gateway.py", "market",
+        ),
+    }
+    config = entrypoint.Config(
+        tmp_path / "python", tmp_path / "stage", tmp_path / "releases", "watchdog", apps,
+    )
+    items = {
+        name: {"state": "prepared", "before_sha": char * 40}
+        for name, char in (("live_app", "a"), ("paper_app", "b"))
+    }
+    path = config.staging_root / "drill-156-windows" / "operation.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({
+        "schema_version": 1, "run_id": "drill-156-windows",
+        "status": "prepared", "apps": items,
+    }), encoding="utf-8")
+    events: list[tuple] = []
+
+    class Host:
+        def task(self, *args, **kwargs):
+            events.append(("task", *args))
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        def task_status(self, name):
+            return {"state": "Ready", "last_run": "now", "last_result": 0}
+
+    monkeypatch.setattr(entrypoint, "_wait_stopped", lambda *args: None)
+    monkeypatch.setattr(
+        entrypoint, "_swap_in",
+        lambda config, run_id, app, item: item.update({"state": "switched"}),
+    )
+    monkeypatch.setattr(
+        entrypoint, "_restore",
+        lambda app, item: (
+            events.append(("restore", app.name)), item.update({"state": "rolled_back"}),
+        ),
+    )
+    monkeypatch.setattr(entrypoint, "_verify", lambda *args: None)
+
+    with pytest.raises(RuntimeError, match="injected Windows failure"):
+        entrypoint.deploy(
+            config, "drill-156-windows", ["live_app", "paper_app"], Host(),
+            failure_point="after-first-switch",
+        )
+
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    assert saved["status"] == "rolled_back"
+    assert saved["watchdog_restored"] is True
+    assert ("restore", "live_app") in events
+    assert ("task", "run", "agent-task") in events
+    assert ("task", "run", "gateway-task") in events
+
+
 class _HeartbeatMonitor:
     def __init__(self, value: datetime):
         self.value = value

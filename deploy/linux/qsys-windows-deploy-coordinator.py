@@ -89,7 +89,7 @@ def _json_result(result: subprocess.CompletedProcess[str]) -> dict[str, Any]:
 
 def coordinate(
     repo: Path, sha: str, run_id: str, apps: list[str], *, dry_run: bool,
-    transport: Transport,
+    transport: Transport, failure_point: str = "none",
 ) -> dict[str, Any]:
     if not SHA_PATTERN.fullmatch(sha) or not RUN_ID_PATTERN.fullmatch(run_id):
         raise ValueError("target SHA or run-id is invalid")
@@ -137,6 +137,7 @@ def coordinate(
         deployed_run = transport.command(
             "deploy", "--run-id", run_id,
             *(argument for app in apps for argument in ("--app", app)),
+            *([] if failure_point == "none" else ["--failure-point", failure_point]),
             check=False, entrypoint=remote_controller,
         )
         record_run = transport.command(
@@ -163,6 +164,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--app", action="append", dest="apps", required=True)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--failure-point", choices=("none", "after-first-switch"), default="none",
+    )
     return parser
 
 
@@ -173,6 +177,7 @@ def main(argv: list[str] | None = None) -> int:
         result = coordinate(
             args.repo.resolve(strict=True), args.sha, args.run_id, args.apps,
             dry_run=args.dry_run, transport=Transport(config),
+            failure_point=args.failure_point,
         )
         print(json.dumps(result, ensure_ascii=False))
         return 0 if result.get("ok") else 1
