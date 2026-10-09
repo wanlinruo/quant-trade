@@ -287,6 +287,16 @@ def test_event_longer_than_heartbeat_threshold_but_within_sla_stays_healthy(
         elapsed[0] = 20.0
 
     monkeypatch.setattr(runtime.strategy, "on_session_start", slow_but_legal)
+    # Warehouse/strategy construction can exceed the production five-second
+    # account freshness boundary on a small test node.  Refresh the fake input
+    # immediately before the event; never weaken the runtime threshold.
+    runtime.transport.set_key(
+        runtime.streams.account,
+        AccountSnapshot(
+            at=datetime.now(), cash=runtime.portfolio.cash,
+            total_asset=runtime.portfolio.cash, positions={},
+        ).model_dump_json(),
+    )
     runtime.tick(datetime.combine(date.today(), time(9, 15, 10)))
 
     assert runtime.kill_switch.is_engaged() is False
@@ -310,6 +320,13 @@ def test_event_exceeding_sla_engages_kill_and_is_not_committed(
         elapsed[0] = 31.0
 
     monkeypatch.setattr(runtime.strategy, "on_session_start", stuck)
+    runtime.transport.set_key(
+        runtime.streams.account,
+        AccountSnapshot(
+            at=datetime.now(), cash=runtime.portfolio.cash,
+            total_asset=runtime.portfolio.cash, positions={},
+        ).model_dump_json(),
+    )
     with pytest.raises(LivePreflightError, match="策略事件超过 30s SLA"):
         runtime.tick(datetime.combine(date.today(), time(9, 15, 10)))
 
