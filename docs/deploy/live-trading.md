@@ -72,7 +72,8 @@ Redis 读不到时按**停机**处理：宁可误停，不可停不下来。
    `trading_mode=live`、`orders_enabled=true`、当前资金账号已在白名单且本地停机闸
    未生效。任一字段缺失都失败关闭，避免双端配置不一致时出现假绿灯。
 
-5. **打开三道写保护后，先做一笔验证单**，不要等策略信号（见下节）。
+5. **打开三道写保护后，先做一笔验证单**，不要等策略信号（见下节）。验证单固定
+   `511380.SH × 100 份`，必须在 10 分钟 commissioning lease 内完成买入和平仓。
 6. 第一阶段启用资金 10,000 元，人工盯盘；稳定至少五个交易日后才评估扩容。
    不因短期收益跳过观察期。每日收盘核对券商资金、持仓、委托、成交和报告。
 
@@ -127,30 +128,85 @@ Redis 读不到时按**停机**处理：宁可误停，不可停不下来。
    `live_positions` 里有没有现金等价物；有就按部署步骤重建基准。
    当前生产影子盘的账本里没有（`live_equity` 市值恒为 0），所以这条是预防性的。
 
+### 验证标的：511380.SH × 100 份
+
+原计划的 `510300.SH` 是股票 ETF，按上交所规则实行 T+1，当日买入不能当日卖出，
+不适合验证“买入 → 持仓 → 卖出 → 空仓”的日内闭环。2026-10-09 改为
+`511380.SH`（博时可转债 ETF）：
+
+- 上交所产品资料确认其为债券型 ETF；债券 ETF 支持 T+0 当日回转；
+- 最小买入单位 100 份；2026-10-09 收盘约 12.8 元，单次名义金额约 1,280 元；
+- 验证工具固定代码、数量和 3,000 元上限，不接受其他标的或更大数量；
+- 只用实时 QMT 买一/卖一选择限价，价格档位 0.001 元，偏离保护带 0.5%；
+- 债券 ETF 不套用 A 股印花税/过户费模型。工具以成交前后券商现金快照变化反推本次
+  实收费用，并与券商客户端人工核对；首笔策略股票成交后再完成股票费率模型验收。
+
+参考：[上交所 511380 产品资料](https://www.sse.com.cn/disclosure/fund/announcement/c/new/2026-06-26/511380_20260626_CZVM.pdf)、
+[上交所 ETF T+0 说明](https://www.sse.com.cn/assortment/fund/etf/question/c/c_20240118_5734755.shtml)。
+
+### 为什么需要 10 分钟验证窗口
+
+实盘 agent 在 core 心跳消失后会独立撤单并落下 Windows 本地停机闸；但验证单又必须
+停 core，避免本地账本不知道人工持仓而触发对账停机。不能靠伪造 core 心跳绕过。
+
+`scripts/commissioning_lease.py` 提供一个最多 10 分钟、Redis 可审计的例外窗口：
+
+- 只允许交易日 `09:35–11:15` 或 `13:05–14:40` 武装；
+- 武装前强制检查账户空仓、市场/账户/agent 快照新鲜、core 已停、kill 未生效；
+- 窗口内 agent 拒绝所有普通策略订单；买入只接受 `511380.SH × 100` 限价单，
+  卖出只接受不超过 100 份且与账户实际可用残仓精确相等的平仓单；
+- 窗口过期而 core 仍无心跳时，agent 恢复原有失败关闭：撤单并落本地停机闸；
+- 买卖完成并确认空仓后，必须先启动 live core（或把双端退回 shadow），再解除窗口。
+
 ### 核心必须先停
 
 `LiveRuntime` 启动时拿本地推演的持仓与券商快照对账，一笔它不知道的手工持仓会直接
 判不一致并触发停机。所以顺序是：
 
 1. `systemctl stop qsys-live-core`（代理与行情网关保持运行）
-2. 打开三道写保护，`live_preflight --require-live` 全过
-3. 买入验证单 → 确认成交与费用
-4. 卖出平掉 → 确认账户回到空仓
-5. 与券商端逐项核对：委托号、`order_remark`、成交价、实收佣金
-6. `systemctl start qsys-live-core`
+2. 在 agent 仍为 shadow 时武装 10 分钟验证窗口，再把 Linux / Windows 三道写保护打开
+3. 确认 agent 心跳声明 `commissioning_lease_active=true`，且
+   `live_preflight --require-live` 全过
+4. 读取 `511380.SH` 实时 QMT 买一/卖一；以实时卖一作为买入限价执行 100 份
+5. 确认完整成交、券商持仓 100 份且 `available_qty=100`；若只部分成交，先确认撤单终态，
+   再按账户快照中的实际可用残仓数量走恢复卖出，禁止补买或重复买入
+6. 以实时买一作为卖出限价平掉实际可用持仓（正常路径为 100 份），确认账户回到空仓
+7. 与券商端逐项核对：券商委托号、`order_remark`、成交号、成交价、实收费用
+8. 启动 `qsys-live-core`，等 core 心跳和首次对账通过后解除验证窗口
 
 ```bash
-uv run python scripts/commissioning_order.py --symbol 510300.SH --side buy \
-    --qty 100 --limit 4.10 --confirm 510300.SH \
+uv run python scripts/commissioning_lease.py arm \
+    --config config/deploy.local.toml --confirm ARM_511380.SH
+uv run python scripts/commissioning_quote.py --config config/deploy.local.toml
+uv run python scripts/commissioning_order.py --symbol 511380.SH --side buy \
+    --qty 100 --limit <实时卖一> --confirm 511380.SH \
     --record /data/qsys/var-deployments/commissioning.jsonl
 ```
 
-脚本自带护栏，任一条不满足直接拒绝、不发单：三道写保护全开、账号白名单非空、
-数量 ≤ 200 股且金额 ≤ 3000 元、执行代理心跳新鲜、停机开关未生效、
-**实盘核心未在运行**、`--confirm` 要把标的代码再打一遍。只接受限价单。
+买入完整成交且账户快照明确显示 100 份可用后，重新读取行情，再执行卖出：
 
-成交后它会把实收费用与 `[fees]` 配置算出的值对比。对不上时先核实券商费率再改配置，
-**不要反过来改模型去迁就**。
+```bash
+uv run python scripts/commissioning_quote.py --config config/deploy.local.toml
+uv run python scripts/commissioning_order.py --symbol 511380.SH --side sell \
+    --qty 100 --limit <实时买一> --confirm 511380.SH \
+    --record /data/qsys/var-deployments/commissioning.jsonl
+```
+
+若买单只成交了 `N` 份，脚本会先全撤并返回失败。必须先在券商端确认原委托已终态、
+账户快照显示 `total_qty=available_qty=N`，然后把卖出命令的 `--qty` 改成 `N`；工具与
+agent 都会拒绝数量不等于实际残仓的卖单。不得为了凑整手再补买。
+
+脚本自带护栏，任一条不满足直接拒绝、不发单：三道写保护全开、验证 lease 有效、
+固定标的、买入固定 100 份（恢复卖出可为实际残仓）、金额 ≤ 3000 元、
+市场/账户/agent 快照新鲜、实时盘口有效、
+停机开关未生效、**实盘核心未在运行**、买前空仓、卖出数量与目标实际可用持仓精确一致。
+只接受限价单。30 秒未完整成交会自动发送 `cancel_all`，并把部分成交/撤单状态写入
+JSONL；没有确认完整成交时返回失败，禁止把部分成交当成功或直接重复下单。
+
+成交后必须等券商账户快照同步：正常买入后明确出现 100 份可用持仓，卖出后明确归零。
+工具用成交前后现金变化与成交额反推实收费用，并将模型费用单独命名，不能把两者混为
+一谈。首笔策略股票成交时再核实“不免五”、印花税与过户费，**不要反过来改模型去
+迁就未知口径**。
 
 标的选流动性好、成交确定性高的，不要选当日候选股——验证单是验管道，
 不该和策略持仓搅在一起。
