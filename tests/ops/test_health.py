@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 
 from qsys.ops.health import (
@@ -99,6 +100,28 @@ def test_store_writes_changes_and_five_minute_checkpoints_only(tmp_path):
     rows = store.history(start, start + timedelta(minutes=10))
     assert [row["checkpoint"] for row in rows] == [False, True, False]
     assert store.latest("market-gateway")[0]["state"] == DOWN
+
+
+def test_store_records_event_activity_changes_without_waiting_for_checkpoint(tmp_path):
+    store = HealthStore(tmp_path / "health.sqlite3")
+    start = datetime(2026, 9, 17, 2, tzinfo=timezone.utc)
+    idle = observation(start)
+    running = replace(
+        idle, observed_at_utc=start + timedelta(seconds=5),
+        details={
+            "heartbeat_activity": {
+                "activity": "event", "event_phase": "bar",
+                "event_started_at": "2026-09-17T10:00:00+08:00",
+                "event_timeout_s": 30, "event_timed_out": False,
+            }
+        },
+    )
+
+    assert store.record(idle) is True
+    assert store.record(running) is True
+    assert store.latest("market-gateway")[0]["details"]["heartbeat_activity"][
+        "event_phase"
+    ] == "bar"
 
 
 def test_timeline_marks_unobserved_gap_unknown_instead_of_filling_green(tmp_path):

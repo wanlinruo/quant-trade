@@ -238,6 +238,7 @@ class HealthStore:
         return tuple(row[name] for name in (
             "phase", "expected_interval_s", "warn_after_s", "down_after_s", "state",
             "process_state", "business_state", "reason_code", "source",
+            "details",
         ))
 
     def record(self, observation: HealthObservation) -> bool:
@@ -278,7 +279,7 @@ class HealthStore:
                     "DELETE FROM health_recovery_candidates WHERE service_id=?",
                     (item.service_id,),
                 )
-            changed = self._signature(previous) != values[:9]
+            changed = self._signature(previous) != values[:9] + (payload,)
             checkpoint = not changed and elapsed is not None and elapsed >= self.checkpoint_interval
             if not changed and not checkpoint:
                 return False

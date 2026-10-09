@@ -30,6 +30,24 @@ def test_business_failure_overrides_a_healthy_process():
     assert item.details["trading_chain"]["completed"] == 1
 
 
+def test_event_timeout_is_business_failure_not_process_stopped():
+    heartbeat_row = row()
+    heartbeat_row["heartbeat"] = {
+        "activity": "event", "event_key": "2026-09-21:bar:15:00:00",
+        "event_phase": "bar", "event_started_at": "2026-09-21T15:00:00",
+        "event_timeout_s": 30, "event_timed_out": True,
+    }
+    item = observation(
+        heartbeat_row, datetime(2026, 9, 21, 15, 0, 31), MORNING,
+        ChainAssessment(DOWN, "strategy_event_failed", "bar 仍在执行", 6, 5),
+    )
+
+    assert item.process_state == HEALTHY
+    assert item.business_state == DOWN
+    assert item.reason_code == "strategy_event_failed"
+    assert item.details["heartbeat_activity"]["event_timed_out"] is True
+
+
 def test_business_alerts_fire_once_and_report_recovery():
     sink = RecordingAlertSink()
     tracker = BusinessAlertTracker(AlertBus([sink]))

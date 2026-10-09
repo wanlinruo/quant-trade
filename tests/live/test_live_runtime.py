@@ -270,6 +270,53 @@ def test_a_transient_quote_timeout_is_retried_inside_the_grace_window(
     assert rows[-1]["error"] == ""
 
 
+def test_event_longer_than_heartbeat_threshold_but_within_sla_stays_healthy(
+    warehouse, tmp_path, monkeypatch
+):
+    from qsys.live.heartbeat import CoreHeartbeatPublisher
+
+    runtime, store = _runtime_with_store(warehouse, tmp_path)
+    elapsed = [0.0]
+    runtime.heartbeats = CoreHeartbeatPublisher(
+        runtime.transport, prefix=runtime.streams.heartbeat,
+        event_timeout_s=runtime.EVENT_TIMEOUT_SECONDS,
+        monotonic=lambda: elapsed[0], on_event_timeout=runtime._on_event_timeout,
+    )
+
+    def slow_but_legal(ctx):
+        elapsed[0] = 20.0
+
+    monkeypatch.setattr(runtime.strategy, "on_session_start", slow_but_legal)
+    runtime.tick(datetime.combine(date.today(), time(9, 15, 10)))
+
+    assert runtime.kill_switch.is_engaged() is False
+    assert store.strategy_runs(date.today())[-1]["error"] == ""
+
+
+def test_event_exceeding_sla_engages_kill_and_is_not_committed(
+    warehouse, tmp_path, monkeypatch
+):
+    from qsys.live.heartbeat import CoreHeartbeatPublisher
+
+    runtime, store = _runtime_with_store(warehouse, tmp_path)
+    elapsed = [0.0]
+    runtime.heartbeats = CoreHeartbeatPublisher(
+        runtime.transport, prefix=runtime.streams.heartbeat,
+        event_timeout_s=runtime.EVENT_TIMEOUT_SECONDS,
+        monotonic=lambda: elapsed[0], on_event_timeout=runtime._on_event_timeout,
+    )
+
+    def stuck(ctx):
+        elapsed[0] = 31.0
+
+    monkeypatch.setattr(runtime.strategy, "on_session_start", stuck)
+    with pytest.raises(LivePreflightError, match="策略事件超过 30s SLA"):
+        runtime.tick(datetime.combine(date.today(), time(9, 15, 10)))
+
+    assert runtime.kill_switch.is_engaged() is True
+    assert "策略事件超过" in store.strategy_runs(date.today())[-1]["error"]
+
+
 # ---- 对账不一致：实盘停机，影子只告警（2026-09-28）----
 
 def _drifted(streams, cash=100_000.0):
