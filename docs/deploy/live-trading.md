@@ -68,6 +68,10 @@ Redis 读不到时按**停机**处理：宁可误停，不可停不下来。
    uv run python scripts/live_preflight.py --config config/deploy.local.toml --require-live
    ```
 
+   该门禁不仅检查 Linux 本地三道写保护，还要求 Windows 执行代理通过心跳声明
+   `trading_mode=live`、`orders_enabled=true`、当前资金账号已在白名单且本地停机闸
+   未生效。任一字段缺失都失败关闭，避免双端配置不一致时出现假绿灯。
+
 5. **打开三道写保护后，先做一笔验证单**，不要等策略信号（见下节）。
 6. 第一阶段启用资金 10,000 元，人工盯盘；稳定至少五个交易日后才评估扩容。
    不因短期收益跳过观察期。每日收盘核对券商资金、持仓、委托、成交和报告。

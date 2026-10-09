@@ -144,6 +144,14 @@ class Heartbeat(Message):
     event_started_at: datetime | None = None
     event_timeout_s: float | None = None
     event_timed_out: bool = False
+    # Windows execution agent publishes its effective safety posture so a
+    # Linux-side preflight cannot report a false green while the agent is
+    # still running in shadow mode.  Other heartbeat sources leave these
+    # fields unset.
+    trading_mode: Literal["disabled", "shadow", "live"] | None = None
+    orders_enabled: bool | None = None
+    account_protected: bool | None = None
+    local_kill_engaged: bool | None = None
 
 
 class QuoteRequest(Message):

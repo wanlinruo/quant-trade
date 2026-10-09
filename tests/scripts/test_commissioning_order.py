@@ -38,7 +38,13 @@ def _transport(*, core_age=None, agent_age=1.0, killed=False):
     s = StreamConfig()
     if agent_age is not None:
         t.set_key(f"{s.heartbeat}:agent", json.dumps(
-            {"at": (datetime.now() - timedelta(seconds=agent_age)).isoformat()}))
+            {
+                "at": (datetime.now() - timedelta(seconds=agent_age)).isoformat(),
+                "trading_mode": "live",
+                "orders_enabled": True,
+                "account_protected": True,
+                "local_kill_engaged": False,
+            }))
     if core_age is not None:
         t.set_key(f"{s.heartbeat}:core", json.dumps(
             {"at": (datetime.now() - timedelta(seconds=core_age)).isoformat()}))
@@ -86,6 +92,24 @@ def test_a_stale_or_missing_agent_blocks_the_order():
 
     assert stale is not None and "心跳" in stale
     assert missing is not None and "代理" in missing
+
+
+@pytest.mark.parametrize("field,value,expect", [
+    ("trading_mode", "shadow", "trading_mode"),
+    ("orders_enabled", False, "orders_enabled"),
+    ("account_protected", False, "白名单"),
+    ("local_kill_engaged", True, "停机闸"),
+])
+def test_agent_must_announce_all_remote_write_protections(field, value, expect):
+    transport = _transport()
+    key = f"{StreamConfig().heartbeat}:agent"
+    heartbeat = json.loads(transport.get_key(key))
+    heartbeat[field] = value
+    transport.set_key(key, json.dumps(heartbeat))
+
+    refusal = cli._preflight(FakeConfig(), transport, Args())
+
+    assert refusal is not None and expect in refusal
 
 
 def test_an_engaged_kill_switch_blocks_the_order():

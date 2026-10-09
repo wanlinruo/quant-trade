@@ -67,9 +67,18 @@ def _preflight(config, transport, args) -> str | None:
     agent = transport.get_key(f"{config.streams.heartbeat}:agent")
     if agent is None:
         return "取不到执行代理心跳，Windows 侧可能没起来"
-    age = (datetime.now() - _beat_at(agent)).total_seconds()
+    agent_state = json.loads(agent)
+    age = (datetime.now() - datetime.fromisoformat(agent_state["at"])).total_seconds()
     if age > AGENT_BEAT_MAX_AGE:
         return f"执行代理心跳已过期 {age:.1f} 秒"
+    if agent_state.get("trading_mode") != "live":
+        return "Windows 执行代理尚未声明 trading_mode=live"
+    if agent_state.get("orders_enabled") is not True:
+        return "Windows 执行代理尚未声明 orders_enabled=true"
+    if agent_state.get("account_protected") is not True:
+        return "Windows 执行代理当前账号未确认在白名单"
+    if agent_state.get("local_kill_engaged") is not False:
+        return "Windows 执行代理本地停机闸状态未知或仍生效"
 
     if transport.get_key("control:kill") is not None:
         return "停机开关处于生效状态，先确认原因再解除"

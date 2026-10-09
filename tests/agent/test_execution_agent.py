@@ -118,10 +118,22 @@ def test_publish_account_writes_the_snapshot():
     assert snap.positions["600036.SH"].available_qty == 500
 
 
-def test_beat_writes_a_heartbeat():
-    agent, t, _ = make()
+def test_beat_reports_the_effective_windows_safety_posture(tmp_path):
+    transport = MemoryTransport()
+    safety = SafetyPolicy(
+        TradingMode.LIVE, account_id="A1", protected_account_ids=("A1",),
+        orders_enabled=True, local_kill_path=tmp_path / "K",
+    )
+    agent = ExecutionAgent(
+        transport, FakeAdapter(), STREAMS, safety=safety,
+    )
     agent.beat()
-    assert t.get_key(f"{STREAMS.heartbeat}:agent") is not None
+    raw = transport.get_key(f"{STREAMS.heartbeat}:agent")
+    beat = Heartbeat.model_validate_json(raw)
+    assert beat.trading_mode == "live"
+    assert beat.orders_enabled is True
+    assert beat.account_protected is True
+    assert beat.local_kill_engaged is False
 
 
 def test_run_once_with_no_commands_returns_zero():
