@@ -136,6 +136,14 @@ class Heartbeat(Message):
     # 仅供运营监控解释发送端当前节奏；LIVE 安全检查仍使用固定阈值。
     expected_interval_s: float | None = None
     phase: str | None = None
+    # core 的进程存活与策略事件进度是两个信号。事件由独立心跳线程发布，
+    # 因而耗时事件不会伪装成进程停止；超过 SLA 又能让执行代理独立落闸。
+    activity: Literal["idle", "event"] | None = None
+    event_key: str | None = None
+    event_phase: str | None = None
+    event_started_at: datetime | None = None
+    event_timeout_s: float | None = None
+    event_timed_out: bool = False
 
 
 class QuoteRequest(Message):

@@ -59,6 +59,7 @@ class ExecutionAgent:
         self._tracker = FillTracker(fee_model or AShareFeeModel())
         self._safety = safety
         self._remote_kill_seen = False
+        self._core_timeout_event_seen: str | None = None
         self._started_at = datetime.now()
         for stream in (streams.orders, streams.control):
             # 首次部署时不能跳过进程启动前已经进入 Stream 的控制与订单指令。
@@ -90,14 +91,25 @@ class ExecutionAgent:
             return True
         raw = self._t.get_key(f"{self._s.heartbeat}:core")
         alive = False
+        event_timed_out = False
         if raw is not None:
             try:
                 beat = Heartbeat.model_validate_json(raw)
                 alive = (datetime.now() - beat.at).total_seconds() <= max_age_seconds
+                event_timed_out = beat.event_timed_out
             except Exception:
                 alive = False
-        if alive:
+        if alive and not event_timed_out:
             return True
+        if event_timed_out:
+            reason = "core strategy event timeout"
+            event_key = beat.event_key or "unknown"
+            if event_key != self._core_timeout_event_seen:
+                self._core_timeout_event_seen = event_key
+                self._adapter.cancel_all()
+                self._safety.engage_local_kill(reason)
+                log.error("agent.core_event_timeout", event_key=event_key)
+            return False
         if (datetime.now() - self._started_at).total_seconds() <= startup_grace_seconds:
             return False
         reason = "core heartbeat timeout"

@@ -104,6 +104,15 @@ def _heartbeat_reader(transport, prefix: str):
             "last_beat": beat.at if beat else None,
             "expected_interval_s": beat.expected_interval_s if beat else None,
             "phase": beat.phase if beat else None,
+            "activity": beat.activity if beat else None,
+            "event_key": beat.event_key if beat else None,
+            "event_phase": beat.event_phase if beat else None,
+            "event_started_at": (
+                beat.event_started_at.isoformat()
+                if beat and beat.event_started_at else None
+            ),
+            "event_timeout_s": beat.event_timeout_s if beat else None,
+            "event_timed_out": beat.event_timed_out if beat else False,
         }
 
     return read
@@ -208,6 +217,14 @@ def observation(
         ):
             state, reason = business.state, business.reason_code
     details = {"host": spec.host}
+    heartbeat = row.get("heartbeat") or {}
+    if heartbeat.get("activity") is not None:
+        details["heartbeat_activity"] = {
+            name: heartbeat.get(name) for name in (
+                "activity", "event_key", "event_phase", "event_started_at",
+                "event_timeout_s", "event_timed_out",
+            )
+        }
     if business is not None:
         details["trading_chain"] = {
             "detail": business.detail,

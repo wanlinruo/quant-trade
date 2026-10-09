@@ -7,6 +7,7 @@ from qsys.live.messages import (
     AccountSnapshot,
     ControlCommand,
     FillEvent,
+    Heartbeat,
     OrderCommand,
     RejectEvent,
 )
@@ -126,6 +127,33 @@ def test_beat_writes_a_heartbeat():
 def test_run_once_with_no_commands_returns_zero():
     agent, _, _ = make()
     assert agent.run_once() == 0
+
+
+def test_fresh_but_timed_out_core_event_fails_closed_on_windows(tmp_path):
+    transport = MemoryTransport()
+    adapter = FakeAdapter(auto_fill=False)
+    safety = SafetyPolicy(
+        TradingMode.LIVE, account_id="A1", protected_account_ids=("A1",),
+        orders_enabled=True, local_kill_path=tmp_path / "K",
+    )
+    agent = ExecutionAgent(transport, adapter, STREAMS, safety=safety)
+    transport.set_key(
+        f"{STREAMS.heartbeat}:core",
+        Heartbeat(
+            source="core", at=datetime.now(), activity="event",
+            event_key="2026-10-09:bar:15:00:00", event_phase="bar",
+            event_started_at=datetime.now(), event_timeout_s=30,
+            event_timed_out=True,
+        ).model_dump_json(),
+    )
+
+    assert agent.enforce_core_heartbeat() is False
+    assert adapter.cancelled is True
+    assert (tmp_path / "K").read_text() == "core strategy event timeout"
+
+    adapter.cancelled = False
+    assert agent.enforce_core_heartbeat() is False
+    assert adapter.cancelled is False  # 同一超时事件不每轮重复撤单
 
 
 def test_malformed_command_is_rejected_not_fatal():

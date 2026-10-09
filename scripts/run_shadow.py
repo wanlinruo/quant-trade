@@ -70,7 +70,7 @@ def main() -> int:
         alerts=alerts, risk=config.risk, shadow=True, params=dict(source.params),
     )
     guard = TickFailureGuard(alerts)
-    with single_instance(args.lock):
+    with single_instance(args.lock), runtime.heartbeats:
         log.info("shadow_core.started", strategy=str(source.path),
                  follows=source.paper_account_id or None)
         while True:

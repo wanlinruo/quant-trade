@@ -20,10 +20,10 @@ from qsys.data.market_feed import MarketFeed
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
 from qsys.live.config import RiskConfig, StreamConfig
-from qsys.live.heartbeat import HeartbeatMonitor
+from qsys.live.heartbeat import CoreHeartbeatPublisher, HeartbeatMonitor
 from qsys.live.kill_switch import KillSwitch
 from qsys.live.live_broker import LiveBroker
-from qsys.live.messages import AccountSnapshot, Heartbeat, MarketQuote
+from qsys.live.messages import AccountSnapshot, MarketQuote
 from qsys.live.pricing import protected_limit_price
 from qsys.live.reconcile import reconcile_positions
 from qsys.live.risk import RiskContext, default_ashare_gate
@@ -61,6 +61,7 @@ class LiveRuntime:
     GRACE_SECONDS = 120
     ACCOUNT_MAX_AGE = 5.0
     HEARTBEAT_MAX_AGE = 10.0
+    EVENT_TIMEOUT_SECONDS = 30.0
 
     def __init__(
         self,
@@ -103,6 +104,11 @@ class LiveRuntime:
             transport,
             key="shadow:control:kill" if shadow else "control:kill",
             local_path=local_kill_path,
+        )
+        self.heartbeats = CoreHeartbeatPublisher(
+            transport, prefix=streams.heartbeat,
+            event_timeout_s=self.EVENT_TIMEOUT_SECONDS,
+            on_event_timeout=self._on_event_timeout,
         )
         self.alerts = alerts or AlertBus([LogAlertSink()])
         # 策略推送与运维告警共用同一条 AlertBus：影子/实盘各自一个机器人由部署配置决定
@@ -178,6 +184,24 @@ class LiveRuntime:
         if age < -1 or age > self.ACCOUNT_MAX_AGE:
             raise LivePreflightError(f"券商账户快照已过期: {age:.1f}s")
         return snapshot
+
+    def _on_event_timeout(self, event_key: str) -> None:
+        """Fail closed even while the synchronous event thread is still stuck."""
+        self.kill_switch.engage(
+            f"strategy event timeout: {event_key} "
+            f"({self.EVENT_TIMEOUT_SECONDS:.0f}s)"
+        )
+
+    def _assert_event_within_sla(self, key: str) -> None:
+        if not self.heartbeats.event_timed_out():
+            return
+        # The timeout callback has already engaged the remote kill.  Once the
+        # event thread returns, also request cancellation from the normal core
+        # path and leave the event retryable/failed rather than committing it.
+        self.broker.cancel_all()
+        raise LivePreflightError(
+            f"策略事件超过 {self.EVENT_TIMEOUT_SECONDS:.0f}s SLA: {key}"
+        )
 
     @property
     def _mode(self) -> str:
@@ -334,10 +358,9 @@ class LiveRuntime:
     def tick(self, now: datetime | None = None) -> None:
         now = now or datetime.now()
         self.clock.set(now)
-        self.transport.set_key(
-            f"{self.streams.heartbeat}:core",
-            Heartbeat(source="core", at=now).model_dump_json(),
-        )
+        # Runners keep this publisher on its own thread.  The explicit pulse
+        # preserves deterministic one-shot use in tests and maintenance code.
+        self.heartbeats.pulse_once()
         self._record_results()
         if not self.calendar.is_trading_day(now.date()):
             return
@@ -371,6 +394,7 @@ class LiveRuntime:
     ) -> None:
         started = datetime.now()
         report = RunReport()
+        self.heartbeats.begin_event(key, phase.value)
         self.clock.set(moment)
         self._event_orders.clear()
         self._event_fills.clear()
@@ -437,7 +461,12 @@ class LiveRuntime:
                 self.strategy.on_bar(ctx, bars)
             else:
                 self.strategy.on_session_end(ctx)
+            # Never publish orders produced after the event SLA.  The
+            # independent heartbeat has already engaged the remote kill, but
+            # this local guard makes the event result fail closed as well.
+            self._assert_event_within_sla(key)
             orders = self._flush(api, key, moment)
+            self._assert_event_within_sla(key)
             rejects = self._record_results()
             if phase is Phase.SESSION_END:
                 self.broker.cancel_all()
@@ -492,6 +521,8 @@ class LiveRuntime:
                 orders=0, rejects=0, error=str(exc),
             )
             raise
+        finally:
+            self.heartbeats.end_event()
 
     def _trade_context(self, phase, record) -> TradeContext:
         """消息里要的交易细节。取不到就给空的——通知绝不能影响交易。"""

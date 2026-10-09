@@ -57,7 +57,7 @@ def main() -> int:
         alerts=AlertBus(sinks, ledger()),
         risk=config.risk, params=dict(source.params),
     )
-    with single_instance(args.lock):
+    with single_instance(args.lock), runtime.heartbeats:
         log.info("live_core.started", strategy=str(source.path),
                  follows=source.paper_account_id or None)
         consecutive_errors = 0
