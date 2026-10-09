@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -33,6 +34,14 @@ def _git_sha() -> str:
         ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=False
     )
     return result.stdout.strip() if result.returncode == 0 else "unknown"
+
+
+def _source_sha(value: str | None, execution_sha: str) -> str:
+    if value is None:
+        return execution_sha
+    if not re.fullmatch(r"[0-9a-f]{40}", value):
+        raise ValueError("--source-sha must be a full lowercase Git SHA")
+    return value
 
 
 def _empty_directory(path: Path) -> None:
@@ -69,6 +78,10 @@ def main() -> int:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--threads", type=int, default=2)
     parser.add_argument("--bootstrap-samples", type=int, default=2_000)
+    parser.add_argument(
+        "--source-sha",
+        help="full Git SHA of the uploaded research source (defaults to checkout HEAD)",
+    )
     parser.add_argument(
         "--reuse-dataset", action="store_true",
         help="reuse dataset.parquet when it is the only existing output artifact",
@@ -122,11 +135,13 @@ def main() -> int:
 
     verdict = promotion_verdict(predictions, metrics, config)
     write_json(args.out / "verdict.json", verdict)
+    execution_sha = _git_sha()
     manifest = {
         "schema_version": 1,
         "research": "issue-210-limit-up-ranking",
         "generated_at": datetime.now().isoformat(timespec="seconds"),
-        "git_sha": _git_sha(),
+        "git_sha": _source_sha(args.source_sha, execution_sha),
+        "execution_checkout_sha": execution_sha,
         "warehouse": str(args.warehouse),
         "config": config_dict(config),
         "dataset": dataset_record,
