@@ -34,6 +34,10 @@ dev = [
 joinquant = [
     "jqdatasdk==1.9.8",
 ]
+ml-research = [
+    "lightgbm>=4.5,<5",
+    "scikit-learn>=1.5,<2",
+]
 
 [build-system]
 requires = ["hatchling"]
