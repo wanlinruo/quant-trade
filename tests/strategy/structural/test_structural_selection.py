@@ -218,6 +218,22 @@ def test_gate_decisions_are_recorded_even_when_rejected(warehouse, write_daily_b
     assert sel.decisions[0].allow is False
 
 
+def test_research_ablation_can_disable_one_tag_without_losing_classification(
+    warehouse, write_daily_bars,
+):
+    low_setup(warehouse, write_daily_bars)
+    write_regime(warehouse, slope=0.5, heat=0.5)
+    sel = selector(
+        warehouse,
+        require_auction_volume=False,
+        disabled_gate_tags={"LOW_MAIN"},
+    )
+    picks = sel.select(TODAY, YESTERDAY)
+    assert [pick.symbol for pick in picks] == ["600001.SH"]
+    assert picks[0].state == "RISK"
+    assert picks[0].reason.endswith("GATE_DISABLED_TAG")
+
+
 def test_a_non_first_board_is_not_a_candidate(warehouse, write_daily_bars):
     low_setup(warehouse, write_daily_bars)
     # 把首板标记挪到更早的一天
