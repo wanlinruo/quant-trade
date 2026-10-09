@@ -11,7 +11,7 @@ import json
 import sys
 import time
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time as wall_time, timedelta
 from typing import Callable, Sequence
 
 import structlog
@@ -35,6 +35,7 @@ class TradingSessionCache:
     """
 
     refresh_interval: float = 300.0
+    missing_today_retry_interval: float = 30.0
     sessions: list[date] = field(default_factory=list)
     day: date | None = None
     next_refresh: float = 0.0
@@ -65,6 +66,16 @@ class TradingSessionCache:
         refreshed = provider(today - timedelta(days=40), today + timedelta(days=40))
         if refreshed:
             self.sessions = refreshed
+            # A non-empty calendar is not necessarily current: after a long
+            # holiday MiniQMT can expose historical sessions before adding
+            # today.  Retry quickly around startup instead of preserving a
+            # false off-hours cadence for the full five-minute cache period.
+            clock = wall.time()
+            opening_window = wall_time(8, 40) <= clock < wall_time(9, 30)
+            if today.weekday() < 5 and today not in refreshed and opening_window:
+                self.next_refresh = monotonic + max(
+                    1.0, min(self.refresh_interval, self.missing_today_retry_interval)
+                )
         return self.sessions
 
 

@@ -156,5 +156,12 @@ def test_worker_polls_slowly_outside_continuous_trading():
     assert _poll_delay(datetime(2026, 9, 18, 23, 31), 1.0) == 60.0
 
 
+def test_worker_idle_poll_does_not_cross_strategy_event_boundaries():
+    from scripts.run_paper import _poll_delay
+
+    assert _poll_delay(datetime(2026, 9, 18, 9, 14, 36), 1.0) == 24.0
+    assert _poll_delay(datetime(2026, 9, 18, 12, 59, 45), 1.0) == 15.0
+
+
 def test_gateway_errors_and_timeouts_are_both_quote_unavailable():
     assert issubclass(QuoteTimeout, QuoteUnavailable)

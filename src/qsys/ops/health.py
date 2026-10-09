@@ -118,9 +118,29 @@ def assess_heartbeat(
     trading_days: set[date] | None,
     *,
     active: bool = False,
+    advertised_interval_s: float | None = None,
+    advertised_phase: str | None = None,
 ) -> HeartbeatAssessment:
     phase = trading_phase(now, trading_days)
     policy = heartbeat_policy(source, phase, active=active)
+    cadence_mismatch = False
+    # QMT's calendar can lag the authoritative Linux calendar briefly after a
+    # long holiday.  While the gateway still advertises its legal off-hours
+    # cadence, judge liveness against that cadence instead of declaring it
+    # stopped every ten seconds.  The mismatch remains visible as DEGRADED and
+    # a genuinely stopped gateway still becomes DOWN within 90 seconds.
+    if (
+        source == "market"
+        and advertised_phase == OFF_HOURS
+        and advertised_interval_s == 30
+        and policy.expected_interval_s < advertised_interval_s
+    ):
+        cadence_mismatch = True
+        policy = HeartbeatPolicy(
+            advertised_interval_s,
+            max(policy.warn_after_s, advertised_interval_s * 2),
+            max(policy.down_after_s, advertised_interval_s * 3),
+        )
     if last_beat is None:
         return HeartbeatAssessment(DOWN, "heartbeat_missing", None, phase, policy)
     age = (_utc(now) - _utc(last_beat)).total_seconds()
@@ -133,6 +153,10 @@ def assess_heartbeat(
         return HeartbeatAssessment(DOWN, "heartbeat_stale", age, phase, policy)
     if age > policy.warn_after_s:
         return HeartbeatAssessment(DEGRADED, "heartbeat_delayed", age, phase, policy)
+    if cadence_mismatch:
+        return HeartbeatAssessment(
+            DEGRADED, "heartbeat_cadence_mismatch", age, phase, policy
+        )
     return HeartbeatAssessment(HEALTHY, "heartbeat_fresh", age, phase, policy)
 
 

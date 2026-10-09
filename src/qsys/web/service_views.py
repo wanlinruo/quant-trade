@@ -423,6 +423,8 @@ class ServiceConsole:
                     row["heartbeat_assessment"] = assess_heartbeat(
                         spec.heartbeat, row["heartbeat"].get("last_beat"), now, trading,
                         active=advertised is not None and advertised <= 2,
+                        advertised_interval_s=advertised,
+                        advertised_phase=row["heartbeat"].get("phase"),
                     )
                 except Exception as exc:
                     log.warning("services.heartbeat_failed", source=spec.heartbeat,

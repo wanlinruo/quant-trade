@@ -55,6 +55,25 @@ def test_calendar_keeps_last_good_result_during_a_transient_empty_refresh():
     ) == [today]
 
 
+def test_calendar_retries_quickly_when_today_is_missing_near_open():
+    today = date(2026, 10, 9)
+    yesterday = date(2026, 10, 8)
+    responses = iter([[yesterday], [yesterday, today]])
+    calls = []
+
+    def provider(start, end):
+        calls.append((start, end))
+        return next(responses)
+
+    cache = TradingSessionCache(refresh_interval=300, missing_today_retry_interval=30)
+    assert cache.refresh_if_due(datetime(2026, 10, 9, 8, 45), 0, provider) == [yesterday]
+    assert cache.refresh_if_due(datetime(2026, 10, 9, 8, 45, 29), 29, provider) == [yesterday]
+    assert cache.refresh_if_due(datetime(2026, 10, 9, 8, 45, 30), 30, provider) == [
+        yesterday, today,
+    ]
+    assert len(calls) == 2
+
+
 def test_calendar_clears_previous_day_before_refreshing_the_new_day():
     first = date(2026, 9, 18)
     cache = TradingSessionCache(refresh_interval=300)
