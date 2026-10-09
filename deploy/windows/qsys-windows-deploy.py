@@ -379,7 +379,10 @@ def _verify(config: Config, app: App, item: dict[str, Any], host: WindowsHost,
     raise RuntimeError(f"{app.name} task or fresh heartbeat did not recover")
 
 
-def deploy(config: Config, run_id: str, app_names: list[str], host: WindowsHost) -> dict[str, object]:
+def deploy(
+    config: Config, run_id: str, app_names: list[str], host: WindowsHost, *,
+    failure_point: str = "none",
+) -> dict[str, object]:
     operation = _load_operation(config, run_id)
     if not app_names or len(app_names) != len(set(app_names)) or set(app_names) - set(config.apps):
         raise ValueError("apps must be a unique non-empty configured subset")
@@ -405,6 +408,8 @@ def deploy(config: Config, run_id: str, app_names: list[str], host: WindowsHost)
         for name in changed:
             _swap_in(config, run_id, config.apps[name], items[name])
             switched.append(name)
+            if failure_point == "after-first-switch":
+                raise RuntimeError("injected Windows failure after first switch")
         atomic_text(_operation_path(config, run_id), json.dumps(operation, indent=2) + "\n")
         for name in changed:
             host.task("run", config.apps[name].task)
@@ -491,6 +496,9 @@ def build_parser() -> argparse.ArgumentParser:
     deploy_parser = commands.add_parser("deploy")
     deploy_parser.add_argument("--run-id", required=True)
     deploy_parser.add_argument("--app", action="append", dest="apps", required=True)
+    deploy_parser.add_argument(
+        "--failure-point", choices=("none", "after-first-switch"), default="none",
+    )
     record_parser = commands.add_parser("record")
     record_parser.add_argument("--run-id", required=True)
     return parser
@@ -520,7 +528,10 @@ def main(argv: list[str] | None = None) -> int:
             result = prepare(config, args.run_id, args.app, args.archive,
                              args.baseline_manifest, host)
         else:
-            result = deploy(config, args.run_id, args.apps, host)
+            result = deploy(
+                config, args.run_id, args.apps, host,
+                failure_point=args.failure_point,
+            )
         print(json.dumps(result, ensure_ascii=False))
         return 0
     except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError,

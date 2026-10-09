@@ -350,6 +350,10 @@ Actions 只持有测试专用 SSH key。该 key 在节点 `authorized_keys` 中�
 
 ### 9.2 生产环境
 
+生产发布的当前统一清单、人工确认、受控故障注入、证据关联和跨节点补偿以
+`docs/deploy/production-release-checklist.md` 为准。历史手工命令仅为标准自动入口损坏时的
+应急路径，不再作为普通发布步骤。
+
 > **实况（2026-10-07）：`Deploy production Linux` 的 `workflow_dispatch`、独立
 > forced-command key、来源/CI/测试 tree 门禁、dry-run、审计记录与代码自动回滚均已建成。**
 > #154 的正向 dry-run 已通过，但首次 `dry_run=false` 正式发布和生产回滚演练尚未执行，
