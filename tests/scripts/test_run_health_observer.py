@@ -192,6 +192,16 @@ def test_recovery_is_announced_as_well():
     assert [a.severity for a in sink.alerts] == [Severity.CRITICAL, Severity.INFO]
 
 
+def test_a_degraded_process_does_not_emit_stopped_or_recovery_alerts():
+    sink = RecordingAlertSink()
+    tracker = ProcessAlertTracker(AlertBus([sink]))
+    tracker.update(_process("market-gateway", "ok"))
+    tracker.update(_process("market-gateway", "warn"))
+    tracker.update(_process("market-gateway", "ok"))
+
+    assert sink.alerts == []
+
+
 def test_the_very_first_sample_does_not_alert():
     """采样器刚起来时不该把「本来就停着」当成刚刚发生的事故补报一遍。"""
     sink = RecordingAlertSink()

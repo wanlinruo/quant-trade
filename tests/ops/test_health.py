@@ -62,6 +62,23 @@ def test_heartbeat_assessment_uses_warn_down_and_clock_skew_boundaries():
     assert assess_heartbeat("market", at(10), at(10, 0, 1), None).state == UNKNOWN
 
 
+def test_market_calendar_cadence_mismatch_degrades_before_true_timeout():
+    mismatch = assess_heartbeat(
+        "market", at(8, 44, 38), at(8, 45, 3), TRADING,
+        advertised_interval_s=30, advertised_phase=OFF_HOURS,
+    )
+    assert mismatch.state == DEGRADED
+    assert mismatch.reason_code == "heartbeat_cadence_mismatch"
+    assert mismatch.policy.down_after_s == 90
+
+    stopped = assess_heartbeat(
+        "market", at(8, 44, 38), at(8, 46, 9), TRADING,
+        advertised_interval_s=30, advertised_phase=OFF_HOURS,
+    )
+    assert stopped.state == DOWN
+    assert stopped.reason_code == "heartbeat_stale"
+
+
 def observation(moment, state=HEALTHY):
     return HealthObservation(
         service_id="market-gateway", observed_at_utc=moment,

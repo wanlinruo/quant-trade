@@ -65,7 +65,16 @@ def _poll_delay(moment: datetime, poll: float) -> float:
     """盘中及时驱动事件；盘前、午休和收盘后降低空转频率。"""
     active = (wall_time(9, 15) <= moment.time() <= wall_time(11, 30)
               or wall_time(13, 0) <= moment.time() <= wall_time(15, 30))
-    return max(0.2, poll) if active else max(IDLE_POLL_SECONDS, poll)
+    if active:
+        return max(0.2, poll)
+    idle_delay = max(IDLE_POLL_SECONDS, poll)
+    for hour, minute in ((9, 15), (13, 0)):
+        boundary = moment.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if boundary > moment:
+            # Never let a low-frequency idle poll sleep across a strategy
+            # event boundary (09:15 session start or 13:00 afternoon start).
+            return max(0.2, min(idle_delay, (boundary - moment).total_seconds()))
+    return idle_delay
 
 
 def _best_effort_account_log(store: PaperStore, ident: str, level: str,

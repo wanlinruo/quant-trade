@@ -168,6 +168,22 @@ def test_heartbeat_process_status_uses_phase_specific_warn_and_down_thresholds(t
     assert market["heartbeat_assessment"].reason_code == "heartbeat_delayed"
 
 
+def test_market_sender_cadence_mismatch_is_visible_without_false_down(tmp_path):
+    now = datetime(2026, 9, 17, 8, 45, 3)
+    live = ServiceConsole(
+        tmp_path, calendar=lambda: AShareCalendar(SESSIONS), systemd=lambda unit: {},
+        heartbeat=lambda source: {
+            "last_beat": datetime(2026, 9, 17, 8, 44, 38),
+            "alive": True, "expected_interval_s": 30, "phase": "off_hours",
+        },
+        now=lambda: now,
+    )
+    market = next(r for r in live.process_status() if r["spec"].id == "market-gateway")
+    assert market["state"] == "warn"
+    assert market["heartbeat_assessment"].reason_code == "heartbeat_cadence_mismatch"
+    assert market["heartbeat_assessment"].policy.down_after_s == 90
+
+
 def test_unreachable_heartbeat_is_unknown_even_when_systemd_process_is_active(tmp_path):
     live = ServiceConsole(
         tmp_path, calendar=lambda: AShareCalendar(SESSIONS),
