@@ -457,13 +457,40 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
 
     state = entrypoint.status({"production_repo": str(tmp_path)})
 
-    assert state["entrypoint_version"] == 4
+    assert state["entrypoint_version"] == 5
     assert set(state["capabilities"]) == {
         "systemd-apply-v1", "systemd-changed-artifacts-v1",
         "systemd-preview-v1", "systemd-rollback-v1",
         "release-checklist-v1", "controlled-failure-injection-v1",
         "successful-release-index-v1",
+        "windows-baseline-plan-v1",
     }
+
+
+def test_windows_plans_are_merged_from_each_windows_baseline() -> None:
+    entrypoint = _production_entrypoint_module()
+    first = {
+        "changed_paths": ["src/a.py"], "ignored_paths": [],
+        "components": ["windows-agent"], "nodes": ["windows"],
+        "linux_units": [], "windows_apps": ["live_app"],
+        "windows_tasks": ["qsys-agent-shadow"],
+        "health_checks": ["agent-heartbeat"], "unknown_paths": [],
+    }
+    second = {
+        "changed_paths": ["src/b.py"], "ignored_paths": [],
+        "components": ["windows-gateway"], "nodes": ["windows"],
+        "linux_units": [], "windows_apps": ["paper_app"],
+        "windows_tasks": ["qsys-market-gateway"],
+        "health_checks": ["market-heartbeat"], "unknown_paths": [],
+    }
+
+    merged = entrypoint._merge_plans([first, second])
+
+    assert merged["components"] == ["windows-agent", "windows-gateway"]
+    assert merged["windows_apps"] == ["live_app", "paper_app"]
+    assert entrypoint._validate_windows_components(merged, ["auto"]) == [
+        "windows-agent", "windows-gateway",
+    ]
 
 
 def test_failure_injection_requires_explicit_drill_identity() -> None:
@@ -844,6 +871,7 @@ def test_windows_workflow_uses_only_the_linux_production_credential() -> None:
     assert "jq -e '.ok == true' result.json" in workflow
     assert "production entrypoint lacks required deployment capabilities" in workflow
     assert "successful-release-index-v1" in workflow
+    assert "windows-baseline-plan-v1" in workflow
     assert "release=$RELEASE_ID node=windows" in workflow
     assert "DRILL_ROLLBACK" in workflow
 

@@ -441,3 +441,31 @@ def test_linux_coordinator_prepares_both_apps_without_switching_on_dry_run(
     assert sum(call[0] == "copy" for call in calls) == 5
     entrypoints = {call[1] for call in calls if call[0] == "command"}
     assert entrypoints == {"C:/incoming/run-3-qsys-windows-deploy.py"}
+
+
+def test_linux_coordinator_reads_status_from_exact_target_controller(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    coordinator = _coordinator()
+    sha = "d" * 40
+    calls: list[tuple] = []
+
+    class Transport:
+        def copy(self, local, remote_name):
+            calls.append(("copy", remote_name, local.read_bytes()))
+            return "C:/incoming/controller.py"
+
+        def command(self, *args, check=True, entrypoint=None):
+            calls.append(("command", args, entrypoint))
+            body = {"ok": True, "apps": {"live_app": {"deployed_sha": "a" * 40}}}
+            return subprocess.CompletedProcess(args, 0, json.dumps(body), "")
+
+    monkeypatch.setattr(coordinator, "_git_blob", lambda repo, target, path: b"target-controller")
+
+    result = coordinator.remote_status(tmp_path, sha, "status-1", Transport())
+
+    assert result["apps"]["live_app"]["deployed_sha"] == "a" * 40
+    assert calls[0] == (
+        "copy", "status-1-qsys-windows-deploy.py", b"target-controller",
+    )
+    assert calls[1] == ("command", ("status",), "C:/incoming/controller.py")

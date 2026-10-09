@@ -87,6 +87,22 @@ def _json_result(result: subprocess.CompletedProcess[str]) -> dict[str, Any]:
     return value
 
 
+def remote_status(
+    repo: Path, sha: str, run_id: str, transport: Transport,
+) -> dict[str, Any]:
+    """Read Windows state through the controller from the reviewed target SHA."""
+    if not SHA_PATTERN.fullmatch(sha) or not RUN_ID_PATTERN.fullmatch(run_id):
+        raise ValueError("target SHA or run-id is invalid")
+    with tempfile.TemporaryDirectory(prefix="qsys-windows-status-") as temporary:
+        controller_path = Path(temporary) / "qsys-windows-deploy.py"
+        controller_path.write_bytes(_git_blob(repo, sha, WINDOWS_CONTROLLER_PATH))
+        remote_controller = transport.copy(
+            controller_path, f"{run_id}-qsys-windows-deploy.py",
+        )
+        result = _json_result(transport.command("status", entrypoint=remote_controller))
+    return {"ok": True, "run_id": run_id, **result}
+
+
 def coordinate(
     repo: Path, sha: str, run_id: str, apps: list[str], *, dry_run: bool,
     transport: Transport, failure_point: str = "none",
@@ -162,8 +178,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--repo", type=Path, required=True)
     parser.add_argument("--sha", required=True)
     parser.add_argument("--run-id", required=True)
-    parser.add_argument("--app", action="append", dest="apps", required=True)
+    parser.add_argument("--app", action="append", dest="apps")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--status-only", action="store_true")
     parser.add_argument(
         "--failure-point", choices=("none", "after-first-switch"), default="none",
     )
@@ -174,11 +191,19 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         config = load_config(args.config)
-        result = coordinate(
-            args.repo.resolve(strict=True), args.sha, args.run_id, args.apps,
-            dry_run=args.dry_run, transport=Transport(config),
-            failure_point=args.failure_point,
-        )
+        transport = Transport(config)
+        if args.status_only:
+            if args.apps or args.dry_run or args.failure_point != "none":
+                raise ValueError("status-only does not accept deployment options")
+            result = remote_status(
+                args.repo.resolve(strict=True), args.sha, args.run_id, transport,
+            )
+        else:
+            result = coordinate(
+                args.repo.resolve(strict=True), args.sha, args.run_id, args.apps or [],
+                dry_run=args.dry_run, transport=transport,
+                failure_point=args.failure_point,
+            )
         print(json.dumps(result, ensure_ascii=False))
         return 0 if result.get("ok") else 1
     except (OSError, ValueError, subprocess.CalledProcessError, json.JSONDecodeError) as exc:
