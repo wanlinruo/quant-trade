@@ -20,7 +20,7 @@ from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
 from qsys.strategy.loader import StrategyDeps
 
-# 与原策略 filter_kcbj_stock 一致：4/8 是北交所，68 是科创板
+# 旧代码号段兜底；北交所 2023 年后的 920 映射必须靠显式 board/exchange 排除。
 EXCLUDED_PREFIXES = ("4", "8", "68")
 log = structlog.get_logger(__name__)
 
@@ -41,7 +41,9 @@ def build_universe(instruments):
         except (TypeError, ValueError):
             invalid.append(text)
             continue
-        if symbol.code.startswith(EXCLUDED_PREFIXES):
+        board = str(row.get("board") or "").lower()
+        if board in {"bse", "star"} or symbol.market == "BJ" \
+                or symbol.code.startswith(EXCLUDED_PREFIXES):
             continue
         universe.append(symbol)
         boards[text] = row["board"]

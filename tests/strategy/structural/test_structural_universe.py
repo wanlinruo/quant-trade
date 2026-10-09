@@ -73,8 +73,11 @@ def test_broken_boards_are_collected_separately():
 
 
 def test_star_and_bse_are_excluded():
-    """filter_kcbj_stock：排除 4/8 开头（北交所）与 68 开头（科创板）。"""
-    symbols = ("688001.SH", "430001.BJ", "830001.BJ", "600001.SH")
+    """北交所含 920 新号段均排除，但合法沪深 000920 不受影响。"""
+    symbols = (
+        "688001.SH", "430001.BJ", "830001.BJ", "920026.BJ", "600001.SH",
+        "000920.SZ",
+    )
     pool = candidate_pool(
         flags_frame([(s, D[1], True, True, True) for s in symbols]),
         listed_since=listed(*symbols),
@@ -82,7 +85,7 @@ def test_star_and_bse_are_excluded():
         previous=D[1],
         delisting=set(),
     )
-    assert pool.first_boards == ["600001.SH"]
+    assert pool.first_boards == ["000920.SZ", "600001.SH"]
 
 
 def test_chinext_is_kept():
