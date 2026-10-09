@@ -14,7 +14,7 @@ continue 用于固定生命周期语义。`LOW_MAIN` 的竞价量过滤没过时
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, time
 
@@ -84,6 +84,8 @@ class StructuralSelection:
         *,
         require_auction_volume: bool = True,
         gate_enabled: bool = True,
+        gate_thresholds: Mapping[str, float] | None = None,
+        disabled_gate_tags: Collection[str] = (),
     ) -> None:
         self._feed = feed
         self._market = market
@@ -93,6 +95,8 @@ class StructuralSelection:
         # 关掉 S7 闸门只用于研究对照：判定照常记录，但一律放行，
         # 这样 gate_decisions 里仍能看出"本该拒"的是哪些。
         self._gate_enabled = gate_enabled
+        self._gate_thresholds = dict(gate_thresholds or {})
+        self._disabled_gate_tags = frozenset(disabled_gate_tags)
         self._listing: dict[str, date] | None = None
         # decisions 是**最近一次**选股的判定；history 累计整段回测/运行的全部判定。
         # 落盘产物要的是后者：之前只写 decisions，gate_decisions.csv 因此永远
@@ -260,11 +264,14 @@ class StructuralSelection:
     def _gate(self, day, previous, symbol, tag, market, factors) -> Selection:
         env = market.regime(previous, previous)
         row = env.row(0, named=True) if env.height else {}
-        cls = classify(tag, row, factors)
+        cls = classify(tag, row, factors, thresholds=self._gate_thresholds)
         allow = gate_allow(tag, cls)
         if not self._gate_enabled:
             return Selection(day, symbol, tag, cls.state,
                              f"{cls.reason}|GATE_DISABLED", True)
+        if tag in self._disabled_gate_tags:
+            return Selection(day, symbol, tag, cls.state,
+                             f"{cls.reason}|GATE_DISABLED_TAG", True)
         return Selection(day, symbol, tag, cls.state, cls.reason, allow)
 
     def _all_symbols(self) -> list[str]:
