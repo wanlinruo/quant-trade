@@ -59,10 +59,12 @@ def strategy_tag(name: str, symbol: str) -> str:
 
 
 def _tradable(symbol: str) -> bool:
-    """filter_kcbj_stock：排除北交所与科创板（原文 L1401）。"""
-    code = symbol.split(".")[0]
+    """排除北交所与科创板；交易所身份优先于历史代码前缀。"""
+    code, _, exchange = symbol.partition(".")
     return not (
-        code.startswith(EXCLUDED_PREFIXES) or code.startswith(EXCLUDED_PREFIX_2)
+        exchange.upper() == "BJ"
+        or code.startswith(EXCLUDED_PREFIXES)
+        or code.startswith(EXCLUDED_PREFIX_2)
     )
 
 
