@@ -35,6 +35,20 @@ def heartbeat_freshness(
     return -1 <= age <= down_after, age, down_after
 
 
+def agent_live_posture(beat: Heartbeat | None) -> tuple[tuple[bool, str], ...]:
+    """Effective Windows-side write protections reported by the agent itself."""
+    return (
+        (beat is not None and beat.trading_mode == "live",
+         "Windows agent trading_mode=live"),
+        (beat is not None and beat.orders_enabled is True,
+         "Windows agent orders_enabled=true"),
+        (beat is not None and beat.account_protected is True,
+         "Windows agent 当前账号在白名单"),
+        (beat is not None and beat.local_kill_engaged is False,
+         "Windows agent 本地停机闸未生效"),
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="实盘盘前只读检查")
     parser.add_argument("--config", default=None)
@@ -80,6 +94,8 @@ def main() -> int:
         fresh, age, threshold = heartbeat_freshness(beat)
         checks.append((fresh,
                        f"{source} 心跳新鲜度 {age:.1f}s（阈值 {threshold:.1f}s）"))
+        if args.require_live and source == "agent":
+            checks.extend(agent_live_posture(beat))
 
     for ok, label in checks:
         print(f"[{'PASS' if ok else 'FAIL'}] {label}")

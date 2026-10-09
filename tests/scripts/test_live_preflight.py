@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 
 from qsys.live.messages import Heartbeat
-from scripts.live_preflight import heartbeat_freshness
+from scripts.live_preflight import agent_live_posture, heartbeat_freshness
 
 
 NOW = datetime(2026, 9, 20, 12)
@@ -35,3 +35,17 @@ def test_heartbeat_rejects_missing_or_future_timestamp():
     assert heartbeat_freshness(None, NOW)[0] is False
     future = Heartbeat(source="agent", at=NOW + timedelta(seconds=1.1))
     assert heartbeat_freshness(future, NOW)[0] is False
+
+
+def test_agent_live_posture_requires_windows_to_announce_every_guard():
+    live = Heartbeat(
+        source="agent", at=NOW, trading_mode="live", orders_enabled=True,
+        account_protected=True, local_kill_engaged=False,
+    )
+    assert all(ok for ok, _ in agent_live_posture(live))
+
+    shadow = live.model_copy(update={"trading_mode": "shadow"})
+    results = agent_live_posture(shadow)
+    assert results[0][0] is False
+    assert all(ok for ok, _ in results[1:])
+    assert not any(ok for ok, _ in agent_live_posture(None))

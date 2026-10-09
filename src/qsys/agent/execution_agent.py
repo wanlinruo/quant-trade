@@ -263,9 +263,22 @@ class ExecutionAgent:
         self._t.set_key(self._s.account, snapshot.model_dump_json())
 
     def beat(self) -> None:
+        safety = self._safety
         self._t.set_key(
             f"{self._s.heartbeat}:agent",
-            Heartbeat(source="agent", at=datetime.now()).model_dump_json(),
+            Heartbeat(
+                source="agent",
+                at=datetime.now(),
+                trading_mode=safety.mode.value if safety is not None else None,
+                orders_enabled=safety.orders_enabled if safety is not None else None,
+                account_protected=(
+                    safety.account_id in safety.protected if safety is not None else None
+                ),
+                local_kill_engaged=(
+                    safety.local_kill_path.exists()
+                    if safety is not None and safety.local_kill_path is not None else False
+                ),
+            ).model_dump_json(),
         )
 
     def engage_local_kill(self, reason: str) -> None:
