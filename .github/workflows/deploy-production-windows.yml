@@ -174,26 +174,17 @@ jobs:
               "systemd-apply-v1", "systemd-changed-artifacts-v1",
               "systemd-preview-v1", "systemd-rollback-v1",
               "release-checklist-v1", "controlled-failure-injection-v1",
-              "successful-release-index-v1",
+              "successful-release-index-v1", "windows-baseline-plan-v1",
           }
-          if state.get("entrypoint_version", 0) < 4 or not required <= set(state.get("capabilities", [])):
+          if state.get("entrypoint_version", 0) < 5 or not required <= set(state.get("capabilities", [])):
               raise SystemExit("production entrypoint lacks required deployment capabilities")
           print(f'before_sha={state["sha"]}')
           PY
-          before_sha=$(printf '%s' "$node_json" | jq -r .sha)
-          PYTHONPATH=src python3 scripts/deployment_contract.py plan \
-            --environment production --base "$before_sha" --target "$TARGET_SHA" >plan.json
-          test "$(jq '.unknown_paths | length' plan.json)" -eq 0
-          components=$(jq -r '[.components[] | select(startswith("windows-"))] | sort | join(",")' plan.json)
-          test -n "$components"
           requested=$(printf '%s' "$REQUESTED_COMPONENTS" | tr -d ' ')
-          if [ "$requested" != auto ]; then
-            normalized=$(printf '%s' "$requested" | tr ',' '\n' | sort -u | paste -sd, -)
-            test "$normalized" = "$components"
-          fi
-          echo "components=$components" >>"$GITHUB_OUTPUT"
-          echo "apps=$(jq -r '.windows_apps | join(",")' plan.json)" >>"$GITHUB_OUTPUT"
-          echo "health_checks=$(jq -r '[.health_checks[] | select(startswith("windows-") or endswith("heartbeat") or . == "watchdog-enabled")] | join(",")' plan.json)" >>"$GITHUB_OUTPUT"
+          printf '%s' "$requested" | grep -Eq '^(auto|windows-(agent|gateway|control)(,windows-(agent|gateway|control))*)$'
+          echo "components=$requested" >>"$GITHUB_OUTPUT"
+          echo "apps=resolved from Windows DEPLOYED_SHA values by the node gateway" >>"$GITHUB_OUTPUT"
+          echo "health_checks=manifest, tasks, processes, fresh heartbeats, watchdog" >>"$GITHUB_OUTPUT"
 
       - name: Create GitHub deployment
         if: inputs.dry_run == false

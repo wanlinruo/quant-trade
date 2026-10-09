@@ -16,6 +16,8 @@ Actions Summary 和节点 record 都包含这个关联键。旧的交互式 SSH 
 - 当前版本存在成功 production record，可作为 rollback target；
 - 交易日 08:45–15:40 禁止重启，确认短语不能绕过；
 - Linux unit、Windows 任务、进程、心跳和 watchdog 在切换后验证。
+- Windows 计划以每个应用实际 `DEPLOYED_SHA` 为基线分别计算后取并集，不得借用 Linux SHA；
+  两个节点或两个 Windows 应用暂时版本不同时仍能生成准确计划。
 
 触发人还必须显式勾选业务风险、数据/schema 迁移、影响范围与外部验收负责人。迁移只能填写
 “无”或指向另行批准的方案；代码回滚不推断数据回滚。私有仓库当前没有 required reviewer，

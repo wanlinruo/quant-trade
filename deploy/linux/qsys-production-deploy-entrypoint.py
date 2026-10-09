@@ -31,7 +31,7 @@ ALLOWED_WINDOWS_COMPONENTS = frozenset({
     "windows-agent", "windows-gateway", "windows-control",
 })
 WINDOWS_COORDINATOR_PATH = "deploy/linux/qsys-windows-deploy-coordinator.py"
-ENTRYPOINT_VERSION = 4
+ENTRYPOINT_VERSION = 5
 ENTRYPOINT_CAPABILITIES = (
     "systemd-apply-v1",
     "systemd-changed-artifacts-v1",
@@ -40,6 +40,7 @@ ENTRYPOINT_CAPABILITIES = (
     "release-checklist-v1",
     "controlled-failure-injection-v1",
     "successful-release-index-v1",
+    "windows-baseline-plan-v1",
 )
 FAILURE_POINTS = frozenset({"none", "linux-health", "windows-switch"})
 ALLOWED_UNITS = frozenset({
@@ -353,6 +354,8 @@ def _validate_components(plan: dict[str, Any], requested: list[str]) -> list[str
 
 
 def _validate_windows_components(plan: dict[str, Any], requested: list[str]) -> list[str]:
+    if requested == ["auto"]:
+        requested = sorted(set(plan["components"]) & ALLOWED_WINDOWS_COMPONENTS)
     if len(requested) != len(set(requested)) or set(requested) - ALLOWED_WINDOWS_COMPONENTS:
         raise ValueError("components must be unique production Windows components")
     planned = sorted(set(plan["components"]) & ALLOWED_WINDOWS_COMPONENTS)
@@ -361,6 +364,37 @@ def _validate_windows_components(plan: dict[str, Any], requested: list[str]) -> 
     if plan["unknown_paths"]:
         raise ValueError("deployment plan contains unknown paths")
     return planned
+
+
+def _merge_plans(plans: list[dict[str, Any]]) -> dict[str, Any]:
+    if not plans:
+        raise ValueError("at least one deployment plan is required")
+    fields = (
+        "changed_paths", "ignored_paths", "components", "nodes", "linux_units",
+        "windows_apps", "windows_tasks", "health_checks", "unknown_paths",
+    )
+    return {
+        field: sorted({item for plan in plans for item in plan[field]})
+        for field in fields
+    }
+
+
+def _windows_status(repo: Path, sha: str, run_id: str) -> dict[str, Any]:
+    with tempfile.TemporaryDirectory(prefix="qsys-windows-status-") as temporary:
+        coordinator = Path(temporary) / "qsys-windows-deploy-coordinator.py"
+        coordinator.write_bytes(_git_blob(repo, sha, WINDOWS_COORDINATOR_PATH))
+        completed = _run([
+            sys.executable, str(coordinator), "--repo", str(repo), "--sha", sha,
+            "--run-id", run_id, "--status-only",
+        ], cwd=repo, check=False)
+    stream = completed.stdout if completed.stdout.strip() else completed.stderr
+    try:
+        result = json.loads(stream)
+    except json.JSONDecodeError as exc:
+        raise ValueError("Windows coordinator status returned invalid JSON") from exc
+    if completed.returncode != 0 or not result.get("ok"):
+        raise ValueError(f"Windows coordinator status failed: {result}")
+    return result
 
 
 def _fingerprints(config: dict[str, object], repo: Path) -> dict[str, str]:
@@ -782,10 +816,18 @@ def windows_deploy(args: argparse.Namespace, config: dict[str, object]) -> int:
     before_linux = _head(repo)
     restart_window = _restart_window(repo)
     resources = _resources(config)
-    rollback_ready = _rollback_ready(config, before_linux)
     tree = _fetch_and_validate_target(repo, args.sha)
     test_run = _successful_test_run(config, tree)
-    plan = _plan(repo, before_linux, args.sha)
+    windows_status = _windows_status(repo, args.sha, f"{args.run_id}-status")
+    current_windows = {
+        str(item.get("deployed_sha", ""))
+        for item in windows_status.get("apps", {}).values()
+    }
+    if not current_windows or any(not SHA_PATTERN.fullmatch(sha) for sha in current_windows):
+        raise ValueError("Windows status contains an invalid deployed SHA")
+    rollback_ready = all(_rollback_ready(config, sha) for sha in current_windows)
+    windows_change = any(sha != args.sha for sha in current_windows)
+    plan = _merge_plans([_plan(repo, sha, args.sha) for sha in sorted(current_windows)])
     components = _validate_windows_components(plan, args.components)
     apps = sorted(set(plan["windows_apps"]) & {"live_app", "paper_app"})
     if not apps:
@@ -795,8 +837,8 @@ def windows_deploy(args: argparse.Namespace, config: dict[str, object]) -> int:
             raise ValueError("production restart is prohibited during the trading window")
         if not resources["ok"]:
             raise ValueError("production node lacks minimum disk or memory headroom")
-        if before_linux != args.sha and not rollback_ready:
-            raise ValueError("current production SHA is not a recorded successful rollback target")
+        if windows_change and not rollback_ready:
+            raise ValueError("a current Windows SHA is not a recorded successful rollback target")
     started = datetime.now(UTC).isoformat()
     # The fixed SSH entrypoint is only a bootstrap. Execute the Windows
     # coordinator from the exact validated target SHA so it can update itself
@@ -842,7 +884,7 @@ def windows_deploy(args: argparse.Namespace, config: dict[str, object]) -> int:
     after: dict[str, str] = {}
     checks = _checklist_checks(
         restart_window, resources, rollback_ready, test_run,
-        needs_rollback=before_linux != args.sha,
+        needs_rollback=windows_change,
     )
     rollback_targets = dict(before)
     for app in apps:
