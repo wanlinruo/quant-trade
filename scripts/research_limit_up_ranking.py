@@ -17,6 +17,7 @@ from qsys.research.limit_up_ranking import (
     baseline_predictions,
     calibration_table,
     config_dict,
+    dataset_manifest,
     materialise_dataset,
     monthly_precision,
     promotion_verdict,
@@ -68,14 +69,26 @@ def main() -> int:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--threads", type=int, default=2)
     parser.add_argument("--bootstrap-samples", type=int, default=2_000)
+    parser.add_argument(
+        "--reuse-dataset", action="store_true",
+        help="reuse dataset.parquet when it is the only existing output artifact",
+    )
     args = parser.parse_args()
 
-    _empty_directory(args.out)
     config = ResearchConfig(
         threads=max(args.threads, 1), bootstrap_samples=max(args.bootstrap_samples, 100)
     )
     dataset_path = args.out / "dataset.parquet"
-    dataset_manifest = materialise_dataset(args.warehouse, dataset_path, config)
+    if args.reuse_dataset:
+        existing = set(args.out.iterdir()) if args.out.exists() else set()
+        if existing != {dataset_path} or not dataset_path.is_file():
+            raise ValueError(
+                "--reuse-dataset requires dataset.parquet to be the only output artifact"
+            )
+        dataset_record = dataset_manifest(dataset_path)
+    else:
+        _empty_directory(args.out)
+        dataset_record = materialise_dataset(args.warehouse, dataset_path, config)
     dataset = pl.read_parquet(dataset_path)
 
     model_predictions, importance, models = walk_forward_predictions(dataset, config)
@@ -116,7 +129,7 @@ def main() -> int:
         "git_sha": _git_sha(),
         "warehouse": str(args.warehouse),
         "config": config_dict(config),
-        "dataset": dataset_manifest,
+        "dataset": dataset_record,
         "feature_columns": list(FEATURE_COLUMNS),
         "models": {
             "momentum": "T-day return descending",

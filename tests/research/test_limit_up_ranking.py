@@ -9,6 +9,7 @@ import pytest
 
 from qsys.research.limit_up_ranking import (
     FEATURE_COLUMNS,
+    IDENTITY_COLUMNS,
     ResearchConfig,
     TwoStageModel,
     baseline_predictions,
@@ -226,6 +227,27 @@ def test_fixed_heuristic_weights() -> None:
         "volume_ratio_rank": [0.4], "touch_count_20d_rank": [0.2],
     })
     assert heuristic_score(frame)[0] == pytest.approx(0.70)
+
+
+def test_baselines_preserve_identity_columns() -> None:
+    dataset = (
+        _prediction_fixture().filter(pl.col("model") == "momentum")
+        .drop("model", "p_touch", "p_seal_given_touch", "p_close")
+        .with_columns(
+            pl.col("rank").cast(pl.Float64).alias("ret_1d"),
+            pl.col("rank").cast(pl.Float64).alias("ret_1d_rank"),
+            pl.col("rank").cast(pl.Float64).alias("ret_5d_rank"),
+            pl.col("rank").cast(pl.Float64).alias("turnover_rank"),
+            pl.col("rank").cast(pl.Float64).alias("volume_ratio_rank"),
+            pl.col("rank").cast(pl.Float64).alias("touch_count_20d_rank"),
+        )
+        .drop("rank")
+    )
+    predictions = baseline_predictions(dataset)
+
+    assert set(IDENTITY_COLUMNS).issubset(predictions.columns)
+    assert set(predictions["model"]) == {"momentum", "heuristic"}
+    assert predictions["prediction_date"].null_count() == 0
 
 
 def test_two_stage_model_keeps_close_probability_below_touch() -> None:

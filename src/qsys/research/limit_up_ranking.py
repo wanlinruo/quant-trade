@@ -280,6 +280,11 @@ def materialise_dataset(
     )
     con.close()
     temporary.replace(output)
+    return dataset_manifest(output)
+
+
+def dataset_manifest(output: Path) -> dict[str, Any]:
+    """Validate and fingerprint an existing materialised research dataset."""
     frame = pl.scan_parquet(output)
     summary = (
         frame.group_by("split")
@@ -480,7 +485,7 @@ def _prediction_rows(
     frame: pl.DataFrame, *, model: str, p_touch: Sequence[float],
     p_seal: Sequence[float], p_close: Sequence[float],
 ) -> pl.DataFrame:
-    return frame.select(IDENTITY_COLUMNS).with_columns(
+    return frame.select(*IDENTITY_COLUMNS).with_columns(
         pl.lit(model).alias("model"),
         pl.Series("p_touch", p_touch, dtype=pl.Float64),
         pl.Series("p_seal_given_touch", p_seal, dtype=pl.Float64),
@@ -540,7 +545,7 @@ def baseline_predictions(dataset: pl.DataFrame) -> pl.DataFrame:
     heuristic = evaluation.with_columns(heuristic_score(evaluation).alias("score"))
     frames = []
     for name, scored in (("momentum", momentum), ("heuristic", heuristic)):
-        rank = scored.select(IDENTITY_COLUMNS, "score").with_columns(
+        rank = scored.select(*IDENTITY_COLUMNS, "score").with_columns(
             pl.lit(name).alias("model"),
             pl.col("score").rank("ordinal", descending=True).over("prediction_date")
             .cast(pl.Int64).alias("rank"),
