@@ -31,7 +31,7 @@ ALLOWED_WINDOWS_COMPONENTS = frozenset({
     "windows-agent", "windows-gateway", "windows-control",
 })
 WINDOWS_COORDINATOR_PATH = "deploy/linux/qsys-windows-deploy-coordinator.py"
-ENTRYPOINT_VERSION = 7
+ENTRYPOINT_VERSION = 8
 ENTRYPOINT_CAPABILITIES = (
     "systemd-apply-v1",
     "systemd-changed-artifacts-v1",
@@ -43,6 +43,7 @@ ENTRYPOINT_CAPABILITIES = (
     "windows-baseline-plan-v1",
     "systemd-enable-state-v1",
     "monitor-shadow-state-v1",
+    "monitor-shadow-command-v1",
 )
 FAILURE_POINTS = frozenset({"none", "linux-health", "windows-switch"})
 ALLOWED_UNITS = frozenset({
@@ -65,6 +66,9 @@ MARKET_DATA_CONSUMERS = (
     "qsys-shadow-core.service", "qsys-live-core.service",
 )
 SYSTEMD_ENABLE_ON_INSTALL = frozenset({"qsys-limit-up-shadow.timer"})
+MONITOR_SHADOW_ARGUMENT = (
+    "--limit-up-shadow-state /data/qsys/var-prod/limit-up-shadow.sqlite3"
+)
 
 
 class SystemdApplyError(RuntimeError):
@@ -452,6 +456,10 @@ def _systemd_targets(relative: str) -> tuple[Path, ...]:
         return (
             SYSTEMD_UNIT_ROOT / "qsys-monitor.service.d" / "limit-up-shadow.conf",
         )
+    if path.name == "qsys-zz-limit-up-shadow-web.conf":
+        return (
+            SYSTEMD_UNIT_ROOT / "qsys-monitor.service.d" / "zz-limit-up-shadow.conf",
+        )
     if path.suffix in {".service", ".timer"}:
         return (SYSTEMD_UNIT_ROOT / path.name,)
     raise ValueError(f"unsupported systemd artifact: {relative}")
@@ -485,8 +493,9 @@ def _systemd_restart_units(artifacts: dict[Path, Path | None]) -> list[str]:
             continue
         if target.name == "market-data.conf" or target == QSYS_ETC_ROOT / "market-data.env":
             units.update(MARKET_DATA_CONSUMERS)
-        elif target == (
-            SYSTEMD_UNIT_ROOT / "qsys-monitor.service.d" / "limit-up-shadow.conf"
+        elif (
+            target.parent.name == "qsys-monitor.service.d"
+            and target.name in {"limit-up-shadow.conf", "zz-limit-up-shadow.conf"}
         ):
             units.add("qsys-monitor.service")
         elif target.parent == SYSTEMD_UNIT_ROOT and target.suffix in {".service", ".timer"}:
@@ -601,6 +610,21 @@ def _verify_systemd_artifacts(
             and (not _enabled(unit, repo) or not _active(unit, repo))
         ):
             raise ValueError(f"systemd unit was not enabled and started: {unit}")
+    shadow_dropin_installed = any(
+        target.parent.name == "qsys-monitor.service.d"
+        and target.name == "zz-limit-up-shadow.conf"
+        and source is not None
+        for target, source in artifacts.items()
+    )
+    if shadow_dropin_installed:
+        effective = _run([
+            "systemctl", "show", "qsys-monitor.service",
+            "--property=ExecStart", "--value",
+        ], cwd=repo).stdout
+        if MONITOR_SHADOW_ARGUMENT not in effective:
+            raise ValueError(
+                "qsys-monitor effective ExecStart lacks the production shadow state"
+            )
 
 
 def _restore_systemd_state(
