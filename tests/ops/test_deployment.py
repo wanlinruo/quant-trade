@@ -457,13 +457,14 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
 
     state = entrypoint.status({"production_repo": str(tmp_path)})
 
-    assert state["entrypoint_version"] == 5
+    assert state["entrypoint_version"] == 6
     assert set(state["capabilities"]) == {
         "systemd-apply-v1", "systemd-changed-artifacts-v1",
         "systemd-preview-v1", "systemd-rollback-v1",
         "release-checklist-v1", "controlled-failure-injection-v1",
         "successful-release-index-v1",
         "windows-baseline-plan-v1",
+        "systemd-enable-state-v1",
     }
 
 
@@ -629,6 +630,7 @@ def test_systemd_preview_reports_dynamic_restart_and_inactive_units(
         "targets": sorted((str(active_target), str(inactive_target))),
         "restart_units": [active_target.name],
         "inactive_units": [inactive_target.name],
+        "enable_units": [],
     }
 
 
@@ -689,6 +691,107 @@ def test_systemd_apply_installs_reloads_verifies_and_preserves_backup(
     )
     manifest = json.loads((backup / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["active_units"] == {"qsys-example.timer": True}
+    assert manifest["enabled_units"] == {"qsys-example.timer": False}
+
+
+def test_systemd_apply_enables_and_starts_declared_new_timer(
+    monkeypatch, tmp_path,
+) -> None:
+    entrypoint = _production_entrypoint_module()
+    repo = tmp_path / "repo"
+    source_root = repo / "deploy" / "systemd"
+    source_root.mkdir(parents=True)
+    source = source_root / "qsys-new.timer"
+    source.write_text("[Timer]\nOnCalendar=19:35\n", encoding="utf-8")
+    target_root = tmp_path / "etc" / "systemd" / "system"
+    state = {"active": False, "enabled": False}
+    commands: list[list[str]] = []
+
+    def fake_run(command, *, cwd, check=True):
+        commands.append(command)
+        if command[:4] == ["sudo", "-n", "install", "-D"]:
+            target = Path(command[-1])
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(Path(command[-2]), target)
+        elif command[:5] == ["sudo", "-n", "systemctl", "enable", "--now"]:
+            state.update(active=True, enabled=True)
+        elif command[:2] == ["systemctl", "show"]:
+            return subprocess.CompletedProcess(command, 0, "loaded\n", "")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(entrypoint, "SYSTEMD_UNIT_ROOT", target_root)
+    monkeypatch.setattr(entrypoint, "QSYS_ETC_ROOT", tmp_path / "etc" / "qsys")
+    monkeypatch.setattr(entrypoint, "SYSTEMD_ENABLE_ON_INSTALL", frozenset({source.name}))
+    monkeypatch.setattr(entrypoint, "_active", lambda unit, cwd: state["active"])
+    monkeypatch.setattr(entrypoint, "_enabled", lambda unit, cwd: state["enabled"])
+    monkeypatch.setattr(entrypoint, "_run", fake_run)
+
+    check, backup = entrypoint._apply_systemd(
+        {"production_record_root": str(tmp_path / "records" / "github")},
+        repo,
+        "github-enable",
+        ["deploy/systemd/qsys-new.timer"],
+    )
+
+    assert check["status"] == "passed"
+    assert ["sudo", "-n", "systemctl", "enable", "--now", source.name] in commands
+    assert state == {"active": True, "enabled": True}
+    manifest = json.loads((backup / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["active_units"] == {source.name: False}
+    assert manifest["enabled_units"] == {source.name: False}
+
+
+def test_systemd_apply_failure_restores_new_timer_disabled_and_inactive(
+    monkeypatch, tmp_path,
+) -> None:
+    entrypoint = _production_entrypoint_module()
+    repo = tmp_path / "repo"
+    source_root = repo / "deploy" / "systemd"
+    source_root.mkdir(parents=True)
+    source = source_root / "qsys-new.timer"
+    source.write_text("[Timer]\nOnCalendar=19:35\n", encoding="utf-8")
+    target_root = tmp_path / "etc" / "systemd" / "system"
+    state = {"active": False, "enabled": False}
+    failed = False
+
+    def fake_run(command, *, cwd, check=True):
+        nonlocal failed
+        if command[:4] == ["sudo", "-n", "install", "-D"]:
+            target = Path(command[-1])
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(Path(command[-2]), target)
+        elif command[:4] == ["sudo", "-n", "rm", "-f"]:
+            Path(command[-1]).unlink(missing_ok=True)
+        elif command[:5] == ["sudo", "-n", "systemctl", "enable", "--now"]:
+            state.update(active=True, enabled=True)
+        elif command[:4] == ["sudo", "-n", "systemctl", "disable"]:
+            state["enabled"] = False
+        elif command[:4] == ["sudo", "-n", "systemctl", "stop"]:
+            state["active"] = False
+        elif command[0] == "systemd-analyze" and not failed:
+            failed = True
+            raise subprocess.CalledProcessError(1, command, stderr="invalid unit")
+        elif command[:2] == ["systemctl", "show"]:
+            return subprocess.CompletedProcess(command, 0, "loaded\n", "")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(entrypoint, "SYSTEMD_UNIT_ROOT", target_root)
+    monkeypatch.setattr(entrypoint, "QSYS_ETC_ROOT", tmp_path / "etc" / "qsys")
+    monkeypatch.setattr(entrypoint, "SYSTEMD_ENABLE_ON_INSTALL", frozenset({source.name}))
+    monkeypatch.setattr(entrypoint, "_active", lambda unit, cwd: state["active"])
+    monkeypatch.setattr(entrypoint, "_enabled", lambda unit, cwd: state["enabled"])
+    monkeypatch.setattr(entrypoint, "_run", fake_run)
+
+    with pytest.raises(RuntimeError, match="rollback=succeeded"):
+        entrypoint._apply_systemd(
+            {"production_record_root": str(tmp_path / "records" / "github")},
+            repo,
+            "github-enable-failure",
+            ["deploy/systemd/qsys-new.timer"],
+        )
+
+    assert state == {"active": False, "enabled": False}
+    assert not (target_root / source.name).exists()
 
 
 def test_systemd_verify_failure_restores_installed_files(monkeypatch, tmp_path) -> None:

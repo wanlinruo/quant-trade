@@ -31,7 +31,7 @@ ALLOWED_WINDOWS_COMPONENTS = frozenset({
     "windows-agent", "windows-gateway", "windows-control",
 })
 WINDOWS_COORDINATOR_PATH = "deploy/linux/qsys-windows-deploy-coordinator.py"
-ENTRYPOINT_VERSION = 5
+ENTRYPOINT_VERSION = 6
 ENTRYPOINT_CAPABILITIES = (
     "systemd-apply-v1",
     "systemd-changed-artifacts-v1",
@@ -41,6 +41,7 @@ ENTRYPOINT_CAPABILITIES = (
     "controlled-failure-injection-v1",
     "successful-release-index-v1",
     "windows-baseline-plan-v1",
+    "systemd-enable-state-v1",
 )
 FAILURE_POINTS = frozenset({"none", "linux-health", "windows-switch"})
 ALLOWED_UNITS = frozenset({
@@ -62,6 +63,7 @@ MARKET_DATA_CONSUMERS = (
     "qsys-monitor.service", "qsys-paper.service",
     "qsys-shadow-core.service", "qsys-live-core.service",
 )
+SYSTEMD_ENABLE_ON_INSTALL = frozenset({"qsys-limit-up-shadow.timer"})
 
 
 class SystemdApplyError(RuntimeError):
@@ -114,6 +116,11 @@ def _dirty(repo: Path) -> bool:
 def _active(unit: str, repo: Path) -> bool:
     result = _run(["systemctl", "is-active", unit], cwd=repo, check=False)
     return result.returncode == 0 and result.stdout.strip() == "active"
+
+
+def _enabled(unit: str, repo: Path) -> bool:
+    result = _run(["systemctl", "is-enabled", unit], cwd=repo, check=False)
+    return result.returncode == 0 and result.stdout.strip() == "enabled"
 
 
 def _web_healthy(config: dict[str, object]) -> bool:
@@ -489,10 +496,17 @@ def _preview_systemd(
             artifacts = _systemd_artifacts(worktree, changed_paths)
             units = _systemd_restart_units(artifacts)
             active_units = [unit for unit in units if _active(unit, repo)]
+            enable_units = sorted(
+                unit for unit in units
+                if unit in SYSTEMD_ENABLE_ON_INSTALL
+                and artifacts.get(SYSTEMD_UNIT_ROOT / unit) is not None
+                and not _enabled(unit, repo)
+            )
             return {
                 "targets": sorted(str(target_path) for target_path in artifacts),
                 "restart_units": active_units,
                 "inactive_units": sorted(set(units) - set(active_units)),
+                "enable_units": enable_units,
             }
         finally:
             _run(
@@ -503,7 +517,7 @@ def _preview_systemd(
 
 def _backup_systemd(
     config: dict[str, object], run_id: str, artifacts: dict[Path, Path | None],
-    active: dict[str, bool],
+    active: dict[str, bool], enabled: dict[str, bool],
 ) -> tuple[Path, dict[str, object]]:
     root = (
         Path(str(config["production_record_root"])).parent
@@ -519,9 +533,10 @@ def _backup_systemd(
             backup.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(target, backup)
     manifest: dict[str, object] = {
-        "schema_version": 1,
+        "schema_version": 2,
         "targets": entries,
         "active_units": active,
+        "enabled_units": enabled,
     }
     (root / "manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8",
@@ -571,6 +586,24 @@ def _verify_systemd_artifacts(
             raise ValueError(f"systemd unit is not loaded: {unit} ({load_state or 'unknown'})")
         if active.get(unit, False) and not _active(unit, repo):
             raise ValueError(f"previously active systemd unit is not active: {unit}")
+        if (
+            unit in SYSTEMD_ENABLE_ON_INSTALL
+            and artifacts.get(SYSTEMD_UNIT_ROOT / unit) is not None
+            and (not _enabled(unit, repo) or not _active(unit, repo))
+        ):
+            raise ValueError(f"systemd unit was not enabled and started: {unit}")
+
+
+def _restore_systemd_state(
+    units: list[str], active: dict[str, bool], enabled: dict[str, bool], repo: Path,
+) -> None:
+    for unit in units:
+        action = "enable" if enabled.get(unit, False) else "disable"
+        _run(["sudo", "-n", "systemctl", action, unit], cwd=repo)
+    _restart_previously_active(units, active, repo)
+    for unit in units:
+        if not active.get(unit, False):
+            _run(["sudo", "-n", "systemctl", "stop", unit], cwd=repo)
 
 
 def _restore_systemd(
@@ -589,7 +622,10 @@ def _restore_systemd(
                 _run(["sudo", "-n", "rm", "-f", "--", str(target)], cwd=repo)
         _run(["sudo", "-n", "systemctl", "daemon-reload"], cwd=repo)
         active = {str(key): bool(value) for key, value in manifest["active_units"].items()}
-        _restart_previously_active(units, active, repo)
+        enabled = {
+            str(key): bool(value) for key, value in manifest["enabled_units"].items()
+        }
+        _restore_systemd_state(units, active, enabled, repo)
         for item in manifest["targets"]:
             target = Path(str(item["path"]))
             if item["existed"]:
@@ -598,7 +634,11 @@ def _restore_systemd(
                     return False
             elif target.exists():
                 return False
-        return all(not active.get(unit, False) or _active(unit, repo) for unit in units)
+        return all(
+            _active(unit, repo) == active.get(unit, False)
+            and _enabled(unit, repo) == enabled.get(unit, False)
+            for unit in units
+        )
     except (OSError, subprocess.CalledProcessError, ValueError):
         return False
 
@@ -610,7 +650,10 @@ def _apply_systemd(
     artifacts = _systemd_artifacts(repo, changed_paths)
     units = _systemd_restart_units(artifacts)
     active = {unit: _active(unit, repo) for unit in units}
-    backup_root, manifest = _backup_systemd(config, run_id, artifacts, active)
+    enabled = {unit: _enabled(unit, repo) for unit in units}
+    backup_root, manifest = _backup_systemd(
+        config, run_id, artifacts, active, enabled,
+    )
     try:
         for target, source in artifacts.items():
             if source is None:
@@ -622,6 +665,15 @@ def _apply_systemd(
                 ], cwd=repo)
         _run(["sudo", "-n", "systemctl", "daemon-reload"], cwd=repo)
         _restart_previously_active(units, active, repo)
+        for unit in units:
+            if (
+                unit in SYSTEMD_ENABLE_ON_INSTALL
+                and artifacts.get(SYSTEMD_UNIT_ROOT / unit) is not None
+            ):
+                _run(
+                    ["sudo", "-n", "systemctl", "enable", "--now", unit],
+                    cwd=repo,
+                )
         _verify_systemd_artifacts(artifacts, units, active, repo)
     except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as exc:
         rollback_ok = _restore_systemd(backup_root, manifest, units, repo)
@@ -633,7 +685,8 @@ def _apply_systemd(
         "name": "systemd-verify", "status": "passed",
         "detail": (
             f"installed and byte-verified {len(artifacts)} targets; "
-            f"preserved active state for {len(units)} affected units"
+            f"preserved prior state for {len(units)} affected units; "
+            f"enabled {sum(unit in SYSTEMD_ENABLE_ON_INSTALL for unit in units)} units"
         ),
     }, backup_root)
 
