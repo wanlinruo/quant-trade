@@ -28,7 +28,11 @@ def ingest_moneyflow(provider, warehouse: Warehouse, days: Sequence[date]) -> in
         frames.append(raw.select(
             pl.col("ts_code").alias("symbol"),
             _date_expr("trade_date").alias("dt"),
-            *[(pl.col(name) * 10_000.0).alias(name) for name in _MONEY_COLUMNS],
+            *[
+                (pl.col(name) * 10_000.0 if name.endswith("_amount") else pl.col(name))
+                .alias(name)
+                for name in _MONEY_COLUMNS
+            ],
         ))
     incoming = pl.concat(frames, how="vertical_relaxed")
     if incoming.select(pl.struct("symbol", "dt").is_duplicated().any()).item():
