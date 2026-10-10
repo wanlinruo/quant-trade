@@ -31,7 +31,7 @@ ALLOWED_WINDOWS_COMPONENTS = frozenset({
     "windows-agent", "windows-gateway", "windows-control",
 })
 WINDOWS_COORDINATOR_PATH = "deploy/linux/qsys-windows-deploy-coordinator.py"
-ENTRYPOINT_VERSION = 6
+ENTRYPOINT_VERSION = 7
 ENTRYPOINT_CAPABILITIES = (
     "systemd-apply-v1",
     "systemd-changed-artifacts-v1",
@@ -42,6 +42,7 @@ ENTRYPOINT_CAPABILITIES = (
     "successful-release-index-v1",
     "windows-baseline-plan-v1",
     "systemd-enable-state-v1",
+    "monitor-shadow-state-v1",
 )
 FAILURE_POINTS = frozenset({"none", "linux-health", "windows-switch"})
 ALLOWED_UNITS = frozenset({
@@ -447,6 +448,10 @@ def _systemd_targets(relative: str) -> tuple[Path, ...]:
             SYSTEMD_UNIT_ROOT / f"{unit}.d" / "market-data.conf"
             for unit in MARKET_DATA_CONSUMERS
         )
+    if path.name == "qsys-limit-up-shadow-web.conf":
+        return (
+            SYSTEMD_UNIT_ROOT / "qsys-monitor.service.d" / "limit-up-shadow.conf",
+        )
     if path.suffix in {".service", ".timer"}:
         return (SYSTEMD_UNIT_ROOT / path.name,)
     raise ValueError(f"unsupported systemd artifact: {relative}")
@@ -480,6 +485,10 @@ def _systemd_restart_units(artifacts: dict[Path, Path | None]) -> list[str]:
             continue
         if target.name == "market-data.conf" or target == QSYS_ETC_ROOT / "market-data.env":
             units.update(MARKET_DATA_CONSUMERS)
+        elif target == (
+            SYSTEMD_UNIT_ROOT / "qsys-monitor.service.d" / "limit-up-shadow.conf"
+        ):
+            units.add("qsys-monitor.service")
         elif target.parent == SYSTEMD_UNIT_ROOT and target.suffix in {".service", ".timer"}:
             units.add(target.name)
     return sorted(units)
