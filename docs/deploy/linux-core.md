@@ -256,6 +256,14 @@ ssh -N -L 8420:127.0.0.1:8420 -i ~/.ssh/qmt_bridge_ed25519 ubuntu@110.42.205.144
 `warehouse/metric_checks`，通过监控台 `/data/catalog` 查看；违规样本写入
 `artifacts/metric_checks`，可从指标详情页下载。
 
+同步刷新 `stock_basic` 后还会检查当日上市证券：仅当证券上市日就是目标交易日、
+Tushare 日线成交量大于零且 QMT 分钟线缺失时，才调用每日归档做一次定向幂等补采。
+自动补采默认最多 20 只、总超时 15 分钟，并跳过竞价逐笔；超过上限会失败关闭，
+不会把普通归档故障变成无限重试。17:00 未收敛时，19:00 的第二次同步会再次检查。
+补采使用同一仓库写锁，成功后同时发布 `minute_bars` 与 `bar_minute_1m`。
+该行为由生产 unit 显式传入 `--late-minute-convergence`；手工历史同步默认不驱动
+Windows，避免一次旧日期回补产生意外的跨节点写入。
+
 验证规则失败或验证器自身崩溃**不改变同步任务的退出码**。数据已经成功落盘，
 若因此让 systemd 把同步记成失败，`Persistent=true` 会重补已经完成的数据，
 反而掩盖真正的验证问题。因此不要靠 `systemctl status` 判断指标是否通过；
@@ -327,6 +335,11 @@ ConnectionError（东财主动断连），与开发机的 ProxyError 是两种�
 的记录可解释为全天停牌；其余都是 unknown empty，必须阻止 canonical 发布。即使存在
 未知空洞、单股异常或 SSH 中断，已回收文件仍先幂等导入，重跑依靠 Windows `done.csv`
 只处理 pending 股日。`result.json` 绑定本次 ServiceRun id，旧摘要不能冒充新结果。
+
+每日 15:40 之后才进入 `instruments` 的当日新股，由 17:00/19:00 的
+`qsys-tushare-sync` 在主数据刷新后识别。它只把“当日上市 + 日线有成交 + 分钟缺失”
+的少量证券传给 `daily_archive.py --minute-symbols ... --skip-auction`，复用这里的续传、
+质量门禁和 canonical 发布，不另写一套下载链路。
 
 股本链路已于 D-16 结案：QMT 股本下载正式退出每日归档，旧 `share_capital`
 表冻结保留为历史证据；规范 `share_capital_history` 由 Tushare 同步从
