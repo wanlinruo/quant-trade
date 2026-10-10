@@ -21,6 +21,8 @@ def main() -> int:
     parser.add_argument("--state", type=Path,
                         default=Path("var/limit-up-shadow.sqlite3"))
     parser.add_argument("--config", default=None, help="Tushare 交易日历配置")
+    parser.add_argument("--drift-reference", type=Path, required=True,
+                        help="由 #210 OBS 预测生成的紧凑 PSI 基线")
     parser.add_argument("--prediction-date", type=date.fromisoformat,
                         help="默认取 market_regime 最新交易日")
     parser.add_argument("--threads", type=int, default=2)
@@ -45,6 +47,7 @@ def main() -> int:
     snapshot = build_daily_snapshot(
         args.warehouse, args.research_run, prediction_date, target_session,
         threads=max(1, args.threads), min_eligible=max(1, args.min_eligible),
+        drift_reference_path=args.drift_reference,
     )
     LimitUpShadowPublisher(args.state).publish(snapshot)
     print(json.dumps({
@@ -56,6 +59,7 @@ def main() -> int:
         "model_version": snapshot.model_version,
         "model_sha": snapshot.model_sha,
         "data_sha": snapshot.data_sha,
+        "drift_score": snapshot.drift_score,
     }, ensure_ascii=False))
     return 0
 

@@ -129,7 +129,7 @@ def main() -> int:
     try:
         import joblib
     except ImportError as exc:  # pragma: no cover - CLI error path
-        raise RuntimeError("ml-research dependency group is required") from exc
+        raise RuntimeError("production ML runtime dependencies are required") from exc
     for name, model in models.items():
         joblib.dump(model, model_dir / f"last_walk_forward_{name}.joblib")
 

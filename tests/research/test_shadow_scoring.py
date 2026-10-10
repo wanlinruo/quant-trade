@@ -7,9 +7,14 @@ import pytest
 
 from qsys.research.limit_up_ranking import FEATURE_COLUMNS
 from qsys.research.limit_up_shadow import (
+    DRIFT_BINS,
+    DriftReference,
     PromotedModel,
+    build_drift_reference,
+    load_drift_reference,
     load_promoted_model,
     outcome_truth,
+    prediction_psi,
     score_snapshot,
     scoring_frame_sha,
 )
@@ -62,6 +67,41 @@ def test_score_snapshot_ranks_and_keeps_only_compact_contract():
     assert snapshot.model_sha == "b" * 64
     assert len(snapshot.data_sha) == 64
     assert snapshot.entries[0].actual_touched is None
+
+
+def test_drift_reference_is_compact_and_psi_detects_shift(tmp_path: Path):
+    predictions = tmp_path / "predictions.parquet"
+    values = [0.0015, 0.003, 0.007, 0.015, 0.03, 0.07] * 10
+    pl.DataFrame({
+        "model": ["lightgbm"] * len(values) + ["momentum"],
+        "split": ["OBS"] * len(values) + ["OBS"],
+        "p_close": values + [0.9],
+    }).write_parquet(predictions)
+
+    reference = build_drift_reference(predictions)
+    path = tmp_path / "reference.json"
+    path.write_text(__import__("json").dumps(reference.as_dict()), encoding="utf-8")
+    loaded = load_drift_reference(path)
+
+    assert loaded.rows == len(values)
+    assert len(loaded.proportions) == len(DRIFT_BINS) - 1
+    assert prediction_psi(values, loaded) == pytest.approx(0)
+    assert prediction_psi([0.8] * len(values), loaded) > 0.25
+
+
+def test_score_snapshot_publishes_only_scalar_drift():
+    frame = _frame()
+    close = [value * 0.4 for value in (0.50, 0.51, 0.52)]
+    reference = DriftReference(
+        source_sha="d" * 64, rows=3, bin_edges=DRIFT_BINS,
+        proportions=tuple(
+            count / 3 for count in [0, 0, 0, 0, 0, 0, 0, 3, 0, 0]
+        ),
+    )
+
+    snapshot = score_snapshot(frame, _promoted(), drift_reference=reference)
+
+    assert snapshot.drift_score == pytest.approx(prediction_psi(close, reference))
 
 
 def test_scoring_fingerprint_is_order_independent_but_feature_sensitive():

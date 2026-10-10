@@ -51,7 +51,7 @@
     <div><dt>模型版本</dt><dd>{{ snap.model_version }} <span class="mono">{{ snap.model_sha[:12] }}</span></dd></div>
     <div><dt>数据版本</dt><dd>{{ snap.data_version }} <span class="mono">{{ snap.data_sha[:12] }}</span></dd></div>
     <div><dt>校准误差</dt><dd>{{ '%.4f'|format(snap.calibration_error) if snap.calibration_error is not none else '待累计' }}</dd></div>
-    <div><dt>漂移分数</dt><dd>{{ '%.4f'|format(snap.drift_score) if snap.drift_score is not none else '待累计' }}</dd></div>
+    <div><dt>漂移分数（PSI）</dt><dd>{% if snap.drift_score is none %}待累计{% else %}{{ '%.4f'|format(snap.drift_score) }} <span class="pill {{ 'ok' if snap.drift_score < 0.10 else 'warn' if snap.drift_score <= 0.25 else 'bad' }}">{{ '稳定' if snap.drift_score < 0.10 else '关注' if snap.drift_score <= 0.25 else '显著漂移' }}</span>{% endif %}</dd></div>
   </dl>
 </section>
 {% else %}

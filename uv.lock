@@ -1807,12 +1807,14 @@ dependencies = [
     { name = "fastapi" },
     { name = "fastexcel" },
     { name = "jinja2" },
+    { name = "lightgbm" },
     { name = "mootdx" },
     { name = "polars" },
     { name = "pyarrow" },
     { name = "pydantic" },
     { name = "redis" },
     { name = "requests" },
+    { name = "scikit-learn" },
     { name = "structlog" },
     { name = "uvicorn" },
 ]
@@ -1830,10 +1832,6 @@ dev = [
 joinquant = [
     { name = "jqdatasdk" },
 ]
-ml-research = [
-    { name = "lightgbm" },
-    { name = "scikit-learn" },
-]
 
 [package.metadata]
 requires-dist = [
@@ -1843,12 +1841,14 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115" },
     { name = "fastexcel", specifier = ">=0.12" },
     { name = "jinja2", specifier = ">=3.1" },
+    { name = "lightgbm", specifier = ">=4.5,<5" },
     { name = "mootdx", specifier = ">=0.11" },
     { name = "polars", specifier = ">=1.0" },
     { name = "pyarrow", specifier = ">=16.0" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "redis", specifier = ">=5.0" },
     { name = "requests", specifier = ">=2.31" },
+    { name = "scikit-learn", specifier = ">=1.5,<2" },
     { name = "structlog", specifier = ">=24.1" },
     { name = "uvicorn", specifier = ">=0.30" },
 ]
@@ -1863,10 +1863,6 @@ dev = [
     { name = "pytest-cov", specifier = ">=5.0" },
 ]
 joinquant = [{ name = "jqdatasdk", specifier = "==1.9.8" }]
-ml-research = [
-    { name = "lightgbm", specifier = ">=4.5,<5" },
-    { name = "scikit-learn", specifier = ">=1.5,<2" },
-]
 
 [[package]]
 name = "redis"
