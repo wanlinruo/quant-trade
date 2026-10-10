@@ -142,10 +142,16 @@ def test_namechange_reads_past_the_ten_thousand_row_api_page():
 def test_first_board_provider_moneyflow_uses_explicit_fields():
     client = FakeClient([{
         "ts_code": "600001.SH", "trade_date": "20260911",
+        "buy_sm_vol": 10, "sell_sm_vol": 20,
         "buy_sm_amount": 1, "sell_sm_amount": 2, "buy_md_amount": 3,
+        "buy_md_vol": 30, "sell_md_vol": 40,
         "sell_md_amount": 4, "buy_lg_amount": 5, "sell_lg_amount": 6,
+        "buy_lg_vol": 50, "sell_lg_vol": 60,
         "buy_elg_amount": 7, "sell_elg_amount": 8, "net_mf_amount": -4,
+        "buy_elg_vol": 70, "sell_elg_vol": 80, "net_mf_vol": -90,
     }])
     got = TushareProvider(client).moneyflow(date(2026, 9, 11))
     assert got["buy_sm_amount"].dtype == pl.Float64
+    assert got["buy_sm_vol"].dtype == pl.Float64
+    assert "net_mf_vol" in client.calls[0][2]
     assert client.calls[0][0] == "moneyflow"

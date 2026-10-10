@@ -33,15 +33,21 @@ class Provider:
 def test_moneyflow_normalizes_amounts_and_replaces_day(warehouse):
     row = {
         "ts_code": ["600001.SH"], "trade_date": ["20260911"],
+        "buy_sm_vol": [10.0], "sell_sm_vol": [20.0],
         "buy_sm_amount": [1.0], "sell_sm_amount": [2.0],
+        "buy_md_vol": [30.0], "sell_md_vol": [40.0],
         "buy_md_amount": [3.0], "sell_md_amount": [4.0],
+        "buy_lg_vol": [50.0], "sell_lg_vol": [60.0],
         "buy_lg_amount": [5.0], "sell_lg_amount": [6.0],
+        "buy_elg_vol": [70.0], "sell_elg_vol": [80.0],
         "buy_elg_amount": [7.0], "sell_elg_amount": [8.0],
-        "net_mf_amount": [-4.0],
+        "net_mf_vol": [-90.0], "net_mf_amount": [-4.0],
     }
     assert ingest_moneyflow(Provider(moneyflow=pl.DataFrame(row)), warehouse, [DAY]) == 1
     got = WarehouseQuery(warehouse).moneyflow(None, DAY, DAY).row(0, named=True)
     assert got["buy_sm_amount"] == 10_000.0
+    assert got["buy_sm_vol"] == 10.0
+    assert got["net_mf_vol"] == -90.0
     assert got["net_mf_amount"] == -40_000.0
 
     replacement = {**row, "buy_sm_amount": [9.0]}
