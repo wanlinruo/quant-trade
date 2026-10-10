@@ -14,7 +14,7 @@ ExecStart=/usr/bin/flock --shared /home/ubuntu/qsys/var/warehouse-write.lock \
           --research-run /data/qsys/research/issue-210/run-20261010 \
           --drift-reference /data/qsys/var-prod/limit-up-drift-reference.json \
           --state /data/qsys/var-prod/limit-up-shadow.sqlite3 \
-          --service-runs /data/qsys/var-prod/service-runs \
+          --service-runs /home/ubuntu/qsys/var/service-runs \
           --config /home/ubuntu/qsys/config/deploy.local.toml
 TimeoutStartSec=7200
 NoNewPrivileges=true

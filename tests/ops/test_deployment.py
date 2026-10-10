@@ -457,7 +457,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
 
     state = entrypoint.status({"production_repo": str(tmp_path)})
 
-    assert state["entrypoint_version"] == 6
+    assert state["entrypoint_version"] == 7
     assert set(state["capabilities"]) == {
         "systemd-apply-v1", "systemd-changed-artifacts-v1",
         "systemd-preview-v1", "systemd-rollback-v1",
@@ -465,6 +465,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
         "successful-release-index-v1",
         "windows-baseline-plan-v1",
         "systemd-enable-state-v1",
+        "monitor-shadow-state-v1",
     }
 
 
@@ -556,6 +557,11 @@ def test_systemd_artifact_mapping_is_explicit_and_excludes_site_templates(
     assert entrypoint._systemd_targets("deploy/systemd/qsys-market-data.env") == (
         qsys_etc / "market-data.env",
     )
+    assert entrypoint._systemd_targets(
+        "deploy/systemd/qsys-limit-up-shadow-web.conf"
+    ) == (
+        unit_root / "qsys-monitor.service.d" / "limit-up-shadow.conf",
+    )
     assert entrypoint._systemd_targets("deploy/systemd/qsys-web-test.service") == ()
     assert entrypoint._systemd_targets("deploy/systemd/qsys-shadow-core.service") == ()
     assert entrypoint._systemd_targets("deploy/systemd/qsys-live-core.service") == ()
@@ -583,6 +589,19 @@ def test_systemd_artifacts_only_include_changed_deployable_files(
 
     assert artifacts == {target_root / changed.name: changed}
     assert target_root / unrelated.name not in artifacts
+
+
+def test_limit_up_shadow_web_dropin_restarts_monitor(monkeypatch, tmp_path) -> None:
+    entrypoint = _production_entrypoint_module()
+    unit_root = tmp_path / "etc" / "systemd" / "system"
+    source = tmp_path / "limit-up-shadow.conf"
+    source.write_text("[Service]\nReadOnlyPaths=/data/qsys/var-prod\n", encoding="utf-8")
+    target = unit_root / "qsys-monitor.service.d" / source.name
+    monkeypatch.setattr(entrypoint, "SYSTEMD_UNIT_ROOT", unit_root)
+
+    assert entrypoint._systemd_restart_units({target: source}) == [
+        "qsys-monitor.service",
+    ]
 
 
 def test_systemd_artifacts_fail_closed_for_only_excluded_template(
