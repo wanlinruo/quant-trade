@@ -37,7 +37,6 @@ ignored_paths = [
   "scripts/research_limit_up_ranking.py",
   "scripts/verify_github_release_evidence.py",
   "src/qsys/ops/deployment.py",
-  "src/qsys/research/**",
   "tests/**",
 ]
 
@@ -79,7 +78,11 @@ paths = [
   "src/qsys/markets/**",
   "src/qsys/strategy/**",
   "src/qsys/web/**",
+  "src/qsys/research/__init__.py",
+  "src/qsys/research/limit_up_ranking.py",
+  "src/qsys/research/limit_up_shadow.py",
   "scripts/run_backtest.py",
+  "scripts/run_limit_up_shadow.py",
   "scripts/run_monitor.py",
   "scripts/publish_limit_up_shadow.py",
   "strategies/**",

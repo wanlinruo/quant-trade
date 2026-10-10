@@ -96,7 +96,10 @@ def _read(path: str) -> str:
     return f"read_parquet('{escaped}', union_by_name=true)"
 
 
-def dataset_sql(warehouse: Path, config: ResearchConfig) -> str:
+def dataset_sql(
+    warehouse: Path, config: ResearchConfig, *,
+    target_session_override: date | None = None,
+) -> str:
     """Return the exact DuckDB query used to build the point-in-time dataset."""
     bars = _read(_parquet(warehouse, "tushare_daily"))
     flags = _read(_parquet(warehouse, "daily_flags"))
@@ -107,6 +110,15 @@ def dataset_sql(warehouse: Path, config: ResearchConfig) -> str:
     end = (config.feature_end + timedelta(days=10)).isoformat()
     feature_start = config.feature_start.isoformat()
     feature_end = config.feature_end.isoformat()
+    target_expression = "lead(dt) OVER (ORDER BY dt)"
+    if target_session_override is not None:
+        if target_session_override <= config.feature_end:
+            raise ValueError("target session override must be after feature end")
+        target_expression = (
+            f"CASE WHEN dt = DATE '{feature_end}' "
+            f"THEN DATE '{target_session_override.isoformat()}' "
+            "ELSE lead(dt) OVER (ORDER BY dt) END"
+        )
 
     def sums(column: str, prefix: str) -> str:
         return ",\n".join(
@@ -117,7 +129,7 @@ def dataset_sql(warehouse: Path, config: ResearchConfig) -> str:
     return f"""
 WITH sessions AS (
     SELECT dt,
-           lead(dt) OVER (ORDER BY dt) AS target_session
+           {target_expression} AS target_session
     FROM {regime}
     WHERE dt BETWEEN DATE '{start}' AND DATE '{end}'
 ),
@@ -141,6 +153,7 @@ raw AS (
         coalesce(f.touched_limit_up, false)::INTEGER AS is_touch_limit,
         coalesce(f.is_broken_board, false)::INTEGER AS is_broken,
         coalesce(f.is_st, true) AS is_st,
+        st.symbol IS NOT NULL AS has_status,
         coalesce(st.is_suspended, false) AS is_suspended,
         coalesce(st.is_delisting, false) AS is_delisting,
         row_number() OVER (PARTITION BY b.symbol ORDER BY b.dt) AS observations,
@@ -261,8 +274,42 @@ WHERE dt BETWEEN DATE '{feature_start}' AND DATE '{feature_end}'
   AND observations >= {config.min_observations}
   AND board IN ('main', 'gem', 'star')
   AND (symbol LIKE '%.SH' OR symbol LIKE '%.SZ')
-  AND NOT is_st AND NOT is_suspended AND NOT is_delisting
+  AND has_status AND NOT is_st AND NOT is_suspended AND NOT is_delisting
 """
+
+
+def scoring_frame(
+    warehouse: Path, prediction_date: date, target_session: date, *,
+    threads: int = 2, min_observations: int = 60,
+) -> pl.DataFrame:
+    """Build one current feature slice without requiring future outcome rows.
+
+    The explicit target comes from the authoritative trading calendar.  It only
+    replaces the final session link; all feature values still come from T-day
+    warehouse data through the frozen research SQL.
+    """
+    config = ResearchConfig(
+        history_start=prediction_date - timedelta(days=400),
+        feature_start=prediction_date,
+        feature_end=prediction_date,
+        min_observations=min_observations,
+        threads=max(threads, 1),
+    )
+    con = duckdb.connect()
+    try:
+        con.execute(f"PRAGMA threads={config.threads}")
+        frame = con.execute(dataset_sql(
+            warehouse, config, target_session_override=target_session,
+        )).pl()
+    finally:
+        con.close()
+    if frame.is_empty():
+        raise ValueError(f"no eligible scoring rows for {prediction_date}")
+    if frame["prediction_date"].unique().to_list() != [prediction_date]:
+        raise ValueError("scoring frame contains an unexpected prediction date")
+    if frame["target_session"].unique().to_list() != [target_session]:
+        raise ValueError("scoring frame target does not match trading calendar")
+    return frame
 
 
 def materialise_dataset(
