@@ -34,6 +34,19 @@ Issue #212 的页面入口是 `/market/limit-up-shadow`，只读 API 是
 生产运行环境需要安装 `ml-research` 依赖组；模型仍来自只读的研究证据目录，不复制出
 第二份模型或训练集。
 
+目标交易日收盘真值就绪后，结果观察任务补写独立、不可变的事实表：
+
+```bash
+.venv/bin/python scripts/observe_limit_up_shadow.py \
+  --warehouse /data/qsys/warehouse \
+  --state /data/qsys/var-prod/limit-up-shadow.sqlite3
+```
+
+任务仅处理目标日已进入 `daily_flags` 的待观察榜单，并且必须一次完整覆盖原 Top-20；
+缺任一标的、真值为空或事实逻辑矛盾时整日拒绝写入。预测快照本身保持不变。精确重跑
+幂等，不同事实或不同源指纹不得覆盖。页面基于最近 60 个完整观察日计算滚动
+Precision@20 和 Brier 校准误差。
+
 离线任务先输出一份紧凑 JSON，再通过校验入口发布：
 
 ```bash

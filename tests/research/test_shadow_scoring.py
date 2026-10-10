@@ -9,6 +9,7 @@ from qsys.research.limit_up_ranking import FEATURE_COLUMNS
 from qsys.research.limit_up_shadow import (
     PromotedModel,
     load_promoted_model,
+    outcome_truth,
     score_snapshot,
     scoring_frame_sha,
 )
@@ -119,3 +120,31 @@ def test_load_promoted_model_preserves_full_artifact_provenance(tmp_path: Path):
     assert promoted.source_sha == "a" * 40
     assert promoted.research_data_sha == "b" * 64
     assert len(promoted.artifact_sha) == 64
+
+
+def test_outcome_truth_requires_complete_rows_and_fingerprints_source(tmp_path: Path):
+    day = date(2026, 10, 12)
+    flags_path = tmp_path / "daily_flags/year=2026"
+    bars_path = tmp_path / "tushare_daily/year=2026"
+    flags_path.mkdir(parents=True)
+    bars_path.mkdir(parents=True)
+    pl.DataFrame({
+        "dt": [day, day], "symbol": ["000001.SZ", "600000.SH"],
+        "touched_limit_up": [True, False], "is_limit_up": [True, False],
+        "limit_up": [11.0, 22.0],
+    }).write_parquet(flags_path / "part.parquet")
+    pl.DataFrame({
+        "dt": [day, day], "symbol": ["000001.SZ", "600000.SH"],
+        "open": [11.0, 20.0], "high": [11.0, 20.5], "low": [11.0, 19.8],
+    }).write_parquet(bars_path / "part.parquet")
+
+    outcomes, source_sha = outcome_truth(
+        tmp_path, day, ("000001.SZ", "600000.SH"),
+    )
+
+    assert len(source_sha) == 64
+    assert outcomes[0].one_price_limit is True
+    assert outcomes[1].actual_touched is False
+
+    with pytest.raises(ValueError, match="completely cover"):
+        outcome_truth(tmp_path, day, ("000001.SZ", "600000.SH", "300001.SZ"))

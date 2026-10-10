@@ -15,7 +15,11 @@ from zoneinfo import ZoneInfo
 import polars as pl
 
 from qsys.research.limit_up_ranking import FEATURE_COLUMNS, file_sha256, scoring_frame
-from qsys.web.limit_up_shadow import LimitUpShadowEntry, LimitUpShadowSnapshot
+from qsys.web.limit_up_shadow import (
+    LimitUpShadowEntry,
+    LimitUpShadowOutcome,
+    LimitUpShadowSnapshot,
+)
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
 
@@ -142,4 +146,49 @@ def latest_feature_session(warehouse: Path) -> date:
     latest = pl.scan_parquet(paths).select(pl.col("dt").max()).collect().item()
     if latest is None:
         raise ValueError("market_regime has no sessions")
+    return latest
+
+
+def outcome_truth(
+    warehouse: Path, target_session: date, symbols: tuple[str, ...],
+) -> tuple[tuple[LimitUpShadowOutcome, ...], str]:
+    """Read complete T+1 truth for exactly the published ranking symbols."""
+    root = Path(warehouse)
+    flags_path = root / "daily_flags" / f"year={target_session.year}" / "part.parquet"
+    bars_path = root / "tushare_daily" / f"year={target_session.year}" / "part.parquet"
+    flags = pl.read_parquet(flags_path).filter(
+        (pl.col("dt") == target_session) & pl.col("symbol").is_in(symbols)
+    ).select("symbol", "touched_limit_up", "is_limit_up", "limit_up")
+    bars = pl.read_parquet(bars_path).filter(
+        (pl.col("dt") == target_session) & pl.col("symbol").is_in(symbols)
+    ).select("symbol", "open", "high", "low")
+    truth = flags.join(bars, on="symbol", how="inner").sort("symbol")
+    if truth.height != len(symbols) or set(truth["symbol"]) != set(symbols):
+        raise ValueError("target truth does not completely cover the published ranking")
+    required = ("touched_limit_up", "is_limit_up", "limit_up", "open", "high", "low")
+    if truth.select(pl.any_horizontal(pl.col(required).is_null()).any()).item():
+        raise ValueError("target truth contains null values")
+    buffer = io.BytesIO()
+    truth.write_ipc(buffer, compression="zstd")
+    source_sha = hashlib.sha256(buffer.getvalue()).hexdigest()
+    outcomes = tuple(LimitUpShadowOutcome(
+        symbol=row["symbol"],
+        actual_touched=bool(row["touched_limit_up"]),
+        actual_closed_limit=bool(row["is_limit_up"]),
+        opened_at_limit=float(row["open"]) >= float(row["limit_up"]) - 1e-6,
+        one_price_limit=(
+            float(row["low"]) >= float(row["limit_up"]) - 1e-6
+            and float(row["high"]) <= float(row["limit_up"]) + 1e-6
+        ),
+    ) for row in truth.iter_rows(named=True))
+    return outcomes, source_sha
+
+
+def latest_truth_session(warehouse: Path) -> date:
+    paths = list((Path(warehouse) / "daily_flags").glob("year=*/part.parquet"))
+    if not paths:
+        raise FileNotFoundError("daily_flags is unavailable")
+    latest = pl.scan_parquet(paths).select(pl.col("dt").max()).collect().item()
+    if latest is None:
+        raise ValueError("daily_flags has no sessions")
     return latest

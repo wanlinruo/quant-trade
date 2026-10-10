@@ -117,6 +117,28 @@ class LimitUpShadowView(BaseModel):
     history: tuple[LimitUpShadowHistory, ...] = ()
 
 
+class LimitUpShadowOutcome(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    symbol: str = Field(min_length=1)
+    actual_touched: bool
+    actual_closed_limit: bool
+    opened_at_limit: bool
+    one_price_limit: bool
+
+    @model_validator(mode="after")
+    def outcome_is_coherent(self):
+        if self.actual_closed_limit and not self.actual_touched:
+            raise ValueError("actual close limit implies actual touch")
+        if self.opened_at_limit and not self.actual_touched:
+            raise ValueError("limit-up open implies actual touch")
+        if self.one_price_limit and not (
+            self.actual_touched and self.actual_closed_limit and self.opened_at_limit
+        ):
+            raise ValueError("one-price limit requires touch, limit-up open and close")
+        return self
+
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS limit_up_shadow_runs (
     prediction_date TEXT PRIMARY KEY,
@@ -151,6 +173,19 @@ CREATE TABLE IF NOT EXISTS limit_up_shadow_entries (
     UNIQUE (prediction_date, symbol),
     FOREIGN KEY (prediction_date) REFERENCES limit_up_shadow_runs(prediction_date)
 );
+CREATE TABLE IF NOT EXISTS limit_up_shadow_outcomes (
+    prediction_date TEXT NOT NULL,
+    symbol TEXT NOT NULL,
+    observed_at TEXT NOT NULL,
+    source_data_sha TEXT NOT NULL,
+    actual_touched INTEGER NOT NULL,
+    actual_closed_limit INTEGER NOT NULL,
+    opened_at_limit INTEGER NOT NULL,
+    one_price_limit INTEGER NOT NULL,
+    PRIMARY KEY (prediction_date, symbol),
+    FOREIGN KEY (prediction_date, symbol)
+      REFERENCES limit_up_shadow_entries(prediction_date, symbol)
+);
 """
 
 
@@ -177,7 +212,8 @@ class LimitUpShadowReader:
     ) -> LimitUpShadowView:
         try:
             with self._connect() as con:
-                history = self._history(con, history_limit)
+                has_outcomes = self._has_outcomes(con)
+                history = self._history(con, history_limit, has_outcomes=has_outcomes)
                 run = con.execute(
                     "SELECT * FROM limit_up_shadow_runs WHERE prediction_date = ?"
                     if prediction_date else
@@ -193,11 +229,26 @@ class LimitUpShadowReader:
                         history=history,
                     )
                 rows = con.execute(
-                    "SELECT * FROM limit_up_shadow_entries "
-                    "WHERE prediction_date = ? ORDER BY rank",
+                    ("SELECT e.*, COALESCE(o.actual_touched, e.actual_touched) "
+                     "AS resolved_touched, COALESCE(o.actual_closed_limit, "
+                     "e.actual_closed_limit) AS resolved_closed, "
+                     "COALESCE(o.opened_at_limit, e.opened_at_limit) AS resolved_open, "
+                     "COALESCE(o.one_price_limit, e.one_price_limit) AS resolved_one "
+                     "FROM limit_up_shadow_entries e LEFT JOIN limit_up_shadow_outcomes o "
+                     "ON o.prediction_date=e.prediction_date AND o.symbol=e.symbol "
+                     "WHERE e.prediction_date = ? ORDER BY e.rank")
+                    if has_outcomes else
+                    ("SELECT *, actual_touched AS resolved_touched, "
+                     "actual_closed_limit AS resolved_closed, "
+                     "opened_at_limit AS resolved_open, "
+                     "one_price_limit AS resolved_one FROM limit_up_shadow_entries "
+                     "WHERE prediction_date = ? ORDER BY rank"),
                     (run["prediction_date"],),
                 ).fetchall()
-                snapshot = self._snapshot(run, rows)
+                metrics = self._rolling_metrics(
+                    con, run["prediction_date"], has_outcomes=has_outcomes,
+                )
+                snapshot = self._snapshot(run, rows, metrics=metrics)
         except (OSError, sqlite3.Error, ValueError) as exc:
             return LimitUpShadowView(
                 state="unavailable", available=False,
@@ -228,13 +279,56 @@ class LimitUpShadowReader:
             history=history,
         )
 
+    def pending_outcomes(self, up_to: date) -> tuple[tuple[date, date], ...]:
+        """Return ready prediction/target pairs whose result is not recorded."""
+        try:
+            with self._connect() as con:
+                has_outcomes = self._has_outcomes(con)
+                exclusion = (
+                    "AND NOT EXISTS (SELECT 1 FROM limit_up_shadow_outcomes o "
+                    "WHERE o.prediction_date=r.prediction_date)"
+                    if has_outcomes else ""
+                )
+                rows = con.execute(
+                    "SELECT r.prediction_date,r.target_session FROM limit_up_shadow_runs r "
+                    "WHERE r.status='ready' AND r.target_session<=? "
+                    f"{exclusion} ORDER BY r.prediction_date",
+                    (up_to.isoformat(),),
+                ).fetchall()
+                return tuple((date.fromisoformat(row[0]), date.fromisoformat(row[1]))
+                             for row in rows)
+        except (OSError, sqlite3.Error):
+            return ()
+
     @staticmethod
-    def _history(con: sqlite3.Connection, limit: int) -> tuple[LimitUpShadowHistory, ...]:
+    def _has_outcomes(con: sqlite3.Connection) -> bool:
+        return con.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' "
+            "AND name='limit_up_shadow_outcomes'"
+        ).fetchone() is not None
+
+    @staticmethod
+    def _history(
+        con: sqlite3.Connection, limit: int, *, has_outcomes: bool,
+    ) -> tuple[LimitUpShadowHistory, ...]:
+        precision = (
+            "CASE WHEN COUNT(o.symbol)=COUNT(e.rank) AND COUNT(e.rank)>0 "
+            "THEN AVG(COALESCE(o.actual_closed_limit,e.actual_closed_limit)) "
+            "ELSE r.rolling_precision_at_20 END"
+            if has_outcomes else "r.rolling_precision_at_20"
+        )
+        outcome_join = (
+            "LEFT JOIN limit_up_shadow_outcomes o ON "
+            "o.prediction_date=e.prediction_date AND o.symbol=e.symbol"
+            if has_outcomes else ""
+        )
         rows = con.execute(
             "SELECT r.prediction_date, r.target_session, r.generated_at, r.status, "
-            "r.model_version, r.rolling_precision_at_20, COUNT(e.rank) AS entry_count "
+            f"r.model_version, {precision} AS precision_at_20, "
+            "COUNT(e.rank) AS entry_count "
             "FROM limit_up_shadow_runs r LEFT JOIN limit_up_shadow_entries e "
             "ON e.prediction_date = r.prediction_date "
+            f"{outcome_join} "
             "GROUP BY r.prediction_date ORDER BY r.prediction_date DESC LIMIT ?",
             (max(1, min(limit, 366)),),
         ).fetchall()
@@ -242,21 +336,47 @@ class LimitUpShadowReader:
             prediction_date=row["prediction_date"], target_session=row["target_session"],
             generated_at=row["generated_at"], status=row["status"],
             model_version=row["model_version"], entry_count=row["entry_count"],
-            precision_at_20=row["rolling_precision_at_20"],
+            precision_at_20=row["precision_at_20"],
         ) for row in rows)
 
     @staticmethod
-    def _snapshot(run: sqlite3.Row, rows: list[sqlite3.Row]) -> LimitUpShadowSnapshot:
+    def _rolling_metrics(
+        con: sqlite3.Connection, prediction_date: str, *, has_outcomes: bool,
+    ) -> tuple[float | None, float | None]:
+        if not has_outcomes:
+            return None, None
+        row = con.execute(
+            "WITH completed AS ("
+            " SELECT e.prediction_date FROM limit_up_shadow_entries e "
+            " LEFT JOIN limit_up_shadow_outcomes o ON o.prediction_date=e.prediction_date "
+            " AND o.symbol=e.symbol WHERE e.prediction_date<=? "
+            " GROUP BY e.prediction_date HAVING COUNT(o.symbol)=COUNT(e.symbol)"
+            " ORDER BY e.prediction_date DESC LIMIT 60) "
+            "SELECT AVG(o.actual_closed_limit), "
+            "AVG((e.p_close_limit-o.actual_closed_limit)*"
+            "(e.p_close_limit-o.actual_closed_limit)) "
+            "FROM completed c JOIN limit_up_shadow_entries e "
+            "ON e.prediction_date=c.prediction_date JOIN limit_up_shadow_outcomes o "
+            "ON o.prediction_date=e.prediction_date AND o.symbol=e.symbol",
+            (prediction_date,),
+        ).fetchone()
+        return (row[0], row[1]) if row else (None, None)
+
+    @staticmethod
+    def _snapshot(
+        run: sqlite3.Row, rows: list[sqlite3.Row], *,
+        metrics: tuple[float | None, float | None] = (None, None),
+    ) -> LimitUpShadowSnapshot:
         entries = tuple(LimitUpShadowEntry(
             rank=row["rank"], symbol=row["symbol"], name=row["name"],
             board=row["board"], market_state=row["market_state"],
             p_touch=row["p_touch"],
             p_seal_given_touch=row["p_seal_given_touch"],
             p_close_limit=row["p_close_limit"],
-            actual_touched=_bool_or_none(row["actual_touched"]),
-            actual_closed_limit=_bool_or_none(row["actual_closed_limit"]),
-            opened_at_limit=_bool_or_none(row["opened_at_limit"]),
-            one_price_limit=_bool_or_none(row["one_price_limit"]),
+            actual_touched=_bool_or_none(row["resolved_touched"]),
+            actual_closed_limit=_bool_or_none(row["resolved_closed"]),
+            opened_at_limit=_bool_or_none(row["resolved_open"]),
+            one_price_limit=_bool_or_none(row["resolved_one"]),
         ) for row in rows)
         return LimitUpShadowSnapshot(
             prediction_date=run["prediction_date"], target_session=run["target_session"],
@@ -264,8 +384,12 @@ class LimitUpShadowReader:
             model_version=run["model_version"], model_sha=run["model_sha"],
             data_version=run["data_version"], data_sha=run["data_sha"],
             eligible_count=run["eligible_count"],
-            rolling_precision_at_20=run["rolling_precision_at_20"],
-            calibration_error=run["calibration_error"],
+            rolling_precision_at_20=(
+                metrics[0] if metrics[0] is not None else run["rolling_precision_at_20"]
+            ),
+            calibration_error=(
+                metrics[1] if metrics[1] is not None else run["calibration_error"]
+            ),
             drift_score=run["drift_score"], error=run["error"], entries=entries,
         )
 
@@ -309,4 +433,52 @@ class LimitUpShadowPublisher:
                     row.p_close_limit, row.actual_touched, row.actual_closed_limit,
                     row.opened_at_limit, row.one_price_limit,
                 ) for row in snapshot.entries],
+            )
+
+    def record_outcomes(
+        self, prediction_date: date, outcomes: tuple[LimitUpShadowOutcome, ...], *,
+        observed_at: datetime, source_data_sha: str,
+    ) -> None:
+        if observed_at.tzinfo is None:
+            raise ValueError("observed_at must include a timezone")
+        if len(source_data_sha) < 7:
+            raise ValueError("source_data_sha is required")
+        with sqlite3.connect(self.path, timeout=10) as con:
+            con.execute("PRAGMA foreign_keys=ON")
+            con.execute("PRAGMA journal_mode=WAL")
+            con.executescript(_SCHEMA)
+            expected = {row[0] for row in con.execute(
+                "SELECT symbol FROM limit_up_shadow_entries WHERE prediction_date=?",
+                (prediction_date.isoformat(),),
+            )}
+            provided = {outcome.symbol for outcome in outcomes}
+            if not expected or provided != expected or len(provided) != len(outcomes):
+                raise ValueError("outcomes must exactly cover the published ranking")
+            existing = con.execute(
+                "SELECT COUNT(*) FROM limit_up_shadow_outcomes WHERE prediction_date=?",
+                (prediction_date.isoformat(),),
+            ).fetchone()[0]
+            if existing:
+                rows = con.execute(
+                    "SELECT symbol,actual_touched,actual_closed_limit,opened_at_limit,"
+                    "one_price_limit,source_data_sha FROM limit_up_shadow_outcomes "
+                    "WHERE prediction_date=? ORDER BY symbol",
+                    (prediction_date.isoformat(),),
+                ).fetchall()
+                old = [(row[0], bool(row[1]), bool(row[2]), bool(row[3]), bool(row[4]))
+                       for row in rows]
+                new = sorted((row.symbol, row.actual_touched, row.actual_closed_limit,
+                              row.opened_at_limit, row.one_price_limit)
+                             for row in outcomes)
+                if old == new and all(row[5] == source_data_sha for row in rows):
+                    return
+                raise ValueError("published outcomes are immutable")
+            con.executemany(
+                "INSERT INTO limit_up_shadow_outcomes VALUES (?,?,?,?,?,?,?,?)",
+                [(
+                    prediction_date.isoformat(), outcome.symbol,
+                    observed_at.isoformat(), source_data_sha,
+                    outcome.actual_touched, outcome.actual_closed_limit,
+                    outcome.opened_at_limit, outcome.one_price_limit,
+                ) for outcome in outcomes],
             )
