@@ -6,6 +6,18 @@
   <div><span id="market-status" class="pill {{ 'todo' if schedule and not schedule.is_open else 'warn' if live.stale else 'ok' if live.available else 'todo' }}">{{ '休市 · 最近快照' if schedule and not schedule.is_open and live.available else '已过期' if live.stale and live.available else '实时' if live.available else '无实时快照' }}</span><span id="market-time" class="muted market-time">{{ snap.published_at.strftime('%Y-%m-%d %H:%M:%S') if snap else '最近收盘 ' ~ (latest or '—') }}</span></div>
 </div>
 
+<section class="panel shadow-teaser market-section">
+  <div class="panel-title"><span>AI 涨停观察</span><span class="pill todo">只读影子</span><a href="/market/limit-up-shadow">查看完整榜单 →</a></div>
+  {% if shadow.snapshot and shadow.state in ('ready', 'stale') %}
+  <div class="shadow-teaser-body">
+    <div><span class="pill {{ 'ok' if shadow.state == 'ready' else 'warn' }}">{{ '已就绪' if shadow.state == 'ready' else '已过期' }}</span><span class="muted"> 预测 {{ shadow.snapshot.prediction_date }} → 目标 {{ shadow.snapshot.target_session }}</span></div>
+    <div class="shadow-top3">{% for row in shadow.snapshot.entries[:3] %}<span><b>{{ row.rank }}</b> {{ row.name or row.symbol }} <em>{{ '%.1f%%'|format(row.p_close_limit * 100) }}</em></span>{% endfor %}</div>
+  </div>
+  {% else %}
+  <div class="shadow-teaser-body"><span class="pill {{ 'bad' if shadow.state == 'failed' else 'todo' }}">{{ shadow.state }}</span> <span class="muted">{{ shadow.message }}</span></div>
+  {% endif %}
+</section>
+
 <section class="panel market-section">
   <div class="panel-title">主要指数</div>
   <div id="index-grid" class="index-grid">
@@ -50,7 +62,7 @@
 </details>
 
 <style>
-.market-time{margin-left:10px}.market-section{margin-bottom:16px}.index-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line)}.index-card{background:#fff;padding:16px;display:grid;gap:7px}.index-card span{color:var(--muted);font-size:12px}.index-card strong{font-size:23px}.index-card em{font-style:normal;font-weight:600}.market-metrics{margin-bottom:16px}.market-charts{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.market-charts .card{margin:0}.market-charts svg{width:100%;height:150px}.history-panel{margin-top:16px}.history-panel summary{cursor:pointer;padding:16px;font-weight:600}.history-panel .table-wrap{padding:0 16px 16px}
+.market-time{margin-left:10px}.market-section{margin-bottom:16px}.index-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line)}.index-card{background:#fff;padding:16px;display:grid;gap:7px}.index-card span{color:var(--muted);font-size:12px}.index-card strong{font-size:23px}.index-card em{font-style:normal;font-weight:600}.market-metrics{margin-bottom:16px}.market-charts{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.market-charts .card{margin:0}.market-charts svg{width:100%;height:150px}.history-panel{margin-top:16px}.history-panel summary{cursor:pointer;padding:16px;font-weight:600}.history-panel .table-wrap{padding:0 16px 16px}.shadow-teaser .panel-title a{margin-left:auto;color:var(--primary);text-decoration:none;font-weight:500}.shadow-teaser-body{padding:14px 16px}.shadow-top3{display:flex;gap:18px;flex-wrap:wrap;margin-top:12px}.shadow-top3 span{background:var(--primary-soft);border-radius:6px;padding:8px 10px}.shadow-top3 b{color:var(--primary);margin-right:4px}.shadow-top3 em{font-style:normal;color:var(--primary);font-weight:650;margin-left:5px}
 @media(max-width:900px){.index-grid,.market-charts{grid-template-columns:repeat(2,1fr)}}@media(max-width:600px){.index-grid,.market-charts{grid-template-columns:1fr}}
 </style>
 <script>

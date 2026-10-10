@@ -135,7 +135,9 @@ Group=ubuntu
 WorkingDirectory=/home/ubuntu/qsys
 # 直接用 venv 解释器。用 `uv run` 会因 ProtectHome=read-only 挡住 uv 缓存而启动失败。
 ExecStart=/home/ubuntu/qsys/.venv/bin/python scripts/run_monitor.py \
-          --host 127.0.0.1 --port 8420 --warehouse /home/ubuntu/qsys/warehouse
+          --host 127.0.0.1 --port 8420 \
+          --warehouse /home/ubuntu/qsys/warehouse \
+          --limit-up-shadow-state /data/qsys/var-prod/limit-up-shadow.sqlite3
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
