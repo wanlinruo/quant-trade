@@ -11,11 +11,11 @@ from qsys.data.catalog.types import Direct, Kind, MetricStatus, UNKNOWN, Validit
 BY_ID = {m.id: m for m in METRICS}
 
 
-def test_owns_the_nine_market_datasets():
+def test_owns_the_ten_market_datasets():
     assert DATASETS == frozenset(
         {"tushare_daily", "bars_daily", "paid_daily", "paid_minute_bars",
          "index_bars", "minute_bars", "tushare_minute_bars",
-         "joinquant_minute_bars", "auction_ticks"}
+         "joinquant_minute_bars", "auction_ticks", "auction_open_daily"}
     )
 
 
@@ -28,6 +28,7 @@ def test_registers_every_market_column():
         "minute_bars": 8, "paid_minute_bars": 9,
         "tushare_minute_bars": 8, "joinquant_minute_bars": 8,
         "auction_ticks": 10, "bars_daily": 8,
+        "auction_open_daily": 9,
     }
 
 

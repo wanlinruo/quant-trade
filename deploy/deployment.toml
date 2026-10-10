@@ -36,9 +36,14 @@ ignored_paths = [
   "scripts/release_evidence.py",
   "scripts/research_limit_up_ranking.py",
   "scripts/research_limit_up_continuation.py",
+  "scripts/research_first_board.py",
+  "scripts/backfill_first_board_inputs.py",
+  "scripts/verify_auction_open_parity.py",
   "scripts/verify_github_release_evidence.py",
   "src/qsys/ops/deployment.py",
   "src/qsys/research/limit_up_continuation.py",
+  "src/qsys/research/first_board.py",
+  "src/qsys/research/auction_parity.py",
   "tests/**",
 ]
 

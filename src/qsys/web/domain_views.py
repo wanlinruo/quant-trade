@@ -42,7 +42,7 @@ STATUS_LABELS: dict[str, str] = {
 # 故带登记日期：日期旧了自然会被怀疑，这比假装能验的测试诚实。
 NOT_INGESTED: dict[str, tuple[str, str]] = {
     "macro": ("Tushare Pro 当前积分已含宏观经济接口。", "2026-10-05"),
-    "alternative": ("龙虎榜、资金流、概念板块、北向在当前积分内可得。", "2026-10-05"),
+    "alternative": ("龙虎榜、概念板块、北向在当前积分内可得但尚未接入。", "2026-10-10"),
 }
 
 

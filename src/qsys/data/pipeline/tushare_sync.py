@@ -25,6 +25,7 @@ from qsys.data.pipeline.delisting import build_delisting_pool
 from qsys.data.pipeline.flags import build_daily_flags
 from qsys.data.pipeline.regime import build_market_regime
 from qsys.data.pipeline.valuation import build_valuation
+from qsys.data.pipeline.first_board_inputs import ingest_moneyflow
 from qsys.data.storage import Warehouse
 from qsys.ops.services import ServiceRun, record_step
 
@@ -82,6 +83,7 @@ _REFERENCE_STEPS: list[tuple[str, Callable[..., int]]] = [
     ("instruments", _sync_instruments),
     ("name_history", _sync_name_history),
     ("limit_list_daily", _sync_limit_list),
+    ("moneyflow_daily", ingest_moneyflow),
 ]
 
 # 服务管理页显示的「接口 → 表」。键与 _REFERENCE_STEPS 的名字一一对应（守卫测试）。
@@ -95,6 +97,7 @@ STEP_SOURCES: dict[str, tuple[str, str, str]] = {  # 名字 → (步骤, 接口,
     "instruments": ("标的主表", "Tushare stock_basic", "instruments"),
     "name_history": ("改名与退市整理期记录", "Tushare namechange", "name_history"),
     "limit_list_daily": ("涨停列表", "Tushare limit_list_d", "limit_list_daily"),
+    "moneyflow_daily": ("个股资金流", "Tushare moneyflow", "moneyflow_daily"),
 }
 
 # 接线守卫检查的是实际公开 ingest，而不是适配器函数名。
@@ -106,6 +109,7 @@ _REFERENCE_INGESTS = {
     reference.ingest_instruments,
     reference.ingest_name_history,
     reference.ingest_limit_list,
+    ingest_moneyflow,
 }
 
 # D-12 回补：只回看最近 4 个交易日（加上当日共 5 天）。更早的缺口交给告警

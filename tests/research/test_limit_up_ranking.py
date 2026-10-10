@@ -75,6 +75,7 @@ def _warehouse(root: Path) -> tuple[list[date], list[str]]:
             flags.append({
                 "dt": day, "symbol": symbol, "limit_up": close if is_target_close else close * 1.1,
                 "is_limit_up": is_target_close,
+                "is_first_board": is_target_close,
                 "touched_limit_up": is_target_touch,
                 "is_broken_board": is_target_touch and not is_target_close,
                 "is_st": symbol == "600002.SH",
@@ -340,3 +341,113 @@ def test_two_stage_model_imputes_missing_features() -> None:
     p_touch, p_seal, p_close = model.predict(frame[300:])
 
     assert all(math.isfinite(value) for value in (*p_touch, *p_seal, *p_close))
+
+
+def test_first_board_dataset_uses_authoritative_label_and_excludes_t_day_limit(
+    tmp_path: Path,
+) -> None:
+    from qsys.research.first_board import FirstBoardConfig, materialise_dataset
+
+    days, _symbols = _warehouse(tmp_path / "warehouse")
+    flags_path = tmp_path / "warehouse/daily_flags/year=2023/part.parquet"
+    flags = pl.read_parquet(flags_path).with_columns(
+        pl.when(
+            (pl.col("dt") == days[60]) & (pl.col("symbol") == "688001.SH")
+        ).then(True).otherwise(pl.col("is_limit_up")).alias("is_limit_up")
+    )
+    flags.write_parquet(flags_path)
+    output = tmp_path / "first-board.parquet"
+    materialise_dataset(
+        tmp_path / "warehouse", output,
+        FirstBoardConfig(
+            history_start=days[0], feature_start=days[60], feature_end=days[60],
+            min_observations=60, threads=1, require_enrichment=False,
+        ),
+    )
+    got = pl.read_parquet(output)
+
+    assert "688001.SH" not in got["symbol"].to_list()
+    target = got.filter(pl.col("symbol") == "600001.SH").row(0, named=True)
+    assert target["actual_close"] is True
+    assert target["first_board_segment"] == "cold_20d"
+
+
+def test_first_board_enrichment_is_point_in_time_and_non_null(tmp_path: Path) -> None:
+    from qsys.data import schema
+    from qsys.data.storage import Warehouse
+    from qsys.research.first_board import FirstBoardConfig, materialise_dataset
+
+    root = tmp_path / "warehouse"
+    days, symbols = _warehouse(root)
+    daily_path = root / "tushare_daily/year=2023/part.parquet"
+    daily = pl.read_parquet(daily_path).with_columns(
+        (pl.col("close") - 0.01).alias("pre_close")
+    )
+    daily.write_parquet(daily_path)
+    wh = Warehouse(root)
+    money = daily.select("symbol", "dt").with_columns(
+        *[pl.lit(float(index + 1) * 10_000).alias(name)
+          for index, name in enumerate(schema.MONEYFLOW_DAILY.names[2:])]
+    ).select(schema.MONEYFLOW_DAILY.names)
+    wh.write("moneyflow_daily", money.to_arrow().cast(schema.MONEYFLOW_DAILY), year=2023)
+    membership = pl.DataFrame({
+        "symbol": symbols,
+        "l1_code": ["L1"] * len(symbols), "l1_name": ["行业"] * len(symbols),
+        "l2_code": ["L2"] * len(symbols), "l2_name": ["二级"] * len(symbols),
+        "l3_code": ["L3"] * len(symbols), "l3_name": ["三级"] * len(symbols),
+        "in_date": [date(2020, 1, 1)] * len(symbols),
+        "out_date": [None] * len(symbols), "is_new": [True] * len(symbols),
+    })
+    wh.write(
+        "industry_membership",
+        membership.to_arrow().cast(schema.INDUSTRY_MEMBERSHIP),
+    )
+    output = tmp_path / "enriched.parquet"
+    materialise_dataset(
+        root, output,
+        FirstBoardConfig(
+            history_start=days[0], feature_start=days[60], feature_end=days[60],
+            min_observations=60, threads=1, require_enrichment=True,
+        ),
+    )
+    got = pl.read_parquet(output)
+
+    assert got["net_mf_amount_ratio"].null_count() == 0
+    assert got["industry_advance_ratio"].null_count() == 0
+    assert got["industry_amount_market_ratio"].null_count() == 0
+
+
+def test_first_board_legacy_baseline_is_reranked_inside_eligible_population() -> None:
+    from qsys.research.first_board import rerank_legacy_predictions
+
+    base = _prediction_fixture().filter(pl.col("model") == "lightgbm")
+    dataset = base.drop("model", "rank", "p_touch", "p_seal_given_touch", "p_close")
+    legacy = base.with_columns(
+        pl.when(pl.col("symbol") == "600003.SH").then(0.95)
+        .otherwise(pl.col("p_close")).alias("p_close")
+    )
+    got = rerank_legacy_predictions(dataset, legacy)
+
+    assert set(got["model"]) == {"legacy_210"}
+    assert got.filter(pl.col("rank") == 1)["symbol"].to_list() == [
+        "600003.SH", "600003.SH"
+    ]
+
+
+def test_first_board_ranking_pass_cannot_promote_without_auction_evidence(
+    monkeypatch,
+) -> None:
+    from qsys.research.first_board import FirstBoardConfig, ranking_verdict
+    import qsys.research.first_board as first_board
+
+    monkeypatch.setattr(first_board.ranking, "promotion_verdict", lambda *a, **kw: {
+        "promote_to_shadow": True,
+        "checks": {"all": True},
+    })
+    monkeypatch.setattr(first_board, "selected_candidate", lambda _metrics: "lightgbm")
+    verdict = ranking_verdict(pl.DataFrame(), pl.DataFrame(), FirstBoardConfig())
+
+    assert verdict["ranking_support"] is True
+    assert verdict["promote_to_shadow"] is False
+    assert verdict["promote_to_trading"] is False
+    assert verdict["research_status"] == "RANKING_PASS_TRADING_PENDING"

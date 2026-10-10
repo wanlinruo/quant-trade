@@ -38,7 +38,7 @@ def _akshare(api: str, caveat: str | None = None) -> Source:
 
 
 _ALL = [
-    # ---- Tushare Pro，12 个接口（minute 仅预留，尚未采购） ----
+    # ---- Tushare Pro（minute/auction permissions are capability-gated） ----
     _tushare("daily", "2000 积分", _WORKDAY_TWICE,
              "vol 单位是手且带小数（582305.98），取整会丢真实精度；"
              "amount 单位千元，入库 ×1000 转元"),
@@ -64,6 +64,15 @@ _ALL = [
              "**不含 ST 股票**（D-11：与自算涨停的差集精确等于当日 ST 涨停集）；"
              "发布时点晚于 17:00，实测 17:02 取到 0 行而 19:00 取到 55 行（D-12）；"
              "实测数据自 2020 年起"),
+    _tushare("moneyflow", "2000 积分", _WORKDAY_TWICE,
+             "成交量源单位手、成交额源单位万元（入库乘 10000 转元）；净流入量额"
+             "基于 L2 主动买卖单，不能由大小单合计简单相减；只在完整单日响应后发布"),
+    _tushare("index_member_all", "2000 积分", "按需全量刷新",
+             "上游 is_new 默认为 Y，采集必须显式合并 Y/N 并分别分页；"
+             "查询必须使用 in_date/out_date 做历史 as-of，不能只读 is_new"),
+    _tushare("stk_auction_o", "单独权限", "研究回补按交易日",
+             "接口盘后更新；只作历史事实。与 QMT 09:25 最终快照完成价格量额"
+             "同口径验证前保持隔离，不得用于晋级交易模型"),
     _tushare("index_daily", "2000 积分", _WORKDAY_TWICE,
              "vol 含小数（全历史 5,270 行中实测 186 行），schema 已用 float64"),
     _tushare("stock_basic", "2000 积分", _WORKDAY_TWICE,
