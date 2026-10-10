@@ -29,7 +29,10 @@ from qsys.web.catalog_views import CatalogService
 from qsys.web.config import WebConfig
 from qsys.web.data_views import DataService, MarketService
 from qsys.web.limit_up_shadow import LimitUpShadowReader
-from qsys.web.limit_up_research import LimitUpResearchReader
+from qsys.web.limit_up_research import (
+    HistoricalSecurityNameLookup,
+    LimitUpResearchReader,
+)
 from qsys.web.service_views import ServiceConsole, windows_task_show
 from qsys.web.views import MonitorService
 from qsys.web.workbench import BacktestQueue, WorkbenchStore
@@ -121,7 +124,8 @@ def build_app(
             limit_up_shadow_state_path or Path("var/limit-up-shadow.sqlite3")
         ),
         limit_up_research=LimitUpResearchReader(
-            limit_up_research_run_path or Path("var/research/issue-210")
+            limit_up_research_run_path or Path("var/research/issue-210"),
+            name_lookup=HistoricalSecurityNameLookup(warehouse_root),
         ),
     )
 

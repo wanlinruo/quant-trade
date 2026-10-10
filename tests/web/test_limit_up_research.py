@@ -3,12 +3,16 @@ import json
 from datetime import date, timedelta
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from qsys.ops.journal import SessionJournal
 from qsys.web.app import create_app
 from qsys.web.config import WebConfig
-from qsys.web.limit_up_research import LimitUpResearchReader
+from qsys.web.limit_up_research import (
+    HistoricalSecurityNameLookup,
+    LimitUpResearchReader,
+)
 from qsys.web.views import MonitorService
 
 
@@ -96,7 +100,10 @@ def _client(warehouse, reader: LimitUpResearchReader) -> TestClient:
 
 
 def test_research_page_exposes_frozen_history_and_daily_top20(warehouse, tmp_path):
-    reader = LimitUpResearchReader(_research_run(tmp_path / "research"))
+    reader = LimitUpResearchReader(
+        _research_run(tmp_path / "research"),
+        name_lookup=lambda symbol, day: f"示例股份{symbol[-6:-3]}",
+    )
     client = _client(warehouse, reader)
 
     response = client.get("/api/market/limit-up-research")
@@ -113,6 +120,8 @@ def test_research_page_exposes_frozen_history_and_daily_top20(warehouse, tmp_pat
     assert len(payload["history"]) == 307
     assert "AI 涨停研究回测" in page.text
     assert "冻结研究" in page.text and "307 日研究历史" in page.text
+    assert "示例股份" in page.text
+    assert payload["selected"]["entries"][0]["name"].startswith("示例股份")
     assert "买入" not in page.text
 
 
@@ -155,3 +164,28 @@ def test_unpromoted_research_fails_closed(warehouse, tmp_path):
 
     assert payload["available"] is False
     assert payload["state"] == "unavailable"
+
+
+def test_security_names_use_historical_interval_then_current_fallback(tmp_path):
+    lookup = HistoricalSecurityNameLookup(tmp_path)
+    lookup._intervals = {
+        "000001.SZ": ((date(2020, 1, 1), date(2025, 12, 31), "历史名称"),),
+    }
+    lookup._current = {"000001.SZ": "当前名称", "600000.SH": "浦发银行"}
+
+    assert lookup("000001.SZ", date(2025, 7, 1)) == "历史名称"
+    assert lookup("000001.SZ", date(2026, 1, 1)) == "当前名称"
+    assert lookup("600000.SH", date(2025, 7, 1)) == "浦发银行"
+
+
+def test_overlapping_historical_names_fail_closed(tmp_path):
+    lookup = HistoricalSecurityNameLookup(tmp_path)
+    lookup._intervals = {
+        "000001.SZ": (
+            (date(2020, 1, 1), date(2025, 12, 31), "名称一"),
+            (date(2025, 1, 1), None, "名称二"),
+        ),
+    }
+
+    with pytest.raises(ValueError, match="overlapping"):
+        lookup("000001.SZ", date(2025, 7, 1))
