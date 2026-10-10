@@ -274,6 +274,16 @@ def _minute_wanted(
         .unique().sort(["dt", "symbol"])
 
 
+def _restrict_minute_symbols(
+    wanted: pl.DataFrame, configured: str,
+) -> tuple[pl.DataFrame, set[str]]:
+    """把收敛任务限制到显式证券集合；正常每日归档传空串，不改变清单。"""
+    requested = {symbol.strip() for symbol in configured.split(",") if symbol.strip()}
+    if not requested:
+        return wanted, requested
+    return wanted.filter(pl.col("symbol").is_in(sorted(requested))), requested
+
+
 def _publish_canonical_minutes(
     warehouse: Warehouse,
     start: date,
@@ -404,6 +414,10 @@ def main() -> int:
     parser.add_argument("--minute-timeout", type=int, default=6000)
     parser.add_argument("--minute-stall-timeout", type=int, default=900,
                         help="结构化进度多久不前进就判 stalled")
+    parser.add_argument(
+        "--minute-symbols", default="",
+        help="只收敛这些逗号分隔的证券；供收盘同步补采晚到上市标的",
+    )
     parser.add_argument("--config", default="config/deploy.local.toml")
     parser.add_argument("--paper-store", default="var/workbench/workbench.sqlite3",
                         help="模拟盘库；其持仓期间的分钟线一并归档")
@@ -516,10 +530,13 @@ def _archive(args, service_run: ServiceRun) -> int:
     # Tushare 当日实际有成交集合作独立期望，不能再让下载清单自证完整。
     before = wanted.height
     wanted = drop_suspended(WarehouseQuery(warehouse), wanted)
+    suspended = before - wanted.height
+    wanted, requested_symbols = _restrict_minute_symbols(wanted, args.minute_symbols)
     print(f"分钟线清单：全市场股票 {full_market.height} 组，"
           f"首板次日候选 {candidates.height} 组，模拟盘持仓 {held.height} 组，"
-          f"合并去重 {before} 组，扣掉全天停牌 {before - wanted.height} 组，"
-          f"实取 {wanted.height} 组")
+          f"合并去重 {before} 组，扣掉全天停牌 {suspended} 组，"
+          f"实取 {wanted.height} 组"
+          + (f"（收敛限定 {len(requested_symbols)} 只）" if requested_symbols else ""))
 
     if args.skip_minutes:
         service_run.add_step("分钟线", status=SKIPPED, detail="按参数跳过")
