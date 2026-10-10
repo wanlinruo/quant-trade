@@ -151,15 +151,23 @@ class TushareProvider:
         )
         rows: list[dict] = []
         page_size = 2_000
-        for offset in range(0, 1_000_000, page_size):
-            page = self._client.call(
-                "index_member_all", {"offset": offset, "limit": page_size}, fields,
-            )
-            rows.extend(page)
-            if len(page) < page_size:
-                break
-        else:  # pragma: no cover
-            raise RuntimeError("index_member_all exceeded 1,000,000 rows")
+        # Upstream defaults ``is_new`` to Y.  Omitting it silently returns only
+        # the latest membership and loses every historical removal/reclassify
+        # interval, which would make an apparent PIT join leak future sectors.
+        for is_new in ("Y", "N"):
+            for offset in range(0, 1_000_000, page_size):
+                page = self._client.call(
+                    "index_member_all",
+                    {"is_new": is_new, "offset": offset, "limit": page_size},
+                    fields,
+                )
+                rows.extend(page)
+                if len(page) < page_size:
+                    break
+            else:  # pragma: no cover
+                raise RuntimeError(
+                    f"index_member_all is_new={is_new} exceeded 1,000,000 rows"
+                )
         return pl.DataFrame(rows, infer_schema_length=None) if rows else pl.DataFrame()
 
     def auction_open(self, trade_date: date) -> pl.DataFrame:
