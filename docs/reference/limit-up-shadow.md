@@ -93,3 +93,14 @@ JSON、日志和试验目录须在发布校验完成后清理。正式 SQLite �
 `var-prod`（测试环境位于对应 `var`），随现有备份策略管理。研究模型直接引用 #210 的
 唯一保留证据，不另行复制。基线构建、测试环境首跑产生的临时 JSON、日志或试验目录在
 校验完成后删除；只保留登记过的 SQLite、PSI 基线与 `ServiceRun`。
+
+## 冻结研究回测页面
+
+`/market/limit-up-research`（API：`/api/market/limit-up-research?day=YYYY-MM-DD`）
+单独展示 #210 的 TEST/OBS 样本外历史。它只读取保留目录中的 `top20.csv`、
+`manifest.json`、`verdict.json`、`metrics.csv` 与 `monthly_precision.csv`，不读取 659 MB
+训练集或 84 MB 全量预测，也不把研究样本写入影子 SQLite。
+
+Reader 只接受已经通过冻结晋级门禁的 LightGBM 结果，并校验 126 个 TEST 日、181 个 OBS
+日、每日完整 Top-20、概率恒等式和实际结果逻辑。任一证据缺失或不一致时页面 fail closed。
+研究页的日/月 Precision 仅描述离线研究，不进入生产影子滚动 Precision、校准或漂移观测。

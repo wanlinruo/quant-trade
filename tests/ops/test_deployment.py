@@ -457,7 +457,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
 
     state = entrypoint.status({"production_repo": str(tmp_path)})
 
-    assert state["entrypoint_version"] == 8
+    assert state["entrypoint_version"] == 9
     assert set(state["capabilities"]) == {
         "systemd-apply-v1", "systemd-changed-artifacts-v1",
         "systemd-preview-v1", "systemd-rollback-v1",
@@ -467,6 +467,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
         "systemd-enable-state-v1",
         "monitor-shadow-state-v1",
         "monitor-shadow-command-v1",
+        "monitor-research-command-v1",
     }
 
 
@@ -625,7 +626,8 @@ def test_limit_up_shadow_web_dropin_verifies_effective_execstart(
         return subprocess.CompletedProcess(
             command, 0,
             "python scripts/run_monitor.py "
-            "--limit-up-shadow-state /data/qsys/var-prod/limit-up-shadow.sqlite3\n",
+            "--limit-up-shadow-state /data/qsys/var-prod/limit-up-shadow.sqlite3 "
+            "--limit-up-research-run /data/qsys/research/issue-210/run-20261010\n",
             "",
         )
 
