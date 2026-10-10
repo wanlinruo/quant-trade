@@ -83,6 +83,7 @@ paths = [
   "src/qsys/research/limit_up_shadow.py",
   "scripts/run_backtest.py",
   "scripts/run_limit_up_shadow.py",
+  "scripts/observe_limit_up_shadow.py",
   "scripts/run_monitor.py",
   "scripts/publish_limit_up_shadow.py",
   "strategies/**",

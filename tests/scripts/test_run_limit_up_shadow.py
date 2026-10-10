@@ -11,3 +11,12 @@ def test_shadow_ranking_script_imports_without_running() -> None:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     assert callable(module.main)
+
+
+def test_shadow_observer_script_imports_without_running() -> None:
+    path = Path("scripts/observe_limit_up_shadow.py")
+    spec = importlib.util.spec_from_file_location("observe_limit_up_shadow", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert callable(module.main)

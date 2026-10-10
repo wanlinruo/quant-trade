@@ -13,6 +13,7 @@ from qsys.web.data_views import MarketService
 from qsys.web.limit_up_shadow import (
     LimitUpShadowPublisher,
     LimitUpShadowReader,
+    LimitUpShadowOutcome,
     LimitUpShadowSnapshot,
 )
 from qsys.web.views import MonitorService
@@ -150,3 +151,48 @@ def test_market_overview_links_to_shadow_top_three(warehouse, tmp_path: Path):
 
     assert "/market/limit-up-shadow" in body
     assert "AI 涨停观察" in body and "平安银行" in body
+
+
+def test_outcomes_are_separate_immutable_and_drive_rolling_metrics(tmp_path: Path):
+    path = tmp_path / "shadow.sqlite3"
+    publisher = LimitUpShadowPublisher(path)
+    publisher.publish(LimitUpShadowSnapshot.model_validate(_payload()))
+    outcomes = (
+        LimitUpShadowOutcome(
+            symbol="000001.SZ", actual_touched=True, actual_closed_limit=True,
+            opened_at_limit=False, one_price_limit=False,
+        ),
+        LimitUpShadowOutcome(
+            symbol="600000.SH", actual_touched=True, actual_closed_limit=False,
+            opened_at_limit=False, one_price_limit=False,
+        ),
+    )
+    observed_at = datetime.fromisoformat("2026-10-12T16:00:00+08:00")
+
+    reader = LimitUpShadowReader(path)
+    assert reader.pending_outcomes(date(2026, 10, 12)) == (
+        (date(2026, 10, 9), date(2026, 10, 12)),
+    )
+    publisher.record_outcomes(
+        date(2026, 10, 9), outcomes, observed_at=observed_at,
+        source_data_sha="d" * 64,
+    )
+    publisher.record_outcomes(
+        date(2026, 10, 9), outcomes, observed_at=observed_at,
+        source_data_sha="d" * 64,
+    )
+
+    view = reader.view(date(2026, 10, 9))
+    assert reader.pending_outcomes(date(2026, 10, 12)) == ()
+    assert view.snapshot.entries[0].actual_closed_limit is True
+    assert view.snapshot.entries[1].actual_closed_limit is False
+    assert view.snapshot.rolling_precision_at_20 == pytest.approx(0.5)
+    assert view.snapshot.calibration_error == pytest.approx(0.2088)
+    assert view.history[0].precision_at_20 == pytest.approx(0.5)
+
+    conflicting = outcomes[0].model_copy(update={"actual_closed_limit": False})
+    with pytest.raises(ValueError, match="immutable"):
+        publisher.record_outcomes(
+            date(2026, 10, 9), (conflicting, outcomes[1]),
+            observed_at=observed_at, source_data_sha="e" * 64,
+        )
