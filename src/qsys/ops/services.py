@@ -95,6 +95,15 @@ SERVICES: tuple[ServiceSpec, ...] = (
         due="20:00", max_runtime=timedelta(minutes=30),
     ),
     ServiceSpec(
+        "limit-up-shadow", "AI 涨停概率影子榜单", "timer", "Linux",
+        "qsys-limit-up-shadow", "交易日 19:35（等待收盘同步锁）",
+        ("仓库只读", "#210 晋级模型与 PSI 基线只读"),
+        ("limit-up-shadow.sqlite3", "var/service-runs"),
+        "先回填到期榜单的 T+1 真值，再计算全体合格标的并仅发布 Top-20、"
+        "版本指纹和 PSI 漂移单值；不连接交易执行链路",
+        due="21:00", max_runtime=timedelta(hours=2),
+    ),
+    ServiceSpec(
         "auction-study", "竞价挂单时点研究（月度）", "timer", "Linux", "qsys-auction-study",
         "每月 1 日 20:30",
         ("仓库只读（auction_ticks、bar_minute_1m、日线）",),

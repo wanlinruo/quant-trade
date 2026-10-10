@@ -18,6 +18,9 @@ dependencies = [
     "fastexcel>=0.12",
     "baostock>=0.8.9",
     "requests>=2.31",
+    # 已晋级模型的日常影子评分属于生产运行链路，不再只是研究依赖。
+    "lightgbm>=4.5,<5",
+    "scikit-learn>=1.5,<2",
 ]
 
 [dependency-groups]

@@ -135,7 +135,7 @@ def test_watchdog_is_in_process_status_but_not_daily_board(tmp_path, warehouse):
     assert "watchdog" not in [spec.id for spec, _ in live.board()[1]]
     assert [spec.id for spec, _ in live.board()[1]] == [
         "premarket-limits", "daily-archive", "tushare-sync", "catalog-verify",
-        "service-checks", "daily-digest",
+        "limit-up-shadow", "service-checks", "daily-digest",
     ]
     row = next(r for r in live.process_status() if r["spec"].id == "watchdog")
     assert row["state"] == "ok"

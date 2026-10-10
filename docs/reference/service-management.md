@@ -16,6 +16,7 @@
 | 盘前交易事实 `qsys-premarket-limits` | 交易日 08:58、09:15、09:24；涨跌停价单次运行内重试到 09:25 | Tushare trade_cal、stk_limit、suspend_d；Redis 发布涨跌停价 | price_limits_daily、suspend_daily |
 | 每日归档 `qsys-daily-archive` | 交易日 15:40 | Tushare trade_cal、suspend_d；QMT 竞价逐笔、全市场 1 分钟线 | suspend_daily、auction_ticks、minute_bars、bar_minute_1m |
 | Tushare 收盘同步 `qsys-tushare-sync` | 交易日 17:00，19:00 补跑 | Tushare 11 个接口 | 9 张事实表、4 张派生表、metric_checks |
+| AI 涨停概率影子榜单 `qsys-limit-up-shadow` | 交易日 19:35，等待仓库写锁 | 仓库、#210 晋级模型与 PSI 基线只读 | 独立影子榜单 SQLite、运行记录 |
 | 每日服务质检 `qsys-service-checks` | 交易日 20:00 | 仓库只读、运行记录 | 运行记录 |
 | 竞价挂单时点研究 `qsys-auction-study` | **每月 1 日 20:30** | 仓库只读 | /data/qsys/research/auction-timing/<年月>/report.json |
 | 生态闸门研究 `qsys-gate-study` | **每月 1 日 21:00** | 仓库只读 | var/runs/研究-月度-gate-<年月>（网页可见）、/data/qsys/research/gate/<年月>/gate_study.json |

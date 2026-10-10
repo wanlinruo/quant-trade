@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block content %}
+{% set snap = view.snapshot %}
+{% set state_labels = {'unavailable':'不可用','waiting':'等待生成','generating':'生成中','ready':'已就绪','stale':'已过期','failed':'生成失败'} %}
+<div class="page-head">
+  <div>
+    <h2>AI 涨停观察</h2>
+    <p class="muted">T 日收盘后生成 T+1 概率排名，仅用于影子观测，不是交易信号。</p>
+  </div>
+  <div class="shadow-status">
+    <form method="get" class="day-picker"><label for="shadow-day">历史日期</label><input id="shadow-day" type="date" name="day" value="{{ selected_day or '' }}"><button type="submit" class="secondary">查看</button>{% if selected_day %}<a href="/market/limit-up-shadow">返回最新</a>{% endif %}</form>
+    <span class="pill todo">只读影子</span>
+    <span class="pill {{ 'ok' if view.state == 'ready' else 'bad' if view.state == 'failed' else 'warn' if view.state == 'stale' else 'todo' }}">{{ state_labels[view.state] }}</span>
+  </div>
+</div>
+
+<section class="shadow-notice {{ 'notice-bad' if view.state in ('failed','unavailable') else 'notice-warn' if view.state == 'stale' else '' }}">
+  <strong>{{ view.message }}</strong>。本页面不连接策略候选池、账户、订单或风控；任何状态异常均不会回退为交易信号。
+</section>
+
+{% if snap %}
+<div class="metric-grid shadow-metrics">
+  <div class="metric"><div class="label">预测日 T</div><div class="value date-value">{{ snap.prediction_date }}</div></div>
+  <div class="metric"><div class="label">目标交易日 T+1</div><div class="value date-value">{{ snap.target_session }}</div></div>
+  <div class="metric"><div class="label">合格标的</div><div class="value">{{ snap.eligible_count }}</div></div>
+  <div class="metric"><div class="label">榜单数量</div><div class="value">{{ snap.entries|length }}</div></div>
+  <div class="metric"><div class="label">滚动 Precision@20</div><div class="value">{{ '%.1f%%'|format(snap.rolling_precision_at_20 * 100) if snap.rolling_precision_at_20 is not none else '—' }}</div></div>
+</div>
+
+<section class="panel ranking-panel">
+  <div class="panel-title"><span>{{ snap.target_session }} Top-20</span><span class="muted generated">生成于 {{ snap.generated_at.strftime('%Y-%m-%d %H:%M:%S %Z') }}</span></div>
+  {% if snap.entries %}
+  <div class="table-wrap"><table class="ranking-table">
+    <thead><tr><th class="num">排名</th><th>标的</th><th>板块</th><th>市场状态</th><th class="num">触板概率</th><th class="num">触板后封板</th><th class="num">收盘封板</th><th>实际结果</th></tr></thead>
+    <tbody>{% for row in snap.entries %}<tr>
+      <td class="num rank">{{ row.rank }}</td>
+      <td><strong>{{ row.name or row.symbol }}</strong><div class="muted mono">{{ row.symbol }}</div></td>
+      <td>{{ row.board or '—' }}</td><td>{{ row.market_state or '—' }}</td>
+      <td class="num probability">{{ '%.1f%%'|format(row.p_touch * 100) }}</td>
+      <td class="num probability">{{ '%.1f%%'|format(row.p_seal_given_touch * 100) }}</td>
+      <td class="num probability close-prob">{{ '%.1f%%'|format(row.p_close_limit * 100) }}</td>
+      <td>{% if row.actual_touched is none %}<span class="muted">待揭晓</span>{% else %}<span class="pill {{ 'ok' if row.actual_touched else 'gray' }}">{{ '触板' if row.actual_touched else '未触板' }}</span> <span class="pill {{ 'ok' if row.actual_closed_limit else 'gray' }}">{{ '收盘封板' if row.actual_closed_limit else '未封板' }}</span>{% if row.opened_at_limit %} <span class="pill warn">涨停开盘</span>{% endif %}{% if row.one_price_limit %} <span class="pill red">一字板</span>{% endif %}{% endif %}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<div class="empty-state">该运行没有可展示的榜单，系统保持 fail closed。</div>{% endif %}
+</section>
+
+<section class="panel version-panel">
+  <div class="panel-title">版本与观测</div>
+  <dl>
+    <div><dt>模型版本</dt><dd>{{ snap.model_version }} <span class="mono">{{ snap.model_sha[:12] }}</span></dd></div>
+    <div><dt>数据版本</dt><dd>{{ snap.data_version }} <span class="mono">{{ snap.data_sha[:12] }}</span></dd></div>
+    <div><dt>校准误差</dt><dd>{{ '%.4f'|format(snap.calibration_error) if snap.calibration_error is not none else '待累计' }}</dd></div>
+    <div><dt>漂移分数（PSI）</dt><dd>{% if snap.drift_score is none %}待累计{% else %}{{ '%.4f'|format(snap.drift_score) }} <span class="pill {{ 'ok' if snap.drift_score < 0.10 else 'warn' if snap.drift_score <= 0.25 else 'bad' }}">{{ '稳定' if snap.drift_score < 0.10 else '关注' if snap.drift_score <= 0.25 else '显著漂移' }}</span>{% endif %}</dd></div>
+  </dl>
+</section>
+{% else %}
+<div class="panel empty-state">尚无可展示的影子榜单。页面不会用旧数据或研究样本替代当日结果。</div>
+{% endif %}
+
+<section class="panel history-panel">
+  <div class="panel-title">历史快照</div>
+  {% if view.history %}<div class="table-wrap"><table><thead><tr><th>预测日</th><th>目标交易日</th><th>状态</th><th>模型</th><th class="num">数量</th><th class="num">Precision@20</th></tr></thead><tbody>
+  {% for item in view.history %}<tr><td><a href="/market/limit-up-shadow?day={{ item.prediction_date }}">{{ item.prediction_date }}</a></td><td>{{ item.target_session }}</td><td>{{ state_labels[item.status] }}</td><td>{{ item.model_version }}</td><td class="num">{{ item.entry_count }}</td><td class="num">{{ '%.1f%%'|format(item.precision_at_20 * 100) if item.precision_at_20 is not none else '—' }}</td></tr>{% endfor %}
+  </tbody></table></div>{% else %}<div class="empty-state">尚无历史快照。</div>{% endif %}
+</section>
+
+<style>
+.shadow-status{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}.day-picker{display:flex;gap:6px;align-items:center;margin-right:8px}.day-picker label{font-size:12px;color:var(--muted)}.day-picker input,.day-picker button{padding:5px 8px}.day-picker a{color:var(--primary);text-decoration:none;font-size:12px}.shadow-notice{background:#edf4ff;border:1px solid #cfe0f7;color:#244d7c;border-radius:8px;padding:12px 14px;margin-bottom:16px}.shadow-notice.notice-warn{background:#fffbeb;border-color:#fde68a;color:#92400e}.shadow-notice.notice-bad{background:#fef2f2;border-color:#fecaca;color:#991b1b}.shadow-metrics{margin-bottom:16px}.date-value{font-size:17px!important}.ranking-panel{margin-bottom:16px}.ranking-panel .generated{margin-left:auto;font-size:12px;font-weight:400}.ranking-table td{padding-top:10px;padding-bottom:10px}.ranking-table .rank{font-size:17px;font-weight:700;color:var(--primary)}.ranking-table .probability{color:#376aab;font-weight:600}.ranking-table .close-prob{color:var(--primary);font-size:15px}.version-panel{margin-bottom:16px}.version-panel dl{display:grid;grid-template-columns:repeat(2,1fr);margin:0}.version-panel dl div{padding:12px 16px;border-bottom:1px solid var(--line)}.version-panel dt{color:var(--muted);font-size:12px}.version-panel dd{margin:5px 0 0}.history-panel .panel-title{margin-bottom:0}.history-panel a{color:var(--primary);text-decoration:none}
+@media(max-width:700px){.version-panel dl{grid-template-columns:1fr}.ranking-panel .generated{display:none}}
+</style>
+{% endblock %}
