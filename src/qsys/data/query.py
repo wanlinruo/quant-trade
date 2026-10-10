@@ -185,6 +185,47 @@ class WarehouseQuery:
             "tushare_daily", ", ".join(names), selected_schema, symbols, start, end
         )
 
+    def moneyflow(
+        self, symbols: Sequence[str] | None, start: date, end: date,
+    ) -> pl.DataFrame:
+        """Point-in-time daily individual-stock money flow, amounts in CNY."""
+        return self._dated_query(
+            "moneyflow_daily", ", ".join(schema.MONEYFLOW_DAILY.names),
+            schema.MONEYFLOW_DAILY, symbols, start, end,
+        )
+
+    def auction_open(
+        self, symbols: Sequence[str] | None, start: date, end: date,
+    ) -> pl.DataFrame:
+        """Quarantined historical opening-auction facts."""
+        return self._dated_query(
+            "auction_open_daily", ", ".join(schema.AUCTION_OPEN_DAILY.names),
+            schema.AUCTION_OPEN_DAILY, symbols, start, end,
+        )
+
+    def industry_membership(
+        self, symbols: Sequence[str] | None = None, *, as_of: date | None = None,
+    ) -> pl.DataFrame:
+        """SW membership intervals, optionally resolved as of one session."""
+        if symbols is not None and not symbols:
+            return _empty(schema.INDUSTRY_MEMBERSHIP)
+        glob = self._glob("industry_membership", partitioned=False)
+        if glob is None:
+            return _empty(schema.INDUSTRY_MEMBERSHIP)
+        sql = (
+            f"SELECT {', '.join(schema.INDUSTRY_MEMBERSHIP.names)} "
+            f"FROM {_read(glob)} WHERE 1=1"
+        )
+        params: list[object] = []
+        if symbols is not None:
+            sql += " AND symbol IN (" + ", ".join("?" for _ in symbols) + ")"
+            params.extend(symbols)
+        if as_of is not None:
+            sql += " AND in_date <= ? AND (out_date IS NULL OR out_date >= ?)"
+            params.extend([as_of, as_of])
+        sql += " ORDER BY symbol, in_date, l3_code"
+        return self._con.execute(sql, params).pl()
+
     def share_capital_changes(self) -> pl.DataFrame:
         """在 DuckDB 内把 daily_basic 股本快照压缩为首次可见变化点。
 

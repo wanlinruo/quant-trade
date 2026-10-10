@@ -51,6 +51,7 @@ DATASETS = frozenset(
     {"tushare_daily", "bars_daily", "paid_daily", "paid_minute_bars",
      "index_bars", "minute_bars", "tushare_minute_bars",
      "joinquant_minute_bars", "auction_ticks"}
+    | {"auction_open_daily"}
 )
 
 _FROZEN_CHECKS = ("C4.frozen_unchanged",)
@@ -383,6 +384,36 @@ def _minute_metrics() -> list[Metric]:
     ]
 
 
+def _auction_open_metrics() -> list[Metric]:
+    meanings = {
+        "symbol": "规范证券代码",
+        "dt": "最终开盘集合竞价所属交易日",
+        "open": "集合竞价最终开盘价（元）",
+        "close": "集合竞价接口返回的收盘字段（元），隔离期原样保留",
+        "high": "集合竞价接口返回的最高价（元），隔离期原样保留",
+        "low": "集合竞价接口返回的最低价（元），隔离期原样保留",
+        "volume_raw": "来源原始竞价成交量；与 QMT 对账前不声明单位",
+        "amount_raw": "来源原始竞价成交额；与 QMT 对账前不声明单位",
+        "vwap": "来源返回的集合竞价均价（元）",
+    }
+    fields = {
+        "symbol": "ts_code", "dt": "trade_date",
+        "volume_raw": "vol", "amount_raw": "amount",
+    }
+    return [
+        Metric(
+            id=f"auction_open_daily.{column}", kind=Kind.DIRECT,
+            validity=Validity.SESSION, status=MetricStatus.ACTIVE,
+            meaning=meanings[column],
+            lineage=Direct("tushare.stk_auction_o", fields.get(column, column)),
+            checks=UNCOVERED("隔离保存；须通过 QMT 09:25 最终快照同口径门禁"),
+            known_issues=("待取得 stk_auction_o 权限并完成 QMT 重叠期对账",),
+            ext_consumers=("首板竞价研究（门禁通过后）",),
+        )
+        for column in schema.AUCTION_OPEN_DAILY.names
+    ]
+
+
 METRICS: tuple[Metric, ...] = tuple(
     _tushare_daily_metrics()
     + _paid_daily_metrics()
@@ -400,4 +431,5 @@ METRICS: tuple[Metric, ...] = tuple(
               MetricStatus.ACTIVE, ("B4.arrival",))
     + _simple("bars_daily", "mootdx.kline", _BARS_MEANING,
               MetricStatus.FROZEN, _FROZEN_CHECKS)
+    + _auction_open_metrics()
 )

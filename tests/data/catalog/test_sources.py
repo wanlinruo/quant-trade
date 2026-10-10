@@ -21,6 +21,7 @@ def test_covers_every_tushare_api_the_pipeline_uses():
         "daily", "daily_basic", "adj_factor", "stk_limit", "suspend_d",
         "limit_list_d", "index_daily", "stock_basic", "namechange", "trade_cal",
         "stock_st",
+        "moneyflow", "index_member_all", "stk_auction_o",
         "minute",
     }
 
@@ -41,6 +42,7 @@ def test_registers_every_known_source():
         "tushare.stk_limit", "tushare.suspend_d", "tushare.limit_list_d",
         "tushare.index_daily", "tushare.stock_basic", "tushare.namechange",
         "tushare.trade_cal", "tushare.stock_st",
+        "tushare.moneyflow", "tushare.index_member_all", "tushare.stk_auction_o",
         "tushare.minute",
         "akshare.tool_trade_date_hist_sina", "akshare.stock_info_a_code_name",
         "akshare.stock_info_sh_delist", "akshare.stock_info_sz_delist",

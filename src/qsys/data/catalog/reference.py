@@ -75,6 +75,7 @@ DATASETS = frozenset({
     "suspend_daily", "limit_list_daily", "corporate_actions",
     "share_capital", "adj_factors", "stock_st_daily",
     "security_master", "security_name_history", "trading_calendar",
+    "industry_membership",
 })
 
 # --- QMT 分红送配链路两处「空值归零」的填充问题，供多列复用一段说明 -------
@@ -882,10 +883,39 @@ def _canonical_reference() -> list[Metric]:
     return out
 
 
+def _industry_membership() -> list[Metric]:
+    meanings = {
+        "symbol": "规范证券代码",
+        "l1_code": "申万一级行业代码", "l1_name": "申万一级行业名称",
+        "l2_code": "申万二级行业代码", "l2_name": "申万二级行业名称",
+        "l3_code": "申万三级行业代码", "l3_name": "申万三级行业名称",
+        "in_date": "该行业归属生效日", "out_date": "该行业归属失效日；当前归属为空",
+        "is_new": "来源最新成员标记；历史查询必须使用生效/失效区间，不能只读本列",
+    }
+    fields = {"symbol": "ts_code"}
+    out: list[Metric] = []
+    for column in schema.INDUSTRY_MEMBERSHIP.names:
+        note = None
+        if column == "is_new":
+            note = "来源 Y/N 无损规范化为布尔值"
+        out.append(Metric(
+            id=f"industry_membership.{column}", kind=Kind.DIRECT,
+            validity=Validity.SPAN, status=MetricStatus.ACTIVE,
+            meaning=meanings[column],
+            lineage=Direct(
+                "tushare.index_member_all", fields.get(column, column), note=note,
+            ),
+            checks=UNCOVERED("全表原子替换、区间键及存储契约验证"),
+            ext_consumers=("首板行业热度特征",),
+        ))
+    return out
+
+
 METRICS: tuple[Metric, ...] = tuple(
     _instruments() + _name_snapshots() + _name_history()
     + _price_limits_daily() + _suspend_daily() + _limit_list_daily()
     + _corporate_actions() + _share_capital() + _adj_factors()
     + _stock_st_daily()
     + _canonical_reference()
+    + _industry_membership()
 )
