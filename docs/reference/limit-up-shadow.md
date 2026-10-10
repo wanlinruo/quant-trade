@@ -16,6 +16,24 @@ Issue #212 的页面入口是 `/market/limit-up-shadow`，只读 API 是
 
 ## 离线发布契约
 
+日常评分只加载已通过 #210 门禁的保留目录，并从权威交易日历连接 T+1：
+
+```bash
+.venv/bin/python scripts/run_limit_up_shadow.py \
+  --warehouse /data/qsys/warehouse \
+  --research-run /data/qsys/research/issue-210/run-20261010 \
+  --state /data/qsys/var-prod/limit-up-shadow.sqlite3 \
+  --config /path/to/deploy.toml
+```
+
+任务会核对 `verdict.json` 的晋级结论、`manifest.json` 的完整源码/数据指纹和当前
+`FEATURE_COLUMNS`，然后仅在内存中计算当日合格股票及 Top-20。模型返回值必须继续满足
+两阶段概率恒等式。证券状态真值缺失的标的直接排除；合格股票少于默认完整性下限
+3,000 只时整次发布失败。相同预测日已有最终快照时幂等跳过，不覆盖历史。
+
+生产运行环境需要安装 `ml-research` 依赖组；模型仍来自只读的研究证据目录，不复制出
+第二份模型或训练集。
+
 离线任务先输出一份紧凑 JSON，再通过校验入口发布：
 
 ```bash
@@ -35,6 +53,7 @@ Precision@20、校准误差与漂移分数，缺失时明确显示“待累计�
 ## 数据卫生与保留
 
 SQLite 仅保存版本化的每日 Top-20、运行状态和必要观测指标，不保存全市场特征矩阵、
-训练集或逐标的全量预测。离线生成时的临时 JSON、特征文件、日志和试验目录在发布校验
-完成后清理；正式 SQLite 位于已登记为永久运行状态的 `var-prod`（测试环境位于对应
-`var`），随现有备份策略管理。研究原始证据仍按 #210 的独立保留记录执行。
+训练集或逐标的全量预测。正常日常评分不生成中间文件；人工 JSON 发布路径产生的临时
+JSON、日志和试验目录须在发布校验完成后清理。正式 SQLite 位于已登记为永久运行状态的
+`var-prod`（测试环境位于对应 `var`），随现有备份策略管理。研究模型直接引用 #210 的
+唯一保留证据，不另行复制。

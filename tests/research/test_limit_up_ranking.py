@@ -20,6 +20,7 @@ from qsys.research.limit_up_ranking import (
     materialise_dataset,
     monthly_precision,
     ranking_metrics,
+    scoring_frame,
     split_for,
     top20_breakdown,
 )
@@ -151,6 +152,36 @@ def test_materialise_dataset_connects_friday_to_monday(tmp_path: Path) -> None:
     assert result["prediction_date"].unique().to_list() == [days[friday_index]]
     assert days[friday_index + 1].weekday() == 0
     assert result["target_session"].unique().to_list() == [days[friday_index + 1]]
+
+
+def test_scoring_frame_accepts_calendar_target_beyond_warehouse(tmp_path: Path) -> None:
+    days, _symbols = _warehouse(tmp_path / "warehouse")
+    target = days[-1] + timedelta(days=3)
+
+    result = scoring_frame(
+        tmp_path / "warehouse", days[-1], target,
+        threads=1, min_observations=60,
+    )
+
+    assert result["prediction_date"].unique().to_list() == [days[-1]]
+    assert result["target_session"].unique().to_list() == [target]
+    assert set(result["symbol"]) == {"600001.SH", "300001.SZ", "688001.SH"}
+
+
+def test_scoring_frame_excludes_symbol_when_status_truth_is_missing(tmp_path: Path) -> None:
+    days, _symbols = _warehouse(tmp_path / "warehouse")
+    status_path = tmp_path / "warehouse/security_status_daily/year=2023/part.parquet"
+    status = pl.read_parquet(status_path).filter(
+        ~((pl.col("dt") == days[-1]) & (pl.col("symbol") == "600001.SH"))
+    )
+    status.write_parquet(status_path)
+
+    result = scoring_frame(
+        tmp_path / "warehouse", days[-1], days[-1] + timedelta(days=3),
+        threads=1, min_observations=60,
+    )
+
+    assert "600001.SH" not in result["symbol"].to_list()
 
 
 def test_materialise_dataset_enforces_exact_history_boundary(tmp_path: Path) -> None:
