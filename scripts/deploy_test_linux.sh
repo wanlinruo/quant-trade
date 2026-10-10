@@ -21,6 +21,38 @@ esac
 repo=$(git rev-parse --show-toplevel)
 cd "$repo"
 
+unit_target=/etc/systemd/system/qsys-web-test.service
+unit_backup_dir=
+unit_changed=false
+unit_was_present=false
+cleanup() {
+    status=$?
+    set +e
+    if [ "$status" -ne 0 ] && [ "$unit_changed" = true ] && [ -n "$unit_backup_dir" ]; then
+        rollback_ok=true
+        if [ "$unit_was_present" = true ]; then
+            sudo -n install -o root -g root -m 0644 \
+                "$unit_backup_dir/qsys-web-test.service" "$unit_target" \
+                || rollback_ok=false
+        else
+            sudo -n rm -f -- "$unit_target" || rollback_ok=false
+        fi
+        sudo -n systemctl daemon-reload || rollback_ok=false
+        sudo -n systemctl restart qsys-web-test.service || rollback_ok=false
+        if [ "$rollback_ok" != true ]; then
+            echo "test web unit rollback failed: $unit_target" >&2
+        fi
+    fi
+    if [ -n "$unit_backup_dir" ]; then
+        rm -rf -- "$unit_backup_dir"
+    fi
+    exit "$status"
+}
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
 if [ "$(git branch --show-current)" != "test" ]; then
     echo "test deployment checkout must be on branch test" >&2
     exit 1
@@ -58,6 +90,17 @@ uv_bin=${QSYS_UV_BIN:-/home/ubuntu/.local/bin/uv}
     --config config/deploy.local.toml \
     --fingerprint-key-file /etc/qsys/config-fingerprint.key
 "$uv_bin" run --frozen pytest -q tests/scripts/test_scripts_import.py
+unit_backup_dir=$(mktemp -d)
+if [ -f "$unit_target" ]; then
+    cp -- "$unit_target" "$unit_backup_dir/qsys-web-test.service"
+    unit_was_present=true
+fi
+systemd-analyze verify "$repo/deploy/systemd/qsys-web-test.service"
+unit_changed=true
+sudo -n install -o root -g root -m 0644 \
+    "$repo/deploy/systemd/qsys-web-test.service" "$unit_target"
+cmp -s "$repo/deploy/systemd/qsys-web-test.service" "$unit_target"
+sudo -n systemctl daemon-reload
 sudo -n systemctl restart qsys-web-test.service
 
 attempt=0
@@ -74,4 +117,5 @@ done
 mkdir -p /data/qsys-test/var/deployments
 printf '%s test %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$target_sha" \
     >>/data/qsys-test/var/deployments/history.log
+unit_changed=false
 echo "test deployment ok: $target_sha"

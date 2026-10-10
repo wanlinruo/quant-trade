@@ -935,6 +935,20 @@ def test_test_deployment_switches_to_the_verified_exact_sha() -> None:
     assert "git merge --ff-only" not in script
 
 
+def test_test_deployment_installs_and_rolls_back_its_web_unit() -> None:
+    script = Path("scripts/deploy_test_linux.sh").read_text(encoding="utf-8")
+
+    assert 'unit_target=/etc/systemd/system/qsys-web-test.service' in script
+    assert 'systemd-analyze verify "$repo/deploy/systemd/qsys-web-test.service"' in script
+    assert '"$repo/deploy/systemd/qsys-web-test.service" "$unit_target"' in script
+    assert '"$unit_backup_dir/qsys-web-test.service" "$unit_target"' in script
+    assert 'rm -f -- "$unit_target"' in script
+    assert 'cmp -s "$repo/deploy/systemd/qsys-web-test.service" "$unit_target"' in script
+    assert "systemctl daemon-reload" in script
+    assert "trap cleanup EXIT" in script
+    assert "trap 'exit 143' TERM" in script
+
+
 def test_test_plan_never_targets_windows() -> None:
     plan = DeploymentManifest.load(MANIFEST).plan(
         ["src/qsys/live/redis_transport.py", "scripts/run_agent.py"],
