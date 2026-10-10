@@ -18,6 +18,20 @@ Precision@20 选择，进入 TEST 前冻结。
   `stk_auction_o` 权限，不能用于模型或晋级。
 - `auction_ticks`：QMT 09:25 快照，仅用于重叠口径验证和未来实时门控。
 
+资金流与行业成员关系先在目标环境做幂等回补。`--industry` 会执行全表原子覆盖；
+`--moneyflow` 只替换交易日完整截面，因此中断后可以用相同日期安全重跑：
+
+```bash
+uv run python scripts/backfill_first_board_inputs.py \
+  --warehouse /data/qsys-test/warehouse-current \
+  --config config/deploy.local.toml \
+  --start 2023-01-01 --end 2026-09-30 \
+  --moneyflow --industry
+```
+
+首次回补先在测试仓库执行并核对日期覆盖、唯一键和金额单位；验证完成前不得直接把
+相同命令指向生产仓库。
+
 历史竞价解除隔离前必须运行：
 
 ```bash
