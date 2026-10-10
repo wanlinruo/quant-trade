@@ -152,9 +152,23 @@ def main() -> int:
     parser.add_argument("--bootstrap-samples", type=int, default=2_000)
     parser.add_argument("--runoff-sessions", type=int, default=10)
     parser.add_argument("--source-sha")
+    parser.add_argument(
+        "--reuse-runs", action="store_true",
+        help="reuse the six existing standard run directories and only rebuild summaries",
+    )
     args = parser.parse_args()
 
-    _empty_output(args.out)
+    if args.reuse_runs:
+        expected = {
+            f"{split.lower()}-{exit_policy.replace(':', '')}"
+            for split in SPLITS for exit_policy in EXITS
+        }
+        actual = ({path.name for path in (args.out / "runs").iterdir() if path.is_dir()}
+                  if (args.out / "runs").is_dir() else set())
+        if actual != expected:
+            raise ValueError(f"existing run directories differ: {sorted(actual ^ expected)}")
+    else:
+        _empty_output(args.out)
     windows, coverage = _signal_windows(
         args.ranking, args.warehouse, runoff_sessions=max(args.runoff_sessions, 1),
     )
@@ -165,16 +179,17 @@ def main() -> int:
         for exit_policy in EXITS:
             name = f"{split.lower()}-{exit_policy.replace(':', '')}"
             run_dir = args.out / "runs" / name
-            execute_backtest(
-                args.strategy, start=start, end=end, cash=args.cash,
-                warehouse=args.warehouse, out_dir=run_dir, entry_fill="continuous",
-                params={
-                    "ranking_path": str(args.ranking), "signal_split": split,
-                    "top_k": 3, "gap_min": 0.0, "gap_max": 0.02,
-                    "position_weight": 0.10, "max_positions": 3,
-                    "entry_price_buffer": 0.005, "exit_policy": exit_policy,
-                },
-            )
+            if not args.reuse_runs:
+                execute_backtest(
+                    args.strategy, start=start, end=end, cash=args.cash,
+                    warehouse=args.warehouse, out_dir=run_dir, entry_fill="continuous",
+                    params={
+                        "ranking_path": str(args.ranking), "signal_split": split,
+                        "top_k": 3, "gap_min": 0.0, "gap_max": 0.02,
+                        "position_weight": 0.10, "max_positions": 3,
+                        "entry_price_buffer": 0.005, "exit_policy": exit_policy,
+                    },
+                )
             row = summarize_run(
                 run_dir, split=split, exit_policy=exit_policy,
                 bootstrap_samples=max(args.bootstrap_samples, 100),

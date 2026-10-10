@@ -60,9 +60,9 @@ def summarize_run(
     buy_orders = orders.filter(pl.col("side") == "buy").height
     buy_fills = fills.filter(pl.col("side") == "buy").height
     fill_stats = str(config.get("entry_fill_stats", ""))
-    fallback = next(
-        (int(item.split("=", 1)[1]) for item in fill_stats.split(",")
-         if item.startswith("fallback=")), 0,
+    fallback = sum(
+        int(item.split("=", 1)[1]) for item in fill_stats.split(",")
+        if item.startswith("fallback") and "=" in item
     )
     return {
         "split": split, "exit_policy": exit_policy,
