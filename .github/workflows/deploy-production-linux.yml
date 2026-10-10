@@ -179,8 +179,9 @@ jobs:
               "systemd-enable-state-v1",
               "monitor-shadow-state-v1",
               "monitor-shadow-command-v1",
+              "monitor-research-command-v1",
           }
-          if state.get("entrypoint_version", 0) < 8 or not required <= set(state.get("capabilities", [])):
+          if state.get("entrypoint_version", 0) < 9 or not required <= set(state.get("capabilities", [])):
               raise SystemExit("production entrypoint lacks required deployment capabilities")
           print(f'before_sha={state["sha"]}')
           PY

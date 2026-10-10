@@ -60,9 +60,9 @@ GitHub 使用另一把测试专用 key；其 `authorized_keys` 条目强制进�
 副作用。
 
 固定生产入口通过 `status` 声明版本和 capability。Linux/Windows workflow 在计算计划前
-要求 v8 及 `systemd-apply-v1`、`systemd-changed-artifacts-v1`、`systemd-preview-v1`、
+要求 v9 及 `systemd-apply-v1`、`systemd-changed-artifacts-v1`、`systemd-preview-v1`、
 `systemd-rollback-v1`、`systemd-enable-state-v1`、`monitor-shadow-state-v1` 与
-`monitor-shadow-command-v1`；旧入口必须先由维护者运行
+`monitor-shadow-command-v1`、`monitor-research-command-v1`；旧入口必须先由维护者运行
 `scripts/install_production_deployment_entrypoint.sh` 显式升级，不能继续执行并产生假成功。
 安装脚本会先把旧入口、dispatcher 和配置备份到
 `/data/qsys/var-deployments/bootstrap-backups/`。
@@ -83,6 +83,8 @@ inactive 或首次启用的 unit，不能仅依赖 manifest 的常规服务列�
 SQLite 传给 Web 进程，并把 `/data/qsys/var-prod` 保持为只读路径；部署同时删除旧的较早排序
 drop-in。该变更必须重启 monitor，且入口会检查 systemd 合并后的最终 `ExecStart` 确实保留
 `--limit-up-shadow-state`，避免其他现场 drop-in 再次覆盖参数。
+同一最终命令还必须显式包含 #210 冻结研究目录；研究页只读该目录中的紧凑证据，
+不会把大型训练集或全量预测复制到 Web 状态目录。
 
 Windows 发布同样不信任节点上已安装的旧协调器：固定生产入口从已经通过上述门禁的目标
 SHA 提取 Linux 协调器，协调器再从同一 SHA 提取 Windows 控制器并上传执行。健康探针以

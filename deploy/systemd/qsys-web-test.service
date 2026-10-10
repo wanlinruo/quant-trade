@@ -17,6 +17,7 @@ ExecStart=/home/ubuntu/qsys-test/.venv/bin/python scripts/run_monitor.py \
           --state /data/qsys-test/var/shadow-state.sqlite3 \
           --health-state /data/qsys-test/var/service-health.sqlite3 \
           --limit-up-shadow-state /data/qsys-test/var/limit-up-shadow.sqlite3 \
+          --limit-up-research-run /data/qsys/research/issue-210/run-20261010 \
           --runs /data/qsys-test/var/runs \
           --service-runs /data/qsys-test/var/service-runs \
           --tushare-config /data/qsys-test/var/tushare-only.toml
@@ -28,7 +29,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadOnlyPaths=/data/qsys-test/warehouse-current
+ReadOnlyPaths=/data/qsys-test/warehouse-current /data/qsys/research/issue-210/run-20261010
 ReadWritePaths=/data/qsys-test/var
 
 [Install]

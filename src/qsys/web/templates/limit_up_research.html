@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block content %}
+{% set day = view.selected %}
+{% set summary = view.summary %}
+{% set board_labels = {'main':'主板','gem':'创业板','star':'科创板'} %}
+<div class="page-head">
+  <div>
+    <h2>AI 涨停研究回测</h2>
+    <p class="muted">#210 冻结样本外研究证据，仅用于理解历史预测表现，不是生产实时预测或交易信号。</p>
+  </div>
+  <div class="research-status">
+    <form method="get" class="day-picker"><label for="research-day">预测日期</label><input id="research-day" type="date" name="day" value="{{ selected_day or (day.prediction_date if day else '') }}"><button type="submit" class="secondary">查看</button>{% if selected_day %}<a href="/market/limit-up-research">返回最新</a>{% endif %}</form>
+    <span class="pill warn">冻结研究</span>
+    <span class="pill {{ 'ok' if view.available else 'bad' }}">{{ '可查看' if view.available else '不可用' }}</span>
+  </div>
+</div>
+
+<section class="research-notice {{ 'notice-bad' if not view.available else '' }}">
+  <strong>{{ view.message }}</strong>。研究数据不会写入生产影子库，也不计入上线后的滚动 Precision、校准或漂移指标。
+</section>
+
+{% if summary %}
+<div class="metric-grid research-metrics">
+  <div class="metric"><div class="label">研究交易日</div><div class="value">{{ summary.sessions }}</div><div class="muted">TEST {{ summary.test_sessions }} / OBS {{ summary.obs_sessions }}</div></div>
+  <div class="metric"><div class="label">TEST Precision@20</div><div class="value">{{ '%.1f%%'|format(summary.test_precision_at_20 * 100) }}</div></div>
+  <div class="metric"><div class="label">OBS Precision@20</div><div class="value">{{ '%.1f%%'|format(summary.obs_precision_at_20 * 100) }}</div></div>
+  <div class="metric"><div class="label">OBS 最佳基线</div><div class="value">{{ '%.1f%%'|format(summary.obs_baseline_precision_at_20 * 100) }}</div></div>
+  <div class="metric"><div class="label">OBS Lift@20</div><div class="value">{{ '%.1f'|format(summary.obs_lift_at_20) }}×</div></div>
+</div>
+{% endif %}
+
+{% if day %}
+<section class="panel ranking-panel">
+  <div class="panel-title"><span>{{ day.prediction_date }} → {{ day.target_session }} Top-20</span><span class="pill {{ 'ok' if day.split == 'OBS' else 'todo' }}">{{ day.split }}</span><span class="daily-result">封板 {{ '%.1f%%'|format(day.precision_at_20 * 100) }} · 触板 {{ '%.1f%%'|format(day.touch_precision_at_20 * 100) }}</span></div>
+  <div class="table-wrap"><table class="ranking-table">
+    <thead><tr><th class="num">排名</th><th>标的</th><th>板块</th><th>市场状态</th><th class="num">触板概率</th><th class="num">触板后封板</th><th class="num">收盘封板</th><th>历史结果</th></tr></thead>
+    <tbody>{% for row in day.entries %}<tr>
+      <td class="num rank">{{ row.rank }}</td><td><strong class="mono">{{ row.symbol }}</strong></td>
+      <td>{{ board_labels.get(row.board, row.board) }}</td><td>{{ row.market_state }}</td>
+      <td class="num probability">{{ '%.1f%%'|format(row.p_touch * 100) }}</td>
+      <td class="num probability">{{ '%.1f%%'|format(row.p_seal_given_touch * 100) }}</td>
+      <td class="num probability close-prob">{{ '%.1f%%'|format(row.p_close_limit * 100) }}</td>
+      <td><span class="pill {{ 'ok' if row.actual_touched else 'gray' }}">{{ '触板' if row.actual_touched else '未触板' }}</span> <span class="pill {{ 'ok' if row.actual_closed_limit else 'gray' }}">{{ '收盘封板' if row.actual_closed_limit else '未封板' }}</span>{% if row.opened_at_limit %} <span class="pill warn">涨停开盘</span>{% endif %}{% if row.one_price_limit %} <span class="pill red">一字板</span>{% endif %}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+{% endif %}
+
+{% if summary %}
+<section class="panel version-panel">
+  <div class="panel-title">冻结证据</div>
+  <dl>
+    <div><dt>样本区间</dt><dd>{{ summary.first_prediction_date }} ～ {{ summary.last_prediction_date }}</dd></div>
+    <div><dt>晋级结论</dt><dd><span class="pill ok">已通过只读影子门禁</span></dd></div>
+    <div><dt>研究源码</dt><dd class="mono">{{ summary.source_sha }}</dd></div>
+    <div><dt>数据集 SHA-256</dt><dd class="mono hash">{{ summary.data_sha }}</dd></div>
+  </dl>
+</section>
+
+<section class="panel monthly-panel">
+  <div class="panel-title">月度 LightGBM Precision@20</div>
+  <div class="table-wrap"><table><thead><tr><th>月份</th><th>样本</th><th class="num">预测数</th><th class="num">命中数</th><th class="num">Precision@20</th></tr></thead><tbody>
+  {% for item in view.monthly|reverse %}<tr><td>{{ item.month.strftime('%Y-%m') }}</td><td><span class="pill {{ 'ok' if item.split == 'OBS' else 'todo' }}">{{ item.split }}</span></td><td class="num">{{ item.predictions }}</td><td class="num">{{ item.hits }}</td><td class="num"><strong>{{ '%.1f%%'|format(item.precision_at_20 * 100) }}</strong></td></tr>{% endfor %}
+  </tbody></table></div>
+</section>
+
+<section class="panel history-panel">
+  <div class="panel-title"><span>307 日研究历史</span><span class="muted">选择任一预测日查看当日 Top20</span></div>
+  <div class="table-wrap history-scroll"><table><thead><tr><th>预测日</th><th>目标交易日</th><th>样本</th><th class="num">触板 Precision@20</th><th class="num">封板 Precision@20</th></tr></thead><tbody>
+  {% for item in view.history %}<tr><td><a href="/market/limit-up-research?day={{ item.prediction_date }}">{{ item.prediction_date }}</a></td><td>{{ item.target_session }}</td><td><span class="pill {{ 'ok' if item.split == 'OBS' else 'todo' }}">{{ item.split }}</span></td><td class="num">{{ '%.1f%%'|format(item.touch_precision_at_20 * 100) }}</td><td class="num"><strong>{{ '%.1f%%'|format(item.precision_at_20 * 100) }}</strong></td></tr>{% endfor %}
+  </tbody></table></div>
+</section>
+{% else %}
+<div class="panel empty-state">研究证据不可用。页面不会用生产影子数据或其他模型替代。</div>
+{% endif %}
+
+<style>
+.research-status{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}.day-picker{display:flex;gap:6px;align-items:center;margin-right:8px}.day-picker label{font-size:12px;color:var(--muted)}.day-picker input,.day-picker button{padding:5px 8px}.day-picker a,.history-panel a{color:var(--primary);text-decoration:none;font-size:12px}.research-notice{background:#fffbeb;border:1px solid #fde68a;color:#7c4a03;border-radius:8px;padding:12px 14px;margin-bottom:16px}.research-notice.notice-bad{background:#fef2f2;border-color:#fecaca;color:#991b1b}.research-metrics{margin-bottom:16px}.ranking-panel,.version-panel,.monthly-panel{margin-bottom:16px}.ranking-panel .panel-title{gap:10px}.daily-result{margin-left:auto;color:var(--muted);font-size:12px;font-weight:400}.ranking-table .rank{font-size:17px;font-weight:700;color:var(--primary)}.ranking-table .probability{color:#376aab;font-weight:600}.ranking-table .close-prob{color:var(--primary)}.version-panel dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));margin:0}.version-panel dl div{padding:12px 16px;border-bottom:1px solid var(--line);min-width:0}.version-panel dt{color:var(--muted);font-size:12px}.version-panel dd{margin:5px 0 0}.version-panel .hash{word-break:break-all}.history-panel .panel-title{justify-content:space-between}.history-scroll{max-height:620px;overflow:auto}.history-scroll thead{position:sticky;top:0;background:var(--panel);z-index:1}
+@media(max-width:700px){.version-panel dl{grid-template-columns:1fr}.daily-result{display:none}}
+</style>
+{% endblock %}

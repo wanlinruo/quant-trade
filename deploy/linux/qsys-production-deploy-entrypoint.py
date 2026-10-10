@@ -31,7 +31,7 @@ ALLOWED_WINDOWS_COMPONENTS = frozenset({
     "windows-agent", "windows-gateway", "windows-control",
 })
 WINDOWS_COORDINATOR_PATH = "deploy/linux/qsys-windows-deploy-coordinator.py"
-ENTRYPOINT_VERSION = 8
+ENTRYPOINT_VERSION = 9
 ENTRYPOINT_CAPABILITIES = (
     "systemd-apply-v1",
     "systemd-changed-artifacts-v1",
@@ -44,6 +44,7 @@ ENTRYPOINT_CAPABILITIES = (
     "systemd-enable-state-v1",
     "monitor-shadow-state-v1",
     "monitor-shadow-command-v1",
+    "monitor-research-command-v1",
 )
 FAILURE_POINTS = frozenset({"none", "linux-health", "windows-switch"})
 ALLOWED_UNITS = frozenset({
@@ -68,6 +69,9 @@ MARKET_DATA_CONSUMERS = (
 SYSTEMD_ENABLE_ON_INSTALL = frozenset({"qsys-limit-up-shadow.timer"})
 MONITOR_SHADOW_ARGUMENT = (
     "--limit-up-shadow-state /data/qsys/var-prod/limit-up-shadow.sqlite3"
+)
+MONITOR_RESEARCH_ARGUMENT = (
+    "--limit-up-research-run /data/qsys/research/issue-210/run-20261010"
 )
 
 
@@ -624,6 +628,10 @@ def _verify_systemd_artifacts(
         if MONITOR_SHADOW_ARGUMENT not in effective:
             raise ValueError(
                 "qsys-monitor effective ExecStart lacks the production shadow state"
+            )
+        if MONITOR_RESEARCH_ARGUMENT not in effective:
+            raise ValueError(
+                "qsys-monitor effective ExecStart lacks the frozen research run"
             )
 
 
