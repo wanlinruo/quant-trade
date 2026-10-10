@@ -137,3 +137,15 @@ def test_namechange_reads_past_the_ten_thousand_row_api_page():
     got = TushareProvider(client).namechange()
     assert got.height == 10_001
     assert client.offsets == [0, 10_000]
+
+
+def test_first_board_provider_moneyflow_uses_explicit_fields():
+    client = FakeClient([{
+        "ts_code": "600001.SH", "trade_date": "20260911",
+        "buy_sm_amount": 1, "sell_sm_amount": 2, "buy_md_amount": 3,
+        "sell_md_amount": 4, "buy_lg_amount": 5, "sell_lg_amount": 6,
+        "buy_elg_amount": 7, "sell_elg_amount": 8, "net_mf_amount": -4,
+    }])
+    got = TushareProvider(client).moneyflow(date(2026, 9, 11))
+    assert got["buy_sm_amount"].dtype == pl.Float64
+    assert client.calls[0][0] == "moneyflow"

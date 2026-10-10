@@ -576,6 +576,59 @@ LIMIT_LIST_DAILY = pa.schema(
     ]
 )
 
+# Tushare moneyflow.  Amount fields are normalized from ten-thousand CNY to CNY
+# by the pipeline; volume stays in lots (100 shares), matching the source.
+MONEYFLOW_DAILY = pa.schema(
+    [
+        ("symbol", pa.string()),
+        ("dt", pa.date32()),
+        ("buy_sm_amount", pa.float64()),
+        ("sell_sm_amount", pa.float64()),
+        ("buy_md_amount", pa.float64()),
+        ("sell_md_amount", pa.float64()),
+        ("buy_lg_amount", pa.float64()),
+        ("sell_lg_amount", pa.float64()),
+        ("buy_elg_amount", pa.float64()),
+        ("sell_elg_amount", pa.float64()),
+        ("net_mf_amount", pa.float64()),
+    ],
+    metadata={
+        b"provider": b"tushare-pro.moneyflow",
+        b"money_unit": b"CNY",
+    },
+)
+
+# Point-in-time industry membership.  A row applies on ``in_date <= T`` and
+# ``out_date is null or T <= out_date``; consumers must never use is_new alone.
+INDUSTRY_MEMBERSHIP = pa.schema(
+    [
+        ("symbol", pa.string()),
+        ("l1_code", pa.string()), ("l1_name", pa.string()),
+        ("l2_code", pa.string()), ("l2_name", pa.string()),
+        ("l3_code", pa.string()), ("l3_name", pa.string()),
+        ("in_date", pa.date32()),
+        ("out_date", pa.date32()),
+        ("is_new", pa.bool_()),
+    ],
+    metadata={b"provider": b"tushare-pro.index_member_all"},
+)
+
+# Historical final opening-auction result.  It is quarantined from model use
+# until overlap checks prove parity with the QMT 09:25 final snapshot.
+AUCTION_OPEN_DAILY = pa.schema(
+    [
+        ("symbol", pa.string()), ("dt", pa.date32()),
+        ("open", pa.float64()), ("close", pa.float64()),
+        ("high", pa.float64()), ("low", pa.float64()),
+        ("volume_raw", pa.float64()), ("amount_raw", pa.float64()),
+        ("vwap", pa.float64()),
+    ],
+    metadata={
+        b"provider": b"tushare-pro.stk_auction_o",
+        b"status": b"quarantined-pending-qmt-parity",
+    },
+)
+
 # 曾用名区间原样落库；ST 状态由区间覆盖关系纯派生。
 NAME_HISTORY = pa.schema(
     [
@@ -670,6 +723,8 @@ PARTITIONED: dict[str, pa.Schema] = {
     "suspend_daily": SUSPEND_DAILY,
     "stock_st_daily": STOCK_ST_DAILY,
     "limit_list_daily": LIMIT_LIST_DAILY,
+    "moneyflow_daily": MONEYFLOW_DAILY,
+    "auction_open_daily": AUCTION_OPEN_DAILY,
     "name_snapshots": NAME_SNAPSHOTS,
     "delisting_pool": DELISTING_POOL,
     "trading_calendar": TRADING_CALENDAR,
@@ -684,6 +739,7 @@ UNPARTITIONED: dict[str, pa.Schema] = {
     "security_master": SECURITY_MASTER,
     "security_name_history": SECURITY_NAME_HISTORY,
     "share_capital_history": SHARE_CAPITAL_HISTORY,
+    "industry_membership": INDUSTRY_MEMBERSHIP,
 }
 
 ALL: dict[str, pa.Schema] = {**PARTITIONED, **UNPARTITIONED}

@@ -131,3 +131,41 @@ class TushareProvider:
             {"trade_date": trade_date.strftime("%Y%m%d"), "limit_type": limit_type},
         )
         return _rows_to_frame(rows, ("fd_amount", "limit_amount", "float_mv"))
+
+    def moneyflow(self, trade_date: date) -> pl.DataFrame:
+        fields = (
+            "ts_code,trade_date,buy_sm_amount,sell_sm_amount,buy_md_amount,"
+            "sell_md_amount,buy_lg_amount,sell_lg_amount,buy_elg_amount,"
+            "sell_elg_amount,net_mf_amount"
+        )
+        rows = self._client.call(
+            "moneyflow", {"trade_date": trade_date.strftime("%Y%m%d")}, fields,
+        )
+        return _rows_to_frame(rows, tuple(fields.split(",")[2:]))
+
+    def industry_membership(self) -> pl.DataFrame:
+        fields = (
+            "l1_code,l1_name,l2_code,l2_name,l3_code,l3_name,ts_code,name,"
+            "in_date,out_date,is_new"
+        )
+        rows: list[dict] = []
+        page_size = 2_000
+        for offset in range(0, 1_000_000, page_size):
+            page = self._client.call(
+                "index_member_all", {"offset": offset, "limit": page_size}, fields,
+            )
+            rows.extend(page)
+            if len(page) < page_size:
+                break
+        else:  # pragma: no cover
+            raise RuntimeError("index_member_all exceeded 1,000,000 rows")
+        return pl.DataFrame(rows, infer_schema_length=None) if rows else pl.DataFrame()
+
+    def auction_open(self, trade_date: date) -> pl.DataFrame:
+        fields = "ts_code,trade_date,open,close,high,low,vol,amount,vwap"
+        rows = self._client.call(
+            "stk_auction_o", {"trade_date": trade_date.strftime("%Y%m%d")}, fields,
+        )
+        return _rows_to_frame(
+            rows, ("open", "close", "high", "low", "vol", "amount", "vwap")
+        )

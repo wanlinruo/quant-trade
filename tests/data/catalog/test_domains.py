@@ -32,8 +32,14 @@ def test_market_domain_names_the_frozen_paid_source():
 
 def test_empty_domains_have_no_sources():
     for row in domain_summary():
-        if row.domain in (DataDomain.MACRO, DataDomain.ALTERNATIVE):
+        if row.domain is DataDomain.MACRO:
             assert row.datasets == () and row.sources == ()
+
+
+def test_alternative_domain_contains_moneyflow_source():
+    row = next(r for r in domain_summary() if r.domain is DataDomain.ALTERNATIVE)
+    assert {dataset.id for dataset in row.datasets} == {"moneyflow_daily"}
+    assert "tushare.moneyflow" in {source.id for source in row.sources}
 
 
 # ---------------------------------------------------------------- 递归血缘
