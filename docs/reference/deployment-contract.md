@@ -60,8 +60,8 @@ GitHub 使用另一把测试专用 key；其 `authorized_keys` 条目强制进�
 副作用。
 
 固定生产入口通过 `status` 声明版本和 capability。Linux/Windows workflow 在计算计划前
-要求 v6 及 `systemd-apply-v1`、`systemd-changed-artifacts-v1`、`systemd-preview-v1`、
-`systemd-rollback-v1` 与 `systemd-enable-state-v1`；旧入口必须先由维护者运行
+要求 v7 及 `systemd-apply-v1`、`systemd-changed-artifacts-v1`、`systemd-preview-v1`、
+`systemd-rollback-v1`、`systemd-enable-state-v1` 与 `monitor-shadow-state-v1`；旧入口必须先由维护者运行
 `scripts/install_production_deployment_entrypoint.sh` 显式升级，不能继续执行并产生假成功。
 安装脚本会先把旧入口、dispatcher 和配置备份到
 `/data/qsys/var-deployments/bootstrap-backups/`。
@@ -78,6 +78,8 @@ GitHub 使用另一把测试专用 key；其 `authorized_keys` 条目强制进�
 一次生产变更只涉及这些排除项，入口会失败关闭，不能把未部署内容记录为成功。
 dry-run 会列出这次实际安装的 `/etc` 目标，以及因内容变化将在正式发布中重启、保持
 inactive 或首次启用的 unit，不能仅依赖 manifest 的常规服务列表推断 systemd 副作用。
+`qsys-limit-up-shadow-web.conf` 会安装成 monitor 的 drop-in，显式把生产只读榜单 SQLite
+传给 Web 进程，并把 `/data/qsys/var-prod` 保持为只读路径；该 drop-in 变化必须重启 monitor。
 
 Windows 发布同样不信任节点上已安装的旧协调器：固定生产入口从已经通过上述门禁的目标
 SHA 提取 Linux 协调器，协调器再从同一 SHA 提取 Windows 控制器并上传执行。健康探针以
