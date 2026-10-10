@@ -35,7 +35,7 @@
   <div class="table-wrap"><table class="ranking-table">
     <thead><tr><th class="num">排名</th><th>标的</th><th>板块</th><th>市场状态</th><th class="num">触板概率</th><th class="num">触板后封板</th><th class="num">收盘封板</th><th>历史结果</th></tr></thead>
     <tbody>{% for row in day.entries %}<tr>
-      <td class="num rank">{{ row.rank }}</td><td><strong class="mono">{{ row.symbol }}</strong></td>
+      <td class="num rank">{{ row.rank }}</td><td><strong>{{ row.name or row.symbol }}</strong><div class="muted mono">{{ row.symbol }}</div></td>
       <td>{{ board_labels.get(row.board, row.board) }}</td><td>{{ row.market_state }}</td>
       <td class="num probability">{{ '%.1f%%'|format(row.p_touch * 100) }}</td>
       <td class="num probability">{{ '%.1f%%'|format(row.p_seal_given_touch * 100) }}</td>

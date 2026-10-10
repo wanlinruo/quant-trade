@@ -6,6 +6,7 @@ import csv
 import json
 import re
 from collections import defaultdict
+from collections.abc import Callable
 from datetime import date
 from pathlib import Path
 from threading import Lock
@@ -23,6 +24,7 @@ class LimitUpResearchEntry(BaseModel):
 
     rank: int = Field(ge=1, le=20)
     symbol: str = Field(min_length=1)
+    name: str = ""
     board: str
     market_state: str
     p_touch: float = Field(ge=0, le=1)
@@ -155,8 +157,12 @@ def _metric(
 class LimitUpResearchReader:
     """Load only the compact, immutable research evidence needed by the Web page."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(
+        self, root: Path,
+        name_lookup: Callable[[str, date], str] | None = None,
+    ) -> None:
         self.root = Path(root)
+        self.name_lookup = name_lookup
         self._cache: _ResearchDataset | None = None
         self._lock = Lock()
 
@@ -216,7 +222,8 @@ class LimitUpResearchReader:
         for prediction_day, rows in grouped.items():
             ordered = sorted(rows, key=lambda row: int(row["rank"]))
             entries = tuple(LimitUpResearchEntry(
-                rank=int(row["rank"]), symbol=row["symbol"], board=row["board"],
+                rank=int(row["rank"]), symbol=row["symbol"],
+                name=self._name(row["symbol"], prediction_day), board=row["board"],
                 market_state=row["market_state"], p_touch=float(row["p_touch"]),
                 p_seal_given_touch=float(row["p_seal_given_touch"]),
                 p_close_limit=float(row["p_close"]),
@@ -278,3 +285,58 @@ class LimitUpResearchReader:
         return _ResearchDataset(
             summary=summary, days=days, history=history, monthly=monthly,
         )
+
+    def _name(self, symbol: str, prediction_date: date) -> str:
+        if self.name_lookup is None:
+            return ""
+        name = self.name_lookup(symbol, prediction_date).strip()
+        if not name:
+            raise ValueError(f"security name is unavailable for {symbol}")
+        return name
+
+
+class HistoricalSecurityNameLookup:
+    """Resolve the name effective on a research day, then fall back to master data."""
+
+    def __init__(self, warehouse_root: Path) -> None:
+        self.warehouse_root = Path(warehouse_root)
+        self._intervals: dict[str, tuple[tuple[date, date | None, str], ...]] | None = None
+        self._current: dict[str, str] = {}
+        self._lock = Lock()
+
+    def __call__(self, symbol: str, day: date) -> str:
+        self._ensure_loaded()
+        matches = [
+            name for start, end, name in self._intervals.get(symbol, ())
+            if start <= day and (end is None or day <= end)
+        ]
+        if len(matches) > 1:
+            raise ValueError(f"overlapping security-name intervals for {symbol}")
+        if matches:
+            return matches[0]
+        return self._current.get(symbol, "")
+
+    def _ensure_loaded(self) -> None:
+        with self._lock:
+            if self._intervals is not None:
+                return
+            from qsys.data.query import WarehouseQuery
+            from qsys.data.storage import Warehouse
+
+            query = WarehouseQuery(Warehouse(self.warehouse_root))
+            grouped: dict[str, list[tuple[date, date | None, str]]] = defaultdict(list)
+            for row in query.security_name_history().iter_rows(named=True):
+                grouped[row["symbol"]].append((
+                    row["start_date"], row["end_date"], row["name"],
+                ))
+            master = query.security_master()
+            self._current = {
+                symbol: name for symbol, name in master.select("symbol", "name").iter_rows()
+                if name
+            }
+            self._intervals = {
+                symbol: tuple(sorted(
+                    rows, key=lambda item: (item[0], item[1] or date.max, item[2]),
+                ))
+                for symbol, rows in grouped.items()
+            }
