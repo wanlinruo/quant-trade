@@ -148,6 +148,26 @@ class BoundMarket:
             return set()
         return self._market_data.suspended_symbols(list(symbols), day)
 
+    def security_eligibility(
+        self, symbols: Sequence[str], day: date
+    ) -> dict[str, tuple[bool, bool]]:
+        """当日盘前可知的 ``(is_st, is_delisting)`` 状态。
+
+        只在竞价结果可见后开放，而且只投影盘前证券状态；停牌继续走保留
+        ``suspend_timing`` 的 :meth:`suspended_symbols`，避免把盘中临停误当全天
+        不可交易。缺行由调用方 fail closed，不能把未知状态解释为普通股票。
+        """
+        if not self._open_is_visible(day):
+            return {}
+        rows = self._query.security_status_daily(list(symbols), day, day).select(
+            "symbol", "is_st", "is_delisting"
+        )
+        return {
+            row["symbol"]: (bool(row["is_st"]), bool(row["is_delisting"]))
+            for row in rows.iter_rows(named=True)
+            if row["is_st"] is not None and row["is_delisting"] is not None
+        }
+
     def auction_volume(self, symbols: Sequence[str], day: date) -> dict[str, int]:
         """集合竞价成交量，取自分钟线 09:30 那根。取不到返回空。"""
         if not self._open_is_visible(day):
