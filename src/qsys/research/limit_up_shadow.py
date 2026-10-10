@@ -22,6 +22,8 @@ from qsys.web.limit_up_shadow import (
 )
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
+DRIFT_SCHEMA_VERSION = 1
+DRIFT_BINS = (0.0, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0)
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,6 +33,101 @@ class PromotedModel:
     source_sha: str
     artifact_sha: str
     research_data_sha: str
+
+
+@dataclass(frozen=True, slots=True)
+class DriftReference:
+    """Compact OBS prediction distribution; never contains per-symbol scores."""
+
+    source_sha: str
+    rows: int
+    bin_edges: tuple[float, ...]
+    proportions: tuple[float, ...]
+    schema_version: int = DRIFT_SCHEMA_VERSION
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "schema_version": self.schema_version,
+            "source": "issue-210 OBS lightgbm p_close",
+            "source_sha": self.source_sha,
+            "rows": self.rows,
+            "bin_edges": list(self.bin_edges),
+            "proportions": list(self.proportions),
+        }
+
+
+def _probability_histogram(
+    probabilities: list[float], edges: tuple[float, ...],
+) -> tuple[float, ...]:
+    if len(edges) < 2 or edges[0] != 0 or edges[-1] != 1:
+        raise ValueError("drift bin edges must span 0 through 1")
+    if any(left >= right for left, right in zip(edges, edges[1:])):
+        raise ValueError("drift bin edges must be strictly increasing")
+    if not probabilities:
+        raise ValueError("drift distribution is empty")
+    counts = [0] * (len(edges) - 1)
+    for raw in probabilities:
+        value = float(raw)
+        if not math.isfinite(value) or not 0 <= value <= 1:
+            raise ValueError("drift distribution contains an invalid probability")
+        index = len(counts) - 1
+        for candidate, upper in enumerate(edges[1:]):
+            if value < upper:
+                index = candidate
+                break
+        counts[index] += 1
+    return tuple(count / len(probabilities) for count in counts)
+
+
+def build_drift_reference(predictions_path: Path) -> DriftReference:
+    """Build a compact reference from the frozen #210 OBS LightGBM output."""
+    path = Path(predictions_path)
+    predictions = pl.read_parquet(path).filter(
+        (pl.col("model") == "lightgbm") & (pl.col("split") == "OBS")
+    )
+    if "p_close" not in predictions.columns:
+        raise ValueError("research predictions are missing p_close")
+    values = predictions["p_close"].drop_nulls().to_list()
+    if len(values) != predictions.height or not values:
+        raise ValueError("OBS LightGBM predictions are empty or contain null probabilities")
+    return DriftReference(
+        source_sha=file_sha256(path), rows=len(values), bin_edges=DRIFT_BINS,
+        proportions=_probability_histogram(values, DRIFT_BINS),
+    )
+
+
+def load_drift_reference(path: Path) -> DriftReference:
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    reference = DriftReference(
+        schema_version=int(payload.get("schema_version", 0)),
+        source_sha=str(payload.get("source_sha", "")),
+        rows=int(payload.get("rows", 0)),
+        bin_edges=tuple(float(value) for value in payload.get("bin_edges", ())),
+        proportions=tuple(float(value) for value in payload.get("proportions", ())),
+    )
+    if reference.schema_version != DRIFT_SCHEMA_VERSION:
+        raise ValueError("unsupported drift reference schema")
+    if len(reference.source_sha) != 64 or reference.rows < 1:
+        raise ValueError("drift reference has invalid provenance")
+    _probability_histogram([0.0], reference.bin_edges)  # validate edges
+    if len(reference.proportions) != len(reference.bin_edges) - 1:
+        raise ValueError("drift reference proportions do not match bins")
+    if any(not math.isfinite(value) or value < 0 for value in reference.proportions):
+        raise ValueError("drift reference contains invalid proportions")
+    if not math.isclose(sum(reference.proportions), 1.0, abs_tol=1e-9):
+        raise ValueError("drift reference proportions do not sum to one")
+    return reference
+
+
+def prediction_psi(probabilities: list[float], reference: DriftReference) -> float:
+    """Population Stability Index for the full eligible-universe p_close."""
+    current = _probability_histogram(probabilities, reference.bin_edges)
+    epsilon = 1e-6
+    return float(sum(
+        (actual - expected) * math.log(actual / expected)
+        for raw_actual, raw_expected in zip(current, reference.proportions, strict=True)
+        for actual, expected in ((max(raw_actual, epsilon), max(raw_expected, epsilon)),)
+    ))
 
 
 def load_promoted_model(run: Path) -> PromotedModel:
@@ -50,7 +147,7 @@ def load_promoted_model(run: Path) -> PromotedModel:
     try:
         import joblib
     except ImportError as exc:  # pragma: no cover - operational dependency
-        raise RuntimeError("ml-research dependency group is required") from exc
+        raise RuntimeError("production ML runtime dependencies are required") from exc
     return PromotedModel(
         model=joblib.load(model_path),
         version=f"limit-up-lgbm-{source_sha[:8]}-{research_data_sha[:8]}",
@@ -75,6 +172,7 @@ def score_snapshot(
     frame: pl.DataFrame, promoted: PromotedModel, *,
     names: dict[str, str] | None = None,
     generated_at: datetime | None = None,
+    drift_reference: DriftReference | None = None,
 ) -> LimitUpShadowSnapshot:
     """Score a feature slice and retain only the compact Top-20 snapshot."""
     prediction_days = frame["prediction_date"].unique().to_list()
@@ -114,6 +212,8 @@ def score_snapshot(
         data_version=f"warehouse-{prediction_date:%Y%m%d}",
         data_sha=scoring_frame_sha(frame),
         eligible_count=frame.height,
+        drift_score=(prediction_psi([item[0] for item in scored], drift_reference)
+                     if drift_reference is not None else None),
         entries=entries,
     )
 
@@ -121,6 +221,7 @@ def score_snapshot(
 def build_daily_snapshot(
     warehouse: Path, run: Path, prediction_date: date, target_session: date, *,
     threads: int = 2, min_eligible: int = 3_000,
+    drift_reference_path: Path | None = None,
 ) -> LimitUpShadowSnapshot:
     promoted = load_promoted_model(run)
     frame = scoring_frame(
@@ -136,7 +237,8 @@ def build_daily_snapshot(
             f"eligible universe is unexpectedly small: {frame.height} < {min_eligible}"
         )
     names = dict(instruments.select("symbol", "name").iter_rows())
-    return score_snapshot(frame, promoted, names=names)
+    reference = load_drift_reference(drift_reference_path) if drift_reference_path else None
+    return score_snapshot(frame, promoted, names=names, drift_reference=reference)
 
 
 def latest_feature_session(warehouse: Path) -> date:

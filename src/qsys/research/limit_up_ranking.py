@@ -459,7 +459,7 @@ class TwoStageModel:
             except (ImportError, OSError) as exc:  # pragma: no cover - CLI error path
                 raise RuntimeError(
                     "LightGBM research dependencies are unavailable; run "
-                    "`uv sync --group dev --group ml-research` and install the "
+                    "`uv sync --group dev` and install the "
                     "platform OpenMP runtime when required"
                 ) from exc
             return LGBMClassifier(
@@ -478,7 +478,7 @@ class TwoStageModel:
             except ImportError as exc:  # pragma: no cover - CLI error path
                 raise RuntimeError(
                     "scikit-learn research dependencies are missing; run "
-                    "`uv sync --group dev --group ml-research`"
+                    "`uv sync --group dev`"
                 ) from exc
             return make_pipeline(
                 SimpleImputer(strategy="median"),

@@ -70,6 +70,7 @@ def test_reader_and_page_expose_ready_snapshot(warehouse, tmp_path: Path):
     assert page.status_code == 200
     assert "AI 涨停观察" in page.text and "只读影子" in page.text
     assert "平安银行" in page.text and "40.0%" in page.text
+    assert "漂移分数（PSI）" in page.text and "稳定" in page.text
     assert "买入" not in page.text
     assert payload["state"] == "ready" and payload["available"] is True
     assert payload["snapshot"]["entries"][0]["p_close_limit"] == 0.4

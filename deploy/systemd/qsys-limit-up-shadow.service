@@ -1,0 +1,28 @@
+[Unit]
+Description=qsys promoted-model limit-up shadow ranking
+After=network-online.target qsys-tushare-sync.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/qsys
+ExecStart=/usr/bin/flock --shared /home/ubuntu/qsys/var/warehouse-write.lock \
+          /home/ubuntu/qsys/.venv/bin/python -u scripts/limit_up_shadow_cycle.py \
+          --warehouse /data/qsys/warehouse \
+          --research-run /data/qsys/research/issue-210/run-20261010 \
+          --drift-reference /data/qsys/var-prod/limit-up-drift-reference.json \
+          --state /data/qsys/var-prod/limit-up-shadow.sqlite3 \
+          --service-runs /data/qsys/var-prod/service-runs \
+          --config /home/ubuntu/qsys/config/deploy.local.toml
+TimeoutStartSec=7200
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadOnlyPaths=/data/qsys/warehouse /data/qsys/research
+ReadWritePaths=/home/ubuntu/qsys/var /data/qsys/var-prod
+
+[Install]
+WantedBy=multi-user.target

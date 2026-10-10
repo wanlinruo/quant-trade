@@ -194,6 +194,14 @@ def test_catalog_verify_is_registered_between_sync_and_checks():
     assert order.index("tushare-sync") < order.index("catalog-verify") < order.index("service-checks")
 
 
+def test_limit_up_shadow_is_registered_after_close_sync():
+    spec = services.SERVICE_BY_ID["limit-up-shadow"]
+    assert spec.kind == "timer" and spec.unit == "qsys-limit-up-shadow"
+    assert "limit-up-shadow.sqlite3" in spec.writes
+    order = [s.id for s in SERVICES if s.kind == "timer"]
+    assert order.index("tushare-sync") < order.index("limit-up-shadow")
+
+
 def test_premarket_limits_is_due_before_the_earliest_possible_auction():
     """涨跌停价的截止时间必须早于竞价决策，否则「准时」了策略也已经用不上。
 

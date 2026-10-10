@@ -1,0 +1,10 @@
+[Unit]
+Description=Publish limit-up shadow ranking after close data is ready
+
+[Timer]
+OnCalendar=Mon..Fri 19:35 Asia/Shanghai
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target
