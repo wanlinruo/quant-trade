@@ -68,6 +68,21 @@ def test_minute_manifest_includes_paper_holdings(tmp_path):
     assert sorted(wanted["symbol"].to_list()) == ["001399.SZ", "600036.SH"]
 
 
+def test_late_listing_convergence_can_restrict_the_minute_manifest():
+    wanted = pl.DataFrame({
+        "symbol": ["600036.SH", "920157.BJ", "300001.SZ"],
+        "dt": [DAY, DAY, DAY],
+    })
+    restricted, requested = daily_archive._restrict_minute_symbols(
+        wanted, " 920157.BJ,300001.SZ,920157.BJ "
+    )
+    assert requested == {"920157.BJ", "300001.SZ"}
+    assert restricted["symbol"].to_list() == ["920157.BJ", "300001.SZ"]
+    unchanged, requested = daily_archive._restrict_minute_symbols(wanted, "")
+    assert requested == set()
+    assert unchanged.equals(wanted)
+
+
 def test_missing_paper_store_is_not_an_error(tmp_path):
     assert daily_archive._paper_fills(tmp_path / "absent.sqlite3").height == 0
 

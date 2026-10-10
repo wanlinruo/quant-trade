@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 import argparse
+import subprocess
+import sys
 from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -25,10 +27,90 @@ from qsys.data.pipeline.canonical_publish import publish_postclose
 from qsys.data.providers.tushare import TushareProvider
 from qsys.data.providers.tushare_client import TushareClient
 from qsys.data.storage import Warehouse
+from qsys.data.query import WarehouseQuery
 from qsys.live.config import load_tushare_config
 from qsys.ops.services import ServiceRun, record_step
 
 log = structlog.get_logger(__name__)
+
+
+def late_listing_minute_gaps(warehouse: Warehouse, day: date) -> list[str]:
+    """找出上市日当天有成交、但 QMT 分钟线尚未落库的证券。
+
+    只看 ``list_date == day``，避免把一般下载故障变成每次 Tushare 同步都会
+    自动重试的无限恢复环；普通缺口仍由 service-checks 告警后人工处置。
+    """
+    query = WarehouseQuery(warehouse)
+    listed = (
+        query.instruments()
+        .filter(pl.col("list_date") == day)["symbol"]
+        .to_list()
+    )
+    if not listed:
+        return []
+    traded = query.tushare_daily(
+        listed, day, day, columns=["symbol", "dt", "volume"]
+    ).filter(pl.col("volume") > 0)
+    if traded.height == 0:
+        return []
+    symbols = sorted(set(traded["symbol"].to_list()))
+    bars = query.minute_bars(
+        symbols,
+        datetime.combine(day, datetime.min.time()),
+        datetime.combine(day, datetime.max.time()),
+    )
+    arrived = set(bars["symbol"].unique().to_list())
+    return [symbol for symbol in symbols if symbol not in arrived]
+
+
+def converge_late_listing_minutes(
+    warehouse: Warehouse,
+    day: date,
+    *,
+    warehouse_path: Path,
+    config_path: Path,
+    service_runs: Path,
+    limit: int,
+    timeout: int,
+    run: ServiceRun | None = None,
+) -> int:
+    """在收盘主数据更新后，对少量晚到上市标的执行一次受控幂等补采。"""
+    with record_step(
+        run, "晚到上市标的分钟线收敛", interface="Tushare 日线 → QMT 1 分钟线",
+        table="minute_bars / bar_minute_1m",
+    ) as step:
+        missing = late_listing_minute_gaps(warehouse, day)
+        if not missing:
+            step.detail = "当日上市且有成交的证券分钟线已齐"
+            return 0
+        if len(missing) > limit:
+            raise RuntimeError(
+                f"晚到上市标的分钟缺口 {len(missing)} 只，超过自动补采上限 {limit}；"
+                "拒绝把一般归档故障当成晚到新股自动重试"
+            )
+
+        command = [
+            sys.executable, "-u", "scripts/daily_archive.py",
+            "--warehouse", str(warehouse_path),
+            "--config", str(config_path),
+            "--service-runs", str(service_runs),
+            "--lookback-days", "0",
+            "--skip-auction",
+            "--minute-symbols", ",".join(missing),
+            "--minute-timeout", str(max(timeout - 120, 60)),
+            "--minute-stall-timeout", str(min(300, max(timeout // 3, 60))),
+        ]
+        completed = subprocess.run(command, timeout=timeout, check=False)
+        if completed.returncode:
+            raise RuntimeError(
+                f"晚到上市标的分钟补采失败 rc={completed.returncode}：{','.join(missing)}"
+            )
+        remaining = late_listing_minute_gaps(warehouse, day)
+        if remaining:
+            raise RuntimeError("补采退出成功但缺口仍存在：" + ",".join(remaining))
+        step.rows = len(missing)
+        step.detail = f"补采并发布 {len(missing)} 只：{','.join(missing)}"
+        return len(missing)
 
 
 def run_incremental_verification(warehouse: Warehouse, day: date) -> int:
@@ -98,6 +180,14 @@ def main() -> int:
                         help="指定交易日；不给则取最近一个已收盘交易日")
     parser.add_argument("--service-runs", type=Path, default=Path("var/service-runs"),
                         help="运行记录目录（服务管理页读取）")
+    parser.add_argument("--late-minute-limit", type=int, default=20,
+                        help="收盘同步后自动补采晚到上市标的的安全上限")
+    parser.add_argument("--late-minute-timeout", type=int, default=900,
+                        help="晚到上市标的分钟补采总超时秒数")
+    parser.add_argument(
+        "--late-minute-convergence", action="store_true",
+        help="同步成功后收敛当日晚到上市标的；生产定时任务显式启用",
+    )
     args = parser.parse_args()
 
     with ServiceRun.open(args.service_runs, "tushare-sync") as run:
@@ -123,6 +213,17 @@ def main() -> int:
         counts.update(publish_canonical_after_sync(
             provider, warehouse, day, run=run
         ))
+        if args.late_minute_convergence:
+            counts["late_listing_minutes"] = converge_late_listing_minutes(
+                warehouse,
+                day,
+                warehouse_path=args.warehouse,
+                config_path=args.config,
+                service_runs=args.service_runs,
+                limit=args.late_minute_limit,
+                timeout=args.late_minute_timeout,
+                run=run,
+            )
         after_sync(warehouse, day, ok=True, run=run)
     print(f"=== {day} ===")
     for name, rows in counts.items():
