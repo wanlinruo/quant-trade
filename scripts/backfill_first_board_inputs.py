@@ -8,6 +8,7 @@ against QMT 09:25 final snapshots.
 from __future__ import annotations
 
 import argparse
+from collections.abc import Iterator, Sequence
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -33,6 +34,13 @@ def _days(start: date, end: date) -> list[date]:
     return out
 
 
+def _batches(days: Sequence[date], size: int) -> Iterator[list[date]]:
+    if size < 1:
+        raise ValueError("batch size must be positive")
+    for offset in range(0, len(days), size):
+        yield list(days[offset:offset + size])
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--warehouse", type=Path, required=True)
@@ -42,9 +50,15 @@ def main() -> int:
     parser.add_argument("--moneyflow", action="store_true")
     parser.add_argument("--industry", action="store_true")
     parser.add_argument("--auction", action="store_true")
+    parser.add_argument(
+        "--batch-sessions", type=int, default=20,
+        help="fetch and publish this many complete sessions per warehouse write",
+    )
     args = parser.parse_args()
     if args.end < args.start:
         raise ValueError("end must be on or after start")
+    if args.batch_sessions < 1:
+        raise ValueError("batch sessions must be positive")
     if not (args.moneyflow or args.industry or args.auction):
         raise ValueError("select at least one of --moneyflow/--industry/--auction")
 
@@ -57,14 +71,14 @@ def main() -> int:
     counts: dict[str, int] = {}
     if args.industry:
         counts["industry_membership"] = ingest_industry_membership(provider, warehouse)
-    for day in days:
+    for batch in _batches(days, args.batch_sessions):
         if args.moneyflow:
             counts["moneyflow_daily"] = counts.get("moneyflow_daily", 0) + ingest_moneyflow(
-                provider, warehouse, [day]
+                provider, warehouse, batch
             )
         if args.auction:
             counts["auction_open_daily"] = counts.get("auction_open_daily", 0) + ingest_auction_open(
-                provider, warehouse, [day]
+                provider, warehouse, batch
             )
     for name, count in counts.items():
         print(f"{name}: {count:,}")
