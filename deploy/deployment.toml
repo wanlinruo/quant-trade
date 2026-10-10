@@ -81,6 +81,7 @@ paths = [
   "src/qsys/web/**",
   "scripts/run_backtest.py",
   "scripts/run_monitor.py",
+  "scripts/publish_limit_up_shadow.py",
   "strategies/**",
 ]
 nodes = ["linux"]

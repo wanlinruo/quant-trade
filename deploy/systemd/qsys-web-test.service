@@ -16,6 +16,7 @@ ExecStart=/home/ubuntu/qsys-test/.venv/bin/python scripts/run_monitor.py \
           --workspace /data/qsys-test/var/workbench \
           --state /data/qsys-test/var/shadow-state.sqlite3 \
           --health-state /data/qsys-test/var/service-health.sqlite3 \
+          --limit-up-shadow-state /data/qsys-test/var/limit-up-shadow.sqlite3 \
           --runs /data/qsys-test/var/runs \
           --service-runs /data/qsys-test/var/service-runs \
           --tushare-config /data/qsys-test/var/tushare-only.toml
