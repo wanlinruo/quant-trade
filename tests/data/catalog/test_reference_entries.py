@@ -27,6 +27,7 @@ def test_owns_every_reference_dataset():
         "suspend_daily", "limit_list_daily", "corporate_actions",
         "share_capital", "adj_factors", "stock_st_daily", "security_master",
         "security_name_history", "trading_calendar",
+        "industry_membership",
     })
 
 
@@ -38,7 +39,8 @@ def test_registers_every_reference_column():
         "corporate_actions": 6, "share_capital": 5, "adj_factors": 4,
         "stock_st_daily": 6,
         "security_master": 7, "security_name_history": 6,
-        "trading_calendar": 4,
+            "trading_calendar": 4,
+            "industry_membership": 10,
     }
 
 

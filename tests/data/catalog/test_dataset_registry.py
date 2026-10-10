@@ -122,13 +122,14 @@ def test_domain_distribution_matches_the_spec():
         item.domain.value for item in DATASETS.values() if isinstance(item.domain, DataDomain)
     )
     assert counts == {
-        "reference": 11, "market": 18, "fundamental": 4, "factor": 6, "runtime": 10,
+        "reference": 12, "market": 19, "fundamental": 4, "factor": 6,
+        "alternative": 1, "runtime": 10,
     }
-    assert sum(counts.values()) == len(DATASETS) == 49
+    assert sum(counts.values()) == len(DATASETS) == 52
 
 
 def test_empty_domains_have_no_datasets():
-    """宏观与另类当前为空，若将来接入，这条测试会提醒更新 spec 与页面说明。"""
+    """宏观当前为空；另类域已由个股资金流首次接入。"""
     present = {item.domain for item in DATASETS.values() if isinstance(item.domain, DataDomain)}
     assert DataDomain.MACRO not in present
-    assert DataDomain.ALTERNATIVE not in present
+    assert DataDomain.ALTERNATIVE in present

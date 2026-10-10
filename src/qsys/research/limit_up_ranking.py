@@ -397,10 +397,12 @@ def evaluation_months(frame: pl.DataFrame) -> list[date]:
     })
 
 
-def _matrix(frame: pl.DataFrame) -> Any:
+def _matrix(
+    frame: pl.DataFrame, feature_columns: Sequence[str] = FEATURE_COLUMNS,
+) -> Any:
     import numpy as np
 
-    return frame.select(FEATURE_COLUMNS).cast(pl.Float32).to_numpy().astype(
+    return frame.select(feature_columns).cast(pl.Float32).to_numpy().astype(
         np.float32, copy=False
     )
 
@@ -443,10 +445,14 @@ class _ProbabilityCalibrator:
 class TwoStageModel:
     """P(touch) × P(close | touch), with optional Platt calibration."""
 
-    def __init__(self, kind: str, *, seed: int, threads: int) -> None:
+    def __init__(
+        self, kind: str, *, seed: int, threads: int,
+        feature_columns: Sequence[str] = FEATURE_COLUMNS,
+    ) -> None:
         self.kind = kind
         self.seed = seed
         self.threads = threads
+        self.feature_columns = tuple(feature_columns)
         self.touch: Any | None = None
         self.seal: Any | None = None
         self.touch_calibrator = _ProbabilityCalibrator()
@@ -493,21 +499,25 @@ class TwoStageModel:
     def fit(self, train: pl.DataFrame, calibration: pl.DataFrame) -> "TwoStageModel":
         self.touch = self._estimator()
         self.seal = self._estimator()
-        x_train = _matrix(train)
+        x_train = _matrix(train, self.feature_columns)
         touch_y = _labels(train, "actual_touch")
         self.touch.fit(x_train, touch_y)
         touched = train.filter(pl.col("actual_touch"))
         if touched.is_empty() or touched["actual_close"].n_unique() < 2:
             raise ValueError("conditional seal training requires both outcomes")
-        self.seal.fit(_matrix(touched), _labels(touched, "actual_close"))
+        self.seal.fit(
+            _matrix(touched, self.feature_columns), _labels(touched, "actual_close")
+        )
 
         if calibration.height:
-            x_cal = _matrix(calibration)
+            x_cal = _matrix(calibration, self.feature_columns)
             raw_touch = self.touch.predict_proba(x_cal)[:, 1]
             self.touch_calibrator.fit(raw_touch, _labels(calibration, "actual_touch"))
             touched_cal = calibration.filter(pl.col("actual_touch"))
             if touched_cal.height:
-                raw_seal = self.seal.predict_proba(_matrix(touched_cal))[:, 1]
+                raw_seal = self.seal.predict_proba(
+                    _matrix(touched_cal, self.feature_columns)
+                )[:, 1]
                 self.seal_calibrator.fit(
                     raw_seal, _labels(touched_cal, "actual_close")
                 )
@@ -516,7 +526,7 @@ class TwoStageModel:
     def predict(self, frame: pl.DataFrame) -> tuple[Any, Any, Any]:
         if self.touch is None or self.seal is None:
             raise RuntimeError("model has not been fitted")
-        x = _matrix(frame)
+        x = _matrix(frame, self.feature_columns)
         p_touch = self.touch_calibrator.predict(self.touch.predict_proba(x)[:, 1])
         p_seal = self.seal_calibrator.predict(self.seal.predict_proba(x)[:, 1])
         return p_touch, p_seal, p_touch * p_seal
@@ -525,7 +535,7 @@ class TwoStageModel:
         if self.kind != "lightgbm" or self.touch is None or self.seal is None:
             return pl.DataFrame({"feature": [], "touch_gain": [], "seal_gain": []})
         return pl.DataFrame({
-            "feature": FEATURE_COLUMNS,
+            "feature": self.feature_columns,
             "touch_gain": self.touch.booster_.feature_importance("gain"),
             "seal_gain": self.seal.booster_.feature_importance("gain"),
         }).sort("touch_gain", descending=True)
@@ -762,7 +772,9 @@ def bootstrap_precision_difference(
 
 
 def promotion_verdict(
-    predictions: pl.DataFrame, metrics: pl.DataFrame, config: ResearchConfig
+    predictions: pl.DataFrame, metrics: pl.DataFrame, config: ResearchConfig, *,
+    candidate: str = "lightgbm",
+    baselines: tuple[str, ...] = ("momentum", "heuristic", "logistic"),
 ) -> dict[str, Any]:
     headline = metrics.filter(
         (pl.col("label") == "actual_close") & (pl.col("k") == 20)
@@ -771,36 +783,35 @@ def promotion_verdict(
         (row["model"], row["split"]): row
         for row in headline.to_dicts()
     }
-    baselines = ("momentum", "heuristic", "logistic")
     best = max(
         baselines,
         # The comparator is frozen on TEST.  Picking the easiest baseline after
         # looking at OBS would turn the final observation window into selection.
         key=lambda model: float(values[(model, "TEST")]["precision"]),
     )
-    test_win = values[("lightgbm", "TEST")]["precision"] > values[(best, "TEST")]["precision"]
-    obs_win = values[("lightgbm", "OBS")]["precision"] > values[(best, "OBS")]["precision"]
+    test_win = values[(candidate, "TEST")]["precision"] > values[(best, "TEST")]["precision"]
+    obs_win = values[(candidate, "OBS")]["precision"] > values[(best, "OBS")]["precision"]
     observed, ci_low, ci_high = bootstrap_precision_difference(
-        predictions, "lightgbm", best, samples=config.bootstrap_samples,
+        predictions, candidate, best, samples=config.bootstrap_samples,
         seed=config.random_seed,
     )
     monthly = monthly_precision(predictions)
     pivot = monthly.filter(
-        (pl.col("split") == "OBS") & pl.col("model").is_in(["lightgbm", best])
+        (pl.col("split") == "OBS") & pl.col("model").is_in([candidate, best])
     ).pivot(on="model", index="month", values="precision_at_k")
     month_win_rate = (
-        pivot.filter(pl.col("lightgbm") > pl.col(best)).height / pivot.height
+        pivot.filter(pl.col(candidate) > pl.col(best)).height / pivot.height
         if pivot.height else 0.0
     )
-    lift = float(values[("lightgbm", "OBS")]["lift"])
+    lift = float(values[(candidate, "OBS")]["lift"])
     probability = metrics.filter(
         (pl.col("k") == 0) & (pl.col("split") == "OBS")
-        & pl.col("model").is_in(["lightgbm", "logistic"])
+        & pl.col("model").is_in([candidate, "logistic"])
     )
     probability_rows = {row["model"]: row for row in probability.to_dicts()}
     calibration_ok = (
-        probability_rows["lightgbm"]["brier"] <= probability_rows["logistic"]["brier"]
-        and probability_rows["lightgbm"]["log_loss"] <= probability_rows["logistic"]["log_loss"]
+        probability_rows[candidate]["brier"] <= probability_rows["logistic"]["brier"]
+        and probability_rows[candidate]["log_loss"] <= probability_rows["logistic"]["log_loss"]
     )
     checks = {
         "test_beats_best_baseline": bool(test_win),

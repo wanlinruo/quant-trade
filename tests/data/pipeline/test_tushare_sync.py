@@ -115,6 +115,7 @@ def test_all_reference_datasets_have_a_daily_step():
     assert {name for name, _ in tushare_sync._REFERENCE_STEPS} == {
         "price_limits_daily", "suspend_daily", "index_bars",
         "stock_st_daily", "instruments", "name_history", "limit_list_daily",
+        "moneyflow_daily",
     }
 
 

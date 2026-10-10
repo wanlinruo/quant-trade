@@ -537,11 +537,12 @@ def test_the_windows_probe_allows_for_a_busy_two_core_box():
     assert WINDOWS_TASK_TIMEOUT >= 15.0
 
 
-def test_domains_page_lists_empty_domains_with_their_reason(tmp_path, warehouse):
+def test_domains_page_lists_macro_gap_and_ingested_alternative_data(tmp_path, warehouse):
     http = client(tmp_path / "runs", warehouse)
     body = http.get("/data/domains").text
     assert "宏观 Macro" in body and "另类 Alternative" in body
-    assert "当前积分内可得" in body
+    assert "当前积分已含宏观经济接口" in body
+    assert "moneyflow" in body
 
 
 def test_sources_page_says_the_paid_source_is_still_being_read(tmp_path, warehouse):
