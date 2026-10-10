@@ -155,3 +155,26 @@ def test_first_board_provider_moneyflow_uses_explicit_fields():
     assert got["buy_sm_vol"].dtype == pl.Float64
     assert "net_mf_vol" in client.calls[0][2]
     assert client.calls[0][0] == "moneyflow"
+
+
+def test_industry_membership_fetches_current_and_historical_rows_explicitly():
+    class IndustryClient:
+        def __init__(self):
+            self.calls = []
+
+        def call(self, api_name, params, fields=""):
+            self.calls.append((api_name, params, fields))
+            return [{
+                "ts_code": "600001.SH" if params["is_new"] == "Y" else "600002.SH",
+                "is_new": params["is_new"],
+            }]
+
+    client = IndustryClient()
+    got = TushareProvider(client).industry_membership()
+
+    assert got["is_new"].to_list() == ["Y", "N"]
+    assert [params for _, params, _ in client.calls] == [
+        {"is_new": "Y", "offset": 0, "limit": 2_000},
+        {"is_new": "N", "offset": 0, "limit": 2_000},
+    ]
+    assert all(call[0] == "index_member_all" for call in client.calls)

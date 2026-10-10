@@ -13,7 +13,8 @@ Precision@20 选择，进入 TEST 前冻结。
 ## 数据依赖
 
 - `moneyflow_daily`：Tushare `moneyflow`，金额统一为元；每日完整截面替换写。
-- `industry_membership`：申万三级行业历史区间；按 `in_date/out_date` as-of 连接。
+- `industry_membership`：申万三级行业历史区间；采集时显式分页合并
+  `is_new=Y/N`（上游默认只返回 Y），并按 `in_date/out_date` as-of 连接。
 - `auction_open_daily`：Tushare 历史竞价源的隔离表。当前账号没有
   `stk_auction_o` 权限，不能用于模型或晋级。
 - `auction_ticks`：QMT 09:25 快照，仅用于重叠口径验证和未来实时门控。
