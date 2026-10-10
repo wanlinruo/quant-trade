@@ -30,6 +30,7 @@ from qsys.web.config import WebConfig
 from qsys.web.domain_views import DOMAIN_LABELS, NOT_INGESTED, STATUS_LABELS, DomainService
 from qsys.web.data_views import DataService, MarketService
 from qsys.web.limit_up_shadow import LimitUpShadowReader, LimitUpShadowView
+from qsys.web.limit_up_research import LimitUpResearchReader, LimitUpResearchView
 from qsys.web.paper_chart import history_series, intraday_series
 from qsys.web.service_views import ServiceConsole
 from qsys.web.svg import line_chart, multi_line_chart
@@ -144,6 +145,7 @@ def create_app(
     services: ServiceConsole | None = None,
     assets: DataAssetService | None = None,
     limit_up_shadow: LimitUpShadowReader | None = None,
+    limit_up_research: LimitUpResearchReader | None = None,
     # 影子核心承袭的模拟账户（只读查询；没配承袭时返回 None）
     shadow_lineage: Callable[[], object | None] | None = None,
 ) -> FastAPI:
@@ -170,6 +172,14 @@ def create_app(
                 message="影子榜单数据源未配置",
             )
         return limit_up_shadow.view(day)
+
+    def _limit_up_research_view(day: date | None = None) -> LimitUpResearchView:
+        if limit_up_research is None:
+            return LimitUpResearchView(
+                state="unavailable", available=False,
+                message="研究回测数据源未配置",
+            )
+        return limit_up_research.view(day)
 
     def _page(request: Request, template: str, session: date, page: str, **ctx):
         return TEMPLATES.TemplateResponse(
@@ -370,6 +380,22 @@ def create_app(
     @app.get("/api/market/limit-up-shadow")
     def limit_up_shadow_api(day: date | None = None):
         return _limit_up_shadow_view(day).model_dump(mode="json")
+
+    @app.get("/market/limit-up-research", response_class=HTMLResponse)
+    def limit_up_research_page(request: Request, day: date | None = None):
+        view = _limit_up_research_view(day)
+        return TEMPLATES.TemplateResponse(
+            request=request, name="limit_up_research.html",
+            context={
+                "title": config.title, "session": None,
+                "page": "limit_up_research", "view": view,
+                "selected_day": day,
+            },
+        )
+
+    @app.get("/api/market/limit-up-research")
+    def limit_up_research_api(day: date | None = None):
+        return _limit_up_research_view(day).model_dump(mode="json")
 
     @app.get("/data/catalog", response_class=HTMLResponse)
     def catalog_overview(

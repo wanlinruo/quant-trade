@@ -29,6 +29,7 @@ from qsys.web.catalog_views import CatalogService
 from qsys.web.config import WebConfig
 from qsys.web.data_views import DataService, MarketService
 from qsys.web.limit_up_shadow import LimitUpShadowReader
+from qsys.web.limit_up_research import LimitUpResearchReader
 from qsys.web.service_views import ServiceConsole, windows_task_show
 from qsys.web.views import MonitorService
 from qsys.web.workbench import BacktestQueue, WorkbenchStore
@@ -48,6 +49,7 @@ def build_app(
     state_path: Path | None = None,
     health_state_path: Path | None = None,
     limit_up_shadow_state_path: Path | None = None,
+    limit_up_research_run_path: Path | None = None,
 ):
     warehouse = Warehouse(warehouse_root)
     journal = SessionJournal(warehouse)
@@ -118,6 +120,9 @@ def build_app(
         limit_up_shadow=LimitUpShadowReader(
             limit_up_shadow_state_path or Path("var/limit-up-shadow.sqlite3")
         ),
+        limit_up_research=LimitUpResearchReader(
+            limit_up_research_run_path or Path("var/research/issue-210")
+        ),
     )
 
 
@@ -179,6 +184,10 @@ def main() -> int:
         "--limit-up-shadow-state", default="var/limit-up-shadow.sqlite3",
         help="T+1 涨停概率影子榜单 SQLite（监控台严格只读）",
     )
+    parser.add_argument(
+        "--limit-up-research-run", default="var/research/issue-210",
+        help="#210 冻结研究回测目录（监控台只读紧凑证据）",
+    )
     parser.add_argument("--tushare-config", default=None,
                         help="只取 [tushare] 凭据查交易日历；不给则用 --config。"
                              "测试环境用它避免连到生产 Redis")
@@ -197,7 +206,7 @@ def main() -> int:
         Path(args.warehouse), config, args.config,
         Path(args.runs), Path(args.workspace), Path(args.service_runs),
         args.tushare_config, Path(args.state), Path(args.health_state),
-        Path(args.limit_up_shadow_state),
+        Path(args.limit_up_shadow_state), Path(args.limit_up_research_run),
     )
     log.info("monitor.started", host=args.host, port=args.port)
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")

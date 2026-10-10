@@ -124,7 +124,7 @@ button:disabled { opacity:.55; cursor:not-allowed; }
 <header>
   <h1><a href="/market">{{ title }}</a></h1>
   <nav>
-    <a href="/market" class="{{ 'active' if page in ('market', 'limit_up_shadow') }}">行情</a>
+    <a href="/market" class="{{ 'active' if page in ('market', 'limit_up_shadow', 'limit_up_research') }}">行情</a>
     <a href="/strategies" class="{{ 'active' if page == 'strategies' }}">策略</a>
     <a href="/backtests" class="{{ 'active' if page == 'backtests' }}">回测</a>
     <a href="/paper" class="{{ 'active' if page == 'paper' }}">模拟交易</a>
@@ -137,8 +137,8 @@ button:disabled { opacity:.55; cursor:not-allowed; }
 </header>
 {% if page in ('strategies', 'backtests', 'paper') %}
 <div class="subnav"><a href="/strategies" class="{{ 'active' if page == 'strategies' }}">策略研究</a><a href="/backtests" class="{{ 'active' if page == 'backtests' }}">回测记录</a><a href="/paper" class="{{ 'active' if page == 'paper' }}">模拟交易</a></div>
-{% elif page in ('market', 'limit_up_shadow') %}
-<div class="subnav"><a href="/market" class="{{ 'active' if page == 'market' }}">行情总览</a><a href="/market/limit-up-shadow" class="{{ 'active' if page == 'limit_up_shadow' }}">涨停观察</a></div>
+{% elif page in ('market', 'limit_up_shadow', 'limit_up_research') %}
+<div class="subnav"><a href="/market" class="{{ 'active' if page == 'market' }}">行情总览</a><a href="/market/limit-up-shadow" class="{{ 'active' if page == 'limit_up_shadow' }}">涨停观察</a><a href="/market/limit-up-research" class="{{ 'active' if page == 'limit_up_research' }}">研究回测</a></div>
 {% elif page and page.startswith('data') %}
 <div class="subnav"><a href="/data" class="{{ 'active' if page == 'data' }}">总览</a><a href="/data/tables" class="{{ 'active' if page == 'data_tables' }}">数据表</a><a href="/data/catalog" class="{{ 'active' if page == 'data_catalog' }}">指标字典</a><a href="/data/catalog/sources" class="{{ 'active' if page == 'data_sources' }}">数据源</a><a href="/data/domains" class="{{ 'active' if page == 'data_domains' }}">数据域</a></div>
 {% elif session and page in ('live','overview','trades','health','report','runs') %}
