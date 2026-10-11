@@ -40,7 +40,7 @@ class Args:
 
 
 def _transport(*, core_age=None, agent_age=1.0, killed=False, lease=True,
-               positions=None, schedule_open=True):
+               positions=None, schedule_open=True, active_order_count=0):
     t = MemoryTransport()
     s = StreamConfig()
     if lease:
@@ -64,7 +64,7 @@ def _transport(*, core_age=None, agent_age=1.0, killed=False, lease=True,
     ).model_dump_json())
     t.set_key(s.account, AccountSnapshot(
         at=NOW - timedelta(seconds=1), cash=100_000,
-        positions=positions or {},
+        positions=positions or {}, active_order_count=active_order_count,
     ).model_dump_json())
     if killed:
         t.set_key("control:kill", "manual")
@@ -159,6 +159,17 @@ def test_buy_requires_empty_account_and_sell_requires_available_target():
     )
     assert "空仓" in buy
     assert "精确等于" in sell
+
+
+def test_unknown_or_nonzero_account_active_orders_fail_closed():
+    unknown = cli._preflight(
+        FakeConfig(), _transport(active_order_count=None), Args(), now=NOW,
+    )
+    active = cli._preflight(
+        FakeConfig(), _transport(active_order_count=2), Args(), now=NOW,
+    )
+    assert unknown is not None and "未知" in unknown
+    assert active is not None and "2 笔活动委托" in active
 
 
 def test_sell_accepts_the_exact_available_position():

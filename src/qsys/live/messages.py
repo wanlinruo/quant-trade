@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Literal, Self
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 
 class Message(BaseModel):
@@ -122,6 +122,15 @@ class AccountSnapshot(Message):
     frozen_cash: float = 0.0
     market_value: float = 0.0
     total_asset: float | None = None
+    # 账户级全部可撤委托数。旧 agent 未上报时为 None，实盘验证按未知拒绝。
+    active_order_count: int | None = None
+
+    @field_validator("active_order_count")
+    @classmethod
+    def _active_orders_non_negative(cls, value: int | None) -> int | None:
+        if value is not None and value < 0:
+            raise ValueError("active_order_count must be non-negative")
+        return value
 
 
 class ControlCommand(Message):

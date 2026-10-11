@@ -21,6 +21,9 @@ class BrokerAccount:
     frozen_cash: float = 0.0
     market_value: float = 0.0
     total_asset: float | None = None
+    # 券商账户全部可撤委托，包含人工和其他系统的委托。None 表示无法确认，
+    # 首次实盘验证必须按 fail-closed 处理，不能拿 qsys 自身回报数代替。
+    active_order_count: int | None = None
 
 
 class BrokerAdapter(Protocol):
@@ -41,6 +44,9 @@ class BrokerAdapter(Protocol):
 
     def query_orders(self) -> list[BrokerOrder]: ...
 
+    def query_active_order_count(self) -> int:
+        """返回账户级全部可撤委托数（不按 order_remark 过滤）。"""
+
     def find_order(self, client_order_id: str) -> str | None: ...
 
 
@@ -54,6 +60,7 @@ class FakeAdapter:
         positions: dict[str, tuple[int, int, float]] | None = None,
         fail_with: str | None = None,
         auto_fill: bool = True,
+        active_order_count: int = 0,
     ) -> None:
         self.cash = cash
         self._positions = positions or {}
@@ -62,6 +69,7 @@ class FakeAdapter:
         self.cancelled = False
         self._seq = 0
         self.auto_fill = auto_fill
+        self.active_order_count = active_order_count
         self.trades: list[BrokerTrade] = []
         self.orders: list[BrokerOrder] = []
         self._by_client: dict[str, str] = {}
@@ -82,6 +90,8 @@ class FakeAdapter:
         self.orders.append(BrokerOrder(
             broker_id, client_id, symbol, side, qty, traded, status,
         ))
+        if not self.auto_fill:
+            self.active_order_count += 1
         if self.auto_fill:
             self.trades.append(BrokerTrade(
                 f"T{self._seq}", client_id, broker_id, symbol, side,
@@ -104,6 +114,9 @@ class FakeAdapter:
     def query_orders(self) -> list[BrokerOrder]:
         return list(self.orders)
 
+    def query_active_order_count(self) -> int:
+        return self.active_order_count
+
     def find_order(self, client_order_id: str) -> str | None:
         return self._by_client.get(client_order_id)
 
@@ -113,4 +126,5 @@ class FakeAdapter:
         return BrokerAccount(
             cash=cash, positions=positions, market_value=market_value,
             total_asset=cash + market_value,
+            active_order_count=self.query_active_order_count(),
         )
