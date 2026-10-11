@@ -69,3 +69,34 @@ uv run python scripts/research_first_board.py \
 2026-10-10 只读权限探测：`moneyflow` 和 `index_member_all` 可用；
 `stk_auction_o` 返回权限错误 40203。故 #233 可进入回补，#234 在开通权限前保持未完成，
 #230 只能先形成隔夜排序证据和 provisional 交易结论。
+
+## 09:31 首分钟过滤替代路径（2026-10-11）
+
+历史竞价既用于原设计的 Top20→0–3 只门控，也用于开盘附近的成交裁决；但冻结
+隔夜模型本身不读取竞价数据。为避免在门控价值尚未得到证据前购买历史权限，先独立
+裁决一个延迟入场变体：
+
+1. 隔夜 Top20、胜出模型与 VALID/TEST/OBS 切分保持冻结；
+2. 09:31 只使用此时已经可见的第一根连续竞价分钟线训练二次门控，每日留下 0–3 只；
+3. 下单后只允许用严格后继、在 09:32 可见的分钟线判断成交；缺线直接拒单，禁止回退
+   到日线开盘价；
+4. 分钟身份以规范表 `visible_at` 为准，而非供应商 `ts`。付费源第一分钟可能标为
+   09:30，QMT 标为 09:31，但两者均在 09:31 才完整可见；
+5. 二次 Logistic 门控只在 VALID 前70%拟合，在 VALID 后30%从预先限定的
+   80%/90%/95%分位阈值中选择一次，TEST/OBS 不参与模型或阈值选择；
+6. 主裁决为下一交易日开盘退出、额外1.0%入场成本压力；同时检查0.5%/1.5%成本和
+   11:25/14:25退出，并与隔夜 Rank Top1/Top3、无阈值 Gate Top3 对照。
+
+运行入口：
+
+```bash
+uv run python scripts/research_first_board_first_minute.py \
+  --warehouse /data/qsys/warehouse \
+  --ranking /data/qsys/research/issue-230/run-20261011/predictions.parquet \
+  --out /data/qsys/research/issue-230/first-minute-YYYYMMDD
+```
+
+研究专用执行适配器位于 `scripts/issue_230_first_minute_strategy.py`，刻意不放入
+`strategies/`，不能从策略页导入。该路径即使历史门禁通过，也只允许另开冻结规则后的
+前瞻只读影子观察；它不替代 #234 对原 09:25 竞价路径的历史同口径验证，也不直接授权
+模拟或实盘。

@@ -57,6 +57,22 @@ def test_continuous_without_the_minute_bar_falls_back_and_says_so():
     assert (got.price, got.outcome) == (pytest.approx(10.03), "fallback_no_minute")
 
 
+def test_strict_continuous_rejects_a_missing_next_minute():
+    rule = EntryFill(EntryFillMode.CONTINUOUS, fallback_on_missing=False)
+    got = decide(rule, _buy(), 10.0, None, NoSlippage())
+    assert got.price is None
+    assert got.outcome == "missing_minute"
+
+
+def test_continuous_price_stress_is_applied_after_generic_slippage():
+    rule = EntryFill(EntryFillMode.CONTINUOUS, price_stress=0.01)
+    got = decide(
+        rule, _buy(10.50), 10.0, MinuteBar(open=10.0, low=9.99),
+        FixedRateSlippage(0.0005),
+    )
+    assert got.price == pytest.approx(10.10)
+
+
 def test_continuous_market_order_has_no_limit_to_miss():
     got = decide(EntryFill(EntryFillMode.CONTINUOUS), _buy(None), 10.0,
                  MinuteBar(open=10.4, low=10.3), NoSlippage())
@@ -66,3 +82,5 @@ def test_continuous_market_order_has_no_limit_to_miss():
 def test_negative_entry_slippage_is_rejected():
     with pytest.raises(ValueError):
         EntryFill(EntryFillMode.SLIPPAGE, slippage=-0.01)
+    with pytest.raises(ValueError):
+        EntryFill(EntryFillMode.CONTINUOUS, price_stress=-0.01)
