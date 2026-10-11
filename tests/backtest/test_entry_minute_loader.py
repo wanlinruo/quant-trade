@@ -57,3 +57,25 @@ def test_web_entry_fill_modes():
     import pytest
     with pytest.raises(ValueError):
         entry_fill_rule("slippage")
+
+
+def test_visible_loader_uses_visible_at_instead_of_provider_timestamp():
+    from qsys.backtest.runner import visible_entry_minute_loader
+
+    class Query:
+        def bar_minute_1m(self, symbols, start, end, *, columns):
+            return pl.DataFrame([
+                {"symbol": "600001.SH", "ts": datetime.combine(DAY, time(9, 31)),
+                 "open": 10.1, "low": 10.0,
+                 "visible_at": datetime.combine(DAY, time(9, 32))},
+                {"symbol": "000001.SZ", "ts": datetime.combine(DAY, time(9, 32)),
+                 "open": 5.1, "low": 5.0,
+                 "visible_at": datetime.combine(DAY, time(9, 32))},
+            ])
+
+    got = visible_entry_minute_loader(Query())(
+        DAY, time(9, 32),
+        [Symbol.parse("600001.SH"), Symbol.parse("000001.SZ")],
+    )
+    assert got[Symbol.parse("600001.SH")] == MinuteBar(10.1, 10.0)
+    assert got[Symbol.parse("000001.SZ")] == MinuteBar(5.1, 5.0)

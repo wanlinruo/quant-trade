@@ -96,11 +96,51 @@ def entry_minute_loader(
     return load
 
 
+def visible_entry_minute_loader(
+    query,
+) -> Callable[[date, time, Sequence[Symbol]], dict[Symbol, MinuteBar]]:
+    """Load the canonical bar that becomes visible exactly at ``at``.
+
+    Provider timestamps are not interchangeable: the paid first continuous
+    minute is labelled 09:30 but visible at 09:31, while QMT labels it 09:31.
+    Delayed-entry research must therefore key on canonical ``visible_at``.
+    """
+
+    def load(session: date, at: time, symbols: Sequence[Symbol]) -> dict[Symbol, MinuteBar]:
+        if not symbols:
+            return {}
+        moment = datetime.combine(session, at)
+        frame = query.bar_minute_1m(
+            [str(symbol) for symbol in symbols],
+            datetime.combine(session, time(9, 30)), moment,
+            columns=("symbol", "ts", "open", "low", "visible_at"),
+        ).filter(
+            (pl.col("visible_at") == moment)
+            & pl.col("open").is_finite() & (pl.col("open") > 0)
+            & pl.col("low").is_finite() & (pl.col("low") > 0)
+        )
+        latest = frame.sort("symbol", "ts").group_by(
+            "symbol", maintain_order=True,
+        ).last()
+        return {
+            Symbol.parse(row["symbol"]): MinuteBar(
+                float(row["open"]), float(row["low"]),
+            )
+            for row in latest.iter_rows(named=True)
+        }
+
+    return load
+
+
 def execute_backtest(
     strategy_file: Path, *, start: date, end: date, cash: float,
     warehouse: Path, out_dir: Path, params: Mapping[str, object] | None = None,
     jq_compat: bool = False, progress: Callable[[int, int, date], None] | None = None,
     strategy_source: str | None = None, entry_fill: str = "open",
+    entry_rule: EntryFill | None = None,
+    entry_minutes: Callable[
+        [date, time, Sequence[Symbol]], dict[Symbol, MinuteBar]
+    ] | None = None,
 ) -> Path:
     if start > end:
         raise ValueError("开始日期不能晚于结束日期")
@@ -128,7 +168,9 @@ def execute_backtest(
             )
 
     fees, slippage, cost_label = cost_model(jq_compat)
-    entry = entry_fill_rule(entry_fill)
+    if entry_rule is not None and entry_fill != "open":
+        raise ValueError("entry_rule and non-default entry_fill cannot be combined")
+    entry = entry_rule if entry_rule is not None else entry_fill_rule(entry_fill)
     result = BacktestEngine(
         strategy, feed=deps.feed, calendar=calendar, universe=universe,
         initial_cash=cash, pipeline=ashare_pipeline(), fees=fees, slippage=slippage,
@@ -140,8 +182,9 @@ def execute_backtest(
         schedule_validator=validate_schedule,
         entry_fill=entry,
         entry_minutes=(
-            entry_minute_loader(CutoverMarketData(query, CutoverConfig.from_env()))
-            if entry is not None else None
+            entry_minutes or entry_minute_loader(
+                CutoverMarketData(query, CutoverConfig.from_env())
+            ) if entry is not None else None
         ),
     ).run(start, end)
 
@@ -169,7 +212,9 @@ def execute_backtest(
                 # 单独存一份策略参数，页面无需从平铺的配置里猜哪些是参数
                 "params": dict(typed),
                 "entry_fill": entry.label() if entry is not None else "开盘价成交",
-                "entry_fill_mode": entry_fill,
+                "entry_fill_mode": (
+                    entry.mode.value if entry_rule is not None else entry_fill
+                ),
                 **({"entry_fill_stats": ",".join(
                     f"{k}={v}" for k, v in sorted(result.diagnostics.items()))}
                    if entry is not None else {}),
