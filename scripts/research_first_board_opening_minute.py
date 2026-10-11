@@ -74,17 +74,19 @@ def _empty_output(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
 
-def _matrix() -> list[tuple[str, str, float]]:
+def _matrix() -> list[tuple[str, str, float, float]]:
     return [
-        ("opening_top1", "next_open", 0.0),
-        ("opening_top1", "next_open", 0.005),
-        ("opening_top1", "next_open", 0.01),
-        ("opening_top1", "next_open", 0.015),
-        ("opening_top1", "11:25", 0.005),
-        ("opening_top1", "14:25", 0.005),
-        ("opening_top3", "next_open", 0.005),
-        ("rank_top1", "next_open", 0.005),
-        ("rank_top3", "next_open", 0.005),
+        ("opening_top1", "next_open", 0.0, 0.03),
+        ("opening_top1", "next_open", 0.005, 0.03),
+        ("opening_top1", "next_open", 0.01, 0.03),
+        ("opening_top1", "next_open", 0.015, 0.03),
+        ("opening_top1", "next_open", 0.005, 0.05),
+        ("opening_top1", "next_open", 0.005, 0.10),
+        ("opening_top1", "11:25", 0.005, 0.03),
+        ("opening_top1", "14:25", 0.005, 0.03),
+        ("opening_top3", "next_open", 0.005, 0.03),
+        ("rank_top1", "next_open", 0.005, 0.03),
+        ("rank_top3", "next_open", 0.005, 0.03),
     ]
 
 
@@ -163,10 +165,11 @@ def main() -> int:
     positions = {day: index for index, day in enumerate(sessions)}
     end = sessions[positions[eval_days[-1]] + 1]
     rows: list[dict[str, object]] = []
-    for policy, exit_policy, cost in _matrix():
+    for policy, exit_policy, cost, price_buffer in _matrix():
         name = (
             f"{policy}-{exit_policy.replace(':', '')}"
             f"-cost{int(round(cost * 10_000)):04d}bp"
+            f"-buffer{int(round(price_buffer * 100)):02d}pct"
         )
         run_dir = args.out / "runs" / name
         execute_backtest(
@@ -175,7 +178,7 @@ def main() -> int:
             params={
                 "selection_path": str(args.out / "frozen_selections.parquet"),
                 "selection_policy": policy, "position_weight": 0.10,
-                "entry_price_buffer": 0.03, "exit_policy": exit_policy,
+                "entry_price_buffer": price_buffer, "exit_policy": exit_policy,
             },
             entry_rule=EntryFill(
                 EntryFillMode.CONTINUOUS, minute_at=ENTRY_BAR_AT,
@@ -189,16 +192,20 @@ def main() -> int:
         )
         row.update({
             "policy": policy, "entry_cost_stress": cost,
+            "entry_price_buffer": price_buffer,
             "missing_entry_minutes": _fill_stat(run_dir, "missing_minute"),
             "run_dir": str(run_dir),
         })
         rows.append(row)
-    summary = pl.DataFrame(rows).sort("policy", "exit_policy", "entry_cost_stress")
+    summary = pl.DataFrame(rows).sort(
+        "policy", "exit_policy", "entry_cost_stress", "entry_price_buffer",
+    )
     summary.write_csv(args.out / "trading_summary.csv")
     primary = summary.filter(
         (pl.col("policy") == PRIMARY_POLICY)
         & (pl.col("exit_policy") == "next_open")
         & ((pl.col("entry_cost_stress") - PRIMARY_COST).abs() < 1e-12)
+        & ((pl.col("entry_price_buffer") - 0.03).abs() < 1e-12)
     ).row(0, named=True)
     precisions = {
         row["policy"]: float(row["precision"])
@@ -258,6 +265,8 @@ def main() -> int:
             "entry": "QMT 09:31 first continuous minute",
             "primary_policy": PRIMARY_POLICY,
             "primary_entry_cost_stress": PRIMARY_COST,
+            "primary_entry_price_buffer": 0.03,
+            "entry_price_buffer_sensitivities": [0.05, 0.10],
             "position_weight": 0.10,
         },
         "artifacts": {
