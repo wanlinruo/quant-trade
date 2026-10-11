@@ -166,10 +166,13 @@ def build_features(query, candidates: pl.DataFrame, ticks: pl.DataFrame) -> pl.D
     ).sort("target_session", "rank")
 
 
-def fit_and_score(features: pl.DataFrame, *, fit_fraction: float = 2 / 3):
+def fit_and_score(
+    features: pl.DataFrame, *, fit_fraction: float = 2 / 3,
+    gate_features: tuple[str, ...] = GATE_FEATURES,
+):
     eligible = features.filter(
         (pl.col("invalid_reason") == "")
-        & pl.all_horizontal([pl.col(name).is_finite() for name in GATE_FEATURES])
+        & pl.all_horizontal([pl.col(name).is_finite() for name in gate_features])
     )
     days = sorted(eligible["target_session"].unique().to_list())
     if len(days) < 6:
@@ -185,8 +188,8 @@ def fit_and_score(features: pl.DataFrame, *, fit_fraction: float = 2 / 3):
             C=0.5, class_weight="balanced", max_iter=2_000, random_state=230,
         ),
     )
-    model.fit(fit.select(GATE_FEATURES).to_numpy(), fit["actual_close"].to_numpy())
-    scores = model.predict_proba(eligible.select(GATE_FEATURES).to_numpy())[:, 1]
+    model.fit(fit.select(gate_features).to_numpy(), fit["actual_close"].to_numpy())
+    scores = model.predict_proba(eligible.select(gate_features).to_numpy())[:, 1]
     scored = eligible.with_columns(
         pl.Series("gate_score", scores),
         pl.when(pl.col("target_session").is_in(fit_days))
