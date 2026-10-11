@@ -335,12 +335,11 @@ class BacktestEngine:
                 self._strategy.on_session_start(ctx)
                 flush(api, moment)
 
-                if self._auction_at is None:
-                    match_at_open(moment)
-                elif self._auction_at > time(9, 30):
-                    # A decision hook after continuous trading starts must not
-                    # delay overnight/on-session-start exits until that hook.
-                    match_at_open(datetime.combine(session, time(9, 30)))
+                # Overnight/on-session-start orders belong to the open, regardless
+                # of whether today's entry decision hook runs before or after 09:30.
+                # Auction entries are submitted later in Phase.AUCTION and therefore
+                # cannot be matched accidentally by this event.
+                match_at_open(datetime.combine(session, time(9, 30)))
 
             elif phase is Phase.AUCTION:
                 # 竞价已结算，当日 open 已确定；策略在此定量下单，
