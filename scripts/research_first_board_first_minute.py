@@ -34,7 +34,7 @@ from qsys.strategy.deps import build_deps
 SPLITS = ("TEST", "OBS")
 PRIMARY_POLICY = "gate_threshold"
 PRIMARY_COST = 0.01
-STRESS_COSTS = (0.005, 0.01, 0.015)
+STRESS_COSTS = (0.0, 0.005, 0.01, 0.015)
 STRATEGY = Path("scripts/issue_230_first_minute_strategy.py")
 
 

@@ -295,7 +295,9 @@ def test_continuous_entry_fills_at_the_0931_bar():
         SESSIONS[0], SESSIONS[-1])
 
     buys = [f for f in result.fills if f.side is Side.BUY]
-    assert [(f.filled_at.date(), f.price) for f in buys] == [(SESSIONS[0], pytest.approx(10.04))]
+    assert [(f.filled_at, f.price) for f in buys] == [
+        (datetime.combine(SESSIONS[0], time(9, 31)), pytest.approx(10.04))
+    ]
     assert asked == [(SESSIONS[0], time(9, 31), [SYMBOL])]
     assert result.diagnostics == {"orders": 1, "continuous": 1}
 
