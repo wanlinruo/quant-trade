@@ -3,9 +3,11 @@ from pathlib import Path
 
 import polars as pl
 
+from qsys.core.trading import Side
 from qsys.research.first_board_intraday import (
     FirstMinuteResearchStrategy,
     FrozenSelectionBook,
+    TWO_STAGE_EXIT,
     daily_select,
     visible_minute_pair,
 )
@@ -78,3 +80,92 @@ def test_frozen_book_projects_no_outcomes_and_schedules_0931(tmp_path: Path):
         type("Ctx", (), {"schedule": schedule})()
     )
     assert schedule.auction_at == time(9, 31)
+
+
+class _Position:
+    available_qty = 100
+
+
+class _Portfolio:
+    symbols = frozenset({"600001.SH"})
+
+    def position(self, symbol):
+        return _Position()
+
+
+class _Order:
+    def __init__(self):
+        self.orders = []
+
+    def submit(self, symbol, side, qty):
+        self.orders.append((str(symbol), side, qty))
+
+
+class _Quote:
+    def __init__(self, price):
+        self.price = price
+
+
+class _Market:
+    def __init__(self, price, limit=11.0):
+        self.price = price
+        self.limit = limit
+
+    def intraday(self, symbols, day, at):
+        return {"600001.SH": _Quote(self.price)}
+
+    def limit_up_price(self, symbols, day):
+        return {"600001.SH": self.limit}
+
+
+class _Data:
+    def get(self, symbols, start, end):
+        return pl.DataFrame({
+            "symbol": ["600001.SH"], "dt": [date(2025, 6, 30)],
+            "close": [10.0],
+        })
+
+
+class _ExitCtx:
+    def __init__(self, at, price, limit=11.0):
+        self.now = datetime.combine(DAY, at)
+        self.portfolio = _Portfolio()
+        self.market = _Market(price, limit)
+        self.data = _Data()
+        self.order = _Order()
+        self.notes = []
+
+    def report(self, **kwargs):
+        self.notes.append(kwargs)
+
+
+def _two_stage_strategy():
+    return FirstMinuteResearchStrategy(object(), exit_policy=TWO_STAGE_EXIT)
+
+
+def test_two_stage_exit_schedules_both_checks():
+    schedule = Schedule()
+    _two_stage_strategy().on_init(type("Ctx", (), {"schedule": schedule})())
+    assert schedule.checkpoints == (time(11, 25), time(14, 25))
+
+
+def test_two_stage_exit_sells_red_non_limit_at_1125():
+    ctx = _ExitCtx(time(11, 25), 10.01)
+    _two_stage_strategy().on_checkpoint(ctx, time(11, 25))
+    assert ctx.order.orders == [("600001.SH", Side.SELL, 100)]
+
+
+def test_two_stage_exit_holds_flat_or_limit_at_1125():
+    for price in (10.0, 11.0):
+        ctx = _ExitCtx(time(11, 25), price)
+        _two_stage_strategy().on_checkpoint(ctx, time(11, 25))
+        assert ctx.order.orders == []
+
+
+def test_two_stage_exit_sells_any_non_limit_at_1425_and_holds_limit():
+    ctx = _ExitCtx(time(14, 25), 9.5)
+    _two_stage_strategy().on_checkpoint(ctx, time(14, 25))
+    assert len(ctx.order.orders) == 1
+    ctx = _ExitCtx(time(14, 25), 11.0)
+    _two_stage_strategy().on_checkpoint(ctx, time(14, 25))
+    assert ctx.order.orders == []

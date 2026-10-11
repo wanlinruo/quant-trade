@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from typing import Iterable, Mapping, Sequence
 
 import numpy as np
@@ -32,6 +32,7 @@ GATE_FEATURES = (
     "close_location", "pullback_from_high", "distance_to_limit",
 )
 EXIT_TIMES = {"11:25": time(11, 25), "14:25": time(14, 25)}
+TWO_STAGE_EXIT = "two_stage_limit_hold"
 SAFE_SELECTION_COLUMNS = (
     "target_session", "symbol", "split", "policy", "selection_rank",
     "decision_price", "limit_up", "gate_score",
@@ -108,7 +109,7 @@ class FirstMinuteResearchStrategy(Strategy):
         decision_at: time = DECISION_AT,
         strategy_tag: str = "AI_FIRST_BOARD_0931",
     ) -> None:
-        if exit_policy not in {"next_open", *EXIT_TIMES}:
+        if exit_policy not in {"next_open", TWO_STAGE_EXIT, *EXIT_TIMES}:
             raise ValueError(f"unknown exit policy: {exit_policy}")
         self._selection = book
         self.position_weight = position_weight
@@ -123,6 +124,8 @@ class FirstMinuteResearchStrategy(Strategy):
         ctx.schedule.auction(self.decision_at)
         if self.exit_policy in EXIT_TIMES:
             ctx.schedule.checkpoint(EXIT_TIMES[self.exit_policy])
+        elif self.exit_policy == TWO_STAGE_EXIT:
+            ctx.schedule.checkpoint(EXIT_TIMES["11:25"], EXIT_TIMES["14:25"])
 
     def on_session_start(self, ctx) -> None:
         if self.exit_policy == "next_open":
@@ -158,6 +161,69 @@ class FirstMinuteResearchStrategy(Strategy):
     def on_checkpoint(self, ctx, at: time) -> None:
         if EXIT_TIMES.get(self.exit_policy) == at:
             self._exit_available(ctx)
+        elif self.exit_policy == TWO_STAGE_EXIT:
+            self._two_stage_exit(ctx, at)
+
+    @staticmethod
+    def _two_stage_exit(ctx, at: time) -> None:
+        held = sorted(
+            (
+                symbol for symbol in ctx.portfolio.symbols
+                if ctx.portfolio.position(symbol).available_qty > 0
+            ),
+            key=str,
+        )
+        if not held:
+            return
+
+        today = ctx.now.date()
+        keys = [str(symbol) for symbol in held]
+        quotes = ctx.market.intraday(keys, today, at)
+        limits = ctx.market.limit_up_price(keys, today)
+        previous_closes: dict[str, float] = {}
+        if at == EXIT_TIMES["11:25"]:
+            history = ctx.data.get(keys, today - timedelta(days=14), today)
+            if history.height:
+                previous_closes = {
+                    row["symbol"]: float(row["close"])
+                    for row in (
+                        history.sort(["symbol", "dt"])
+                        .group_by("symbol", maintain_order=True)
+                        .agg(pl.col("close").last().alias("close"))
+                        .iter_rows(named=True)
+                    )
+                }
+
+        sold = 0
+        missing = 0
+        for symbol in held:
+            key = str(symbol)
+            quote = quotes.get(key)
+            limit_up = limits.get(key)
+            if quote is None or limit_up is None:
+                missing += 1
+                continue
+            is_limit_up = quote.price >= limit_up
+            should_exit = (
+                at == EXIT_TIMES["14:25"] and not is_limit_up
+            ) or (
+                at == EXIT_TIMES["11:25"]
+                and key in previous_closes
+                and quote.price > previous_closes[key]
+                and not is_limit_up
+            )
+            if should_exit:
+                qty = ctx.portfolio.position(symbol).available_qty
+                ctx.order.submit(symbol, Side.SELL, qty)
+                sold += 1
+            elif at == EXIT_TIMES["11:25"] and key not in previous_closes:
+                missing += 1
+        ctx.report(
+            note=(
+                f"{at:%H:%M} two-stage exit: held={len(held)}, "
+                f"sold={sold}, missing={missing}"
+            )
+        )
 
     @staticmethod
     def _exit_available(ctx) -> None:

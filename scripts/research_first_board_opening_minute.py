@@ -84,7 +84,11 @@ def _matrix() -> list[tuple[str, str, float, float]]:
         ("opening_top1", "next_open", 0.005, 0.10),
         ("opening_top1", "11:25", 0.005, 0.03),
         ("opening_top1", "14:25", 0.005, 0.03),
+        ("opening_top1", "two_stage_limit_hold", 0.0, 0.03),
+        ("opening_top1", "two_stage_limit_hold", 0.005, 0.03),
+        ("opening_top1", "two_stage_limit_hold", 0.01, 0.03),
         ("opening_top3", "next_open", 0.005, 0.03),
+        ("opening_top3", "two_stage_limit_hold", 0.005, 0.03),
         ("rank_top1", "next_open", 0.005, 0.03),
         ("rank_top3", "next_open", 0.005, 0.03),
     ]
