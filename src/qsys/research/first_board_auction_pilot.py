@@ -24,8 +24,7 @@ PRE_FINAL_AT = time(9, 24, 30)
 ENTRY_BAR_AT = time(9, 31)
 GATE_FEATURES = (
     "p_close", "rank_fraction", "auction_gap", "auction_volume_ratio",
-    "auction_amount_ratio", "auction_vwap_deviation",
-    "price_revision_092430", "match_growth_092430",
+    "auction_amount_ratio", "price_revision_092430", "match_growth_092430",
 )
 
 
