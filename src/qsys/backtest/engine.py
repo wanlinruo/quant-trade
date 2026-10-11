@@ -156,7 +156,10 @@ class BacktestEngine:
                 **(
                     {"entry_fill": {"mode": self._entry_fill.mode.value,
                                     "slippage": self._entry_fill.slippage,
-                                    "minute_at": self._entry_fill.minute_at.isoformat()}}
+                                    "minute_at": self._entry_fill.minute_at.isoformat(),
+                                    "price_stress": self._entry_fill.price_stress,
+                                    "fallback_on_missing":
+                                        self._entry_fill.fallback_on_missing}}
                     if self._entry_fill is not None
                     else {}
                 ),
@@ -330,6 +333,10 @@ class BacktestEngine:
 
                 if self._auction_at is None:
                     match_at_open(moment)
+                elif self._auction_at > time(9, 30):
+                    # A decision hook after continuous trading starts must not
+                    # delay overnight/on-session-start exits until that hook.
+                    match_at_open(datetime.combine(session, time(9, 30)))
 
             elif phase is Phase.AUCTION:
                 # 竞价已结算，当日 open 已确定；策略在此定量下单，
@@ -338,8 +345,17 @@ class BacktestEngine:
                 self._strategy.on_auction(ctx)
                 submitted = len(all_orders)
                 flush(api, moment)
-                entries = [o for o in all_orders[submitted:] if o.side is Side.BUY]
-                match_at_open(moment, entries)
+                new_orders = all_orders[submitted:]
+                entries = [o for o in new_orders if o.side is Side.BUY]
+                fill_at = moment
+                if (
+                    entries and len(entries) == len(new_orders)
+                    and self._entry_fill is not None
+                    and self._entry_fill.mode is EntryFillMode.CONTINUOUS
+                    and self._entry_fill.minute_at > moment.time()
+                ):
+                    fill_at = datetime.combine(session, self._entry_fill.minute_at)
+                match_at_open(fill_at, entries)
 
             elif phase is Phase.CHECKPOINT:
                 # 钩子总是触发：「没持仓」与「没分钟线」是两回事，不能混为一谈。

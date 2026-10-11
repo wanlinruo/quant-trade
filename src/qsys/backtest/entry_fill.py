@@ -40,18 +40,29 @@ class EntryFill:
     slippage: float = 0.0
     # continuous 口径用的分钟线标注时刻
     minute_at: time = time(9, 31)
+    # 研究压力测试可在通用滑点之上再抬高成交价；生产默认保持 0。
+    price_stress: float = 0.0
+    # 历史研究必须能选择缺分钟线即拒单，网页旧口径仍保留回退行为。
+    fallback_on_missing: bool = True
 
     def __post_init__(self) -> None:
-        if self.slippage < 0:
-            raise ValueError(f"entry slippage must be >= 0: {self.slippage}")
+        if self.slippage < 0 or self.price_stress < 0:
+            raise ValueError(
+                "entry slippage and price stress must be >= 0: "
+                f"{self.slippage}, {self.price_stress}"
+            )
 
     def label(self) -> str:
         if self.mode is EntryFillMode.OPEN:
             return "开盘价成交"
         if self.mode is EntryFillMode.SLIPPAGE:
             return f"开盘价上浮 {self.slippage:.2%} 成交"
-        return (f"{self.minute_at:%H:%M} 分钟线连续竞价判定"
-                f"（缺分钟线退回开盘价上浮 {self.slippage:.2%}）")
+        missing = (
+            f"缺分钟线退回开盘价上浮 {self.slippage:.2%}"
+            if self.fallback_on_missing else "缺分钟线拒单"
+        )
+        stress = f"，额外成本压力 {self.price_stress:.2%}" if self.price_stress else ""
+        return f"{self.minute_at:%H:%M} 分钟线连续竞价判定（{missing}{stress}）"
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,6 +96,11 @@ def decide(
 
     limit = order.limit_price
     if minute is None:
+        if not rule.fallback_on_missing:
+            return EntryDecision(
+                None, "missing_minute",
+                f"required entry minute is missing: {rule.minute_at:%H:%M}",
+            )
         price = _shifted(session_open, rule.slippage)
         if limit is not None:
             price = min(price, to_cents(limit))
@@ -95,7 +111,9 @@ def decide(
             f"entry limit not reached: {rule.minute_at:%H:%M} low {minute.low:.2f} "
             f"> limit {limit:.2f}",
         )
-    price = slippage.adjust(Side.BUY, minute.open)
+    price = _shifted(
+        slippage.adjust(Side.BUY, minute.open), rule.price_stress,
+    )
     if limit is not None:
         price = min(price, to_cents(limit))
     return EntryDecision(price, "continuous")
