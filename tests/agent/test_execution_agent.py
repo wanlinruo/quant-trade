@@ -214,6 +214,30 @@ def test_commissioning_lease_blocks_strategy_but_accepts_the_fixed_order(tmp_pat
     assert any("blocked during commissioning" in item.reason for item in rejects)
 
 
+def test_commissioning_rejects_any_account_level_active_order(tmp_path):
+    transport = MemoryTransport()
+    adapter = FakeAdapter(auto_fill=False, active_order_count=1)
+    safety = SafetyPolicy(
+        TradingMode.LIVE, account_id="A1", protected_account_ids=("A1",),
+        orders_enabled=True, local_kill_path=tmp_path / "K",
+    )
+    agent = ExecutionAgent(transport, adapter, STREAMS, safety=safety)
+    transport.set_key(COMMISSIONING_KEY, CommissioningLease.arm().model_dump_json())
+    commission = OrderCommand(
+        client_order_id="commission-20261012-100000-abcdef",
+        strategy_id="commissioning", symbol="511380.SH", side="buy", qty=100,
+        order_type="limit", limit_price=12.8, created_at=datetime.now(),
+    )
+    transport.append(STREAMS.orders, commission.to_payload())
+
+    agent.run_once()
+
+    assert adapter.placed == []
+    rejects = drain(transport, STREAMS.rejects, RejectEvent)
+    assert len(rejects) == 1
+    assert "active broker order" in rejects[0].reason
+
+
 def test_commissioning_rejects_forged_id_and_partial_buy_but_allows_reducing_sell(
     tmp_path,
 ):

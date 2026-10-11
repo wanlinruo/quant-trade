@@ -50,6 +50,10 @@ def _arm_refusal(cfg, transport, now: datetime) -> str | None:
     account = AccountSnapshot.model_validate_json(raw_account) if raw_account else None
     if account is None or not _fresh(account.at, now, 5):
         return "券商账户快照缺失或超过 5 秒"
+    if account.active_order_count is None:
+        return "券商账户活动委托数未知，需先升级并确认 Windows agent"
+    if account.active_order_count != 0:
+        return f"账户存在 {account.active_order_count} 笔活动委托，禁止武装"
     positions = {k: v.total_qty for k, v in account.positions.items() if v.total_qty}
     if positions:
         return f"账户不是空仓，禁止武装：{sorted(positions)}"

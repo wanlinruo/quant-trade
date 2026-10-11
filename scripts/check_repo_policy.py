@@ -16,7 +16,7 @@ BRANCH = re.compile(
     r"^(feat|fix|docs|chore|refactor)/[a-z0-9][a-z0-9._-]*$"
 )
 TITLE = re.compile(
-    r"^(feat|fix|test|docs|refactor|chore)(\([a-z0-9_.-]+\))?!?: .+"
+    r"^(feat|fix|test|docs|refactor|chore|research)(\([a-z0-9_.-]+\))?!?: .+"
 )
 
 

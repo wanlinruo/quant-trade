@@ -102,6 +102,17 @@ class XtQuantAdapter:
             ))
         return out
 
+    def query_active_order_count(self) -> int:
+        """账户级活动委托真值；刻意不使用 ``_ours`` 过滤。"""
+        orders = self._trader.query_stock_orders(
+            self._account, cancelable_only=True,
+        )
+        # xtquant 查询失败时可能返回 None。这里是首次实盘验证的安全门禁，
+        # “无法确认”不能等价成“没有活动委托”，必须向上抛错并拒绝下单。
+        if orders is None:
+            raise RuntimeError("failed to query account-level active broker orders")
+        return len(orders)
+
     def find_order(self, client_order_id: str) -> str | None:
         for order in self.query_orders():
             if order.client_order_id == client_order_id:
@@ -134,4 +145,5 @@ class XtQuantAdapter:
             frozen_cash=float(getattr(asset, "frozen_cash", 0.0) or 0.0),
             market_value=float(getattr(asset, "market_value", 0.0) or 0.0),
             total_asset=float(getattr(asset, "total_asset", 0.0) or 0.0),
+            active_order_count=self.query_active_order_count(),
         )

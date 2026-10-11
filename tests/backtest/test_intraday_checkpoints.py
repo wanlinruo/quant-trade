@@ -273,12 +273,12 @@ class BuyAtAuctionWithLimit(Strategy):
                              OrderType.LIMIT, self.limit)
 
 
-def entry_engine(strategy, rule, minutes):
+def entry_engine(strategy, rule, minutes, *, auction_at=time(9, 30)):
     return BacktestEngine(
         strategy, feed=StubFeed(), calendar=AShareCalendar(SESSIONS),
         universe=[Symbol.parse(SYMBOL)], initial_cash=1_000_000.0,
         pipeline=ashare_pipeline(), fees=ZeroFeeModel(), slippage=NoSlippage(),
-        price_limits=LIMITS, auction_at=time(9, 30),
+        price_limits=LIMITS, auction_at=auction_at,
         entry_fill=rule, entry_minutes=minutes,
     )
 
@@ -295,7 +295,9 @@ def test_continuous_entry_fills_at_the_0931_bar():
         SESSIONS[0], SESSIONS[-1])
 
     buys = [f for f in result.fills if f.side is Side.BUY]
-    assert [(f.filled_at.date(), f.price) for f in buys] == [(SESSIONS[0], pytest.approx(10.04))]
+    assert [(f.filled_at, f.price) for f in buys] == [
+        (datetime.combine(SESSIONS[0], time(9, 31)), pytest.approx(10.04))
+    ]
     assert asked == [(SESSIONS[0], time(9, 31), [SYMBOL])]
     assert result.diagnostics == {"orders": 1, "continuous": 1}
 
@@ -319,6 +321,36 @@ def test_entry_fill_only_prices_auction_buys():
     buys = [f for f in result.fills if f.side is Side.BUY]
     assert buys[0].price == pytest.approx(10.0)
     assert result.diagnostics == {}
+
+
+class BuyAtAuctionSellNextOpen(Strategy):
+    def on_session_start(self, ctx):
+        qty = ctx.portfolio.position(Symbol.parse(SYMBOL)).available_qty
+        if qty:
+            ctx.order.submit(Symbol.parse(SYMBOL), Side.SELL, qty)
+
+    def on_auction(self, ctx):
+        if not ctx.state.get("bought"):
+            ctx.state["bought"] = True
+            ctx.order.submit(
+                Symbol.parse(SYMBOL), Side.BUY, 1_000,
+                OrderType.LIMIT, 10.5,
+            )
+
+
+def test_early_auction_entry_does_not_delay_next_open_exit_to_entry_minute():
+    rule = EntryFill(EntryFillMode.CONTINUOUS, minute_at=time(9, 31))
+    result = entry_engine(
+        BuyAtAuctionSellNextOpen(), rule,
+        lambda session, at, symbols: {
+            symbol: MinuteBar(open=10.0, low=10.0) for symbol in symbols
+        },
+        auction_at=time(9, 25),
+    ).run(SESSIONS[0], SESSIONS[1])
+    assert [(fill.side, fill.filled_at.time()) for fill in result.fills] == [
+        (Side.BUY, time(9, 31)),
+        (Side.SELL, time(9, 30)),
+    ]
 
 
 def test_configuring_an_entry_fill_changes_the_run_id_and_default_keeps_it():

@@ -3,6 +3,8 @@ from __future__ import annotations
 import sys
 from types import ModuleType
 
+import pytest
+
 from qsys.agent.xtquant_adapter import XtQuantAdapter, _ours
 
 
@@ -109,3 +111,32 @@ def test_a_position_without_a_market_value_field_reports_null(monkeypatch) -> No
     _, positions = adapter.query_account()
 
     assert positions["600036.SH"].market_value is None
+
+
+def test_active_order_count_is_account_wide_and_unfiltered() -> None:
+    adapter = XtQuantAdapter.__new__(XtQuantAdapter)
+
+    class FakeTrader:
+        def query_stock_orders(self, account: object, cancelable_only=False):
+            assert cancelable_only is True
+            return [object(), object()]
+
+    adapter._trader = FakeTrader()  # type: ignore[attr-defined]
+    adapter._account = object()  # type: ignore[attr-defined]
+
+    assert adapter.query_active_order_count() == 2
+
+
+def test_active_order_count_query_failure_is_not_treated_as_zero() -> None:
+    adapter = XtQuantAdapter.__new__(XtQuantAdapter)
+
+    class FakeTrader:
+        def query_stock_orders(self, account: object, cancelable_only=False):
+            assert cancelable_only is True
+            return None
+
+    adapter._trader = FakeTrader()  # type: ignore[attr-defined]
+    adapter._account = object()  # type: ignore[attr-defined]
+
+    with pytest.raises(RuntimeError, match="failed to query"):
+        adapter.query_active_order_count()

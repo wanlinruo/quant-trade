@@ -110,6 +110,10 @@ def _preflight(config, transport, args, *, now: datetime | None = None) -> str |
     account = AccountSnapshot.model_validate_json(raw_account) if raw_account else None
     if account is None or not _fresh(account.at, now, SNAPSHOT_MAX_AGE):
         return "券商账户快照缺失或超过 5 秒"
+    if account.active_order_count is None:
+        return "券商账户活动委托数未知，拒绝下单"
+    if account.active_order_count != 0:
+        return f"账户存在 {account.active_order_count} 笔活动委托，拒绝下单"
     positions = {k: v for k, v in account.positions.items() if v.total_qty}
     if args.side == "buy" and positions:
         return f"买入验证前账户必须空仓，当前持仓：{sorted(positions)}"

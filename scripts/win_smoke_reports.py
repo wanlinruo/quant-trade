@@ -32,7 +32,10 @@ def main() -> int:
         f"账户现金={account.cash:,.2f} 冻结={account.frozen_cash:,.2f} "
         f"市值={account.market_value:,.2f} 总资产={account.total_asset:,.2f}"
     )
-    print(f"持仓={len(account.positions)} 委托={len(orders)} 成交={len(trades)}")
+    print(
+        f"持仓={len(account.positions)} 账户活动委托={account.active_order_count} "
+        f"qsys委托={len(orders)} qsys成交={len(trades)}"
+    )
     missing = [o.broker_order_id for o in orders if not o.client_order_id]
     if missing:
         print(f"警告: {len(missing)} 笔委托没有 order_remark/client_order_id")

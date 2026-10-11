@@ -184,6 +184,14 @@ class ExecutionAgent:
             existing = self._adapter.find_order(command.client_order_id)
             if existing is not None:
                 return existing
+            # 首单验证不允许与人工或其他系统的活动委托并存。检查必须发生在
+            # Windows 最后一跳，Linux 快照检查只能缩小风险窗口，不能替代它。
+            if command.strategy_id == "commissioning":
+                active = self._adapter.query_active_order_count()
+                if active != 0:
+                    raise RuntimeError(
+                        f"account has {active} active broker order(s)"
+                    )
             return self._adapter.place_order(
                 command.symbol, command.side, command.qty,
                 command.order_type, command.limit_price, command.client_order_id,
@@ -288,6 +296,7 @@ class ExecutionAgent:
             at=datetime.now(), cash=account.cash, positions=account.positions,
             frozen_cash=account.frozen_cash, market_value=account.market_value,
             total_asset=account.total_asset,
+            active_order_count=account.active_order_count,
         )
         self._t.set_key(self._s.account, snapshot.model_dump_json())
 

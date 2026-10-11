@@ -156,7 +156,10 @@ class BacktestEngine:
                 **(
                     {"entry_fill": {"mode": self._entry_fill.mode.value,
                                     "slippage": self._entry_fill.slippage,
-                                    "minute_at": self._entry_fill.minute_at.isoformat()}}
+                                    "minute_at": self._entry_fill.minute_at.isoformat(),
+                                    "price_stress": self._entry_fill.price_stress,
+                                    "fallback_on_missing":
+                                        self._entry_fill.fallback_on_missing}}
                     if self._entry_fill is not None
                     else {}
                 ),
@@ -281,14 +284,18 @@ class BacktestEngine:
 
             return price
 
-        def match_at_open(at: datetime, entries: Sequence[Order] = ()) -> None:
+        def match_at_open(
+            at: datetime, entries: Sequence[Order] = (), *, record_at: datetime | None = None,
+        ) -> None:
             session = at.date()
             snapshot = MarketSnapshot(
                 session=session, bars=bars_by_session.get(session, {}),
                 prev_closes=dict(prev_closes), boards=self._boards,
                 limits=limits_by_session.get(session, {}),
             )
-            broker.on_market_data(snapshot, pricer=entry_pricer(session, entries))
+            broker.on_market_data(
+                snapshot, record_at, pricer=entry_pricer(session, entries),
+            )
             all_rejects.extend(broker.poll_rejects())
             for fill in broker.poll_fills():
                 portfolio.apply_fill(fill)
@@ -328,8 +335,11 @@ class BacktestEngine:
                 self._strategy.on_session_start(ctx)
                 flush(api, moment)
 
-                if self._auction_at is None:
-                    match_at_open(moment)
+                # Overnight/on-session-start orders belong to the open, regardless
+                # of whether today's entry decision hook runs before or after 09:30.
+                # Auction entries are submitted later in Phase.AUCTION and therefore
+                # cannot be matched accidentally by this event.
+                match_at_open(datetime.combine(session, time(9, 30)))
 
             elif phase is Phase.AUCTION:
                 # 竞价已结算，当日 open 已确定；策略在此定量下单，
@@ -338,8 +348,17 @@ class BacktestEngine:
                 self._strategy.on_auction(ctx)
                 submitted = len(all_orders)
                 flush(api, moment)
-                entries = [o for o in all_orders[submitted:] if o.side is Side.BUY]
-                match_at_open(moment, entries)
+                new_orders = all_orders[submitted:]
+                entries = [o for o in new_orders if o.side is Side.BUY]
+                record_at = None
+                if (
+                    entries and len(entries) == len(new_orders)
+                    and self._entry_fill is not None
+                    and self._entry_fill.mode is EntryFillMode.CONTINUOUS
+                    and self._entry_fill.minute_at > moment.time()
+                ):
+                    record_at = datetime.combine(session, self._entry_fill.minute_at)
+                match_at_open(moment, entries, record_at=record_at)
 
             elif phase is Phase.CHECKPOINT:
                 # 钩子总是触发：「没持仓」与「没分钟线」是两回事，不能混为一谈。
