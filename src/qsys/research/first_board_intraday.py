@@ -105,6 +105,8 @@ class FirstMinuteResearchStrategy(Strategy):
     def __init__(
         self, book: FrozenSelectionBook, *, position_weight: float = 0.10,
         entry_price_buffer: float = 0.03, exit_policy: str = "next_open",
+        decision_at: time = DECISION_AT,
+        strategy_tag: str = "AI_FIRST_BOARD_0931",
     ) -> None:
         if exit_policy not in {"next_open", *EXIT_TIMES}:
             raise ValueError(f"unknown exit policy: {exit_policy}")
@@ -112,11 +114,13 @@ class FirstMinuteResearchStrategy(Strategy):
         self.position_weight = position_weight
         self.entry_price_buffer = entry_price_buffer
         self.exit_policy = exit_policy
+        self.decision_at = decision_at
+        self.strategy_tag = strategy_tag
 
     def on_init(self, ctx) -> None:
         # AUCTION is deliberately repurposed as a once-per-session decision hook.
         # The entry rule prices these orders from the strictly later 09:32 bar.
-        ctx.schedule.auction(DECISION_AT)
+        ctx.schedule.auction(self.decision_at)
         if self.exit_policy in EXIT_TIMES:
             ctx.schedule.checkpoint(EXIT_TIMES[self.exit_policy])
 
@@ -143,7 +147,7 @@ class FirstMinuteResearchStrategy(Strategy):
             if qty <= 0:
                 rejected["position budget below one lot"] += 1
                 continue
-            ctx.state.setdefault("tags", {})[signal.symbol] = "AI_FIRST_BOARD_0931"
+            ctx.state.setdefault("tags", {})[signal.symbol] = self.strategy_tag
             ctx.order.submit(symbol, Side.BUY, qty, OrderType.LIMIT, protect)
             routed += 1
         ctx.report(
