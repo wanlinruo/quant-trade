@@ -26,3 +26,12 @@ def test_policy_accepts_conventional_pr_and_commits():
         "feat(web): add new page",
         ["feat(web): add route", "test(web): cover route"],
     ) == []
+
+
+def test_policy_accepts_explicit_research_changes():
+    assert validate(
+        "test",
+        "main",
+        "research: release frozen first-board evidence",
+        ["research: add first-board opportunity pipeline (#235)"],
+    ) == []
