@@ -284,14 +284,18 @@ class BacktestEngine:
 
             return price
 
-        def match_at_open(at: datetime, entries: Sequence[Order] = ()) -> None:
+        def match_at_open(
+            at: datetime, entries: Sequence[Order] = (), *, record_at: datetime | None = None,
+        ) -> None:
             session = at.date()
             snapshot = MarketSnapshot(
                 session=session, bars=bars_by_session.get(session, {}),
                 prev_closes=dict(prev_closes), boards=self._boards,
                 limits=limits_by_session.get(session, {}),
             )
-            broker.on_market_data(snapshot, pricer=entry_pricer(session, entries))
+            broker.on_market_data(
+                snapshot, record_at, pricer=entry_pricer(session, entries),
+            )
             all_rejects.extend(broker.poll_rejects())
             for fill in broker.poll_fills():
                 portfolio.apply_fill(fill)
@@ -347,15 +351,15 @@ class BacktestEngine:
                 flush(api, moment)
                 new_orders = all_orders[submitted:]
                 entries = [o for o in new_orders if o.side is Side.BUY]
-                fill_at = moment
+                record_at = None
                 if (
                     entries and len(entries) == len(new_orders)
                     and self._entry_fill is not None
                     and self._entry_fill.mode is EntryFillMode.CONTINUOUS
                     and self._entry_fill.minute_at > moment.time()
                 ):
-                    fill_at = datetime.combine(session, self._entry_fill.minute_at)
-                match_at_open(fill_at, entries)
+                    record_at = datetime.combine(session, self._entry_fill.minute_at)
+                match_at_open(moment, entries, record_at=record_at)
 
             elif phase is Phase.CHECKPOINT:
                 # 钩子总是触发：「没持仓」与「没分钟线」是两回事，不能混为一谈。
