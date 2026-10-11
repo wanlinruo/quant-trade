@@ -201,9 +201,9 @@ def main() -> int:
     ).row(0, named=True)
     verdict = {
         "schema_version": 1,
-        "research_status": "PILOT_DIRECTIONAL_POSITIVE" if (
+        "research_status": "PILOT_HYPOTHESIS_POSITIVE" if (
             primary["total_return"] > 0 and primary["closed_lots"] >= 3
-        ) else "PILOT_DIRECTIONAL_NEGATIVE",
+        ) else "PILOT_HYPOTHESIS_NEGATIVE",
         "primary_policy": PRIMARY_POLICY,
         "primary_entry_cost_stress": PRIMARY_COST,
         "primary_total_return": primary["total_return"],
@@ -214,6 +214,7 @@ def main() -> int:
         "limitations": [
             "only recent rolling QMT history",
             f"only {len(eval_days)} held-out sessions",
+            "exploratory feature contract requires confirmation on new prospective sessions",
             "pilot result cannot replace frozen TEST/OBS historical adjudication",
         ],
     }
