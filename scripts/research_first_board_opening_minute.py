@@ -84,7 +84,11 @@ def _matrix() -> list[tuple[str, str, float, float]]:
         ("opening_top1", "next_open", 0.005, 0.10),
         ("opening_top1", "11:25", 0.005, 0.03),
         ("opening_top1", "14:25", 0.005, 0.03),
+        ("opening_top1", "two_stage_limit_hold", 0.0, 0.03),
+        ("opening_top1", "two_stage_limit_hold", 0.005, 0.03),
+        ("opening_top1", "two_stage_limit_hold", 0.01, 0.03),
         ("opening_top3", "next_open", 0.005, 0.03),
+        ("opening_top3", "two_stage_limit_hold", 0.005, 0.03),
         ("rank_top1", "next_open", 0.005, 0.03),
         ("rank_top3", "next_open", 0.005, 0.03),
     ]
@@ -99,6 +103,16 @@ def _fill_stat(run_dir: Path, name: str) -> int:
         for key, value in [item.split("=", 1)]
     }
     return values.get(name, 0)
+
+
+def _open_positions_at_end(run_dir: Path) -> int:
+    status = pl.read_csv(run_dir / "run_status.csv").row(0, named=True)
+    positions = pl.read_csv(run_dir / "daily_positions.csv", try_parse_dates=True)
+    if positions.is_empty():
+        return 0
+    return positions.filter(
+        pl.col("date") == pl.lit(status["end"]).str.to_date()
+    )["symbol"].n_unique()
 
 
 def main() -> int:
@@ -194,6 +208,7 @@ def main() -> int:
             "policy": policy, "entry_cost_stress": cost,
             "entry_price_buffer": price_buffer,
             "missing_entry_minutes": _fill_stat(run_dir, "missing_minute"),
+            "open_positions_at_end": _open_positions_at_end(run_dir),
             "run_dir": str(run_dir),
         })
         rows.append(row)
@@ -268,6 +283,12 @@ def main() -> int:
             "primary_entry_price_buffer": 0.03,
             "entry_price_buffer_sensitivities": [0.05, 0.10],
             "position_weight": 0.10,
+            "two_stage_exit": {
+                "11:25": "sell when price > previous close and below limit-up",
+                "14:25": "sell whenever below limit-up",
+                "carry": "when limit-up at 14:25, repeat both checks next session",
+                "missing_quote_or_limit": "hold (fail closed)",
+            },
         },
         "artifacts": {
             name: _sha256(args.out / name) for name in (
