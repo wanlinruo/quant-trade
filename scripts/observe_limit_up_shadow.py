@@ -31,15 +31,19 @@ def main() -> int:
         if view.snapshot is None or view.snapshot.target_session != target_session:
             raise ValueError("published snapshot is unavailable or inconsistent")
         symbols = tuple(entry.symbol for entry in view.snapshot.entries)
-        outcomes, source_sha = outcome_truth(args.warehouse, target_session, symbols)
-        publisher.record_outcomes(
-            prediction_date, outcomes, observed_at=datetime.now(SHANGHAI),
-            source_data_sha=source_sha,
+        outcomes, unresolved, source_sha = outcome_truth(
+            args.warehouse, target_session, symbols,
         )
+        if outcomes:
+            publisher.record_outcomes(
+                prediction_date, outcomes, observed_at=datetime.now(SHANGHAI),
+                source_data_sha=source_sha,
+            )
         recorded.append({
             "prediction_date": prediction_date.isoformat(),
             "target_session": target_session.isoformat(),
             "entries": len(outcomes),
+            "unresolved": list(unresolved),
             "source_data_sha": source_sha,
         })
     print(json.dumps({"latest_truth_session": latest.isoformat(),

@@ -14,7 +14,16 @@ from qsys.research.limit_up_shadow import latest_feature_session
 
 
 def _run(command: list[str]) -> dict:
-    completed = subprocess.run(command, check=True, capture_output=True, text=True)
+    try:
+        completed = subprocess.run(command, check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or exc.stdout or "").strip()
+        if len(detail) > 4_000:
+            detail = detail[-4_000:]
+        raise RuntimeError(
+            f"subprocess failed ({exc.returncode}): {' '.join(command)}"
+            + (f"\n{detail}" if detail else "")
+        ) from exc
     lines = [line for line in completed.stdout.splitlines() if line.strip()]
     return json.loads(lines[-1]) if lines else {}
 
