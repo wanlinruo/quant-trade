@@ -73,6 +73,22 @@ def test_overview_lists_positions_from_the_account_snapshot(service):
     assert view.positions[0]["total_qty"] == 1000
 
 
+def test_overview_hides_zero_quantity_broker_residue(warehouse):
+    journal = SessionJournal(warehouse)
+    journal.record_equity(D, cash=100_000.0, market_value=0.0)
+    transport = MemoryTransport()
+    transport.set_key("state:account", AccountSnapshot(
+        at=T, cash=100_000.0, positions={
+            "511380.SH": PositionSnapshot(
+                total_qty=0, available_qty=0, avg_cost=12.9, market_value=0.0,
+            ),
+        },
+    ).model_dump_json())
+    svc = MonitorService(journal, config=WebConfig(), transport=transport)
+
+    assert svc.overview(D).positions == ()
+
+
 def test_overview_positions_are_empty_without_a_snapshot(warehouse):
     svc = MonitorService(SessionJournal(warehouse), config=WebConfig(),
                          transport=MemoryTransport())

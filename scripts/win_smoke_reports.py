@@ -33,7 +33,8 @@ def main() -> int:
         f"市值={account.market_value:,.2f} 总资产={account.total_asset:,.2f}"
     )
     print(
-        f"持仓={len(account.positions)} 账户活动委托={account.active_order_count} "
+        f"持仓={sum(p.total_qty != 0 for p in account.positions.values())} "
+        f"账户活动委托={account.active_order_count} "
         f"qsys委托={len(orders)} qsys成交={len(trades)}"
     )
     missing = [o.broker_order_id for o in orders if not o.client_order_id]

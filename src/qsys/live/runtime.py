@@ -41,7 +41,7 @@ from qsys.strategy.schedule import Schedule
 from qsys.ops.alerts import AlertBus, LogAlertSink
 from qsys.ops.daily_report import build_daily_report
 from qsys.ops.notify import (
-    StrategyNotifier, TradeContext, positions_of, trade_of,
+    StrategyNotifier, TradeContext, active_position_count, positions_of, trade_of,
 )
 from qsys.ops.journal import SessionJournal
 from qsys.ops.strategy_log import RunReport, build_record
@@ -575,7 +575,7 @@ class LiveRuntime:
                 finished_at=datetime.now(),
                 cash=self.portfolio.cash,
                 market_value=market_value,
-                position_count=len(self.portfolio.positions),
+                position_count=active_position_count(self.portfolio.positions),
                 orders=orders,
                 rejects=rejects,
                 error=error,

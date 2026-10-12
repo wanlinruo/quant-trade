@@ -30,7 +30,8 @@ from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
 from qsys.ops.alerts import AlertBus, ledger, strategy_sinks
 from qsys.ops.notify import (
-    StrategyNotifier, TradeContext, engine_label, positions_of, trade_of,
+    StrategyNotifier, TradeContext, active_position_count, engine_label,
+    positions_of, trade_of,
 )
 from qsys.ops.strategy_log import RunReport, build_record
 
@@ -389,7 +390,7 @@ class PaperRuntime:
                 finished_at=datetime.now(),
                 cash=self.portfolio.cash,
                 market_value=market_value,
-                position_count=len(self.portfolio.positions),
+                position_count=active_position_count(self.portfolio.positions),
                 orders=orders,
                 rejects=rejects,
                 error=error,
