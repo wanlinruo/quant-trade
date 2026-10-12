@@ -104,12 +104,17 @@ def positions_of(positions, prices) -> tuple[Position, ...]:
     """组合持仓 → 消息里的持仓明细。没有现价时退回成本价，浮盈记 0。"""
     out = []
     for symbol, position in positions.items():
-        if position.total_qty <= 0:
+        if position.total_qty == 0:
             continue
         cost = position.avg_cost
         out.append(Position(str(symbol), position.total_qty, cost,
                             float(prices.get(symbol, cost))))
     return tuple(sorted(out, key=lambda p: p.symbol))
+
+
+def active_position_count(positions) -> int:
+    """Count economic positions; keep impossible negative quantities visible."""
+    return sum(position.total_qty != 0 for position in positions.values())
 
 
 def engine_label(name: str, ident: str = "") -> str:
@@ -231,4 +236,3 @@ class StrategyNotifier:
         else:
             self._alerts.info(title, detail)
         return True
-

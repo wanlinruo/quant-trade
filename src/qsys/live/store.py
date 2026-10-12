@@ -181,6 +181,8 @@ class LiveStore:
         for raw_symbol, snapshot in remote.positions.items():
             if is_cash_equivalent(raw_symbol):
                 continue
+            if snapshot.total_qty == 0:
+                continue
             symbol = Symbol.parse(raw_symbol)
             portfolio.positions[symbol] = Position(
                 symbol=symbol, total_qty=snapshot.total_qty,
@@ -199,6 +201,8 @@ class LiveStore:
         portfolio.cash = float(row["cash"])
         prices: dict[Symbol, float] = {}
         for item in positions:
+            if item["total_qty"] == 0:
+                continue
             symbol = Symbol.parse(item["symbol"])
             portfolio.positions[symbol] = Position(
                 symbol, item["total_qty"], item["available_qty"], item["cost_basis"]
@@ -226,7 +230,7 @@ class LiveStore:
                 "INSERT INTO live_positions VALUES (?,?,?,?,?,?)",
                 [(str(symbol), pos.total_qty, pos.available_qty, pos.cost_basis,
                   float(prices.get(symbol, pos.avg_cost)), now)
-                 for symbol, pos in portfolio.positions.items()],
+                 for symbol, pos in portfolio.positions.items() if pos.total_qty != 0],
             )
 
     def set_day_start_value(self, value: float, *, at: datetime) -> None:
@@ -291,7 +295,7 @@ class LiveStore:
                 "INSERT INTO live_positions VALUES (?,?,?,?,?,?)",
                 [(str(s), p.total_qty, p.available_qty, p.cost_basis,
                   float(prices.get(s, p.avg_cost)), now)
-                 for s, p in portfolio.positions.items()],
+                 for s, p in portfolio.positions.items() if p.total_qty != 0],
             )
             con.execute(
                 "UPDATE live_events SET status='completed',detail=?,completed_at=? "
@@ -374,7 +378,7 @@ class LiveStore:
                 "INSERT INTO live_positions VALUES (?,?,?,?,?,?)",
                 [(str(symbol), pos.total_qty, pos.available_qty, pos.cost_basis,
                   float(prices.get(symbol, pos.avg_cost)), now)
-                 for symbol, pos in portfolio.positions.items()],
+                 for symbol, pos in portfolio.positions.items() if pos.total_qty != 0],
             )
             con.executemany(
                 "INSERT OR IGNORE INTO live_runtime_fills"

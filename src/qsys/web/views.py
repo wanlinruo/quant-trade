@@ -150,6 +150,7 @@ class MonitorService:
                     "avg_cost": p.avg_cost,
                 }
                 for symbol, p in sorted(snapshot.positions.items())
+                if p.total_qty != 0
             )
 
         heartbeats = self._heartbeats(now)
