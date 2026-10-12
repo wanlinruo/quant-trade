@@ -189,6 +189,18 @@ def test_shared_redis_change_targets_both_nodes() -> None:
     assert plan.unknown_paths == ()
 
 
+def test_commissioning_change_targets_linux_and_windows_agent() -> None:
+    plan = DeploymentManifest.load(MANIFEST).plan(
+        ["src/qsys/live/commissioning.py"], environment="production",
+    )
+
+    assert plan.nodes == ("linux", "windows")
+    assert set(plan.components) == {"linux-resident", "windows-agent"}
+    assert plan.windows_apps == ("live_app",)
+    assert plan.windows_tasks == ("qsys-agent-shadow",)
+    assert plan.unknown_paths == ()
+
+
 def test_docs_only_change_is_recorded_without_a_runtime_deployment() -> None:
     plan = DeploymentManifest.load(MANIFEST).plan(
         ["HANDOFF.md", "docs/deploy/linux-core.md"], environment="production",
