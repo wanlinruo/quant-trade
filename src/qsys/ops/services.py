@@ -159,6 +159,11 @@ SERVICES: tuple[ServiceSpec, ...] = (
         "按实盘口径运行策略但从不下单", heartbeat="core",
     ),
     ServiceSpec(
+        "live-core", "实盘策略核心", "resident", "Linux", "qsys-live-core", "按模式启用",
+        ("Redis 行情、账户与订单事件",), ("live_*",),
+        "按实盘口径运行策略并通过风控向执行代理发送订单", heartbeat="core",
+    ),
+    ServiceSpec(
         "monitor", "监控网页", "resident", "Linux", "qsys-monitor", "常驻",
         ("仓库只读", "Redis 只读"), (), "本页面（8443 经 nginx 反代）",
     ),
@@ -191,6 +196,12 @@ SERVICES: tuple[ServiceSpec, ...] = (
 )
 
 SERVICE_BY_ID = {spec.id: spec for spec in SERVICES}
+CORE_SERVICE_IDS = ("shadow-core", "live-core")
+
+
+def active_core_service(mode: str) -> str | None:
+    """Return the only strategy core expected to run in the deployment mode."""
+    return {"shadow": "shadow-core", "live": "live-core"}.get(mode)
 
 
 def _now() -> datetime:
