@@ -6,13 +6,18 @@ from types import ModuleType
 import pytest
 
 from qsys.agent.xtquant_adapter import XtQuantAdapter, _ours
+from qsys.live.commissioning import QMT_ORDER_REMARK_MAX_LENGTH
 
 
 def test_adapter_collects_strategy_and_commissioning_reports_only() -> None:
-    assert _ours("q2610120010123456789ab")
-    assert _ours("commission-20261012-100000-abcdef")
+    strategy = "q2610120010123456789ab"
+    assert len(strategy) < QMT_ORDER_REMARK_MAX_LENGTH
+    assert _ours(strategy)
+    commissioning = "c20261012-100000-abcdef"
+    assert len(commissioning) == QMT_ORDER_REMARK_MAX_LENGTH
+    assert _ours(commissioning[:QMT_ORDER_REMARK_MAX_LENGTH])
     assert not _ours("manual-order")
-    assert not _ours("commission-20261012-100000-abcdef-extra")
+    assert not _ours("c20261012-100000-abcdef-extra")
 
 
 def test_xtquant_trader_session_is_compatible_with_positional_only_api(

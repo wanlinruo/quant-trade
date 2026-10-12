@@ -4,9 +4,11 @@ import pytest
 
 from qsys.live.commissioning import (
     COMMISSIONING_KEY,
+    QMT_ORDER_REMARK_MAX_LENGTH,
     CommissioningLease,
     commissioning_qty_allowed,
     is_commissioning_order_id,
+    new_commissioning_order_id,
     read_commissioning_lease,
 )
 from qsys.live.transport import MemoryTransport
@@ -35,9 +37,20 @@ def test_a_long_or_malformed_lease_fails_closed():
 
 
 def test_commissioning_order_shape_allows_only_one_lot_buy_or_reducing_sell():
-    assert is_commissioning_order_id("commission-20261012-100000-abcdef")
+    assert is_commissioning_order_id("c20261012-100000-abcdef")
     assert not is_commissioning_order_id("commission-manual")
     assert commissioning_qty_allowed("buy", 100)
     assert not commissioning_qty_allowed("buy", 50)
     assert commissioning_qty_allowed("sell", 50)
     assert not commissioning_qty_allowed("sell", 101)
+
+
+def test_commissioning_order_id_survives_qmt_order_remark_limit(monkeypatch):
+    monkeypatch.setattr("qsys.live.commissioning.secrets.token_hex", lambda _: "abcdef")
+
+    order_id = new_commissioning_order_id(NOW)
+
+    assert order_id == "c20261012-100000-abcdef"
+    assert len(order_id) == QMT_ORDER_REMARK_MAX_LENGTH
+    assert is_commissioning_order_id(order_id[:QMT_ORDER_REMARK_MAX_LENGTH])
+    assert not is_commissioning_order_id(order_id[:-1])

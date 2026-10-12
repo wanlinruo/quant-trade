@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 import re
+import secrets
 
 from pydantic import BaseModel, model_validator
 
@@ -18,13 +19,26 @@ COMMISSIONING_SYMBOL = "511380.SH"
 COMMISSIONING_QTY = 100
 COMMISSIONING_MAX_NOTIONAL = 3_000.0
 MAX_LEASE_SECONDS = 10 * 60
+# 2026-10-12 生产实测：miniQMT 只保留 order_remark 的前 23 个字符。
+# client_order_id 必须完整落在这个边界内，否则回报过滤、幂等查单和成交关联
+# 会同时失效。普通策略 ID 是 22 字符；验证单也把上限作为显式契约。
+QMT_ORDER_REMARK_MAX_LENGTH = 23
 _COMMISSIONING_ORDER_ID = re.compile(
-    r"commission-\d{8}-\d{6}-[0-9a-f]{6}"
+    r"c\d{8}-\d{6}-[0-9a-f]{6}"
 )
 
 
 def is_commissioning_order_id(value: str) -> bool:
     return bool(_COMMISSIONING_ORDER_ID.fullmatch(value))
+
+
+def new_commissioning_order_id(now: datetime | None = None) -> str:
+    """Build a QMT-safe, unique ID that survives ``order_remark`` round trips."""
+    now = now or datetime.now()
+    value = f"c{now:%Y%m%d-%H%M%S}-{secrets.token_hex(3)}"
+    if len(value) != QMT_ORDER_REMARK_MAX_LENGTH:  # pragma: no cover - invariant
+        raise AssertionError("commissioning order ID exceeds QMT order_remark")
+    return value
 
 
 def commissioning_qty_allowed(side: str, qty: int) -> bool:

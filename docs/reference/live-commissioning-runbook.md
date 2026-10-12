@@ -13,8 +13,9 @@
 - 联调标的固定 `511380.SH`，买入 100 份，名义金额硬上限 3,000 元；
 - 验证工具已有实时盘口、价格档位、账户空仓、双端写保护、心跳、交易时段、停机闸、
   30 秒未完整成交自动全撤及账户快照收敛门禁；
-- agent 只接管规范的 `commission-YYYYMMDD-HHMMSS-xxxxxx` 回报，不把人工或旧 bridge
-  委托混入本次证据；
+- agent 只接管规范的 23 字符 `cYYYYMMDD-HHMMSS-xxxxxx` 回报，不把人工或旧 bridge
+  委托混入本次证据；长度上限来自 2026-10-12 miniQMT 生产实测，超过后
+  `order_remark` 会被截断并失去唯一性；
 - 10 分钟 lease 到期会恢复心跳失败关闭，且在 live agent 未由健康 core 接管时不能解除。
 
 ## 现场 Go / No-Go
