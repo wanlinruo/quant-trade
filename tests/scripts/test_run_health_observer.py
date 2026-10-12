@@ -74,6 +74,16 @@ def test_business_alerts_fire_once_and_report_recovery():
     ]
 
 
+def test_live_business_failure_is_named_as_live_not_shadow():
+    sink = RecordingAlertSink()
+    tracker = BusinessAlertTracker(AlertBus([sink]))
+    tracker.update(observation(
+        row("live-core"), datetime(2026, 10, 12, 9, 30, 15), MORNING,
+        ChainAssessment(DOWN, "strategy_event_failed", "竞价事件失败"),
+    ))
+    assert "实盘交易链路失败" in sink.alerts[-1].title
+
+
 def _task(age_seconds=30, **over):
     now = datetime(2026, 9, 26, 23, 30)
     base = {"State": "Running", "LastTaskResult": 267009,

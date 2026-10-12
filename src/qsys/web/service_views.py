@@ -171,6 +171,7 @@ class ServiceConsole:
         heartbeat: Callable[[str], dict] | None = None,
         windows_task: Callable[[str], dict] | None = None,
         health_store: HealthStore | None = None,
+        core_service_id: str | None = "shadow-core",
         systemd: Callable[[str], dict[str, str]] = systemctl_show,
         now: Callable[[], datetime] = datetime.now,
     ) -> None:
@@ -179,6 +180,7 @@ class ServiceConsole:
         self._heartbeat = heartbeat
         self._windows_task = windows_task
         self._health_store = health_store
+        self._core_service_id = core_service_id
         self._systemd = systemd
         self._now = now
 
@@ -217,7 +219,8 @@ class ServiceConsole:
         self, days: int = 14,
     ) -> tuple[list[date], list[tuple[ServiceSpec, list[Cell]]], bool]:
         """影子盘/模拟盘每日策略事件验收，与当前进程健康严格分离。"""
-        specs = [SERVICE_BY_ID[name] for name in ("shadow-core", "paper")]
+        names = ((self._core_service_id,) if self._core_service_id else ()) + ("paper",)
+        specs = [SERVICE_BY_ID[name] for name in names]
         columns, rows, has_calendar = self._board_for(specs, days)
         if self._health_store is None:
             return columns, rows, has_calendar
@@ -227,7 +230,7 @@ class ServiceConsole:
         observations = self._health_store.history(start, now)
         latest: dict[tuple[str, date], dict] = {}
         for observation in observations:
-            if observation["service_id"] not in ("shadow-core", "paper"):
+            if observation["service_id"] not in names:
                 continue
             local_day = observation["observed_at_utc"].astimezone(SHANGHAI).date()
             latest[(observation["service_id"], local_day)] = observation

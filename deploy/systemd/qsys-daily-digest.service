@@ -12,6 +12,7 @@ ExecStart=/home/ubuntu/qsys/.venv/bin/python -u scripts/send_daily_digest.py \
           --config config/deploy.local.toml \
           --service-runs /home/ubuntu/qsys/var/service-runs \
           --shadow-state /home/ubuntu/qsys/var/shadow-state.sqlite3 \
+          --live-state /home/ubuntu/qsys/var/live-state.sqlite3 \
           --workbench /home/ubuntu/qsys/var/workbench/workbench.sqlite3 \
           --warehouse /home/ubuntu/qsys/warehouse \
           --storage-base /data/qsys \

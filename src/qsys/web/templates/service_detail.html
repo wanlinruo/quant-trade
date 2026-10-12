@@ -48,7 +48,7 @@
 {% endif %}
 {% endif %}
 
-{% if health and spec.id in ("shadow-core", "paper") %}
+{% if health and spec.id in ("shadow-core", "live-core", "paper") %}
 {% set chain = health.details.get("trading_chain", {}) %}
 <div class="card">
   <h2>交易链路监控</h2>
