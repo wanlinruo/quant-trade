@@ -9,7 +9,9 @@ from datetime import date, datetime
 import pytest
 
 from qsys.ops.alerts import AlertBus, RecordingAlertSink, Severity
-from qsys.ops.notify import StrategyNotifier, compose, should_notify
+from qsys.ops.notify import (
+    StrategyNotifier, active_position_count, compose, positions_of, should_notify,
+)
 from qsys.ops.strategy_log import RunRecord
 
 T = datetime(2026, 9, 28, 9, 25, 10)
@@ -30,6 +32,20 @@ def record(**kw) -> RunRecord:
 def _bus():
     sink = RecordingAlertSink()
     return AlertBus([sink]), sink
+
+
+def test_active_positions_ignore_zero_but_expose_negative_anomalies():
+    from qsys.core.portfolio import Position as PortfolioPosition
+    from qsys.core.types import Symbol
+
+    zero = Symbol.parse("511380.SH")
+    negative = Symbol.parse("600036.SH")
+    positions = {
+        zero: PortfolioPosition(zero, total_qty=0),
+        negative: PortfolioPosition(negative, total_qty=-100),
+    }
+    assert active_position_count(positions) == 1
+    assert [p.symbol for p in positions_of(positions, {})] == ["600036.SH"]
 
 
 # ---- 推 ----

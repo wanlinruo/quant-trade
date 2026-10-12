@@ -27,6 +27,27 @@ def test_store_initializes_from_broker_and_recovers_state(tmp_path):
     assert initial == 60_000.0
 
 
+def test_zero_quantity_broker_rows_are_not_economic_positions(tmp_path):
+    store = LiveStore(tmp_path / "live.sqlite3")
+    store.initialize(AccountSnapshot(
+        at=datetime.now(), cash=100_000.0, total_asset=100_000.0,
+        positions={
+            "511380.SH": PositionSnapshot(
+                total_qty=0, available_qty=0, avg_cost=12.9, market_value=0.0,
+            ),
+            # An impossible negative is evidence of a broker/data problem and
+            # must remain visible instead of being silently treated as empty.
+            "600036.SH": PositionSnapshot(
+                total_qty=-100, available_qty=0, avg_cost=10.0, market_value=0.0,
+            ),
+        },
+    ))
+
+    portfolio, _, _, _ = store.load()
+    assert set(map(str, portfolio.positions)) == {"600036.SH"}
+    assert portfolio.position(Symbol.parse("600036.SH")).total_qty == -100
+
+
 def test_completed_event_is_not_run_again(tmp_path):
     store = LiveStore(tmp_path / "live.sqlite3")
     now = datetime.now()
