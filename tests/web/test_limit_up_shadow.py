@@ -197,3 +197,45 @@ def test_outcomes_are_separate_immutable_and_drive_rolling_metrics(tmp_path: Pat
             date(2026, 10, 9), (conflicting, outcomes[1]),
             observed_at=observed_at, source_data_sha="e" * 64,
         )
+
+
+def test_partial_outcomes_remain_pending_and_do_not_drive_metrics(tmp_path: Path):
+    path = tmp_path / "shadow.sqlite3"
+    publisher = LimitUpShadowPublisher(path)
+    payload = _payload()
+    payload["rolling_precision_at_20"] = None
+    payload["calibration_error"] = None
+    payload["entries"][1].pop("actual_touched")
+    payload["entries"][1].pop("actual_closed_limit")
+    publisher.publish(LimitUpShadowSnapshot.model_validate(payload))
+    observed_at = datetime.fromisoformat("2026-10-12T16:00:00+08:00")
+    first = LimitUpShadowOutcome(
+        symbol="000001.SZ", actual_touched=True, actual_closed_limit=True,
+        opened_at_limit=False, one_price_limit=False,
+    )
+    second = LimitUpShadowOutcome(
+        symbol="600000.SH", actual_touched=True, actual_closed_limit=False,
+        opened_at_limit=False, one_price_limit=False,
+    )
+
+    publisher.record_outcomes(
+        date(2026, 10, 9), (first,), observed_at=observed_at,
+        source_data_sha="d" * 64,
+    )
+    reader = LimitUpShadowReader(path)
+    partial = reader.view(date(2026, 10, 9))
+
+    assert reader.pending_outcomes(date(2026, 10, 12)) == (
+        (date(2026, 10, 9), date(2026, 10, 12)),
+    )
+    assert partial.snapshot.entries[0].actual_closed_limit is True
+    assert partial.snapshot.entries[1].actual_closed_limit is None
+    assert partial.snapshot.rolling_precision_at_20 is None
+
+    publisher.record_outcomes(
+        date(2026, 10, 9), (first, second), observed_at=observed_at,
+        source_data_sha="e" * 64,
+    )
+    complete = reader.view(date(2026, 10, 9))
+    assert reader.pending_outcomes(date(2026, 10, 12)) == ()
+    assert complete.snapshot.rolling_precision_at_20 == pytest.approx(0.5)

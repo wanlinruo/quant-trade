@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 from pathlib import Path
+
+import pytest
 
 
 def test_shadow_ranking_script_imports_without_running() -> None:
@@ -38,3 +41,20 @@ def test_shadow_cycle_script_imports_without_running() -> None:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     assert callable(module.main)
+
+
+def test_shadow_cycle_surfaces_child_stderr(monkeypatch) -> None:
+    path = Path("scripts/limit_up_shadow_cycle.py")
+    spec = importlib.util.spec_from_file_location("limit_up_shadow_cycle_error", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    def fail(*args, **kwargs):
+        raise subprocess.CalledProcessError(
+            1, ["python", "child.py"], stderr="authoritative truth is missing",
+        )
+
+    monkeypatch.setattr(module.subprocess, "run", fail)
+    with pytest.raises(RuntimeError, match="authoritative truth is missing"):
+        module._run(["python", "child.py"])

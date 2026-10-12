@@ -280,19 +280,21 @@ class LimitUpShadowReader:
         )
 
     def pending_outcomes(self, up_to: date) -> tuple[tuple[date, date], ...]:
-        """Return ready prediction/target pairs whose result is not recorded."""
+        """Return ready prediction/target pairs with any unresolved entries."""
         try:
             with self._connect() as con:
                 has_outcomes = self._has_outcomes(con)
-                exclusion = (
-                    "AND NOT EXISTS (SELECT 1 FROM limit_up_shadow_outcomes o "
-                    "WHERE o.prediction_date=r.prediction_date)"
+                incomplete = (
+                    "AND (SELECT COUNT(*) FROM limit_up_shadow_outcomes o "
+                    "WHERE o.prediction_date=r.prediction_date) < "
+                    "(SELECT COUNT(*) FROM limit_up_shadow_entries e "
+                    "WHERE e.prediction_date=r.prediction_date)"
                     if has_outcomes else ""
                 )
                 rows = con.execute(
                     "SELECT r.prediction_date,r.target_session FROM limit_up_shadow_runs r "
                     "WHERE r.status='ready' AND r.target_session<=? "
-                    f"{exclusion} ORDER BY r.prediction_date",
+                    f"{incomplete} ORDER BY r.prediction_date",
                     (up_to.isoformat(),),
                 ).fetchall()
                 return tuple((date.fromisoformat(row[0]), date.fromisoformat(row[1]))
@@ -452,27 +454,23 @@ class LimitUpShadowPublisher:
                 (prediction_date.isoformat(),),
             )}
             provided = {outcome.symbol for outcome in outcomes}
-            if not expected or provided != expected or len(provided) != len(outcomes):
-                raise ValueError("outcomes must exactly cover the published ranking")
-            existing = con.execute(
-                "SELECT COUNT(*) FROM limit_up_shadow_outcomes WHERE prediction_date=?",
+            if not expected or not provided.issubset(expected) or len(provided) != len(outcomes):
+                raise ValueError("outcomes must uniquely belong to the published ranking")
+            rows = con.execute(
+                "SELECT symbol,actual_touched,actual_closed_limit,opened_at_limit,"
+                "one_price_limit FROM limit_up_shadow_outcomes "
+                "WHERE prediction_date=? ORDER BY symbol",
                 (prediction_date.isoformat(),),
-            ).fetchone()[0]
-            if existing:
-                rows = con.execute(
-                    "SELECT symbol,actual_touched,actual_closed_limit,opened_at_limit,"
-                    "one_price_limit,source_data_sha FROM limit_up_shadow_outcomes "
-                    "WHERE prediction_date=? ORDER BY symbol",
-                    (prediction_date.isoformat(),),
-                ).fetchall()
-                old = [(row[0], bool(row[1]), bool(row[2]), bool(row[3]), bool(row[4]))
-                       for row in rows]
-                new = sorted((row.symbol, row.actual_touched, row.actual_closed_limit,
-                              row.opened_at_limit, row.one_price_limit)
-                             for row in outcomes)
-                if old == new and all(row[5] == source_data_sha for row in rows):
-                    return
+            ).fetchall()
+            old = {row[0]: (bool(row[1]), bool(row[2]), bool(row[3]), bool(row[4]))
+                   for row in rows}
+            new = {row.symbol: (row.actual_touched, row.actual_closed_limit,
+                                row.opened_at_limit, row.one_price_limit)
+                   for row in outcomes}
+            if any(old[symbol] != values for symbol, values in new.items()
+                   if symbol in old):
                 raise ValueError("published outcomes are immutable")
+            missing = [row for row in outcomes if row.symbol not in old]
             con.executemany(
                 "INSERT INTO limit_up_shadow_outcomes VALUES (?,?,?,?,?,?,?,?)",
                 [(
@@ -480,5 +478,5 @@ class LimitUpShadowPublisher:
                     observed_at.isoformat(), source_data_sha,
                     outcome.actual_touched, outcome.actual_closed_limit,
                     outcome.opened_at_limit, outcome.one_price_limit,
-                ) for outcome in outcomes],
+                ) for outcome in missing],
             )

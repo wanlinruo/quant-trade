@@ -137,7 +137,8 @@ def load_promoted_model(run: Path) -> PromotedModel:
     verdict = json.loads((run / "verdict.json").read_text(encoding="utf-8"))
     if verdict.get("promote_to_shadow") is not True:
         raise ValueError("research verdict does not permit shadow publication")
-    if tuple(manifest.get("feature_columns", ())) != FEATURE_COLUMNS:
+    feature_columns = tuple(manifest.get("feature_columns", ()))
+    if feature_columns != FEATURE_COLUMNS:
         raise ValueError("research feature contract does not match runtime code")
     source_sha = str(manifest.get("git_sha", ""))
     research_data_sha = str(manifest.get("dataset", {}).get("sha256", ""))
@@ -148,8 +149,17 @@ def load_promoted_model(run: Path) -> PromotedModel:
         import joblib
     except ImportError as exc:  # pragma: no cover - operational dependency
         raise RuntimeError("production ML runtime dependencies are required") from exc
+    model = joblib.load(model_path)
+    artifact_features = getattr(model, "feature_columns", None)
+    if artifact_features is None:
+        # Artifacts promoted before the configurable-feature refactor did not
+        # pickle this attribute.  The signed manifest is the authoritative
+        # feature contract, so restore only that exact, already-validated list.
+        model.feature_columns = feature_columns
+    elif tuple(artifact_features) != feature_columns:
+        raise ValueError("model artifact feature contract does not match manifest")
     return PromotedModel(
-        model=joblib.load(model_path),
+        model=model,
         version=f"limit-up-lgbm-{source_sha[:8]}-{research_data_sha[:8]}",
         source_sha=source_sha,
         artifact_sha=file_sha256(model_path),
@@ -253,8 +263,15 @@ def latest_feature_session(warehouse: Path) -> date:
 
 def outcome_truth(
     warehouse: Path, target_session: date, symbols: tuple[str, ...],
-) -> tuple[tuple[LimitUpShadowOutcome, ...], str]:
-    """Read complete T+1 truth for exactly the published ranking symbols."""
+) -> tuple[tuple[LimitUpShadowOutcome, ...], tuple[str, ...], str]:
+    """Read T+1 truth without turning an unknown close state into ``False``.
+
+    ``limit_list_d`` can permanently omit a touched symbol, leaving
+    ``daily_flags.is_limit_up`` unknown even though OHLC and the price limit are
+    present.  Known rows are still publishable; unresolved rows remain pending
+    and are excluded from rolling metrics until their authoritative truth
+    arrives.
+    """
     root = Path(warehouse)
     flags_path = root / "daily_flags" / f"year={target_session.year}" / "part.parquet"
     bars_path = root / "tushare_daily" / f"year={target_session.year}" / "part.parquet"
@@ -268,8 +285,9 @@ def outcome_truth(
     if truth.height != len(symbols) or set(truth["symbol"]) != set(symbols):
         raise ValueError("target truth does not completely cover the published ranking")
     required = ("touched_limit_up", "is_limit_up", "limit_up", "open", "high", "low")
-    if truth.select(pl.any_horizontal(pl.col(required).is_null()).any()).item():
-        raise ValueError("target truth contains null values")
+    unresolved_mask = pl.any_horizontal(pl.col(required).is_null())
+    unresolved = tuple(truth.filter(unresolved_mask)["symbol"].to_list())
+    resolved = truth.filter(~unresolved_mask)
     buffer = io.BytesIO()
     truth.write_ipc(buffer, compression="zstd")
     source_sha = hashlib.sha256(buffer.getvalue()).hexdigest()
@@ -282,8 +300,8 @@ def outcome_truth(
             float(row["low"]) >= float(row["limit_up"]) - 1e-6
             and float(row["high"]) <= float(row["limit_up"]) + 1e-6
         ),
-    ) for row in truth.iter_rows(named=True))
-    return outcomes, source_sha
+    ) for row in resolved.iter_rows(named=True))
+    return outcomes, unresolved, source_sha
 
 
 def latest_truth_session(warehouse: Path) -> date:

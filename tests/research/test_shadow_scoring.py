@@ -160,6 +160,28 @@ def test_load_promoted_model_preserves_full_artifact_provenance(tmp_path: Path):
     assert promoted.source_sha == "a" * 40
     assert promoted.research_data_sha == "b" * 64
     assert len(promoted.artifact_sha) == 64
+    assert promoted.model.feature_columns == FEATURE_COLUMNS
+
+
+def test_load_promoted_model_rejects_artifact_feature_mismatch(tmp_path: Path):
+    import joblib
+    import json
+
+    model = _Model()
+    model.feature_columns = ("wrong_feature",)
+    (tmp_path / "models").mkdir()
+    joblib.dump(model, tmp_path / "models/last_walk_forward_lightgbm.joblib")
+    (tmp_path / "manifest.json").write_text(json.dumps({
+        "git_sha": "a" * 40,
+        "dataset": {"sha256": "b" * 64},
+        "feature_columns": list(FEATURE_COLUMNS),
+    }), encoding="utf-8")
+    (tmp_path / "verdict.json").write_text(
+        '{"promote_to_shadow": true}', encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="artifact feature contract"):
+        load_promoted_model(tmp_path)
 
 
 def test_outcome_truth_requires_complete_rows_and_fingerprints_source(tmp_path: Path):
@@ -178,13 +200,40 @@ def test_outcome_truth_requires_complete_rows_and_fingerprints_source(tmp_path: 
         "open": [11.0, 20.0], "high": [11.0, 20.5], "low": [11.0, 19.8],
     }).write_parquet(bars_path / "part.parquet")
 
-    outcomes, source_sha = outcome_truth(
+    outcomes, unresolved, source_sha = outcome_truth(
         tmp_path, day, ("000001.SZ", "600000.SH"),
     )
 
     assert len(source_sha) == 64
+    assert unresolved == ()
     assert outcomes[0].one_price_limit is True
     assert outcomes[1].actual_touched is False
 
     with pytest.raises(ValueError, match="completely cover"):
         outcome_truth(tmp_path, day, ("000001.SZ", "600000.SH", "300001.SZ"))
+
+
+def test_outcome_truth_keeps_unknown_close_truth_unresolved(tmp_path: Path):
+    day = date(2026, 10, 12)
+    flags_path = tmp_path / "daily_flags/year=2026"
+    bars_path = tmp_path / "tushare_daily/year=2026"
+    flags_path.mkdir(parents=True)
+    bars_path.mkdir(parents=True)
+    pl.DataFrame({
+        "dt": [day, day], "symbol": ["000001.SZ", "002805.SZ"],
+        "touched_limit_up": [False, True], "is_limit_up": [False, None],
+        "limit_up": [11.0, 21.38],
+    }).write_parquet(flags_path / "part.parquet")
+    pl.DataFrame({
+        "dt": [day, day], "symbol": ["000001.SZ", "002805.SZ"],
+        "open": [10.0, 19.25], "high": [10.5, 21.38],
+        "low": [9.9, 18.83],
+    }).write_parquet(bars_path / "part.parquet")
+
+    outcomes, unresolved, source_sha = outcome_truth(
+        tmp_path, day, ("000001.SZ", "002805.SZ"),
+    )
+
+    assert [row.symbol for row in outcomes] == ["000001.SZ"]
+    assert unresolved == ("002805.SZ",)
+    assert len(source_sha) == 64
