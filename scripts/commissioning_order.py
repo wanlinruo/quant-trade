@@ -20,6 +20,7 @@ from qsys.live.commissioning import (
     COMMISSIONING_QTY,
     COMMISSIONING_SYMBOL,
     commissioning_qty_allowed,
+    new_commissioning_order_id,
     read_commissioning_lease,
 )
 
@@ -226,7 +227,7 @@ def main() -> int:
     for stream, _ in report_streams:
         transport.ensure_group(stream, group, start_id="$")
 
-    order_id = f"commission-{datetime.now():%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:6]}"
+    order_id = new_commissioning_order_id()
     command = OrderCommand(
         client_order_id=order_id, symbol=args.symbol, side=args.side,
         qty=args.qty, order_type="limit", limit_price=args.limit,

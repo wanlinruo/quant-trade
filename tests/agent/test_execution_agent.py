@@ -201,7 +201,7 @@ def test_commissioning_lease_blocks_strategy_but_accepts_the_fixed_order(tmp_pat
     transport.set_key(COMMISSIONING_KEY, CommissioningLease.arm().model_dump_json())
     transport.append(STREAMS.orders, cmd().to_payload())
     commission = OrderCommand(
-        client_order_id="commission-20261012-100000-abcdef",
+        client_order_id="c20261012-100000-abcdef",
         strategy_id="commissioning", symbol="511380.SH", side="buy", qty=100,
         order_type="limit", limit_price=12.8, created_at=datetime.now(),
     )
@@ -224,7 +224,7 @@ def test_commissioning_rejects_any_account_level_active_order(tmp_path):
     agent = ExecutionAgent(transport, adapter, STREAMS, safety=safety)
     transport.set_key(COMMISSIONING_KEY, CommissioningLease.arm().model_dump_json())
     commission = OrderCommand(
-        client_order_id="commission-20261012-100000-abcdef",
+        client_order_id="c20261012-100000-abcdef",
         strategy_id="commissioning", symbol="511380.SH", side="buy", qty=100,
         order_type="limit", limit_price=12.8, created_at=datetime.now(),
     )
@@ -250,7 +250,7 @@ def test_commissioning_rejects_forged_id_and_partial_buy_but_allows_reducing_sel
     agent = ExecutionAgent(transport, adapter, STREAMS, safety=safety)
     transport.set_key(COMMISSIONING_KEY, CommissioningLease.arm().model_dump_json())
     base = OrderCommand(
-        client_order_id="commission-20261012-100000-abcdef",
+        client_order_id="c20261012-100000-abcdef",
         strategy_id="commissioning", symbol="511380.SH", side="buy", qty=100,
         order_type="limit", limit_price=12.8, created_at=datetime.now(),
     )
