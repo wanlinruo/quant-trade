@@ -163,6 +163,7 @@ environments = ["production"]
 paths = [
   "src/qsys/agent/**",
   "src/qsys/backtest/fees.py",
+  "src/qsys/live/commissioning.py",
   "src/qsys/live/config.py",
   "src/qsys/live/heartbeat.py",
   "src/qsys/live/messages.py",
