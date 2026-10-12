@@ -368,6 +368,18 @@ def test_strategy_checks_are_separate_from_data_checks():
                if check.service not in strategy)
 
 
+def test_strategy_event_check_follows_active_deployment_mode():
+    from scripts.service_checks import checks_for_mode
+
+    def strategy_services(mode):
+        return {check.service for check in checks_for_mode(sc.CHECKS, mode)
+                if check.domain == "strategy"}
+
+    assert strategy_services("shadow") == {"shadow-core", "paper"}
+    assert strategy_services("live") == {"live-core", "paper"}
+    assert strategy_services("disabled") == {"paper"}
+
+
 def test_delisting_pool_is_recomputed_independently_from_namechange():
     history = pl.DataFrame({
         "symbol": ["300344.SZ", "600001.SH", "600002.SH"],

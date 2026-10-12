@@ -33,7 +33,6 @@ EXPECTED_SERVICES = ("premarket-limits", "daily-archive", "tushare-sync",
 
 # 节点段要报在线状态的常驻服务
 RESIDENT_UNITS = (
-    ("影子盘核心", "qsys-shadow-core"),
     ("模拟盘", "qsys-paper"),
     ("健康观测", "qsys-health-observer"),
     ("监控台", "qsys-monitor"),
@@ -53,10 +52,11 @@ def _rows(path: Path, sql: str, args: tuple) -> list[dict]:
         return []
 
 
-def strategy_runs(shadow: Path, workbench: Path, day: date) -> list[dict]:
-    out = [
-        {**r, "engine": "影子盘", "fills": 0}
-        for r in _rows(shadow,
+def strategy_runs(core_state: Path | None, workbench: Path, day: date,
+                  *, core_name: str = "影子盘") -> list[dict]:
+    out = [] if core_state is None else [
+        {**r, "engine": core_name, "fills": 0}
+        for r in _rows(core_state,
                        "SELECT phase,summary,orders,rejects,error FROM"
                        " live_strategy_runs WHERE session=?", (day.isoformat(),))
     ]
@@ -143,7 +143,8 @@ def clean_streak(path: Path, table: str, day: date) -> int:
     return streak
 
 
-def readiness(config_path: str, shadow: Path, workbench: Path, day: date) -> dict:
+def readiness(config_path: str, core_state: Path | None, workbench: Path, day: date,
+              *, core_name: str = "影子盘") -> dict:
     """离实盘还差什么。全部现查，不读任何手填的计划表。"""
     from qsys.live.config import load_deploy_config
 
@@ -156,10 +157,13 @@ def readiness(config_path: str, shadow: Path, workbench: Path, day: date) -> dic
         log.warning("digest.safety_failed", error=str(exc))
         out["mode"] = "问不出来"
     out["kill_switch"] = _kill_reason(config_path)
-    out["clean_streak"] = {
-        "影子盘": clean_streak(shadow, "live_strategy_runs", day),
-        "模拟盘": clean_streak(workbench, "paper_strategy_runs", day),
-    }
+    out["clean_streak"] = {"模拟盘": clean_streak(
+        workbench, "paper_strategy_runs", day,
+    )}
+    if core_state is not None:
+        out["clean_streak"][core_name] = clean_streak(
+            core_state, "live_strategy_runs", day,
+        )
     out["agent_beat"] = _agent_beat(config_path)
     return out
 
@@ -236,7 +240,8 @@ def quality(warehouse: Path | None, day: date) -> dict:
         return {}
 
 
-def infrastructure(storage_base: Path, tls_site: str | None, tls_port: int) -> dict:
+def infrastructure(storage_base: Path, tls_site: str | None, tls_port: int,
+                   *, mode: str = "shadow") -> dict:
     """节点还撑不撑得住。任何一项取不到都记 None，不记「看起来没事」。"""
     from qsys.ops.infra import failed_units, memory, systemctl_show
     from qsys.ops.storage import GIB, disk_status
@@ -258,7 +263,11 @@ def infrastructure(storage_base: Path, tls_site: str | None, tls_port: int) -> d
     reading["failed_units"] = failed_units()
     reading["cert_days"] = _cert_days(tls_site, tls_port)
     units = []
-    for name, unit in RESIDENT_UNITS:
+    core = {
+        "shadow": ("影子盘核心", "qsys-shadow-core"),
+        "live": ("实盘核心", "qsys-live-core"),
+    }.get(mode)
+    for name, unit in ((core,) if core else ()) + RESIDENT_UNITS:
         props = systemctl_show(unit)
         units.append({"name": name,
                       "state": props.get("ActiveState", "问不出来"),
@@ -297,6 +306,8 @@ def main() -> int:
     parser.add_argument("--service-runs", type=Path, default=Path("var/service-runs"))
     parser.add_argument("--shadow-state", type=Path,
                         default=Path("var/shadow-state.sqlite3"))
+    parser.add_argument("--live-state", type=Path,
+                        default=Path("var/live-state.sqlite3"))
     parser.add_argument("--workbench", type=Path,
                         default=Path("var/workbench/workbench.sqlite3"))
     parser.add_argument("--alert-ledger", type=Path, default=None,
@@ -324,18 +335,27 @@ def main() -> int:
 
 
 def _run(args, day, trading, run) -> int:
+    from qsys.live.config import load_deploy_config
+
+    mode = load_deploy_config(args.config).safety.mode
+    core_state = {
+        "shadow": args.shadow_state, "live": args.live_state,
+    }.get(mode)
+    core_name = "实盘" if mode == "live" else "影子盘"
     checks, missing = checks_and_missing(args.service_runs, day, trading)
     digest = build_digest(
         day,
         trading=trading,
-        strategy_runs=strategy_runs(args.shadow_state, args.workbench, day) if trading else [],
+        strategy_runs=(strategy_runs(core_state, args.workbench, day, core_name=core_name)
+                       if trading else []),
         accounts=accounts(args.workbench, day) if trading else [],
         checks=checks,
         missing_services=missing,
         quality=quality(args.warehouse, day),
-        infra=infrastructure(args.storage_base, args.tls_site, args.tls_port),
+        infra=infrastructure(args.storage_base, args.tls_site, args.tls_port, mode=mode),
         deliveries=alert_ledger(args.alert_ledger).read(day),
-        readiness=readiness(args.config, args.shadow_state, args.workbench, day),
+        readiness=readiness(args.config, core_state, args.workbench, day,
+                            core_name=core_name),
     )
 
     with run.step("汇总当日情况", interface="只读状态库与运行记录") as step:

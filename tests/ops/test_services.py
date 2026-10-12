@@ -7,6 +7,7 @@ import pytest
 
 from qsys.ops import services
 from qsys.ops.services import SERVICES, ServiceRun, effective_status, load_runs, record_step
+from qsys.ops.services import active_core_service
 
 
 def _only_run(root):
@@ -113,6 +114,12 @@ def test_unwritable_root_never_breaks_the_job(tmp_path):
 def test_unknown_service_is_rejected(tmp_path):
     with pytest.raises(ValueError):
         ServiceRun(tmp_path, "nope")
+
+
+def test_active_core_service_covers_all_deployment_modes():
+    assert active_core_service("shadow") == "shadow-core"
+    assert active_core_service("live") == "live-core"
+    assert active_core_service("disabled") is None
 
 
 def test_record_step_without_run_is_a_no_op():

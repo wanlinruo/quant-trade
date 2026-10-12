@@ -59,6 +59,7 @@ def build_app(
 
     transport = None
     strategy_cfg = None
+    strategy_mode = "shadow"
     market_snapshot_key = "state:market_overview"
     market_schedule_key = "state:market_schedule"
     limits_prefix = "state:price_limits"
@@ -69,6 +70,7 @@ def build_app(
         deploy = load_deploy_config(config_path)
         transport = RedisTransport.from_config(deploy)
         strategy_cfg = deploy.strategy
+        strategy_mode = deploy.safety.mode
         market_snapshot_key = deploy.streams.market_snapshot
         market_schedule_key = deploy.streams.market_schedule
         limits_prefix = deploy.streams.price_limits
@@ -82,11 +84,14 @@ def build_app(
     paper = PaperStore(workspace / "workbench.sqlite3")
     queue = BacktestQueue(workbench, warehouse_root, runs_root,
                           timeout_seconds=config.backtest_timeout_seconds)
+    selected_state = state_path or Path("var/shadow-state.sqlite3")
+    if strategy_mode == "live" and selected_state.name == "shadow-state.sqlite3":
+        selected_state = selected_state.with_name("live-state.sqlite3")
     monitor = MonitorService(
         journal,
         config=config,
         transport=transport,
-        store=LiveStore(state_path or Path("var/shadow-state.sqlite3")),
+        store=LiveStore(selected_state),
     )
     trading_calendar = _daily_trading_calendar(tushare_config_path or config_path)
     return create_app(
@@ -118,6 +123,9 @@ def build_app(
             health_store=HealthStore(
                 health_state_path or Path("var/service-health.sqlite3")
             ),
+            core_service_id={
+                "shadow": "shadow-core", "live": "live-core",
+            }.get(strategy_mode),
         ),
         assets=DataAssetService(warehouse),
         limit_up_shadow=LimitUpShadowReader(

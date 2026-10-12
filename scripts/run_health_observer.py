@@ -29,7 +29,7 @@ from qsys.ops.health import (
 )
 from qsys.ops.alerts import AlertBus, LogAlertSink, Severity, WebhookAlertSink, ledger
 from qsys.ops.infra_watch import EdgeTracker, survey
-from qsys.ops.services import SERVICE_BY_ID
+from qsys.ops.services import CORE_SERVICE_IDS, SERVICE_BY_ID, active_core_service
 from qsys.ops.trading_chain import ChainAssessment, assess_paper, assess_shadow
 from qsys.web.service_views import ServiceConsole, windows_task_show
 
@@ -264,13 +264,15 @@ class BusinessAlertTracker:
         self.states: dict[str, str] = {}
 
     def update(self, item: HealthObservation) -> None:
-        if item.service_id not in ("paper", "shadow-core"):
+        if item.service_id not in ("paper", *CORE_SERVICE_IDS):
             return
         previous = self.states.get(item.service_id)
         current = item.business_state
         self.states[item.service_id] = current
         detail = (item.details or {}).get("trading_chain", {}).get("detail", "")
-        name = "模拟交易" if item.service_id == "paper" else "影子盘"
+        name = {
+            "paper": "模拟交易", "shadow-core": "影子盘", "live-core": "实盘",
+        }[item.service_id]
         if current == DOWN and previous != DOWN:
             self.alerts.critical(f"{name}交易链路失败", detail)
         elif current == DEGRADED and previous not in (DEGRADED, DOWN):
@@ -381,6 +383,7 @@ def main() -> int:
     parser.add_argument("--service-runs", default="var/service-runs")
     parser.add_argument("--state", default="var/service-health.sqlite3")
     parser.add_argument("--shadow-state", default="var/shadow-state.sqlite3")
+    parser.add_argument("--live-state", default="var/live-state.sqlite3")
     parser.add_argument("--workbench", default="var/workbench/workbench.sqlite3")
     parser.add_argument("--active-interval", type=float, default=5.0)
     parser.add_argument("--idle-interval", type=float, default=30.0)
@@ -424,6 +427,7 @@ def main() -> int:
     )
     store = HealthStore(Path(args.state))
     log.info("health_observer.started", state=args.state)
+    active_core = active_core_service(deploy.safety.mode)
     while True:
         started = time.monotonic()
         now = datetime.now()
@@ -434,13 +438,29 @@ def main() -> int:
         phase = trading_phase(now, sessions)
         try:
             for row in console.process_status():
+                service_id = row["spec"].id
+                if service_id in CORE_SERVICE_IDS and service_id != active_core:
+                    # Overwrite any observation left by the previous mode.  An
+                    # intentionally stopped core is N/A, never DOWN.
+                    store.record(HealthObservation(
+                        service_id=service_id, observed_at_utc=now, phase=phase,
+                        expected_interval_s=30, warn_after_s=60, down_after_s=90,
+                        state=UNKNOWN, process_state=UNKNOWN, business_state=UNKNOWN,
+                        reason_code="inactive_by_mode", source="deploy_config",
+                        details={"mode": deploy.safety.mode},
+                    ))
+                    continue
                 business = None
                 if sessions is not None and now.date() in sessions:
-                    if row["spec"].id == "paper":
+                    if service_id == "paper":
                         business = assess_paper(Path(args.workbench), now)
-                    elif row["spec"].id == "shadow-core":
+                    elif service_id in CORE_SERVICE_IDS:
+                        state_path = (
+                            Path(args.live_state) if service_id == "live-core"
+                            else Path(args.shadow_state)
+                        )
                         business = assess_shadow(
-                            Path(args.shadow_state), now,
+                            state_path, now,
                             auction_at=shadow_auction_at(
                                 args.config, Path(args.workbench)
                             ),
