@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -60,7 +60,11 @@ def _client(warehouse, reader: LimitUpShadowReader) -> TestClient:
 
 def test_reader_and_page_expose_ready_snapshot(warehouse, tmp_path: Path):
     path = tmp_path / "limit-up-shadow.sqlite3"
-    snapshot = LimitUpShadowSnapshot.model_validate(_payload())
+    today = date.today()
+    snapshot = LimitUpShadowSnapshot.model_validate(_payload(
+        prediction_date=(today - timedelta(days=1)).isoformat(),
+        target_session=today.isoformat(),
+    ))
     LimitUpShadowPublisher(path).publish(snapshot)
     client = _client(warehouse, LimitUpShadowReader(path))
 
