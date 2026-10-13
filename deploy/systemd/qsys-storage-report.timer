@@ -1,0 +1,11 @@
+[Unit]
+Description=Capture qsys storage capacity trend every day
+
+[Timer]
+# 含休市日每天采集；避开盘中与 19:00 数据补跑，20:00 服务质检可读取结果。
+OnCalendar=*-*-* 18:20 Asia/Shanghai
+Persistent=true
+AccuracySec=1m
+
+[Install]
+WantedBy=timers.target
