@@ -152,21 +152,21 @@ Redis 读不到时按**停机**处理：宁可误停，不可停不下来。
 `scripts/commissioning_lease.py` 提供一个最多 10 分钟、Redis 可审计的例外窗口：
 
 - 只允许交易日 `09:35–11:15` 或 `13:05–14:40` 武装；
-- 武装前强制检查账户空仓、市场/账户/agent 快照新鲜、core 已停、kill 未生效；
+- 武装前强制检查账户空仓、市场/账户/agent 快照新鲜、core 健康空闲、kill 未生效；
 - 窗口内 agent 拒绝所有普通策略订单；买入只接受 `511380.SH × 100` 限价单，
   卖出只接受不超过 100 份且与账户实际可用残仓精确相等的平仓单；
 - 窗口过期而 core 仍无心跳时，agent 恢复原有失败关闭：撤单并落本地停机闸；
 - 买卖完成并确认空仓后，必须先启动 live core（或把双端退回 shadow），再解除窗口。
 
-### 核心必须先停
+### 必须先武装租约，再停核心
 
 `LiveRuntime` 启动时拿本地推演的持仓与券商快照对账，一笔它不知道的手工持仓会直接
 判不一致并触发停机。所以顺序是：
 
-1. `systemctl stop qsys-live-core`（代理与行情网关保持运行）
-2. 在 agent 仍为 shadow 时武装 10 分钟验证窗口，再把 Linux / Windows 三道写保护打开
-3. 确认 agent 心跳声明 `commissioning_lease_active=true`，且
-   `live_preflight --require-live` 全过
+1. 确认 core 心跳健康、`activity=idle`，账户空仓且无活动委托
+2. 武装 10 分钟验证窗口，确认 agent 心跳声明 `commissioning_lease_active=true`
+3. `systemctl stop qsys-live-core`（代理与行情网关保持运行）；等 core 心跳超过 10 秒，
+   再确认 agent 本地闸未生效且 `live_preflight --require-live` 全过
 4. 读取 `511380.SH` 实时 QMT 买一/卖一；以实时卖一作为买入限价执行 100 份
 5. 确认完整成交、券商持仓 100 份且 `available_qty=100`；若只部分成交，先确认撤单终态，
    再按账户快照中的实际可用残仓数量走恢复卖出，禁止补买或重复买入

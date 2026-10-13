@@ -24,9 +24,10 @@ from qsys.live.commissioning import (
     read_commissioning_lease,
 )
 
-CORE_BEAT_MAX_AGE = 30.0
+CORE_BEAT_MAX_AGE = 10.0
 AGENT_BEAT_MAX_AGE = 10.0
 SNAPSHOT_MAX_AGE = 5.0
+MARKET_SCHEDULE_MAX_AGE = 45.0
 POLL_SECONDS = 0.5
 CANCEL_WAIT_SECONDS = 15.0
 
@@ -102,8 +103,10 @@ def _preflight(config, transport, args, *, now: datetime | None = None) -> str |
 
     raw_schedule = transport.get_key(config.streams.market_schedule)
     schedule = MarketSchedule.model_validate_json(raw_schedule) if raw_schedule else None
-    if schedule is None or not _fresh(schedule.checked_at, now, SNAPSHOT_MAX_AGE):
-        return "市场时段快照缺失或超过 5 秒"
+    if schedule is None or not _fresh(
+        schedule.checked_at, now, MARKET_SCHEDULE_MAX_AGE
+    ):
+        return f"市场时段快照缺失或超过 {MARKET_SCHEDULE_MAX_AGE:.0f} 秒"
     if not schedule.is_trading_day or not schedule.is_open:
         return "当前不是交易时段"
 

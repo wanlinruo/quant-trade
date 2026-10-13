@@ -40,7 +40,8 @@ class Args:
 
 
 def _transport(*, core_age=None, agent_age=1.0, killed=False, lease=True,
-               positions=None, schedule_open=True, active_order_count=0):
+               positions=None, schedule_open=True, schedule_age=1.0,
+               active_order_count=0):
     t = MemoryTransport()
     s = StreamConfig()
     if lease:
@@ -59,7 +60,7 @@ def _transport(*, core_age=None, agent_age=1.0, killed=False, lease=True,
             source="core", at=NOW - timedelta(seconds=core_age),
         ).model_dump_json())
     t.set_key(s.market_schedule, MarketSchedule(
-        checked_at=NOW - timedelta(seconds=1), is_trading_day=True,
+        checked_at=NOW - timedelta(seconds=schedule_age), is_trading_day=True,
         is_open=schedule_open,
     ).model_dump_json())
     t.set_key(s.account, AccountSnapshot(
@@ -200,6 +201,15 @@ def test_kill_switch_and_closed_schedule_block_the_order():
     )
     assert "交易时段" in cli._preflight(
         FakeConfig(), _transport(schedule_open=False), Args(), now=NOW,
+    )
+
+
+def test_schedule_age_matches_the_30_second_publisher():
+    assert cli._preflight(
+        FakeConfig(), _transport(schedule_age=44), Args(), now=NOW,
+    ) is None
+    assert "45 秒" in cli._preflight(
+        FakeConfig(), _transport(schedule_age=46), Args(), now=NOW,
     )
 
 
