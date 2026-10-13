@@ -32,6 +32,7 @@ from qsys.data.catalog.checks import CHECKS as CATALOG_CHECKS
 from qsys.data.catalog.checks import Scope
 from qsys.data.pipeline.auction import missing_auction_days
 from qsys.data.pipeline.candidates import candidate_stock_days, drop_suspended
+from qsys.data.quality.minute_rules import SOURCE_VOLUME_TOLERANCE
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
 from qsys.markets.ashare import board_of
@@ -627,6 +628,10 @@ def _minutes_volume(ctx: CheckContext) -> CheckResult:
         (pl.col("volume") - pl.col("daily_volume")).abs()
         > VOLUME_TOLERANCE_LOTS
     )
+    relative_drift = (
+        (pl.col("volume") - pl.col("daily_volume")).abs()
+        / pl.col("daily_volume")
+    )
     # 北交所盘后固定价格交易被 QMT 合并进 15:00 bar，而 Tushare 日线不计；
     # 日线量落在「扣掉/包含整根 15:00 bar」之间时属于已知口径，不是漏采。
     bj_explained = (
@@ -636,15 +641,44 @@ def _minutes_volume(ctx: CheckContext) -> CheckResult:
         ) * (1 - BJ_VOLUME_TOLERANCE))
         & (pl.col("daily_volume") <= pl.col("volume") * (1 + BJ_VOLUME_TOLERANCE))
     )
-    bad = joined.filter(ordinary_bad & ~bj_explained)
+    source_drift = joined.filter(
+        ordinary_bad & ~bj_explained
+        & (relative_drift <= SOURCE_VOLUME_TOLERANCE)
+    )
+    bad = joined.filter(
+        ordinary_bad & ~bj_explained
+        & (relative_drift > SOURCE_VOLUME_TOLERANCE)
+    )
     if no_daily.height:
         return CheckResult(BAD, "全天成交量与日线一致", f"{no_daily.height} 只没有日线可对",
                            _samples(set(no_daily["symbol"].to_list())), rows=per.height)
-    return CheckResult(BAD if bad.height else OK, f"差额 ≤ {VOLUME_TOLERANCE_LOTS:g} 手",
-                       f"{bad.height} 只不一致",
-                       _samples({f"{s}(分钟 {v} / 日线 {d:g})"
-                                 for s, v, d in bad.select("symbol", "volume", "daily_volume").rows()}),
-                       rows=per.height)
+    if bad.height:
+        return CheckResult(
+            BAD,
+            f"差额 ≤ {VOLUME_TOLERANCE_LOTS:g} 手；源间差异不得超过 "
+            f"{SOURCE_VOLUME_TOLERANCE:.0%}",
+            f"{bad.height} 只超过源间容差",
+            _samples({f"{s}(分钟 {v} / 日线 {d:g})"
+                      for s, v, d in bad.select(
+                          "symbol", "volume", "daily_volume",
+                      ).rows()}),
+            rows=per.height,
+        )
+    if source_drift.height:
+        return CheckResult(
+            WARN,
+            f"差额 ≤ {VOLUME_TOLERANCE_LOTS:g} 手；源间差异 ≤ "
+            f"{SOURCE_VOLUME_TOLERANCE:.0%} 仅告警",
+            f"{source_drift.height} 只存在小幅源间差异",
+            _samples({f"{s}(分钟 {v} / 日线 {d:g})"
+                      for s, v, d in source_drift.select(
+                          "symbol", "volume", "daily_volume",
+                      ).rows()}),
+            rows=per.height,
+        )
+    return CheckResult(
+        OK, f"差额 ≤ {VOLUME_TOLERANCE_LOTS:g} 手", "0 只不一致", rows=per.height,
+    )
 
 
 # ---- 节点存储 ----

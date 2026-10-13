@@ -30,8 +30,10 @@ from qsys.data.storage import Warehouse
 
 log = structlog.get_logger(__name__)
 
-# 成交量允许 1% 偏差：两源对停牌集合竞价、盘后固定价的归属口径可能不同
-_VOLUME_TOLERANCE = 0.01
+# 成交量允许 1% 偏差：QMT 分钟聚合可能少于其同源日线/逐笔累计值，且两源对
+# 停牌集合竞价、盘后固定价的归属口径也可能不同。服务质检复用这一公开常量，
+# 避免归档质量门禁和晚间质检对同一批数据给出相反的阻断结论。
+SOURCE_VOLUME_TOLERANCE = 0.01
 _PRICE_TOLERANCE = 0.005  # 半分
 
 # 09:30 是开盘集合竞价那一根，属于正常数据，不能判成时段外。
@@ -63,8 +65,8 @@ def _bj_after_hours_explains(
     if not symbol.endswith(".BJ"):
         return False
     closing = group.filter(pl.col("dt").dt.time() == _AFTERNOON[1])["volume"].sum()
-    lower = (minute_volume - closing) * (1 - _VOLUME_TOLERANCE)
-    upper = minute_volume * (1 + _VOLUME_TOLERANCE)
+    lower = (minute_volume - closing) * (1 - SOURCE_VOLUME_TOLERANCE)
+    upper = minute_volume * (1 + SOURCE_VOLUME_TOLERANCE)
     return lower <= daily_volume <= upper
 
 
@@ -129,7 +131,7 @@ def check_minute_bars(warehouse: Warehouse, day: date) -> list[MinuteIssue]:
         minute_volume = int(group["volume"].sum())
         if reference["volume"] > 0:
             drift = abs(minute_volume - reference["volume"]) / reference["volume"]
-            if drift > _VOLUME_TOLERANCE and not _bj_after_hours_explains(
+            if drift > SOURCE_VOLUME_TOLERANCE and not _bj_after_hours_explains(
                 symbol, group, minute_volume, reference["volume"]
             ):
                 issues.append(

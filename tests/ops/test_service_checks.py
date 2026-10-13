@@ -322,6 +322,31 @@ def test_bj_volume_outside_closing_bar_band_still_fails():
     assert sc._minutes_volume(ctx(query)).status == sc.BAD
 
 
+def test_small_qmt_minute_source_drift_warns_without_hiding_the_evidence():
+    query = FakeQuery(
+        daily=daily(DAY, ["000001.SZ"], volume=100_000.0),
+        minutes=minute_series("000001.SZ", [99_500]),
+    )
+
+    got = sc._minutes_volume(ctx(query))
+
+    assert got.status == sc.WARN
+    assert "小幅源间差异" in got.actual
+    assert "000001.SZ(分钟 99500 / 日线 100000)" in got.detail
+
+
+def test_qmt_minute_source_drift_above_one_percent_still_fails():
+    query = FakeQuery(
+        daily=daily(DAY, ["000001.SZ"], volume=100_000.0),
+        minutes=minute_series("000001.SZ", [98_000]),
+    )
+
+    got = sc._minutes_volume(ctx(query))
+
+    assert got.status == sc.BAD
+    assert "超过源间容差" in got.actual
+
+
 def test_archive_checks_pass_without_candidates(monkeypatch):
     monkeypatch.setattr(sc, "candidate_stock_days",
                         lambda *a, **k: pl.DataFrame(schema={"symbol": pl.Utf8, "dt": pl.Date}))
