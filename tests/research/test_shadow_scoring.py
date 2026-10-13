@@ -237,3 +237,64 @@ def test_outcome_truth_keeps_unknown_close_truth_unresolved(tmp_path: Path):
     assert [row.symbol for row in outcomes] == ["000001.SZ"]
     assert unresolved == ("002805.SZ",)
     assert len(source_sha) == 64
+
+
+def test_outcome_truth_keeps_authoritatively_suspended_symbol_unresolved(
+    tmp_path: Path,
+):
+    day = date(2026, 10, 13)
+    flags_path = tmp_path / "daily_flags/year=2026"
+    bars_path = tmp_path / "tushare_daily/year=2026"
+    suspend_path = tmp_path / "suspend_daily/year=2026"
+    flags_path.mkdir(parents=True)
+    bars_path.mkdir(parents=True)
+    suspend_path.mkdir(parents=True)
+    pl.DataFrame({
+        "dt": [day], "symbol": ["000001.SZ"],
+        "touched_limit_up": [False], "is_limit_up": [False],
+        "limit_up": [11.0],
+    }).write_parquet(flags_path / "part.parquet")
+    pl.DataFrame({
+        "dt": [day], "symbol": ["000001.SZ"],
+        "open": [10.0], "high": [10.5], "low": [9.9],
+    }).write_parquet(bars_path / "part.parquet")
+    pl.DataFrame({
+        "symbol": ["600825.SH"], "dt": [day], "suspend_type": ["S"],
+        "suspend_timing": ["全天停牌"],
+    }).write_parquet(suspend_path / "part.parquet")
+
+    outcomes, unresolved, source_sha = outcome_truth(
+        tmp_path, day, ("000001.SZ", "600825.SH"),
+    )
+
+    assert [row.symbol for row in outcomes] == ["000001.SZ"]
+    assert unresolved == ("600825.SH",)
+    assert len(source_sha) == 64
+
+
+def test_outcome_truth_rejects_partial_truth_even_with_suspension(tmp_path: Path):
+    day = date(2026, 10, 13)
+    flags_path = tmp_path / "daily_flags/year=2026"
+    bars_path = tmp_path / "tushare_daily/year=2026"
+    suspend_path = tmp_path / "suspend_daily/year=2026"
+    flags_path.mkdir(parents=True)
+    bars_path.mkdir(parents=True)
+    suspend_path.mkdir(parents=True)
+    pl.DataFrame({
+        "dt": [day], "symbol": ["600825.SH"],
+        "touched_limit_up": [False], "is_limit_up": [False],
+        "limit_up": [11.0],
+    }).write_parquet(flags_path / "part.parquet")
+    pl.DataFrame({
+        "dt": [], "symbol": [], "open": [], "high": [], "low": [],
+    }, schema={
+        "dt": pl.Date, "symbol": pl.String, "open": pl.Float64,
+        "high": pl.Float64, "low": pl.Float64,
+    }).write_parquet(bars_path / "part.parquet")
+    pl.DataFrame({
+        "symbol": ["600825.SH"], "dt": [day], "suspend_type": ["S"],
+        "suspend_timing": ["全天停牌"],
+    }).write_parquet(suspend_path / "part.parquet")
+
+    with pytest.raises(ValueError, match="completely cover"):
+        outcome_truth(tmp_path, day, ("600825.SH",))
