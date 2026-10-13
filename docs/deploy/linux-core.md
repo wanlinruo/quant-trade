@@ -544,11 +544,11 @@ GitHub Deployment、Actions Summary 和节点 `record.json` 为准。
 
 ## 待办
 
-- [ ] **Web 应用层登录（TOTP）替换 Nginx Basic Auth**，并按用户做登录失败限流
+- [ ] **Web 应用层登录（TOTP）替换 Nginx Basic Auth**，并按用户做登录失败限流（[#123](https://github.com/wanlinruo/quant-trade/issues/123)）
 - [x] 证书到期监控与续期演练（8443 复用 `wanlinruo.cn` 证书）——2026-09-27 完成：
       续期改回 HTTP-01 全自动、补上 Nginx 重载钩子、加质检项「站点证书有效期」
-- [ ] 在**保留维护者密码登录**的前提下完成 #122 SSH 加固：禁 root、强化密码与失败限制、
+- [ ] 在**保留维护者密码登录**的前提下完成 [#122](https://github.com/wanlinruo/quant-trade/issues/122) SSH 加固：禁 root、强化密码与失败限制、
       审计异常登录；不得设置 `PasswordAuthentication no`
-- [ ] 轮换部署期间在对话中出现过的账号密码
-- [ ] 内存扩容或为全 A 回测设计分批方案
-- [ ] 手机访问方案（自建 WireGuard，需开 UDP 端口）
+- [ ] 轮换部署期间在对话中出现过的账号密码（由 #122 统一跟踪）
+- [ ] 内存扩容或为全 A 回测设计分批方案（[#138](https://github.com/wanlinruo/quant-trade/issues/138)）
+- [ ] 手机访问方案（自建 WireGuard，需开 UDP 端口；[#139](https://github.com/wanlinruo/quant-trade/issues/139)）

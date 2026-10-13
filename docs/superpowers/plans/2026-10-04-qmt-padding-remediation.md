@@ -1,5 +1,10 @@
 # QMT 填充行治理 实施计划
 
+> **执行状态（2026-10-06）：已完成。** 本页以下复选框保留为实施时的原始步骤，
+> 不再代表当前进度。PR #130 已完成源头修复、质检收敛、生产 117 个日分区备份与
+> 重写，删除 1,208 行，并通过全量复验；最终数字与证据见
+> `docs/reference/deferred-corrections.md` D-23 和 Issue #114。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 让 QMT 分钟线管线不再产生昨收价填充行，清掉生产 `minute_bars` 里已有的 20,838 行，并把质检判据换成能发现这个缺陷的那一条。
@@ -740,4 +745,3 @@ Spec 第 6 节还列了一条**没有对应任务**的事，这里写明为什�
 513100 连续 7 个交易日首笔都精确在 10:31，对市场行为而言整齐得可疑，但回答它需要
 盘口／逐笔数据，而我们对这些标的只有分钟线。它也不影响本计划——无论原因是什么，
 那 180 根都是正确数据，剔除规则对它的处理都一样。要查得先有数据，另开任务。
-

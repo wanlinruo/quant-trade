@@ -3,7 +3,8 @@
 ## `production-data-management-audit-20260921.md`
 
 2026-09-21 对生产 warehouse、质量证据、定时任务、磁盘和备份状态的只读审计，
-以及冻结分钟源、canonical 覆盖和灾备整改的持续跟踪记录。
+以及冻结分钟源、canonical 覆盖和整改流水。原审计整改已收口；未完成的灾备、容量、
+安全与数据资产治理分别转 GitHub #127/#239/#126/#122 持续跟踪。
 
 ## `auction-order-timing-study.md`
 
