@@ -264,15 +264,20 @@ def latest_feature_session(warehouse: Path) -> date:
 def outcome_truth(
     warehouse: Path, target_session: date, symbols: tuple[str, ...],
 ) -> tuple[tuple[LimitUpShadowOutcome, ...], tuple[str, ...], str]:
-    """Read T+1 truth without turning an unknown close state into ``False``.
+    """Read T+1 truth without turning an unknown or suspended state into ``False``.
 
     ``limit_list_d`` can permanently omit a touched symbol, leaving
     ``daily_flags.is_limit_up`` unknown even though OHLC and the price limit are
     present.  Known rows are still publishable; unresolved rows remain pending
     and are excluded from rolling metrics until their authoritative truth
-    arrives.
+    arrives.  A symbol absent from both daily truth sources is also unresolved
+    when ``suspend_daily`` authoritatively records a suspension for the target
+    session.  Any other missing or partially missing row remains a hard error.
     """
     root = Path(warehouse)
+    expected = set(symbols)
+    if len(expected) != len(symbols):
+        raise ValueError("published ranking contains duplicate symbols")
     flags_path = root / "daily_flags" / f"year={target_session.year}" / "part.parquet"
     bars_path = root / "tushare_daily" / f"year={target_session.year}" / "part.parquet"
     flags = pl.read_parquet(flags_path).filter(
@@ -281,16 +286,53 @@ def outcome_truth(
     bars = pl.read_parquet(bars_path).filter(
         (pl.col("dt") == target_session) & pl.col("symbol").is_in(symbols)
     ).select("symbol", "open", "high", "low")
+    flag_symbols = set(flags["symbol"].to_list())
+    bar_symbols = set(bars["symbol"].to_list())
+    missing_flags = expected - flag_symbols
+    missing_bars = expected - bar_symbols
+    if missing_flags != missing_bars:
+        raise ValueError("target truth does not completely cover the published ranking")
+
+    missing = missing_flags
+    suspensions = None
+    if missing:
+        suspend_path = (
+            root / "suspend_daily" / f"year={target_session.year}" / "part.parquet"
+        )
+        if not suspend_path.exists():
+            raise ValueError("target truth does not completely cover the published ranking")
+        suspensions = (
+            pl.read_parquet(suspend_path)
+            .filter(
+                (pl.col("dt") == target_session)
+                & pl.col("symbol").is_in(missing)
+                & (pl.col("suspend_type") == "S")
+            )
+            .select("symbol", "dt", "suspend_type", "suspend_timing")
+            .unique()
+            .sort(["symbol", "suspend_type", "suspend_timing"], nulls_last=False)
+        )
+        if set(suspensions["symbol"].to_list()) != missing:
+            raise ValueError("target truth does not completely cover the published ranking")
+
     truth = flags.join(bars, on="symbol", how="inner").sort("symbol")
-    if truth.height != len(symbols) or set(truth["symbol"]) != set(symbols):
+    if truth.height != len(expected - missing) or set(truth["symbol"]) != expected - missing:
         raise ValueError("target truth does not completely cover the published ranking")
     required = ("touched_limit_up", "is_limit_up", "limit_up", "open", "high", "low")
     unresolved_mask = pl.any_horizontal(pl.col(required).is_null())
-    unresolved = tuple(truth.filter(unresolved_mask)["symbol"].to_list())
+    unresolved = tuple(sorted(
+        set(truth.filter(unresolved_mask)["symbol"].to_list()) | missing
+    ))
     resolved = truth.filter(~unresolved_mask)
     buffer = io.BytesIO()
     truth.write_ipc(buffer, compression="zstd")
-    source_sha = hashlib.sha256(buffer.getvalue()).hexdigest()
+    digest = hashlib.sha256(buffer.getvalue())
+    if suspensions is not None:
+        suspension_buffer = io.BytesIO()
+        suspensions.write_ipc(suspension_buffer, compression="zstd")
+        digest.update(b"\0suspend_daily\0")
+        digest.update(suspension_buffer.getvalue())
+    source_sha = digest.hexdigest()
     outcomes = tuple(LimitUpShadowOutcome(
         symbol=row["symbol"],
         actual_touched=bool(row["touched_limit_up"]),
