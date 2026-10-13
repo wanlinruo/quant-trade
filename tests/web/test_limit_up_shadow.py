@@ -1,7 +1,9 @@
+import sqlite3
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from structlog.testing import capture_logs
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
@@ -84,12 +86,64 @@ def test_missing_store_fails_closed_without_creating_a_file(warehouse, tmp_path:
     path = tmp_path / "missing.sqlite3"
     client = _client(warehouse, LimitUpShadowReader(path))
 
-    payload = client.get("/api/market/limit-up-shadow").json()
+    with capture_logs() as logs:
+        payload = client.get("/api/market/limit-up-shadow").json()
 
     assert payload["state"] == "unavailable"
     assert payload["available"] is False
     assert not path.exists()
+    assert logs[-1]["event"] == "limit_up_shadow.read_failed"
+    assert logs[-1]["error_type"] == "OperationalError"
     assert "不会用旧数据" in client.get("/market/limit-up-shadow").text
+
+
+def test_published_store_needs_no_wal_sidecars_for_read_only_consumer(tmp_path: Path):
+    directory = tmp_path / "strict-read-only"
+    directory.mkdir()
+    path = directory / "shadow.sqlite3"
+    LimitUpShadowPublisher(path).publish(
+        LimitUpShadowSnapshot.model_validate(_payload())
+    )
+
+    with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as con:
+        assert con.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
+    assert not Path(f"{path}-wal").exists()
+    assert not Path(f"{path}-shm").exists()
+
+    directory.chmod(0o555)
+    try:
+        view = LimitUpShadowReader(path).view(today=date(2026, 10, 10))
+    finally:
+        directory.chmod(0o755)
+
+    assert view.state == "ready"
+    assert len(view.snapshot.entries) == 2
+
+
+def test_outcome_write_migrates_legacy_wal_store(tmp_path: Path):
+    path = tmp_path / "legacy-wal.sqlite3"
+    publisher = LimitUpShadowPublisher(path)
+    publisher.publish(LimitUpShadowSnapshot.model_validate(_payload()))
+    with sqlite3.connect(path) as con:
+        assert con.execute("PRAGMA journal_mode=WAL").fetchone()[0] == "wal"
+
+    publisher.record_outcomes(
+        date(2026, 10, 9),
+        (LimitUpShadowOutcome(
+            symbol="000001.SZ",
+            actual_touched=True,
+            actual_closed_limit=True,
+            opened_at_limit=False,
+            one_price_limit=False,
+        ),),
+        observed_at=datetime.fromisoformat("2026-10-12T16:00:00+08:00"),
+        source_data_sha="d" * 64,
+    )
+
+    with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as con:
+        assert con.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
+    view = LimitUpShadowReader(path).view(date(2026, 10, 9))
+    assert view.snapshot.entries[0].actual_closed_limit is True
 
 
 def test_latest_past_target_is_stale_but_explicit_history_is_inspectable(tmp_path: Path):

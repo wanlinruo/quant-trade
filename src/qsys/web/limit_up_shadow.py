@@ -12,7 +12,10 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Literal
 
+import structlog
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+log = structlog.get_logger(__name__)
 
 RunStatus = Literal["waiting", "generating", "ready", "failed"]
 ViewState = Literal["unavailable", "waiting", "generating", "ready", "stale", "failed"]
@@ -250,6 +253,13 @@ class LimitUpShadowReader:
                 )
                 snapshot = self._snapshot(run, rows, metrics=metrics)
         except (OSError, sqlite3.Error, ValueError) as exc:
+            log.warning(
+                "limit_up_shadow.read_failed",
+                path=str(self.path),
+                error_type=type(exc).__name__,
+                error=str(exc),
+                exc_info=True,
+            )
             return LimitUpShadowView(
                 state="unavailable", available=False,
                 historical=prediction_date is not None,
@@ -402,11 +412,24 @@ class LimitUpShadowPublisher:
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
 
+    @staticmethod
+    def _configure_connection(con: sqlite3.Connection) -> None:
+        con.execute("PRAGMA foreign_keys=ON")
+        con.execute("PRAGMA busy_timeout=10000")
+        # The Web consumer is deliberately confined to a read-only systemd path.
+        # WAL readers may still need to create shared-memory sidecars, so use the
+        # rollback journal for this small, low-frequency snapshot store. Switching
+        # an existing WAL database checkpoints committed frames into the main file.
+        mode = con.execute("PRAGMA journal_mode=DELETE").fetchone()[0]
+        if str(mode).lower() != "delete":
+            raise sqlite3.OperationalError(
+                f"failed to set rollback journal mode: {mode}"
+            )
+
     def publish(self, snapshot: LimitUpShadowSnapshot) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with sqlite3.connect(self.path, timeout=10) as con:
-            con.execute("PRAGMA foreign_keys=ON")
-            con.execute("PRAGMA journal_mode=WAL")
+            self._configure_connection(con)
             con.executescript(_SCHEMA)
             existing = con.execute(
                 "SELECT status FROM limit_up_shadow_runs WHERE prediction_date = ?",
@@ -446,8 +469,7 @@ class LimitUpShadowPublisher:
         if len(source_data_sha) < 7:
             raise ValueError("source_data_sha is required")
         with sqlite3.connect(self.path, timeout=10) as con:
-            con.execute("PRAGMA foreign_keys=ON")
-            con.execute("PRAGMA journal_mode=WAL")
+            self._configure_connection(con)
             con.executescript(_SCHEMA)
             expected = {row[0] for row in con.execute(
                 "SELECT symbol FROM limit_up_shadow_entries WHERE prediction_date=?",
