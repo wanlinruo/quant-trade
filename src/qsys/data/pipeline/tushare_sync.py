@@ -25,7 +25,10 @@ from qsys.data.pipeline.delisting import build_delisting_pool
 from qsys.data.pipeline.flags import build_daily_flags
 from qsys.data.pipeline.regime import build_market_regime
 from qsys.data.pipeline.valuation import build_valuation
-from qsys.data.pipeline.first_board_inputs import ingest_moneyflow
+from qsys.data.pipeline.first_board_inputs import (
+    ingest_moneyflow,
+    verify_first_board_asset_health,
+)
 from qsys.data.storage import Warehouse
 from qsys.ops.services import ServiceRun, record_step
 
@@ -180,6 +183,17 @@ def sync(provider, warehouse: Warehouse, day: date, *,
         label, interface, table = STEP_SOURCES.get(name, (name, None, name))
         with record_step(run, label, interface=interface, table=table) as step:
             counts[name] = step.rows = ingest(provider, warehouse, [day])
+
+    # Only the full production wiring contains moneyflow.  Unit tests and
+    # deliberately reduced callers may replace _REFERENCE_STEPS; do not turn
+    # their partial sync into an unrelated historical-asset check.
+    if "moneyflow_daily" in counts:
+        with record_step(
+            run, "首板新增资产治理门禁", interface="仓库写后只读核验",
+            table="moneyflow_daily / industry_membership / auction_open_daily",
+        ) as step:
+            counts["first_board_asset_health"] = step.rows = \
+                verify_first_board_asset_health(warehouse, day)
 
     log.info("tushare_sync.done", day=str(day), **counts)
     return counts
