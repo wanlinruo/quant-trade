@@ -66,7 +66,10 @@ MARKET_DATA_CONSUMERS = (
     "qsys-monitor.service", "qsys-paper.service",
     "qsys-shadow-core.service", "qsys-live-core.service",
 )
-SYSTEMD_ENABLE_ON_INSTALL = frozenset({"qsys-limit-up-shadow.timer"})
+SYSTEMD_ENABLE_ON_INSTALL = frozenset({
+    "qsys-limit-up-shadow.timer",
+    "qsys-storage-report.timer",
+})
 MONITOR_SHADOW_ARGUMENT = (
     "--limit-up-shadow-state /data/qsys/var-prod/limit-up-shadow.sqlite3"
 )
