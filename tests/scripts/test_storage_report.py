@@ -29,6 +29,20 @@ def test_classified_usage_deduplicates_hardlinks_and_prefers_warehouse(tmp_path)
     assert sum(item["unique_inodes"] for item in usage.values()) == 8
 
 
+def test_scratch_retention_does_not_mix_another_disk_into_categories(tmp_path):
+    base = tmp_path / "qsys"
+    scratch = tmp_path / "scratch"
+    _write(base / "warehouse/bars_daily/part.parquet", 4096)
+    _write(scratch / "large-temporary.bin", 128 * 1024)
+
+    payload = report.build_payload(base, scratch, NOW)
+
+    assert "临时工作区" not in {item["category"] for item in payload["categories"]}
+    assert str(scratch / "large-temporary.bin") in {
+        item["path"] for item in payload["items"]
+    }
+
+
 def test_history_snapshot_is_atomic_and_partitioned_by_day(tmp_path, monkeypatch):
     target = report.history_path(tmp_path / "history", NOW)
     payload = {"schema_version": 1, "generated_at": NOW.isoformat()}
