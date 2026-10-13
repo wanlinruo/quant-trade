@@ -23,6 +23,9 @@ from qsys.live.config import load_deploy_config
 from qsys.live.messages import AccountSnapshot, Heartbeat, MarketSchedule
 from qsys.live.redis_transport import RedisTransport
 
+MARKET_SCHEDULE_MAX_AGE = 45.0
+CORE_BEAT_MAX_AGE = 10.0
+
 
 def _fresh(at: datetime, now: datetime, seconds: float) -> bool:
     return -1 <= (now - at).total_seconds() <= seconds
@@ -41,8 +44,10 @@ def _arm_refusal(cfg, transport, now: datetime) -> str | None:
 
     raw_schedule = transport.get_key(cfg.streams.market_schedule)
     schedule = MarketSchedule.model_validate_json(raw_schedule) if raw_schedule else None
-    if schedule is None or not _fresh(schedule.checked_at, now, 5):
-        return "市场时段快照缺失或超过 5 秒"
+    if schedule is None or not _fresh(
+        schedule.checked_at, now, MARKET_SCHEDULE_MAX_AGE
+    ):
+        return f"市场时段快照缺失或超过 {MARKET_SCHEDULE_MAX_AGE:.0f} 秒"
     if not schedule.is_trading_day or not schedule.is_open:
         return "当前不是交易时段"
 
@@ -65,11 +70,15 @@ def _arm_refusal(cfg, transport, now: datetime) -> str | None:
     if agent.account_protected is not True or agent.local_kill_engaged is not False:
         return "Windows 账号白名单或本地停机闸状态不满足"
 
+    # Establish the lease before stopping the core.  Requiring the opposite
+    # creates an impossible window: the agent trips after 10 seconds without a
+    # core, while the old gate waited 30 seconds for that heartbeat to age out.
     raw_core = transport.get_key(f"{cfg.streams.heartbeat}:core")
-    if raw_core:
-        core = Heartbeat.model_validate_json(raw_core)
-        if _fresh(core.at, now, 30):
-            return "实盘核心仍在运行"
+    core = Heartbeat.model_validate_json(raw_core) if raw_core else None
+    if core is None or not _fresh(core.at, now, CORE_BEAT_MAX_AGE):
+        return "实盘核心心跳缺失或超过 10 秒，禁止开始切换"
+    if core.event_timed_out or core.activity != "idle":
+        return "实盘核心不是健康空闲状态，禁止开始切换"
     return None
 
 
