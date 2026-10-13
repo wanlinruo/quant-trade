@@ -68,8 +68,8 @@ def _tree_stats(path: Path):
                 continue
 
 
-def classified_usage(base: Path, scratch: Path | None = None) -> list[dict[str, object]]:
-    """按类别统计真实磁盘块；跨目录硬链接在全局只计一次。"""
+def classified_usage(base: Path) -> list[dict[str, object]]:
+    """分类 ``base`` 所在数据盘；跨目录硬链接在全局只计一次。"""
     roots: list[tuple[Path, str]] = []
     claimed: set[Path] = set()
     for relative, category in CATEGORY_ROOTS:
@@ -80,9 +80,6 @@ def classified_usage(base: Path, scratch: Path | None = None) -> list[dict[str, 
     for path in sorted(base.iterdir()):
         if path not in claimed:
             roots.append((path, "其他"))
-    if scratch is not None and scratch.exists():
-        roots.append((scratch, "临时工作区"))
-
     seen: set[tuple[int, int]] = set()
     totals: dict[str, list[int]] = {}
     for root, category in roots:
@@ -119,7 +116,9 @@ def build_payload(base: Path, scratch: Path | None, now: datetime) -> dict[str, 
             "expansion_review_free_bytes": EXPANSION_REVIEW_BYTES,
             "failure_free_bytes": FREE_FAIL_BYTES,
         },
-        "categories": classified_usage(base, scratch),
+        # 分类合计只覆盖 disk 所描述的 /data/qsys；scratch 可能在系统盘，
+        # 仍参与保留策略 items，但不能混进数据盘容量趋势。
+        "categories": classified_usage(base),
         "items": [{
             "path": str(item.path), "category": item.category, "policy": item.policy,
             "apparent_bytes": item.apparent_bytes, "exclusive_bytes": item.exclusive_bytes,

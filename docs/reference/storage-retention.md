@@ -13,8 +13,9 @@ uv run python scripts/storage_report.py --history-root var/storage-history
 
 `qsys-storage-report.timer` 每天（含休市日）18:20 生成一份
 `var/storage-history/YYYY/MM/DD/storage-*.json`。快照包含磁盘总量、剩余空间、阈值、
-保留策略清单和分类占用；分类统计在整个节点范围按 inode 去重，共享给 warehouse、测试
-快照和隔离构建目录的硬链接只计一次，并优先归入生产仓库。工具始终只读业务数据。
+保留策略清单和数据盘分类占用；分类统计在 `/data/qsys` 范围按 inode 去重，共享给
+warehouse、测试快照和隔离构建目录的硬链接只计一次，并优先归入生产仓库。
+`~/scratch` 仍参与保留策略检查，但不混入数据盘分类合计。工具始终只读业务数据。
 
 ## 保留规则
 
