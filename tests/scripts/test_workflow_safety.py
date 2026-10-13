@@ -13,6 +13,8 @@ WORKFLOWS = Path(".github/workflows")
 INTERPOLATION = re.compile(r"\$\{\{")
 STEP_START = re.compile(r"^\s*-\s+(name|uses):")
 RUN_START = re.compile(r"^\s*run:")
+CHECKOUT_REF = re.compile(r"actions/checkout@([^\s]+)")
+CHECKOUT_V7_0_1 = "3d3c42e5aac5ba805825da76410c181273ba90b1"
 
 
 def _shell_interpolations(text: str) -> list[str]:
@@ -59,3 +61,14 @@ def test_passing_the_same_value_through_env_is_fine():
     )
 
     assert _shell_interpolations(fixed) == []
+
+
+def test_every_checkout_uses_the_pinned_node24_release():
+    refs = [
+        ref
+        for path in sorted(WORKFLOWS.glob("*.yml"))
+        for ref in CHECKOUT_REF.findall(path.read_text(encoding="utf-8"))
+    ]
+
+    assert refs
+    assert set(refs) == {CHECKOUT_V7_0_1}
