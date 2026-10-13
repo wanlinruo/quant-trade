@@ -69,6 +69,22 @@ def test_reports_row_counts_per_dataset(warehouse, monkeypatch):
     assert got["tushare_daily"] == 1
 
 
+def test_full_sync_runs_first_board_asset_health_gate(warehouse, monkeypatch):
+    monkeypatch.setattr(
+        tushare_sync, "_REFERENCE_STEPS",
+        [("moneyflow_daily", lambda provider, wh, days: 7)],
+    )
+    monkeypatch.setattr(
+        tushare_sync, "verify_first_board_asset_health",
+        lambda wh, day: 9,
+    )
+
+    got = sync(FakeProvider(), warehouse, DAY)
+
+    assert got["moneyflow_daily"] == 7
+    assert got["first_board_asset_health"] == 9
+
+
 def test_an_empty_daily_is_an_explicit_failure(warehouse, monkeypatch):
     monkeypatch.setattr(tushare_sync, "_REFERENCE_STEPS", [])
     """日线 0 行 = 上游没给数据。静默当成正常正是 09-10/11 事故的根因。"""

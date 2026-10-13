@@ -28,9 +28,11 @@ systemd 状态和磁盘检查；未触发同步、重算、服务重启或数据
 
 当前未完成项不再以本报告中的静态表格重复维护，统一由 GitHub 跟踪：
 
-- 加密异地备份、隔离恢复和生产数据治理总账：
-  [#127](https://github.com/wanlinruo/quant-trade/issues/127)；首板新增资产的长期盘点、
-  备份恢复与容量治理：[#239](https://github.com/wanlinruo/quant-trade/issues/239)。
+- 系统级实例/数据盘快照已按维护者裁决转为腾讯云控制台外部责任，#113 以
+  `not planned` 关闭；仓库不再把自建加密副本链或应用内恢复演练列为待实施项。
+  这不构成生产数据盘已被快照覆盖或恢复通过的自动证据。生产数据治理总账由
+  [#127](https://github.com/wanlinruo/quant-trade/issues/127) 跟踪；首板新增资产的目录、
+  生命周期和健康门禁由 [#239](https://github.com/wanlinruo/quant-trade/issues/239) 收口。
 - 数据盘趋势与扩容门槛：[#126](https://github.com/wanlinruo/quant-trade/issues/126)。
   PR #270/#271 已于 2026-10-13 发布，生产首份
   inode 去重快照显示 `/data/qsys` 剩余 26,039,971,840 bytes（约 24.25 GiB），

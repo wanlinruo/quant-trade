@@ -3,10 +3,13 @@ from datetime import date
 import polars as pl
 import pytest
 
+from qsys.data import schema
 from qsys.data.pipeline.first_board_inputs import (
     ingest_auction_open,
     ingest_industry_membership,
     ingest_moneyflow,
+    validate_industry_intervals,
+    verify_first_board_asset_health,
 )
 from qsys.data.query import WarehouseQuery
 
@@ -79,6 +82,70 @@ def test_industry_membership_resolves_historical_interval(warehouse):
     assert query.industry_membership(as_of=date(2026, 1, 1))["l1_name"].to_list() == [
         "新行业"
     ]
+
+
+def test_industry_membership_rejects_inverted_or_overlapping_intervals():
+    base = {
+        "symbol": ["600001.SH", "600001.SH"],
+        "l3_code": ["OLD", "NEW"],
+        "in_date": [date(2020, 1, 1), date(2024, 1, 1)],
+        "out_date": [date(2024, 12, 31), None],
+    }
+    with pytest.raises(ValueError, match="overlapping"):
+        validate_industry_intervals(pl.DataFrame(base))
+
+    inverted = pl.DataFrame({
+        "symbol": ["600001.SH"], "l3_code": ["BAD"],
+        "in_date": [date(2025, 1, 1)], "out_date": [date(2024, 12, 31)],
+    })
+    with pytest.raises(ValueError, match="inverted"):
+        validate_industry_intervals(inverted)
+
+
+def test_industry_membership_rejects_duplicate_source_keys(warehouse):
+    row = {
+        "ts_code": ["600001.SH", "600001.SH"],
+        "l1_code": ["A", "A"], "l1_name": ["一级", "一级"],
+        "l2_code": ["A1", "A1"], "l2_name": ["二级", "二级"],
+        "l3_code": ["A11", "A11"], "l3_name": ["三级", "三级"],
+        "in_date": ["20200101", "20200101"],
+        "out_date": [None, None], "is_new": ["Y", "Y"],
+    }
+    with pytest.raises(ValueError, match="duplicate interval keys"):
+        ingest_industry_membership(Provider(industry=pl.DataFrame(row)), warehouse)
+
+
+def test_first_board_health_rejects_a_file_in_quarantined_auction(warehouse):
+    money = pl.DataFrame({
+        "symbol": ["600001.SH"], "dt": [DAY],
+        **{name: [1.0] for name in (
+            "buy_sm_vol", "buy_sm_amount", "sell_sm_vol", "sell_sm_amount",
+            "buy_md_vol", "buy_md_amount", "sell_md_vol", "sell_md_amount",
+            "buy_lg_vol", "buy_lg_amount", "sell_lg_vol", "sell_lg_amount",
+            "buy_elg_vol", "buy_elg_amount", "sell_elg_vol", "sell_elg_amount",
+            "net_mf_vol", "net_mf_amount",
+        )},
+    })
+    warehouse.write(
+        "moneyflow_daily", money.to_arrow().cast(schema.MONEYFLOW_DAILY), year=DAY.year,
+    )
+    industry = pl.DataFrame({
+        "symbol": ["600001.SH"],
+        "l1_code": ["A"], "l1_name": ["一级"],
+        "l2_code": ["A1"], "l2_name": ["二级"],
+        "l3_code": ["A11"], "l3_name": ["三级"],
+        "in_date": [date(2020, 1, 1)], "out_date": [None], "is_new": [True],
+    })
+    warehouse.write(
+        "industry_membership", industry.to_arrow().cast(schema.INDUSTRY_MEMBERSHIP),
+    )
+    assert verify_first_board_asset_health(warehouse, DAY) == 2
+
+    path = warehouse.day_path("auction_open_daily", DAY)
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b"not even parquet")
+    with pytest.raises(RuntimeError, match="must remain empty"):
+        verify_first_board_asset_health(warehouse, DAY)
 
 
 def test_auction_stays_source_native_for_parity_study(warehouse):
