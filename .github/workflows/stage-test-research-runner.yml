@@ -1,0 +1,151 @@
+name: Stage test Research Runner
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Exact test commit SHA whose CI artifact will be staged
+        required: true
+        type: string
+      snapshot_complete_through:
+        description: Last complete session represented by the test warehouse (YYYY-MM-DD)
+        required: true
+        type: string
+      release_id:
+        description: Auditable staging identifier
+        required: true
+        type: string
+      dry_run:
+        description: Validate gates without downloading or staging
+        required: true
+        default: true
+        type: boolean
+      confirmation:
+        description: Enter STAGE_TEST_RESEARCH for a real staging run
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  checks: read
+  contents: read
+  deployments: write
+
+concurrency:
+  group: stage-test-research-runner
+  cancel-in-progress: false
+
+jobs:
+  stage:
+    runs-on: ubuntu-24.04
+    environment: testing
+    env:
+      TARGET_SHA: ${{ inputs.target_sha }}
+      COMPLETE_THROUGH: ${{ inputs.snapshot_complete_through }}
+      RELEASE_ID: ${{ inputs.release_id }}
+      DRY_RUN: ${{ inputs.dry_run }}
+      CONFIRMATION: ${{ inputs.confirmation }}
+      DEPLOY_HOST: ${{ vars.TEST_DEPLOY_HOST }}
+      DEPLOY_USER: ${{ vars.TEST_DEPLOY_USER }}
+      RUN_KEY: ${{ inputs.release_id }}-research-runner-test
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out trusted controller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Install dedicated test SSH identity
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.TEST_DEPLOY_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.TEST_DEPLOY_KNOWN_HOSTS }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          root = Path.home() / ".ssh"
+          root.mkdir(mode=0o700, exist_ok=True)
+          key = root / "test-deploy"
+          key.write_text(os.environ["SSH_PRIVATE_KEY"].rstrip() + "\n", encoding="utf-8")
+          key.chmod(0o600)
+          known = root / "known_hosts"
+          known.write_text(os.environ["SSH_KNOWN_HOSTS"].rstrip() + "\n", encoding="utf-8")
+          known.chmod(0o600)
+          PY
+
+      - name: Validate exact source, CI evidence and gateway
+        id: source
+        run: |
+          set -euo pipefail
+          if [ "$DRY_RUN" != true ]; then test "$CONFIRMATION" = STAGE_TEST_RESEARCH; fi
+          printf '%s' "$RELEASE_ID" | grep -Eq '^[A-Za-z0-9._-]{1,100}$'
+          printf '%s' "$TARGET_SHA" | grep -Eq '^[0-9a-f]{40}$'
+          printf '%s' "$COMPLETE_THROUGH" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+          git fetch --no-tags origin test
+          test "$(git rev-parse origin/test)" = "$TARGET_SHA"
+          ci_run=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$TARGET_SHA&event=push&per_page=100" \
+            --jq '[.workflow_runs[] | select(.head_branch == "test" and .conclusion == "success")] | max_by(.id)')
+          test "$ci_run" != null
+          ci_run_id=$(printf '%s' "$ci_run" | jq -r .id)
+          artifact_id=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$ci_run_id/artifacts?per_page=100" \
+            --jq ".artifacts[] | select(.name == \"qsys-research-$TARGET_SHA\" and .expired == false) | .id")
+          test -n "$artifact_id"
+          echo "artifact_id=$artifact_id" >>"$GITHUB_OUTPUT"
+          node_json=$(ssh -i ~/.ssh/test-deploy -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" 'status --environment test')
+          NODE_JSON="$node_json" python3 - <<'PY'
+          import json, os
+          state = json.loads(os.environ["NODE_JSON"])
+          if state["branch"] != "test" or state["dirty"] or not state["healthy"] or not state["isolated"]:
+              raise SystemExit(f"test node is not deployable: {state}")
+          if state.get("entrypoint_version", 0) < 2 or "research-stage-v1" not in state.get("capabilities", []):
+              raise SystemExit("test entrypoint lacks research staging capability")
+          PY
+
+      - name: Validate staging plan
+        if: inputs.dry_run == true
+        run: >-
+          ssh -i ~/.ssh/test-deploy -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST"
+          "research-stage --sha $TARGET_SHA --snapshot-complete-through $COMPLETE_THROUGH
+          --run-id $RUN_KEY --actor $GITHUB_ACTOR --repository $GITHUB_REPOSITORY --dry-run"
+
+      - name: Download exact immutable artifact
+        if: inputs.dry_run == false
+        env:
+          ARTIFACT_ID: ${{ steps.source.outputs.artifact_id }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" >research.zip
+          echo "artifact_sha256=$(sha256sum research.zip | awk '{print $1}')" >>"$GITHUB_ENV"
+
+      - name: Stream artifact through restricted gateway
+        if: inputs.dry_run == false
+        run: |
+          ssh -i ~/.ssh/test-deploy -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "research-stage --sha $TARGET_SHA --artifact-sha256 $artifact_sha256 --snapshot-complete-through $COMPLETE_THROUGH --run-id $RUN_KEY --actor $GITHUB_ACTOR --repository $GITHUB_REPOSITORY" \
+            <research.zip | tee result.json
+          jq -e '.ok == true and .status == "success"' result.json >/dev/null
+
+      - name: Verify staging record
+        if: inputs.dry_run == false
+        run: |
+          ssh -i ~/.ssh/test-deploy -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "record --environment test --run-id $RUN_KEY" >record.json
+          PYTHONPATH=src python3 scripts/deployment_contract.py validate-record record.json
+          jq -e --arg sha "$TARGET_SHA" '
+            .source_sha == $sha and .status == "success"
+            and .components == ["research-runner-test"]
+            and .before.linux == .after.linux
+            and .after["research-runner-test"] == $sha
+          ' record.json >/dev/null
+
+      - name: Write summary
+        if: always()
+        run: |
+          {
+            echo "## Test Research Runner staging"
+            echo "- Target: \`$TARGET_SHA\`"
+            echo "- Snapshot complete through: \`$COMPLETE_THROUGH\`"
+            echo "- Dry run: \`$DRY_RUN\`"
+            echo "- Node record: \`$RUN_KEY\`"
+            echo "- Runner activation: never performed by this workflow"
+          } >>"$GITHUB_STEP_SUMMARY"

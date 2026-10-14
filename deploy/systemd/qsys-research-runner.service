@@ -20,7 +20,7 @@ ExecStart=/opt/qsys-research/current/venv/bin/qsys-research-runner \
           --jobs /data/qsys/research-jobs \
           --snapshots /srv/qsys-research/snapshots \
           --code-sha ${QSYS_RESEARCH_CODE_SHA} \
-          --wheel /opt/qsys-research/current/dist/qsys.whl \
+          --wheel /opt/qsys-research/current/dist/${QSYS_RESEARCH_WHEEL_FILENAME} \
           --memory-max-mb 4096 \
           --cpu-quota-percent 100 \
           --io-weight 10 \

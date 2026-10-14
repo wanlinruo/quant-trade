@@ -1,0 +1,62 @@
+[Unit]
+Description=qsys isolated Research Runner test drill
+After=local-fs.target
+ConditionPathIsDirectory=/data/qsys-test/warehouse-snapshot-store/snapshots
+ConditionPathIsDirectory=/data/qsys-test/research-jobs
+ConditionPathIsDirectory=/opt/qsys-research-test/current
+
+[Service]
+Type=simple
+User=qsys-research-test
+Group=qsys-research-test
+WorkingDirectory=/data/qsys-test/research-jobs
+EnvironmentFile=/etc/qsys/research-runner-test.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/qsys-research-test/current/venv/bin/qsys-research-runner \
+          --jobs /data/qsys-test/research-jobs \
+          --snapshots /srv/qsys-research-test/snapshots \
+          --code-sha ${QSYS_RESEARCH_CODE_SHA} \
+          --wheel /opt/qsys-research-test/current/dist/${QSYS_RESEARCH_WHEEL_FILENAME} \
+          --memory-max-mb 512 \
+          --cpu-quota-percent 25 \
+          --io-weight 10 \
+          --timeout-seconds 900
+Restart=no
+TimeoutStopSec=15
+KillMode=control-group
+UMask=0027
+MemoryHigh=384M
+MemoryMax=512M
+CPUQuota=25%
+CPUWeight=10
+IOWeight=10
+Nice=10
+OOMScoreAdjust=900
+
+BindReadOnlyPaths=/data/qsys-test/warehouse-snapshot-store:/srv/qsys-research-test/snapshots
+ReadOnlyPaths=/opt/qsys-research-test
+ReadWritePaths=/data/qsys-test/research-jobs
+InaccessiblePaths=-/data/qsys/warehouse -/data/qsys/warehouse-snapshot-store -/data/qsys/var-prod -/data/qsys/research-jobs -/home/ubuntu/qsys/config -/run/redis -/var/run/redis
+PrivateNetwork=true
+RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# Deliberately not installable: drills start this unit explicitly and it cannot
+# be enabled as a resident service.
