@@ -15,7 +15,6 @@ ignored_paths = [
   "config/deploy.example.toml",
   "config/deploy.test.example.toml",
   "deploy/config.schema.json",
-  "deploy/component-releases/**",
   "deploy/deployment.toml",
   "deploy/linux/deployment-entrypoint.json",
   "deploy/linux/production-deployment-entrypoint.json",
