@@ -8,6 +8,8 @@ from qsys.strategy.structural.entry import (
     check_high_open,
     check_left_pressure,
     check_low_open,
+    diagnose_high_open,
+    diagnose_low_open,
 )
 
 
@@ -40,6 +42,10 @@ def test_low_open_accepts_a_valid_setup():
     h = history(closes, highs=[14.0] * 60, lows=[9.5] * 60, moneys=[2e8] * 60)
     # rp = (10 - 9.5) / (14 - 9.5) = 0.111 < 0.5
     assert check_low_open(h, auction_price=10.0 * 0.96) is True
+    diagnosis = diagnose_low_open(h, auction_price=10.0 * 0.96)
+    assert diagnosis["eligible"] is True
+    assert diagnosis["low_open_ratio"] == 0.96
+    assert diagnosis["low_relative_position_ok"] is True
 
 
 def test_low_open_rejects_high_relative_position():
@@ -153,6 +159,13 @@ def test_high_open_accepts_a_valid_setup():
         )
         is True
     )
+    diagnosis = diagnose_high_open(
+        high_history(), auction_price=11.0 * 1.03,
+        auction_volume=1e6 * 0.05, valuation=valuation(),
+    )
+    assert diagnosis["eligible"] is True
+    assert diagnosis["high_auction_volume_ratio"] == 0.05
+    assert diagnosis["high_left_pressure_ok"] is True
 
 
 def test_high_open_rejects_weak_average_increase():

@@ -24,8 +24,13 @@ import structlog
 from qsys.data.feed import Adjustment, HistoricalFeed
 from qsys.data.market_feed import MarketFeed
 from qsys.data.query import WarehouseQuery
-from qsys.strategy.structural.entry import check_high_open, check_low_open
-from qsys.strategy.structural.gate import classify, gate_allow
+from qsys.strategy.structural.entry import (
+    check_high_open,
+    check_low_open,
+    diagnose_high_open,
+    diagnose_low_open,
+)
+from qsys.strategy.structural.gate import classify, gate_allow_policy
 from qsys.strategy.structural.params import (
     LEFT_PRESSURE_HISTORY_DAYS,
     LOW_MAIN_AUCTION_VOL_RATIO_MIN,
@@ -86,6 +91,8 @@ class StructuralSelection:
         gate_enabled: bool = True,
         gate_thresholds: Mapping[str, float] | None = None,
         disabled_gate_tags: Collection[str] = (),
+        capture_candidate_traces: bool = False,
+        research_gate_policy: str = "current",
     ) -> None:
         self._feed = feed
         self._market = market
@@ -97,12 +104,20 @@ class StructuralSelection:
         self._gate_enabled = gate_enabled
         self._gate_thresholds = dict(gate_thresholds or {})
         self._disabled_gate_tags = frozenset(disabled_gate_tags)
+        # 候选级 50+ 列留痕只为有界回测研究开启；长驻实盘/模拟盘
+        # 不累积该数据，避免为只读研究改变生产内存语义。
+        self._capture_candidate_traces = capture_candidate_traces
+        self._research_gate_policy = research_gate_policy
         self._listing: dict[str, date] | None = None
         # decisions 是**最近一次**选股的判定；history 累计整段回测/运行的全部判定。
         # 落盘产物要的是后者：之前只写 decisions，gate_decisions.csv 因此永远
         # 只有最后一个交易日（2026-09-24 做闸门研究时发现，产物一直是空的）。
         self.decisions: list[Selection] = []
         self.history: list[Selection] = []
+        # 候选级研究留痕：不参与交易决策，只把本次已经计算的
+        # 原始值、原子判断和终止阶段展平，供全区间归因。
+        self.traces: list[dict[str, object]] = []
+        self.trace_history: list[dict[str, object]] = []
         self.funnel: SelectionFunnel | None = None
 
     def _listing_dates(self) -> dict[str, date]:
@@ -119,6 +134,7 @@ class StructuralSelection:
         的那一天」存，所以在 T 日要读 T-1 的行。
         """
         self.decisions = []
+        self.traces = []
         self.funnel = None
         as_of = datetime.combine(day, SELECTION_AT)
         market = self._market.bind(as_of)
@@ -135,6 +151,13 @@ class StructuralSelection:
         excluded: Counter[str] = Counter()
         if suspended:
             excluded["权威确认停牌"] = len(suspended)
+            for symbol in sorted(suspended):
+                self._record_trace({
+                    "date": day, "symbol": symbol, "in_pool": True,
+                    "terminal_stage": "excluded",
+                    "terminal_reason": "authoritative_suspension",
+                    "routed_tag": None, "gate_allow": None,
+                })
             pool = type(pool)(
                 [s for s in pool.first_boards if s not in suspended],
                 [s for s in pool.broken_boards if s not in suspended],
@@ -156,11 +179,22 @@ class StructuralSelection:
         for symbol in pool.first_boards:
             bars = history.get(symbol)
             auction_price = opens.get(symbol)
+            trace: dict[str, object] = {
+                "date": day, "symbol": symbol, "in_pool": True,
+                "auction_price": auction_price,
+                "auction_volume": auction_volumes.get(symbol),
+                "strict_auction_input": auction_volumes.get(symbol) is not None,
+                "routed_tag": None, "gate_allow": None,
+            }
             if bars is None or bars.height == 0:
                 skipped["缺历史日线"] += 1
+                trace.update(terminal_stage="input", terminal_reason="missing_history")
+                self._record_trace(trace)
                 continue
             if auction_price is None:
                 skipped["缺当日开盘价"] += 1
+                trace.update(terminal_stage="input", terminal_reason="missing_open")
+                self._record_trace(trace)
                 continue
             missing = {
                 column: bars[column].null_count()
@@ -177,13 +211,33 @@ class StructuralSelection:
                     missing=missing,
                 )
                 skipped["历史日线有空值"] += 1
+                trace.update(
+                    terminal_stage="input", terminal_reason="history_has_nulls",
+                    history_missing=",".join(sorted(missing)),
+                )
+                self._record_trace(trace)
                 continue
+
+            prev_volume = bars["volume"].to_list()[-1]
+            low_volume_ratio = (
+                auction_volumes.get(symbol) / prev_volume
+                if auction_volumes.get(symbol) is not None and prev_volume > 0 else None
+            )
+            trace.update(
+                low_auction_volume_ratio=low_volume_ratio,
+                low_auction_volume_ok=(
+                    None if low_volume_ratio is None
+                    else low_volume_ratio >= LOW_MAIN_AUCTION_VOL_RATIO_MIN
+                ),
+            )
 
             decided = self._route(
                 symbol, day, previous, bars, auction_price,
                 auction_volumes.get(symbol), valuations.get(symbol), market,
                 skipped=skipped,
+                trace=trace if self._capture_candidate_traces else None,
             )
+            self._record_trace(trace)
             if decided is None:
                 continue
             self.decisions.append(decided)
@@ -206,12 +260,23 @@ class StructuralSelection:
     def _route(
         self, symbol, day, previous, bars, auction_price, auction_volume,
         valuation, market, *, skipped: Counter[str] | None = None,
+        trace: dict[str, object] | None = None,
     ) -> Selection | None:
         """LOW 优先，命中即定；不回落去判 HIGH。
 
         入档前被筛掉的标的计入 `skipped`，页面才看得出是价格带还是竞价量拦的。
         """
         skipped = Counter() if skipped is None else skipped
+        if trace is not None:
+            low_diag = diagnose_low_open(bars, auction_price)
+            trace["low_eligible"] = low_diag.pop("eligible")
+            trace.update(low_diag)
+            high_diag = diagnose_high_open(
+                bars, auction_price, auction_volume, valuation,
+                require_auction_volume=False,
+            )
+            trace["high_eligible_without_volume"] = high_diag.pop("eligible")
+            trace.update(high_diag)
         if check_low_open(bars, auction_price):
             tag = strategy_tag("LOW", symbol)
             if tag == "LOW_MAIN" and self._require_auction_volume \
@@ -223,9 +288,18 @@ class StructuralSelection:
                 # 原文 L1174：LOW 已命中时，附加过滤失败也不回落去查 HIGH
                 skipped["低开·竞价量不足" if auction_volume is not None
                         else "低开·缺竞价量"] += 1
+                if trace is not None:
+                    trace.update(
+                        candidate_tag=tag,
+                        terminal_stage="route",
+                        terminal_reason=("low_auction_volume_low" if auction_volume is not None
+                                         else "low_auction_volume_missing"),
+                    )
                 return None
             factors = _stock_factors(bars) if tag == "LOW_MAIN" else {}
-            return self._gate(day, previous, symbol, tag, market, factors)
+            if trace is not None:
+                trace.update(routed_tag=tag)
+            return self._gate(day, previous, symbol, tag, market, factors, trace=trace)
 
         high_without_volume = check_high_open(
             bars, auction_price, auction_volume, valuation,
@@ -237,10 +311,17 @@ class StructuralSelection:
         if high_without_volume and (
             auction_volume is not None or not self._require_auction_volume
         ):
-            return self._gate(
-                day, previous, symbol, strategy_tag("HIGH", symbol), market, {}
-            )
+            tag = strategy_tag("HIGH", symbol)
+            if trace is not None:
+                trace["routed_tag"] = tag
+            return self._gate(day, previous, symbol, tag, market, {}, trace=trace)
         skipped["高开·缺竞价量" if high_without_volume else "不在低开/高开价格带"] += 1
+        if trace is not None:
+            trace.update(
+                terminal_stage="route",
+                terminal_reason=("high_auction_volume_missing" if high_without_volume
+                                 else _first_failed_route(trace)),
+            )
         return None
 
     @staticmethod
@@ -261,18 +342,61 @@ class StructuralSelection:
             return False
         return auction_volume / prev_volume >= LOW_MAIN_AUCTION_VOL_RATIO_MIN
 
-    def _gate(self, day, previous, symbol, tag, market, factors) -> Selection:
+    def _gate(
+        self, day, previous, symbol, tag, market, factors,
+        *, trace: dict[str, object] | None = None,
+    ) -> Selection:
         env = market.regime(previous, previous)
         row = env.row(0, named=True) if env.height else {}
         cls = classify(tag, row, factors, thresholds=self._gate_thresholds)
-        allow = gate_allow(tag, cls)
+        allow = gate_allow_policy(
+            tag, cls, row, factors, policy=self._research_gate_policy,
+            thresholds=self._gate_thresholds,
+        )
+        if trace is not None:
+            trace.update({
+                "regime_date": previous,
+                "index_ma20_slope_5d": row.get("index_ma20_slope_5d"),
+                "prior_limitup_nextday_return_mean": row.get(
+                    "prior_limitup_nextday_return_mean"
+                ),
+                "market_median_return_1d": row.get("market_median_return_1d"),
+                "touched_limit_up_count": row.get("touched_limit_up_count"),
+                "market_advance_ratio": row.get("market_advance_ratio"),
+                "stock_return_10d": factors.get("stock_return_10d"),
+                "distance_to_60d_high": factors.get("distance_to_60d_high"),
+                "gate_state": cls.state,
+                "gate_reason": cls.reason,
+                "gate_known": cls.known,
+                "gate_allow": allow,
+                "terminal_stage": "allowed" if allow else "gate",
+                "terminal_reason": "allowed" if allow else cls.reason,
+            })
         if not self._gate_enabled:
+            if trace is not None:
+                trace.update(gate_allow=True, terminal_stage="allowed",
+                             terminal_reason="gate_disabled")
             return Selection(day, symbol, tag, cls.state,
                              f"{cls.reason}|GATE_DISABLED", True)
         if tag in self._disabled_gate_tags:
+            if trace is not None:
+                trace.update(gate_allow=True, terminal_stage="allowed",
+                             terminal_reason="gate_disabled_tag")
             return Selection(day, symbol, tag, cls.state,
                              f"{cls.reason}|GATE_DISABLED_TAG", True)
+        if self._research_gate_policy != "current":
+            return Selection(
+                day, symbol, tag, cls.state,
+                f"{cls.reason}|RESEARCH_POLICY={self._research_gate_policy}", allow,
+            )
         return Selection(day, symbol, tag, cls.state, cls.reason, allow)
+
+    def _record_trace(self, trace: dict[str, object]) -> None:
+        if not self._capture_candidate_traces:
+            return
+        row = dict(trace)
+        self.traces.append(row)
+        self.trace_history.append(row)
 
     def _all_symbols(self) -> list[str]:
         return list(self._listing_dates())
@@ -334,3 +458,18 @@ def _stock_factors(bars: pl.DataFrame) -> dict[str, float | None]:
         if peak:
             factors["distance_to_60d_high"] = closes[-1] / peak - 1.0
     return factors
+
+
+def _first_failed_route(trace: Mapping[str, object]) -> str:
+    """返回第一个可解释的失败条件；全部字段仍保留供多失败分析。"""
+    ordered = (
+        "low_history_ok", "low_auction_price_ok", "low_relative_position_ok",
+        "low_amount_ok", "low_open_band_ok", "high_history_ok",
+        "high_auction_price_ok", "high_avg_inc_ok", "high_amount_ok",
+        "high_market_cap_ok", "high_circulating_cap_ok",
+        "high_open_band_ok", "high_left_pressure_ok",
+    )
+    for key in ordered:
+        if trace.get(key) is False:
+            return key
+    return "route_not_matched"

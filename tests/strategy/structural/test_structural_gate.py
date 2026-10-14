@@ -6,6 +6,7 @@ from qsys.strategy.structural.gate import (
     Classification,
     classify,
     gate_allow,
+    gate_allow_policy,
     three_and,
     three_or,
 )
@@ -91,6 +92,20 @@ def test_low_main_risk_when_the_market_is_bad():
     )
     assert cls.state == "RISK"
     assert gate_allow("LOW_MAIN", cls) is False
+    env = low_env(
+        S6_LOW_TREND_WEAK_THRESHOLD + 0.01,
+        S6_LOW_HEAT_LOW_THRESHOLD + 0.01,
+    )
+    factors = low_factors(0.0, -0.5)
+    assert gate_allow_policy(
+        "LOW_MAIN", cls, env, factors, policy="low_market_only"
+    ) is False
+    assert gate_allow_policy(
+        "LOW_MAIN", cls, env, factors, policy="low_stock_only"
+    ) is True
+    assert gate_allow_policy(
+        "LOW_MAIN", cls, env, factors, policy="low_both_bad_only"
+    ) is True
 
 
 def test_low_main_risk_when_the_stock_is_overheated():
@@ -181,6 +196,16 @@ def test_high_chinext_rejects_when_only_one_holds():
     )
     assert cls.state == "OTHER"
     assert gate_allow("HIGH_CHINEXT", cls) is False
+    env = hc_env(S6_HC_TOUCHED_NOT_LOW + 1, S6_HC_ADVANCE_NOT_LOW - 0.01)
+    assert gate_allow_policy(
+        "HIGH_CHINEXT", cls, env, {}, policy="hc_activity_only"
+    ) is True
+    assert gate_allow_policy(
+        "HIGH_CHINEXT", cls, env, {}, policy="hc_breadth_only"
+    ) is False
+    assert gate_allow_policy(
+        "HIGH_CHINEXT", cls, env, {}, policy="hc_either_ok"
+    ) is True
 
 
 def test_high_chinext_false_dominates_missing_data():
@@ -209,3 +234,10 @@ def test_low_chinext_has_no_gate():
 
 def test_an_unknown_tag_is_allowed():
     assert gate_allow("SOMETHING_ELSE", Classification("UNCHANGED", True, "")) is True
+
+
+def test_research_policy_rejects_unknown_names():
+    with pytest.raises(ValueError, match="unknown research gate policy"):
+        gate_allow_policy(
+            "LOW_MAIN", Classification("CLEAN", True, ""), {}, {}, policy="optimized"
+        )

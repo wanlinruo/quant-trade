@@ -47,6 +47,7 @@ from qsys.data.storage import Warehouse
 from qsys.markets.ashare import ashare_pipeline
 from qsys.strategy.deps import build_universe
 from qsys.strategy.structural.selection import StructuralSelection
+from qsys.strategy.structural.gate import RESEARCH_GATE_POLICIES
 from qsys.strategy.structural.strategy import (
     AUCTION_AT,
     CHECKPOINTS,
@@ -135,6 +136,11 @@ def main() -> int:
         help="仅研究消融：放行指定分支，仍保留原分类留痕；可重复",
     )
     parser.add_argument(
+        "--research-gate-policy", choices=sorted(RESEARCH_GATE_POLICIES),
+        default="current",
+        help="仅研究：运行预先定义的门禁组合变体，不写回生产参数",
+    )
+    parser.add_argument(
         "--jq-compat", action="store_true",
         help="成本口径切成聚宽默认值，用于逐笔对账（见下方 _cost_model）",
     )
@@ -209,6 +215,8 @@ def main() -> int:
         gate_enabled=args.gate,
         gate_thresholds=research_thresholds,
         disabled_gate_tags=args.disable_gate_tag,
+        capture_candidate_traces=True,
+        research_gate_policy=args.research_gate_policy,
     )
     strategy = StructuralStrategy(selection, calendar=calendar)
 
@@ -295,6 +303,7 @@ def main() -> int:
                 research_thresholds, sort_keys=True
             ) if research_thresholds else "",
             "disabled_gate_tags": ",".join(sorted(args.disable_gate_tag)),
+            "research_gate_policy": args.research_gate_policy,
             "auction_at": auction_label,
             "checkpoints": ",".join(t.strftime("%H:%M") for t in CHECKPOINTS),
             "universe_size": len(universe),
@@ -310,6 +319,7 @@ def main() -> int:
         },
         metrics=metrics_map,
         decisions=getattr(selection, "history", None) or getattr(selection, "decisions", ()),
+        candidate_traces=getattr(selection, "trace_history", ()),
         regime=market_data.market_regime(),
         sessions=sessions,
     )

@@ -108,8 +108,24 @@ def selector(warehouse, **kw):
     query = WarehouseQuery(warehouse)
     calendar = AShareCalendar(DAYS)
     return StructuralSelection(
-        HistoricalFeed(query, calendar), MarketFeed(query, calendar), query, **kw
+        HistoricalFeed(query, calendar), MarketFeed(query, calendar), query,
+        capture_candidate_traces=True, **kw,
     )
+
+
+def test_candidate_trace_capture_is_off_for_long_running_production_by_default(
+    warehouse, write_daily_bars,
+):
+    low_setup(warehouse, write_daily_bars)
+    build_delisting_pool(warehouse, DAYS[0], DAYS[-1], extra_sessions=DAYS)
+    query = WarehouseQuery(warehouse)
+    calendar = AShareCalendar(DAYS)
+    selection = StructuralSelection(
+        HistoricalFeed(query, calendar), MarketFeed(query, calendar), query,
+        require_auction_volume=False,
+    )
+    selection.select(TODAY, YESTERDAY)
+    assert selection.trace_history == []
 
 
 def test_low_branch_selects_a_valid_candidate(warehouse, write_daily_bars):
@@ -327,6 +343,13 @@ def test_history_accumulates_every_session_while_decisions_is_the_latest(
     assert len(first) == 1
     assert len(selection.decisions) == 1          # 最近一次
     assert len(selection.history) == 2            # 整段累计
+    assert len(selection.traces) == 1
+    assert len(selection.trace_history) == 2
+    trace = selection.trace_history[0]
+    assert trace["routed_tag"] == "LOW_MAIN"
+    assert trace["regime_date"] == YESTERDAY
+    assert trace["gate_allow"] is True
+    assert trace["terminal_stage"] == "allowed"
 
 
 def test_the_gate_can_be_disabled_for_research(warehouse, write_daily_bars):

@@ -133,6 +133,7 @@ def write_run(
     config: Mapping[str, object],
     metrics: Mapping[str, float] | None = None,
     decisions: Sequence = (),
+    candidate_traces: Sequence[Mapping[str, object]] = (),
     regime: pl.DataFrame | None = None,
     sessions: Sequence[date] = (),
     benchmark: pl.DataFrame | None = None,
@@ -155,6 +156,7 @@ def write_run(
     files["orders.csv"] = _orders(result).write_csv()
     files["daily_positions.csv"] = _positions(result).write_csv()
     files["gate_decisions.csv"] = _gate_decisions(decisions).write_csv()
+    files["candidate_funnel.csv"] = _candidate_funnel(candidate_traces).write_csv()
     files["branch_summary.csv"] = _branch_summary(lots).write_csv()
     if regime is not None and regime.height:
         files["regime_daily.csv"] = _regime(regime, start, end).write_csv()
@@ -400,6 +402,22 @@ def _gate_decisions(decisions: Sequence) -> pl.DataFrame:
     )
 
 
+def _candidate_funnel(
+    traces: Sequence[Mapping[str, object]],
+) -> pl.DataFrame:
+    """候选级只读研究留痕；不改变原有 Gate 产物 schema。"""
+    if not traces:
+        return pl.DataFrame(schema={
+            "date": pl.Date,
+            "symbol": pl.Utf8,
+            "terminal_stage": pl.Utf8,
+            "terminal_reason": pl.Utf8,
+        })
+    return pl.DataFrame(list(traces), infer_schema_length=None, strict=False).sort(
+        "date", "symbol"
+    )
+
+
 def _branch_summary(lots: Sequence[ClosedLot]) -> pl.DataFrame:
     frame = _lots_frame(lots)
     cols = {"strategy_tag": pl.Utf8, "closed_lots": pl.Int64, "wins": pl.Int64,
@@ -478,6 +496,7 @@ def _readme(
         "  daily_buy_details.csv  date/stock/strategy_tag（同日同标的只一行）\n"
         "  closed_lots.csv        逐笔配对的买入->卖出\n"
         "  gate_decisions.csv     date/stock/strategy_tag/s7_state/reason/real_allow\n"
+        "  candidate_funnel.csv   候选级入档条件与门禁研究留痕\n"
         "  regime_daily.csv       Gate 用到的每日市场因子\n"
         "  branch_summary.csv     分支维度的统计\n"
         "  run_status.csv         这次运行的一行摘要\n\n"
