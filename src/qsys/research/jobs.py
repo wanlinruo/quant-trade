@@ -244,10 +244,16 @@ class ClaimedJob:
 
 
 class JobStore:
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, *, initialize: bool = True) -> None:
         self.root = Path(root)
-        for name in ("inbox", "jobs", "control", "rejected"):
-            (self.root / name).mkdir(parents=True, exist_ok=True)
+        if initialize:
+            for name in ("inbox", "jobs", "control", "rejected"):
+                (self.root / name).mkdir(parents=True, exist_ok=True)
+        else:
+            required = [self.root / name for name in ("inbox", "jobs", "control")]
+            missing = [str(path) for path in required if not path.is_dir()]
+            if missing:
+                raise FileNotFoundError("research job store is incomplete: " + ", ".join(missing))
 
     def enqueue(self, request: JobRequest) -> Path:
         # Reparse the serialized form so mutation of a nested parameters dict

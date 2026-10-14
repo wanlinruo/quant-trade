@@ -4,6 +4,21 @@
 窄而可审计的文件协议。当前仅注册 `verify-snapshot` 端到端任务，用于验证发布、身份、快照、
 状态和产物链；现有 Web 回测尚未切换。
 
+Web 适配由 `--research-jobs` 显式开启只读列表、详情、日志与 manifest 白名单内的产物下载。
+只有同时提供已验证的 `--research-release` 和 `--research-snapshots` 才开放提交；客户端不能指定
+code SHA、wheel hash、snapshot ID 或 cgroup 上限。提交时只读取原子 `current` 指针与 manifest
+身份，不重新扫描全量分区；Runner 在执行前仍会重新核对请求、release 和 snapshot manifest。
+
+```bash
+scripts/run_monitor.py \
+  --research-jobs /data/qsys/research-jobs \
+  --research-release /opt/qsys-research/current \
+  --research-snapshots /data/qsys/warehouse-snapshot-store
+```
+
+只传 `--research-jobs` 时页面保持只读，路由表不注册提交或取消方法。Web 下载只接受 Runner
+成功产物 manifest 中列出且现场 hash 一致的路径，并拒绝目录或文件 symlink。
+
 ## 所有权边界
 
 ```text
@@ -107,5 +122,5 @@ sudo rm -f /etc/qsys/research-runner.activation-approved
 scripts/install_research_runner_isolation.sh <上一版本完整提交SHA>
 ```
 
-生产接入前仍需完成：CI wheel 安装与来源证明、Web 提交/查看适配、真实回测 task 的迁移、
-测试节点负向权限验证和压力演练。仓库内 unit/安装脚本不会自行接触或修改生产节点。
+生产接入前仍需完成：真实回测 task 的迁移、测试节点负向权限验证和压力演练。仓库内
+unit/安装脚本和默认 Web 配置不会自行接触、修改或激活生产 Runner。

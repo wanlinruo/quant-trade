@@ -127,6 +127,7 @@ button:disabled { opacity:.55; cursor:not-allowed; }
     <a href="/market" class="{{ 'active' if page in ('market', 'limit_up_shadow', 'limit_up_research') }}">行情</a>
     <a href="/strategies" class="{{ 'active' if page == 'strategies' }}">策略</a>
     <a href="/backtests" class="{{ 'active' if page == 'backtests' }}">回测</a>
+    {% if request.app.state.research_jobs_enabled %}<a href="/research-jobs" class="{{ 'active' if page == 'research_jobs' }}">隔离研究</a>{% endif %}
     <a href="/paper" class="{{ 'active' if page == 'paper' }}">模拟交易</a>
     <a href="/live" class="{{ 'active' if page in ('live','overview','trades','health','report','runs') }}">实盘监控</a>
   </nav>
@@ -135,8 +136,8 @@ button:disabled { opacity:.55; cursor:not-allowed; }
   <a class="utility-link {{ 'active' if page and page.startswith('data') }}" href="/data">数据管理</a>
   <a class="utility-link {{ 'active' if page and page.startswith('services') }}" href="/services">服务管理</a>
 </header>
-{% if page in ('strategies', 'backtests', 'paper') %}
-<div class="subnav"><a href="/strategies" class="{{ 'active' if page == 'strategies' }}">策略研究</a><a href="/backtests" class="{{ 'active' if page == 'backtests' }}">回测记录</a><a href="/paper" class="{{ 'active' if page == 'paper' }}">模拟交易</a></div>
+{% if page in ('strategies', 'backtests', 'research_jobs', 'paper') %}
+<div class="subnav"><a href="/strategies" class="{{ 'active' if page == 'strategies' }}">策略研究</a><a href="/backtests" class="{{ 'active' if page == 'backtests' }}">回测记录</a>{% if request.app.state.research_jobs_enabled %}<a href="/research-jobs" class="{{ 'active' if page == 'research_jobs' }}">隔离研究</a>{% endif %}<a href="/paper" class="{{ 'active' if page == 'paper' }}">模拟交易</a></div>
 {% elif page in ('market', 'limit_up_shadow', 'limit_up_research') %}
 <div class="subnav"><a href="/market" class="{{ 'active' if page == 'market' }}">行情总览</a><a href="/market/limit-up-shadow" class="{{ 'active' if page == 'limit_up_shadow' }}">涨停观察</a><a href="/market/limit-up-research" class="{{ 'active' if page == 'limit_up_research' }}">研究回测</a></div>
 {% elif page and page.startswith('data') %}
@@ -144,7 +145,7 @@ button:disabled { opacity:.55; cursor:not-allowed; }
 {% elif session and page in ('live','overview','trades','health','report','runs') %}
 <div class="subnav"><a href="/s/{{ session }}" class="{{ 'active' if page in ('live','overview') }}">总览</a><a href="/s/{{ session }}/trades" class="{{ 'active' if page == 'trades' }}">成交</a><a href="/s/{{ session }}/health" class="{{ 'active' if page == 'health' }}">对账与质量</a><a href="/s/{{ session }}/report" class="{{ 'active' if page == 'report' }}">日报</a><a href="/s/{{ session }}/runs" class="{{ 'active' if page == 'runs' }}">运行日志</a></div>
 {% endif %}
-<main class="{{ 'workbench' if page in ('strategies', 'backtests', 'paper') else '' }}">{% block content %}{% endblock %}</main>
+<main class="{{ 'workbench' if page in ('strategies', 'backtests', 'research_jobs', 'paper') else '' }}">{% block content %}{% endblock %}</main>
 {% if session and not (page and page.startswith('data')) %}
 <script>
 // 零外部依赖的自动刷新：每 15 秒拉一次状态片段。
