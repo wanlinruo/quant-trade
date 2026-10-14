@@ -23,6 +23,7 @@ runner=$release_root/venv/bin/qsys-research-runner
 wheel=$release_root/dist/qsys.whl
 snapshot_store=/data/qsys/warehouse-snapshot-store
 job_store=/data/qsys/research-jobs
+repo=$(git rev-parse --show-toplevel)
 
 if [ ! -x "$runner" ] || [ ! -f "$wheel" ]; then
     echo "versioned Runner release is incomplete: $release_root" >&2
@@ -32,6 +33,8 @@ if [ ! -d "$snapshot_store/snapshots" ]; then
     echo "snapshot store is not initialized: $snapshot_store" >&2
     exit 1
 fi
+python3 "$repo/scripts/build_research_release.py" --repo "$repo" verify \
+    --sha "$code_sha" --release "$release_root" >/dev/null
 if [ -n "$(find "$release_root" -xdev -perm /022 -print -quit)" ]; then
     echo "Runner release must not be writable by group or other" >&2
     exit 1
