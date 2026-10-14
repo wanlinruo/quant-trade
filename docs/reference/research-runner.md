@@ -1,8 +1,8 @@
 # Research Runner 作业协议
 
-本协议是 #285 的第二阶段基础：把 Web 控制面与研究执行进程之间的共享 SQLite 队列替换为
+本协议是 #285 的 Runner 基础：把 Web 控制面与研究执行进程之间的共享 SQLite 队列替换为
 窄而可审计的文件协议。当前仅注册 `verify-snapshot` 端到端任务，用于验证发布、身份、快照、
-状态和产物链；现有 Web 回测尚未切换，生产服务也尚未安装。
+状态和产物链；现有 Web 回测尚未切换。
 
 ## 所有权边界
 
@@ -56,5 +56,31 @@ Runner 重启时，遗留的 `claimed`/`running` 作业进入 `interrupted`，�
   校验，`verify-snapshot` 任务可按需复验，避免每个研究作业开始前重复扫描整个 Warehouse。
 - Runner 不需要 Redis、券商配置、生产状态库或 Warehouse 写权限。
 
-生产接入前仍需完成：独立 `qsys-research` 用户、systemd/cgroup unit、只读 bind mount、CI wheel
-安装与 SHA 证明、网络封锁、Web 提交/查看适配，以及真实回测 task 的迁移和压力演练。
+## systemd 隔离契约
+
+`deploy/systemd/qsys-research-runner.service` 固定使用 `qsys-research` 身份，单并发子进程继承
+`MemoryMax=4G`、`CPUQuota=100%`、`IOWeight=100` 与较低调度优先级。服务通过
+`BindReadOnlyPaths` 只读看到 `/data/qsys/warehouse-snapshot-store`，唯一可写路径是
+`/data/qsys/research-jobs`；可变生产 Warehouse、生产状态和部署配置显式不可见。服务同时使用
+私有网络命名空间、IP deny-all、空 capability 集和 systemd 内核保护，因此没有 Redis、券商
+或互联网访问路径。
+
+发布目录必须是 `/opt/qsys-research/releases/<code_sha>`，由 root 拥有且不能被 group/other
+写入；`current` 只由安装脚本原子切换。Runner 启动时解析并固定 wheel 的规范路径与 SHA-256，
+运行中切换 `current` 不会改变既有进程的代码身份。准备好版本化 wheel/venv 和快照后，由维护
+窗口显式执行：
+
+```bash
+scripts/install_research_runner_isolation.sh <完整提交SHA>
+```
+
+脚本创建系统账号和分权目录：Web 身份只能写 `inbox/control`，Runner 身份独占
+`jobs/rejected`，然后安装无秘密的代码 SHA 环境文件并启用服务。停用与回滚不删除作业证据：
+
+```bash
+sudo systemctl disable --now qsys-research-runner.service
+scripts/install_research_runner_isolation.sh <上一版本完整提交SHA>
+```
+
+生产接入前仍需完成：CI wheel 安装与来源证明、Web 提交/查看适配、真实回测 task 的迁移、
+测试节点负向权限验证和压力演练。仓库内 unit/安装脚本不会自行接触或修改生产节点。

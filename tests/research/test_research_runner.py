@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pyarrow as pa
 import pyarrow.parquet as pq
+import pytest
 
 from qsys.data.snapshots import create_snapshot
 from qsys.research.jobs import JobLimits, JobRequest, JobStore
@@ -108,3 +109,37 @@ def test_runner_honours_pre_start_cancel_and_resource_ceiling(tmp_path: Path):
     assert runner.run_once()
     assert _status(store, "verify-2")["state"] == "failed"
     assert "cgroup ceiling" in _status(store, "verify-2")["detail"]
+
+
+def test_runner_identity_pins_the_resolved_wheel_and_its_hash(tmp_path: Path):
+    first = tmp_path / "release-1"
+    second = tmp_path / "release-2"
+    first.mkdir()
+    second.mkdir()
+    (first / "qsys.whl").write_bytes(b"first immutable wheel")
+    (second / "qsys.whl").write_bytes(b"second immutable wheel")
+    current = tmp_path / "current"
+    current.symlink_to(first, target_is_directory=True)
+
+    identity = RunnerIdentity(
+        CODE_SHA, current / "qsys.whl", JobLimits(4096, 200, 1000, 3600),
+    )
+    pinned_hash = identity.wheel_sha256
+    current.unlink()
+    current.symlink_to(second, target_is_directory=True)
+
+    assert identity.wheel == (first / "qsys.whl").resolve()
+    assert identity.wheel_sha256 == pinned_hash
+    assert identity.wheel_sha256 != hashlib.sha256(
+        (second / "qsys.whl").read_bytes(),
+    ).hexdigest()
+
+
+def test_runner_identity_rejects_a_wheel_file_symlink(tmp_path: Path):
+    target = tmp_path / "release.whl"
+    target.write_bytes(b"wheel")
+    link = tmp_path / "qsys.whl"
+    link.symlink_to(target)
+
+    with pytest.raises(ValueError, match="wheel path must not be a symlink"):
+        RunnerIdentity(CODE_SHA, link, JobLimits(4096, 200, 1000, 3600))
