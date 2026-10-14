@@ -112,6 +112,40 @@ def test_first_board_uses_previous_session(ctx, warehouse):
     assert row["passed"] is True and row["checked_rows"] == 2
 
 
+def test_first_board_recompute_crosses_a_long_exchange_holiday(warehouse):
+    previous = date(2026, 9, 29)
+    current = date(2026, 10, 14)
+    symbol = "002813.SZ"
+    _flags([
+        {"dt": previous, "symbol": symbol, "limit_up": 26.38, "is_st": False,
+         "is_limit_up": True, "is_first_board": True},
+        {"dt": current, "symbol": symbol, "limit_up": 29.02, "is_st": False,
+         "is_limit_up": True, "is_first_board": False},
+    ], warehouse)
+    _daily([
+        {"dt": previous, "symbol": symbol, "high": 26.38, "close": 26.38},
+        {"dt": current, "symbol": symbol, "high": 29.02, "close": 29.02},
+    ], warehouse)
+    listed = pl.DataFrame([
+        {"symbol": symbol, "dt": previous, "limit_type": "U", "limit_times": 1,
+         "open_times": 0, "first_time": "09:30", "fd_amount": 0.0,
+         "limit_amount": 0.0, "float_mv": 0.0},
+        {"symbol": symbol, "dt": current, "limit_type": "U", "limit_times": 2,
+         "open_times": 0, "first_time": "09:30", "fd_amount": 0.0,
+         "limit_amount": 0.0, "float_mv": 0.0},
+    ]).select(schema.LIMIT_LIST_DAILY.names)
+    warehouse.write(
+        "limit_list_daily", listed.to_arrow().cast(schema.LIMIT_LIST_DAILY), year=2026
+    )
+    holiday_ctx = C.CheckContext(
+        WarehouseQuery(warehouse), warehouse, current, current,
+    )
+
+    row = _run(holiday_ctx, "A2.recompute.is_first_board")
+
+    assert row["passed"] is True and row["checked_rows"] == 1
+
+
 def test_regime_count_is_rebuilt_from_daily_flags(ctx, warehouse):
     _daily([
         {"symbol": "600036.SH", "dt": D[0], "close": 11.0, "amount": 100.0},
