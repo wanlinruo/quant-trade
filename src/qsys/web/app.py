@@ -32,6 +32,7 @@ from qsys.web.data_views import DataService, MarketService
 from qsys.web.limit_up_shadow import LimitUpShadowReader, LimitUpShadowView
 from qsys.web.limit_up_research import LimitUpResearchReader, LimitUpResearchView
 from qsys.web.paper_chart import history_series, intraday_series
+from qsys.web.research_jobs import ResearchJobConsole
 from qsys.web.service_views import ServiceConsole
 from qsys.web.svg import line_chart, multi_line_chart
 from qsys.web.views import MonitorService
@@ -146,10 +147,12 @@ def create_app(
     assets: DataAssetService | None = None,
     limit_up_shadow: LimitUpShadowReader | None = None,
     limit_up_research: LimitUpResearchReader | None = None,
+    research_jobs: ResearchJobConsole | None = None,
     # 影子核心承袭的模拟账户（只读查询；没配承袭时返回 None）
     shadow_lineage: Callable[[], object | None] | None = None,
 ) -> FastAPI:
     app = FastAPI(title=config.title, docs_url=None, redoc_url=None)
+    app.state.research_jobs_enabled = research_jobs is not None
 
     if queue is not None:
         @app.on_event("startup")
@@ -554,6 +557,91 @@ def create_app(
                 "selected_status": status, "selected_sort": sort,
                 "page_number": page_number, "page_count": page_count,
             },
+        )
+
+    @app.get("/research-jobs", response_class=HTMLResponse)
+    def research_job_index(request: Request):
+        if research_jobs is None:
+            raise HTTPException(status_code=404, detail="research jobs not enabled")
+        return TEMPLATES.TemplateResponse(
+            request=request, name="research_jobs.html",
+            context={
+                "title": config.title, "session": None, "page": "research_jobs",
+                "jobs": research_jobs.jobs(),
+                "submission_enabled": research_jobs.submission_enabled,
+            },
+        )
+
+    @app.get("/research-jobs/{ident}", response_class=HTMLResponse)
+    def research_job_detail(request: Request, ident: str):
+        if research_jobs is None:
+            raise HTTPException(status_code=404, detail="research jobs not enabled")
+        job = research_jobs.job(ident)
+        if job is None:
+            raise HTTPException(status_code=404, detail="no such research job")
+        return TEMPLATES.TemplateResponse(
+            request=request, name="research_job_detail.html",
+            context={"title": config.title, "session": None,
+                     "page": "research_jobs", "job": job,
+                     "submission_enabled": research_jobs.submission_enabled},
+        )
+
+    @app.post("/api/research-jobs", status_code=201)
+    async def submit_research_job(request: Request):
+        if research_jobs is None:
+            raise HTTPException(status_code=404, detail="research jobs not enabled")
+        body = await request.json()
+        parameters = body.get("parameters", {})
+        if not isinstance(parameters, dict):
+            raise HTTPException(status_code=422, detail="parameters must be an object")
+        timeout = body.get("timeout_seconds")
+        try:
+            job = research_jobs.submit(
+                str(body.get("task", "")), parameters,
+                timeout_seconds=int(timeout) if timeout is not None else None,
+            )
+        except RuntimeError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except (OSError, TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {"id": job.job_id, "location": f"/research-jobs/{job.job_id}"}
+
+    @app.get("/api/research-jobs/{ident}")
+    def research_job_status(ident: str):
+        if research_jobs is None:
+            raise HTTPException(status_code=404, detail="research jobs not enabled")
+        job = research_jobs.job(ident, log_limit=20_000)
+        if job is None:
+            raise HTTPException(status_code=404, detail="no such research job")
+        return {
+            "id": job.job_id, "status": job.state, "detail": job.detail,
+            "request": job.request, "log": job.log, "artifacts": job.artifacts,
+        }
+
+    @app.post("/api/research-jobs/{ident}/cancel")
+    def cancel_research_job(ident: str):
+        if research_jobs is None:
+            raise HTTPException(status_code=404, detail="research jobs not enabled")
+        try:
+            research_jobs.cancel(ident)
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"status": "cancellation-requested"}
+
+    @app.get("/research-jobs/{ident}/file/{filename:path}")
+    def research_job_artifact(ident: str, filename: str):
+        if research_jobs is None:
+            raise HTTPException(status_code=404, detail="research jobs not enabled")
+        found = research_jobs.artifact(ident, filename)
+        if found is None:
+            raise HTTPException(status_code=404, detail="no such research artifact")
+        body, media = found
+        download_name = Path(filename).name.replace('"', "")
+        return Response(
+            content=body, media_type=media,
+            headers={"Content-Disposition": f'attachment; filename="{download_name}"'},
         )
 
     @app.get("/paper", response_class=HTMLResponse)
@@ -1002,6 +1090,22 @@ def create_app(
         css = "ok" if view.is_healthy else "bad"
         label = "正常" if view.is_healthy else "异常"
         return f'<span class="pill {css}">{label}</span>'
+
+    if research_jobs is None:
+        app.router.routes[:] = [
+            route for route in app.router.routes
+            if not getattr(route, "path", "").startswith(
+                ("/research-jobs", "/api/research-jobs")
+            )
+        ]
+    elif not research_jobs.submission_enabled:
+        app.router.routes[:] = [
+            route for route in app.router.routes
+            if not (
+                getattr(route, "path", "").startswith("/api/research-jobs")
+                and "POST" in getattr(route, "methods", set())
+            )
+        ]
 
     if workbench is None:
         # 保留监控台的历史只读契约：不仅请求返回 404，路由表里也不能出现

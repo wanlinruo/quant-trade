@@ -34,8 +34,10 @@ from qsys.web.limit_up_research import (
     LimitUpResearchReader,
 )
 from qsys.web.service_views import ServiceConsole, windows_task_show
+from qsys.web.research_jobs import ResearchJobConsole, ResearchSubmissionProfile
 from qsys.web.views import MonitorService
 from qsys.web.workbench import BacktestQueue, WorkbenchStore
+from qsys.research.jobs import JobLimits
 from qsys.paper.store import PaperStore
 
 log = structlog.get_logger("monitor")
@@ -53,6 +55,9 @@ def build_app(
     health_state_path: Path | None = None,
     limit_up_shadow_state_path: Path | None = None,
     limit_up_research_run_path: Path | None = None,
+    research_jobs_path: Path | None = None,
+    research_release_path: Path | None = None,
+    research_snapshots_path: Path | None = None,
 ):
     warehouse = Warehouse(warehouse_root)
     journal = SessionJournal(warehouse)
@@ -94,6 +99,15 @@ def build_app(
         store=LiveStore(selected_state),
     )
     trading_calendar = _daily_trading_calendar(tushare_config_path or config_path)
+    research_console = None
+    if research_jobs_path is not None:
+        profile = None
+        if research_release_path is not None and research_snapshots_path is not None:
+            profile = ResearchSubmissionProfile.from_release(
+                research_release_path, research_snapshots_path,
+                JobLimits(4096, 100, 10, 14_400),
+            )
+        research_console = ResearchJobConsole(research_jobs_path, profile=profile)
     return create_app(
         monitor,
         config,
@@ -135,6 +149,7 @@ def build_app(
             limit_up_research_run_path or Path("var/research/issue-210"),
             name_lookup=HistoricalSecurityNameLookup(warehouse_root),
         ),
+        research_jobs=research_console,
     )
 
 
@@ -200,6 +215,18 @@ def main() -> int:
         "--limit-up-research-run", default="var/research/issue-210",
         help="#210 冻结研究回测目录（监控台只读紧凑证据）",
     )
+    parser.add_argument(
+        "--research-jobs", default=None,
+        help="隔离 Research Runner 作业目录；不给则不注册相关页面和 API",
+    )
+    parser.add_argument(
+        "--research-release", default=None,
+        help="已验证的版本化 Runner release；与 --research-snapshots 同时给出才开放提交",
+    )
+    parser.add_argument(
+        "--research-snapshots", default=None,
+        help="不可变 snapshot store；与 --research-release 同时给出才开放提交",
+    )
     parser.add_argument("--tushare-config", default=None,
                         help="只取 [tushare] 凭据查交易日历；不给则用 --config。"
                              "测试环境用它避免连到生产 Redis")
@@ -219,6 +246,9 @@ def main() -> int:
         Path(args.runs), Path(args.workspace), Path(args.service_runs),
         args.tushare_config, Path(args.state), Path(args.health_state),
         Path(args.limit_up_shadow_state), Path(args.limit_up_research_run),
+        Path(args.research_jobs) if args.research_jobs else None,
+        Path(args.research_release) if args.research_release else None,
+        Path(args.research_snapshots) if args.research_snapshots else None,
     )
     log.info("monitor.started", host=args.host, port=args.port)
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")

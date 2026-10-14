@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head"><div><h2>隔离研究任务</h2><p class="muted">请求绑定代码、wheel 与不可变快照；状态和产物由独立 Runner 写入。</p></div>{% if submission_enabled %}<button onclick="submitVerification()">验证当前快照</button>{% endif %}</div>
+<section class="panel">
+{% if jobs %}<div class="table-wrap"><table><thead><tr><th>任务</th><th>类型</th><th>快照</th><th>代码</th><th>创建时间</th><th>状态</th></tr></thead><tbody>
+{% for job in jobs %}<tr><td><a href="/research-jobs/{{ job.job_id }}" class="mono">{{ job.job_id }}</a></td><td>{{ job.request.task }}</td><td class="mono">{{ job.request.snapshot_id }}</td><td class="mono">{{ job.request.code_sha[:12] }}</td><td>{{ job.request.created_at.replace('T',' ') }}</td><td><span class="pill {{ 'ok' if job.state == 'succeeded' else 'warn' if job.state in ('queued','claimed','running') else 'bad' }}">{{ job.state }}</span></td></tr>{% endfor %}
+</tbody></table></div>{% else %}<div class="empty-state">尚无隔离研究任务。</div>{% endif %}
+</section>
+{% if submission_enabled %}<script>async function submitVerification(){const r=await fetch('/api/research-jobs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({task:'verify-snapshot',parameters:{}})});const p=await r.json();if(!r.ok){alert(p.detail);return}location.href=p.location}</script>{% endif %}
+{% endblock %}
