@@ -15,6 +15,8 @@ STEP_START = re.compile(r"^\s*-\s+(name|uses):")
 RUN_START = re.compile(r"^\s*run:")
 CHECKOUT_REF = re.compile(r"actions/checkout@([^\s]+)")
 CHECKOUT_V7_0_1 = "3d3c42e5aac5ba805825da76410c181273ba90b1"
+UPLOAD_REF = re.compile(r"actions/upload-artifact@([^\s]+)")
+UPLOAD_V7_0_2 = "cf430e030ddbb5b0abf93d22962f4752f3646cd9"
 
 
 def _shell_interpolations(text: str) -> list[str]:
@@ -72,3 +74,13 @@ def test_every_checkout_uses_the_pinned_node24_release():
 
     assert refs
     assert set(refs) == {CHECKOUT_V7_0_1}
+
+
+def test_artifact_upload_uses_the_pinned_node24_release():
+    refs = [
+        ref
+        for path in sorted(WORKFLOWS.glob("*.yml"))
+        for ref in UPLOAD_REF.findall(path.read_text(encoding="utf-8"))
+    ]
+
+    assert refs == [UPLOAD_V7_0_2]
