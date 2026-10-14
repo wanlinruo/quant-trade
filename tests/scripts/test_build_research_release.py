@@ -52,6 +52,7 @@ def test_build_and_verify_bind_wheel_to_exact_git_tree(tmp_path: Path) -> None:
     )
 
     assert value["source_sha"] == sha
+    assert value["wheel_filename"] == "qsys-0.1.0-py3-none-any.whl"
     assert value["wheel_sha256"] == hashlib.sha256(wheel.read_bytes()).hexdigest()
     assert verify(repo, sha, release) == value
     assert json.loads((release / "release.json").read_text()) == value
@@ -63,7 +64,7 @@ def test_verify_rejects_wheel_tampering_and_wrong_source(tmp_path: Path) -> None
     release = tmp_path / "release"
     build(repo, sha, wheel.parent, release, repository="owner/repo", run_id="123",
           run_attempt="1")
-    with (release / "dist" / "qsys.whl").open("ab") as stream:
+    with (release / "dist" / "qsys-0.1.0-py3-none-any.whl").open("ab") as stream:
         stream.write(b"tampered")
 
     with pytest.raises(ValueError, match="wheel_sha256 mismatch"):

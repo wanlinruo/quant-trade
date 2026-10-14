@@ -34,6 +34,7 @@ ignored_paths = [
   "scripts/build_component_release.py",
   "scripts/install_catalog_verify_release.sh",
   "scripts/install_deployment_entrypoint.sh",
+  "scripts/install_test_research_runner_isolation.sh",
   "scripts/install_production_deployment_entrypoint.sh",
   "scripts/install_windows_deployment_coordinator.sh",
   "scripts/release_evidence.py",

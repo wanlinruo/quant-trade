@@ -210,6 +210,28 @@ def test_research_runner_unit_enforces_identity_resources_and_denials() -> None:
     assert "enable --now qsys-research-runner.service" not in installer
     assert "staged inactive isolated Research Runner release" in installer
     assert "qsys-research-runner.service" not in entrypoint.SYSTEMD_ENABLE_ON_INSTALL
+    assert "qsys-research-runner-test.service" in entrypoint.SYSTEMD_EXCLUDED
+
+
+def test_test_research_runner_is_staged_inactive_with_test_only_paths() -> None:
+    unit = Path("deploy/systemd/qsys-research-runner-test.service").read_text(
+        encoding="utf-8",
+    )
+    installer = Path("scripts/install_test_research_runner_isolation.sh").read_text(
+        encoding="utf-8",
+    )
+
+    assert "User=qsys-research-test" in unit
+    assert "MemoryMax=512M" in unit and "CPUQuota=25%" in unit
+    assert "BindReadOnlyPaths=/data/qsys-test/warehouse-snapshot-store:" in unit
+    assert "ReadWritePaths=/data/qsys-test/research-jobs" in unit
+    assert "/data/qsys/warehouse-snapshot-store" in unit
+    assert "PrivateNetwork=true" in unit and "IPAddressDeny=any" in unit
+    assert "[Install]" not in unit
+    assert "qsys-research-test" in installer
+    assert "systemctl enable" not in installer
+    assert "systemctl start" not in installer
+    assert "systemctl is-enabled qsys-research-runner-test.service" in installer
 
 
 def test_catalog_verifier_uses_an_independent_immutable_release() -> None:
@@ -388,6 +410,35 @@ def test_fixed_node_entrypoint_accepts_only_test_runtime() -> None:
         entrypoint.validate_request("production", "a" * 40, ["linux-web"])
 
 
+def test_test_research_artifact_extraction_rejects_unexpected_files(tmp_path) -> None:
+    entrypoint = _entrypoint_module()
+    archive = tmp_path / "research.zip"
+    destination = tmp_path / "release"
+    destination.mkdir()
+    with zipfile.ZipFile(archive, "w") as value:
+        value.writestr("release.json", "{}")
+        value.writestr("dist/qsys-0.1.0-py3-none-any.whl", b"wheel")
+        value.writestr("unexpected", b"no")
+
+    with pytest.raises(ValueError, match="release.json and one wheel"):
+        entrypoint._extract_research_archive(archive, destination)
+
+
+def test_test_research_staging_paths_do_not_expand_production_install() -> None:
+    manifest = DeploymentManifest.load(MANIFEST)
+    installer = manifest.plan(
+        ["scripts/install_test_research_runner_isolation.sh"],
+        environment="production",
+    )
+
+    assert installer.components == ()
+    assert installer.unknown_paths == ()
+    entrypoint = _production_entrypoint_module()
+    assert entrypoint._systemd_targets(
+        "deploy/systemd/qsys-research-runner-test.service",
+    ) == ()
+
+
 def test_restricted_ssh_dispatcher_never_invokes_a_shell(monkeypatch) -> None:
     dispatcher = _dispatcher_module()
     monkeypatch.setenv(
@@ -409,6 +460,12 @@ def test_restricted_ssh_dispatcher_never_invokes_a_shell(monkeypatch) -> None:
     monkeypatch.setenv("SSH_ORIGINAL_COMMAND", "attest --environment test")
     assert dispatcher.command_from_environment()[:2] == [
         "/usr/local/libexec/qsys-deploy-entrypoint", "attest",
+    ]
+    monkeypatch.setenv(
+        "SSH_ORIGINAL_COMMAND", "research-stage --sha " + "a" * 40,
+    )
+    assert dispatcher.command_from_environment()[:2] == [
+        "/usr/local/libexec/qsys-deploy-entrypoint", "research-stage",
     ]
 
 
@@ -1292,6 +1349,21 @@ def test_component_workflow_streams_only_a_verified_artifact() -> None:
     assert ".before.linux == .after.linux" in workflow
     assert "PRODUCTION_DEPLOY_SSH_KEY" in workflow
     assert "cancel-in-progress: false" in workflow
+
+
+def test_test_research_workflow_streams_ci_artifact_without_activation() -> None:
+    workflow = Path(".github/workflows/stage-test-research-runner.yml").read_text(
+        encoding="utf-8",
+    )
+
+    assert "workflow_dispatch:" in workflow
+    assert "STAGE_TEST_RESEARCH" in workflow
+    assert "qsys-research-$TARGET_SHA" in workflow
+    assert "research-stage --sha $TARGET_SHA" in workflow
+    assert "<research.zip" in workflow
+    assert "research-stage-v1" in workflow
+    assert ".before.linux == .after.linux" in workflow
+    assert "Runner activation: never performed" in workflow
 
 
 def test_production_entrypoint_installer_preserves_bootstrap_backup() -> None:
