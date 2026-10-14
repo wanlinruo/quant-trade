@@ -59,7 +59,9 @@ Runner 重启时，遗留的 `claimed`/`running` 作业进入 `interrupted`，�
 ## systemd 隔离契约
 
 `deploy/systemd/qsys-research-runner.service` 固定使用 `qsys-research` 身份，单并发子进程继承
-`MemoryMax=4G`、`CPUQuota=100%`、`IOWeight=100` 与较低调度优先级。服务通过
+`MemoryHigh=3G`、`MemoryMax=4G`、`CPUQuota=100%`、低 CPU/IO 权重与较低调度优先级。
+Runner 的 OOM 分数高于实盘服务；systemd-oomd 发生内存压力时优先终止 Runner cgroup，且启动
+频率受限，避免超限后反复拉起。服务通过
 `BindReadOnlyPaths` 只读看到 `/data/qsys/warehouse-snapshot-store`，唯一可写路径是
 `/data/qsys/research-jobs`；可变生产 Warehouse、生产状态和部署配置显式不可见。服务同时使用
 私有网络命名空间、IP deny-all、空 capability 集和 systemd 内核保护，因此没有 Redis、券商
@@ -75,10 +77,28 @@ scripts/install_research_runner_isolation.sh <完整提交SHA>
 ```
 
 脚本创建系统账号和分权目录：Web 身份只能写 `inbox/control`，Runner 身份独占
-`jobs/rejected`，然后安装无秘密的代码 SHA 环境文件并启用服务。停用与回滚不删除作业证据：
+`jobs/rejected`，然后安装无秘密的代码 SHA 环境文件。脚本只 stage 版本，绝不自动启动服务。
+
+## 与 #137 实盘观察期的门禁
+
+#137 的 10,000 元、至少 5 个交易日人工盯盘结束且维护者明确放行前，不得在生产创建
+`/etc/qsys/research-runner.activation-approved`，也不得启用 Runner。代码开发、CI、测试节点的
+负向权限与压力验证可以继续，不能阻塞或改变 live core、Windows agent、订单 Redis 和生产
+状态库。
+
+观察期结束后仍须先完成压力演练并安排维护窗口。显式批准和激活必须是两个可审计操作：
+
+```bash
+printf 'issue=137 approved_at=<UTC时间>\n' | \
+  sudo tee /etc/qsys/research-runner.activation-approved
+sudo systemctl enable --now qsys-research-runner.service
+```
+
+停用与回滚不删除作业证据，并撤销激活批准：
 
 ```bash
 sudo systemctl disable --now qsys-research-runner.service
+sudo rm -f /etc/qsys/research-runner.activation-approved
 scripts/install_research_runner_isolation.sh <上一版本完整提交SHA>
 ```
 

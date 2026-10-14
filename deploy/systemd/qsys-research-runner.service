@@ -4,6 +4,9 @@ After=local-fs.target
 ConditionPathIsDirectory=/data/qsys/warehouse-snapshot-store/snapshots
 ConditionPathIsDirectory=/data/qsys/research-jobs
 ConditionPathIsDirectory=/opt/qsys-research/current
+ConditionPathExists=/etc/qsys/research-runner.activation-approved
+StartLimitIntervalSec=600
+StartLimitBurst=2
 
 [Service]
 Type=simple
@@ -20,7 +23,7 @@ ExecStart=/opt/qsys-research/current/venv/bin/qsys-research-runner \
           --wheel /opt/qsys-research/current/dist/qsys.whl \
           --memory-max-mb 4096 \
           --cpu-quota-percent 100 \
-          --io-weight 100 \
+          --io-weight 10 \
           --timeout-seconds 14400
 Restart=on-failure
 RestartSec=5
@@ -29,10 +32,15 @@ KillMode=control-group
 UMask=0027
 
 # The request records these exact limits; the single worker child inherits this cgroup.
+MemoryHigh=3G
 MemoryMax=4G
 CPUQuota=100%
-IOWeight=100
+CPUWeight=10
+IOWeight=10
 Nice=10
+OOMScoreAdjust=750
+ManagedOOMMemoryPressure=kill
+ManagedOOMMemoryPressureLimit=40%
 
 # The Runner sees one immutable snapshot store and one writable job store.
 BindReadOnlyPaths=/data/qsys/warehouse-snapshot-store:/srv/qsys-research/snapshots
