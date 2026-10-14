@@ -409,10 +409,14 @@ def _stage_research_release(
             ], cwd=worktree)
         environment = dict(os.environ)
         environment["UV_PROJECT_ENVIRONMENT"] = str(release / "venv")
-        subprocess.run([
+        environment["UV_LINK_MODE"] = "copy"
+        synced = subprocess.run([
             str(config["uv_bin"]), "sync", "--frozen", "--no-dev",
             "--no-install-project",
-        ], cwd=worktree, env=environment, check=True, text=True, capture_output=True)
+        ], cwd=worktree, env=environment, check=False, text=True, capture_output=True)
+        if synced.returncode != 0:
+            detail = (synced.stderr or synced.stdout).strip().replace("\n", " ")
+            raise ValueError(f"uv dependency sync failed: {detail[:400]}")
         _run([
             str(config["uv_bin"]), "pip", "install", "--python",
             str(release / "venv/bin/python"), "--no-deps", str(release / relative),
