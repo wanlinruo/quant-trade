@@ -10,6 +10,7 @@ ignored_paths = [
   ".gitattributes",
   ".gitignore",
   "HANDOFF.md",
+  "README.md",
   "artifacts/**",
   "config/deploy.example.toml",
   "config/deploy.test.example.toml",
