@@ -9,7 +9,7 @@ import signal
 import subprocess
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from qsys.data.snapshots import SNAPSHOT_FORMAT, SNAPSHOT_VERSION, load_snapshot
@@ -30,10 +30,16 @@ class RunnerIdentity:
     code_sha: str
     wheel: Path
     max_limits: JobLimits
+    wheel_sha256: str = field(init=False)
 
-    @property
-    def wheel_sha256(self) -> str:
-        return _sha256(self.wheel)
+    def __post_init__(self) -> None:
+        if self.wheel.is_symlink():
+            raise ValueError("Runner wheel path must not be a symlink")
+        wheel = self.wheel.resolve(strict=True)
+        if not wheel.is_file():
+            raise FileNotFoundError(wheel)
+        object.__setattr__(self, "wheel", wheel)
+        object.__setattr__(self, "wheel_sha256", _sha256(wheel))
 
 
 class ResearchRunner:
@@ -53,10 +59,6 @@ class ResearchRunner:
         identity.max_limits.validate()
         if not re.fullmatch(r"[0-9a-f]{40}", identity.code_sha):
             raise ValueError("Runner code_sha must be a full lowercase commit SHA")
-        if not identity.wheel.is_file():
-            raise FileNotFoundError(identity.wheel)
-        if identity.wheel.is_symlink():
-            raise ValueError("Runner wheel path must not be a symlink")
 
     def stop(self) -> None:
         self._stopping = True

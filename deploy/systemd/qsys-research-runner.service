@@ -1,0 +1,65 @@
+[Unit]
+Description=qsys isolated Research Runner
+After=local-fs.target
+ConditionPathIsDirectory=/data/qsys/warehouse-snapshot-store/snapshots
+ConditionPathIsDirectory=/data/qsys/research-jobs
+ConditionPathIsDirectory=/opt/qsys-research/current
+
+[Service]
+Type=simple
+User=qsys-research
+Group=qsys-research
+WorkingDirectory=/data/qsys/research-jobs
+EnvironmentFile=/etc/qsys/research-runner.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/qsys-research/current/venv/bin/qsys-research-runner \
+          --jobs /data/qsys/research-jobs \
+          --snapshots /srv/qsys-research/snapshots \
+          --code-sha ${QSYS_RESEARCH_CODE_SHA} \
+          --wheel /opt/qsys-research/current/dist/qsys.whl \
+          --memory-max-mb 4096 \
+          --cpu-quota-percent 100 \
+          --io-weight 100 \
+          --timeout-seconds 14400
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+KillMode=control-group
+UMask=0027
+
+# The request records these exact limits; the single worker child inherits this cgroup.
+MemoryMax=4G
+CPUQuota=100%
+IOWeight=100
+Nice=10
+
+# The Runner sees one immutable snapshot store and one writable job store.
+BindReadOnlyPaths=/data/qsys/warehouse-snapshot-store:/srv/qsys-research/snapshots
+ReadOnlyPaths=/opt/qsys-research
+ReadWritePaths=/data/qsys/research-jobs
+InaccessiblePaths=-/data/qsys/warehouse -/data/qsys/var-prod -/home/ubuntu/qsys/config -/run/redis -/var/run/redis
+
+# Research tasks do not need Redis, broker, internet, devices, or host credentials.
+PrivateNetwork=true
+RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

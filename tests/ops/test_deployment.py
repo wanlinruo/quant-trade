@@ -176,6 +176,32 @@ def test_manifest_covers_resident_services_and_windows_tasks() -> None:
     assert {"qsys-agent-shadow", "qsys-market-gateway", "qsys-watchdog"} <= tasks
 
 
+def test_research_runner_unit_enforces_identity_resources_and_denials() -> None:
+    unit = Path("deploy/systemd/qsys-research-runner.service").read_text(
+        encoding="utf-8",
+    )
+    installer = Path("scripts/install_research_runner_isolation.sh").read_text(
+        encoding="utf-8",
+    )
+
+    assert "User=qsys-research" in unit
+    assert "Group=qsys-research" in unit
+    assert "MemoryMax=4G" in unit and "--memory-max-mb 4096" in unit
+    assert "CPUQuota=100%" in unit and "--cpu-quota-percent 100" in unit
+    assert "IOWeight=100" in unit and "--io-weight 100" in unit
+    assert "BindReadOnlyPaths=/data/qsys/warehouse-snapshot-store:" in unit
+    assert "ReadWritePaths=/data/qsys/research-jobs" in unit
+    assert "InaccessiblePaths=-/data/qsys/warehouse" in unit
+    assert "InaccessiblePaths=" in unit and "/data/qsys/var-prod" in unit
+    assert "PrivateNetwork=true" in unit
+    assert "IPAddressDeny=any" in unit
+    assert "CapabilityBoundingSet=" in unit
+    assert "useradd --system --gid qsys-research" in installer
+    assert '"$job_store/inbox" "$job_store/control"' in installer
+    assert '"$job_store/jobs" "$job_store/rejected"' in installer
+    assert "enable --now qsys-research-runner.service" in installer
+
+
 def test_shared_redis_change_targets_both_nodes() -> None:
     plan = DeploymentManifest.load(MANIFEST).plan(
         ["src/qsys/live/redis_transport.py"], environment="production",
