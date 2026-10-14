@@ -60,9 +60,9 @@ GitHub 使用另一把测试专用 key；其 `authorized_keys` 条目强制进�
 副作用。
 
 固定生产入口通过 `status` 声明版本和 capability。Linux/Windows workflow 在计算计划前
-要求 v9 及 `systemd-apply-v1`、`systemd-changed-artifacts-v1`、`systemd-preview-v1`、
+要求 v10 及 `systemd-apply-v1`、`systemd-changed-artifacts-v1`、`systemd-preview-v1`、
 `systemd-rollback-v1`、`systemd-enable-state-v1`、`monitor-shadow-state-v1` 与
-`monitor-shadow-command-v1`、`monitor-research-command-v1`；旧入口必须先由维护者运行
+`monitor-shadow-command-v1`、`monitor-research-command-v1`、`component-release-v1`；旧入口必须先由维护者运行
 `scripts/install_production_deployment_entrypoint.sh` 显式升级，不能继续执行并产生假成功。
 安装脚本会先把旧入口、dispatcher 和配置备份到
 `/data/qsys/var-deployments/bootstrap-backups/`。
@@ -110,6 +110,17 @@ release 位于 `/opt/qsys-data/releases/catalog-verify/<SHA>`，`current` 以原
 SHA 和心跳均不变化。后续 Web、数据同步、Health Observer 依次迁移到同一协议。Redis
 消息、snapshot schema、策略/风控语义或状态库迁移仍属于跨组件兼容变更，不能借组件发布
 绕过联合审查。
+
+生产组件制品只能通过手工 `Deploy production component` workflow 发布。workflow 从目标
+SHA 对应的成功 test push CI 下载精确命名 artifact，计算传输 ZIP 的 SHA-256，并通过受限
+SSH stdin 交给 `component-deploy`；节点拒绝额外文件、路径穿越、symlink、重复成员、超限
+大小和 hash 不符。节点再次验证目标属于 `main`、存在相同 tree 的成功测试部署记录，并在
+独立 venv 中按锁文件安装依赖后校验 wheel manifest，最后才切换 `current`。
+
+切换前后各执行一次 `live_preflight --require-live`，同时固定比较 Live Core 的 MainPID、
+单调启动时间和共享生产 checkout SHA。任一字段变化或心跳门禁失败，组件指针回滚；部署
+记录把这些字段放入 `before` / `after`，workflow 再做一次独立断言。该路径不接受通用组件
+名，目前只允许 `catalog-verify`。
 
 Windows 发布同样不信任节点上已安装的旧协调器：固定生产入口从已经通过上述门禁的目标
 SHA 提取 Linux 协调器，协调器再从同一 SHA 提取 Windows 控制器并上传执行。健康探针以

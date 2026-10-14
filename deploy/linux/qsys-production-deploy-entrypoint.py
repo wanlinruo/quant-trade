@@ -9,11 +9,13 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
 import time
 import urllib.request
+import zipfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -31,7 +33,7 @@ ALLOWED_WINDOWS_COMPONENTS = frozenset({
     "windows-agent", "windows-gateway", "windows-control",
 })
 WINDOWS_COORDINATOR_PATH = "deploy/linux/qsys-windows-deploy-coordinator.py"
-ENTRYPOINT_VERSION = 9
+ENTRYPOINT_VERSION = 10
 ENTRYPOINT_CAPABILITIES = (
     "systemd-apply-v1",
     "systemd-changed-artifacts-v1",
@@ -45,8 +47,18 @@ ENTRYPOINT_CAPABILITIES = (
     "monitor-shadow-state-v1",
     "monitor-shadow-command-v1",
     "monitor-research-command-v1",
+    "component-release-v1",
 )
 FAILURE_POINTS = frozenset({"none", "linux-health", "windows-switch"})
+COMPONENT_RELEASES = {
+    "catalog-verify": {
+        "root": Path("/opt/qsys-data/releases/catalog-verify"),
+        "current": Path("/opt/qsys-data/catalog-verify/current"),
+        "executable": "venv/bin/qsys-catalog-verify",
+        "installer": "scripts/install_catalog_verify_release.sh",
+    },
+}
+COMPONENT_ARCHIVE_LIMIT = 256 * 1024 * 1024
 ALLOWED_UNITS = frozenset({
     "qsys-monitor.service", "qsys-paper.service", "qsys-shadow-core.service",
     "qsys-health-observer.service", "qsys-live-core.service",
@@ -103,8 +115,11 @@ def load_config() -> dict[str, object]:
 
 def _run(
     command: list[str], *, cwd: Path, check: bool = True,
+    env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, cwd=cwd, check=check, text=True, capture_output=True)
+    return subprocess.run(
+        command, cwd=cwd, check=check, text=True, capture_output=True, env=env,
+    )
 
 
 def _git_blob(repo: Path, sha: str, path: str) -> bytes:
@@ -445,6 +460,141 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _live_identity(repo: Path) -> dict[str, str]:
+    result = _run([
+        "systemctl", "show", "qsys-live-core.service",
+        "--property=ActiveState", "--property=MainPID",
+        "--property=ExecMainStartTimestampMonotonic",
+    ], cwd=repo)
+    values = dict(
+        line.split("=", 1) for line in result.stdout.splitlines() if "=" in line
+    )
+    if values.get("ActiveState") != "active" or not values.get("MainPID", "").isdigit():
+        raise ValueError("live core is not active with a numeric MainPID")
+    if int(values["MainPID"]) <= 0 or not values.get("ExecMainStartTimestampMonotonic"):
+        raise ValueError("live core identity is incomplete")
+    return {
+        "pid": values["MainPID"],
+        "started_monotonic": values["ExecMainStartTimestampMonotonic"],
+        "repo_sha": _head(repo),
+    }
+
+
+def _live_preflight(repo: Path) -> None:
+    _run([
+        str(repo / ".venv/bin/python"), "scripts/live_preflight.py",
+        "--config", "config/deploy.local.toml", "--require-live",
+    ], cwd=repo)
+
+
+def _extract_component_archive(archive_path: Path, destination: Path) -> None:
+    required = {"release.json", "dist/qsys.whl"}
+    with zipfile.ZipFile(archive_path) as archive:
+        files: dict[str, zipfile.ZipInfo] = {}
+        total = 0
+        for item in archive.infolist():
+            path = Path(item.filename)
+            if path.is_absolute() or ".." in path.parts:
+                raise ValueError("component artifact contains an unsafe path")
+            if stat.S_ISLNK((item.external_attr >> 16) & 0o170000):
+                raise ValueError("component artifact must not contain symlinks")
+            if item.is_dir():
+                continue
+            if item.filename in files:
+                raise ValueError("component artifact contains duplicate files")
+            files[item.filename] = item
+            total += item.file_size
+        if set(files) != required:
+            raise ValueError("component artifact must contain exactly release.json and dist/qsys.whl")
+        if total > COMPONENT_ARCHIVE_LIMIT:
+            raise ValueError("component artifact expands beyond the size limit")
+        for name, item in files.items():
+            target = destination / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with archive.open(item) as source, target.open("wb") as output:
+                shutil.copyfileobj(source, output)
+
+
+def _receive_component_archive(expected_sha256: str, destination: Path) -> Path:
+    if not re.fullmatch(r"[0-9a-f]{64}", expected_sha256):
+        raise ValueError("artifact SHA-256 must be 64 lowercase hexadecimal characters")
+    archive = destination / "component.zip"
+    digest = hashlib.sha256()
+    size = 0
+    with archive.open("wb") as output:
+        while block := sys.stdin.buffer.read(1024 * 1024):
+            size += len(block)
+            if size > COMPONENT_ARCHIVE_LIMIT:
+                raise ValueError("component artifact exceeds the size limit")
+            digest.update(block)
+            output.write(block)
+    if size == 0 or digest.hexdigest() != expected_sha256:
+        raise ValueError("component artifact SHA-256 mismatch")
+    return archive
+
+
+def _current_component_sha(component: str) -> str:
+    current = Path(str(COMPONENT_RELEASES[component]["current"]))
+    if not current.is_symlink():
+        return "uninstalled"
+    target = current.resolve(strict=True)
+    value = target.name
+    return value if SHA_PATTERN.fullmatch(value) else "unknown"
+
+
+def _verify_component_release(
+    target_repo: Path, sha: str, component: str, release: Path,
+) -> None:
+    _run([
+        sys.executable, "scripts/build_component_release.py", "--repo", str(target_repo),
+        "verify", "--sha", sha, "--component", component,
+        "--release", str(release),
+    ], cwd=target_repo)
+
+
+def _stage_component_release(
+    config: dict[str, object], target_repo: Path, sha: str,
+    component: str, extracted: Path,
+) -> Path:
+    spec = COMPONENT_RELEASES[component]
+    release = Path(str(spec["root"])) / sha
+    executable = release / str(spec["executable"])
+    if release.exists():
+        _verify_component_release(target_repo, sha, component, release)
+        if not executable.is_file() or not os.access(executable, os.X_OK):
+            raise ValueError("existing component release is incomplete")
+        return release
+
+    _run([
+        "sudo", "-n", "install", "-d", "-o", "ubuntu", "-g", "ubuntu",
+        "-m", "0755", str(release), str(release / "dist"),
+    ], cwd=target_repo)
+    try:
+        for relative in ("release.json", "dist/qsys.whl"):
+            _run([
+                "sudo", "-n", "install", "-o", "ubuntu", "-g", "ubuntu",
+                "-m", "0644", str(extracted / relative), str(release / relative),
+            ], cwd=target_repo)
+        environment = dict(os.environ)
+        environment["UV_PROJECT_ENVIRONMENT"] = str(release / "venv")
+        _run([
+            str(config["uv_bin"]), "sync", "--frozen", "--no-dev",
+            "--no-install-project",
+        ], cwd=target_repo, env=environment)
+        _run([
+            str(config["uv_bin"]), "pip", "install", "--python",
+            str(release / "venv/bin/python"), "--no-deps", str(release / "dist/qsys.whl"),
+        ], cwd=target_repo)
+        if not executable.is_file() or not os.access(executable, os.X_OK):
+            raise ValueError("staged component release lacks its executable")
+        _verify_component_release(target_repo, sha, component, release)
+        _run(["chmod", "-R", "go-w", str(release)], cwd=target_repo)
+        return release
+    except (OSError, ValueError, subprocess.CalledProcessError):
+        _run(["sudo", "-n", "rm", "-rf", "--", str(release)], cwd=target_repo, check=False)
+        raise
+
+
 def _systemd_targets(relative: str) -> tuple[Path, ...]:
     """Map one repository artifact to its production-owned destinations."""
     path = Path(relative)
@@ -766,6 +916,179 @@ def _write_record(config: dict[str, object], run_id: str, record: dict[str, Any]
     return root / "record.json"
 
 
+def _rollback_component(component: str, previous: str, repo: Path) -> bool:
+    spec = COMPONENT_RELEASES[component]
+    current = Path(str(spec["current"]))
+    try:
+        if SHA_PATTERN.fullmatch(previous):
+            target = Path(str(spec["root"])) / previous
+            if not target.is_dir():
+                return False
+            temporary = current.parent / f".rollback-{previous}"
+            _run(["sudo", "-n", "ln", "-sfn", str(target), str(temporary)], cwd=repo)
+            _run(["sudo", "-n", "mv", "-Tf", str(temporary), str(current)], cwd=repo)
+        elif previous == "uninstalled":
+            _run(["sudo", "-n", "rm", "-f", "--", str(current)], cwd=repo)
+            _run([
+                "sudo", "-n", "rm", "-f", "--",
+                "/etc/systemd/system/qsys-catalog-verify.service.d/zz-isolated-release.conf",
+            ], cwd=repo)
+        else:
+            return False
+        _run(["sudo", "-n", "systemctl", "daemon-reload"], cwd=repo)
+        return _current_component_sha(component) == previous
+    except (OSError, ValueError, subprocess.CalledProcessError):
+        return False
+
+
+def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int:
+    if not RUN_ID_PATTERN.fullmatch(args.run_id):
+        raise ValueError("run-id contains unsupported characters")
+    if not ACTOR_PATTERN.fullmatch(args.actor):
+        raise ValueError("actor contains unsupported characters")
+    if not REPOSITORY_PATTERN.fullmatch(args.repository):
+        raise ValueError("repository must be owner/name")
+    if args.component not in COMPONENT_RELEASES:
+        raise ValueError("unsupported production component release")
+    repo = Path(str(config["production_repo"])).resolve(strict=True)
+    record_root = Path(str(config["production_record_root"])) / args.run_id
+    if record_root.exists():
+        raise ValueError("component deployment run-id already exists")
+    if _branch(repo) != "main" or _dirty(repo):
+        raise ValueError("production checkout must be a clean main worktree")
+    production_sha = _head(repo)
+    tree = _fetch_and_validate_target(repo, args.sha)
+    test_run = _successful_test_run(config, tree)
+    before_component = _current_component_sha(args.component)
+    before_live = _live_identity(repo)
+    _live_preflight(repo)
+    fingerprints = _fingerprints(config, repo)
+    preview = {
+        "ok": True,
+        "dry_run": args.dry_run,
+        "component": args.component,
+        "target_sha": args.sha,
+        "source_tree": tree,
+        "test_run_id": test_run,
+        "production_sha": production_sha,
+        "before_component_sha": before_component,
+        "live_identity": before_live,
+        "live_restart": False,
+    }
+    if args.dry_run:
+        print(json.dumps(preview, ensure_ascii=False))
+        return 0
+
+    started = datetime.now(UTC).isoformat()
+    checks = [{
+        "name": "test-tree-evidence", "status": "passed",
+        "detail": f"successful test deployment run={test_run}",
+    }, {
+        "name": "live-preflight-before", "status": "passed",
+        "detail": "live preflight and heartbeat checks passed before component switch",
+    }]
+    success = False
+    rollback_ok = False
+    activation_attempted = False
+    error = ""
+    try:
+        with tempfile.TemporaryDirectory(prefix="qsys-component-deploy-") as temporary:
+            root = Path(temporary)
+            archive = _receive_component_archive(args.artifact_sha256, root)
+            extracted = root / "release"
+            extracted.mkdir()
+            _extract_component_archive(archive, extracted)
+            worktree = root / "target"
+            _run(["git", "worktree", "add", "--detach", str(worktree), args.sha], cwd=repo)
+            try:
+                _verify_component_release(worktree, args.sha, args.component, extracted)
+                _stage_component_release(
+                    config, worktree, args.sha, args.component, extracted,
+                )
+                checks.append({
+                    "name": "component-artifact", "status": "passed",
+                    "detail": f"archive_sha256={args.artifact_sha256}; release={args.sha}",
+                })
+                activation_attempted = True
+                installer = str(COMPONENT_RELEASES[args.component]["installer"])
+                _run(["/bin/sh", installer, args.sha], cwd=worktree)
+            finally:
+                _run(["git", "worktree", "remove", "--force", str(worktree)],
+                     cwd=repo, check=False)
+        after_live = _live_identity(repo)
+        _live_preflight(repo)
+        if after_live != before_live or _head(repo) != production_sha:
+            raise ValueError("component deployment changed the live core identity or checkout")
+        if _current_component_sha(args.component) != args.sha:
+            raise ValueError("component current pointer does not match target SHA")
+        checks.append({
+            "name": "live-core-continuity", "status": "passed",
+            "detail": (
+                f"pid={before_live['pid']}; started={before_live['started_monotonic']}; "
+                f"repo_sha={production_sha}; heartbeat preflight passed before and after"
+            ),
+        })
+        success = True
+    except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError,
+            json.JSONDecodeError, zipfile.BadZipFile) as exc:
+        error = str(exc)[:500]
+        if activation_attempted:
+            rollback_ok = _rollback_component(args.component, before_component, repo)
+        checks.append({"name": "component-deploy", "status": "failed", "detail": error})
+
+    try:
+        after_live = _live_identity(repo)
+    except (OSError, ValueError, subprocess.CalledProcessError) as exc:
+        after_live = {
+            "pid": "unavailable", "started_monotonic": "unavailable",
+            "repo_sha": _head(repo),
+        }
+        success = False
+        checks.append({
+            "name": "live-core-identity-after", "status": "failed",
+            "detail": str(exc)[:500],
+        })
+    try:
+        current_component = _current_component_sha(args.component)
+    except (OSError, ValueError):
+        current_component = "unknown"
+    fully_rolled_back = (
+        rollback_ok and current_component == before_component and after_live == before_live
+        and _head(repo) == production_sha
+    )
+    status_value = "success" if success else ("rolled_back" if fully_rolled_back else "failure")
+    before = {
+        "linux": production_sha,
+        args.component: before_component,
+        "live-core-pid": before_live["pid"],
+        "live-core-started": before_live["started_monotonic"],
+    }
+    after = {
+        "linux": _head(repo),
+        args.component: current_component,
+        "live-core-pid": after_live["pid"],
+        "live-core-started": after_live["started_monotonic"],
+    }
+    record = {
+        "schema_version": 1, "run_id": args.run_id,
+        "environment": "production", "status": status_value,
+        "actor": args.actor, "started_at": started,
+        "completed_at": datetime.now(UTC).isoformat(),
+        "repository": args.repository, "pr_number": args.pr_number,
+        "source_sha": args.sha, "source_tree": tree,
+        "components": [args.component], "before": before, "after": after,
+        "config_fingerprints": fingerprints, "checks": checks,
+        "rollback_targets": {args.component: before_component},
+        "migration_summary": "component release only; no data or state migration",
+    }
+    path = _write_record(config, args.run_id, record)
+    print(json.dumps({
+        "ok": success, "dry_run": False, "status": status_value,
+        "record": str(path), "error": error,
+    }, ensure_ascii=False))
+    return 0 if success else 1
+
+
 def deploy(args: argparse.Namespace, config: dict[str, object]) -> int:
     if not RUN_ID_PATTERN.fullmatch(args.run_id):
         raise ValueError("run-id contains unsupported characters")
@@ -1044,6 +1367,15 @@ def build_parser() -> argparse.ArgumentParser:
     deploy_parser.add_argument("--dry-run", action="store_true")
     deploy_parser.add_argument("--failure-point", default="none")
     deploy_parser.add_argument("--drill-confirmation", default="")
+    component_parser = commands.add_parser("component-deploy")
+    component_parser.add_argument("--sha", required=True)
+    component_parser.add_argument("--component", required=True)
+    component_parser.add_argument("--artifact-sha256", default="")
+    component_parser.add_argument("--run-id", required=True)
+    component_parser.add_argument("--actor", required=True)
+    component_parser.add_argument("--repository", required=True)
+    component_parser.add_argument("--pr-number", type=int)
+    component_parser.add_argument("--dry-run", action="store_true")
     windows_parser = commands.add_parser("windows-deploy")
     windows_parser.add_argument("--sha", required=True)
     windows_parser.add_argument("--component", action="append", dest="components", required=True)
@@ -1073,6 +1405,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "history":
             print(json.dumps(deployment_history(config), ensure_ascii=False))
             return 0
+        if args.command == "component-deploy":
+            return component_deploy(args, config)
         if args.command == "windows-deploy":
             return windows_deploy(args, config)
         return deploy(args, config)
