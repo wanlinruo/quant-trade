@@ -1,5 +1,10 @@
 # 参考资料
 
+## `warehouse-snapshots.md`
+
+Issue #285 的 Warehouse 不可变快照协议：snapshot manifest、分区 hash、完整性验证、
+硬链接发布约束和原子 `current` 指针。
+
 ## `production-data-management-audit-20260921.md`
 
 2026-09-21 对生产 warehouse、质量证据、定时任务、磁盘和备份状态的只读审计，
