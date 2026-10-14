@@ -29,7 +29,7 @@ if [ ! -x "$executable" ] || [ ! -f "$release_root/release.json" ]; then
 fi
 python3 "$repo/scripts/build_component_release.py" --repo "$repo" verify \
     --sha "$code_sha" --component catalog-verify --release "$release_root" >/dev/null
-if [ -n "$(find "$release_root" -xdev -perm /022 -print -quit)" ]; then
+if [ -n "$(find "$release_root" -xdev ! -type l -perm /022 -print -quit)" ]; then
     echo "catalog verifier release must not be writable by group or other" >&2
     exit 1
 fi

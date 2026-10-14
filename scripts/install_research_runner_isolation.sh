@@ -35,7 +35,7 @@ if [ ! -d "$snapshot_store/snapshots" ]; then
 fi
 python3 "$repo/scripts/build_research_release.py" --repo "$repo" verify \
     --sha "$code_sha" --release "$release_root" >/dev/null
-if [ -n "$(find "$release_root" -xdev -perm /022 -print -quit)" ]; then
+if [ -n "$(find "$release_root" -xdev ! -type l -perm /022 -print -quit)" ]; then
     echo "Runner release must not be writable by group or other" >&2
     exit 1
 fi

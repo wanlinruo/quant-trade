@@ -206,6 +206,7 @@ def test_research_runner_unit_enforces_identity_resources_and_denials() -> None:
     assert "useradd --system --gid qsys-research" in installer
     assert '"$job_store/inbox" "$job_store/control"' in installer
     assert '"$job_store/jobs" "$job_store/rejected"' in installer
+    assert 'find "$release_root" -xdev ! -type l -perm /022' in installer
     assert "enable --now qsys-research-runner.service" not in installer
     assert "staged inactive isolated Research Runner release" in installer
     assert "qsys-research-runner.service" not in entrypoint.SYSTEMD_ENABLE_ON_INSTALL
@@ -221,6 +222,7 @@ def test_catalog_verifier_uses_an_independent_immutable_release() -> None:
     assert "build_component_release.py" in installer
     assert "zz-isolated-release.conf" in installer
     assert "refusing to switch catalog verifier while a verification is running" in installer
+    assert 'find "$release_root" -xdev ! -type l -perm /022' in installer
     assert "systemctl restart qsys-live-core.service" not in installer
     assert "git reset" not in installer
 
