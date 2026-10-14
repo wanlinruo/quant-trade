@@ -83,4 +83,5 @@ def test_artifact_upload_uses_the_pinned_node24_release():
         for ref in UPLOAD_REF.findall(path.read_text(encoding="utf-8"))
     ]
 
-    assert refs == [UPLOAD_V7_0_2]
+    assert refs
+    assert set(refs) == {UPLOAD_V7_0_2}

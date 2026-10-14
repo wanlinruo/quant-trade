@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from datetime import date, datetime
 
+from qsys.data import catalog_verify_cli as catalog_verify
 from qsys.data.catalog.verification import VerificationSummary
-from scripts import catalog_verify
 
 DAY = date(2026, 9, 17)
 
