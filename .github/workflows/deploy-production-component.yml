@@ -1,0 +1,206 @@
+name: Deploy production component
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Exact main commit SHA whose component artifact will be installed
+        required: true
+        type: string
+      component:
+        description: Independently released component
+        required: true
+        type: choice
+        options:
+          - catalog-verify
+      release_id:
+        description: Auditable release identifier
+        required: true
+        type: string
+      dry_run:
+        description: Validate gates without downloading or changing the component
+        required: true
+        default: true
+        type: boolean
+      confirmation:
+        description: Enter DEPLOY_COMPONENT for a real deployment
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  checks: read
+  contents: read
+  deployments: write
+  pull-requests: read
+
+concurrency:
+  group: deploy-production-component
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    environment: production
+    env:
+      TARGET_SHA: ${{ inputs.target_sha }}
+      COMPONENT: ${{ inputs.component }}
+      RELEASE_ID: ${{ inputs.release_id }}
+      DRY_RUN: ${{ inputs.dry_run }}
+      CONFIRMATION: ${{ inputs.confirmation }}
+      DEPLOY_HOST: ${{ vars.PRODUCTION_DEPLOY_HOST }}
+      DEPLOY_USER: ${{ vars.PRODUCTION_DEPLOY_USER }}
+      RUN_KEY: ${{ inputs.release_id }}-${{ inputs.component }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out trusted production controller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Install dedicated production SSH identity
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_DEPLOY_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.PRODUCTION_DEPLOY_KNOWN_HOSTS }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          root = Path.home() / ".ssh"
+          root.mkdir(mode=0o700, exist_ok=True)
+          key = root / "production-deploy"
+          key.write_text(os.environ["SSH_PRIVATE_KEY"].rstrip() + "\n", encoding="utf-8")
+          key.chmod(0o600)
+          known = root / "known_hosts"
+          known.write_text(os.environ["SSH_KNOWN_HOSTS"].rstrip() + "\n", encoding="utf-8")
+          known.chmod(0o600)
+          PY
+
+      - name: Validate source, evidence and gateway
+        id: source
+        run: |
+          set -euo pipefail
+          if [ "$DRY_RUN" != true ]; then
+            test "$CONFIRMATION" = DEPLOY_COMPONENT
+          fi
+          printf '%s' "$RELEASE_ID" | grep -Eq '^[A-Za-z0-9._-]{1,100}$'
+          printf '%s' "$TARGET_SHA" | grep -Eq '^[0-9a-f]{40}$'
+          test "$COMPONENT" = catalog-verify
+          git fetch --no-tags origin main test
+          git cat-file -e "$TARGET_SHA^{commit}"
+          git merge-base --is-ancestor "$TARGET_SHA" origin/main
+
+          pr_json=$(gh api -H 'Accept: application/vnd.github+json' \
+            "repos/$GITHUB_REPOSITORY/commits/$TARGET_SHA/pulls" \
+            --jq '[.[] | select(.merged_at != null and .base.ref == "main")] | max_by(.merged_at)')
+          test "$pr_json" != null
+          echo "pr_number=$(printf '%s' "$pr_json" | jq -r .number)" >>"$GITHUB_OUTPUT"
+
+          ci_run=$(gh api -H 'Accept: application/vnd.github+json' \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$TARGET_SHA&event=push&per_page=100" \
+            --jq '[.workflow_runs[] | select(.head_branch == "test" and .conclusion == "success")] | max_by(.id)')
+          test "$ci_run" != null
+          ci_run_id=$(printf '%s' "$ci_run" | jq -r .id)
+          artifact_name="qsys-$COMPONENT-$TARGET_SHA"
+          artifact_id=$(gh api -H 'Accept: application/vnd.github+json' \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$ci_run_id/artifacts?per_page=100" \
+            --jq ".artifacts[] | select(.name == \"$artifact_name\" and .expired == false) | .id")
+          test -n "$artifact_id"
+          echo "ci_run_id=$ci_run_id" >>"$GITHUB_OUTPUT"
+          echo "artifact_id=$artifact_id" >>"$GITHUB_OUTPUT"
+
+          node_json=$(ssh -i ~/.ssh/production-deploy -o BatchMode=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" status)
+          NODE_JSON="$node_json" python3 - <<'PY' >>"$GITHUB_OUTPUT"
+          import json
+          import os
+
+          state = json.loads(os.environ["NODE_JSON"])
+          if state["branch"] != "main" or state["dirty"] or not state["healthy"]:
+              raise SystemExit(f"production node is not deployable: {state}")
+          required = {"component-release-v1"}
+          if state.get("entrypoint_version", 0) < 10 or not required <= set(state.get("capabilities", [])):
+              raise SystemExit("production entrypoint lacks component release capability")
+          print(f'production_sha={state["sha"]}')
+          PY
+
+      - name: Download exact immutable artifact
+        if: inputs.dry_run == false
+        env:
+          ARTIFACT_ID: ${{ steps.source.outputs.artifact_id }}
+        run: |
+          gh api -H 'Accept: application/vnd.github+json' \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" >component.zip
+          echo "artifact_sha256=$(sha256sum component.zip | awk '{print $1}')" >>"$GITHUB_ENV"
+
+      - name: Create GitHub deployment
+        if: inputs.dry_run == false
+        id: deployment
+        run: |
+          jq -n --arg ref "$TARGET_SHA" --arg description "release=$RELEASE_ID component=$COMPONENT" \
+            '{ref: $ref, environment: "production", auto_merge: false, required_contexts: [], description: $description}' \
+            >deployment.json
+          deployment_id=$(gh api --method POST \
+            "repos/$GITHUB_REPOSITORY/deployments" --input deployment.json --jq .id)
+          echo "id=$deployment_id" >>"$GITHUB_OUTPUT"
+          gh api --method POST \
+            "repos/$GITHUB_REPOSITORY/deployments/$deployment_id/statuses" \
+            -f state=in_progress \
+            -f log_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" >/dev/null
+
+      - name: Validate component deployment plan
+        if: inputs.dry_run == true
+        env:
+          PR_NUMBER: ${{ steps.source.outputs.pr_number }}
+        run: >-
+          ssh -i ~/.ssh/production-deploy -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST"
+          "component-deploy --sha $TARGET_SHA --component $COMPONENT
+          --run-id $RUN_KEY --actor $GITHUB_ACTOR --repository $GITHUB_REPOSITORY
+          --pr-number $PR_NUMBER --dry-run"
+
+      - name: Stream artifact through restricted gateway
+        if: inputs.dry_run == false
+        env:
+          PR_NUMBER: ${{ steps.source.outputs.pr_number }}
+        run: |
+          ssh -i ~/.ssh/production-deploy -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "component-deploy --sha $TARGET_SHA --component $COMPONENT --artifact-sha256 $artifact_sha256 --run-id $RUN_KEY --actor $GITHUB_ACTOR --repository $GITHUB_REPOSITORY --pr-number $PR_NUMBER" \
+            <component.zip | tee result.json
+          jq -e '.ok == true and .status == "success"' result.json >/dev/null
+
+      - name: Verify deployment record and live continuity
+        if: inputs.dry_run == false
+        run: |
+          ssh -i ~/.ssh/production-deploy -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "record --run-id $RUN_KEY" >record.json
+          PYTHONPATH=src python3 scripts/deployment_contract.py validate-record record.json
+          jq -e --arg sha "$TARGET_SHA" --arg component "$COMPONENT" '
+            .source_sha == $sha and .status == "success"
+            and .components == [$component]
+            and .before.linux == .after.linux
+            and .before["live-core-pid"] == .after["live-core-pid"]
+            and .before["live-core-started"] == .after["live-core-started"]
+            and .after[$component] == $sha
+          ' record.json >/dev/null
+
+      - name: Mark deployment successful
+        if: success() && inputs.dry_run == false
+        env:
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.id }}
+        run: >-
+          gh api --method POST
+          "repos/$GITHUB_REPOSITORY/deployments/$DEPLOYMENT_ID/statuses"
+          -f state=success
+          -f log_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" >/dev/null
+
+      - name: Mark deployment failed
+        if: failure() && inputs.dry_run == false && steps.deployment.outputs.id != ''
+        env:
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.id }}
+        run: >-
+          gh api --method POST
+          "repos/$GITHUB_REPOSITORY/deployments/$DEPLOYMENT_ID/statuses"
+          -f state=failure
+          -f log_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" >/dev/null

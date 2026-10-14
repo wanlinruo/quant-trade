@@ -6,6 +6,7 @@ import json
 import importlib.util
 import shutil
 import subprocess
+import zipfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -464,6 +465,13 @@ def test_production_dispatcher_rejects_shell_commands(monkeypatch) -> None:
     assert dispatcher.command_from_environment()[:2] == [
         "/usr/local/libexec/qsys-production-deploy-entrypoint", "windows-deploy",
     ]
+    monkeypatch.setenv(
+        "SSH_ORIGINAL_COMMAND",
+        "component-deploy --sha " + "a" * 40 + " --component catalog-verify",
+    )
+    assert dispatcher.command_from_environment()[:2] == [
+        "/usr/local/libexec/qsys-production-deploy-entrypoint", "component-deploy",
+    ]
 
 
 def test_production_requires_exact_planned_linux_components() -> None:
@@ -566,7 +574,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
 
     state = entrypoint.status({"production_repo": str(tmp_path)})
 
-    assert state["entrypoint_version"] == 9
+    assert state["entrypoint_version"] == 10
     assert set(state["capabilities"]) == {
         "systemd-apply-v1", "systemd-changed-artifacts-v1",
         "systemd-preview-v1", "systemd-rollback-v1",
@@ -577,7 +585,78 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
         "monitor-shadow-state-v1",
         "monitor-shadow-command-v1",
         "monitor-research-command-v1",
+        "component-release-v1",
     }
+
+
+def test_component_artifact_extraction_is_exact_and_rejects_traversal(tmp_path) -> None:
+    entrypoint = _production_entrypoint_module()
+    archive = tmp_path / "component.zip"
+    with zipfile.ZipFile(archive, "w") as output:
+        output.writestr("release.json", "{}")
+        output.writestr("dist/qsys.whl", b"wheel")
+
+    destination = tmp_path / "release"
+    entrypoint._extract_component_archive(archive, destination)
+    assert (destination / "release.json").read_text() == "{}"
+    assert (destination / "dist/qsys.whl").read_bytes() == b"wheel"
+
+    unsafe = tmp_path / "unsafe.zip"
+    with zipfile.ZipFile(unsafe, "w") as output:
+        output.writestr("release.json", "{}")
+        output.writestr("dist/qsys.whl", b"wheel")
+        output.writestr("../escape", b"bad")
+    with pytest.raises(ValueError, match="unsafe path"):
+        entrypoint._extract_component_archive(unsafe, tmp_path / "unsafe-release")
+
+
+def test_live_identity_binds_pid_start_time_and_checkout(monkeypatch, tmp_path) -> None:
+    entrypoint = _production_entrypoint_module()
+    monkeypatch.setattr(entrypoint, "_head", lambda repo: "a" * 40)
+    monkeypatch.setattr(
+        entrypoint, "_run",
+        lambda command, **kwargs: subprocess.CompletedProcess(
+            command, 0,
+            "ActiveState=active\nMainPID=4321\n"
+            "ExecMainStartTimestampMonotonic=123456789\n", "",
+        ),
+    )
+
+    assert entrypoint._live_identity(tmp_path) == {
+        "pid": "4321", "started_monotonic": "123456789", "repo_sha": "a" * 40,
+    }
+
+
+def test_component_deploy_dry_run_proves_live_without_reading_artifact(
+    monkeypatch, tmp_path, capsys,
+) -> None:
+    entrypoint = _production_entrypoint_module()
+    sha = "a" * 40
+    monkeypatch.setattr(entrypoint, "_branch", lambda repo: "main")
+    monkeypatch.setattr(entrypoint, "_dirty", lambda repo: False)
+    monkeypatch.setattr(entrypoint, "_head", lambda repo: "b" * 40)
+    monkeypatch.setattr(entrypoint, "_fetch_and_validate_target", lambda repo, value: "c" * 40)
+    monkeypatch.setattr(entrypoint, "_successful_test_run", lambda config, tree: "test-1")
+    monkeypatch.setattr(entrypoint, "_current_component_sha", lambda component: "uninstalled")
+    monkeypatch.setattr(entrypoint, "_live_identity", lambda repo: {
+        "pid": "42", "started_monotonic": "99", "repo_sha": "b" * 40,
+    })
+    monkeypatch.setattr(entrypoint, "_live_preflight", lambda repo: None)
+    monkeypatch.setattr(entrypoint, "_fingerprints", lambda config, repo: {"linux": "f"})
+    args = argparse.Namespace(
+        sha=sha, component="catalog-verify", artifact_sha256="", run_id="release-1",
+        actor="maintainer", repository="owner/repo", pr_number=302, dry_run=True,
+    )
+
+    assert entrypoint.component_deploy(
+        args, {
+            "production_repo": str(tmp_path), "test_record_root": str(tmp_path),
+            "production_record_root": str(tmp_path / "records"),
+        },
+    ) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["live_restart"] is False
+    assert result["live_identity"]["pid"] == "42"
 
 
 def test_windows_plans_are_merged_from_each_windows_baseline() -> None:
@@ -1145,6 +1224,25 @@ def test_windows_workflow_uses_only_the_linux_production_credential() -> None:
     assert "windows-baseline-plan-v1" in workflow
     assert "release=$RELEASE_ID node=windows" in workflow
     assert "DRILL_ROLLBACK" in workflow
+
+
+def test_component_workflow_streams_only_a_verified_artifact() -> None:
+    workflow = Path(".github/workflows/deploy-production-component.yml").read_text(
+        encoding="utf-8",
+    )
+
+    assert "workflow_dispatch:" in workflow
+    assert "push:" not in workflow
+    assert "DEPLOY_COMPONENT" in workflow
+    assert "qsys-$COMPONENT-$TARGET_SHA" in workflow
+    assert "actions/artifacts/$ARTIFACT_ID/zip" in workflow
+    assert "component-deploy --sha $TARGET_SHA" in workflow
+    assert "<component.zip" in workflow
+    assert '.before["live-core-pid"] == .after["live-core-pid"]' in workflow
+    assert '.before["live-core-started"] == .after["live-core-started"]' in workflow
+    assert ".before.linux == .after.linux" in workflow
+    assert "PRODUCTION_DEPLOY_SSH_KEY" in workflow
+    assert "cancel-in-progress: false" in workflow
 
 
 def test_production_entrypoint_installer_preserves_bootstrap_backup() -> None:
