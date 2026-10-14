@@ -86,6 +86,31 @@ drop-in。该变更必须重启 monitor，且入口会检查 systemd 合并后�
 同一最终命令还必须显式包含 #210 冻结研究目录；研究页只读该目录中的紧凑证据，
 不会把大型训练集或全量预测复制到 Web 状态目录。
 
+## 组件级不可变发布
+
+生产运行单元最终必须拥有各自的 release 目录、虚拟环境、当前版本指针和回滚目标；
+共享仓库只保存配置与运维入口，不再同时充当所有进程的代码发布目录。#137 约束实盘
+策略、Live Core 和资金风险，但不作为无关数据、Web、研究组件发布的总门禁。
+
+首个迁移组件是 `catalog-verify`：CI 为 test 分支的精确 SHA 生成
+`qsys-catalog-verify-<SHA>`，其中 wheel、Git tree、`pyproject.toml`、`uv.lock`、入口点和
+CI 身份全部写入 manifest 并绑定 SHA-256。节点 stage 后使用：
+
+```bash
+scripts/install_catalog_verify_release.sh <完整提交SHA>
+```
+
+release 位于 `/opt/qsys-data/releases/catalog-verify/<SHA>`，`current` 以原子 symlink
+切换。安装器拒绝在质检运行中切换，验证 release 后才安装专属 systemd drop-in；不会
+执行 `git reset`，也不会重启 Live Core、Web、Paper、Health Observer 或 Windows 链路。
+基础 unit 保留共享 checkout 入口，因而仅合入代码不会提前切换生产执行路径；必须先由
+受审计的 staging 网关放置并验证 release，再显式运行安装器。
+
+组件隔离的验收不是“新进程能启动”，而是发布前后 Live Core 的 PID、启动时间、部署
+SHA 和心跳均不变化。后续 Web、数据同步、Health Observer 依次迁移到同一协议。Redis
+消息、snapshot schema、策略/风控语义或状态库迁移仍属于跨组件兼容变更，不能借组件发布
+绕过联合审查。
+
 Windows 发布同样不信任节点上已安装的旧协调器：固定生产入口从已经通过上述门禁的目标
 SHA 提取 Linux 协调器，协调器再从同一 SHA 提取 Windows 控制器并上传执行。健康探针以
 切换后应用的 `src` 设置 `PYTHONPATH`，并同时要求目标文件清单、`DEPLOYED_SHA`、进程和
