@@ -201,6 +201,9 @@ flowchart LR
 5. 补齐 job manifest、状态机、取消、失败恢复、日志和产物 hash。
 6. 在测试环境完成压力演练，再于维护窗口接入生产；达到资源阈值后再评估独立研究节点。
 
+快照协议见 [`docs/reference/warehouse-snapshots.md`](docs/reference/warehouse-snapshots.md)，
+Web/Runner 作业边界见 [`docs/reference/research-runner.md`](docs/reference/research-runner.md)。
+
 ## 代码结构
 
 ```text

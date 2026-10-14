@@ -5,6 +5,11 @@
 Issue #285 的 Warehouse 不可变快照协议：snapshot manifest、分区 hash、完整性验证、
 硬链接发布约束和原子 `current` 指针。
 
+## `research-runner.md`
+
+Issue #285 的隔离研究作业协议：Web/Runner 文件所有权、代码与快照身份、状态机、取消、
+失败恢复、资源声明，以及日志和产物 hash。
+
 ## `production-data-management-audit-20260921.md`
 
 2026-09-21 对生产 warehouse、质量证据、定时任务、磁盘和备份状态的只读审计，
