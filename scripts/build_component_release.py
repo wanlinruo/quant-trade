@@ -16,14 +16,15 @@ from email.parser import BytesParser
 from pathlib import Path
 
 FORMAT = "qsys-component-release"
-VERSION = 1
+VERSION = 2
 SHA = re.compile(r"^[0-9a-f]{40}$")
 COMPONENT_ENTRYPOINTS = {
     "catalog-verify": ("qsys-catalog-verify", "qsys.data.catalog_verify_cli:main"),
 }
 REQUIRED = frozenset({
     "format", "version", "component", "entrypoint", "source_sha", "source_tree",
-    "wheel_sha256", "wheel_bytes", "pyproject_sha256", "uv_lock_sha256", "ci",
+    "wheel_filename", "wheel_sha256", "wheel_bytes", "pyproject_sha256",
+    "uv_lock_sha256", "ci",
 })
 
 
@@ -82,7 +83,7 @@ def build(
     if output.exists() and any(output.iterdir()):
         raise ValueError("release output directory must be empty")
     (output / "dist").mkdir(parents=True, exist_ok=True)
-    wheel = output / "dist" / "qsys.whl"
+    wheel = output / "dist" / wheels[0].name
     shutil.copyfile(wheels[0], wheel)
     command, target = COMPONENT_ENTRYPOINTS[component]
     value: dict[str, object] = {
@@ -92,6 +93,7 @@ def build(
         "entrypoint": {"command": command, "target": target},
         "source_sha": sha,
         "source_tree": _git(repo, "rev-parse", f"{sha}^{{tree}}"),
+        "wheel_filename": wheel.name,
         "wheel_sha256": _sha256(wheel),
         "wheel_bytes": wheel.stat().st_size,
         "pyproject_sha256": hashlib.sha256(
@@ -126,7 +128,15 @@ def verify(repo: Path, sha: str, component: str, release: Path) -> dict[str, obj
         raise ValueError("release source SHA mismatch")
     if value["source_tree"] != _git(repo, "rev-parse", f"{sha}^{{tree}}"):
         raise ValueError("release source tree mismatch")
-    wheel = release / "dist" / "qsys.whl"
+    wheel_filename = value["wheel_filename"]
+    if (
+        not isinstance(wheel_filename, str)
+        or Path(wheel_filename).name != wheel_filename
+        or not wheel_filename.startswith("qsys-")
+        or not wheel_filename.endswith(".whl")
+    ):
+        raise ValueError("release wheel_filename is invalid")
+    wheel = release / "dist" / wheel_filename
     _validate_wheel(wheel, component)
     expected = {
         "wheel_sha256": _sha256(wheel),
@@ -185,4 +195,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

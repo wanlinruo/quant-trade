@@ -574,7 +574,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
 
     state = entrypoint.status({"production_repo": str(tmp_path)})
 
-    assert state["entrypoint_version"] == 10
+    assert state["entrypoint_version"] == 11
     assert set(state["capabilities"]) == {
         "systemd-apply-v1", "systemd-changed-artifacts-v1",
         "systemd-preview-v1", "systemd-rollback-v1",
@@ -594,20 +594,67 @@ def test_component_artifact_extraction_is_exact_and_rejects_traversal(tmp_path) 
     archive = tmp_path / "component.zip"
     with zipfile.ZipFile(archive, "w") as output:
         output.writestr("release.json", "{}")
-        output.writestr("dist/qsys.whl", b"wheel")
+        output.writestr("dist/qsys-0.1.0-py3-none-any.whl", b"wheel")
 
     destination = tmp_path / "release"
     entrypoint._extract_component_archive(archive, destination)
     assert (destination / "release.json").read_text() == "{}"
-    assert (destination / "dist/qsys.whl").read_bytes() == b"wheel"
+    assert (destination / "dist/qsys-0.1.0-py3-none-any.whl").read_bytes() == b"wheel"
 
     unsafe = tmp_path / "unsafe.zip"
     with zipfile.ZipFile(unsafe, "w") as output:
         output.writestr("release.json", "{}")
-        output.writestr("dist/qsys.whl", b"wheel")
+        output.writestr("dist/qsys-0.1.0-py3-none-any.whl", b"wheel")
         output.writestr("../escape", b"bad")
     with pytest.raises(ValueError, match="unsafe path"):
         entrypoint._extract_component_archive(unsafe, tmp_path / "unsafe-release")
+
+
+def test_component_stage_installs_wheel_with_its_standard_filename(
+    monkeypatch, tmp_path,
+) -> None:
+    entrypoint = _production_entrypoint_module()
+    sha = "a" * 40
+    releases = tmp_path / "releases"
+    extracted = tmp_path / "artifact"
+    wheel_name = "qsys-0.1.0-py3-none-any.whl"
+    (extracted / "dist").mkdir(parents=True)
+    (extracted / "release.json").write_text(
+        json.dumps({"wheel_filename": wheel_name}), encoding="utf-8",
+    )
+    (extracted / "dist" / wheel_name).write_bytes(b"wheel")
+    monkeypatch.setitem(entrypoint.COMPONENT_RELEASES, "catalog-verify", {
+        "root": releases,
+        "current": tmp_path / "current",
+        "executable": "venv/bin/qsys-catalog-verify",
+        "installer": "unused",
+    })
+    monkeypatch.setattr(entrypoint, "_verify_component_release", lambda *args: None)
+    commands: list[list[str]] = []
+
+    def run(command, **kwargs):
+        command = [str(item) for item in command]
+        commands.append(command)
+        if command[:3] == ["sudo", "-n", "install"] and "-d" in command:
+            for item in command[-2:]:
+                Path(item).mkdir(parents=True, exist_ok=True)
+        elif command[:3] == ["sudo", "-n", "install"]:
+            shutil.copyfile(command[-2], command[-1])
+        elif command[1:3] == ["sync", "--frozen"]:
+            executable = releases / sha / "venv/bin/qsys-catalog-verify"
+            executable.parent.mkdir(parents=True)
+            executable.write_text("#!/bin/sh\n", encoding="utf-8")
+            executable.chmod(0o755)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(entrypoint, "_run", run)
+    release = entrypoint._stage_component_release(
+        {"uv_bin": "/usr/bin/uv"}, tmp_path, sha, "catalog-verify", extracted,
+    )
+
+    assert release == releases / sha
+    pip_command = next(command for command in commands if command[1:3] == ["pip", "install"])
+    assert pip_command[-1] == str(release / "dist" / wheel_name)
 
 
 def test_live_identity_binds_pid_start_time_and_checkout(monkeypatch, tmp_path) -> None:

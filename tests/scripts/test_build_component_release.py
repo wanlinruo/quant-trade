@@ -52,6 +52,8 @@ def test_catalog_release_binds_entrypoint_wheel_and_tree(tmp_path: Path) -> None
 
     assert value["component"] == "catalog-verify"
     assert value["source_sha"] == sha
+    assert value["version"] == 2
+    assert value["wheel_filename"] == wheel.name
     assert value["wheel_sha256"] == hashlib.sha256(wheel.read_bytes()).hexdigest()
     assert verify(repo, sha, "catalog-verify", release) == value
     assert json.loads((release / "release.json").read_text()) == value
@@ -71,7 +73,7 @@ def test_catalog_release_rejects_wrong_entrypoint_and_tampering(tmp_path: Path) 
     release = tmp_path / "release"
     build(repo, sha, "catalog-verify", wheel.parent, release,
           repository="owner/repo", run_id="123", run_attempt="1")
-    with (release / "dist" / "qsys.whl").open("ab") as stream:
+    with (release / "dist" / wheel.name).open("ab") as stream:
         stream.write(b"tampered")
     with pytest.raises(ValueError, match="wheel_sha256 mismatch"):
         verify(repo, sha, "catalog-verify", release)
