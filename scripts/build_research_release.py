@@ -16,11 +16,11 @@ from email.parser import BytesParser
 from pathlib import Path
 
 FORMAT = "qsys-research-release"
-VERSION = 1
+VERSION = 2
 SHA = re.compile(r"^[0-9a-f]{40}$")
 REQUIRED = frozenset({
     "format", "version", "source_sha", "source_tree", "wheel_sha256",
-    "wheel_bytes", "pyproject_sha256", "uv_lock_sha256", "ci",
+    "wheel_filename", "wheel_bytes", "pyproject_sha256", "uv_lock_sha256", "ci",
 })
 
 
@@ -95,13 +95,14 @@ def build(
     if output.exists() and any(output.iterdir()):
         raise ValueError("release output directory must be empty")
     (output / "dist").mkdir(parents=True, exist_ok=True)
-    wheel = output / "dist" / "qsys.whl"
+    wheel = output / "dist" / wheels[0].name
     shutil.copyfile(wheels[0], wheel)
     value: dict[str, object] = {
         "format": FORMAT,
         "version": VERSION,
         "source_sha": sha,
         "source_tree": tree,
+        "wheel_filename": wheel.name,
         "wheel_sha256": _sha256(wheel),
         "wheel_bytes": wheel.stat().st_size,
         "pyproject_sha256": _sha256_bytes(
@@ -133,7 +134,14 @@ def verify(repo: Path, sha: str, release: Path) -> dict[str, object]:
         raise ValueError("release source SHA mismatch")
     if value["source_tree"] != _git(repo, "rev-parse", f"{sha}^{{tree}}"):
         raise ValueError("release source tree mismatch")
-    wheel = release / "dist" / "qsys.whl"
+    wheel_filename = value.get("wheel_filename")
+    if (
+        not isinstance(wheel_filename, str)
+        or Path(wheel_filename).name != wheel_filename
+        or not wheel_filename.endswith(".whl")
+    ):
+        raise ValueError("release wheel filename is invalid")
+    wheel = release / "dist" / wheel_filename
     _validate_wheel(wheel)
     expected = {
         "wheel_sha256": _sha256(wheel),

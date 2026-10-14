@@ -73,6 +73,7 @@ SYSTEMD_EXCLUDED = frozenset({
     "qsys-live-core.service",
     "qsys-shadow-core.service",
     "qsys-web-test.service",
+    "qsys-research-runner-test.service",
 })
 MARKET_DATA_CONSUMERS = (
     "qsys-monitor.service", "qsys-paper.service",

@@ -20,13 +20,19 @@ fi
 
 release_root=/opt/qsys-research/releases/$code_sha
 runner=$release_root/venv/bin/qsys-research-runner
-wheel=$release_root/dist/qsys.whl
 snapshot_store=/data/qsys/warehouse-snapshot-store
 job_store=/data/qsys/research-jobs
 repo=$(git rev-parse --show-toplevel)
 
-if [ ! -x "$runner" ] || [ ! -f "$wheel" ]; then
+if [ ! -x "$runner" ] || [ ! -f "$release_root/release.json" ]; then
     echo "versioned Runner release is incomplete: $release_root" >&2
+    exit 1
+fi
+wheel_filename=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["wheel_filename"])' \
+    "$release_root/release.json")
+wheel=$release_root/dist/$wheel_filename
+if [ "$(basename "$wheel_filename")" != "$wheel_filename" ] || [ ! -f "$wheel" ]; then
+    echo "versioned Runner wheel is invalid: $wheel_filename" >&2
     exit 1
 fi
 if [ ! -d "$snapshot_store/snapshots" ]; then
@@ -60,7 +66,8 @@ sudo -n install -d -o root -g root -m 0555 /srv/qsys-research/snapshots
 temporary_link=/opt/qsys-research/.current-$code_sha
 sudo -n ln -sfn "$release_root" "$temporary_link"
 sudo -n mv -Tf "$temporary_link" /opt/qsys-research/current
-printf 'QSYS_RESEARCH_CODE_SHA=%s\n' "$code_sha" | \
+printf 'QSYS_RESEARCH_CODE_SHA=%s\nQSYS_RESEARCH_WHEEL_FILENAME=%s\n' \
+    "$code_sha" "$wheel_filename" | \
     sudo -n tee /etc/qsys/research-runner.env >/dev/null
 sudo -n chmod 0644 /etc/qsys/research-runner.env
 sudo -n chown root:root /etc/qsys/research-runner.env

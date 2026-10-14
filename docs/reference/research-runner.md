@@ -93,7 +93,7 @@ scripts/install_research_runner_isolation.sh <完整提交SHA>
 ```
 
 `test` 分支成功 CI 会上传 `qsys-research-<完整提交SHA>` artifact，内含规范名
-`dist/qsys.whl` 与 `release.json`。Manifest 绑定 source commit/tree、wheel、`pyproject.toml`、
+`dist/<规范 wheel 文件名>` 与 `release.json`。Manifest 绑定 source commit/tree、wheel 文件名、`pyproject.toml`、
 `uv.lock` 的 SHA-256 及 CI run identity；安装脚本会在切换 `current` 前重新验证全部绑定关系。
 只能从该 SHA 的成功 CI run 下载 artifact，不能用开发机临时构建的 wheel 替代。
 
@@ -125,3 +125,9 @@ scripts/install_research_runner_isolation.sh <上一版本完整提交SHA>
 
 生产接入前仍需完成：真实回测 task 的迁移、测试节点负向权限验证和压力演练。仓库内
 unit/安装脚本和默认 Web 配置不会自行接触、修改或激活生产 Runner。
+
+测试节点通过手动 workflow `stage-test-research-runner.yml` 使用 test push CI 的精确 artifact
+初始化 `/data/qsys-test/warehouse-snapshot-store`，并 stage 到 `/opt/qsys-research-test`。测试 unit
+使用独立账号 `qsys-research-test`、512 MiB/25% CPU 上限，且没有 `[Install]` 段；staging 入口
+会验证它既未 active 也未 enabled。该路径不会创建生产激活批准文件，也不会写入生产 Runner、
+生产 snapshot store 或生产作业目录。
