@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import argparse
 import json
+from datetime import date
 from pathlib import Path
 
+from qsys.backtest.runner import ENTRY_FILL_MODES, execute_backtest
 from qsys.data.snapshots import load_snapshot, verify_snapshot
 from qsys.research.jobs import JobRequest
 
@@ -39,7 +41,47 @@ def verify_snapshot_task(request: JobRequest, snapshot_root: Path, artifacts: Pa
     )
 
 
-TASKS = {"verify-snapshot": verify_snapshot_task}
+def structural_backtest_task(
+    request: JobRequest, snapshot_root: Path, artifacts: Path,
+) -> None:
+    expected = {"start", "end", "cash", "params", "jq_compat", "entry_fill"}
+    parameters = dict(request.parameters)
+    if set(parameters) != expected:
+        raise ValueError("structural-backtest parameters are incomplete or unexpected")
+    start = date.fromisoformat(str(parameters["start"]))
+    end = date.fromisoformat(str(parameters["end"]))
+    cash = float(parameters["cash"])
+    params = parameters["params"]
+    if not isinstance(params, dict):
+        raise ValueError("structural-backtest params must be an object")
+    if not isinstance(parameters["jq_compat"], bool):
+        raise ValueError("structural-backtest jq_compat must be boolean")
+    entry_fill = str(parameters["entry_fill"])
+    if entry_fill not in ENTRY_FILL_MODES:
+        raise ValueError(f"unsupported structural-backtest entry_fill: {entry_fill}")
+    strategy = (
+        Path(__file__).parent / "builtin_strategies" / "structural_v1_2.py"
+    ).resolve(strict=True)
+
+    def progress(done: int, total: int, session: date) -> None:
+        print(json.dumps({
+            "event": "progress", "done": done, "total": total,
+            "session": session.isoformat(),
+        }), flush=True)
+
+    execute_backtest(
+        strategy, start=start, end=end, cash=cash,
+        warehouse=snapshot_root / "warehouse", out_dir=artifacts,
+        params=params, jq_compat=parameters["jq_compat"],
+        progress=progress, entry_fill=entry_fill,
+        strategy_source=strategy.read_text(encoding="utf-8"),
+    )
+
+
+TASKS = {
+    "verify-snapshot": verify_snapshot_task,
+    "structural-backtest": structural_backtest_task,
+}
 
 
 def main() -> int:
