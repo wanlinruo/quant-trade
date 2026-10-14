@@ -20,11 +20,10 @@ fi
 
 release_root=/opt/qsys-data/releases/catalog-verify/$code_sha
 executable=$release_root/venv/bin/qsys-catalog-verify
-wheel=$release_root/dist/qsys.whl
 repo=$(git rev-parse --show-toplevel)
 dropin_target=/etc/systemd/system/qsys-catalog-verify.service.d/zz-isolated-release.conf
 
-if [ ! -x "$executable" ] || [ ! -f "$wheel" ]; then
+if [ ! -x "$executable" ] || [ ! -f "$release_root/release.json" ]; then
     echo "versioned catalog verifier release is incomplete: $release_root" >&2
     exit 1
 fi

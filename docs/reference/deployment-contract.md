@@ -93,8 +93,9 @@ drop-in。该变更必须重启 monitor，且入口会检查 systemd 合并后�
 策略、Live Core 和资金风险，但不作为无关数据、Web、研究组件发布的总门禁。
 
 首个迁移组件是 `catalog-verify`：CI 为 test 分支的精确 SHA 生成
-`qsys-catalog-verify-<SHA>`，其中 wheel、Git tree、`pyproject.toml`、`uv.lock`、入口点和
-CI 身份全部写入 manifest 并绑定 SHA-256。节点 stage 后使用：
+`qsys-catalog-verify-<SHA>`，其中 wheel 保留标准的 distribution/version/tag 文件名；
+wheel 文件名与 SHA-256、Git tree、`pyproject.toml`、`uv.lock`、入口点和 CI 身份全部写入
+manifest。节点 stage 后使用：
 
 ```bash
 scripts/install_catalog_verify_release.sh <完整提交SHA>

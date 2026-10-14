@@ -182,7 +182,7 @@ jobs:
               "monitor-research-command-v1",
               "component-release-v1",
           }
-          if state.get("entrypoint_version", 0) < 10 or not required <= set(state.get("capabilities", [])):
+          if state.get("entrypoint_version", 0) < 11 or not required <= set(state.get("capabilities", [])):
               raise SystemExit("production entrypoint lacks required deployment capabilities")
           print(f'before_sha={state["sha"]}')
           PY
