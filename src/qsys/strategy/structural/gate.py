@@ -161,3 +161,61 @@ def gate_allow(tag: str, classification: Classification) -> bool:
         return classification.state == "FAVORABLE"
     # LOW_CHINEXT 等无 Gate
     return True
+
+
+RESEARCH_GATE_POLICIES = frozenset({
+    "current", "no_gate", "low_market_only", "low_stock_only",
+    "low_both_bad_only", "hc_activity_only", "hc_breadth_only", "hc_either_ok",
+})
+
+
+def gate_allow_policy(
+    tag: str,
+    classification: Classification,
+    env: Mapping[str, Any],
+    stock_factors: Mapping[str, Any],
+    *,
+    policy: str = "current",
+    thresholds: Mapping[str, float] | None = None,
+) -> bool:
+    """预先定义的研究消融；默认与生产 ``gate_allow`` 完全一致。"""
+    if policy not in RESEARCH_GATE_POLICIES:
+        raise ValueError(f"unknown research gate policy: {policy}")
+    if policy == "current":
+        return gate_allow(tag, classification)
+    if policy == "no_gate":
+        return True
+    values = thresholds or {}
+    if tag == "LOW_MAIN" and policy.startswith("low_"):
+        slope = _num(env.get("index_ma20_slope_5d"))
+        heat = _num(env.get("prior_limitup_nextday_return_mean"))
+        ret10 = _num(stock_factors.get("stock_return_10d"))
+        dist60 = _num(stock_factors.get("distance_to_60d_high"))
+        market_bad = None if slope is None or heat is None else (
+            slope > values.get("low_trend_weak", S6_LOW_TREND_WEAK_THRESHOLD)
+            and heat > values.get("low_heat_low", S6_LOW_HEAT_LOW_THRESHOLD)
+        )
+        stock_bad = None if ret10 is None or dist60 is None else (
+            ret10 >= S6_LOW_STOCK_RET10_HIGH and dist60 >= S6_LOW_DISTANCE60_HIGH
+        )
+        if policy == "low_market_only":
+            return True if market_bad is None else not market_bad
+        if policy == "low_stock_only":
+            return True if stock_bad is None else not stock_bad
+        return True if market_bad is None or stock_bad is None else not (
+            market_bad and stock_bad
+        )
+    if tag == "HIGH_CHINEXT" and policy.startswith("hc_"):
+        touched = _num(env.get("touched_limit_up_count"))
+        advance = _num(env.get("market_advance_ratio"))
+        activity = None if touched is None else touched > S6_HC_TOUCHED_NOT_LOW
+        breadth = None if advance is None else advance > values.get(
+            "high_chinext_advance_not_low", S6_HC_ADVANCE_NOT_LOW
+        )
+        if policy == "hc_activity_only":
+            return True if activity is None else activity
+        if policy == "hc_breadth_only":
+            return True if breadth is None else breadth
+        return True if activity is None or breadth is None else activity or breadth
+    # 一个分支的研究策略不得改变其他分支。
+    return gate_allow(tag, classification)

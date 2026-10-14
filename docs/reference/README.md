@@ -1,5 +1,15 @@
 # 参考资料
 
+## `warehouse-snapshots.md`
+
+Issue #285 的 Warehouse 不可变快照协议：snapshot manifest、分区 hash、完整性验证、
+硬链接发布约束和原子 `current` 指针。
+
+## `research-runner.md`
+
+Issue #285 的隔离研究作业协议：Web/Runner 文件所有权、代码与快照身份、状态机、取消、
+失败恢复、资源声明，以及日志和产物 hash。
+
 ## `production-data-management-audit-20260921.md`
 
 2026-09-21 对生产 warehouse、质量证据、定时任务、磁盘和备份状态的只读审计，
@@ -37,6 +47,11 @@ T+0 ETF 日内策略探查：六次独立测试（均值回归、动量、同质
 
 生态闸门（S6 分类 + S7 Gate）研究：开闸门与关闸门的完整回测对照、逐笔反事实
 （被拒的交易如果买了会怎样）、按分支与拒绝原因的分解，以及研究期间修掉的两个缺陷。
+
+## `structural-gate-attribution.md`
+
+结构策略从首板候选池、低/高开入档到 S6/S7 门禁的逐标的漏斗留痕，
+以及 LOW_MAIN 市场×个股、HIGH_CHINEXT 活跃度×广度组合的反事实归因。
 
 ## `live-readiness.md`
 

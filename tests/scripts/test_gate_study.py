@@ -68,6 +68,53 @@ def test_a_lot_with_no_price_at_all_is_not_scored():
     assert got["reason"] == "NO_PRICE" and got["return_pct"] is None
 
 
+def test_incomplete_followup_is_right_censored_not_horizon_scored():
+    closes = {("600001.SH", SESSIONS[-1]): 12.0}
+    market = _Market(_Bound({}))
+    got = study.replay(
+        market, closes, SESSIONS, "600001.SH", "HIGH_MAIN",
+        SESSIONS[-2], 10.0, horizon=3,
+    )
+    assert got["reason"] == "INCOMPLETE_FOLLOWUP"
+    assert got["return_pct"] is None
+    assert got["outcome_quality"] == "right_censored"
+
+
+class _BatchBound:
+    def __init__(self, prices):
+        self._prices = prices
+
+    def intraday(self, symbols, day, at):
+        return {
+            symbol: _Quote(self._prices[(symbol, day, at)])
+            for symbol in symbols if (symbol, day, at) in self._prices
+        }
+
+    def limit_up_price(self, symbols, day):
+        return {}
+
+
+def test_batch_replay_preserves_independent_trade_outcomes():
+    prices = {
+        ("600001.SH", SESSIONS[1], time(11, 25)): 11.0,
+        ("600002.SH", SESSIONS[1], time(11, 25)): 9.5,
+        ("600002.SH", SESSIONS[1], time(14, 25)): 9.6,
+    }
+    requests = [
+        {"id": 0, "symbol": "600001.SH", "tag": "HIGH_MAIN",
+         "entry_day": SESSIONS[0], "entry_price": 10.0},
+        {"id": 1, "symbol": "600002.SH", "tag": "LOW_MAIN",
+         "entry_day": SESSIONS[0], "entry_price": 10.0},
+    ]
+    got = study.replay_many(
+        _Market(_BatchBound(prices)), {}, SESSIONS, requests, horizon=3
+    )
+    assert got[0]["return_pct"] == pytest.approx(10.0)
+    assert got[0]["exit_at"] == "11:25:00"
+    assert got[1]["return_pct"] == pytest.approx(-4.0)
+    assert got[1]["exit_at"] == "14:25:00"
+
+
 def test_describe_summarises_returns():
     got = study.describe([-2.0, 1.0, 3.0])
     assert got["n"] == 3 and got["win_rate"] == pytest.approx(0.667, abs=1e-3)

@@ -23,6 +23,10 @@ dependencies = [
     "scikit-learn>=1.5,<2",
 ]
 
+[project.scripts]
+qsys-research-runner = "qsys.research.runner_cli:main"
+qsys-warehouse-snapshot = "qsys.data.snapshot_cli:main"
+
 [dependency-groups]
 dev = [
     "pytest>=8.0",

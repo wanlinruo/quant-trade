@@ -38,6 +38,49 @@ from qsys.strategy.structural.params import (
 LOT = 100  # 日线 volume 单位是手，换算成股要乘 100
 
 
+def diagnose_low_open(
+    history: pl.DataFrame, auction_price: float | None,
+) -> dict[str, object]:
+    """返回 LOW 入档的原子判断；``eligible`` 与 ``check_low_open`` 同义。"""
+    enough_history = history.height >= LOW_HISTORY_DAYS
+    out: dict[str, object] = {
+        "low_history_ok": enough_history,
+        "low_auction_price_ok": auction_price is not None,
+        "low_relative_position": None,
+        "low_relative_position_ok": False,
+        "low_prev_amount": None,
+        "low_amount_ok": False,
+        "low_open_ratio": None,
+        "low_open_band_ok": False,
+    }
+    if auction_price is None or not enough_history:
+        return {**out, "eligible": False}
+
+    window = history.tail(LOW_HISTORY_DAYS)
+    close = window["close"].to_list()[-1]
+    high = window["high"].max()
+    low = window["low"].min()
+    money = window["amount"].to_list()[-1]
+    out["low_prev_amount"] = money
+    out["low_amount_ok"] = money >= LOW_MIN_MONEY
+    if high > low:
+        relative_position = (close - low) / (high - low)
+        out["low_relative_position"] = relative_position
+        out["low_relative_position_ok"] = relative_position <= LOW_RELATIVE_POSITION_MAX
+    if close > 0:
+        ratio = auction_price / close
+        out["low_open_ratio"] = ratio
+        out["low_open_band_ok"] = LOW_AUCTION_RATIO_MIN <= ratio <= LOW_AUCTION_RATIO_MAX
+    out["eligible"] = all(
+        bool(out[key])
+        for key in (
+            "low_history_ok", "low_auction_price_ok", "low_relative_position_ok",
+            "low_amount_ok", "low_open_band_ok",
+        )
+    )
+    return out
+
+
 def check_low_open(history: pl.DataFrame, auction_price: float | None) -> bool:
     """低开入场（原文 L1201-L1221）。
 
@@ -48,25 +91,7 @@ def check_low_open(history: pl.DataFrame, auction_price: float | None) -> bool:
     与聚宽对账时这个差别让 25 条本该选中的候选被漏掉：更早的低点会把
     相对位置整个抬上去，实测有一例 60 根算 0.276、101 根算 0.603。
     """
-    if auction_price is None or history.height < LOW_HISTORY_DAYS:
-        return False
-
-    window = history.tail(LOW_HISTORY_DAYS)
-    close = window["close"].to_list()[-1]
-    high = window["high"].max()
-    low = window["low"].min()
-    if high <= low:
-        return False
-
-    relative_position = (close - low) / (high - low)
-    money = window["amount"].to_list()[-1]
-    if relative_position > LOW_RELATIVE_POSITION_MAX or money < LOW_MIN_MONEY:
-        return False
-
-    if close <= 0:
-        return False
-    ratio = auction_price / close
-    return LOW_AUCTION_RATIO_MIN <= ratio <= LOW_AUCTION_RATIO_MAX
+    return bool(diagnose_low_open(history, auction_price)["eligible"])
 
 
 def check_left_pressure(history: pl.DataFrame) -> bool:
@@ -112,46 +137,77 @@ def check_high_open(
     早期区间——对账时会表现为「qsys 漏掉了全部 HIGH 票」，那是数据缺失的
     假象而非移植错误。差异在对账时按此归因。
     """
-    if auction_price is None or history.height < 2:
-        return False
-    if auction_volume is None and require_auction_volume:
-        return False
+    return bool(diagnose_high_open(
+        history, auction_price, auction_volume, valuation,
+        require_auction_volume=require_auction_volume,
+    )["eligible"])
 
+
+def diagnose_high_open(
+    history: pl.DataFrame,
+    auction_price: float | None,
+    auction_volume: float | None,
+    valuation: Mapping[str, float] | None,
+    *,
+    require_auction_volume: bool = True,
+) -> dict[str, object]:
+    """返回 HIGH 入档原子判断；缺竞价量的近似口径显式标记。"""
+    out: dict[str, object] = {
+        "high_history_ok": history.height >= 2,
+        "high_auction_price_ok": auction_price is not None,
+        "high_auction_volume_present": auction_volume is not None,
+        "high_auction_volume_required": require_auction_volume,
+        "high_avg_inc": None,
+        "high_avg_inc_ok": False,
+        "high_prev_amount": None,
+        "high_amount_ok": False,
+        "high_market_cap": None,
+        "high_market_cap_ok": False,
+        "high_circulating_market_cap": None,
+        "high_circulating_cap_ok": False,
+        "high_auction_volume_ratio": None,
+        "high_auction_volume_ok": None,
+        "high_auction_volume_rule_ok": not require_auction_volume,
+        "high_open_ratio": None,
+        "high_open_band_ok": False,
+        "high_left_pressure_ok": False,
+    }
+    if auction_price is None or history.height < 2:
+        return {**out, "eligible": False}
     closes = history["close"].to_list()
     volumes = history["volume"].to_list()
     moneys = history["amount"].to_list()
-
     pre_prev_close, prev_close = closes[-2], closes[-1]
     prev_volume, prev_money = volumes[-1], moneys[-1]
-    if pre_prev_close <= 0 or prev_close <= 0 or prev_volume <= 0:
-        return False
-
-    # volume 是手，换算成股才是每股均价
-    vwap = prev_money / (prev_volume * LOT)
-    avg_inc = vwap / pre_prev_close - 1
-    if (
-        avg_inc < HIGH_AVG_INC_MIN
-        or prev_money < HIGH_MIN_MONEY
-        or prev_money > HIGH_MAX_MONEY
-    ):
-        return False
-
-    # 没有市值数据不能放行——原策略 turn.empty 时直接 return False
-    if valuation is None:
-        return False
-    if (
-        valuation["market_cap"] < HIGH_MIN_MARKET_CAP
-        or valuation["circulating_market_cap"] > HIGH_MAX_CIRCULATING_CAP
-    ):
-        return False
-
-    # 竞价量与昨日量同为手，比值不受单位影响
-    if auction_volume is not None:
-        if auction_volume / prev_volume < HIGH_AUCTION_VOL_RATIO_MIN:
-            return False
-
-    ratio = auction_price / prev_close
-    if ratio <= HIGH_AUCTION_RATIO_MIN or ratio >= HIGH_AUCTION_RATIO_MAX:
-        return False
-
-    return check_left_pressure(history)
+    out["high_prev_amount"] = prev_money
+    out["high_amount_ok"] = HIGH_MIN_MONEY <= prev_money <= HIGH_MAX_MONEY
+    if pre_prev_close > 0 and prev_close > 0 and prev_volume > 0:
+        vwap = prev_money / (prev_volume * LOT)
+        avg_inc = vwap / pre_prev_close - 1
+        out["high_avg_inc"] = avg_inc
+        out["high_avg_inc_ok"] = avg_inc >= HIGH_AVG_INC_MIN
+        ratio = auction_price / prev_close
+        out["high_open_ratio"] = ratio
+        out["high_open_band_ok"] = HIGH_AUCTION_RATIO_MIN < ratio < HIGH_AUCTION_RATIO_MAX
+        if auction_volume is not None:
+            volume_ratio = auction_volume / prev_volume
+            out["high_auction_volume_ratio"] = volume_ratio
+            out["high_auction_volume_ok"] = volume_ratio >= HIGH_AUCTION_VOL_RATIO_MIN
+            out["high_auction_volume_rule_ok"] = out["high_auction_volume_ok"]
+    if valuation is not None:
+        market_cap = valuation["market_cap"]
+        circulating = valuation["circulating_market_cap"]
+        out["high_market_cap"] = market_cap
+        out["high_market_cap_ok"] = market_cap >= HIGH_MIN_MARKET_CAP
+        out["high_circulating_market_cap"] = circulating
+        out["high_circulating_cap_ok"] = circulating <= HIGH_MAX_CIRCULATING_CAP
+    out["high_left_pressure_ok"] = check_left_pressure(history)
+    out["eligible"] = all(
+        bool(out[key])
+        for key in (
+            "high_history_ok", "high_auction_price_ok", "high_avg_inc_ok",
+            "high_amount_ok", "high_market_cap_ok", "high_circulating_cap_ok",
+            "high_auction_volume_rule_ok", "high_open_band_ok", "high_left_pressure_ok",
+        )
+    )
+    return out

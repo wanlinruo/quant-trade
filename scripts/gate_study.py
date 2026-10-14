@@ -29,6 +29,10 @@ from pathlib import Path
 import polars as pl
 
 from qsys.core.calendar import AShareCalendar
+from qsys.core.trading import Side
+from qsys.backtest.fees import (
+    ACCOUNT_COMMISSION_RATE, ACCOUNT_MIN_COMMISSION, AShareFeeModel,
+)
 from qsys.data.cutover import CutoverConfig, CutoverMarketData
 from qsys.data.market_feed import MarketFeed
 from qsys.data.query import WarehouseQuery
@@ -42,6 +46,25 @@ from qsys.strategy.structural.exits import (
 
 CHECKPOINTS = (time(11, 25), time(14, 25), time(14, 50))
 _MA_BARS = 4
+_STUDY_NOTIONAL = 100_000.0
+_SLIPPAGE = 0.0005
+
+
+def net_return_pct(entry_price: float, exit_price: float) -> float:
+    """固定 10 万名义金额，按生产费用与双边 0.05% 滑点计净收益。"""
+    buy_price = entry_price * (1.0 + _SLIPPAGE)
+    sell_price = exit_price * (1.0 - _SLIPPAGE)
+    qty = _STUDY_NOTIONAL / buy_price
+    buy_gross = qty * buy_price
+    sell_gross = qty * sell_price
+    fees = AShareFeeModel(
+        commission_rate=ACCOUNT_COMMISSION_RATE,
+        min_commission=ACCOUNT_MIN_COMMISSION,
+    )
+    pnl = sell_gross - buy_gross
+    pnl -= fees.fee_for(Side.BUY, buy_gross)
+    pnl -= fees.fee_for(Side.SELL, sell_gross)
+    return 100.0 * pnl / buy_gross
 
 
 def _decide(tag: str, at: time, price: float, limit_up: float | None,
@@ -64,6 +87,7 @@ def replay(
 ) -> dict:
     """单笔交易的反事实：从 T+1 起按检查点规则退出。"""
     start = sessions.index(entry_day)
+    observed_quotes = 0
     for offset in range(1, horizon + 1):
         if start + offset >= len(sessions):
             break
@@ -77,21 +101,135 @@ def replay(
             quote = quotes.get(symbol)
             if quote is None or quote.price <= 0:
                 continue
+            observed_quotes += 1
             decision = _decide(tag, at, quote.price, limits.get(symbol),
                                entry_price, dynamic_ma5(recent, quote.price))
             if decision is not None and decision.should_exit:
                 return {"exit_day": day, "exit_at": at.isoformat(),
                         "exit_price": quote.price, "reason": decision.reason,
-                        "return_pct": 100.0 * (quote.price / entry_price - 1.0)}
-    # 到期未触发：按最后一个可得收盘价平掉，明确标记
-    for offset in range(min(horizon, len(sessions) - start - 1), 0, -1):
+                        "return_pct": 100.0 * (quote.price / entry_price - 1.0),
+                        "observed_intraday_quotes": observed_quotes,
+                        "outcome_quality": "observed_exit"}
+    # 数据区间尚未覆盖完整持有期时不能把末日收盘冒充 horizon 平仓。
+    if start + horizon >= len(sessions):
+        return {"exit_day": None, "exit_at": None, "exit_price": None,
+                "reason": "INCOMPLETE_FOLLOWUP", "return_pct": None,
+                "observed_intraday_quotes": observed_quotes,
+                "outcome_quality": "right_censored"}
+    # 到期未触发：按 horizon 当日或最近一个可得收盘价平掉，明确标记
+    for offset in range(horizon, 0, -1):
         day = sessions[start + offset]
         close = closes.get((symbol, day))
         if close:
             return {"exit_day": day, "exit_at": "15:00", "exit_price": close,
-                    "reason": "HORIZON", "return_pct": 100.0 * (close / entry_price - 1.0)}
+                    "reason": "HORIZON", "return_pct": 100.0 * (close / entry_price - 1.0),
+                    "observed_intraday_quotes": observed_quotes,
+                    "outcome_quality": (
+                        "horizon_with_intraday" if observed_quotes else "no_intraday"
+                    )}
     return {"exit_day": None, "exit_at": None, "exit_price": None,
-            "reason": "NO_PRICE", "return_pct": None}
+            "reason": "NO_PRICE", "return_pct": None,
+            "observed_intraday_quotes": observed_quotes,
+            "outcome_quality": "unpriced"}
+
+
+def replay_many(
+    market: MarketFeed, closes: dict[tuple[str, date], float],
+    sessions: list[date], requests: list[dict], horizon: int,
+) -> dict[int, dict]:
+    """Batch the same replay semantics by session to avoid per-trade scans.
+
+    A single-condition relaxation can add thousands of candidates. Reading the
+    same minute partition once per candidate is both slow and unnecessarily
+    disruptive on the production host; batching keeps reads bounded by trading
+    days while preserving independent fixed-notional outcomes.
+    """
+    positions = {day: index for index, day in enumerate(sessions)}
+    pending = []
+    observed: dict[int, int] = {}
+    outcomes: dict[int, dict] = {}
+    for request in requests:
+        item = dict(request)
+        item["start"] = positions[item["entry_day"]]
+        pending.append(item)
+        observed[item["id"]] = 0
+
+    for session_index, day in enumerate(sessions):
+        active = [
+            item for item in pending
+            if item["id"] not in outcomes
+            and item["start"] < session_index <= item["start"] + horizon
+        ]
+        if not active:
+            continue
+        symbols = sorted({item["symbol"] for item in active})
+        bound = market.bind(datetime.combine(day, time(15, 0)))
+        limits = bound.limit_up_price(symbols, day)
+        quotes_at = {
+            at: bound.intraday(symbols, day, at) for at in CHECKPOINTS
+        }
+        for item in active:
+            symbol = item["symbol"]
+            recent = [
+                closes[(symbol, prior)]
+                for prior in sessions[max(0, session_index - _MA_BARS):session_index]
+                if (symbol, prior) in closes
+            ]
+            for at in CHECKPOINTS:
+                quote = quotes_at[at].get(symbol)
+                if quote is None or quote.price <= 0:
+                    continue
+                observed[item["id"]] += 1
+                decision = _decide(
+                    item["tag"], at, quote.price, limits.get(symbol),
+                    item["entry_price"], dynamic_ma5(recent, quote.price),
+                )
+                if decision is not None and decision.should_exit:
+                    outcomes[item["id"]] = {
+                        "exit_day": day, "exit_at": at.isoformat(),
+                        "exit_price": quote.price, "reason": decision.reason,
+                        "return_pct": 100.0 * (
+                            quote.price / item["entry_price"] - 1.0
+                        ),
+                        "observed_intraday_quotes": observed[item["id"]],
+                        "outcome_quality": "observed_exit",
+                    }
+                    break
+
+    for item in pending:
+        if item["id"] in outcomes:
+            continue
+        if item["start"] + horizon >= len(sessions):
+            outcomes[item["id"]] = {
+                "exit_day": None, "exit_at": None, "exit_price": None,
+                "reason": "INCOMPLETE_FOLLOWUP", "return_pct": None,
+                "observed_intraday_quotes": observed[item["id"]],
+                "outcome_quality": "right_censored",
+            }
+            continue
+        for offset in range(horizon, 0, -1):
+            day = sessions[item["start"] + offset]
+            close = closes.get((item["symbol"], day))
+            if close:
+                outcomes[item["id"]] = {
+                    "exit_day": day, "exit_at": "15:00", "exit_price": close,
+                    "reason": "HORIZON",
+                    "return_pct": 100.0 * (close / item["entry_price"] - 1.0),
+                    "observed_intraday_quotes": observed[item["id"]],
+                    "outcome_quality": (
+                        "horizon_with_intraday" if observed[item["id"]]
+                        else "no_intraday"
+                    ),
+                }
+                break
+        else:
+            outcomes[item["id"]] = {
+                "exit_day": None, "exit_at": None, "exit_price": None,
+                "reason": "NO_PRICE", "return_pct": None,
+                "observed_intraday_quotes": observed[item["id"]],
+                "outcome_quality": "unpriced",
+            }
+    return outcomes
 
 
 def describe(values: list[float]) -> dict:
@@ -117,7 +255,10 @@ def run(warehouse: Path, decisions: pl.DataFrame, horizon: int) -> dict:
 
     days = sorted(set(decisions["date"].to_list()))
     lo, hi = min(days), max(days)
-    frame = market_data.daily_bars(None, lo, sessions[-1])
+    symbols = sorted(set(decisions["symbol"].to_list()))
+    lo_index = sessions.index(lo)
+    history_start = sessions[max(0, lo_index - _MA_BARS)]
+    frame = market_data.daily_bars(symbols, history_start, sessions[-1])
     closes = {
         (row["symbol"], row["dt"]): row["close"]
         for row in frame.select("symbol", "dt", "close").iter_rows(named=True)
@@ -127,22 +268,41 @@ def run(warehouse: Path, decisions: pl.DataFrame, horizon: int) -> dict:
         for row in frame.select("symbol", "dt", "open").iter_rows(named=True)
     }
 
-    trades: list[dict] = []
-    for row in decisions.iter_rows(named=True):
+    trades: list[dict | None] = [None] * decisions.height
+    requests: list[dict] = []
+    for index, row in enumerate(decisions.iter_rows(named=True)):
         day, symbol = row["date"], row["symbol"]
         entry = opens.get((symbol, day))
         if entry is None:
-            trades.append({**row, "return_pct": None, "reason": "NO_OPEN"})
+            trades[index] = {
+                **row, "return_pct": None, "net_return_pct": None,
+                "reason": "NO_OPEN", "observed_intraday_quotes": 0,
+                "outcome_quality": "unpriced",
+            }
             continue
-        outcome = replay(market, closes, sessions, symbol, row["strategy_tag"],
-                         day, entry, horizon)
-        trades.append({**row, "entry_price": entry, **outcome})
+        requests.append({
+            "id": index, "symbol": symbol, "tag": row["strategy_tag"],
+            "entry_day": day, "entry_price": entry,
+        })
+    replayed = replay_many(market, closes, sessions, requests, horizon)
+    for request in requests:
+        index = request["id"]
+        row = decisions.row(index, named=True)
+        entry = request["entry_price"]
+        outcome = replayed[index]
+        if outcome["exit_price"] is not None:
+            outcome["net_return_pct"] = net_return_pct(entry, outcome["exit_price"])
+        else:
+            outcome["net_return_pct"] = None
+        trades[index] = {**row, "entry_price": entry, **outcome}
+
+    completed_trades = [trade for trade in trades if trade is not None]
 
     by_allow: dict[bool, list[float]] = defaultdict(list)
     by_tag: dict[tuple, list[float]] = defaultdict(list)
     by_state: dict[str, list[float]] = defaultdict(list)
     unpriced = 0
-    for t in trades:
+    for t in completed_trades:
         if t["return_pct"] is None:
             unpriced += 1
             continue
@@ -158,7 +318,7 @@ def run(warehouse: Path, decisions: pl.DataFrame, horizon: int) -> dict:
         "by_tag": {f"{tag}|{'放行' if allow else '拒绝'}": describe(v)
                    for (tag, allow), v in sorted(by_tag.items())},
         "rejected_by_state": {k: describe(v) for k, v in sorted(by_state.items())},
-        "trades": trades,
+        "trades": completed_trades,
     }
 
 
