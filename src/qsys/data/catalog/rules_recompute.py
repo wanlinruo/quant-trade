@@ -10,6 +10,11 @@ import polars as pl
 from qsys.data.catalog.checks import Category, Check, CheckContext, CheckResult, Scope, register
 
 _TOL = 1e-6
+# Keep the independent checker wide enough to cross long exchange holidays.
+# The production derivation deliberately uses 150 calendar days for the same
+# previous-session requirement; a 10-day window produced a false blocking
+# alert after the 2026 National Day closure.
+_FIRST_BOARD_LOOKBACK_DAYS = 150
 
 
 def _compare(
@@ -205,7 +210,9 @@ _add("is_broken_board", "daily_flags.is_broken_board",
 
 
 def _first_board(ctx: CheckContext) -> pl.DataFrame:
-    frame = _limit_status(ctx, ctx.start - timedelta(days=10)).sort(["symbol", "dt"])
+    frame = _limit_status(
+        ctx, ctx.start - timedelta(days=_FIRST_BOARD_LOOKBACK_DAYS)
+    ).sort(["symbol", "dt"])
     return frame.with_columns(
         pl.col("is_first_board").alias("actual"),
         (pl.col("expected_limit_up")
