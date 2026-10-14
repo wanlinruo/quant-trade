@@ -76,6 +76,11 @@ Runner 的 OOM 分数高于实盘服务；systemd-oomd 发生内存压力时优�
 scripts/install_research_runner_isolation.sh <完整提交SHA>
 ```
 
+`test` 分支成功 CI 会上传 `qsys-research-<完整提交SHA>` artifact，内含规范名
+`dist/qsys.whl` 与 `release.json`。Manifest 绑定 source commit/tree、wheel、`pyproject.toml`、
+`uv.lock` 的 SHA-256 及 CI run identity；安装脚本会在切换 `current` 前重新验证全部绑定关系。
+只能从该 SHA 的成功 CI run 下载 artifact，不能用开发机临时构建的 wheel 替代。
+
 脚本创建系统账号和分权目录：Web 身份只能写 `inbox/control`，Runner 身份独占
 `jobs/rejected`，然后安装无秘密的代码 SHA 环境文件。脚本只 stage 版本，绝不自动启动服务。
 
