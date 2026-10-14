@@ -63,7 +63,8 @@ sudo -n chmod 0644 /etc/qsys/research-runner.env
 sudo -n chown root:root /etc/qsys/research-runner.env
 
 sudo -n systemctl daemon-reload
-sudo -n systemctl enable --now qsys-research-runner.service
-sudo -n systemctl is-active --quiet qsys-research-runner.service
-
-echo "installed isolated Research Runner release: $code_sha"
+if sudo -n systemctl is-active --quiet qsys-research-runner.service; then
+    echo "staged isolated Research Runner release for the next approved restart: $code_sha"
+else
+    echo "staged inactive isolated Research Runner release: $code_sha"
+fi

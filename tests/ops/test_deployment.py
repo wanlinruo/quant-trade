@@ -177,6 +177,7 @@ def test_manifest_covers_resident_services_and_windows_tasks() -> None:
 
 
 def test_research_runner_unit_enforces_identity_resources_and_denials() -> None:
+    entrypoint = _production_entrypoint_module()
     unit = Path("deploy/systemd/qsys-research-runner.service").read_text(
         encoding="utf-8",
     )
@@ -186,9 +187,14 @@ def test_research_runner_unit_enforces_identity_resources_and_denials() -> None:
 
     assert "User=qsys-research" in unit
     assert "Group=qsys-research" in unit
+    assert "ConditionPathExists=/etc/qsys/research-runner.activation-approved" in unit
+    assert "MemoryHigh=3G" in unit
     assert "MemoryMax=4G" in unit and "--memory-max-mb 4096" in unit
     assert "CPUQuota=100%" in unit and "--cpu-quota-percent 100" in unit
-    assert "IOWeight=100" in unit and "--io-weight 100" in unit
+    assert "CPUWeight=10" in unit
+    assert "IOWeight=10" in unit and "--io-weight 10" in unit
+    assert "OOMScoreAdjust=750" in unit
+    assert "ManagedOOMMemoryPressure=kill" in unit
     assert "BindReadOnlyPaths=/data/qsys/warehouse-snapshot-store:" in unit
     assert "ReadWritePaths=/data/qsys/research-jobs" in unit
     assert "InaccessiblePaths=-/data/qsys/warehouse" in unit
@@ -199,7 +205,9 @@ def test_research_runner_unit_enforces_identity_resources_and_denials() -> None:
     assert "useradd --system --gid qsys-research" in installer
     assert '"$job_store/inbox" "$job_store/control"' in installer
     assert '"$job_store/jobs" "$job_store/rejected"' in installer
-    assert "enable --now qsys-research-runner.service" in installer
+    assert "enable --now qsys-research-runner.service" not in installer
+    assert "staged inactive isolated Research Runner release" in installer
+    assert "qsys-research-runner.service" not in entrypoint.SYSTEMD_ENABLE_ON_INSTALL
 
 
 def test_shared_redis_change_targets_both_nodes() -> None:
