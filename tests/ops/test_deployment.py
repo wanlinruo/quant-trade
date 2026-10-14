@@ -424,6 +424,13 @@ def test_test_research_artifact_extraction_rejects_unexpected_files(tmp_path) ->
         entrypoint._extract_research_archive(archive, destination)
 
 
+def test_test_research_release_does_not_hardlink_shared_uv_cache() -> None:
+    source = Path("deploy/linux/qsys-deploy-entrypoint.py").read_text(encoding="utf-8")
+
+    assert 'environment["UV_LINK_MODE"] = "copy"' in source
+    assert "uv dependency sync failed" in source
+
+
 def test_test_research_staging_paths_do_not_expand_production_install() -> None:
     manifest = DeploymentManifest.load(MANIFEST)
     installer = manifest.plan(
