@@ -25,7 +25,7 @@ ACTOR_PATTERN = re.compile(r"^[A-Za-z0-9_.-]{1,128}$")
 REPOSITORY_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 ALLOWED_COMPONENTS = frozenset({
     "linux-dependencies", "linux-web", "linux-resident", "linux-data-jobs",
-    "linux-systemd",
+    "linux-research-runner", "linux-systemd",
 })
 ALLOWED_WINDOWS_COMPONENTS = frozenset({
     "windows-agent", "windows-gateway", "windows-control",

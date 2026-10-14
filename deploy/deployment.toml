@@ -154,6 +154,20 @@ health_checks = ["preflight"]
 rollback = "previous-successful-sha"
 
 [[components]]
+name = "linux-research-runner"
+environments = ["production"]
+paths = [
+  "src/qsys/research/jobs.py",
+  "src/qsys/research/runner.py",
+  "src/qsys/research/runner_cli.py",
+  "src/qsys/research/task_worker.py",
+]
+nodes = ["linux"]
+linux_units = []
+health_checks = ["preflight"]
+rollback = "previous-successful-sha"
+
+[[components]]
 name = "linux-systemd"
 environments = ["production"]
 paths = ["deploy/systemd/**"]

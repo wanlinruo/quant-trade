@@ -222,6 +222,24 @@ def test_structural_gate_research_module_targets_linux_data_jobs() -> None:
     assert plan.unknown_paths == ()
 
 
+@pytest.mark.parametrize("path", [
+    "src/qsys/research/jobs.py",
+    "src/qsys/research/runner.py",
+    "src/qsys/research/runner_cli.py",
+    "src/qsys/research/task_worker.py",
+])
+def test_research_runner_modules_target_an_isolated_component(path: str) -> None:
+    plan = DeploymentManifest.load(MANIFEST).plan(
+        [path], environment="production",
+    )
+
+    assert plan.components == ("linux-research-runner",)
+    assert plan.nodes == ("linux",)
+    assert plan.linux_units == ()
+    assert plan.health_checks == ("preflight",)
+    assert plan.unknown_paths == ()
+
+
 def test_contract_change_does_not_restart_runtime_services() -> None:
     plan = DeploymentManifest.load(MANIFEST).plan(
         ["src/qsys/ops/deployment.py", "scripts/deployment_contract.py"],
