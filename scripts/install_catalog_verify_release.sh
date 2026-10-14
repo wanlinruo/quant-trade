@@ -22,7 +22,6 @@ release_root=/opt/qsys-data/releases/catalog-verify/$code_sha
 executable=$release_root/venv/bin/qsys-catalog-verify
 wheel=$release_root/dist/qsys.whl
 repo=$(git rev-parse --show-toplevel)
-dropin_source=$repo/deploy/component-releases/catalog-verify.conf
 dropin_target=/etc/systemd/system/qsys-catalog-verify.service.d/zz-isolated-release.conf
 
 if [ ! -x "$executable" ] || [ ! -f "$wheel" ]; then
@@ -35,10 +34,6 @@ if [ -n "$(find "$release_root" -xdev -perm /022 -print -quit)" ]; then
     echo "catalog verifier release must not be writable by group or other" >&2
     exit 1
 fi
-if [ ! -f "$dropin_source" ]; then
-    echo "catalog verifier systemd drop-in is missing: $dropin_source" >&2
-    exit 1
-fi
 if sudo -n systemctl is-active --quiet qsys-catalog-verify.service; then
     echo "refusing to switch catalog verifier while a verification is running" >&2
     exit 1
@@ -47,10 +42,16 @@ fi
 sudo -n chown -R root:root "$release_root"
 sudo -n install -d -o root -g root -m 0755 \
     /opt/qsys-data /opt/qsys-data/releases /opt/qsys-data/releases/catalog-verify \
-    /opt/qsys-data/catalog-verify
+    /opt/qsys-data/catalog-verify /etc/systemd/system/qsys-catalog-verify.service.d
 temporary_link=/opt/qsys-data/catalog-verify/.current-$code_sha
 sudo -n ln -sfn "$release_root" "$temporary_link"
 sudo -n mv -Tf "$temporary_link" /opt/qsys-data/catalog-verify/current
-sudo -n install -D -o root -g root -m 0644 "$dropin_source" "$dropin_target"
+printf '%s\n' \
+    '[Service]' \
+    'ExecStart=' \
+    'ExecStart=/usr/bin/flock --exclusive --nonblock /home/ubuntu/qsys/var/warehouse-write.lock /opt/qsys-data/catalog-verify/current/venv/bin/qsys-catalog-verify --warehouse /home/ubuntu/qsys/warehouse --config /home/ubuntu/qsys/config/deploy.local.toml --service-runs /home/ubuntu/qsys/var/service-runs' | \
+    sudo -n tee "$dropin_target" >/dev/null
+sudo -n chmod 0644 "$dropin_target"
+sudo -n chown root:root "$dropin_target"
 sudo -n systemctl daemon-reload
 echo "activated isolated catalog verifier release: $code_sha"
