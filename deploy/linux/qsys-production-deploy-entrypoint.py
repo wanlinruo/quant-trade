@@ -33,7 +33,7 @@ ALLOWED_WINDOWS_COMPONENTS = frozenset({
     "windows-agent", "windows-gateway", "windows-control",
 })
 WINDOWS_COORDINATOR_PATH = "deploy/linux/qsys-windows-deploy-coordinator.py"
-ENTRYPOINT_VERSION = 10
+ENTRYPOINT_VERSION = 11
 ENTRYPOINT_CAPABILITIES = (
     "systemd-apply-v1",
     "systemd-changed-artifacts-v1",
@@ -488,7 +488,6 @@ def _live_preflight(repo: Path) -> None:
 
 
 def _extract_component_archive(archive_path: Path, destination: Path) -> None:
-    required = {"release.json", "dist/qsys.whl"}
     with zipfile.ZipFile(archive_path) as archive:
         files: dict[str, zipfile.ZipInfo] = {}
         total = 0
@@ -504,8 +503,14 @@ def _extract_component_archive(archive_path: Path, destination: Path) -> None:
                 raise ValueError("component artifact contains duplicate files")
             files[item.filename] = item
             total += item.file_size
-        if set(files) != required:
-            raise ValueError("component artifact must contain exactly release.json and dist/qsys.whl")
+        wheel_members = [
+            name for name in files
+            if Path(name).parent == Path("dist") and name.endswith(".whl")
+        ]
+        if set(files) != {"release.json", *wheel_members} or len(wheel_members) != 1:
+            raise ValueError(
+                "component artifact must contain exactly release.json and one dist wheel"
+            )
         if total > COMPONENT_ARCHIVE_LIMIT:
             raise ValueError("component artifact expands beyond the size limit")
         for name, item in files.items():
@@ -559,6 +564,11 @@ def _stage_component_release(
     spec = COMPONENT_RELEASES[component]
     release = Path(str(spec["root"])) / sha
     executable = release / str(spec["executable"])
+    manifest = json.loads((extracted / "release.json").read_text(encoding="utf-8"))
+    wheel_filename = str(manifest.get("wheel_filename", ""))
+    if Path(wheel_filename).name != wheel_filename or not wheel_filename.endswith(".whl"):
+        raise ValueError("component release wheel filename is invalid")
+    wheel_relative = f"dist/{wheel_filename}"
     if release.exists():
         _verify_component_release(target_repo, sha, component, release)
         if not executable.is_file() or not os.access(executable, os.X_OK):
@@ -570,7 +580,7 @@ def _stage_component_release(
         "-m", "0755", str(release), str(release / "dist"),
     ], cwd=target_repo)
     try:
-        for relative in ("release.json", "dist/qsys.whl"):
+        for relative in ("release.json", wheel_relative):
             _run([
                 "sudo", "-n", "install", "-o", "ubuntu", "-g", "ubuntu",
                 "-m", "0644", str(extracted / relative), str(release / relative),
@@ -583,7 +593,7 @@ def _stage_component_release(
         ], cwd=target_repo, env=environment)
         _run([
             str(config["uv_bin"]), "pip", "install", "--python",
-            str(release / "venv/bin/python"), "--no-deps", str(release / "dist/qsys.whl"),
+            str(release / "venv/bin/python"), "--no-deps", str(release / wheel_relative),
         ], cwd=target_repo)
         if not executable.is_file() or not os.access(executable, os.X_OK):
             raise ValueError("staged component release lacks its executable")
