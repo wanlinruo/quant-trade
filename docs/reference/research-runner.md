@@ -1,8 +1,9 @@
 # Research Runner 作业协议
 
 本协议是 #285 的 Runner 基础：把 Web 控制面与研究执行进程之间的共享 SQLite 队列替换为
-窄而可审计的文件协议。当前仅注册 `verify-snapshot` 端到端任务，用于验证发布、身份、快照、
-状态和产物链；现有 Web 回测尚未切换。
+窄而可审计的文件协议。`verify-snapshot` 用于验证发布、身份、快照、状态和产物链；
+`structural-backtest` 是首个真实研究 task，只运行 wheel 内置、由 code SHA 固定的
+Structural V1.2 入口，不接受网页上传的任意 Python 源码。现有 Web 草稿回测尚未切换。
 
 Web 适配由 `--research-jobs` 显式开启只读列表、详情、日志与 manifest 白名单内的产物下载。
 只有同时提供已验证的 `--research-release` 和 `--research-snapshots` 才开放提交；客户端不能指定

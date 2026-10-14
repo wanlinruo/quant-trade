@@ -274,6 +274,19 @@ def test_research_runner_modules_target_an_isolated_component(path: str) -> None
     assert plan.unknown_paths == ()
 
 
+def test_builtin_research_strategies_target_only_the_isolated_runner() -> None:
+    plan = DeploymentManifest.load(MANIFEST).plan(
+        ["src/qsys/research/builtin_strategies/structural_v1_2.py"],
+        environment="production",
+    )
+
+    assert plan.components == ("linux-research-runner",)
+    assert plan.nodes == ("linux",)
+    assert plan.linux_units == ()
+    assert plan.health_checks == ("preflight",)
+    assert plan.unknown_paths == ()
+
+
 def test_contract_change_does_not_restart_runtime_services() -> None:
     plan = DeploymentManifest.load(MANIFEST).plan(
         ["src/qsys/ops/deployment.py", "scripts/deployment_contract.py"],

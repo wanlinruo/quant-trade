@@ -68,12 +68,12 @@ class ResearchSubmissionProfile:
     wheel_sha256: str
     snapshot_store: Path
     limits: JobLimits
-    tasks: frozenset[str] = frozenset({"verify-snapshot"})
+    tasks: frozenset[str] = frozenset({"verify-snapshot", "structural-backtest"})
 
     @classmethod
     def from_release(
         cls, release_root: Path, snapshot_store: Path, limits: JobLimits,
-        *, tasks: frozenset[str] = frozenset({"verify-snapshot"}),
+        *, tasks: frozenset[str] = frozenset({"verify-snapshot", "structural-backtest"}),
     ) -> "ResearchSubmissionProfile":
         root = Path(release_root).resolve(strict=True)
         manifest = _json(root / "release.json")

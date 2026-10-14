@@ -161,6 +161,7 @@ paths = [
   "src/qsys/research/runner.py",
   "src/qsys/research/runner_cli.py",
   "src/qsys/research/task_worker.py",
+  "src/qsys/research/builtin_strategies/**",
 ]
 nodes = ["linux"]
 linux_units = []
