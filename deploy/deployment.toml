@@ -141,7 +141,12 @@ rollback = "previous-successful-sha"
 [[components]]
 name = "linux-data-jobs"
 environments = ["production"]
-paths = ["src/qsys/data/**", "scripts/*.py", "scripts/*.sh"]
+paths = [
+  "src/qsys/data/**",
+  "src/qsys/research/structural_gate_attribution.py",
+  "scripts/*.py",
+  "scripts/*.sh",
+]
 nodes = ["linux"]
 linux_units = []
 health_checks = ["preflight"]

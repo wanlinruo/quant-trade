@@ -211,6 +211,17 @@ def test_docs_only_change_is_recorded_without_a_runtime_deployment() -> None:
     assert plan.deployable is False
 
 
+def test_structural_gate_research_module_targets_linux_data_jobs() -> None:
+    plan = DeploymentManifest.load(MANIFEST).plan(
+        ["src/qsys/research/structural_gate_attribution.py"],
+        environment="production",
+    )
+
+    assert plan.components == ("linux-data-jobs",)
+    assert plan.nodes == ("linux",)
+    assert plan.unknown_paths == ()
+
+
 def test_contract_change_does_not_restart_runtime_services() -> None:
     plan = DeploymentManifest.load(MANIFEST).plan(
         ["src/qsys/ops/deployment.py", "scripts/deployment_contract.py"],
