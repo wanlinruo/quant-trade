@@ -210,6 +210,32 @@ def test_research_runner_unit_enforces_identity_resources_and_denials() -> None:
     assert "qsys-research-runner.service" not in entrypoint.SYSTEMD_ENABLE_ON_INSTALL
 
 
+def test_catalog_verifier_uses_an_independent_immutable_release() -> None:
+    unit = Path("deploy/component-releases/catalog-verify.conf").read_text(
+        encoding="utf-8",
+    )
+    installer = Path("scripts/install_catalog_verify_release.sh").read_text(
+        encoding="utf-8",
+    )
+
+    assert "/opt/qsys-data/catalog-verify/current/venv/bin/qsys-catalog-verify" in unit
+    assert "/home/ubuntu/qsys/.venv/bin/python" not in unit
+    assert "/opt/qsys-data/releases/catalog-verify/$code_sha" in installer
+    assert "build_component_release.py" in installer
+    assert "zz-isolated-release.conf" in installer
+    assert "refusing to switch catalog verifier while a verification is running" in installer
+    assert "systemctl restart qsys-live-core.service" not in installer
+    assert "git reset" not in installer
+
+    plan = DeploymentManifest.load(MANIFEST).plan([
+        "deploy/component-releases/catalog-verify.conf",
+        "scripts/build_component_release.py",
+        "scripts/install_catalog_verify_release.sh",
+    ], environment="production")
+    assert plan.components == ()
+    assert plan.unknown_paths == ()
+
+
 def test_shared_redis_change_targets_both_nodes() -> None:
     plan = DeploymentManifest.load(MANIFEST).plan(
         ["src/qsys/live/redis_transport.py"], environment="production",
