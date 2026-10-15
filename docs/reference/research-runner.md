@@ -61,7 +61,11 @@ Runner 重启时，遗留的 `claimed`/`running` 作业进入 `interrupted`，�
 昂贵运算或外部副作用；只有显式重新提交一个新 job ID 才会再次执行。
 
 成功作业生成 artifact manifest，记录 request hash、每个产物的大小与 SHA-256、产物集合 hash，
-以及 `run.log` 的大小与 SHA-256。Web 只能展示这些文件，不能修改状态或伪造成功产物。
+以及 `run.log` 的大小与 SHA-256。每个实际启动过 worker 的作业还独立写入 `resources.json`：
+墙钟时间、用户/内核 CPU 时间、峰值 RSS、输入/输出 block、上下文切换和退出码；成功作业的
+artifact manifest 会同时绑定这份资源证据。Web 只读详情/API 展示资源证据，不能修改状态或
+伪造成功产物。验证失败、超时、取消或 OOM 的作业即使没有成功产物，也保留状态、日志和
+`resources.json`。
 
 ## 安全边界
 
@@ -131,3 +135,39 @@ unit/安装脚本和默认 Web 配置不会自行接触、修改或激活生产 
 使用独立账号 `qsys-research-test`、512 MiB/25% CPU 上限，且没有 `[Install]` 段；staging 入口
 会验证它既未 active 也未 enabled。该路径不会创建生产激活批准文件，也不会写入生产 Runner、
 生产 snapshot store 或生产作业目录。
+
+## 测试节点隔离与压力验收
+
+`drill-test-research-runner.yml` 是唯一受支持的真实演练入口。它要求 Runner 已从同一精确 test
+SHA 的 CI artifact stage 完成、固定入口声明 `research-drill-v1`，并要求人工输入
+`DRILL_TEST_RESEARCH`。演练只临时 `start` 没有 `[Install]` 段的测试 unit，结束时无条件 stop，
+不会 enable，也不能操作生产 Runner。内置 drill task 只有测试 unit 显式传入
+`--allow-test-drills` 时才被 Runner 接受；生产 unit 缺少该开关，Web allowlist 也不暴露它们。
+
+一次完整演练按固定顺序执行并留存 request、status、日志、artifact manifest 与资源证据：
+
+1. 在真实 sandbox 内证明 snapshot 可读但不可写，生产 warehouse、snapshot store、状态目录、
+   研究目录、部署配置和 Redis Unix socket 不可访问，同时 AF_INET socket 创建被拒绝；
+2. 对同一 snapshot 连续执行两次完整 hash 验证，要求 `snapshot_id`、输入 content SHA-256 和
+   `snapshot-verification.json` SHA-256 完全一致；
+3. 在实际 25% CPU cgroup 内执行 8 秒 CPU 压力并同步写入至少 64 MiB 后删除临时文件，要求
+   CPU 时间符合 quota 容差且资源证据记录输出 block；
+4. 在实际 512 MiB cgroup 内尝试触达 768 MiB，要求 worker 被 OOM kill、失败原因和峰值 RSS
+   被记录，而 Runner 随后仍可被有序停止；
+5. 每秒检查 Live Core 与 Test Web 的 systemd identity，并请求 Test Web health URL；任一样本
+   失败，或 PID、单调启动时间、重启计数前后变化，整次演练失败关闭。
+
+节点在 deployment record 旁保存 `drill.json`，record 绑定其 SHA-256。停用/回滚步骤为：
+
+```bash
+sudo systemctl stop qsys-research-runner-test.service
+# unit 必须继续为 static；不要 enable
+# 在与上一完整 SHA 精确匹配的干净 checkout 中执行，以同步 current、env 和 unit
+scripts/install_test_research_runner_isolation.sh <上一完整SHA>
+```
+
+撤销测试挂载和账号只允许在 Runner 已停止、作业证据已归档后维护执行：移除测试 unit 与
+`/etc/qsys/research-runner-test.env`，再执行 `daemon-reload`；unit 停止后 systemd 的临时只读 bind
+mount 会自动撤销。不要删除 `/data/qsys-test/research-jobs`、snapshot manifest 或 deployment
+record；这些是失败复盘与复现证据。旧的临时研究方式只可作为显式人工回退，不得获得生产写
+权限或订单链路访问。

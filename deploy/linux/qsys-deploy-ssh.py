@@ -9,7 +9,9 @@ import subprocess
 import sys
 
 ENTRYPOINT = "/usr/local/libexec/qsys-deploy-entrypoint"
-ALLOWED_COMMANDS = {"status", "deploy", "attest", "record", "research-stage"}
+ALLOWED_COMMANDS = {
+    "status", "deploy", "attest", "record", "research-stage", "research-drill",
+}
 
 
 def command_from_environment() -> list[str]:

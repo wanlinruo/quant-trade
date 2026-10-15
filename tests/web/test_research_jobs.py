@@ -138,11 +138,12 @@ def test_cancel_only_writes_control_marker(warehouse, tmp_path):
 def test_profile_rejects_release_wheel_tampering(tmp_path):
     release = tmp_path / "release"
     (release / "dist").mkdir(parents=True)
-    wheel = release / "dist" / "qsys.whl"
+    wheel = release / "dist" / "qsys-0.1.0-py3-none-any.whl"
     wheel.write_bytes(b"wheel")
     manifest = {
-        "format": "qsys-research-release", "version": 1,
+        "format": "qsys-research-release", "version": 2,
         "source_sha": "a" * 40, "source_tree": "b" * 40,
+        "wheel_filename": wheel.name,
         "wheel_sha256": hashlib.sha256(wheel.read_bytes()).hexdigest(),
         "wheel_bytes": wheel.stat().st_size,
         "pyproject_sha256": "c" * 64, "uv_lock_sha256": "d" * 64,

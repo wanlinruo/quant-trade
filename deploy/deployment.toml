@@ -163,6 +163,7 @@ paths = [
   "src/qsys/research/jobs.py",
   "src/qsys/research/runner.py",
   "src/qsys/research/runner_cli.py",
+  "src/qsys/research/drill_cli.py",
   "src/qsys/research/task_worker.py",
   "src/qsys/research/builtin_strategies/**",
 ]

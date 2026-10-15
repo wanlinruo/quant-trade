@@ -223,6 +223,7 @@ def test_test_research_runner_is_staged_inactive_with_test_only_paths() -> None:
 
     assert "User=qsys-research-test" in unit
     assert "MemoryMax=512M" in unit and "CPUQuota=25%" in unit
+    assert "--allow-test-drills" in unit
     assert "BindReadOnlyPaths=/data/qsys-test/warehouse-snapshot-store:" in unit
     assert "ReadWritePaths=/data/qsys-test/research-jobs" in unit
     assert "/data/qsys/warehouse-snapshot-store" in unit
@@ -232,6 +233,7 @@ def test_test_research_runner_is_staged_inactive_with_test_only_paths() -> None:
     assert "systemctl enable" not in installer
     assert "systemctl start" not in installer
     assert "systemctl is-enabled qsys-research-runner-test.service" in installer
+    assert "-m 0751 /data/qsys-test/research-jobs" in installer
 
 
 def test_catalog_verifier_uses_an_independent_immutable_release() -> None:
@@ -476,6 +478,12 @@ def test_restricted_ssh_dispatcher_never_invokes_a_shell(monkeypatch) -> None:
     )
     assert dispatcher.command_from_environment()[:2] == [
         "/usr/local/libexec/qsys-deploy-entrypoint", "research-stage",
+    ]
+    monkeypatch.setenv(
+        "SSH_ORIGINAL_COMMAND", "research-drill --sha " + "a" * 40,
+    )
+    assert dispatcher.command_from_environment()[:2] == [
+        "/usr/local/libexec/qsys-deploy-entrypoint", "research-drill",
     ]
 
 
@@ -1376,6 +1384,23 @@ def test_test_research_workflow_streams_ci_artifact_without_activation() -> None
     assert "research-stage-v1" in workflow
     assert ".before.linux == .after.linux" in workflow
     assert "Runner activation: never performed" in workflow
+
+
+def test_test_research_drill_is_manual_bounded_and_preserves_service_identity() -> None:
+    workflow = Path(".github/workflows/drill-test-research-runner.yml").read_text(
+        encoding="utf-8",
+    )
+
+    assert "workflow_dispatch:" in workflow
+    assert "DRILL_TEST_RESEARCH" in workflow
+    assert "research-drill --sha $TARGET_SHA" in workflow
+    assert "research-drill-v1" in workflow
+    assert "timeout-minutes: 45" in workflow
+    assert "ServerAliveInterval=30" in workflow
+    assert "ServerAliveCountMax=90" in workflow
+    assert '.before["live-core"] == .after["live-core"]' in workflow
+    assert '.before["test-web"] == .after["test-web"]' in workflow
+    assert "Runner activation after drill: forbidden" in workflow
 
 
 def test_production_entrypoint_installer_preserves_bootstrap_backup() -> None:
