@@ -223,6 +223,7 @@ def test_test_research_runner_is_staged_inactive_with_test_only_paths() -> None:
     )
 
     assert "User=qsys-research-test" in unit
+    assert "MemoryHigh=480M" in unit
     assert "MemoryMax=512M" in unit and "MemorySwapMax=0" in unit
     assert "CPUQuota=25%" in unit
     assert "--allow-test-drills" in unit

@@ -132,7 +132,8 @@ unit/安装脚本和默认 Web 配置不会自行接触、修改或激活生产 
 
 测试节点通过手动 workflow `stage-test-research-runner.yml` 使用 test push CI 的精确 artifact
 初始化 `/data/qsys-test/warehouse-snapshot-store`，并 stage 到 `/opt/qsys-research-test`。测试 unit
-使用独立账号 `qsys-research-test`、512 MiB/25% CPU 上限且禁止 swap，且没有 `[Install]` 段；staging 入口
+使用独立账号 `qsys-research-test`、480 MiB soft/512 MiB hard 内存上限、25% CPU 上限且禁止
+swap，且没有 `[Install]` 段；staging 入口
 会验证它既未 active 也未 enabled。该路径不会创建生产激活批准文件，也不会写入生产 Runner、
 生产 snapshot store 或生产作业目录。
 
