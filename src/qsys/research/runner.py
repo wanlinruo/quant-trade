@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import resource
 import signal
 import subprocess
 import sys
@@ -15,6 +16,11 @@ from pathlib import Path
 from qsys.data.snapshots import SNAPSHOT_FORMAT, SNAPSHOT_VERSION, load_snapshot
 from qsys.research.jobs import ClaimedJob, JobLimits, JobStore
 from qsys.research.task_worker import TASKS
+
+
+TEST_DRILL_TASKS = frozenset({
+    "isolation-permissions", "resource-pressure-cpu-io", "resource-pressure-memory",
+})
 
 
 def _sha256(path: Path) -> str:
@@ -50,11 +56,13 @@ class ResearchRunner:
         identity: RunnerIdentity,
         *,
         poll_seconds: float = 1.0,
+        allow_test_drills: bool = False,
     ) -> None:
         self.store = store
         self.snapshot_store = Path(snapshot_store).resolve(strict=True)
         self.identity = identity
         self.poll_seconds = poll_seconds
+        self.allow_test_drills = allow_test_drills
         self._stopping = False
         identity.max_limits.validate()
         if not re.fullmatch(r"[0-9a-f]{40}", identity.code_sha):
@@ -110,7 +118,8 @@ class ResearchRunner:
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
             )
-            result = self._wait(job, process)
+            result, usage = self._wait(job, process)
+        self.store.write_resource_usage(job, usage)
         if result == "cancelled":
             self.store.transition(job, "cancelled", detail="cancel requested")
         elif result == "timeout":
@@ -130,6 +139,8 @@ class ResearchRunner:
             raise ValueError("job wheel_sha256 does not match this Runner release")
         if request.task not in TASKS:
             raise ValueError(f"task is not allowlisted: {request.task}")
+        if request.task in TEST_DRILL_TASKS and not self.allow_test_drills:
+            raise ValueError("test drill task is disabled for this Runner")
         requested = request.limits
         maximum = self.identity.max_limits
         # The service runs exactly one child at a time. Its systemd cgroup is
@@ -159,24 +170,68 @@ class ResearchRunner:
             raise ValueError("job snapshot_content_sha256 does not match its manifest")
         return resolved
 
-    def _wait(self, job: ClaimedJob, process: subprocess.Popen) -> str:
+    def _wait(
+        self, job: ClaimedJob, process: subprocess.Popen,
+    ) -> tuple[str, dict[str, object]]:
+        started = time.monotonic()
         deadline = time.monotonic() + job.request.limits.timeout_seconds
-        while process.poll() is None:
+        while True:
+            pid, status, usage = os.wait4(process.pid, os.WNOHANG)
+            if pid:
+                process.returncode = os.waitstatus_to_exitcode(status)
+                return "completed", self._resource_usage(
+                    usage, time.monotonic() - started, process.returncode,
+                )
             if self._stopping or self.store.cancel_requested(job.request.job_id):
-                self._terminate(process)
-                return "cancelled"
+                usage = self._terminate(process)
+                return "cancelled", self._resource_usage(
+                    usage, time.monotonic() - started, process.returncode,
+                )
             if time.monotonic() >= deadline:
-                self._terminate(process)
-                return "timeout"
+                usage = self._terminate(process)
+                return "timeout", self._resource_usage(
+                    usage, time.monotonic() - started, process.returncode,
+                )
             time.sleep(0.1)
-        return "completed"
 
     @staticmethod
-    def _terminate(process: subprocess.Popen) -> None:
+    def _terminate(process: subprocess.Popen) -> resource.struct_rusage:
         try:
             os.killpg(process.pid, signal.SIGTERM)
-            process.wait(timeout=5)
-        except (ProcessLookupError, subprocess.TimeoutExpired):
-            if process.poll() is None:
-                os.killpg(process.pid, signal.SIGKILL)
-                process.wait()
+        except ProcessLookupError:
+            pass
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            pid, status, usage = os.wait4(process.pid, os.WNOHANG)
+            if pid:
+                process.returncode = os.waitstatus_to_exitcode(status)
+                return usage
+            time.sleep(0.05)
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        _, status, usage = os.wait4(process.pid, 0)
+        process.returncode = os.waitstatus_to_exitcode(status)
+        return usage
+
+    @staticmethod
+    def _resource_usage(
+        usage: resource.struct_rusage, wall_seconds: float, exit_code: int,
+    ) -> dict[str, object]:
+        # Linux reports KiB; macOS/BSD report bytes. Production is Linux, while
+        # normalizing here keeps local contract tests portable.
+        max_rss_bytes = int(usage.ru_maxrss * (1024 if sys.platform.startswith("linux") else 1))
+        return {
+            "format": "qsys-research-resource-usage",
+            "version": 1,
+            "wall_seconds": round(wall_seconds, 6),
+            "user_cpu_seconds": round(float(usage.ru_utime), 6),
+            "system_cpu_seconds": round(float(usage.ru_stime), 6),
+            "max_rss_bytes": max_rss_bytes,
+            "input_blocks": int(usage.ru_inblock),
+            "output_blocks": int(usage.ru_oublock),
+            "voluntary_context_switches": int(usage.ru_nvcsw),
+            "involuntary_context_switches": int(usage.ru_nivcsw),
+            "exit_code": exit_code,
+        }

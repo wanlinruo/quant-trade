@@ -38,7 +38,7 @@ if ! getent passwd qsys-research-test >/dev/null; then
         --shell /usr/sbin/nologin qsys-research-test
 fi
 sudo -n chown -R root:root "$release_root"
-sudo -n install -d -o root -g qsys-research-test -m 0750 /data/qsys-test/research-jobs
+sudo -n install -d -o root -g qsys-research-test -m 0751 /data/qsys-test/research-jobs
 sudo -n install -d -o ubuntu -g qsys-research-test -m 2770 \
     /data/qsys-test/research-jobs/inbox /data/qsys-test/research-jobs/control
 sudo -n install -d -o qsys-research-test -g qsys-research-test -m 0750 \

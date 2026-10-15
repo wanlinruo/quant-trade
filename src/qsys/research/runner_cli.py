@@ -21,6 +21,7 @@ def main() -> int:
     parser.add_argument("--io-weight", required=True, type=int)
     parser.add_argument("--timeout-seconds", required=True, type=int)
     parser.add_argument("--poll-seconds", type=float, default=1.0)
+    parser.add_argument("--allow-test-drills", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
     runner = ResearchRunner(
         JobStore(args.jobs),
@@ -36,6 +37,7 @@ def main() -> int:
             ),
         ),
         poll_seconds=args.poll_seconds,
+        allow_test_drills=args.allow_test_drills,
     )
     signal.signal(signal.SIGTERM, lambda *_: runner.stop())
     signal.signal(signal.SIGINT, lambda *_: runner.stop())

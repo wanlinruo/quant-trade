@@ -21,7 +21,7 @@ from qsys.research.jobs import HEX_40, HEX_64, JOB_ID, JobLimits, JobRequest, Jo
 
 RELEASE_FIELDS = {
     "format", "version", "source_sha", "source_tree", "wheel_sha256",
-    "wheel_bytes", "pyproject_sha256", "uv_lock_sha256", "ci",
+    "wheel_filename", "wheel_bytes", "pyproject_sha256", "uv_lock_sha256", "ci",
 }
 
 
@@ -79,9 +79,16 @@ class ResearchSubmissionProfile:
         manifest = _json(root / "release.json")
         if (set(manifest) != RELEASE_FIELDS
                 or manifest.get("format") != "qsys-research-release"
-                or manifest.get("version") != 1):
+                or manifest.get("version") != 2):
             raise ValueError("Research Runner release manifest is invalid")
-        wheel = root / "dist" / "qsys.whl"
+        wheel_filename = manifest.get("wheel_filename")
+        if (
+            not isinstance(wheel_filename, str)
+            or Path(wheel_filename).name != wheel_filename
+            or not wheel_filename.endswith(".whl")
+        ):
+            raise ValueError("Research Runner wheel filename is invalid")
+        wheel = root / "dist" / wheel_filename
         if wheel.is_symlink() or not wheel.is_file():
             raise ValueError("Research Runner wheel must be a regular file")
         wheel_hash = _sha256(wheel)
@@ -132,6 +139,7 @@ class ResearchJobView:
     status: Mapping[str, Any]
     log: str
     artifacts: Mapping[str, Any] | None
+    resources: Mapping[str, Any] | None
 
     @property
     def detail(self) -> str:
@@ -203,14 +211,16 @@ class ResearchJobConsole:
             )
             manifest_path = job_root / "artifacts" / "manifest.json"
             artifacts = _json(manifest_path) if manifest_path.is_file() else None
-            return ResearchJobView(job_id, state, request, status, log, artifacts)
+            resources_path = job_root / "resources.json"
+            resources = _json(resources_path) if resources_path.is_file() else None
+            return ResearchJobView(job_id, state, request, status, log, artifacts, resources)
         queued = self.root / "inbox" / f"{job_id}.json"
         if queued.is_file() and not queued.is_symlink():
             request = _json(queued)
             return ResearchJobView(
                 job_id, "queued", request,
                 {"job_id": job_id, "state": "queued", "updated_at": request.get("created_at", "")},
-                "", None,
+                "", None, None,
             )
         return None
 

@@ -26,8 +26,8 @@ RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 REPOSITORY_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 ACTOR_PATTERN = re.compile(r"^[A-Za-z0-9_.-]{1,128}$")
 ALLOWED_COMPONENTS = {"test": frozenset({"test-runtime"})}
-ENTRYPOINT_VERSION = 2
-ENTRYPOINT_CAPABILITIES = ("research-stage-v1",)
+ENTRYPOINT_VERSION = 3
+ENTRYPOINT_CAPABILITIES = ("research-stage-v1", "research-drill-v1")
 RESEARCH_RELEASE_ROOT = Path("/opt/qsys-research-test/releases")
 RESEARCH_CURRENT = Path("/opt/qsys-research-test/current")
 RESEARCH_SNAPSHOT_STORE = Path("/data/qsys-test/warehouse-snapshot-store")
@@ -150,6 +150,24 @@ def _current_research_sha() -> str:
         except OSError:
             research_sha = "broken"
     return research_sha
+
+
+def _service_identity(
+    repo: Path, service: str, *, require_active: bool = True,
+) -> dict[str, str]:
+    result = _run([
+        "systemctl", "show", service, "--property=ActiveState",
+        "--property=SubState", "--property=MainPID",
+        "--property=ExecMainStartTimestampMonotonic", "--property=NRestarts",
+    ], cwd=repo)
+    values = dict(
+        line.split("=", 1) for line in result.stdout.splitlines() if "=" in line
+    )
+    if require_active and (
+        values.get("ActiveState") != "active" or int(values.get("MainPID", "0")) <= 0
+    ):
+        raise ValueError(f"service is not active with a stable identity: {service}")
+    return values
 
 
 def _rollback(config: dict[str, object], repo: Path, before: str) -> bool:
@@ -585,6 +603,133 @@ def research_stage(args: argparse.Namespace, config: dict[str, object]) -> int:
     return 0 if success else 1
 
 
+def research_drill(args: argparse.Namespace, config: dict[str, object]) -> int:
+    if not SHA_PATTERN.fullmatch(args.sha):
+        raise ValueError("sha must be a full 40-character lowercase commit SHA")
+    if not RUN_ID_PATTERN.fullmatch(args.run_id):
+        raise ValueError("run-id contains unsupported characters")
+    if not ACTOR_PATTERN.fullmatch(args.actor):
+        raise ValueError("actor contains unsupported characters")
+    if not REPOSITORY_PATTERN.fullmatch(args.repository):
+        raise ValueError("repository must be owner/name")
+    repo = Path(str(config["test_repo"])).resolve(strict=True)
+    node = status(config)
+    if node["dirty"] or not node["healthy"] or not node["isolated"]:
+        raise ValueError("test node is not healthy and isolated")
+    _run(["git", "fetch", "--no-tags", "origin", "test"], cwd=repo)
+    if _run(["git", "rev-parse", "origin/test"], cwd=repo).stdout.strip() != args.sha:
+        raise ValueError("requested SHA is not the exact test branch head")
+    if _current_research_sha() != args.sha:
+        raise ValueError("test Research Runner is not staged at the requested SHA")
+    tree = _run(["git", "rev-parse", f"{args.sha}^{{tree}}"], cwd=repo).stdout.strip()
+    if args.dry_run:
+        print(json.dumps({"ok": True, "dry_run": True, "source_tree": tree}))
+        return 0
+
+    started = datetime.now(UTC).isoformat()
+    live_before = _service_identity(repo, "qsys-live-core.service")
+    test_before = _service_identity(repo, str(config["test_service"]))
+    release = RESEARCH_RELEASE_ROOT / args.sha
+    drill = release / "venv/bin/qsys-research-test-drill"
+    if not drill.is_file() or drill.is_symlink():
+        raise ValueError("staged release lacks a regular test drill entrypoint")
+    job_prefix = f"drill-{args.sha[:7]}-{hashlib.sha256(args.run_id.encode()).hexdigest()[:12]}"
+    completed = _run([
+        "sudo", "-n", str(drill), "--sha", args.sha, "--release", str(release),
+        "--snapshots", str(RESEARCH_SNAPSHOT_STORE),
+        "--jobs", "/data/qsys-test/research-jobs", "--job-prefix", job_prefix,
+        "--live-service", "qsys-live-core.service",
+        "--test-service", str(config["test_service"]),
+        "--health-url", str(config["test_health_url"]),
+    ], cwd=repo, check=False)
+    report: dict[str, Any] = {}
+    error = ""
+    if completed.returncode == 0:
+        try:
+            report = json.loads(completed.stdout)
+        except json.JSONDecodeError as exc:
+            error = f"test drill returned invalid JSON: {exc}"
+    else:
+        detail = (completed.stderr or completed.stdout).strip().replace("\n", " ")
+        error = f"test drill failed with exit {completed.returncode}: {detail[:500]}"
+    live_after = _service_identity(
+        repo, "qsys-live-core.service", require_active=False,
+    )
+    test_after = _service_identity(
+        repo, str(config["test_service"]), require_active=False,
+    )
+    active = _run(
+        ["systemctl", "is-active", "qsys-research-runner-test.service"],
+        cwd=repo, check=False,
+    ).returncode == 0
+    enabled = _run(
+        ["systemctl", "is-enabled", "qsys-research-runner-test.service"],
+        cwd=repo, check=False,
+    ).stdout.strip()
+    success = (
+        not error and report.get("ok") is True
+        and live_after == live_before and test_after == test_before
+        and not active and enabled not in {"enabled", "enabled-runtime", "linked", "linked-runtime"}
+        and _healthy(config, repo) and _current_research_sha() == args.sha
+    )
+    if not success and not error:
+        error = "post-drill identity, health, or Runner inactivity gate failed"
+    report_bytes = json.dumps(
+        report, ensure_ascii=False, indent=2, sort_keys=True,
+    ).encode("utf-8") + b"\n"
+    checks = [
+        {"name": "research-drill", "status": "passed" if success else "failed",
+         "detail": f"job_prefix={job_prefix}" if success else error},
+        {"name": "live-core-continuity", "status": "passed" if live_after == live_before else "failed",
+         "detail": "PID, start time and restart count preserved"},
+        {"name": "test-web-continuity", "status": "passed" if test_after == test_before else "failed",
+         "detail": "PID, start time and restart count preserved"},
+        {"name": "runner-inactive", "status": "passed" if not active else "failed",
+         "detail": f"active={active}, enable_state={enabled}"},
+        {"name": "drill-evidence", "status": "passed" if report else "failed",
+         "detail": f"sha256={hashlib.sha256(report_bytes).hexdigest()}"},
+    ]
+    try:
+        fingerprints = _fingerprints(config, repo)
+    except (OSError, ValueError, subprocess.CalledProcessError, json.JSONDecodeError):
+        fingerprints = {}
+    identity_before = {
+        "linux": str(node["sha"]), "research-runner-test": args.sha,
+        "live-core": json.dumps(live_before, sort_keys=True),
+        "test-web": json.dumps(test_before, sort_keys=True),
+    }
+    identity_after = {
+        "linux": str(status(config)["sha"]), "research-runner-test": _current_research_sha(),
+        "live-core": json.dumps(live_after, sort_keys=True),
+        "test-web": json.dumps(test_after, sort_keys=True),
+    }
+    record = {
+        "schema_version": 1, "run_id": args.run_id, "environment": "test",
+        "status": "success" if success else "failure", "actor": args.actor,
+        "started_at": started, "completed_at": datetime.now(UTC).isoformat(),
+        "repository": args.repository, "pr_number": args.pr_number,
+        "source_sha": args.sha, "source_tree": tree,
+        "components": ["research-runner-test-drill"],
+        "before": identity_before, "after": identity_after,
+        "config_fingerprints": fingerprints, "checks": checks,
+        "rollback_targets": {"research-runner-test": args.sha},
+        "migration_summary": "test-only negative-permission and bounded resource pressure drill",
+    }
+    record_path = _write_record(config, args.run_id, record)
+    if report:
+        evidence = record_path.parent / "drill.json"
+        with evidence.open("xb") as stream:
+            stream.write(report_bytes)
+            stream.flush()
+            os.fsync(stream.fileno())
+    print(json.dumps({
+        "ok": success, "status": record["status"], "record": str(record_path),
+        "evidence": str(record_path.parent / "drill.json") if report else None,
+        "error": error,
+    }))
+    return 0 if success else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -617,6 +762,13 @@ def build_parser() -> argparse.ArgumentParser:
     research_parser.add_argument("--repository", required=True)
     research_parser.add_argument("--pr-number", type=int)
     research_parser.add_argument("--dry-run", action="store_true")
+    drill_parser = commands.add_parser("research-drill")
+    drill_parser.add_argument("--sha", required=True)
+    drill_parser.add_argument("--run-id", required=True)
+    drill_parser.add_argument("--actor", required=True)
+    drill_parser.add_argument("--repository", required=True)
+    drill_parser.add_argument("--pr-number", type=int)
+    drill_parser.add_argument("--dry-run", action="store_true")
     return parser
 
 
@@ -634,6 +786,8 @@ def main(argv: list[str] | None = None) -> int:
             return attest(args, config)
         if args.command == "research-stage":
             return research_stage(args, config)
+        if args.command == "research-drill":
+            return research_drill(args, config)
         return deploy(args, config)
     except (OSError, ValueError, json.JSONDecodeError, subprocess.CalledProcessError) as exc:
         print(json.dumps({"ok": False, "error": str(exc)}), file=sys.stderr)
