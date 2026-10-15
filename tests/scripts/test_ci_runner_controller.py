@@ -61,7 +61,12 @@ def test_podman_command_has_no_production_mount_or_socket(tmp_path):
 
 def test_controller_assets_remain_default_disabled():
     installer = Path(".github/ci-runner/install.sh").read_text()
+    containerfile = Path(".github/ci-runner/Containerfile").read_text()
     service = Path(".github/ci-runner/qsys-ci-runner.service").read_text()
+    assert containerfile.startswith(
+        "FROM dockerproxy.net/library/ubuntu@sha256:"
+        "f610ab94648195aa356059f5b41d6085c9d4d903c072430cdd1af7bdb646106b\n"
+    )
     assert "systemctl disable --now qsys-ci-runner.timer" in installer
     assert "systemctl disable --now \"${rootful_podman_units[@]}\"" in installer
     assert "systemctl mask \"${rootful_podman_units[@]}\"" in installer
