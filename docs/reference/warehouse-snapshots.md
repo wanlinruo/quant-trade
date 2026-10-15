@@ -1,7 +1,8 @@
 # Warehouse 不可变快照协议
 
-本协议是 #285 的第一阶段交付。它定义研究与交易消费者如何引用一个可复现的数据版本，
-不包含 Research Runner、生产账号或 cgroup 上线。
+本协议最初作为 #285 的第一阶段交付，定义消费者如何引用一个可复现的数据版本。它现在
+已经由隔离 Research Runner 的作业协议实际消费，并在测试节点完成重复全量 hash 验证；
+生产快照发布周期和生产 Runner 激活仍是独立门禁，不因协议完成而自动启用。
 
 ## 目录布局
 
@@ -43,8 +44,9 @@ inode。发布仍必须满足以下条件：
 4. Snapshot Publisher 是快照目录唯一写入者；消费者通过只读挂载访问；
 5. 发布后执行完整 hash 验证，验证成功后才允许移动 `current`。
 
-若特权进程违反第 3 条，快照验证会发现 hash 漂移，但硬链接不能在物理层阻止它。生产接入
-前还需完成写入路径审计和独立 `qsys-research` 只读挂载负向测试。
+若特权进程违反第 3 条，快照验证会发现 hash 漂移，但硬链接不能在物理层阻止它。独立
+Research Runner 的只读挂载和写入负向测试已在测试节点完成；生产接入前仍需审计生产
+Warehouse 的全部写入路径，并显式安排 snapshot publisher 的发布频率、保留和回滚策略。
 
 ## 命令
 
@@ -67,5 +69,6 @@ flock --exclusive var/warehouse-write.lock \
   --store /data/qsys/warehouse-snapshot-store
 ```
 
-当前阶段不会自动安装 timer，也不会读取或修改生产 Warehouse。正式路径、发布频率、保留
-数量和挂载方式将在 Runner 与资源隔离阶段一起通过测试环境验证。
+当前实现不会自动安装生产 timer，也不会因安装 Runner unit 而读取或修改生产 Warehouse。
+测试节点已经验证 snapshot store、原子 `current`、只读挂载和 Runner 资源隔离；生产路径、
+发布频率、保留数量及激活批准仍须在维护窗口单独配置和审计。
