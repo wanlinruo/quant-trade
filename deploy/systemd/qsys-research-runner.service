@@ -34,6 +34,7 @@ UMask=0027
 # The request records these exact limits; the single worker child inherits this cgroup.
 MemoryHigh=3G
 MemoryMax=4G
+MemorySwapMax=0
 CPUQuota=100%
 CPUWeight=10
 IOWeight=10
