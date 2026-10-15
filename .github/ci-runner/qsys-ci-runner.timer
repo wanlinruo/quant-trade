@@ -1,0 +1,11 @@
+[Unit]
+Description=Offer one ephemeral qsys CI runner when admission gates pass
+
+[Timer]
+OnBootSec=5min
+OnUnitInactiveSec=5min
+AccuracySec=30s
+Unit=qsys-ci-runner.service
+
+[Install]
+WantedBy=timers.target

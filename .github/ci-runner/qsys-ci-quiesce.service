@@ -1,0 +1,6 @@
+[Unit]
+Description=Stop CI before production high-water window
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl stop qsys-ci-runner.service

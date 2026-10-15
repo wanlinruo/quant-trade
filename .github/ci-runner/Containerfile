@@ -1,0 +1,34 @@
+FROM ubuntu@sha256:f610ab94648195aa356059f5b41d6085c9d4d903c072430cdd1af7bdb646106b
+
+ARG RUNNER_VERSION=2.338.0
+ARG RUNNER_SHA256=af4b794c1bc41d73d40535e3fe092a39f9679cd8d965954c2aca25a05ca41d32
+
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      ca-certificates curl git python3 python3-pip python3-venv \
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd --create-home --uid 1001 --shell /bin/bash runner \
+ && install -d -o runner -g runner /home/runner/actions-runner /home/runner/_work \
+ && curl --fail --show-error --location --proto '=https' --tlsv1.2 \
+      "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz" \
+      --output /tmp/actions-runner.tar.gz \
+ && echo "${RUNNER_SHA256}  /tmp/actions-runner.tar.gz" | sha256sum --check --strict \
+ && tar --extract --gzip --file /tmp/actions-runner.tar.gz \
+      --directory /home/runner/actions-runner --no-same-owner --no-same-permissions \
+ && /home/runner/actions-runner/bin/installdependencies.sh \
+ && rm /tmp/actions-runner.tar.gz \
+ && chown -R runner:runner /home/runner
+
+COPY --chown=root:root --chmod=0755 ci_runner_hook.py /usr/local/libexec/qsys-ci-runner/ci_runner_hook.py
+COPY --chown=root:root --chmod=0755 job-started.sh /usr/local/libexec/qsys-ci-runner/job-started.sh
+COPY --chown=root:root --chmod=0755 job-completed.sh /usr/local/libexec/qsys-ci-runner/job-completed.sh
+COPY --chown=root:root --chmod=0755 entrypoint.sh /usr/local/bin/qsys-ci-entrypoint
+
+ENV ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/libexec/qsys-ci-runner/job-started.sh \
+    ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/libexec/qsys-ci-runner/job-completed.sh \
+    QSYS_CI_WORK_ROOT=/home/runner/_work \
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
+    PATH=/home/runner/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+USER runner
+WORKDIR /home/runner/actions-runner
+ENTRYPOINT ["/usr/local/bin/qsys-ci-entrypoint"]
