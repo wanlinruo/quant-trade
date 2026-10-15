@@ -67,6 +67,11 @@ def test_controller_assets_remain_default_disabled():
         "FROM dockerproxy.net/library/ubuntu@sha256:"
         "f610ab94648195aa356059f5b41d6085c9d4d903c072430cdd1af7bdb646106b\n"
     )
+    assert (
+        "https://ghfast.top/https://github.com/actions/runner/releases/download/"
+        in containerfile
+    )
+    assert "RUNNER_SHA256=af4b794c1bc41d73d40535e3fe092a39f9679cd8d965954c2aca25a05ca41d32" in containerfile
     assert "systemctl disable --now qsys-ci-runner.timer" in installer
     assert "systemctl disable --now \"${rootful_podman_units[@]}\"" in installer
     assert "systemctl mask \"${rootful_podman_units[@]}\"" in installer
