@@ -1,7 +1,8 @@
 # qsys 工程化开发与发布规范
 
-状态：拟定，面向 GitHub Free 私有仓库、单人维护模式。合并到 `main` 并完成
-本地推送保护、CI 审计与双环境部署后生效。
+状态：生效，面向 GitHub Free 单人维护模式。2026-10-14 因 hosted Actions 免费分钟
+耗尽临时转为 public；#304 完成后恢复 private。self-hosted CI 的执行边界见
+`docs/deploy/self-hosted-ci-runner.md`。
 
 适用范围：`wanlinruo/quant-trade` 仓库、Mac 开发机、GitHub、Linux 生产节点。
 
@@ -168,7 +169,7 @@ warehouse、临时下载、编辑器文件或无解释的大型二进制文件�
 ### 5.1 能力边界
 
 GitHub 官方说明：GitHub Free 的受保护分支适用于公开仓库；私有仓库需要 GitHub Pro、
-Team 或 Enterprise。当前仓库保持私有且不付费，因此不能把 Ruleset、required approval、
+Team 或 Enterprise。仓库目标状态为 private 且不付费，因此不能把 Ruleset、required approval、
 required status checks 或 Environment required reviewer 当作可用的服务端门禁。
 
 PR 作者也不能给自己的 PR 提供“独立批准”。本项目的 Review 定义为：维护者本人创建 PR
@@ -206,7 +207,8 @@ PR 作者也不能给自己的 PR 提供“独立批准”。本项目的 Review
 - 关闭 rebase merge
 - 开启 squash merge
 - 开启 vulnerability alerts、Dependabot alerts 和 secret scanning（免费能力允许时）
-- GitHub Actions 只使用免费额度；接近额度上限时优先保证 PR 全量测试，减少重复矩阵
+- 普通 CI 优先使用 #304 的独立 `qsys-ci` runner；变量未启用、runner 故障后人工删除
+  变量，或外部 fork PR 时，使用受预算约束的 GitHub-hosted fallback
 - 不配置 Required reviewer 或付费 Environment protection
 
 GitHub 官方依据：
@@ -218,6 +220,9 @@ GitHub 官方依据：
 ## 6. CI 门禁
 
 `.github/workflows/ci.yml` 在每次 push `test`、以及所有指向 `main` 的 PR 上运行：
+
+普通 CI 可通过 `QSYS_CI_RUNNER_LABELS` 路由到独立 runner；外部 fork 固定使用 hosted。
+部署、对齐、审计和生产 workflow 不得复用普通 CI runner 或其账号。
 
 | Check | 内容 | 失败后 |
 |---|---|---|

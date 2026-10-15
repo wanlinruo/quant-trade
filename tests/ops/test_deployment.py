@@ -293,6 +293,23 @@ def test_docs_only_change_is_recorded_without_a_runtime_deployment() -> None:
 
     assert plan.components == ()
     assert plan.ignored_paths == ("HANDOFF.md", "docs/deploy/linux-core.md")
+
+
+def test_ci_runner_control_plane_never_deploys_to_application_nodes() -> None:
+    paths = [
+        ".github/ci-runner/job-started.sh",
+        ".github/ci-runner/job-completed.sh",
+        ".github/ci-runner/ci_runner_hook.py",
+        ".github/ci-runner/install.sh",
+    ]
+    manifest = DeploymentManifest.load(MANIFEST)
+
+    for environment in ("test", "production"):
+        plan = manifest.plan(paths, environment=environment)
+        assert plan.deployable is False
+        assert plan.components == ()
+        assert plan.unknown_paths == ()
+        assert plan.ignored_paths == tuple(sorted(paths))
     assert plan.deployable is False
 
 
