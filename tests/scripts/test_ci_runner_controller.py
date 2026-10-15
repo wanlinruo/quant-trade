@@ -63,6 +63,10 @@ def test_controller_assets_remain_default_disabled():
     installer = Path(".github/ci-runner/install.sh").read_text()
     service = Path(".github/ci-runner/qsys-ci-runner.service").read_text()
     assert "systemctl disable --now qsys-ci-runner.timer" in installer
+    assert "systemctl disable --now \"${rootful_podman_units[@]}\"" in installer
+    assert "systemctl mask \"${rootful_podman_units[@]}\"" in installer
+    assert 'env HOME="$state" USER=qsys-ci LOGNAME=qsys-ci' in installer
+    assert 'cd "$state"' in installer
     assert "ConditionPathExists=/etc/qsys/ci-runner/enabled" in service
     assert "MemoryMax=2500M" in service
     assert "Delegate=cpu cpuset io memory pids" in service
