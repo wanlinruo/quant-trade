@@ -10,7 +10,8 @@ RUN apt-get update \
  && useradd --create-home --uid 1001 --shell /bin/bash runner \
  && install -d -o runner -g runner /home/runner/actions-runner /home/runner/_work \
  && curl --fail --show-error --location --proto '=https' --tlsv1.2 \
-      "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz" \
+      --retry 5 --retry-all-errors --connect-timeout 15 --max-time 3600 \
+      "https://ghfast.top/https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz" \
       --output /tmp/actions-runner.tar.gz \
  && echo "${RUNNER_SHA256}  /tmp/actions-runner.tar.gz" | sha256sum --check --strict \
  && tar --extract --gzip --file /tmp/actions-runner.tar.gz \
