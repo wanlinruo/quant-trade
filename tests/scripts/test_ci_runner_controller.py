@@ -95,4 +95,12 @@ def test_network_policy_denies_host_and_private_networks_but_keeps_dns():
     assert "10.0.0.0/8" in policy
     assert "169.254.0.0/16" in policy
     assert "@@HOST_ADDRESS@@" in policy
+    assert "@@WINDOWS_ADDRESS@@" in policy
     assert "@@RUNNER_UID@@" in policy
+
+
+def test_installer_requires_an_explicit_windows_address():
+    installer = Path(".github/ci-runner/install.sh").read_text()
+    assert "--windows-address" in installer
+    assert "invalid Windows IPv4 address" in installer
+    assert 's|@@WINDOWS_ADDRESS@@|$windows_address|g' in installer

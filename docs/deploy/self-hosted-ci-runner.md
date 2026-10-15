@@ -45,10 +45,13 @@ GitHub 明确警告 public repository 的 fork 可在 self-hosted runner 上执�
 ```bash
 sudo .github/ci-runner/install.sh \
   --repository wanlinruo/quant-trade \
-  --host-address 110.42.205.144
+  --host-address 110.42.205.144 \
+  --windows-address WINDOWS_PUBLIC_IP
 ```
 
-安装器创建 UID/subuid、rootless Podman、nftables、systemd units 并构建固定镜像，最后
+`--windows-address` 必须使用生产 Windows/QMT 节点当前解析出的公网 IPv4；安装器会把它与
+宿主、私网和 metadata 网段一起加入 qsys-ci UID 的拒绝集合。安装器创建 UID/subuid、
+rootless Podman、nftables、systemd units 并构建固定镜像，最后
 明确 disable 两个 timer。安装器本身拒绝 18:00–21:00 以及生产批任务 active 时执行。
 此阶段不配置 token、不创建 `enabled`，不会向 GitHub 注册。
 
