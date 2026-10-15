@@ -114,8 +114,17 @@ install -o root -g root -m 0644 \
 systemctl daemon-reload
 
 # Build as the unprivileged account. The image and the Actions archive are both
-# pinned by digest/checksum in Containerfile; no host directory is mounted.
+# pinned by digest/checksum in Containerfile. Copy only the reviewed runner
+# assets into qsys-ci's private state: production and deployment checkouts are
+# intentionally not traversable by this account.
 install -d -o qsys-ci -g qsys-ci -m 0700 "/run/user/$runner_uid"
+build_context=$(mktemp -d --tmpdir="$state" build-context.XXXXXXXX)
+cleanup_build_context() {
+  rm -rf -- "$build_context"
+}
+trap cleanup_build_context EXIT
+cp -a "$repo_root/.github/ci-runner/." "$build_context/"
+chown -R qsys-ci:qsys-ci "$build_context"
 run_as_runner() {
   (
     cd "$state"
@@ -126,8 +135,8 @@ run_as_runner() {
 }
 run_as_runner podman build --pull=always \
   --tag localhost/qsys-ci-runner:2.338.0 \
-  --file "$repo_root/.github/ci-runner/Containerfile" \
-  "$repo_root/.github/ci-runner"
+  --file "$build_context/Containerfile" \
+  "$build_context"
 run_as_runner podman image inspect --format '{{.Id}}' \
   localhost/qsys-ci-runner:2.338.0 >"$config/image-id"
 chmod 0644 "$config/image-id"

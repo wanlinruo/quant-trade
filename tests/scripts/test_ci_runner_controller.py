@@ -67,6 +67,10 @@ def test_controller_assets_remain_default_disabled():
     assert "systemctl mask \"${rootful_podman_units[@]}\"" in installer
     assert 'env HOME="$state" USER=qsys-ci LOGNAME=qsys-ci' in installer
     assert 'cd "$state"' in installer
+    assert 'mktemp -d --tmpdir="$state" build-context.XXXXXXXX' in installer
+    assert 'cp -a "$repo_root/.github/ci-runner/." "$build_context/"' in installer
+    assert 'chown -R qsys-ci:qsys-ci "$build_context"' in installer
+    assert '--file "$build_context/Containerfile"' in installer
     assert "ConditionPathExists=/etc/qsys/ci-runner/enabled" in service
     assert "MemoryMax=2500M" in service
     assert "Delegate=cpu cpuset io memory pids" in service
