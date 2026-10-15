@@ -57,7 +57,7 @@ Issue。注册 token 一小时失效。
 read -rsp 'registration token: ' QSYS_CI_REGISTRATION_TOKEN
 export QSYS_CI_REGISTRATION_TOKEN
 sudo --preserve-env=QSYS_CI_REGISTRATION_TOKEN \
-  scripts/install_ci_runner.sh \
+  .github/ci-runner/install.sh \
   --archive /tmp/actions-runner-linux-x64.tar.gz \
   --sha256 '<official-sha256>' \
   --repository wanlinruo/quant-trade \

@@ -38,7 +38,7 @@ done
 actual_sha256=$(sha256sum "$archive" | awk '{print $1}')
 [[ $actual_sha256 == "$archive_sha256" ]] || { echo "runner archive SHA-256 mismatch" >&2; exit 1; }
 
-repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 app_dir=/opt/qsys-ci-runner/app
 state_dir=/var/lib/qsys-ci-runner
 hook_dir=/usr/local/libexec/qsys-ci-runner
@@ -49,9 +49,9 @@ if ! id qsys-ci >/dev/null 2>&1; then
 fi
 install -d -o root -g root -m 0755 /opt/qsys-ci-runner "$hook_dir"
 install -d -o qsys-ci -g qsys-ci -m 0700 "$state_dir" "$state_dir/_work"
-install -o root -g root -m 0755 "$repo_root/scripts/ci_runner_hook.py" "$hook_dir/ci_runner_hook.py"
-install -o root -g root -m 0755 "$repo_root/deploy/ci-runner/job-started.sh" "$hook_dir/job-started.sh"
-install -o root -g root -m 0755 "$repo_root/deploy/ci-runner/job-completed.sh" "$hook_dir/job-completed.sh"
+install -o root -g root -m 0755 "$repo_root/.github/ci-runner/ci_runner_hook.py" "$hook_dir/ci_runner_hook.py"
+install -o root -g root -m 0755 "$repo_root/.github/ci-runner/job-started.sh" "$hook_dir/job-started.sh"
+install -o root -g root -m 0755 "$repo_root/.github/ci-runner/job-completed.sh" "$hook_dir/job-completed.sh"
 
 install -d -o qsys-ci -g qsys-ci -m 0750 "$app_dir"
 tar --extract --gzip --file "$archive" --directory "$app_dir" --no-same-owner --no-same-permissions

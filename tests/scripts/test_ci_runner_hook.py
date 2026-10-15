@@ -1,13 +1,21 @@
+import importlib.util
 from pathlib import Path
 
 import pytest
 
-from scripts.ci_runner_hook import audit_environment, clean_job
+
+MODULE_PATH = Path(".github/ci-runner/ci_runner_hook.py")
+SPEC = importlib.util.spec_from_file_location("qsys_ci_runner_hook", MODULE_PATH)
+assert SPEC is not None and SPEC.loader is not None
+HOOK = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(HOOK)
+audit_environment = HOOK.audit_environment
+clean_job = HOOK.clean_job
 
 
 def test_audit_accepts_an_isolated_workspace(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr("scripts.ci_runner_hook.platform.system", lambda: "Linux")
-    monkeypatch.setattr("scripts.ci_runner_hook.platform.machine", lambda: "x86_64")
+    monkeypatch.setattr(HOOK.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(HOOK.platform, "machine", lambda: "x86_64")
     root = tmp_path / "_work"
     workspace = root / "repo" / "repo"
 
@@ -22,8 +30,8 @@ def test_audit_accepts_an_isolated_workspace(tmp_path, monkeypatch) -> None:
 
 
 def test_audit_rejects_production_material_and_escaping_paths(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr("scripts.ci_runner_hook.platform.system", lambda: "Linux")
-    monkeypatch.setattr("scripts.ci_runner_hook.platform.machine", lambda: "x86_64")
+    monkeypatch.setattr(HOOK.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(HOOK.platform, "machine", lambda: "x86_64")
     forbidden = tmp_path / "production"
     forbidden.mkdir()
 
