@@ -23,6 +23,13 @@ TEST_DRILL_TASKS = frozenset({
 })
 
 
+def _cancelled_worker_was_oom_killed(
+    result: str, returncode: int | None, cancel_requested: bool,
+) -> bool:
+    """Distinguish a cgroup OOM followed by OOMPolicy=stop from user cancellation."""
+    return result == "cancelled" and returncode in {-9, 137} and not cancel_requested
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -120,7 +127,12 @@ class ResearchRunner:
             )
             result, usage = self._wait(job, process)
         self.store.write_resource_usage(job, usage)
-        if result == "cancelled":
+        cancel_requested = self.store.cancel_requested(job.request.job_id)
+        if _cancelled_worker_was_oom_killed(
+            result, process.returncode, cancel_requested,
+        ):
+            self.store.transition(job, "failed", detail=f"worker exited with {process.returncode}")
+        elif result == "cancelled":
             self.store.transition(job, "cancelled", detail="cancel requested")
         elif result == "timeout":
             self.store.transition(job, "failed", detail="job exceeded timeout_seconds")

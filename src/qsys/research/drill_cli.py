@@ -238,6 +238,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         ).stdout.strip()
     finally:
         _run("systemctl", "stop", UNIT, check=False)
+        # OOMPolicy=stop leaves a correctly contained OOM in failed state. Clear
+        # only that unit's sticky systemd result after its evidence is recorded.
+        _run("systemctl", "reset-failed", UNIT, check=False)
         health = monitor.stop()
 
     if health["failures"]:
