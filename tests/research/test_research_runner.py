@@ -14,7 +14,11 @@ import pytest
 from qsys.data.snapshots import create_snapshot
 from qsys.research.drill_cli import MEMORY_PRESSURE_WAIT_SECONDS
 from qsys.research.jobs import JobLimits, JobRequest, JobStore
-from qsys.research.runner import ResearchRunner, RunnerIdentity
+from qsys.research.runner import (
+    ResearchRunner,
+    RunnerIdentity,
+    _cancelled_worker_was_oom_killed,
+)
 
 
 CODE_SHA = "a" * 40
@@ -23,6 +27,13 @@ CREATED = datetime(2026, 10, 14, 7, 0, tzinfo=timezone.utc)
 
 def test_memory_pressure_drill_allows_for_memory_high_throttling() -> None:
     assert MEMORY_PRESSURE_WAIT_SECONDS == 360.0
+
+
+def test_runner_distinguishes_service_stop_after_oom_from_user_cancel() -> None:
+    assert _cancelled_worker_was_oom_killed("cancelled", -9, False)
+    assert _cancelled_worker_was_oom_killed("cancelled", 137, False)
+    assert not _cancelled_worker_was_oom_killed("cancelled", -9, True)
+    assert not _cancelled_worker_was_oom_killed("cancelled", -15, False)
 
 
 def _rig(tmp_path: Path):
