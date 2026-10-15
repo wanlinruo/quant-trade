@@ -1,0 +1,133 @@
+name: Drill test Research Runner
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Exact staged test Research Runner commit SHA
+        required: true
+        type: string
+      release_id:
+        description: Auditable drill identifier
+        required: true
+        type: string
+      dry_run:
+        description: Validate gates without starting the Runner
+        required: true
+        default: true
+        type: boolean
+      confirmation:
+        description: Enter DRILL_TEST_RESEARCH for a real drill
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  deployments: write
+
+concurrency:
+  group: drill-test-research-runner
+  cancel-in-progress: false
+
+jobs:
+  drill:
+    runs-on: ubuntu-24.04
+    environment: testing
+    timeout-minutes: 45
+    env:
+      TARGET_SHA: ${{ inputs.target_sha }}
+      RELEASE_ID: ${{ inputs.release_id }}
+      DRY_RUN: ${{ inputs.dry_run }}
+      CONFIRMATION: ${{ inputs.confirmation }}
+      DEPLOY_HOST: ${{ vars.TEST_DEPLOY_HOST }}
+      DEPLOY_USER: ${{ vars.TEST_DEPLOY_USER }}
+      RUN_KEY: ${{ inputs.release_id }}-research-runner-drill
+    steps:
+      - name: Check out trusted controller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Install dedicated test SSH identity
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.TEST_DEPLOY_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.TEST_DEPLOY_KNOWN_HOSTS }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          root = Path.home() / ".ssh"
+          root.mkdir(mode=0o700, exist_ok=True)
+          key = root / "test-deploy"
+          key.write_text(os.environ["SSH_PRIVATE_KEY"].rstrip() + "\n", encoding="utf-8")
+          key.chmod(0o600)
+          known = root / "known_hosts"
+          known.write_text(os.environ["SSH_KNOWN_HOSTS"].rstrip() + "\n", encoding="utf-8")
+          known.chmod(0o600)
+          PY
+
+      - name: Validate exact source and staged Runner
+        run: |
+          set -euo pipefail
+          if [ "$DRY_RUN" != true ]; then test "$CONFIRMATION" = DRILL_TEST_RESEARCH; fi
+          printf '%s' "$RELEASE_ID" | grep -Eq '^[A-Za-z0-9._-]{1,100}$'
+          printf '%s' "$TARGET_SHA" | grep -Eq '^[0-9a-f]{40}$'
+          git fetch --no-tags origin test
+          test "$(git rev-parse origin/test)" = "$TARGET_SHA"
+          node_json=$(ssh -i ~/.ssh/test-deploy -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            'status --environment test')
+          NODE_JSON="$node_json" TARGET_SHA="$TARGET_SHA" python3 - <<'PY'
+          import json, os
+          state = json.loads(os.environ["NODE_JSON"])
+          if state["branch"] != "test" or state["dirty"] or not state["healthy"] or not state["isolated"]:
+              raise SystemExit(f"test node is not drillable: {state}")
+          if state.get("entrypoint_version", 0) < 3 or "research-drill-v1" not in state.get("capabilities", []):
+              raise SystemExit("test entrypoint lacks research drill capability")
+          if state.get("research_runner_test") != os.environ["TARGET_SHA"]:
+              raise SystemExit("test Research Runner is not staged at the exact target SHA")
+          PY
+
+      - name: Validate drill plan
+        if: inputs.dry_run == true
+        run: >-
+          ssh -i ~/.ssh/test-deploy -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST"
+          "research-drill --sha $TARGET_SHA --run-id $RUN_KEY --actor $GITHUB_ACTOR
+          --repository $GITHUB_REPOSITORY --dry-run"
+
+      - name: Execute bounded isolation drill
+        if: inputs.dry_run == false
+        run: |
+          ssh -i ~/.ssh/test-deploy -o BatchMode=yes \
+            -o ServerAliveInterval=30 -o ServerAliveCountMax=90 \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "research-drill --sha $TARGET_SHA --run-id $RUN_KEY --actor $GITHUB_ACTOR --repository $GITHUB_REPOSITORY" \
+            | tee result.json
+          jq -e '.ok == true and .status == "success"' result.json >/dev/null
+
+      - name: Verify drill record
+        if: inputs.dry_run == false
+        run: |
+          ssh -i ~/.ssh/test-deploy -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "record --environment test --run-id $RUN_KEY" >record.json
+          PYTHONPATH=src python3 scripts/deployment_contract.py validate-record record.json
+          jq -e --arg sha "$TARGET_SHA" '
+            .source_sha == $sha and .status == "success"
+            and .components == ["research-runner-test-drill"]
+            and .before.linux == .after.linux
+            and .before["research-runner-test"] == .after["research-runner-test"]
+            and .before["live-core"] == .after["live-core"]
+            and .before["test-web"] == .after["test-web"]
+          ' record.json >/dev/null
+
+      - name: Write summary
+        if: always()
+        run: |
+          {
+            echo "## Test Research Runner isolation drill"
+            echo "- Target: \`$TARGET_SHA\`"
+            echo "- Dry run: \`$DRY_RUN\`"
+            echo "- Node record: \`$RUN_KEY\`"
+            echo "- Runner activation after drill: forbidden"
+          } >>"$GITHUB_STEP_SUMMARY"

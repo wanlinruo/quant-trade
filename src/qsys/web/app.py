@@ -616,6 +616,7 @@ def create_app(
         return {
             "id": job.job_id, "status": job.state, "detail": job.detail,
             "request": job.request, "log": job.log, "artifacts": job.artifacts,
+            "resources": job.resources,
         }
 
     @app.post("/api/research-jobs/{ident}/cancel")

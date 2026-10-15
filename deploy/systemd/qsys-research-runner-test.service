@@ -21,7 +21,8 @@ ExecStart=/opt/qsys-research-test/current/venv/bin/qsys-research-runner \
           --memory-max-mb 512 \
           --cpu-quota-percent 25 \
           --io-weight 10 \
-          --timeout-seconds 900
+          --timeout-seconds 900 \
+          --allow-test-drills
 Restart=no
 TimeoutStopSec=15
 KillMode=control-group

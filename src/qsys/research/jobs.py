@@ -319,6 +319,14 @@ class JobStore:
             value["detail"] = detail
         _atomic_json(status_path, value)
 
+    def write_resource_usage(
+        self, job: ClaimedJob, value: Mapping[str, Any],
+    ) -> Path:
+        """Persist terminal worker usage independently of success artifacts."""
+        target = job.root / "resources.json"
+        _atomic_json(target, dict(value))
+        return target
+
     def recover_interrupted(self) -> list[str]:
         recovered: list[str] = []
         for status_path in sorted((self.root / "jobs").glob("*/status.json")):
@@ -358,6 +366,11 @@ class JobStore:
             "content_sha256": _sha256_bytes(files),
             "files": files,
         }
+        resources_path = job.root / "resources.json"
+        if resources_path.is_file() and not resources_path.is_symlink():
+            resources = json.loads(resources_path.read_text(encoding="utf-8"))
+            if isinstance(resources, dict):
+                value["resources"] = resources
         log_path = job.root / "run.log"
         if log_path.is_file():
             value["log"] = {

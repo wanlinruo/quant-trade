@@ -55,7 +55,7 @@ if ! getent passwd qsys-research >/dev/null; then
         --shell /usr/sbin/nologin qsys-research
 fi
 
-sudo -n install -d -o root -g qsys-research -m 0750 "$job_store"
+sudo -n install -d -o root -g qsys-research -m 0751 "$job_store"
 sudo -n install -d -o ubuntu -g qsys-research -m 2770 \
     "$job_store/inbox" "$job_store/control"
 sudo -n install -d -o qsys-research -g qsys-research -m 0750 \

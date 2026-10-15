@@ -35,7 +35,9 @@ def _wheel(path: Path) -> Path:
         archive.writestr("qsys-0.1.0.dist-info/METADATA", "Name: qsys\nVersion: 0.1.0\n")
         archive.writestr(
             "qsys-0.1.0.dist-info/entry_points.txt",
-            "[console_scripts]\nqsys-research-runner = qsys.research.runner_cli:main\n",
+            "[console_scripts]\n"
+            "qsys-research-runner = qsys.research.runner_cli:main\n"
+            "qsys-research-test-drill = qsys.research.drill_cli:main\n",
         )
         archive.writestr("qsys/__init__.py", "")
     return path

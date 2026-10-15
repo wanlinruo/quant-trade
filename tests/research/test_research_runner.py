@@ -72,10 +72,27 @@ def test_runner_executes_allowlisted_task_and_hashes_artifacts(tmp_path: Path):
     artifacts = store.root / "jobs" / "verify-1" / "artifacts"
     result = json.loads((artifacts / "snapshot-verification.json").read_text())
     manifest = json.loads((artifacts / "manifest.json").read_text())
+    resources = json.loads((store.root / "jobs" / "verify-1" / "resources.json").read_text())
     assert result["snapshot_id"] == "snapshot-1"
     assert manifest["file_count"] == 1
     assert manifest["files"][0]["path"] == "snapshot-verification.json"
     assert len(manifest["log"]["sha256"]) == 64
+    assert resources["format"] == "qsys-research-resource-usage"
+    assert resources["exit_code"] == 0
+    assert resources["wall_seconds"] >= 0
+    assert resources["max_rss_bytes"] > 0
+    assert manifest["resources"] == resources
+
+
+def test_runner_rejects_test_drill_without_explicit_unit_flag(tmp_path: Path):
+    store, runner, snapshot, wheel_sha = _rig(tmp_path)
+    store.enqueue(_request(
+        snapshot, wheel_sha, task="isolation-permissions",
+    ))
+
+    assert runner.run_once()
+    assert _status(store, "verify-1")["state"] == "failed"
+    assert "test drill task is disabled" in _status(store, "verify-1")["detail"]
 
 
 def test_runner_fails_closed_on_release_or_snapshot_mismatch(tmp_path: Path):

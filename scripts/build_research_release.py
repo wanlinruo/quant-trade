@@ -71,6 +71,10 @@ def _validate_wheel(path: Path) -> None:
             "qsys.research.runner_cli:main"
         ):
             raise ValueError("wheel does not expose the Research Runner entrypoint")
+        if entries.get("console_scripts", "qsys-research-test-drill", fallback="") != (
+            "qsys.research.drill_cli:main"
+        ):
+            raise ValueError("wheel does not expose the test drill entrypoint")
 
 
 def build(
