@@ -120,7 +120,9 @@ jobs:
       - name: Stream artifact through restricted gateway
         if: inputs.dry_run == false
         run: |
-          ssh -i ~/.ssh/test-deploy -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+          ssh -i ~/.ssh/test-deploy -o BatchMode=yes \
+            -o ServerAliveInterval=30 -o ServerAliveCountMax=30 \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
             "research-stage --sha $TARGET_SHA --artifact-sha256 $artifact_sha256 --snapshot-complete-through $COMPLETE_THROUGH --run-id $RUN_KEY --actor $GITHUB_ACTOR --repository $GITHUB_REPOSITORY" \
             <research.zip | tee result.json
           jq -e '.ok == true and .status == "success"' result.json >/dev/null
