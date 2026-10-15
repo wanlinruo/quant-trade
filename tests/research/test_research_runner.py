@@ -12,12 +12,17 @@ import pyarrow.parquet as pq
 import pytest
 
 from qsys.data.snapshots import create_snapshot
+from qsys.research.drill_cli import MEMORY_PRESSURE_WAIT_SECONDS
 from qsys.research.jobs import JobLimits, JobRequest, JobStore
 from qsys.research.runner import ResearchRunner, RunnerIdentity
 
 
 CODE_SHA = "a" * 40
 CREATED = datetime(2026, 10, 14, 7, 0, tzinfo=timezone.utc)
+
+
+def test_memory_pressure_drill_allows_for_memory_high_throttling() -> None:
+    assert MEMORY_PRESSURE_WAIT_SECONDS == 360.0
 
 
 def _rig(tmp_path: Path):

@@ -19,6 +19,7 @@ from qsys.research.jobs import JobLimits, JobRequest, JobStore
 
 UNIT = "qsys-research-runner-test.service"
 LIMITS = JobLimits(512, 25, 10, 900)
+MEMORY_PRESSURE_WAIT_SECONDS = 360.0
 
 
 def _run(*command: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -193,7 +194,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ("verify-a", "verify-snapshot", 930.0),
             ("verify-b", "verify-snapshot", 930.0),
             ("cpu-io", "resource-pressure-cpu-io", 120.0),
-            ("memory", "resource-pressure-memory", 120.0),
+            ("memory", "resource-pressure-memory", MEMORY_PRESSURE_WAIT_SECONDS),
         )
         for suffix, task, timeout in plan:
             job_id = f"{args.job_prefix}-{suffix}"
