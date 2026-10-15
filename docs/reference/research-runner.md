@@ -127,8 +127,11 @@ sudo rm -f /etc/qsys/research-runner.activation-approved
 scripts/install_research_runner_isolation.sh <上一版本完整提交SHA>
 ```
 
-生产接入前仍需完成：真实回测 task 的迁移、测试节点负向权限验证和压力演练。仓库内
-unit/安装脚本和默认 Web 配置不会自行接触、修改或激活生产 Runner。
+首个真实回测 task `structural-backtest`、测试节点负向权限验证和 CPU/IO/内存压力演练均已
+完成。现有 Web 草稿回测尚未全部迁移，不能把所有历史研究入口都视为 Runner 作业。生产
+接入仍需按照 #137 的当前状态取得明确批准，在维护窗口 stage 生产 snapshot/release、配置
+Web 控制面并单独激活；仓库内 unit、安装脚本和默认 Web 配置不会自行接触、修改或启动生产
+Runner。
 
 测试节点通过手动 workflow `stage-test-research-runner.yml` 使用 test push CI 的精确 artifact
 初始化 `/data/qsys-test/warehouse-snapshot-store`，并 stage 到 `/opt/qsys-research-test`。测试 unit
@@ -159,6 +162,11 @@ SHA 的 CI artifact stage 完成、固定入口声明 `research-drill-v1`，并�
    取证完成后只清除测试 unit 的 sticky failed 状态；
 5. 每秒检查 Live Core 与 Test Web 的 systemd identity，并请求 Test Web health URL；任一样本
    失败，或 PID、单调启动时间、重启计数前后变化，整次演练失败关闭。
+
+2026-10-15 的最终测试验收已覆盖上述全部步骤：同一 snapshot 的两次完整扫描产物 hash
+一致，生产路径与网络访问被拒绝，CPU/IO 压力成功，内存 worker 在 512 MiB hard limit、
+零 swap 下被真实 cgroup OOM kill 并正确记录为 failed；Live Core/Test Web 的连续健康采样、
+PID、启动时间和重启计数均保持不变。对应 GitHub issue #285 已按 completed 关闭。
 
 节点在 deployment record 旁保存 `drill.json`，record 绑定其 SHA-256。停用/回滚步骤为：
 
