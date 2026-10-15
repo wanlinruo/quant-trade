@@ -191,6 +191,7 @@ def test_research_runner_unit_enforces_identity_resources_and_denials() -> None:
     assert "ConditionPathExists=/etc/qsys/research-runner.activation-approved" in unit
     assert "MemoryHigh=3G" in unit
     assert "MemoryMax=4G" in unit and "--memory-max-mb 4096" in unit
+    assert "MemorySwapMax=0" in unit
     assert "CPUQuota=100%" in unit and "--cpu-quota-percent 100" in unit
     assert "CPUWeight=10" in unit
     assert "IOWeight=10" in unit and "--io-weight 10" in unit
@@ -222,7 +223,8 @@ def test_test_research_runner_is_staged_inactive_with_test_only_paths() -> None:
     )
 
     assert "User=qsys-research-test" in unit
-    assert "MemoryMax=512M" in unit and "CPUQuota=25%" in unit
+    assert "MemoryMax=512M" in unit and "MemorySwapMax=0" in unit
+    assert "CPUQuota=25%" in unit
     assert "--allow-test-drills" in unit
     assert "BindReadOnlyPaths=/data/qsys-test/warehouse-snapshot-store:" in unit
     assert "ReadWritePaths=/data/qsys-test/research-jobs" in unit

@@ -29,6 +29,7 @@ KillMode=control-group
 UMask=0027
 MemoryHigh=384M
 MemoryMax=512M
+MemorySwapMax=0
 CPUQuota=25%
 CPUWeight=10
 IOWeight=10

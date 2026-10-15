@@ -36,7 +36,8 @@ def _service_identity(service: str) -> dict[str, str]:
 
 def _runner_properties() -> dict[str, str]:
     names = (
-        "MemoryHigh", "MemoryMax", "CPUQuotaPerSecUSec", "CPUWeight", "IOWeight",
+        "MemoryHigh", "MemoryMax", "MemorySwapMax", "CPUQuotaPerSecUSec",
+        "CPUWeight", "IOWeight",
         "Nice", "OOMScoreAdjust", "PrivateNetwork", "RestrictAddressFamilies",
         "IPAddressDeny", "NoNewPrivileges", "UnitFileState",
     )
@@ -47,7 +48,7 @@ def _runner_properties() -> dict[str, str]:
         line.split("=", 1) for line in _run(*command).stdout.splitlines() if "=" in line
     )
     expected = {
-        "MemoryHigh": "402653184", "MemoryMax": "536870912",
+        "MemoryHigh": "402653184", "MemoryMax": "536870912", "MemorySwapMax": "0",
         "CPUQuotaPerSecUSec": "250ms", "CPUWeight": "10", "IOWeight": "10",
         "Nice": "10", "OOMScoreAdjust": "900", "PrivateNetwork": "yes",
         "RestrictAddressFamilies": "AF_UNIX", "IPAddressDeny": "0.0.0.0/0 ::/0",
