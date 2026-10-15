@@ -2,17 +2,29 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: sudo $0 --repository OWNER/REPO --host-address IP [--runner-group ID]" >&2
+  echo "usage: sudo $0 --repository OWNER/REPO --host-address IP --windows-address IP [--runner-group ID]" >&2
   exit 2
+}
+
+valid_ipv4() {
+  local address=$1 octet
+  local -a octets
+  IFS=. read -r -a octets <<<"$address"
+  ((${#octets[@]} == 4)) || return 1
+  for octet in "${octets[@]}"; do
+    [[ $octet =~ ^[0-9]{1,3}$ ]] && ((10#$octet <= 255)) || return 1
+  done
 }
 
 repository=
 host_address=
+windows_address=
 runner_group=1
 while (($#)); do
   case "$1" in
     --repository) repository=${2:-}; shift 2 ;;
     --host-address) host_address=${2:-}; shift 2 ;;
+    --windows-address) windows_address=${2:-}; shift 2 ;;
     --runner-group) runner_group=${2:-}; shift 2 ;;
     *) usage ;;
   esac
@@ -20,7 +32,8 @@ done
 
 [[ $EUID -eq 0 ]] || { echo "installer must run as root" >&2; exit 1; }
 [[ $repository =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "invalid repository" >&2; exit 1; }
-[[ $host_address =~ ^[0-9a-fA-F:.]+$ ]] || { echo "invalid host address" >&2; exit 1; }
+valid_ipv4 "$host_address" || { echo "invalid host IPv4 address" >&2; exit 1; }
+valid_ipv4 "$windows_address" || { echo "invalid Windows IPv4 address" >&2; exit 1; }
 [[ $runner_group =~ ^[0-9]+$ ]] || { echo "invalid runner group" >&2; exit 1; }
 [[ $(uname -s) == Linux && $(uname -m) == x86_64 ]] || {
   echo "only Linux x64 hosts are supported" >&2
@@ -90,6 +103,7 @@ chmod 0644 "$config/runner.env"
 
 install -d -o root -g root -m 0755 /etc/nftables.d
 sed -e "s|@@HOST_ADDRESS@@|$host_address|g" \
+  -e "s|@@WINDOWS_ADDRESS@@|$windows_address|g" \
   -e "s|@@RUNNER_UID@@|$runner_uid|g" \
   "$repo_root/.github/ci-runner/qsys-ci-runner.nft.in" >/etc/nftables.d/qsys-ci-runner.nft
 chmod 0644 /etc/nftables.d/qsys-ci-runner.nft
