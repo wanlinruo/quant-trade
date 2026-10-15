@@ -47,6 +47,24 @@ apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
   ca-certificates curl fuse-overlayfs nftables podman slirp4netns uidmap
 
+# Ubuntu package presets enable a root-owned Podman API socket and maintenance
+# units. This runner uses only direct rootless CLI invocations, so retaining
+# that surface would violate the isolation contract.
+rootful_podman_units=(
+  podman.socket
+  podman.service
+  podman-auto-update.timer
+  podman-auto-update.service
+  podman-restart.service
+  podman-clean-transient.service
+)
+systemctl disable --now "${rootful_podman_units[@]}" 2>/dev/null || true
+systemctl mask "${rootful_podman_units[@]}"
+if [[ $(systemctl is-active podman.socket 2>/dev/null || true) == inactive ]]; then
+  rm -f /run/podman/podman.sock
+fi
+systemctl reset-failed podman-restart.service 2>/dev/null || true
+
 if ! id qsys-ci >/dev/null 2>&1; then
   useradd --system --create-home --home-dir "$state" --shell /usr/sbin/nologin qsys-ci
 fi
@@ -98,15 +116,20 @@ systemctl daemon-reload
 # Build as the unprivileged account. The image and the Actions archive are both
 # pinned by digest/checksum in Containerfile; no host directory is mounted.
 install -d -o qsys-ci -g qsys-ci -m 0700 "/run/user/$runner_uid"
-setpriv --reuid "$runner_uid" --regid "$runner_gid" --init-groups \
-  env HOME="$state" XDG_RUNTIME_DIR="/run/user/$runner_uid" \
-  podman build --pull=always --tag localhost/qsys-ci-runner:2.338.0 \
+run_as_runner() {
+  (
+    cd "$state"
+    exec setpriv --reuid "$runner_uid" --regid "$runner_gid" --init-groups \
+      env HOME="$state" USER=qsys-ci LOGNAME=qsys-ci \
+      XDG_RUNTIME_DIR="/run/user/$runner_uid" "$@"
+  )
+}
+run_as_runner podman build --pull=always \
+  --tag localhost/qsys-ci-runner:2.338.0 \
   --file "$repo_root/.github/ci-runner/Containerfile" \
   "$repo_root/.github/ci-runner"
-setpriv --reuid "$runner_uid" --regid "$runner_gid" --init-groups \
-  env HOME="$state" XDG_RUNTIME_DIR="/run/user/$runner_uid" \
-  podman image inspect --format '{{.Id}}' localhost/qsys-ci-runner:2.338.0 \
-  >"$config/image-id"
+run_as_runner podman image inspect --format '{{.Id}}' \
+  localhost/qsys-ci-runner:2.338.0 >"$config/image-id"
 chmod 0644 "$config/image-id"
 
 systemctl disable --now qsys-ci-runner.timer qsys-ci-runner.service \
