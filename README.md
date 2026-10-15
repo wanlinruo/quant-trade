@@ -279,6 +279,7 @@ Windows agent 不依赖策略；Web 只编排和展示，不承载交易业务�
 | 环境 | 用途 | 约束 |
 |---|---|---|
 | Mac | 开发、本地测试和小规模研究 | 不承担 24×7 生产职责 |
+| CI Linux | 普通 Actions policy、扫描、测试与构建 | 独立 VM；无部署凭据、生产网络或数据访问 |
 | Test Linux | `test` 分支自动部署后的集成验证 | 禁止下单；与生产 Redis、状态和路径隔离 |
 | Production Linux | 数据任务、Web、策略核心与运维；预留隔离 Runner | 生产发布必须从 `main` 手工触发；Runner 还需独立激活批准 |
 | Production Windows | miniQMT、行情网关、执行代理与 watchdog | 无策略逻辑；应用独立原子发布和回滚 |
@@ -305,6 +306,7 @@ uv build
 
 - [系统原始设计](docs/superpowers/specs/2026-09-06-personal-quant-system-design.md)
 - [部署契约](docs/reference/deployment-contract.md)
+- [独立 self-hosted CI Runner](docs/deploy/self-hosted-ci-runner.md)
 - [Warehouse 不可变快照](docs/reference/warehouse-snapshots.md)
 - [Research Runner 作业与隔离协议](docs/reference/research-runner.md)
 - [服务管理与每日质检](docs/reference/service-management.md)

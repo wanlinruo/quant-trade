@@ -22,7 +22,18 @@ jobs:
       github.event_name == 'pull_request' &&
       github.head_ref == 'test' &&
       github.base_ref == 'main'
-    runs-on: ubuntu-24.04
+    # QSYS_CI_RUNNER_LABELS is enabled only after the dedicated runner is online.
+    # Fork PRs always stay on GitHub-hosted infrastructure while the repository
+    # is public; they must never execute on the persistent qsys-ci host.
+    runs-on: >-
+      ${{ fromJSON(
+        ((github.event_name == 'push' ||
+          github.event.pull_request.head.repo.full_name == github.repository) &&
+         vars.QSYS_CI_RUNNER_LABELS != '' &&
+         vars.QSYS_CI_RUNNER_LABELS) ||
+        '"ubuntu-24.04"'
+      ) }}
+    timeout-minutes: 15
     outputs:
       reusable: ${{ steps.gate.outputs.reusable }}
     steps:
@@ -58,7 +69,15 @@ jobs:
           fi
 
   policy:
-    runs-on: ubuntu-24.04
+    runs-on: >-
+      ${{ fromJSON(
+        ((github.event_name == 'push' ||
+          github.event.pull_request.head.repo.full_name == github.repository) &&
+         vars.QSYS_CI_RUNNER_LABELS != '' &&
+         vars.QSYS_CI_RUNNER_LABELS) ||
+        '"ubuntu-24.04"'
+      ) }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -87,7 +106,15 @@ jobs:
           --subject "$(git log -1 --format=%s)"
 
   secret-scan:
-    runs-on: ubuntu-24.04
+    runs-on: >-
+      ${{ fromJSON(
+        ((github.event_name == 'push' ||
+          github.event.pull_request.head.repo.full_name == github.repository) &&
+         vars.QSYS_CI_RUNNER_LABELS != '' &&
+         vars.QSYS_CI_RUNNER_LABELS) ||
+        '"ubuntu-24.04"'
+      ) }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Scan tracked files
@@ -96,7 +123,15 @@ jobs:
   test:
     needs: reuse-evidence
     if: always()
-    runs-on: ubuntu-24.04
+    runs-on: >-
+      ${{ fromJSON(
+        ((github.event_name == 'push' ||
+          github.event.pull_request.head.repo.full_name == github.repository) &&
+         vars.QSYS_CI_RUNNER_LABELS != '' &&
+         vars.QSYS_CI_RUNNER_LABELS) ||
+        '"ubuntu-24.04"'
+      ) }}
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Install uv
@@ -115,7 +150,15 @@ jobs:
   package:
     needs: reuse-evidence
     if: always()
-    runs-on: ubuntu-24.04
+    runs-on: >-
+      ${{ fromJSON(
+        ((github.event_name == 'push' ||
+          github.event.pull_request.head.repo.full_name == github.repository) &&
+         vars.QSYS_CI_RUNNER_LABELS != '' &&
+         vars.QSYS_CI_RUNNER_LABELS) ||
+        '"ubuntu-24.04"'
+      ) }}
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Install uv
