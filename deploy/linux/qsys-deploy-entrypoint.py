@@ -65,8 +65,13 @@ def load_config() -> dict[str, object]:
     return config
 
 
-def _run(command: list[str], *, cwd: Path, check: bool = True) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, cwd=cwd, check=check, text=True, capture_output=True)
+def _run(
+    command: list[str], *, cwd: Path, check: bool = True,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        command, cwd=cwd, check=check, text=True, capture_output=True, env=env,
+    )
 
 
 def _head(repo: Path) -> str:
@@ -437,22 +442,24 @@ def _ensure_test_snapshot(
     except ValueError as exc:
         raise ValueError("snapshot complete-through must be an ISO date") from exc
     current = RESEARCH_SNAPSHOT_STORE / "current"
+    environment = dict(os.environ)
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
     if current.is_symlink():
         result = _run([
             str(release / "venv/bin/qsys-warehouse-snapshot"),
             "show-current", "--store", str(RESEARCH_SNAPSHOT_STORE),
-        ], cwd=worktree)
+        ], cwd=worktree, env=environment)
         value = json.loads(result.stdout)
         snapshot_id = str(value["snapshot_id"])
         _run([
             str(release / "venv/bin/qsys-warehouse-snapshot"), "verify",
             "--snapshot", str(RESEARCH_SNAPSHOT_STORE / "snapshots" / snapshot_id),
-        ], cwd=worktree)
+        ], cwd=worktree, env=environment)
         return snapshot_id
     _run([
         "sudo", "-n", "install", "-d", "-o", "ubuntu", "-g", "ubuntu",
         "-m", "0755", str(RESEARCH_SNAPSHOT_STORE),
-    ], cwd=worktree)
+    ], cwd=worktree, env=environment)
     snapshot_id = f"test-{sha[:12]}"
     _run([
         str(release / "venv/bin/qsys-warehouse-snapshot"), "create",
@@ -523,7 +530,14 @@ def research_stage(args: argparse.Namespace, config: dict[str, object]) -> int:
                 snapshot_id = _ensure_test_snapshot(
                     worktree, release, args.sha, args.snapshot_complete_through,
                 )
-                _run(["/bin/sh", "scripts/install_test_research_runner_isolation.sh", args.sha], cwd=worktree)
+                _run(["chmod", "-R", "go-w", str(release)], cwd=worktree)
+                installed = _run(
+                    ["/bin/sh", "scripts/install_test_research_runner_isolation.sh", args.sha],
+                    cwd=worktree, check=False,
+                )
+                if installed.returncode != 0:
+                    detail = (installed.stderr or installed.stdout).strip().replace("\n", " ")
+                    raise ValueError(f"test Runner installer failed: {detail[:400]}")
             finally:
                 _run(["git", "worktree", "remove", "--force", str(worktree)], cwd=repo, check=False)
             if _run(["systemctl", "is-active", "qsys-research-runner-test.service"], cwd=repo, check=False).returncode == 0:
