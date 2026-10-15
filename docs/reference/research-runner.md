@@ -153,7 +153,8 @@ SHA 的 CI artifact stage 完成、固定入口声明 `research-drill-v1`，并�
 3. 在实际 25% CPU cgroup 内执行 8 秒 CPU 压力并同步写入至少 64 MiB 后删除临时文件，要求
    CPU 时间符合 quota 容差且资源证据记录输出 block；
 4. 在实际 512 MiB cgroup 内尝试触达 768 MiB，要求 worker 被 OOM kill、失败原因和峰值 RSS
-   被记录，而 Runner 随后仍可被有序停止；
+   被记录；该步骤允许最多 6 分钟让 `MemoryHigh` 回收/节流后触及硬上限，而 Runner 随后仍可
+   被有序停止；
 5. 每秒检查 Live Core 与 Test Web 的 systemd identity，并请求 Test Web health URL；任一样本
    失败，或 PID、单调启动时间、重启计数前后变化，整次演练失败关闭。
 
