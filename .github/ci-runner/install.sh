@@ -2,96 +2,115 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: export QSYS_CI_REGISTRATION_TOKEN; sudo --preserve-env=QSYS_CI_REGISTRATION_TOKEN $0 --archive FILE --sha256 HEX --repository OWNER/REPO --name NAME" >&2
+  echo "usage: sudo $0 --repository OWNER/REPO --host-address IP [--runner-group ID]" >&2
   exit 2
 }
 
-archive=
-archive_sha256=
 repository=
-runner_name=
+host_address=
+runner_group=1
 while (($#)); do
   case "$1" in
-    --archive) archive=${2:-}; shift 2 ;;
-    --sha256) archive_sha256=${2:-}; shift 2 ;;
     --repository) repository=${2:-}; shift 2 ;;
-    --name) runner_name=${2:-}; shift 2 ;;
+    --host-address) host_address=${2:-}; shift 2 ;;
+    --runner-group) runner_group=${2:-}; shift 2 ;;
     *) usage ;;
   esac
 done
 
 [[ $EUID -eq 0 ]] || { echo "installer must run as root" >&2; exit 1; }
-[[ -f $archive ]] || { echo "runner archive does not exist" >&2; exit 1; }
-[[ $archive_sha256 =~ ^[0-9a-f]{64}$ ]] || { echo "invalid archive SHA-256" >&2; exit 1; }
 [[ $repository =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "invalid repository" >&2; exit 1; }
-[[ $runner_name =~ ^[A-Za-z0-9_.-]+$ ]] || { echo "invalid runner name" >&2; exit 1; }
-[[ -n ${QSYS_CI_REGISTRATION_TOKEN:-} ]] || { echo "QSYS_CI_REGISTRATION_TOKEN is required" >&2; exit 1; }
+[[ $host_address =~ ^[0-9a-fA-F:.]+$ ]] || { echo "invalid host address" >&2; exit 1; }
+[[ $runner_group =~ ^[0-9]+$ ]] || { echo "invalid runner group" >&2; exit 1; }
 [[ $(uname -s) == Linux && $(uname -m) == x86_64 ]] || {
-  echo "only Linux x64 CI hosts are supported" >&2
+  echo "only Linux x64 hosts are supported" >&2
   exit 1
 }
-
-for forbidden in /data/qsys /etc/qsys /opt/qsys/components /home/ubuntu/qsys /home/ubuntu/qsys-test; do
-  [[ ! -e $forbidden ]] || { echo "forbidden production path exists: $forbidden" >&2; exit 1; }
+clock=$(date +%H%M)
+((10#$clock < 1800 || 10#$clock >= 2100)) || {
+  echo "refusing to stage runner during the production high-water window" >&2
+  exit 1
+}
+for unit in qsys-tushare-sync.service qsys-catalog-verify.service qsys-daily-archive.service; do
+  systemctl is-active --quiet "$unit" && {
+    echo "refusing to stage while $unit is active" >&2
+    exit 1
+  }
 done
 
-actual_sha256=$(sha256sum "$archive" | awk '{print $1}')
-[[ $actual_sha256 == "$archive_sha256" ]] || { echo "runner archive SHA-256 mismatch" >&2; exit 1; }
-
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
-app_dir=/opt/qsys-ci-runner/app
-state_dir=/var/lib/qsys-ci-runner
-hook_dir=/usr/local/libexec/qsys-ci-runner
-[[ ! -e $app_dir ]] || { echo "$app_dir already exists; rebuild the VM instead of overlaying it" >&2; exit 1; }
+libexec=/usr/local/libexec/qsys-ci-runner
+state=/var/lib/qsys-ci-runner
+config=/etc/qsys/ci-runner
+
+apt-get update
+DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+  ca-certificates curl fuse-overlayfs nftables podman slirp4netns uidmap
 
 if ! id qsys-ci >/dev/null 2>&1; then
-  useradd --system --create-home --home-dir "$state_dir" --shell /usr/sbin/nologin qsys-ci
+  useradd --system --create-home --home-dir "$state" --shell /usr/sbin/nologin qsys-ci
 fi
-install -d -o root -g root -m 0755 /opt/qsys-ci-runner "$hook_dir"
-install -d -o qsys-ci -g qsys-ci -m 0700 "$state_dir" "$state_dir/_work"
-install -o root -g root -m 0755 "$repo_root/.github/ci-runner/ci_runner_hook.py" "$hook_dir/ci_runner_hook.py"
-install -o root -g root -m 0755 "$repo_root/.github/ci-runner/job-started.sh" "$hook_dir/job-started.sh"
-install -o root -g root -m 0755 "$repo_root/.github/ci-runner/job-completed.sh" "$hook_dir/job-completed.sh"
+runner_uid=$(id -u qsys-ci)
+runner_gid=$(id -g qsys-ci)
+grep -q '^qsys-ci:' /etc/subuid || usermod --add-subuids 200000-265535 qsys-ci
+grep -q '^qsys-ci:' /etc/subgid || usermod --add-subgids 200000-265535 qsys-ci
+loginctl enable-linger qsys-ci
 
-install -d -o qsys-ci -g qsys-ci -m 0750 "$app_dir"
-tar --extract --gzip --file "$archive" --directory "$app_dir" --no-same-owner --no-same-permissions
-ln -s "$state_dir/_work" "$app_dir/_work"
-chown -R qsys-ci:qsys-ci "$app_dir"
+install -d -o root -g root -m 0755 "$libexec" "$config"
+install -d -o qsys-ci -g qsys-ci -m 0700 "$state" "$state/jit"
+for file in ci_runner_hook.py job-started.sh job-completed.sh runner_gate.py runner_controller.py; do
+  install -o root -g root -m 0755 "$repo_root/.github/ci-runner/$file" "$libexec/$file"
+done
 
-(
-  cd "$app_dir"
-  ./bin/installdependencies.sh
-  sudo -u qsys-ci -H ./config.sh \
-    --unattended \
-    --url "https://github.com/$repository" \
-    --token "$QSYS_CI_REGISTRATION_TOKEN" \
-    --name "$runner_name" \
-    --labels qsys-ci \
-    --work _work \
-    --disableupdate
-)
-unset QSYS_CI_REGISTRATION_TOKEN
+sed \
+  -e "s|@@REPOSITORY@@|$repository|g" \
+  -e "s|@@RUNNER_GROUP@@|$runner_group|g" \
+  -e "s|@@RUNNER_UID@@|$runner_uid|g" \
+  -e "s|@@RUNNER_GID@@|$runner_gid|g" \
+  "$repo_root/.github/ci-runner/runner.env.in" >"$config/runner.env"
+chmod 0644 "$config/runner.env"
 
-cat >"$app_dir/.env" <<'EOF'
-ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/libexec/qsys-ci-runner/job-started.sh
-ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/usr/local/libexec/qsys-ci-runner/job-completed.sh
-QSYS_CI_WORK_ROOT=/var/lib/qsys-ci-runner/_work
-EOF
+install -d -o root -g root -m 0755 /etc/nftables.d
+sed -e "s|@@HOST_ADDRESS@@|$host_address|g" \
+  -e "s|@@RUNNER_UID@@|$runner_uid|g" \
+  "$repo_root/.github/ci-runner/qsys-ci-runner.nft.in" >/etc/nftables.d/qsys-ci-runner.nft
+chmod 0644 /etc/nftables.d/qsys-ci-runner.nft
+grep -q 'nftables.d/\*.nft' /etc/nftables.conf || \
+  printf '\ninclude "/etc/nftables.d/*.nft"\n' >>/etc/nftables.conf
+nft --check --file /etc/nftables.conf
+systemctl enable --now nftables.service
+nft --file /etc/nftables.conf
 
-# Jobs may write only their work and diagnostic directories. Runner credentials,
-# application files and hooks remain root-owned and are never workflow inputs.
-chown -R root:qsys-ci "$app_dir"
-chmod -R o-rwx "$app_dir"
-chmod -R g-w "$app_dir"
-chmod 0640 "$app_dir/.runner" "$app_dir/.credentials" "$app_dir/.credentials_rsaparams"
-chown -R qsys-ci:qsys-ci "$state_dir"
-chown qsys-ci:qsys-ci "$app_dir/_diag"
-chmod 0750 "$app_dir/_diag"
+install -o root -g root -m 0644 \
+  "$repo_root/.github/ci-runner/qsys-ci-runner.service" \
+  /etc/systemd/system/qsys-ci-runner.service
+install -o root -g root -m 0644 \
+  "$repo_root/.github/ci-runner/qsys-ci-runner.timer" \
+  /etc/systemd/system/qsys-ci-runner.timer
+install -o root -g root -m 0644 \
+  "$repo_root/.github/ci-runner/qsys-ci-quiesce.service" \
+  /etc/systemd/system/qsys-ci-quiesce.service
+install -o root -g root -m 0644 \
+  "$repo_root/.github/ci-runner/qsys-ci-quiesce.timer" \
+  /etc/systemd/system/qsys-ci-quiesce.timer
+systemctl daemon-reload
 
-(
-  cd "$app_dir"
-  ./svc.sh install qsys-ci
-)
+# Build as the unprivileged account. The image and the Actions archive are both
+# pinned by digest/checksum in Containerfile; no host directory is mounted.
+install -d -o qsys-ci -g qsys-ci -m 0700 "/run/user/$runner_uid"
+setpriv --reuid "$runner_uid" --regid "$runner_gid" --init-groups \
+  env HOME="$state" XDG_RUNTIME_DIR="/run/user/$runner_uid" \
+  podman build --pull=always --tag localhost/qsys-ci-runner:2.338.0 \
+  --file "$repo_root/.github/ci-runner/Containerfile" \
+  "$repo_root/.github/ci-runner"
+setpriv --reuid "$runner_uid" --regid "$runner_gid" --init-groups \
+  env HOME="$state" XDG_RUNTIME_DIR="/run/user/$runner_uid" \
+  podman image inspect --format '{{.Id}}' localhost/qsys-ci-runner:2.338.0 \
+  >"$config/image-id"
+chmod 0644 "$config/image-id"
 
-echo "runner installed but not started"
-echo "after the repository is private, start with: systemctl start actions.runner.*.service"
+systemctl disable --now qsys-ci-runner.timer qsys-ci-runner.service \
+  qsys-ci-quiesce.timer 2>/dev/null || true
+echo "same-host runner staged but DISABLED"
+echo "do not create $config/enabled or start the timer until #137 and #138 pass"
+echo "store the repository-scoped token at $config/github-token (root:root 0400) only at activation"

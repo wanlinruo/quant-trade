@@ -1,0 +1,35 @@
+[Unit]
+Description=Qsys one-job rootless GitHub Actions runner
+After=network-online.target nftables.service
+Wants=network-online.target
+ConditionPathExists=/etc/qsys/ci-runner/enabled
+
+[Service]
+Type=exec
+EnvironmentFile=/etc/qsys/ci-runner/runner.env
+ExecStart=/usr/local/libexec/qsys-ci-runner/runner_controller.py
+TimeoutStartSec=15min
+TimeoutStopSec=2min
+RuntimeMaxSec=2h
+KillMode=control-group
+MemoryHigh=2G
+MemoryMax=2500M
+MemorySwapMax=512M
+CPUQuota=150%
+CPUWeight=10
+IOWeight=10
+TasksMax=768
+Delegate=cpu cpuset io memory pids
+Nice=10
+OOMScoreAdjust=500
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/qsys-ci-runner /run/user
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

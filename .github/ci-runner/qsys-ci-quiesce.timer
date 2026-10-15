@@ -1,0 +1,10 @@
+[Unit]
+Description=Reserve evening resources for production jobs
+
+[Timer]
+OnCalendar=*-*-* 18:25:00 Asia/Shanghai
+Persistent=true
+Unit=qsys-ci-quiesce.service
+
+[Install]
+WantedBy=timers.target
