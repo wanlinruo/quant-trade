@@ -84,6 +84,9 @@ def test_controller_assets_remain_default_disabled():
     assert "ConditionPathExists=/etc/qsys/ci-runner/enabled" in service
     assert "MemoryMax=2500M" in service
     assert "Delegate=cpu cpuset io memory pids" in service
+    assert "ProtectHome=no" in service
+    assert "InaccessiblePaths=/home /root" in service
+    assert "ReadWritePaths=/var/lib/qsys-ci-runner /run/user" in service
 
 
 def test_network_policy_denies_host_and_private_networks_but_keeps_dns():
