@@ -429,6 +429,9 @@ def test_test_research_release_does_not_hardlink_shared_uv_cache() -> None:
 
     assert 'environment["UV_LINK_MODE"] = "copy"' in source
     assert "uv dependency sync failed" in source
+    assert 'environment["PYTHONDONTWRITEBYTECODE"] = "1"' in source
+    assert '["chmod", "-R", "go-w", str(release)]' in source
+    assert "test Runner installer failed" in source
 
 
 def test_test_research_staging_paths_do_not_expand_production_install() -> None:
@@ -1368,6 +1371,8 @@ def test_test_research_workflow_streams_ci_artifact_without_activation() -> None
     assert "qsys-research-$TARGET_SHA" in workflow
     assert "research-stage --sha $TARGET_SHA" in workflow
     assert "<research.zip" in workflow
+    assert "ServerAliveInterval=30" in workflow
+    assert "ServerAliveCountMax=30" in workflow
     assert "research-stage-v1" in workflow
     assert ".before.linux == .after.linux" in workflow
     assert "Runner activation: never performed" in workflow
