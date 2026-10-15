@@ -207,7 +207,7 @@ PR 作者也不能给自己的 PR 提供“独立批准”。本项目的 Review
 - 关闭 rebase merge
 - 开启 squash merge
 - 开启 vulnerability alerts、Dependabot alerts 和 secret scanning（免费能力允许时）
-- 普通 CI 优先使用 #304 的独立 `qsys-ci` runner；变量未启用、runner 故障后人工删除
+- 普通 CI 优先使用 #304 的同机强隔离、单任务即销毁 `qsys-ci` runner；变量未启用、runner 故障后人工删除
   变量，或外部 fork PR 时，使用受预算约束的 GitHub-hosted fallback
 - 不配置 Required reviewer 或付费 Environment protection
 

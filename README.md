@@ -279,7 +279,7 @@ Windows agent 不依赖策略；Web 只编排和展示，不承载交易业务�
 | 环境 | 用途 | 约束 |
 |---|---|---|
 | Mac | 开发、本地测试和小规模研究 | 不承担 24×7 生产职责 |
-| CI Linux | 普通 Actions policy、扫描、测试与构建 | 独立 VM；无部署凭据、生产网络或数据访问 |
+| CI Linux | 普通 Actions policy、扫描、测试与构建 | 生产机上的 rootless 单任务容器；独立 UID/cgroup/网络，无生产挂载或部署凭据；晚间高水位强制停机 |
 | Test Linux | `test` 分支自动部署后的集成验证 | 禁止下单；与生产 Redis、状态和路径隔离 |
 | Production Linux | 数据任务、Web、策略核心与运维；预留隔离 Runner | 生产发布必须从 `main` 手工触发；Runner 还需独立激活批准 |
 | Production Windows | miniQMT、行情网关、执行代理与 watchdog | 无策略逻辑；应用独立原子发布和回滚 |
