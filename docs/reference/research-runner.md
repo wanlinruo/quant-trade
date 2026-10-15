@@ -79,7 +79,7 @@ artifact manifest 会同时绑定这份资源证据。Web 只读详情/API 展�
 ## systemd 隔离契约
 
 `deploy/systemd/qsys-research-runner.service` 固定使用 `qsys-research` 身份，单并发子进程继承
-`MemoryHigh=3G`、`MemoryMax=4G`、`CPUQuota=100%`、低 CPU/IO 权重与较低调度优先级。
+`MemoryHigh=3G`、`MemoryMax=4G`、`MemorySwapMax=0`、`CPUQuota=100%`、低 CPU/IO 权重与较低调度优先级。
 Runner 的 OOM 分数高于实盘服务；systemd-oomd 发生内存压力时优先终止 Runner cgroup，且启动
 频率受限，避免超限后反复拉起。服务通过
 `BindReadOnlyPaths` 只读看到 `/data/qsys/warehouse-snapshot-store`，唯一可写路径是
@@ -132,7 +132,7 @@ unit/安装脚本和默认 Web 配置不会自行接触、修改或激活生产 
 
 测试节点通过手动 workflow `stage-test-research-runner.yml` 使用 test push CI 的精确 artifact
 初始化 `/data/qsys-test/warehouse-snapshot-store`，并 stage 到 `/opt/qsys-research-test`。测试 unit
-使用独立账号 `qsys-research-test`、512 MiB/25% CPU 上限，且没有 `[Install]` 段；staging 入口
+使用独立账号 `qsys-research-test`、512 MiB/25% CPU 上限且禁止 swap，且没有 `[Install]` 段；staging 入口
 会验证它既未 active 也未 enabled。该路径不会创建生产激活批准文件，也不会写入生产 Runner、
 生产 snapshot store 或生产作业目录。
 
