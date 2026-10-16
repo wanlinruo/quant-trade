@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "components": {
+    "catalog-verify": {
+      "entrypoint": {
+        "command": "qsys-catalog-verify",
+        "target": "qsys.data.catalog_verify_cli:main"
+      },
+      "scan_roots": [
+        "src/qsys/data",
+        "src/qsys/strategy"
+      ],
+      "release_root": "/opt/qsys-data/releases/catalog-verify",
+      "current": "/opt/qsys-data/catalog-verify/current",
+      "executable": "venv/bin/qsys-catalog-verify",
+      "unit": "qsys-catalog-verify.service",
+      "dropin": "/etc/systemd/system/qsys-catalog-verify.service.d/zz-isolated-release.conf",
+      "state_directories": [
+        {
+          "path": "/data/qsys/catalog-verify-state",
+          "owner": "ubuntu",
+          "group": "ubuntu",
+          "mode": "0750"
+        }
+      ],
+      "seed": {
+        "source": "artifacts/frozen_baseline.json",
+        "source_environment": "QSYS_CATALOG_LEGACY_BASELINE",
+        "target": "/data/qsys/catalog-verify-state/frozen_baseline.json",
+        "owner": "ubuntu",
+        "group": "ubuntu",
+        "mode": "0640"
+      },
+      "dropin_lines": [
+        "[Service]",
+        "ExecStart=",
+        "Environment=QSYS_CATALOG_SOURCE_ROOT=/opt/qsys-data/catalog-verify/current/source",
+        "Environment=QSYS_CATALOG_FROZEN_BASELINE=/data/qsys/catalog-verify-state/frozen_baseline.json",
+        "ExecStart=/usr/bin/flock --exclusive --nonblock /home/ubuntu/qsys/var/warehouse-write.lock /opt/qsys-data/catalog-verify/current/venv/bin/qsys-catalog-verify --warehouse /home/ubuntu/qsys/warehouse --config /home/ubuntu/qsys/config/deploy.local.toml --service-runs /home/ubuntu/qsys/var/service-runs"
+      ]
+    }
+  }
+}
