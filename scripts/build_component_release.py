@@ -16,7 +16,7 @@ from email.parser import BytesParser
 from pathlib import Path
 
 FORMAT = "qsys-component-release"
-VERSION = 2
+VERSION = 3
 SHA = re.compile(r"^[0-9a-f]{40}$")
 COMPONENT_ENTRYPOINTS = {
     "catalog-verify": ("qsys-catalog-verify", "qsys.data.catalog_verify_cli:main"),
@@ -24,8 +24,9 @@ COMPONENT_ENTRYPOINTS = {
 REQUIRED = frozenset({
     "format", "version", "component", "entrypoint", "source_sha", "source_tree",
     "wheel_filename", "wheel_sha256", "wheel_bytes", "pyproject_sha256",
-    "uv_lock_sha256", "ci",
+    "uv_lock_sha256", "ci", "scan_files",
 })
+SCAN_ROOTS = ("src/qsys/data", "src/qsys/strategy")
 
 
 def _sha256(path: Path) -> str:
@@ -38,6 +39,36 @@ def _sha256(path: Path) -> str:
 
 def _git(repo: Path, *args: str, text: bool = True) -> str | bytes:
     return subprocess.check_output(["git", *args], cwd=repo, text=text).strip()
+
+
+def _git_blob(repo: Path, sha: str, relative: str) -> bytes:
+    return subprocess.check_output(["git", "show", f"{sha}:{relative}"], cwd=repo)
+
+
+def _scan_sources(repo: Path, sha: str) -> list[tuple[str, bytes]]:
+    names = str(_git(
+        repo, "ls-tree", "-r", "--name-only", sha, "--", *SCAN_ROOTS,
+    )).splitlines()
+    sources = [
+        (name, _git_blob(repo, sha, name))
+        for name in sorted(names)
+        if name.endswith(".py")
+    ]
+    for root in SCAN_ROOTS:
+        if not any(name.startswith(f"{root}/") for name, _ in sources):
+            raise ValueError(f"component scan source root is empty: {root}")
+    return sources
+
+
+def _scan_records(sources: list[tuple[str, bytes]]) -> list[dict[str, object]]:
+    return [
+        {
+            "path": name,
+            "sha256": hashlib.sha256(content).hexdigest(),
+            "bytes": len(content),
+        }
+        for name, content in sources
+    ]
 
 
 def _require_checkout(repo: Path, sha: str) -> None:
@@ -86,6 +117,11 @@ def build(
     wheel = output / "dist" / wheels[0].name
     shutil.copyfile(wheels[0], wheel)
     command, target = COMPONENT_ENTRYPOINTS[component]
+    sources = _scan_sources(repo, sha)
+    for relative, content in sources:
+        source_target = output / "source" / relative
+        source_target.parent.mkdir(parents=True, exist_ok=True)
+        source_target.write_bytes(content)
     value: dict[str, object] = {
         "format": FORMAT,
         "version": VERSION,
@@ -102,6 +138,7 @@ def build(
         "uv_lock_sha256": hashlib.sha256(
             _git(repo, "show", f"{sha}:uv.lock", text=False)
         ).hexdigest(),
+        "scan_files": _scan_records(sources),
         "ci": {"repository": repository, "run_id": run_id, "run_attempt": run_attempt},
     }
     (output / "release.json").write_text(
@@ -128,6 +165,21 @@ def verify(repo: Path, sha: str, component: str, release: Path) -> dict[str, obj
         raise ValueError("release source SHA mismatch")
     if value["source_tree"] != _git(repo, "rev-parse", f"{sha}^{{tree}}"):
         raise ValueError("release source tree mismatch")
+    expected_sources = _scan_sources(repo, sha)
+    expected_records = _scan_records(expected_sources)
+    if value["scan_files"] != expected_records:
+        raise ValueError("release scan_files mismatch")
+    source_root = release / "source"
+    actual_names = sorted(
+        path.relative_to(source_root).as_posix()
+        for path in source_root.rglob("*") if path.is_file()
+    )
+    expected_names = [name for name, _ in expected_sources]
+    if actual_names != expected_names:
+        raise ValueError("release scan source members mismatch")
+    for relative, expected_content in expected_sources:
+        if (source_root / relative).read_bytes() != expected_content:
+            raise ValueError(f"release scan source mismatch: {relative}")
     wheel_filename = value["wheel_filename"]
     if (
         not isinstance(wheel_filename, str)

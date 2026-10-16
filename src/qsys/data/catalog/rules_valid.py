@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import tokenize
 from dataclasses import asdict, dataclass
@@ -24,9 +25,13 @@ from qsys.data.catalog.checks import (
 )
 from qsys.data.catalog.sources import SOURCES
 
-_REPO_ROOT = Path(__file__).resolve().parents[4]
+_REPO_ROOT = Path(
+    os.environ.get("QSYS_CATALOG_SOURCE_ROOT", Path(__file__).resolve().parents[4])
+)
 _SCAN_ROOTS = [Path("src/qsys/data"), Path("src/qsys/strategy")]
-_FROZEN_BASELINE = Path("artifacts/frozen_baseline.json")
+_FROZEN_BASELINE = Path(
+    os.environ.get("QSYS_CATALOG_FROZEN_BASELINE", "artifacts/frozen_baseline.json")
+)
 _FROZEN_DATASETS = ("paid_daily", "bars_daily")
 _FILL_PATTERNS = re.compile(
     r"\.fill_null\(|\.fillna\(|\bor\s+0(?:\.0+)?\b|\.get\([^)]+,\s*0(?:\.0+)?\s*\)"

@@ -33,7 +33,7 @@ ALLOWED_WINDOWS_COMPONENTS = frozenset({
     "windows-agent", "windows-gateway", "windows-control",
 })
 WINDOWS_COORDINATOR_PATH = "deploy/linux/qsys-windows-deploy-coordinator.py"
-ENTRYPOINT_VERSION = 11
+ENTRYPOINT_VERSION = 12
 ENTRYPOINT_CAPABILITIES = (
     "systemd-apply-v1",
     "systemd-changed-artifacts-v1",
@@ -48,6 +48,7 @@ ENTRYPOINT_CAPABILITIES = (
     "monitor-shadow-command-v1",
     "monitor-research-command-v1",
     "component-release-v1",
+    "component-release-v2",
 )
 FAILURE_POINTS = frozenset({"none", "linux-health", "windows-switch"})
 COMPONENT_RELEASES = {
@@ -508,9 +509,20 @@ def _extract_component_archive(archive_path: Path, destination: Path) -> None:
             name for name in files
             if Path(name).parent == Path("dist") and name.endswith(".whl")
         ]
-        if set(files) != {"release.json", *wheel_members} or len(wheel_members) != 1:
+        source_members = [
+            name for name in files
+            if name.endswith(".py") and (
+                name.startswith("source/src/qsys/data/")
+                or name.startswith("source/src/qsys/strategy/")
+            )
+        ]
+        if (
+            set(files) != {"release.json", *wheel_members, *source_members}
+            or len(wheel_members) != 1
+            or not source_members
+        ):
             raise ValueError(
-                "component artifact must contain exactly release.json and one dist wheel"
+                "component artifact must contain the manifest, one wheel and scan sources"
             )
         if total > COMPONENT_ARCHIVE_LIMIT:
             raise ValueError("component artifact expands beyond the size limit")
@@ -570,6 +582,12 @@ def _stage_component_release(
     if Path(wheel_filename).name != wheel_filename or not wheel_filename.endswith(".whl"):
         raise ValueError("component release wheel filename is invalid")
     wheel_relative = f"dist/{wheel_filename}"
+    source_relatives = sorted(
+        path.relative_to(extracted).as_posix()
+        for path in (extracted / "source").rglob("*") if path.is_file()
+    )
+    if not source_relatives:
+        raise ValueError("component release lacks scan sources")
     if release.exists():
         _verify_component_release(target_repo, sha, component, release)
         if not executable.is_file() or not os.access(executable, os.X_OK):
@@ -581,10 +599,15 @@ def _stage_component_release(
         "-m", "0755", str(release), str(release / "dist"),
     ], cwd=target_repo)
     try:
-        for relative in ("release.json", wheel_relative):
+        for relative in ("release.json", wheel_relative, *source_relatives):
+            target = release / relative
+            _run([
+                "sudo", "-n", "install", "-d", "-o", "ubuntu", "-g", "ubuntu",
+                "-m", "0755", str(target.parent),
+            ], cwd=target_repo)
             _run([
                 "sudo", "-n", "install", "-o", "ubuntu", "-g", "ubuntu",
-                "-m", "0644", str(extracted / relative), str(release / relative),
+                "-m", "0644", str(extracted / relative), str(target),
             ], cwd=target_repo)
         environment = dict(os.environ)
         environment["UV_PROJECT_ENVIRONMENT"] = str(release / "venv")
