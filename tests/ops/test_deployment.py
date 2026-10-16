@@ -1324,6 +1324,8 @@ def test_post_merge_alignment_is_evidence_bound_and_lease_safe() -> None:
     assert "scripts/check_secrets.py" in workflow
     assert "scripts/check_repo_policy.py" in workflow
     assert '--force-with-lease="refs/heads/test:$PR_HEAD"' in workflow
+    assert "actions: write" in workflow
+    assert "gh workflow run ci.yml --ref test" in workflow
 
 
 def test_pr_ci_reuses_valid_tree_evidence_or_runs_full_checks() -> None:
@@ -1391,6 +1393,7 @@ def test_component_workflow_streams_only_a_verified_artifact() -> None:
     assert "push:" not in workflow
     assert "DEPLOY_COMPONENT" in workflow
     assert "qsys-$COMPONENT-$TARGET_SHA" in workflow
+    assert '.event == "push" or .event == "workflow_dispatch"' in workflow
     assert "actions/artifacts/$ARTIFACT_ID/zip" in workflow
     assert "component-deploy --sha $TARGET_SHA" in workflow
     assert "<component.zip" in workflow

@@ -99,8 +99,10 @@ jobs:
           echo "pr_number=$(printf '%s' "$pr_json" | jq -r .number)" >>"$GITHUB_OUTPUT"
 
           ci_run=$(gh api -H 'Accept: application/vnd.github+json' \
-            "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$TARGET_SHA&event=push&per_page=100" \
-            --jq '[.workflow_runs[] | select(.head_branch == "test" and .conclusion == "success")] | max_by(.id)')
+            "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$TARGET_SHA&per_page=100" \
+            --jq '[.workflow_runs[] | select(.head_branch == "test"
+              and (.event == "push" or .event == "workflow_dispatch")
+              and .conclusion == "success")] | max_by(.id)')
           test "$ci_run" != null
           ci_run_id=$(printf '%s' "$ci_run" | jq -r .id)
           artifact_name="qsys-$COMPONENT-$TARGET_SHA"
