@@ -619,6 +619,12 @@ def _stage_component_release(
                 "sudo", "-n", "install", "-o", "ubuntu", "-g", "ubuntu",
                 "-m", "0644", str(extracted / relative), str(target),
             ], cwd=target_repo)
+        # `install -d -o ubuntu` applies ownership to the requested leaf but
+        # can leave automatically-created intermediate parents owned by root.
+        # Normalize only this new release before running unprivileged tooling.
+        _run([
+            "sudo", "-n", "chown", "-R", "ubuntu:ubuntu", str(release),
+        ], cwd=target_repo)
         environment = dict(os.environ)
         environment["UV_PROJECT_ENVIRONMENT"] = str(release / "venv")
         # The node cache may contain root-owned members left by historical
