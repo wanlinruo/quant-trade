@@ -135,7 +135,8 @@ SERVICES: tuple[ServiceSpec, ...] = (
     ServiceSpec(
         "service-checks", "每日服务质检", "timer", "Linux", "qsys-service-checks",
         "交易日 20:00",
-        ("仓库只读", "运行记录"), ("var/service-runs（只写质检结果）",),
+        ("仓库只读", "运行记录"),
+        ("var/service-runs/service-checks（只写质检结果）",),
         "检查上面每个任务当天该写的表是否到齐、数量是否正确，结果挂回各任务的看板格子",
         due="21:00", max_runtime=timedelta(minutes=30),
     ),
@@ -400,16 +401,34 @@ def run_session(run: dict) -> str:
 
 
 def load_runs(root: Path, start: date, end: date) -> list[dict]:
-    """读 [start, end] 自然日内开始的运行记录，按开始时间排序。坏文件跳过并记日志。"""
+    """读新旧运行记录布局并按 ``run_id`` 与开始时间组成的 identity 去重。
+
+    旧任务直接写 ``<root>/<YYYY>/<MM>/<DD>``。独立组件只拥有自己的
+    ``<root>/<service>/<YYYY>/<MM>/<DD>`` 子树；读者在迁移窗口同时读取两种
+    布局，复制历史记录也不会让看板重复计数。
+    """
     runs: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    roots = (Path(root), *(
+        Path(root) / service for service in SERVICE_BY_ID
+        if (Path(root) / service).is_dir()
+    ))
     day = start
     while day <= end:
-        folder = Path(root) / f"{day:%Y}" / f"{day:%m}" / f"{day:%d}"
-        for path in sorted(folder.glob("*.json")) if folder.is_dir() else ():
-            try:
-                runs.append(json.loads(path.read_text(encoding="utf-8")))
-            except (OSError, ValueError) as exc:
-                log.warning("service_run.unreadable", path=str(path), error=str(exc))
+        for current_root in roots:
+            folder = current_root / f"{day:%Y}" / f"{day:%m}" / f"{day:%d}"
+            for path in sorted(folder.glob("*.json")) if folder.is_dir() else ():
+                try:
+                    run = json.loads(path.read_text(encoding="utf-8"))
+                    identity = (
+                        str(run.get("run_id") or path.resolve()),
+                        str(run.get("started_at") or ""),
+                    )
+                    if identity not in seen:
+                        seen.add(identity)
+                        runs.append(run)
+                except (OSError, ValueError) as exc:
+                    log.warning("service_run.unreadable", path=str(path), error=str(exc))
         day += timedelta(days=1)
     return sorted(runs, key=lambda r: r.get("started_at") or "")
 

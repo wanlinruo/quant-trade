@@ -38,6 +38,49 @@
         "Environment=QSYS_CATALOG_FROZEN_BASELINE=/data/qsys/catalog-verify-state/frozen_baseline.json",
         "ExecStart=/usr/bin/flock --exclusive --nonblock /home/ubuntu/qsys/var/warehouse-write.lock /opt/qsys-data/catalog-verify/current/venv/bin/qsys-catalog-verify --warehouse /home/ubuntu/qsys/warehouse --config /home/ubuntu/qsys/config/deploy.local.toml --service-runs /home/ubuntu/qsys/var/service-runs"
       ]
+    },
+    "service-checks": {
+      "entrypoint": {
+        "command": "qsys-service-checks",
+        "target": "qsys.ops.service_checks_cli:main"
+      },
+      "scan_roots": [
+        "src/qsys/data",
+        "src/qsys/live",
+        "src/qsys/ops",
+        "src/qsys/paper"
+      ],
+      "release_root": "/opt/qsys/components/service-checks/releases",
+      "current": "/opt/qsys/components/service-checks/current",
+      "executable": "venv/bin/qsys-service-checks",
+      "unit": "qsys-service-checks.service",
+      "dropin": "/etc/systemd/system/qsys-service-checks.service.d/zz-isolated-release.conf",
+      "state_directories": [
+        {
+          "path": "/home/ubuntu/qsys/var/service-runs/service-checks",
+          "owner": "qsys-service-checks",
+          "group": "qsys-service-checks",
+          "mode": "0750"
+        },
+        {
+          "path": "/home/ubuntu/qsys/var/alerts/service-checks",
+          "owner": "qsys-service-checks",
+          "group": "qsys-service-checks",
+          "mode": "0750"
+        }
+      ],
+      "seed": null,
+      "dropin_lines": [
+        "[Service]",
+        "User=qsys-service-checks",
+        "Group=qsys-service-checks",
+        "WorkingDirectory=/",
+        "ExecStart=",
+        "ReadWritePaths=",
+        "ReadWritePaths=/home/ubuntu/qsys/var/service-runs/service-checks",
+        "ReadWritePaths=/home/ubuntu/qsys/var/alerts/service-checks",
+        "ExecStart=/opt/qsys/components/service-checks/current/venv/bin/qsys-service-checks --warehouse /home/ubuntu/qsys/warehouse --config /home/ubuntu/qsys/config/deploy.local.toml --service-runs /home/ubuntu/qsys/var/service-runs --record-root /home/ubuntu/qsys/var/service-runs/service-checks --alert-ledger /home/ubuntu/qsys/var/alerts/service-checks --shadow-state /home/ubuntu/qsys/var/shadow-state.sqlite3 --live-state /home/ubuntu/qsys/var/live-state.sqlite3 --workbench /home/ubuntu/qsys/var/workbench/workbench.sqlite3 --storage-base /data/qsys --scratch /home/ubuntu/scratch --tls-site wanlinruo.cn --tls-port 8443"
+      ]
     }
   }
 }

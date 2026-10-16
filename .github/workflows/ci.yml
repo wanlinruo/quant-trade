@@ -196,6 +196,19 @@ jobs:
           --dist dist --output catalog-verify-release
           --repository "$SOURCE_REPOSITORY"
           --run-id "$SOURCE_RUN_ID" --run-attempt "$SOURCE_RUN_ATTEMPT"
+      - name: Build service checks release manifest
+        if: github.event_name != 'pull_request'
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+          SOURCE_REPOSITORY: ${{ github.repository }}
+          SOURCE_RUN_ID: ${{ github.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: >-
+          python scripts/build_component_release.py build
+          --sha "$SOURCE_SHA" --component service-checks
+          --dist dist --output service-checks-release
+          --repository "$SOURCE_REPOSITORY"
+          --run-id "$SOURCE_RUN_ID" --run-attempt "$SOURCE_RUN_ATTEMPT"
       - name: Upload immutable Research Runner release
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -210,6 +223,14 @@ jobs:
         with:
           name: qsys-catalog-verify-${{ github.sha }}
           path: catalog-verify-release
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload immutable service checks release
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: qsys-service-checks-${{ github.sha }}
+          path: service-checks-release
           if-no-files-found: error
           retention-days: 30
       - name: Reuse package evidence for the identical tree
