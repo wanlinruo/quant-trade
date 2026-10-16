@@ -15,20 +15,18 @@ import zipfile
 from email.parser import BytesParser
 from pathlib import Path
 
-if __package__:
-    from scripts.component_release_config import load_component_releases
-else:
-    from component_release_config import load_component_releases
-
 FORMAT = "qsys-component-release"
-VERSION = 4
+VERSION = 3
 SHA = re.compile(r"^[0-9a-f]{40}$")
+COMPONENT_ENTRYPOINTS = {
+    "catalog-verify": ("qsys-catalog-verify", "qsys.data.catalog_verify_cli:main"),
+}
 REQUIRED = frozenset({
     "format", "version", "component", "entrypoint", "source_sha", "source_tree",
     "wheel_filename", "wheel_sha256", "wheel_bytes", "pyproject_sha256",
     "uv_lock_sha256", "ci", "scan_files",
-    "component_spec_sha256",
 })
+SCAN_ROOTS = ("src/qsys/data", "src/qsys/strategy")
 
 
 def _sha256(path: Path) -> str:
@@ -39,13 +37,6 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _spec_sha256(spec: dict[str, object]) -> str:
-    encoded = json.dumps(
-        spec, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
-    ).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
-
-
 def _git(repo: Path, *args: str, text: bool = True) -> str | bytes:
     return subprocess.check_output(["git", *args], cwd=repo, text=text).strip()
 
@@ -54,18 +45,16 @@ def _git_blob(repo: Path, sha: str, relative: str) -> bytes:
     return subprocess.check_output(["git", "show", f"{sha}:{relative}"], cwd=repo)
 
 
-def _scan_sources(
-    repo: Path, sha: str, scan_roots: tuple[str, ...],
-) -> list[tuple[str, bytes]]:
+def _scan_sources(repo: Path, sha: str) -> list[tuple[str, bytes]]:
     names = str(_git(
-        repo, "ls-tree", "-r", "--name-only", sha, "--", *scan_roots,
+        repo, "ls-tree", "-r", "--name-only", sha, "--", *SCAN_ROOTS,
     )).splitlines()
     sources = [
         (name, _git_blob(repo, sha, name))
         for name in sorted(names)
         if name.endswith(".py")
     ]
-    for root in scan_roots:
+    for root in SCAN_ROOTS:
         if not any(name.startswith(f"{root}/") for name, _ in sources):
             raise ValueError(f"component scan source root is empty: {root}")
     return sources
@@ -91,9 +80,10 @@ def _require_checkout(repo: Path, sha: str) -> None:
         raise ValueError("release checkout has tracked modifications")
 
 
-def _validate_wheel(path: Path, command: str, target: str) -> None:
+def _validate_wheel(path: Path, component: str) -> None:
     if path.is_symlink() or not path.is_file():
         raise ValueError("wheel must be a regular non-symlink file")
+    command, target = COMPONENT_ENTRYPOINTS[component]
     with zipfile.ZipFile(path) as archive:
         metadata = [name for name in archive.namelist() if name.endswith(".dist-info/METADATA")]
         entries = [name for name in archive.namelist()
@@ -115,23 +105,19 @@ def build(
 ) -> dict[str, object]:
     repo = repo.resolve(strict=True)
     _require_checkout(repo, sha)
-    components = load_component_releases(repo)
-    if component not in components:
+    if component not in COMPONENT_ENTRYPOINTS:
         raise ValueError(f"unsupported component: {component}")
-    spec = components[component]
-    command = str(spec["entrypoint"]["command"])
-    target = str(spec["entrypoint"]["target"])
-    scan_roots = tuple(str(root) for root in spec["scan_roots"])
     wheels = sorted(dist.glob("qsys-*.whl"))
     if len(wheels) != 1:
         raise ValueError("dist must contain exactly one qsys wheel")
-    _validate_wheel(wheels[0], command, target)
+    _validate_wheel(wheels[0], component)
     if output.exists() and any(output.iterdir()):
         raise ValueError("release output directory must be empty")
     (output / "dist").mkdir(parents=True, exist_ok=True)
     wheel = output / "dist" / wheels[0].name
     shutil.copyfile(wheels[0], wheel)
-    sources = _scan_sources(repo, sha, scan_roots)
+    command, target = COMPONENT_ENTRYPOINTS[component]
+    sources = _scan_sources(repo, sha)
     for relative, content in sources:
         source_target = output / "source" / relative
         source_target.parent.mkdir(parents=True, exist_ok=True)
@@ -141,7 +127,6 @@ def build(
         "version": VERSION,
         "component": component,
         "entrypoint": {"command": command, "target": target},
-        "component_spec_sha256": _spec_sha256(spec),
         "source_sha": sha,
         "source_tree": _git(repo, "rev-parse", f"{sha}^{{tree}}"),
         "wheel_filename": wheel.name,
@@ -166,27 +151,21 @@ def build(
 def verify(repo: Path, sha: str, component: str, release: Path) -> dict[str, object]:
     repo = repo.resolve(strict=True)
     _require_checkout(repo, sha)
-    components = load_component_releases(repo)
-    if component not in components:
+    if component not in COMPONENT_ENTRYPOINTS:
         raise ValueError(f"unsupported component: {component}")
-    spec = components[component]
-    command = str(spec["entrypoint"]["command"])
-    target = str(spec["entrypoint"]["target"])
-    scan_roots = tuple(str(root) for root in spec["scan_roots"])
     value = json.loads((release / "release.json").read_text(encoding="utf-8"))
     if set(value) != REQUIRED or value["format"] != FORMAT or value["version"] != VERSION:
         raise ValueError("release manifest fields or version are invalid")
+    command, target = COMPONENT_ENTRYPOINTS[component]
     if value["component"] != component:
         raise ValueError("release component mismatch")
     if value["entrypoint"] != {"command": command, "target": target}:
         raise ValueError("release entrypoint mismatch")
-    if value["component_spec_sha256"] != _spec_sha256(spec):
-        raise ValueError("release component specification mismatch")
     if value["source_sha"] != sha:
         raise ValueError("release source SHA mismatch")
     if value["source_tree"] != _git(repo, "rev-parse", f"{sha}^{{tree}}"):
         raise ValueError("release source tree mismatch")
-    expected_sources = _scan_sources(repo, sha, scan_roots)
+    expected_sources = _scan_sources(repo, sha)
     expected_records = _scan_records(expected_sources)
     if value["scan_files"] != expected_records:
         raise ValueError("release scan_files mismatch")
@@ -210,7 +189,7 @@ def verify(repo: Path, sha: str, component: str, release: Path) -> dict[str, obj
     ):
         raise ValueError("release wheel_filename is invalid")
     wheel = release / "dist" / wheel_filename
-    _validate_wheel(wheel, command, target)
+    _validate_wheel(wheel, component)
     expected = {
         "wheel_sha256": _sha256(wheel),
         "wheel_bytes": wheel.stat().st_size,
@@ -238,7 +217,7 @@ def main(argv: list[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     create = commands.add_parser("build")
     create.add_argument("--sha", required=True)
-    create.add_argument("--component", required=True)
+    create.add_argument("--component", required=True, choices=sorted(COMPONENT_ENTRYPOINTS))
     create.add_argument("--dist", type=Path, required=True)
     create.add_argument("--output", type=Path, required=True)
     create.add_argument("--repository", required=True)
@@ -246,7 +225,7 @@ def main(argv: list[str] | None = None) -> int:
     create.add_argument("--run-attempt", required=True)
     check = commands.add_parser("verify")
     check.add_argument("--sha", required=True)
-    check.add_argument("--component", required=True)
+    check.add_argument("--component", required=True, choices=sorted(COMPONENT_ENTRYPOINTS))
     check.add_argument("--release", type=Path, required=True)
     args = parser.parse_args(argv)
     try:

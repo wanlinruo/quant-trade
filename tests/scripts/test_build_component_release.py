@@ -22,11 +22,6 @@ def _repo(tmp_path: Path) -> tuple[Path, str]:
     (repo / "src/qsys/strategy/example.py").write_text(
         "STRATEGY = 1\n", encoding="utf-8",
     )
-    (repo / "deploy").mkdir()
-    (repo / "deploy/component-releases.json").write_text(
-        Path("deploy/component-releases.json").read_text(encoding="utf-8"),
-        encoding="utf-8",
-    )
     subprocess.run(["git", "init", "-b", "test"], cwd=repo, check=True,
                    capture_output=True)
     subprocess.run(["git", "add", "."], cwd=repo, check=True)
@@ -63,8 +58,7 @@ def test_catalog_release_binds_entrypoint_wheel_and_tree(tmp_path: Path) -> None
 
     assert value["component"] == "catalog-verify"
     assert value["source_sha"] == sha
-    assert value["version"] == 4
-    assert len(value["component_spec_sha256"]) == 64
+    assert value["version"] == 3
     assert value["wheel_filename"] == wheel.name
     assert value["wheel_sha256"] == hashlib.sha256(wheel.read_bytes()).hexdigest()
     assert [item["path"] for item in value["scan_files"]] == [
@@ -100,12 +94,3 @@ def test_catalog_release_rejects_wrong_entrypoint_and_tampering(tmp_path: Path) 
     source.write_text("DATA = 2\n", encoding="utf-8")
     with pytest.raises(ValueError, match="scan source mismatch"):
         verify(repo, sha, "catalog-verify", tmp_path / "source-release")
-
-    spec_release = tmp_path / "spec-release"
-    build(repo, sha, "catalog-verify", wheel.parent, spec_release,
-          repository="owner/repo", run_id="123", run_attempt="1")
-    manifest = json.loads((spec_release / "release.json").read_text(encoding="utf-8"))
-    manifest["component_spec_sha256"] = "0" * 64
-    (spec_release / "release.json").write_text(json.dumps(manifest), encoding="utf-8")
-    with pytest.raises(ValueError, match="component specification mismatch"):
-        verify(repo, sha, "catalog-verify", spec_release)

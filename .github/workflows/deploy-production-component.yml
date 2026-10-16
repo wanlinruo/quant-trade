@@ -122,8 +122,8 @@ jobs:
           state = json.loads(os.environ["NODE_JSON"])
           if state["branch"] != "main" or state["dirty"] or not state["healthy"]:
               raise SystemExit(f"production node is not deployable: {state}")
-          required = {"component-release-v3"}
-          if state.get("entrypoint_version", 0) < 13 or not required <= set(state.get("capabilities", [])):
+          required = {"component-release-v2"}
+          if state.get("entrypoint_version", 0) < 12 or not required <= set(state.get("capabilities", [])):
               raise SystemExit("production entrypoint lacks component release capability")
           print(f'production_sha={state["sha"]}')
           PY

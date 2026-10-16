@@ -241,33 +241,26 @@ def test_test_research_runner_is_staged_inactive_with_test_only_paths() -> None:
 
 
 def test_catalog_verifier_uses_an_independent_immutable_release() -> None:
-    wrapper = Path("scripts/install_catalog_verify_release.sh").read_text(
+    installer = Path("scripts/install_catalog_verify_release.sh").read_text(
         encoding="utf-8",
     )
-    installer = Path("scripts/install_component_release.py").read_text(encoding="utf-8")
-    specs = Path("deploy/component-releases.json").read_text(encoding="utf-8")
 
-    assert "install_component_release.py" in wrapper
-    assert "--component catalog-verify" in wrapper
-    assert "/opt/qsys-data/catalog-verify/current/venv/bin/qsys-catalog-verify" in specs
-    assert "/opt/qsys-data/releases/catalog-verify" in specs
-    assert "QSYS_CATALOG_SOURCE_ROOT=/opt/qsys-data/catalog-verify/current/source" in specs
-    assert "QSYS_CATALOG_FROZEN_BASELINE=/data/qsys/catalog-verify-state/frozen_baseline.json" in specs
-    assert "QSYS_CATALOG_LEGACY_BASELINE" in specs
-    assert "refusing to initialize component state without seed" in installer
-    assert "zz-isolated-release.conf" in specs
-    assert "refusing to switch component while its unit is active" in installer
-    assert "_writable_by_group_or_other" in installer
-    assert "_restore(current, previous, dropin, previous_dropin)" in installer
+    assert "/opt/qsys-data/catalog-verify/current/venv/bin/qsys-catalog-verify" in installer
+    assert "/opt/qsys-data/releases/catalog-verify/$code_sha" in installer
+    assert "build_component_release.py" in installer
+    assert "QSYS_CATALOG_SOURCE_ROOT=/opt/qsys-data/catalog-verify/current/source" in installer
+    assert "QSYS_CATALOG_FROZEN_BASELINE=/data/qsys/catalog-verify-state/frozen_baseline.json" in installer
+    assert "QSYS_CATALOG_LEGACY_BASELINE" in installer
+    assert "refusing to initialize frozen truth without the existing baseline" in installer
+    assert "zz-isolated-release.conf" in installer
+    assert "refusing to switch catalog verifier while a verification is running" in installer
+    assert 'find "$release_root" -xdev ! -type l -perm /022' in installer
     assert "systemctl restart qsys-live-core.service" not in installer
     assert "git reset" not in installer
 
     plan = DeploymentManifest.load(MANIFEST).plan([
         "scripts/build_component_release.py",
-        "scripts/component_release_config.py",
-        "scripts/install_component_release.py",
         "scripts/install_catalog_verify_release.sh",
-        "deploy/component-releases.json",
     ], environment="production")
     assert plan.components == ()
     assert plan.unknown_paths == ()
@@ -275,8 +268,8 @@ def test_catalog_verifier_uses_an_independent_immutable_release() -> None:
     entrypoint = Path(
         "deploy/linux/qsys-production-deploy-entrypoint.py"
     ).read_text(encoding="utf-8")
-    assert 'installer_environment[str(seed["source_environment"])]' in entrypoint
-    assert 'repo / str(seed["source"])' in entrypoint
+    assert 'installer_environment["QSYS_CATALOG_LEGACY_BASELINE"]' in entrypoint
+    assert 'repo / "artifacts/frozen_baseline.json"' in entrypoint
     assert "env=installer_environment" in entrypoint
 
 
@@ -690,7 +683,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
 
     state = entrypoint.status({"production_repo": str(tmp_path)})
 
-    assert state["entrypoint_version"] == 13
+    assert state["entrypoint_version"] == 12
     assert set(state["capabilities"]) == {
         "systemd-apply-v1", "systemd-changed-artifacts-v1",
         "systemd-preview-v1", "systemd-rollback-v1",
@@ -703,7 +696,6 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
         "monitor-research-command-v1",
         "component-release-v1",
         "component-release-v2",
-        "component-release-v3",
     }
 
 
@@ -717,7 +709,7 @@ def test_component_artifact_extraction_is_exact_and_rejects_traversal(tmp_path) 
         output.writestr("source/src/qsys/strategy/example.py", b"STRATEGY = 1\n")
 
     destination = tmp_path / "release"
-    entrypoint._extract_component_archive(archive, destination, "catalog-verify")
+    entrypoint._extract_component_archive(archive, destination)
     assert (destination / "release.json").read_text() == "{}"
     assert (destination / "dist/qsys-0.1.0-py3-none-any.whl").read_bytes() == b"wheel"
     assert (destination / "source/src/qsys/data/example.py").is_file()
@@ -729,65 +721,7 @@ def test_component_artifact_extraction_is_exact_and_rejects_traversal(tmp_path) 
         output.writestr("source/src/qsys/data/example.py", b"DATA = 1\n")
         output.writestr("../escape", b"bad")
     with pytest.raises(ValueError, match="unsafe path"):
-        entrypoint._extract_component_archive(
-            unsafe, tmp_path / "unsafe-release", "catalog-verify",
-        )
-
-    wrong_root = tmp_path / "wrong-root.zip"
-    with zipfile.ZipFile(wrong_root, "w") as output:
-        output.writestr("release.json", "{}")
-        output.writestr("dist/qsys-0.1.0-py3-none-any.whl", b"wheel")
-        output.writestr("source/src/qsys/web/example.py", b"WEB = 1\n")
-    with pytest.raises(ValueError, match="manifest, one wheel and scan sources"):
-        entrypoint._extract_component_archive(
-            wrong_root, tmp_path / "wrong-root-release", "catalog-verify",
-        )
-
-
-def test_component_verifier_rejects_target_whitelist_drift(
-    monkeypatch, tmp_path,
-) -> None:
-    entrypoint = _production_entrypoint_module()
-    (tmp_path / "deploy").mkdir()
-    value = json.loads(Path("deploy/component-releases.json").read_text(encoding="utf-8"))
-    value["components"]["catalog-verify"]["executable"] = "venv/bin/tampered"
-    (tmp_path / "deploy/component-releases.json").write_text(
-        json.dumps(value), encoding="utf-8",
-    )
-    monkeypatch.setattr(
-        entrypoint, "_run",
-        lambda *args, **kwargs: pytest.fail("verification command must not run"),
-    )
-
-    with pytest.raises(ValueError, match="differs from installed whitelist"):
-        entrypoint._verify_component_release(
-            tmp_path, "a" * 40, "catalog-verify", tmp_path / "release",
-        )
-
-
-def test_component_rollback_uses_whitelisted_dropin(monkeypatch, tmp_path) -> None:
-    entrypoint = _production_entrypoint_module()
-    dropin = tmp_path / "systemd/example.conf"
-    current = tmp_path / "component/current"
-    monkeypatch.setitem(entrypoint.COMPONENT_RELEASES, "example", {
-        "release_root": str(tmp_path / "releases"),
-        "current": str(current),
-        "dropin": str(dropin),
-    })
-    commands = []
-
-    def fake_run(command, **kwargs):
-        commands.append([str(item) for item in command])
-        return subprocess.CompletedProcess(command, 0, "", "")
-
-    monkeypatch.setattr(entrypoint, "_run", fake_run)
-    monkeypatch.setattr(entrypoint, "_current_component_sha", lambda component: "uninstalled")
-
-    assert entrypoint._rollback_component("example", "uninstalled", tmp_path) is True
-    assert [
-        "sudo", "-n", "rm", "-f", "--", str(dropin),
-    ] in commands
-    assert not any("qsys-catalog-verify" in item for command in commands for item in command)
+        entrypoint._extract_component_archive(unsafe, tmp_path / "unsafe-release")
 
 
 def test_component_stage_installs_wheel_with_its_standard_filename(
@@ -808,7 +742,7 @@ def test_component_stage_installs_wheel_with_its_standard_filename(
         "DATA = 1\n", encoding="utf-8",
     )
     monkeypatch.setitem(entrypoint.COMPONENT_RELEASES, "catalog-verify", {
-        "release_root": releases,
+        "root": releases,
         "current": tmp_path / "current",
         "executable": "venv/bin/qsys-catalog-verify",
         "installer": "unused",
@@ -919,65 +853,6 @@ def test_component_deploy_dry_run_proves_live_without_reading_artifact(
     result = json.loads(capsys.readouterr().out)
     assert result["live_restart"] is False
     assert result["live_identity"]["pid"] == "42"
-
-
-def test_component_activation_failure_rolls_back_and_preserves_live_identity(
-    monkeypatch, tmp_path, capsys,
-) -> None:
-    entrypoint = _production_entrypoint_module()
-    target = "a" * 40
-    production = "b" * 40
-    previous = "c" * 40
-    live = {"pid": "42", "started_monotonic": "99", "repo_sha": production}
-    records = []
-    monkeypatch.setattr(entrypoint, "_branch", lambda repo: "main")
-    monkeypatch.setattr(entrypoint, "_dirty", lambda repo: False)
-    monkeypatch.setattr(entrypoint, "_head", lambda repo: production)
-    monkeypatch.setattr(entrypoint, "_fetch_and_validate_target", lambda repo, sha: "d" * 40)
-    monkeypatch.setattr(entrypoint, "_successful_test_run", lambda config, tree: "test-1")
-    monkeypatch.setattr(entrypoint, "_current_component_sha", lambda component: previous)
-    monkeypatch.setattr(entrypoint, "_live_identity", lambda repo: dict(live))
-    monkeypatch.setattr(entrypoint, "_live_preflight", lambda repo: None)
-    monkeypatch.setattr(entrypoint, "_fingerprints", lambda config, repo: {"linux": "f"})
-    monkeypatch.setattr(
-        entrypoint, "_receive_component_archive",
-        lambda digest, root: root / "component.zip",
-    )
-    monkeypatch.setattr(entrypoint, "_extract_component_archive", lambda *args: None)
-    monkeypatch.setattr(entrypoint, "_verify_component_release", lambda *args: None)
-    monkeypatch.setattr(entrypoint, "_stage_component_release", lambda *args: tmp_path / target)
-    monkeypatch.setattr(entrypoint, "_rollback_component", lambda *args: True)
-
-    def fake_run(command, **kwargs):
-        if entrypoint.GENERIC_COMPONENT_INSTALLER in [str(item) for item in command]:
-            raise subprocess.CalledProcessError(1, command, stderr="activation failed")
-        return subprocess.CompletedProcess(command, 0, "", "")
-
-    def write_record(config, run_id, record):
-        records.append(record)
-        return tmp_path / "record.json"
-
-    monkeypatch.setattr(entrypoint, "_run", fake_run)
-    monkeypatch.setattr(entrypoint, "_write_record", write_record)
-    args = argparse.Namespace(
-        sha=target, component="catalog-verify", artifact_sha256="e" * 64,
-        run_id="release-rollback", actor="maintainer", repository="owner/repo",
-        pr_number=366, dry_run=False,
-    )
-
-    assert entrypoint.component_deploy(
-        args, {
-            "production_repo": str(tmp_path), "test_record_root": str(tmp_path),
-            "production_record_root": str(tmp_path / "records"),
-        },
-    ) == 1
-
-    assert records[0]["status"] == "rolled_back"
-    assert records[0]["before"] == records[0]["after"]
-    assert records[0]["rollback_targets"] == {"catalog-verify": previous}
-    result = json.loads(capsys.readouterr().out)
-    assert result["status"] == "rolled_back"
-    assert "activation failed" in result["error"]
 
 
 def test_windows_plans_are_merged_from_each_windows_baseline() -> None:
@@ -1567,8 +1442,6 @@ def test_component_workflow_streams_only_a_verified_artifact() -> None:
     assert ".before.linux == .after.linux" in workflow
     assert "PRODUCTION_DEPLOY_SSH_KEY" in workflow
     assert "cancel-in-progress: false" in workflow
-    assert 'required = {"component-release-v3"}' in workflow
-    assert 'entrypoint_version", 0) < 13' in workflow
 
 
 def test_test_research_workflow_streams_ci_artifact_without_activation() -> None:
@@ -1612,14 +1485,6 @@ def test_production_entrypoint_installer_preserves_bootstrap_backup() -> None:
 
     assert "/data/qsys/var-deployments/bootstrap-backups" in installer
     assert "cp -p" in installer
-    assert "/etc/qsys/component-releases.json" in installer
-    assert "deploy/component-releases.json" in installer
-    assert installer.index("deploy/linux/production-deployment-entrypoint.json") < installer.index(
-        "deploy/linux/qsys-production-deploy-entrypoint.py"
-    )
-    assert installer.index("deploy/component-releases.json") < installer.index(
-        "deploy/linux/qsys-production-deploy-entrypoint.py"
-    )
 
 
 def test_windows_control_targets_both_independent_apps() -> None:
