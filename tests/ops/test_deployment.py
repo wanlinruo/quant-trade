@@ -189,6 +189,7 @@ def test_research_runner_unit_enforces_identity_resources_and_denials() -> None:
     assert "User=qsys-research" in unit
     assert "Group=qsys-research" in unit
     assert "ConditionPathExists=/etc/qsys/research-runner.activation-approved" in unit
+    assert "ExecStart=/usr/bin/env /opt/qsys-research/current/venv/bin/qsys-research-runner" in unit
     assert "MemoryHigh=3G" in unit
     assert "MemoryMax=4G" in unit and "--memory-max-mb 4096" in unit
     assert "MemorySwapMax=0" in unit
