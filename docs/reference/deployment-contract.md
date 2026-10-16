@@ -127,8 +127,9 @@ SSH stdin 交给 `component-deploy`；节点拒绝额外文件、路径穿越、
 seed 与最终 systemd 命令统一来自 `deploy/component-releases.json` 静态白名单。固定生产入口安装时
 把同一文件以 root-owned 0644 放到 `/etc/qsys/component-releases.json`；待发布 SHA 中的规格必须
 与已安装副本逐项相同，否则在 stage/activate 前失败关闭。artifact 不能提供路径、命令或新增组件。
-白名单当前允许已投产的 `catalog-verify` 与待迁移的 `service-checks`。新增组件必须先单独
-升级固定入口与 root-owned 白名单；代码合入本身不授权生产激活。
+白名单当前允许已投产的 `catalog-verify`，以及待迁移的 `service-checks`、
+`storage-report`。新增组件必须先单独升级固定入口与 root-owned 白名单；代码合入本身
+不授权生产激活。
 
 通用 installer 在切换前验证 manifest、规格指纹、wheel、源码成员、权限、unit inactive 和 seed；
 `current` 与 drop-in 均采用临时目标后原子替换。activation 后若 drop-in 安装、daemon-reload 或
@@ -143,6 +144,12 @@ installed→previous 或 first-install→uninstalled 回滚，并验证 Live Cor
 公共 reader 同时读取旧的日期直属布局与新的组件命名空间，并按 run identity 去重，因此
 Web 和 daily digest 可跨迁移窗口工作。生产账号/目录预置、v14 固定入口升级和首次激活必须
 另行授权；本阶段只交付制品、契约与测试证据。
+
+`storage-report` 随后采用同一边界：wheel 入口为 `qsys-storage-report`，release/current
+位于 `/opt/qsys/components/storage-report/{releases/<SHA>,current}`。独立账号只写
+`/home/ubuntu/qsys/var/storage-history`；`/data/qsys` 与 `/home/ubuntu/scratch` 继续只读，
+且工具仍只生成容量快照，不删除或移动任何内容。生产账号/目录权限审计、v15 固定入口升级
+和首次激活必须另行授权。
 
 ### 2026-10-16 catalog 组件发布复盘与固定约束
 

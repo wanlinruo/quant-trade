@@ -312,6 +312,42 @@ def test_service_checks_component_has_an_isolated_release_and_state_boundary() -
     assert "scripts/service_checks.py" not in dropin
 
 
+def test_storage_report_component_has_a_read_only_release_boundary() -> None:
+    specs = json.loads(Path("deploy/component-releases.json").read_text(encoding="utf-8"))
+    storage = specs["components"]["storage-report"]
+
+    assert storage["entrypoint"] == {
+        "command": "qsys-storage-report",
+        "target": "qsys.ops.storage_report_cli:main",
+    }
+    assert storage["scan_roots"] == ["src/qsys/ops"]
+    assert storage["release_root"] == "/opt/qsys/components/storage-report/releases"
+    assert storage["current"] == "/opt/qsys/components/storage-report/current"
+    assert storage["unit"] == "qsys-storage-report.service"
+    assert storage["state_directories"] == [{
+        "path": "/home/ubuntu/qsys/var/storage-history",
+        "owner": "qsys-storage-report", "group": "qsys-storage-report", "mode": "0750",
+    }]
+    assert storage["dropin_lines"][:-1] == [
+        "[Service]",
+        "User=qsys-storage-report",
+        "Group=qsys-storage-report",
+        "WorkingDirectory=/",
+        "ExecStart=",
+        "ReadWritePaths=",
+        "ReadWritePaths=/home/ubuntu/qsys/var/storage-history",
+    ]
+    command = storage["dropin_lines"][-1]
+    assert command.startswith(
+        "ExecStart=/opt/qsys/components/storage-report/current/venv/bin/qsys-storage-report "
+    )
+    assert "--base /data/qsys" in command
+    assert "--scratch /home/ubuntu/scratch" in command
+    assert "--history-root /home/ubuntu/qsys/var/storage-history" in command
+    assert "/home/ubuntu/qsys/.venv" not in command
+    assert "scripts/storage_report.py" not in command
+
+
 def test_shared_redis_change_targets_both_nodes() -> None:
     plan = DeploymentManifest.load(MANIFEST).plan(
         ["src/qsys/live/redis_transport.py"], environment="production",
@@ -722,7 +758,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
 
     state = entrypoint.status({"production_repo": str(tmp_path)})
 
-    assert state["entrypoint_version"] == 14
+    assert state["entrypoint_version"] == 15
     assert set(state["capabilities"]) == {
         "systemd-apply-v1", "systemd-changed-artifacts-v1",
         "systemd-preview-v1", "systemd-rollback-v1",
@@ -737,6 +773,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
         "component-release-v2",
         "component-release-v3",
         "component-release-v4",
+        "component-release-v5",
     }
 
 
@@ -1600,9 +1637,9 @@ def test_component_workflow_streams_only_a_verified_artifact() -> None:
     assert ".before.linux == .after.linux" in workflow
     assert "PRODUCTION_DEPLOY_SSH_KEY" in workflow
     assert "cancel-in-progress: false" in workflow
-    assert "catalog-verify|service-checks" in workflow
-    assert 'required = {"component-release-v4"}' in workflow
-    assert 'entrypoint_version", 0) < 14' in workflow
+    assert "catalog-verify|service-checks|storage-report" in workflow
+    assert 'required = {"component-release-v5"}' in workflow
+    assert 'entrypoint_version", 0) < 15' in workflow
 
 
 def test_test_research_workflow_streams_ci_artifact_without_activation() -> None:

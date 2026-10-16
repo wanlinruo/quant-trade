@@ -81,6 +81,39 @@
         "ReadWritePaths=/home/ubuntu/qsys/var/alerts/service-checks",
         "ExecStart=/opt/qsys/components/service-checks/current/venv/bin/qsys-service-checks --warehouse /home/ubuntu/qsys/warehouse --config /home/ubuntu/qsys/config/deploy.local.toml --service-runs /home/ubuntu/qsys/var/service-runs --record-root /home/ubuntu/qsys/var/service-runs/service-checks --alert-ledger /home/ubuntu/qsys/var/alerts/service-checks --shadow-state /home/ubuntu/qsys/var/shadow-state.sqlite3 --live-state /home/ubuntu/qsys/var/live-state.sqlite3 --workbench /home/ubuntu/qsys/var/workbench/workbench.sqlite3 --storage-base /data/qsys --scratch /home/ubuntu/scratch --tls-site wanlinruo.cn --tls-port 8443"
       ]
+    },
+    "storage-report": {
+      "entrypoint": {
+        "command": "qsys-storage-report",
+        "target": "qsys.ops.storage_report_cli:main"
+      },
+      "scan_roots": [
+        "src/qsys/ops"
+      ],
+      "release_root": "/opt/qsys/components/storage-report/releases",
+      "current": "/opt/qsys/components/storage-report/current",
+      "executable": "venv/bin/qsys-storage-report",
+      "unit": "qsys-storage-report.service",
+      "dropin": "/etc/systemd/system/qsys-storage-report.service.d/zz-isolated-release.conf",
+      "state_directories": [
+        {
+          "path": "/home/ubuntu/qsys/var/storage-history",
+          "owner": "qsys-storage-report",
+          "group": "qsys-storage-report",
+          "mode": "0750"
+        }
+      ],
+      "seed": null,
+      "dropin_lines": [
+        "[Service]",
+        "User=qsys-storage-report",
+        "Group=qsys-storage-report",
+        "WorkingDirectory=/",
+        "ExecStart=",
+        "ReadWritePaths=",
+        "ReadWritePaths=/home/ubuntu/qsys/var/storage-history",
+        "ExecStart=/opt/qsys/components/storage-report/current/venv/bin/qsys-storage-report --base /data/qsys --scratch /home/ubuntu/scratch --history-root /home/ubuntu/qsys/var/storage-history"
+      ]
     }
   }
 }
