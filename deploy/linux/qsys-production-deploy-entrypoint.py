@@ -21,7 +21,6 @@ from pathlib import Path
 from typing import Any
 
 CONFIG_PATH = Path("/etc/qsys/production-deployment-entrypoint.json")
-COMPONENT_RELEASE_CONFIG_PATH = Path("/etc/qsys/component-releases.json")
 SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 ACTOR_PATTERN = re.compile(r"^[A-Za-z0-9_.-]{1,128}$")
@@ -34,7 +33,7 @@ ALLOWED_WINDOWS_COMPONENTS = frozenset({
     "windows-agent", "windows-gateway", "windows-control",
 })
 WINDOWS_COORDINATOR_PATH = "deploy/linux/qsys-windows-deploy-coordinator.py"
-ENTRYPOINT_VERSION = 13
+ENTRYPOINT_VERSION = 12
 ENTRYPOINT_CAPABILITIES = (
     "systemd-apply-v1",
     "systemd-changed-artifacts-v1",
@@ -50,51 +49,16 @@ ENTRYPOINT_CAPABILITIES = (
     "monitor-research-command-v1",
     "component-release-v1",
     "component-release-v2",
-    "component-release-v3",
 )
 FAILURE_POINTS = frozenset({"none", "linux-health", "windows-switch"})
-GENERIC_COMPONENT_INSTALLER = "scripts/install_component_release.py"
-
-
-def _load_component_releases() -> dict[str, dict[str, Any]]:
-    path = COMPONENT_RELEASE_CONFIG_PATH
-    if not path.is_file():
-        checkout_path = Path(__file__).resolve().parents[2] / "deploy/component-releases.json"
-        if not checkout_path.is_file():
-            raise ValueError("trusted component release whitelist is not installed")
-        path = checkout_path
-    value = json.loads(path.read_text(encoding="utf-8"))
-    if (
-        not isinstance(value, dict)
-        or set(value) != {"schema_version", "components"}
-        or value["schema_version"] != 1
-        or not isinstance(value["components"], dict)
-        or not value["components"]
-    ):
-        raise ValueError("trusted component release whitelist is invalid")
-    required = {
-        "entrypoint", "scan_roots", "release_root", "current", "executable",
-        "unit", "dropin", "state_directories", "seed", "dropin_lines",
-    }
-    for component, spec in value["components"].items():
-        if (
-            not re.fullmatch(r"[a-z][a-z0-9-]{0,63}", component)
-            or not isinstance(spec, dict) or set(spec) != required
-            or not isinstance(spec["scan_roots"], list) or not spec["scan_roots"]
-        ):
-            raise ValueError("trusted component release entry is invalid")
-        for field in ("release_root", "current", "dropin"):
-            if not isinstance(spec[field], str) or not Path(spec[field]).is_absolute():
-                raise ValueError("trusted component release path is invalid")
-        if any(
-            not isinstance(root, str) or Path(root).is_absolute() or ".." in Path(root).parts
-            for root in spec["scan_roots"]
-        ):
-            raise ValueError("trusted component release scan roots are invalid")
-    return value["components"]
-
-
-COMPONENT_RELEASES = _load_component_releases()
+COMPONENT_RELEASES = {
+    "catalog-verify": {
+        "root": Path("/opt/qsys-data/releases/catalog-verify"),
+        "current": Path("/opt/qsys-data/catalog-verify/current"),
+        "executable": "venv/bin/qsys-catalog-verify",
+        "installer": "scripts/install_catalog_verify_release.sh",
+    },
+}
 COMPONENT_ARCHIVE_LIMIT = 256 * 1024 * 1024
 ALLOWED_UNITS = frozenset({
     "qsys-monitor.service", "qsys-paper.service", "qsys-shadow-core.service",
@@ -535,15 +499,7 @@ def _live_preflight(repo: Path) -> None:
     ], cwd=repo)
 
 
-def _extract_component_archive(
-    archive_path: Path, destination: Path, component: str,
-) -> None:
-    if component not in COMPONENT_RELEASES:
-        raise ValueError("unsupported production component release")
-    prefixes = tuple(
-        f"source/{str(root).rstrip('/')}/"
-        for root in COMPONENT_RELEASES[component]["scan_roots"]
-    )
+def _extract_component_archive(archive_path: Path, destination: Path) -> None:
     with zipfile.ZipFile(archive_path) as archive:
         files: dict[str, zipfile.ZipInfo] = {}
         total = 0
@@ -565,7 +521,10 @@ def _extract_component_archive(
         ]
         source_members = [
             name for name in files
-            if name.endswith(".py") and name.startswith(prefixes)
+            if name.endswith(".py") and (
+                name.startswith("source/src/qsys/data/")
+                or name.startswith("source/src/qsys/strategy/")
+            )
         ]
         if (
             set(files) != {"release.json", *wheel_members, *source_members}
@@ -614,18 +573,6 @@ def _current_component_sha(component: str) -> str:
 def _verify_component_release(
     target_repo: Path, sha: str, component: str, release: Path,
 ) -> None:
-    target_config = json.loads(
-        (target_repo / "deploy/component-releases.json").read_text(encoding="utf-8")
-    )
-    if (
-        not isinstance(target_config, dict)
-        or target_config.get("schema_version") != 1
-        or not isinstance(target_config.get("components"), dict)
-    ):
-        raise ValueError("target component release whitelist is invalid")
-    target_components = target_config["components"]
-    if target_components.get(component) != COMPONENT_RELEASES[component]:
-        raise ValueError("target component specification differs from installed whitelist")
     _run([
         sys.executable, "scripts/build_component_release.py", "--repo", str(target_repo),
         "verify", "--sha", sha, "--component", component,
@@ -638,7 +585,7 @@ def _stage_component_release(
     component: str, extracted: Path,
 ) -> Path:
     spec = COMPONENT_RELEASES[component]
-    release = Path(str(spec["release_root"])) / sha
+    release = Path(str(spec["root"])) / sha
     executable = release / str(spec["executable"])
     manifest = json.loads((extracted / "release.json").read_text(encoding="utf-8"))
     wheel_filename = str(manifest.get("wheel_filename", ""))
@@ -1028,7 +975,7 @@ def _rollback_component(component: str, previous: str, repo: Path) -> bool:
     current = Path(str(spec["current"]))
     try:
         if SHA_PATTERN.fullmatch(previous):
-            target = Path(str(spec["release_root"])) / previous
+            target = Path(str(spec["root"])) / previous
             if not target.is_dir():
                 return False
             temporary = current.parent / f".rollback-{previous}"
@@ -1038,7 +985,7 @@ def _rollback_component(component: str, previous: str, repo: Path) -> bool:
             _run(["sudo", "-n", "rm", "-f", "--", str(current)], cwd=repo)
             _run([
                 "sudo", "-n", "rm", "-f", "--",
-                str(spec["dropin"]),
+                "/etc/systemd/system/qsys-catalog-verify.service.d/zz-isolated-release.conf",
             ], cwd=repo)
         else:
             return False
@@ -1104,7 +1051,7 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
             archive = _receive_component_archive(args.artifact_sha256, root)
             extracted = root / "release"
             extracted.mkdir()
-            _extract_component_archive(archive, extracted, args.component)
+            _extract_component_archive(archive, extracted)
             worktree = root / "target"
             _run(["git", "worktree", "add", "--detach", str(worktree), args.sha], cwd=repo)
             try:
@@ -1117,18 +1064,13 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
                     "detail": f"archive_sha256={args.artifact_sha256}; release={args.sha}",
                 })
                 activation_attempted = True
-                installer = GENERIC_COMPONENT_INSTALLER
+                installer = str(COMPONENT_RELEASES[args.component]["installer"])
                 installer_environment = dict(os.environ)
-                seed = COMPONENT_RELEASES[args.component]["seed"]
-                if seed is not None:
-                    installer_environment[str(seed["source_environment"])] = str(
-                        repo / str(seed["source"])
-                    )
+                installer_environment["QSYS_CATALOG_LEGACY_BASELINE"] = str(
+                    repo / "artifacts/frozen_baseline.json"
+                )
                 _run(
-                    [
-                        sys.executable, installer, "--repo", str(worktree),
-                        "--sha", args.sha, "--component", args.component,
-                    ], cwd=worktree,
+                    ["/bin/sh", installer, args.sha], cwd=worktree,
                     env=installer_environment,
                 )
             finally:
