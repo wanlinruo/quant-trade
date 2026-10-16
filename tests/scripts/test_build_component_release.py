@@ -139,3 +139,25 @@ def test_service_checks_release_uses_its_own_entrypoint_and_scan_roots(tmp_path:
         "data", "live", "ops", "paper",
     }
     assert verify(repo, sha, "service-checks", release) == value
+
+
+def test_storage_report_release_uses_its_own_entrypoint_and_ops_scan_root(
+    tmp_path: Path,
+) -> None:
+    repo, sha = _repo(tmp_path)
+    wheel = _wheel(
+        tmp_path / "dist-storage" / "qsys-0.1.0-py3-none-any.whl",
+        command="qsys-storage-report", entrypoint="qsys.ops.storage_report_cli:main",
+    )
+    release = tmp_path / "storage-release"
+
+    value = build(
+        repo, sha, "storage-report", wheel.parent, release,
+        repository="owner/repo", run_id="789", run_attempt="1",
+    )
+
+    assert value["entrypoint"] == {
+        "command": "qsys-storage-report", "target": "qsys.ops.storage_report_cli:main",
+    }
+    assert {record["path"].split("/")[2] for record in value["scan_files"]} == {"ops"}
+    assert verify(repo, sha, "storage-report", release) == value

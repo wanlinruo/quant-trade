@@ -1,11 +1,25 @@
 import json
 import os
 from datetime import datetime
+from pathlib import Path
 
-from scripts import storage_report as report
+from qsys.ops import storage_report_cli as report
 
 
 NOW = datetime(2026, 10, 13, 18, 20, 0)
+
+
+def test_packaged_cli_and_legacy_wrapper_share_the_same_entrypoint(tmp_path):
+    args = report._parser().parse_args([
+        "--base", str(tmp_path / "data"),
+        "--scratch", str(tmp_path / "scratch"),
+        "--history-root", str(tmp_path / "history"),
+    ])
+    wrapper = Path("scripts/storage_report.py").read_text(encoding="utf-8")
+
+    assert args.history_root == tmp_path / "history"
+    assert "from qsys.ops.storage_report_cli import main" in wrapper
+    assert "build_payload" not in wrapper
 
 
 def _write(path, size=4096):

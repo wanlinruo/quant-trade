@@ -17,6 +17,10 @@ uv run python scripts/storage_report.py --history-root var/storage-history
 warehouse、测试快照和隔离构建目录的硬链接只计一次，并优先归入生产仓库。
 `~/scratch` 仍参与保留策略检查，但不混入数据盘分类合计。工具始终只读业务数据。
 
+组件制品入口为 `qsys-storage-report`；旧的 `scripts/storage_report.py` 仅是兼容包装器。
+独立发布后从 `/opt/qsys/components/storage-report/current` 执行，账号仅能写
+`var/storage-history`，对 `/data/qsys` 与 scratch 保持只读。代码合入不代表生产已切换。
+
 ## 保留规则
 
 | 位置 | 类别 | 策略 |
