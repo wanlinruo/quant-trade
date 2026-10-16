@@ -24,7 +24,7 @@ repo=$(git rev-parse --show-toplevel)
 dropin_target=/etc/systemd/system/qsys-catalog-verify.service.d/zz-isolated-release.conf
 state_root=/data/qsys/catalog-verify-state
 baseline=$state_root/frozen_baseline.json
-legacy_baseline=$repo/artifacts/frozen_baseline.json
+legacy_baseline=${QSYS_CATALOG_LEGACY_BASELINE:-$repo/artifacts/frozen_baseline.json}
 
 if [ ! -x "$executable" ] || [ ! -f "$release_root/release.json" ]; then
     echo "versioned catalog verifier release is incomplete: $release_root" >&2

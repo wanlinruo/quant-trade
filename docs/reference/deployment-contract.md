@@ -152,6 +152,9 @@ SSH stdin 交给 `component-deploy`；节点拒绝额外文件、路径穿越、
 5. 每次失败先验证 `before/after` 组件指针、Live Core PID/单调启动时间、生产 checkout 与
    failed units，再决定是否重试。指针未切换且 live identity 未变化时，应记录为安全失败，
    不得笼统描述为生产服务故障。
+6. 首次迁移现场 baseline 时，目标 SHA 的临时 worktree 只承载代码，不能当作现场状态来源。
+   gateway 必须把生产 checkout 中已核验的旧 baseline 路径显式传给 installer；installer 仍在
+   目标 state 文件已存在时保持幂等，旧文件缺失时失败关闭，禁止凭空生成冻结真值。
 
 对应事件证据保存在 #346、#354、#355，以及 Actions runs `38888344457`、`38889119287`、
 `38892672095`。这些 run ID 用于复盘，不替代未来发布必须生成的新 dry-run 和 deployment record。

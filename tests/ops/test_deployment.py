@@ -250,6 +250,7 @@ def test_catalog_verifier_uses_an_independent_immutable_release() -> None:
     assert "build_component_release.py" in installer
     assert "QSYS_CATALOG_SOURCE_ROOT=/opt/qsys-data/catalog-verify/current/source" in installer
     assert "QSYS_CATALOG_FROZEN_BASELINE=/data/qsys/catalog-verify-state/frozen_baseline.json" in installer
+    assert "QSYS_CATALOG_LEGACY_BASELINE" in installer
     assert "refusing to initialize frozen truth without the existing baseline" in installer
     assert "zz-isolated-release.conf" in installer
     assert "refusing to switch catalog verifier while a verification is running" in installer
@@ -263,6 +264,13 @@ def test_catalog_verifier_uses_an_independent_immutable_release() -> None:
     ], environment="production")
     assert plan.components == ()
     assert plan.unknown_paths == ()
+
+    entrypoint = Path(
+        "deploy/linux/qsys-production-deploy-entrypoint.py"
+    ).read_text(encoding="utf-8")
+    assert 'installer_environment["QSYS_CATALOG_LEGACY_BASELINE"]' in entrypoint
+    assert 'repo / "artifacts/frozen_baseline.json"' in entrypoint
+    assert "env=installer_environment" in entrypoint
 
 
 def test_shared_redis_change_targets_both_nodes() -> None:
