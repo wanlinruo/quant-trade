@@ -611,6 +611,10 @@ def _stage_component_release(
             ], cwd=target_repo)
         environment = dict(os.environ)
         environment["UV_PROJECT_ENVIRONMENT"] = str(release / "venv")
+        # The node cache may contain root-owned members left by historical
+        # maintenance.  Copying keeps an immutable release independent of
+        # shared-cache ownership and fs.protected_hardlinks policy.
+        environment["UV_LINK_MODE"] = "copy"
         _run([
             str(config["uv_bin"]), "sync", "--frozen", "--no-dev",
             "--no-install-project",
