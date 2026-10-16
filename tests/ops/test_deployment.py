@@ -741,10 +741,12 @@ def test_component_stage_installs_wheel_with_its_standard_filename(
     })
     monkeypatch.setattr(entrypoint, "_verify_component_release", lambda *args: None)
     commands: list[list[str]] = []
+    command_environments: list[dict[str, str] | None] = []
 
     def run(command, **kwargs):
         command = [str(item) for item in command]
         commands.append(command)
+        command_environments.append(kwargs.get("env"))
         if command[:3] == ["sudo", "-n", "install"] and "-d" in command:
             for item in command[command.index("-m") + 2:]:
                 Path(item).mkdir(parents=True, exist_ok=True)
@@ -763,6 +765,14 @@ def test_component_stage_installs_wheel_with_its_standard_filename(
     )
 
     assert release == releases / sha
+    sync_index = next(
+        index for index, command in enumerate(commands)
+        if command[1:3] == ["sync", "--frozen"]
+    )
+    assert command_environments[sync_index]["UV_LINK_MODE"] == "copy"
+    assert command_environments[sync_index]["UV_PROJECT_ENVIRONMENT"] == str(
+        release / "venv"
+    )
     pip_command = next(command for command in commands if command[1:3] == ["pip", "install"])
     assert pip_command[-1] == str(release / "dist" / wheel_name)
 
