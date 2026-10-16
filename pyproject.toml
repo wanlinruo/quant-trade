@@ -26,6 +26,7 @@ dependencies = [
 [project.scripts]
 qsys-catalog-verify = "qsys.data.catalog_verify_cli:main"
 qsys-service-checks = "qsys.ops.service_checks_cli:main"
+qsys-storage-report = "qsys.ops.storage_report_cli:main"
 qsys-research-runner = "qsys.research.runner_cli:main"
 qsys-research-test-drill = "qsys.research.drill_cli:main"
 qsys-warehouse-snapshot = "qsys.data.snapshot_cli:main"
