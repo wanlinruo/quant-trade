@@ -35,7 +35,9 @@ Windows 进程看门狗每 5 分钟执行一次，属于周期守护任务：不
 
 ## 运行记录
 
-- 目录：生产 `/home/ubuntu/qsys/var/service-runs/YYYY/MM/DD/<服务>-<HHMMSS>-<pid>.json`。
+- 旧布局：生产 `/home/ubuntu/qsys/var/service-runs/YYYY/MM/DD/<服务>-<HHMMSS>-<pid>.json`。
+- 独立组件布局：`/home/ubuntu/qsys/var/service-runs/<服务>/YYYY/MM/DD/<服务>-<HHMMSS>-<pid>.json`；
+  每个组件账号只写自己的子树。reader 同时读取两种布局并按 run identity 去重。
 - 一次执行一个文件，每步结束原子落盘；进程被杀时记录停在 running，超过该服务最长运行时间显示「已中断」。
 - 写记录出错只打日志，不影响任务与退出码。
 - 取代原先空转的 `ingest_log`（Tushare 同步从未写它；旧记录保留不删）。

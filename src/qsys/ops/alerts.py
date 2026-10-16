@@ -197,17 +197,23 @@ class AlertLedger:
             log.warning("alert.ledger_failed", error=str(exc))
 
     def read(self, day) -> list[dict]:
-        path = self._root / f"{day:%Y-%m-%d}.jsonl"
-        try:
-            raw = path.read_text(encoding="utf-8")
-        except OSError:
-            return []
+        paths = [self._root / f"{day:%Y-%m-%d}.jsonl"]
+        paths.extend(
+            self._root / service / f"{day:%Y-%m-%d}.jsonl"
+            for service in sorted(SERVICE_LEDGER_NAMESPACES)
+            if (self._root / service).is_dir()
+        )
         out = []
-        for line in raw.splitlines():
+        for path in paths:
             try:
-                out.append(json.loads(line))
-            except ValueError:            # 半行（进程被 kill）不该毁掉整份账
-                log.warning("alert.ledger_unreadable", path=str(path))
+                raw = path.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            for line in raw.splitlines():
+                try:
+                    out.append(json.loads(line))
+                except ValueError:        # 半行（进程被 kill）不该毁掉整份账
+                    log.warning("alert.ledger_unreadable", path=str(path))
         return out
 
 
@@ -227,6 +233,7 @@ def strategy_sinks(strategy_url: str, ops_url: str = "", *,
 
 # 各进程各写各的，按天一个文件，日报统一读。相对路径，进程的工作目录都是仓库根。
 LEDGER_DIR = Path("var/alerts")
+SERVICE_LEDGER_NAMESPACES = frozenset({"service-checks"})
 
 
 def ledger(root=None) -> AlertLedger:

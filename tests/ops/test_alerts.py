@@ -150,6 +150,19 @@ def test_a_day_with_no_alerts_reads_empty(tmp_path):
     assert AlertLedger(tmp_path).read(EMPTY_DAY) == []
 
 
+def test_alert_ledger_merges_component_namespace(tmp_path):
+    today = date.today()
+    shared = AlertLedger(tmp_path)
+    component = AlertLedger(tmp_path / "service-checks")
+    alert = Alert(Severity.WARNING, "质检告警", "缺表", datetime.now())
+    shared.record(alert, 1, [])
+    component.record(Alert(Severity.INFO, "质检通过", "", datetime.now()), 1, [])
+
+    rows = shared.read(today)
+
+    assert [row["title"] for row in rows] == ["质检告警", "质检通过"]
+
+
 # ---- CRITICAL 双发：既是交易事件也是运维事故（2026-10-03）----
 
 from qsys.ops.alerts import MinSeveritySink, strategy_sinks  # noqa: E402
