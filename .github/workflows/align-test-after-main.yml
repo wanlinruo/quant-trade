@@ -5,7 +5,7 @@ on:
     branches: [main]
 
 permissions:
-  actions: read
+  actions: write
   checks: read
   contents: write
   deployments: read
@@ -166,6 +166,9 @@ jobs:
           git push --force-with-lease="refs/heads/test:$PR_HEAD" \
             origin "${MAIN_SHA}:refs/heads/test"
           test "$(git ls-remote origin refs/heads/test | awk '{print $1}')" = "$MAIN_SHA"
+
+      - name: Trigger exact aligned-SHA CI and component artifacts
+        run: gh workflow run ci.yml --ref test
 
       - name: Write alignment summary
         if: always()

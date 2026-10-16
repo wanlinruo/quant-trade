@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   pull_request:
     branches: [main]
   push:
@@ -27,7 +28,7 @@ jobs:
     # is public; they must never execute on the persistent qsys-ci host.
     runs-on: >-
       ${{ fromJSON(
-        ((github.event_name == 'push' ||
+        ((github.event_name != 'pull_request' ||
           github.event.pull_request.head.repo.full_name == github.repository) &&
          vars.QSYS_CI_RUNNER_LABELS != '' &&
          vars.QSYS_CI_RUNNER_LABELS) ||
@@ -71,7 +72,7 @@ jobs:
   policy:
     runs-on: >-
       ${{ fromJSON(
-        ((github.event_name == 'push' ||
+        ((github.event_name != 'pull_request' ||
           github.event.pull_request.head.repo.full_name == github.repository) &&
          vars.QSYS_CI_RUNNER_LABELS != '' &&
          vars.QSYS_CI_RUNNER_LABELS) ||
@@ -99,7 +100,7 @@ jobs:
           --title "$PR_TITLE"
           --check-commits
       - name: Validate test integration commit
-        if: github.event_name == 'push'
+        if: github.event_name != 'pull_request'
         run: >-
           python scripts/check_repo_policy.py
           --head test
@@ -108,7 +109,7 @@ jobs:
   secret-scan:
     runs-on: >-
       ${{ fromJSON(
-        ((github.event_name == 'push' ||
+        ((github.event_name != 'pull_request' ||
           github.event.pull_request.head.repo.full_name == github.repository) &&
          vars.QSYS_CI_RUNNER_LABELS != '' &&
          vars.QSYS_CI_RUNNER_LABELS) ||
@@ -125,7 +126,7 @@ jobs:
     if: always()
     runs-on: >-
       ${{ fromJSON(
-        ((github.event_name == 'push' ||
+        ((github.event_name != 'pull_request' ||
           github.event.pull_request.head.repo.full_name == github.repository) &&
          vars.QSYS_CI_RUNNER_LABELS != '' &&
          vars.QSYS_CI_RUNNER_LABELS) ||
@@ -152,7 +153,7 @@ jobs:
     if: always()
     runs-on: >-
       ${{ fromJSON(
-        ((github.event_name == 'push' ||
+        ((github.event_name != 'pull_request' ||
           github.event.pull_request.head.repo.full_name == github.repository) &&
          vars.QSYS_CI_RUNNER_LABELS != '' &&
          vars.QSYS_CI_RUNNER_LABELS) ||
@@ -171,7 +172,7 @@ jobs:
         if: needs.reuse-evidence.outputs.reusable != 'true'
         run: PYTHONPATH=src python3 -c "import qsys"
       - name: Build Research Runner release manifest
-        if: github.event_name == 'push'
+        if: github.event_name != 'pull_request'
         env:
           SOURCE_SHA: ${{ github.sha }}
           SOURCE_REPOSITORY: ${{ github.repository }}
@@ -183,7 +184,7 @@ jobs:
           --repository "$SOURCE_REPOSITORY"
           --run-id "$SOURCE_RUN_ID" --run-attempt "$SOURCE_RUN_ATTEMPT"
       - name: Build catalog verifier release manifest
-        if: github.event_name == 'push'
+        if: github.event_name != 'pull_request'
         env:
           SOURCE_SHA: ${{ github.sha }}
           SOURCE_REPOSITORY: ${{ github.repository }}
@@ -196,7 +197,7 @@ jobs:
           --repository "$SOURCE_REPOSITORY"
           --run-id "$SOURCE_RUN_ID" --run-attempt "$SOURCE_RUN_ATTEMPT"
       - name: Upload immutable Research Runner release
-        if: github.event_name == 'push'
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: qsys-research-${{ github.sha }}
@@ -204,7 +205,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
       - name: Upload immutable catalog verifier release
-        if: github.event_name == 'push'
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: qsys-catalog-verify-${{ github.sha }}
