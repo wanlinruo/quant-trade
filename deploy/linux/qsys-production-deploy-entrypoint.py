@@ -622,7 +622,7 @@ def _stage_component_release(
         _run([
             str(config["uv_bin"]), "pip", "install", "--python",
             str(release / "venv/bin/python"), "--no-deps", str(release / wheel_relative),
-        ], cwd=target_repo)
+        ], cwd=target_repo, env=environment)
         if not executable.is_file() or not os.access(executable, os.X_OK):
             raise ValueError("staged component release lacks its executable")
         _verify_component_release(target_repo, sha, component, release)
