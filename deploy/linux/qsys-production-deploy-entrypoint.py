@@ -1065,7 +1065,14 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
                 })
                 activation_attempted = True
                 installer = str(COMPONENT_RELEASES[args.component]["installer"])
-                _run(["/bin/sh", installer, args.sha], cwd=worktree)
+                installer_environment = dict(os.environ)
+                installer_environment["QSYS_CATALOG_LEGACY_BASELINE"] = str(
+                    repo / "artifacts/frozen_baseline.json"
+                )
+                _run(
+                    ["/bin/sh", installer, args.sha], cwd=worktree,
+                    env=installer_environment,
+                )
             finally:
                 _run(["git", "worktree", "remove", "--force", str(worktree)],
                      cwd=repo, check=False)
