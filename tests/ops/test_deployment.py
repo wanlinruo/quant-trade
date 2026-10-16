@@ -773,8 +773,26 @@ def test_component_stage_installs_wheel_with_its_standard_filename(
     assert command_environments[sync_index]["UV_PROJECT_ENVIRONMENT"] == str(
         release / "venv"
     )
-    pip_command = next(command for command in commands if command[1:3] == ["pip", "install"])
+    pip_index = next(
+        index for index, command in enumerate(commands)
+        if command[1:3] == ["pip", "install"]
+    )
+    pip_command = commands[pip_index]
     assert pip_command[-1] == str(release / "dist" / wheel_name)
+    assert command_environments[pip_index] is command_environments[sync_index]
+
+
+def test_production_failure_detail_keeps_captured_stderr() -> None:
+    entrypoint = _production_entrypoint_module()
+    error = subprocess.CalledProcessError(
+        2, ["uv", "sync"], output="less useful stdout", stderr="hardlink EPERM",
+    )
+
+    detail = entrypoint._failure_detail(error)
+
+    assert "returned non-zero exit status 2" in detail
+    assert "hardlink EPERM" in detail
+    assert "less useful stdout" not in detail
 
 
 def test_live_identity_binds_pid_start_time_and_checkout(monkeypatch, tmp_path) -> None:

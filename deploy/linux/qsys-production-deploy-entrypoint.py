@@ -124,6 +124,16 @@ def _run(
     )
 
 
+def _failure_detail(exc: BaseException) -> str:
+    """Keep the first actionable subprocess diagnostic in the audit record."""
+    parts = [str(exc)]
+    if isinstance(exc, subprocess.CalledProcessError):
+        diagnostic = (exc.stderr or exc.stdout or "").strip()
+        if diagnostic:
+            parts.append(diagnostic)
+    return " | ".join(parts)[:500]
+
+
 def _git_blob(repo: Path, sha: str, path: str) -> bytes:
     return subprocess.check_output(["git", "show", f"{sha}:{path}"], cwd=repo)
 
@@ -622,7 +632,7 @@ def _stage_component_release(
         _run([
             str(config["uv_bin"]), "pip", "install", "--python",
             str(release / "venv/bin/python"), "--no-deps", str(release / wheel_relative),
-        ], cwd=target_repo)
+        ], cwd=target_repo, env=environment)
         if not executable.is_file() or not os.access(executable, os.X_OK):
             raise ValueError("staged component release lacks its executable")
         _verify_component_release(target_repo, sha, component, release)
@@ -1069,7 +1079,7 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
         success = True
     except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError,
             json.JSONDecodeError, zipfile.BadZipFile) as exc:
-        error = str(exc)[:500]
+        error = _failure_detail(exc)
         if activation_attempted:
             rollback_ok = _rollback_component(args.component, before_component, repo)
         checks.append({"name": "component-deploy", "status": "failed", "detail": error})
