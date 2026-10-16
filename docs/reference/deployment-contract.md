@@ -132,6 +132,8 @@ SSH stdin 交给 `component-deploy`；节点拒绝额外文件、路径穿越、
 - 历史维护曾用 root 写入 ubuntu 的共享 uv cache。在 `fs.protected_hardlinks=1` 下，默认
   hardlink 模式会让 release venv 得到调用用户不能收口权限的 inode。只修 `uv sync` 仍不够，
   后续 `uv pip install` 必须继承完全相同的隔离环境。
+- `sudo install -d -o ubuntu` 只保证显式叶子目录的 owner，自动创建的中间父目录仍可能属于
+  root；复制完成后必须在目标 release 根内统一 ownership，不能等到最终递归权限收口才发现。
 
 以后组件发布必须遵守以下顺序：
 
@@ -142,8 +144,9 @@ SSH stdin 交给 `component-deploy`；节点拒绝额外文件、路径穿越、
 2. 构建 release venv 的所有 uv 子命令必须使用同一个显式 environment，包括
    `UV_PROJECT_ENVIRONMENT=<release>/venv` 和 `UV_LINK_MODE=copy`。禁止假设 cache owner、挂载点、
    hardlink 支持或历史维护方式一致，也禁止用 `sudo uv` 污染应用账号 cache。
-3. stage 验收必须覆盖完整链路：依赖同步、项目 wheel 安装、入口可执行、manifest 复核及最终
-   `chmod -R go-w`。前一步成功不能替代最终不可变权限收口。
+3. stage 在运行非特权工具前，必须把新建 release 根内的目录和文件统一归属应用账号；范围
+   不得越过该次完整 SHA 的 release 目录。验收必须覆盖依赖同步、项目 wheel 安装、入口可执行、
+   manifest 复核及最终 `chmod -R go-w`；前一步成功不能替代最终不可变权限收口。
 4. `CalledProcessError` 写入 deployment record 时必须保留捕获到的 stderr（无 stderr 才退回
    stdout），并限制长度。只有返回码而没有第一条工具诊断会迫使现场重复执行同一失败命令。
 5. 每次失败先验证 `before/after` 组件指针、Live Core PID/单调启动时间、生产 checkout 与

@@ -765,6 +765,9 @@ def test_component_stage_installs_wheel_with_its_standard_filename(
     )
 
     assert release == releases / sha
+    assert [
+        "sudo", "-n", "chown", "-R", "ubuntu:ubuntu", str(release),
+    ] in commands
     sync_index = next(
         index for index, command in enumerate(commands)
         if command[1:3] == ["sync", "--frozen"]
