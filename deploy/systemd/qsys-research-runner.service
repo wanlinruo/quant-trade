@@ -16,7 +16,11 @@ WorkingDirectory=/data/qsys/research-jobs
 EnvironmentFile=/etc/qsys/research-runner.env
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/opt/qsys-research/current/venv/bin/qsys-research-runner \
+# The release is intentionally absent until #137 approves activation.  Use an
+# always-present launcher so systemd can validate the preinstalled, disabled
+# unit; the Conditions above still fail closed until the exact release and
+# explicit activation marker both exist.
+ExecStart=/usr/bin/env /opt/qsys-research/current/venv/bin/qsys-research-runner \
           --jobs /data/qsys/research-jobs \
           --snapshots /srv/qsys-research/snapshots \
           --code-sha ${QSYS_RESEARCH_CODE_SHA} \
