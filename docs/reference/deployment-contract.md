@@ -60,9 +60,9 @@ GitHub 使用另一把测试专用 key；其 `authorized_keys` 条目强制进�
 副作用。
 
 固定生产入口通过 `status` 声明版本和 capability。Linux/Windows workflow 在计算计划前
-要求 v10 及 `systemd-apply-v1`、`systemd-changed-artifacts-v1`、`systemd-preview-v1`、
+要求当前固定入口版本及 `systemd-apply-v1`、`systemd-changed-artifacts-v1`、`systemd-preview-v1`、
 `systemd-rollback-v1`、`systemd-enable-state-v1`、`monitor-shadow-state-v1` 与
-`monitor-shadow-command-v1`、`monitor-research-command-v1`、`component-release-v1`；旧入口必须先由维护者运行
+`monitor-shadow-command-v1`、`monitor-research-command-v1`、`component-release-v3`；旧入口必须先由维护者运行
 `scripts/install_production_deployment_entrypoint.sh` 显式升级，不能继续执行并产生假成功。
 安装脚本会先把旧入口、dispatcher 和配置备份到
 `/data/qsys/var-deployments/bootstrap-backups/`。
@@ -94,11 +94,12 @@ drop-in。该变更必须重启 monitor，且入口会检查 systemd 合并后�
 
 首个迁移组件是 `catalog-verify`：CI 为 test 分支的精确 SHA 生成
 `qsys-catalog-verify-<SHA>`，其中 wheel 保留标准的 distribution/version/tag 文件名；
-wheel 文件名与 SHA-256、Git tree、`pyproject.toml`、`uv.lock`、入口点和 CI 身份全部写入
+wheel 文件名与 SHA-256、Git tree、`pyproject.toml`、`uv.lock`、入口点、组件规格指纹和 CI 身份全部写入
 manifest。节点 stage 后使用：
 
 ```bash
-scripts/install_catalog_verify_release.sh <完整提交SHA>
+python3 scripts/install_component_release.py \
+  --sha <完整提交SHA> --component catalog-verify
 ```
 
 release 位于 `/opt/qsys-data/releases/catalog-verify/<SHA>`，`current` 以原子 symlink
@@ -120,14 +121,24 @@ SSH stdin 交给 `component-deploy`；节点拒绝额外文件、路径穿越、
 
 切换前后各执行一次 `live_preflight --require-live`，同时固定比较 Live Core 的 MainPID、
 单调启动时间和共享生产 checkout SHA。任一字段变化或心跳门禁失败，组件指针回滚；部署
-记录把这些字段放入 `before` / `after`，workflow 再做一次独立断言。该路径不接受通用组件
-名，目前只允许 `catalog-verify`。
+记录把这些字段放入 `before` / `after`，workflow 再做一次独立断言。
+
+组件名、console entrypoint、扫描根、release/current 路径、可执行文件、unit/drop-in、状态目录、
+seed 与最终 systemd 命令统一来自 `deploy/component-releases.json` 静态白名单。固定生产入口安装时
+把同一文件以 root-owned 0644 放到 `/etc/qsys/component-releases.json`；待发布 SHA 中的规格必须
+与已安装副本逐项相同，否则在 stage/activate 前失败关闭。artifact 不能提供路径、命令或新增组件。
+当前白名单仍只允许 `catalog-verify`，新增组件必须先单独升级固定入口与白名单。
+
+通用 installer 在切换前验证 manifest、规格指纹、wheel、源码成员、权限、unit inactive 和 seed；
+`current` 与 drop-in 均采用临时目标后原子替换。activation 后若 drop-in 安装、daemon-reload 或
+最终指针校验失败，installer 立即恢复部署前 current/drop-in；production gateway 再执行第二层
+installed→previous 或 first-install→uninstalled 回滚，并验证 Live Core 身份与共享 checkout 未变。
 
 ### 2026-10-16 catalog 组件发布复盘与固定约束
 
 首次把 `catalog-verify` 从共享 checkout 切到不可变 release 时连续暴露了两个既有边界：
 
-- 仓库中的 production entrypoint 已升级到 v12，但常规 Linux manifest 把固定入口列为控制面
+- 仓库中的 production entrypoint 当时已升级到 v12，但常规 Linux manifest 把固定入口列为控制面
   ignored path；生产 checkout 更新不能证明 `/usr/local/libexec` 中实际执行的入口也已更新。
 - 历史维护曾用 root 写入 ubuntu 的共享 uv cache。在 `fs.protected_hardlinks=1` 下，默认
   hardlink 模式会让 release venv 得到调用用户不能收口权限的 inode。只修 `uv sync` 仍不够，
