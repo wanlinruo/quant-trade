@@ -13,6 +13,7 @@ on:
         type: choice
         options:
           - catalog-verify
+          - service-checks
       release_id:
         description: Auditable release identifier
         required: true
@@ -87,7 +88,10 @@ jobs:
           fi
           printf '%s' "$RELEASE_ID" | grep -Eq '^[A-Za-z0-9._-]{1,100}$'
           printf '%s' "$TARGET_SHA" | grep -Eq '^[0-9a-f]{40}$'
-          test "$COMPONENT" = catalog-verify
+          case "$COMPONENT" in
+            catalog-verify|service-checks) ;;
+            *) exit 2 ;;
+          esac
           git fetch --no-tags origin main test
           git cat-file -e "$TARGET_SHA^{commit}"
           git merge-base --is-ancestor "$TARGET_SHA" origin/main
@@ -122,8 +126,8 @@ jobs:
           state = json.loads(os.environ["NODE_JSON"])
           if state["branch"] != "main" or state["dirty"] or not state["healthy"]:
               raise SystemExit(f"production node is not deployable: {state}")
-          required = {"component-release-v3"}
-          if state.get("entrypoint_version", 0) < 13 or not required <= set(state.get("capabilities", [])):
+          required = {"component-release-v4"}
+          if state.get("entrypoint_version", 0) < 14 or not required <= set(state.get("capabilities", [])):
               raise SystemExit("production entrypoint lacks component release capability")
           print(f'production_sha={state["sha"]}')
           PY

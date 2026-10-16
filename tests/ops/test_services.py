@@ -30,6 +30,24 @@ def test_successful_run_records_every_step(tmp_path):
     assert data["finished_at"]
 
 
+def test_load_runs_merges_legacy_and_component_namespaces_without_duplicates(tmp_path):
+    day = date(2026, 9, 17)
+    legacy = tmp_path / "2026/09/17/service-checks-legacy.json"
+    namespaced = tmp_path / "service-checks/2026/09/17/service-checks-new.json"
+    duplicate = tmp_path / "service-checks/2026/09/17/service-checks-copy.json"
+    for path, run_id, started in (
+        (legacy, "legacy", "2026-09-17T20:00:00"),
+        (namespaced, "new", "2026-09-17T20:10:00"),
+        (duplicate, "legacy", "2026-09-17T20:00:00"),
+    ):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({
+            "run_id": run_id, "service": "service-checks", "started_at": started,
+        }), encoding="utf-8")
+
+    assert [run["run_id"] for run in load_runs(tmp_path, day, day)] == ["legacy", "new"]
+
+
 def test_exception_marks_step_and_run_failed_and_is_reraised(tmp_path):
     with pytest.raises(RuntimeError, match="0 行"):
         with ServiceRun.open(tmp_path, "tushare-sync") as run:

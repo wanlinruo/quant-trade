@@ -22,6 +22,11 @@ def _repo(tmp_path: Path) -> tuple[Path, str]:
     (repo / "src/qsys/strategy/example.py").write_text(
         "STRATEGY = 1\n", encoding="utf-8",
     )
+    for package in ("live", "ops", "paper"):
+        (repo / f"src/qsys/{package}").mkdir(parents=True)
+        (repo / f"src/qsys/{package}/example.py").write_text(
+            f"PACKAGE = {package!r}\n", encoding="utf-8",
+        )
     (repo / "deploy").mkdir()
     (repo / "deploy/component-releases.json").write_text(
         Path("deploy/component-releases.json").read_text(encoding="utf-8"),
@@ -39,13 +44,16 @@ def _repo(tmp_path: Path) -> tuple[Path, str]:
     return repo, sha
 
 
-def _wheel(path: Path, *, entrypoint: str = "qsys.data.catalog_verify_cli:main") -> Path:
+def _wheel(
+    path: Path, *, command: str = "qsys-catalog-verify",
+    entrypoint: str = "qsys.data.catalog_verify_cli:main",
+) -> Path:
     path.parent.mkdir(parents=True)
     with zipfile.ZipFile(path, "w") as archive:
         archive.writestr("qsys-0.1.0.dist-info/METADATA", "Name: qsys\nVersion: 0.1.0\n")
         archive.writestr(
             "qsys-0.1.0.dist-info/entry_points.txt",
-            f"[console_scripts]\nqsys-catalog-verify = {entrypoint}\n",
+            f"[console_scripts]\n{command} = {entrypoint}\n",
         )
         archive.writestr("qsys/__init__.py", "")
     return path
@@ -109,3 +117,25 @@ def test_catalog_release_rejects_wrong_entrypoint_and_tampering(tmp_path: Path) 
     (spec_release / "release.json").write_text(json.dumps(manifest), encoding="utf-8")
     with pytest.raises(ValueError, match="component specification mismatch"):
         verify(repo, sha, "catalog-verify", spec_release)
+
+
+def test_service_checks_release_uses_its_own_entrypoint_and_scan_roots(tmp_path: Path) -> None:
+    repo, sha = _repo(tmp_path)
+    wheel = _wheel(
+        tmp_path / "dist-service" / "qsys-0.1.0-py3-none-any.whl",
+        command="qsys-service-checks", entrypoint="qsys.ops.service_checks_cli:main",
+    )
+    release = tmp_path / "service-release"
+
+    value = build(
+        repo, sha, "service-checks", wheel.parent, release,
+        repository="owner/repo", run_id="456", run_attempt="1",
+    )
+
+    assert value["entrypoint"] == {
+        "command": "qsys-service-checks", "target": "qsys.ops.service_checks_cli:main",
+    }
+    assert {record["path"].split("/")[2] for record in value["scan_files"]} == {
+        "data", "live", "ops", "paper",
+    }
+    assert verify(repo, sha, "service-checks", release) == value

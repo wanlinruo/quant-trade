@@ -282,13 +282,19 @@ class ServiceConsole:
         return columns, rows, trading is not None
 
     def _first_record_day(self) -> date | None:
-        years = sorted(p for p in self._root.glob("[0-9][0-9][0-9][0-9]") if p.is_dir())
-        for year in years:
-            for month in sorted(p for p in year.iterdir() if p.is_dir()):
-                for day in sorted(p for p in month.iterdir() if p.is_dir()):
-                    if any(day.glob("*.json")):
-                        return date(int(year.name), int(month.name), int(day.name))
-        return None
+        found: list[date] = []
+        roots = (self._root, *(
+            self._root / service for service in SERVICE_BY_ID
+            if (self._root / service).is_dir()
+        ))
+        for root in roots:
+            years = sorted(p for p in root.glob("[0-9][0-9][0-9][0-9]") if p.is_dir())
+            for year in years:
+                for month in sorted(p for p in year.iterdir() if p.is_dir()):
+                    for day in sorted(p for p in month.iterdir() if p.is_dir()):
+                        if any(day.glob("*.json")):
+                            found.append(date(int(year.name), int(month.name), int(day.name)))
+        return min(found) if found else None
 
     def _cell_state(self, spec: ServiceSpec, day: date, runs: list[dict],
                     trading: set[date] | None, first_record: date | None,

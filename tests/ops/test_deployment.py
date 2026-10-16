@@ -280,6 +280,38 @@ def test_catalog_verifier_uses_an_independent_immutable_release() -> None:
     assert "env=installer_environment" in entrypoint
 
 
+def test_service_checks_component_has_an_isolated_release_and_state_boundary() -> None:
+    specs = json.loads(Path("deploy/component-releases.json").read_text(encoding="utf-8"))
+    service = specs["components"]["service-checks"]
+
+    assert service["entrypoint"] == {
+        "command": "qsys-service-checks",
+        "target": "qsys.ops.service_checks_cli:main",
+    }
+    assert service["release_root"] == "/opt/qsys/components/service-checks/releases"
+    assert service["current"] == "/opt/qsys/components/service-checks/current"
+    assert service["unit"] == "qsys-service-checks.service"
+    assert service["state_directories"] == [
+        {
+            "path": "/home/ubuntu/qsys/var/service-runs/service-checks",
+            "owner": "qsys-service-checks", "group": "qsys-service-checks", "mode": "0750",
+        },
+        {
+            "path": "/home/ubuntu/qsys/var/alerts/service-checks",
+            "owner": "qsys-service-checks", "group": "qsys-service-checks", "mode": "0750",
+        },
+    ]
+    dropin = "\n".join(service["dropin_lines"])
+    assert "User=qsys-service-checks" in dropin
+    assert "WorkingDirectory=/" in dropin
+    assert "ReadWritePaths=/home/ubuntu/qsys/var/service-runs/service-checks" in dropin
+    assert "ReadWritePaths=/home/ubuntu/qsys/var/alerts/service-checks" in dropin
+    assert "--record-root /home/ubuntu/qsys/var/service-runs/service-checks" in dropin
+    assert "--alert-ledger /home/ubuntu/qsys/var/alerts/service-checks" in dropin
+    assert "/home/ubuntu/qsys/.venv" not in dropin
+    assert "scripts/service_checks.py" not in dropin
+
+
 def test_shared_redis_change_targets_both_nodes() -> None:
     plan = DeploymentManifest.load(MANIFEST).plan(
         ["src/qsys/live/redis_transport.py"], environment="production",
@@ -690,7 +722,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
 
     state = entrypoint.status({"production_repo": str(tmp_path)})
 
-    assert state["entrypoint_version"] == 13
+    assert state["entrypoint_version"] == 14
     assert set(state["capabilities"]) == {
         "systemd-apply-v1", "systemd-changed-artifacts-v1",
         "systemd-preview-v1", "systemd-rollback-v1",
@@ -704,6 +736,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
         "component-release-v1",
         "component-release-v2",
         "component-release-v3",
+        "component-release-v4",
     }
 
 
@@ -1567,8 +1600,9 @@ def test_component_workflow_streams_only_a_verified_artifact() -> None:
     assert ".before.linux == .after.linux" in workflow
     assert "PRODUCTION_DEPLOY_SSH_KEY" in workflow
     assert "cancel-in-progress: false" in workflow
-    assert 'required = {"component-release-v3"}' in workflow
-    assert 'entrypoint_version", 0) < 13' in workflow
+    assert "catalog-verify|service-checks" in workflow
+    assert 'required = {"component-release-v4"}' in workflow
+    assert 'entrypoint_version", 0) < 14' in workflow
 
 
 def test_test_research_workflow_streams_ci_artifact_without_activation() -> None:
