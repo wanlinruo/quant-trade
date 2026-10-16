@@ -247,6 +247,9 @@ def test_catalog_verifier_uses_an_independent_immutable_release() -> None:
     assert "/opt/qsys-data/catalog-verify/current/venv/bin/qsys-catalog-verify" in installer
     assert "/opt/qsys-data/releases/catalog-verify/$code_sha" in installer
     assert "build_component_release.py" in installer
+    assert "QSYS_CATALOG_SOURCE_ROOT=/opt/qsys-data/catalog-verify/current/source" in installer
+    assert "QSYS_CATALOG_FROZEN_BASELINE=/data/qsys/catalog-verify-state/frozen_baseline.json" in installer
+    assert "refusing to initialize frozen truth without the existing baseline" in installer
     assert "zz-isolated-release.conf" in installer
     assert "refusing to switch catalog verifier while a verification is running" in installer
     assert 'find "$release_root" -xdev ! -type l -perm /022' in installer
@@ -671,7 +674,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
 
     state = entrypoint.status({"production_repo": str(tmp_path)})
 
-    assert state["entrypoint_version"] == 11
+    assert state["entrypoint_version"] == 12
     assert set(state["capabilities"]) == {
         "systemd-apply-v1", "systemd-changed-artifacts-v1",
         "systemd-preview-v1", "systemd-rollback-v1",
@@ -683,6 +686,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
         "monitor-shadow-command-v1",
         "monitor-research-command-v1",
         "component-release-v1",
+        "component-release-v2",
     }
 
 
@@ -692,16 +696,20 @@ def test_component_artifact_extraction_is_exact_and_rejects_traversal(tmp_path) 
     with zipfile.ZipFile(archive, "w") as output:
         output.writestr("release.json", "{}")
         output.writestr("dist/qsys-0.1.0-py3-none-any.whl", b"wheel")
+        output.writestr("source/src/qsys/data/example.py", b"DATA = 1\n")
+        output.writestr("source/src/qsys/strategy/example.py", b"STRATEGY = 1\n")
 
     destination = tmp_path / "release"
     entrypoint._extract_component_archive(archive, destination)
     assert (destination / "release.json").read_text() == "{}"
     assert (destination / "dist/qsys-0.1.0-py3-none-any.whl").read_bytes() == b"wheel"
+    assert (destination / "source/src/qsys/data/example.py").is_file()
 
     unsafe = tmp_path / "unsafe.zip"
     with zipfile.ZipFile(unsafe, "w") as output:
         output.writestr("release.json", "{}")
         output.writestr("dist/qsys-0.1.0-py3-none-any.whl", b"wheel")
+        output.writestr("source/src/qsys/data/example.py", b"DATA = 1\n")
         output.writestr("../escape", b"bad")
     with pytest.raises(ValueError, match="unsafe path"):
         entrypoint._extract_component_archive(unsafe, tmp_path / "unsafe-release")
@@ -720,6 +728,10 @@ def test_component_stage_installs_wheel_with_its_standard_filename(
         json.dumps({"wheel_filename": wheel_name}), encoding="utf-8",
     )
     (extracted / "dist" / wheel_name).write_bytes(b"wheel")
+    (extracted / "source/src/qsys/data").mkdir(parents=True)
+    (extracted / "source/src/qsys/data/example.py").write_text(
+        "DATA = 1\n", encoding="utf-8",
+    )
     monkeypatch.setitem(entrypoint.COMPONENT_RELEASES, "catalog-verify", {
         "root": releases,
         "current": tmp_path / "current",
@@ -733,7 +745,7 @@ def test_component_stage_installs_wheel_with_its_standard_filename(
         command = [str(item) for item in command]
         commands.append(command)
         if command[:3] == ["sudo", "-n", "install"] and "-d" in command:
-            for item in command[-2:]:
+            for item in command[command.index("-m") + 2:]:
                 Path(item).mkdir(parents=True, exist_ok=True)
         elif command[:3] == ["sudo", "-n", "install"]:
             shutil.copyfile(command[-2], command[-1])
