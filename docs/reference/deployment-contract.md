@@ -123,6 +123,36 @@ SSH stdin 交给 `component-deploy`；节点拒绝额外文件、路径穿越、
 记录把这些字段放入 `before` / `after`，workflow 再做一次独立断言。该路径不接受通用组件
 名，目前只允许 `catalog-verify`。
 
+### 2026-10-16 catalog 组件发布复盘与固定约束
+
+首次把 `catalog-verify` 从共享 checkout 切到不可变 release 时连续暴露了两个既有边界：
+
+- 仓库中的 production entrypoint 已升级到 v12，但常规 Linux manifest 把固定入口列为控制面
+  ignored path；生产 checkout 更新不能证明 `/usr/local/libexec` 中实际执行的入口也已更新。
+- 历史维护曾用 root 写入 ubuntu 的共享 uv cache。在 `fs.protected_hardlinks=1` 下，默认
+  hardlink 模式会让 release venv 得到调用用户不能收口权限的 inode。只修 `uv sync` 仍不够，
+  后续 `uv pip install` 必须继承完全相同的隔离环境。
+
+以后组件发布必须遵守以下顺序：
+
+1. 在触发完整 workflow 前，比较已安装固定入口与目标 SHA 对应文件的 SHA-256，并调用只读
+   `status` 核对 `entrypoint_version` 和 capability。control-plane-only tree 不会生成 Linux
+   runtime component；这种空计划必须失败关闭，再走带备份、精确 worktree 和哈希复核的
+   bootstrap，不能把它误判为普通生产重部署。
+2. 构建 release venv 的所有 uv 子命令必须使用同一个显式 environment，包括
+   `UV_PROJECT_ENVIRONMENT=<release>/venv` 和 `UV_LINK_MODE=copy`。禁止假设 cache owner、挂载点、
+   hardlink 支持或历史维护方式一致，也禁止用 `sudo uv` 污染应用账号 cache。
+3. stage 验收必须覆盖完整链路：依赖同步、项目 wheel 安装、入口可执行、manifest 复核及最终
+   `chmod -R go-w`。前一步成功不能替代最终不可变权限收口。
+4. `CalledProcessError` 写入 deployment record 时必须保留捕获到的 stderr（无 stderr 才退回
+   stdout），并限制长度。只有返回码而没有第一条工具诊断会迫使现场重复执行同一失败命令。
+5. 每次失败先验证 `before/after` 组件指针、Live Core PID/单调启动时间、生产 checkout 与
+   failed units，再决定是否重试。指针未切换且 live identity 未变化时，应记录为安全失败，
+   不得笼统描述为生产服务故障。
+
+对应事件证据保存在 #346、#354、#355，以及 Actions runs `38888344457`、`38889119287`、
+`38892672095`。这些 run ID 用于复盘，不替代未来发布必须生成的新 dry-run 和 deployment record。
+
 Windows 发布同样不信任节点上已安装的旧协调器：固定生产入口从已经通过上述门禁的目标
 SHA 提取 Linux 协调器，协调器再从同一 SHA 提取 Windows 控制器并上传执行。健康探针以
 切换后应用的 `src` 设置 `PYTHONPATH`，并同时要求目标文件清单、`DEPLOYED_SHA`、进程和
