@@ -16,6 +16,12 @@ def _repo(tmp_path: Path) -> tuple[Path, str]:
     repo.mkdir()
     (repo / "pyproject.toml").write_text("[project]\nname='qsys'\n", encoding="utf-8")
     (repo / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+    (repo / "src/qsys/data").mkdir(parents=True)
+    (repo / "src/qsys/strategy").mkdir(parents=True)
+    (repo / "src/qsys/data/example.py").write_text("DATA = 1\n", encoding="utf-8")
+    (repo / "src/qsys/strategy/example.py").write_text(
+        "STRATEGY = 1\n", encoding="utf-8",
+    )
     subprocess.run(["git", "init", "-b", "test"], cwd=repo, check=True,
                    capture_output=True)
     subprocess.run(["git", "add", "."], cwd=repo, check=True)
@@ -52,9 +58,13 @@ def test_catalog_release_binds_entrypoint_wheel_and_tree(tmp_path: Path) -> None
 
     assert value["component"] == "catalog-verify"
     assert value["source_sha"] == sha
-    assert value["version"] == 2
+    assert value["version"] == 3
     assert value["wheel_filename"] == wheel.name
     assert value["wheel_sha256"] == hashlib.sha256(wheel.read_bytes()).hexdigest()
+    assert [item["path"] for item in value["scan_files"]] == [
+        "src/qsys/data/example.py", "src/qsys/strategy/example.py",
+    ]
+    assert (release / "source/src/qsys/data/example.py").read_text() == "DATA = 1\n"
     assert verify(repo, sha, "catalog-verify", release) == value
     assert json.loads((release / "release.json").read_text()) == value
 
@@ -77,3 +87,10 @@ def test_catalog_release_rejects_wrong_entrypoint_and_tampering(tmp_path: Path) 
         stream.write(b"tampered")
     with pytest.raises(ValueError, match="wheel_sha256 mismatch"):
         verify(repo, sha, "catalog-verify", release)
+
+    build(repo, sha, "catalog-verify", wheel.parent, tmp_path / "source-release",
+          repository="owner/repo", run_id="123", run_attempt="1")
+    source = tmp_path / "source-release/source/src/qsys/data/example.py"
+    source.write_text("DATA = 2\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="scan source mismatch"):
+        verify(repo, sha, "catalog-verify", tmp_path / "source-release")
