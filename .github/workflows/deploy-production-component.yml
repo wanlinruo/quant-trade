@@ -14,6 +14,8 @@ on:
         options:
           - backtest-worker
           - web
+          - paper
+          - shadow-core
           - catalog-verify
           - service-checks
           - storage-report
@@ -97,7 +99,7 @@ jobs:
           printf '%s' "$RELEASE_ID" | grep -Eq '^[A-Za-z0-9._-]{1,100}$'
           printf '%s' "$TARGET_SHA" | grep -Eq '^[0-9a-f]{40}$'
           case "$COMPONENT" in
-            backtest-worker|web|catalog-verify|service-checks|storage-report|daily-digest|health-observer|daily-archive|premarket-limits|tushare-sync) ;;
+            backtest-worker|web|paper|shadow-core|catalog-verify|service-checks|storage-report|daily-digest|health-observer|daily-archive|premarket-limits|tushare-sync) ;;
             *) exit 2 ;;
           esac
           git fetch --no-tags origin main test
@@ -134,8 +136,8 @@ jobs:
           state = json.loads(os.environ["NODE_JSON"])
           if state["branch"] != "main" or state["dirty"] or not state["healthy"]:
               raise SystemExit(f"production node is not deployable: {state}")
-          required = {"component-release-v12"}
-          if state.get("entrypoint_version", 0) < 22 or not required <= set(state.get("capabilities", [])):
+          required = {"component-release-v13"}
+          if state.get("entrypoint_version", 0) < 23 or not required <= set(state.get("capabilities", [])):
               raise SystemExit("production entrypoint lacks component release capability")
           print(f'production_sha={state["sha"]}')
           PY
@@ -198,6 +200,16 @@ jobs:
             and .before["live-core-started"] == .after["live-core-started"]
             and (if $component == "web" then
               .before["backtest-worker-identity"] == .after["backtest-worker-identity"]
+              else true end)
+            and (if $component == "paper" then
+              .before["shadow-core-identity"] == .after["shadow-core-identity"]
+              and .before["web-identity"] == .after["web-identity"]
+              and .before["backtest-worker-identity"] == .after["backtest-worker-identity"]
+              else true end)
+            and (if $component == "shadow-core" then
+              .before["paper-identity"] == .after["paper-identity"]
+              and .before["web-identity"] == .after["web-identity"]
+              and .before["backtest-worker-identity"] == .after["backtest-worker-identity"]
               else true end)
             and .after[$component] == $sha
           ' record.json >/dev/null

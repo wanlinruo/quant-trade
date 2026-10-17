@@ -103,8 +103,11 @@ def test_the_targets_match_what_the_cores_actually_use():
     source = inspect.getsource(LiveRuntime.__init__)
     assert kill.TARGETS["shadow"][0] in source
 
-    shadow_runner = Path(__file__).resolve().parents[2] / "scripts" / "run_shadow.py"
-    used = re.search(r"local_kill_path=Path\(\"([^\"]+)\"\)",
-                     shadow_runner.read_text(encoding="utf-8"))
-    assert used is not None, "run_shadow.py 不再显式传 local_kill_path 了，这里要跟着改"
-    assert kill.TARGETS["shadow"][1] == Path(used.group(1))
+    shadow_runner = Path(__file__).resolve().parents[2] / "src/qsys/live/shadow_cli.py"
+    runner_source = shadow_runner.read_text(encoding="utf-8")
+    default = re.search(
+        r'add_argument\("--kill-switch", default="([^"]+)"\)', runner_source,
+    )
+    assert default is not None, "shadow_cli.py 不再声明 kill-switch 默认值了"
+    assert "local_kill_path=Path(args.kill_switch)" in runner_source
+    assert kill.TARGETS["shadow"][1] == Path(default.group(1))

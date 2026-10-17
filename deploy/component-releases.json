@@ -87,6 +87,96 @@
         "ExecStart=/opt/qsys/components/web/current/venv/bin/qsys-web --host 127.0.0.1 --port 8420 --warehouse /home/ubuntu/qsys/warehouse --config /home/ubuntu/qsys/config/deploy.local.toml --workspace /home/ubuntu/qsys/var/workbench --strategies /home/ubuntu/qsys/var/workbench/strategies --runs /home/ubuntu/qsys/var/runs --service-runs /home/ubuntu/qsys/var/service-runs --state /home/ubuntu/qsys/var/shadow-state.sqlite3 --health-state /home/ubuntu/qsys/var/health-observer/service-health.sqlite3 --limit-up-shadow-state /data/qsys/var-prod/limit-up-shadow.sqlite3 --limit-up-research-run /data/qsys/research/issue-210/run-20261010 --tushare-config /home/ubuntu/qsys/config/deploy.local.toml"
       ]
     },
+    "paper": {
+      "entrypoint": {
+        "command": "qsys-paper",
+        "target": "qsys.paper.runner_cli:main"
+      },
+      "scan_roots": [
+        "src/qsys/backtest",
+        "src/qsys/core",
+        "src/qsys/data",
+        "src/qsys/live",
+        "src/qsys/markets",
+        "src/qsys/ops",
+        "src/qsys/paper",
+        "src/qsys/strategy"
+      ],
+      "release_root": "/opt/qsys/components/paper/releases",
+      "current": "/opt/qsys/components/paper/current",
+      "executable": "venv/bin/qsys-paper",
+      "unit": "qsys-paper.service",
+      "dropin": "/etc/systemd/system/qsys-paper.service.d/zz-isolated-release.conf",
+      "state_directories": [
+        {
+          "path": "/home/ubuntu/qsys/var/workbench",
+          "owner": "qsys-paper",
+          "group": "qsys-workbench",
+          "mode": "0770"
+        }
+      ],
+      "seed": null,
+      "dropin_lines": [
+        "[Service]",
+        "User=qsys-paper",
+        "Group=qsys-workbench",
+        "WorkingDirectory=/",
+        "ExecStart=",
+        "ReadWritePaths=",
+        "ReadWritePaths=/home/ubuntu/qsys/var/workbench",
+        "ExecStart=/opt/qsys/components/paper/current/venv/bin/qsys-paper --warehouse /data/qsys/warehouse --workspace /home/ubuntu/qsys/var/workbench --config /home/ubuntu/qsys/config/deploy.local.toml"
+      ]
+    },
+    "shadow-core": {
+      "entrypoint": {
+        "command": "qsys-shadow-core",
+        "target": "qsys.live.shadow_cli:main"
+      },
+      "scan_roots": [
+        "src/qsys/backtest",
+        "src/qsys/core",
+        "src/qsys/data",
+        "src/qsys/live",
+        "src/qsys/markets",
+        "src/qsys/ops",
+        "src/qsys/paper",
+        "src/qsys/strategy",
+        "strategies/structural_v1_2.py"
+      ],
+      "release_root": "/opt/qsys/components/shadow-core/releases",
+      "current": "/opt/qsys/components/shadow-core/current",
+      "executable": "venv/bin/qsys-shadow-core",
+      "unit": "qsys-shadow-core.service",
+      "dropin": "/etc/systemd/system/qsys-shadow-core.service.d/zz-isolated-release.conf",
+      "state_directories": [
+        {
+          "path": "/home/ubuntu/qsys/var/shadow-core",
+          "owner": "qsys-shadow-core",
+          "group": "qsys-shadow-core",
+          "mode": "0750"
+        },
+        {
+          "path": "/home/ubuntu/qsys/var/alerts/shadow-core",
+          "owner": "qsys-shadow-core",
+          "group": "qsys-shadow-core",
+          "mode": "0750"
+        }
+      ],
+      "seed": null,
+      "dropin_lines": [
+        "[Service]",
+        "User=qsys-shadow-core",
+        "Group=qsys-shadow-core",
+        "WorkingDirectory=/",
+        "ExecStartPre=",
+        "ExecStartPre=/opt/qsys/components/shadow-core/current/venv/bin/qsys-live-preflight --config /home/ubuntu/qsys/config/deploy.local.toml --strategy /opt/qsys/components/shadow-core/current/source/strategies/structural_v1_2.py --warehouse /data/qsys/warehouse",
+        "ExecStart=",
+        "ReadWritePaths=",
+        "ReadWritePaths=/home/ubuntu/qsys/var/shadow-core",
+        "ReadWritePaths=/home/ubuntu/qsys/var/alerts/shadow-core",
+        "ExecStart=/opt/qsys/components/shadow-core/current/venv/bin/qsys-shadow-core --config /home/ubuntu/qsys/config/deploy.local.toml --warehouse /data/qsys/warehouse --workspace /home/ubuntu/qsys/var/shadow-core/strategy --state /home/ubuntu/qsys/var/shadow-core/shadow-state.sqlite3 --journal-warehouse /home/ubuntu/qsys/var/shadow-core/journal --alert-ledger /home/ubuntu/qsys/var/alerts/shadow-core --lock /home/ubuntu/qsys/var/shadow-core/shadow-core.lock --kill-switch /home/ubuntu/qsys/var/shadow-core/SHADOW_KILL"
+      ]
+    },
     "catalog-verify": {
       "entrypoint": {
         "command": "qsys-catalog-verify",

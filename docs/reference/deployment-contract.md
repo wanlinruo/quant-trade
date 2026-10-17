@@ -129,7 +129,7 @@ seed 与最终 systemd 命令统一来自 `deploy/component-releases.json` 静�
 与已安装副本逐项相同，否则在 stage/activate 前失败关闭。artifact 不能提供路径、命令或新增组件。
 白名单当前允许已投产的 `catalog-verify`，以及待迁移的 `service-checks`、
 `storage-report`、`daily-digest`、`health-observer`、`daily-archive`、`premarket-limits`、
-`tushare-sync`、`backtest-worker`、`web`。新增组件必须先单独升级固定入口与 root-owned 白名单；代码合入本身
+`tushare-sync`、`backtest-worker`、`web`、`paper`、`shadow-core`。新增组件必须先单独升级固定入口与 root-owned 白名单；代码合入本身
 不授权生产激活。
 
 通用 installer 在切换前验证 manifest、规格指纹、wheel、源码成员、权限、unit inactive 和 seed；
@@ -209,6 +209,15 @@ release/current 位于 `/opt/qsys/components/web/{releases/<SHA>,current}`；固
 专用只读 key。Web 组件切换除 Live Core 身份外还固定比较 backtest worker 的 load/active/PID/
 启动时间身份，并要求恢复本机 HTTP health 后才成功。v22 固定入口、账号/组/key 预置、现有
 Workbench 与策略数据迁移及首次生产激活均需单独授权；代码合入不会切换生产 Web。
+
+`paper` 与 `shadow-core` 分别使用 wheel 入口 `qsys-paper`、`qsys-shadow-core`，不再从
+共享 checkout/venv 执行。Paper 仅写 `var/workbench`，并通过 `qsys-workbench` 共享组与 Web、
+backtest worker 协作；生产 Warehouse 和配置保持只读。Shadow 的策略快照、SQLite、运行台账、
+告警账、锁和本地 kill switch 全部收敛到 `var/shadow-core` / `var/alerts/shadow-core`，市场事实
+Warehouse 只读，preflight 也从同一 release 的 `qsys-live-preflight` 执行。组件切换会固定比较
+另一运行核心、Web 与 backtest worker 的 load/active/PID/启动时间身份；Live Core 身份与共享
+checkout 仍按全局门禁前后校验。v23/component-release-v13 固定入口、账号/组、Redis 最小 ACL、
+现有 Workbench/Shadow 状态迁移及首次生产激活均需单独授权；代码合入不会切换生产 Paper/Shadow。
 
 ### 2026-10-16 catalog 组件发布复盘与固定约束
 

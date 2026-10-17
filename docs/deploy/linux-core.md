@@ -462,7 +462,7 @@ sudo systemctl daemon-reload && sudo systemctl enable --now qsys-premarket-limit
 Web 工作台只创建和控制账户，策略调度由独立进程负责：
 
 ```bash
-uv run python scripts/run_paper.py \
+uv run qsys-paper \
   --warehouse warehouse \
   --workspace var/workbench \
   --config config/deploy.local.toml
@@ -471,6 +471,12 @@ uv run python scripts/run_paper.py \
 运行器从 Tushare `trade_cal` 校验未来交易日，从 QMT 只读行情流取价，心跳键为
 `state:heartbeat:paper`。它不构造 `LiveBroker`，也不写真实订单或控制流。生产环境
 由 `qsys-paper.service` 守护。
+
+生产组件规格使用 `/opt/qsys/components/paper/current/venv/bin/qsys-paper`；旧
+`scripts/run_paper.py` 仅作开发兼容包装器。Shadow Core 同理由
+`/opt/qsys/components/shadow-core/current/venv/bin/qsys-shadow-core` 启动，其 preflight、
+状态、运行台账、告警、锁和 kill switch 均绑定当前 release 与专用状态目录。两者的生产账号、
+既有状态迁移和首次激活仍需独立变更授权。
 
 **行情不可用时的行为**（2026-09-17 起）：
 

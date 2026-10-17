@@ -110,7 +110,7 @@ def test_ci_routes_only_trusted_events_to_the_configured_runner():
     assert workflow.count(
         "github.event.pull_request.head.repo.full_name == github.repository"
     ) == 5
-    assert workflow.count("github.event_name != 'pull_request'") == 28
+    assert workflow.count("github.event_name != 'pull_request'") == 32
     assert "workflow_dispatch:" in workflow
     assert workflow.count("'\"ubuntu-24.04\"'") == 5
     assert "permissions:\n  actions: read\n  checks: read\n  contents: read" in workflow
