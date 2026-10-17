@@ -22,11 +22,17 @@ def _repo(tmp_path: Path) -> tuple[Path, str]:
     (repo / "src/qsys/strategy/example.py").write_text(
         "STRATEGY = 1\n", encoding="utf-8",
     )
-    for package in ("core", "live", "ops", "paper", "web"):
+    for package in ("backtest", "core", "live", "markets", "ops", "paper", "web"):
         (repo / f"src/qsys/{package}").mkdir(parents=True)
         (repo / f"src/qsys/{package}/example.py").write_text(
             f"PACKAGE = {package!r}\n", encoding="utf-8",
         )
+    (repo / "src/qsys/web/workbench.py").write_text(
+        "WORKBENCH = 1\n", encoding="utf-8",
+    )
+    (repo / "src/qsys/web/backtest_worker_cli.py").write_text(
+        "WORKER_CLI = 1\n", encoding="utf-8",
+    )
     (repo / "scripts").mkdir()
     (repo / "scripts/win_download_minutes.py").write_text(
         "WINDOWS_DOWNLOADER = 1\n", encoding="utf-8",
@@ -146,6 +152,34 @@ def test_service_checks_release_uses_its_own_entrypoint_and_scan_roots(tmp_path:
         "data", "live", "ops", "paper",
     }
     assert verify(repo, sha, "service-checks", release) == value
+
+
+def test_backtest_worker_release_binds_worker_dependencies(tmp_path: Path) -> None:
+    repo, sha = _repo(tmp_path)
+    wheel = _wheel(
+        tmp_path / "dist-worker" / "qsys-0.1.0-py3-none-any.whl",
+        command="qsys-backtest-worker",
+        entrypoint="qsys.web.backtest_worker_cli:main",
+    )
+    release = tmp_path / "worker-release"
+
+    value = build(
+        repo, sha, "backtest-worker", wheel.parent, release,
+        repository="owner/repo", run_id="457", run_attempt="1",
+    )
+
+    assert value["entrypoint"] == {
+        "command": "qsys-backtest-worker",
+        "target": "qsys.web.backtest_worker_cli:main",
+    }
+    paths = {record["path"] for record in value["scan_files"]}
+    assert {path.split("/")[2] for path in paths} == {
+        "backtest", "core", "data", "markets", "strategy", "web",
+    }
+    assert "src/qsys/web/workbench.py" in paths
+    assert "src/qsys/web/backtest_worker_cli.py" in paths
+    assert "src/qsys/web/example.py" not in paths
+    assert verify(repo, sha, "backtest-worker", release) == value
 
 
 def test_storage_report_release_uses_its_own_entrypoint_and_ops_scan_root(

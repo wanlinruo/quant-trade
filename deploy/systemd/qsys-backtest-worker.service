@@ -1,0 +1,26 @@
+[Unit]
+Description=qsys isolated personal backtest worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=qsys-backtest-worker
+Group=qsys-workbench
+WorkingDirectory=/
+ExecStart=/opt/qsys/components/backtest-worker/current/venv/bin/qsys-backtest-worker \
+          --workspace /home/ubuntu/qsys/var/workbench \
+          --warehouse /data/qsys/warehouse \
+          --runs /home/ubuntu/qsys/var/runs
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/ubuntu/qsys/var/workbench
+ReadWritePaths=/home/ubuntu/qsys/var/runs
+
+[Install]
+WantedBy=multi-user.target

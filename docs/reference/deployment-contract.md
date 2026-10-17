@@ -129,7 +129,7 @@ seed 与最终 systemd 命令统一来自 `deploy/component-releases.json` 静�
 与已安装副本逐项相同，否则在 stage/activate 前失败关闭。artifact 不能提供路径、命令或新增组件。
 白名单当前允许已投产的 `catalog-verify`，以及待迁移的 `service-checks`、
 `storage-report`、`daily-digest`、`health-observer`、`daily-archive`、`premarket-limits`、
-`tushare-sync`。新增组件必须先单独升级固定入口与 root-owned 白名单；代码合入本身
+`tushare-sync`、`backtest-worker`。新增组件必须先单独升级固定入口与 root-owned 白名单；代码合入本身
 不授权生产激活。
 
 通用 installer 在切换前验证 manifest、规格指纹、wheel、源码成员、权限、unit inactive 和 seed；
@@ -193,6 +193,14 @@ Windows 限权 key 与上传下载器均显式绑定到 tushare-sync 自己的�
 不再落到 `/var` 默认目录或共享 checkout。生产首次激活前必须另行审计账号、Warehouse/lock 权限、
 Tushare 配置、workbench 读取权限和 Windows forced-command key；v20 固定入口安装及激活不由代码
 合入授权。
+
+`backtest-worker` 将个人工作台回测执行从 Web 进程中彻底移除。Web 工厂不再接受或启动
+`BacktestQueue`，只通过共享 `workbench.sqlite3` 提交、取消和展示作业；独立常驻入口
+`qsys-backtest-worker` 负责恢复中断作业、串行领取任务并启动回测子进程。exact-SHA release/current
+位于 `/opt/qsys/components/backtest-worker/{releases/<SHA>,current}`，独立账号仅可写
+`var/workbench` 与 `var/runs`，生产 Warehouse 保持只读。共享 SQLite 目录通过预置的
+`qsys-workbench` 组协调 Web/worker 访问。v21 固定入口安装、账号和组预置、现有目录权限迁移、
+unit 首次启用均需单独授权；本次代码合入不会激活或重启生产服务。
 
 ### 2026-10-16 catalog 组件发布复盘与固定约束
 

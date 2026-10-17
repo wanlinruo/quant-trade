@@ -8,7 +8,7 @@ from qsys.web.app import _backtest_rows, create_app
 from qsys.web.backtest_views import BacktestService
 from qsys.web.config import WebConfig
 from qsys.web.views import MonitorService
-from qsys.web.workbench import WorkbenchStore
+from qsys.web.workbench import BacktestQueue, WorkbenchStore
 
 
 SOURCE = '''
@@ -56,6 +56,17 @@ def test_progress_finish_cancel_and_restart_recovery(store):
     queued = store.enqueue(strategy.id, {})
     assert store.cancel(queued.id)
     assert store.job(queued.id).status == "cancelled"
+
+
+def test_dedicated_queue_recovers_before_serving(store, tmp_path, monkeypatch):
+    queue = BacktestQueue(store, tmp_path / "warehouse", tmp_path / "runs")
+    events = []
+    monkeypatch.setattr(store, "recover_interrupted", lambda: events.append("recover"))
+    monkeypatch.setattr(queue, "_loop", lambda: events.append("loop"))
+
+    queue.serve_forever()
+
+    assert events == ["recover", "loop"]
 
 
 @pytest.fixture

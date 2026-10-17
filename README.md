@@ -143,6 +143,7 @@ flowchart LR
 | Linux systemd 配置 | 是 | 不适用 | 可按实际变化文件 apply/verify/rollback，并恢复 enable/active 状态 |
 | 观测与只读运维组件 | 是 | 是 | Service Checks、Storage Report、Daily Digest、Health Observer 已有独立 exact-SHA 制品；生产激活分别受门禁 |
 | Daily Archive | 是 | 是 | 已有独立制品、工作目录与运行记录边界；warehouse/Windows 最小权限和首次激活仍需单独审查 |
+| Backtest Worker | 是 | 是 | Web 已只保留提交、取消与展示；worker 有独立 exact-SHA 制品及仅限 workbench/runs 的写边界，生产账号与首次激活待单独审批 |
 | Premarket Limits | 是 | 是 | 已有独立制品、运行记录与 Warehouse 写锁边界；Tushare 配置、Redis 最小 ACL 和首次激活仍需单独审查 |
 | Web、Live/Paper/Shadow | 是 | 否 | 仍共享生产 checkout 和 Python 环境；Web/Paper 共享 SQLite 所有权需先拆分 |
 | 其余数据定时任务 | 是 | 否 | 仍主要共享生产 checkout；按写权限与发布节奏继续拆分 |

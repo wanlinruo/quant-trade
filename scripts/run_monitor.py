@@ -36,7 +36,7 @@ from qsys.web.limit_up_research import (
 from qsys.web.service_views import ServiceConsole, windows_task_show
 from qsys.web.research_jobs import ResearchJobConsole, ResearchSubmissionProfile
 from qsys.web.views import MonitorService
-from qsys.web.workbench import BacktestQueue, WorkbenchStore
+from qsys.web.workbench import WorkbenchStore
 from qsys.research.jobs import JobLimits
 from qsys.paper.store import PaperStore
 
@@ -87,8 +87,6 @@ def build_app(
     workspace = workspace_dir or Path("var/workbench")
     workbench = WorkbenchStore(workspace / "workbench.sqlite3")
     paper = PaperStore(workspace / "workbench.sqlite3")
-    queue = BacktestQueue(workbench, warehouse_root, runs_root,
-                          timeout_seconds=config.backtest_timeout_seconds)
     selected_state = state_path or Path("var/shadow-state.sqlite3")
     if strategy_mode == "live" and selected_state.name == "shadow-state.sqlite3":
         selected_state = selected_state.with_name("live-state.sqlite3")
@@ -114,7 +112,7 @@ def build_app(
         DataService(warehouse),
         BacktestService(runs_root),
         CatalogService(warehouse),
-        workbench, queue, Path("strategies"), paper,
+        workbench, Path("strategies"), paper,
         MarketService(
             warehouse, transport, snapshot_key=market_snapshot_key,
             schedule_key=market_schedule_key,
