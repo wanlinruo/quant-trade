@@ -31,6 +31,9 @@ def _repo(tmp_path: Path) -> tuple[Path, str]:
     (repo / "scripts/win_download_minutes.py").write_text(
         "WINDOWS_DOWNLOADER = 1\n", encoding="utf-8",
     )
+    (repo / "scripts/unrelated.py").write_text(
+        "UNRELATED = 1\n", encoding="utf-8",
+    )
     (repo / "deploy").mkdir()
     (repo / "deploy/component-releases.json").write_text(
         Path("deploy/component-releases.json").read_text(encoding="utf-8"),
@@ -236,5 +239,9 @@ def test_daily_archive_release_binds_data_code_and_windows_downloader(
         "command": "qsys-daily-archive", "target": "qsys.data.daily_archive_cli:main",
     }
     assert "scripts/win_download_minutes.py" in paths
+    assert not any(
+        path.startswith("scripts/") and path != "scripts/win_download_minutes.py"
+        for path in paths
+    )
     assert (release / "source/scripts/win_download_minutes.py").is_file()
     assert verify(repo, sha, "daily-archive", release) == value

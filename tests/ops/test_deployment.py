@@ -386,6 +386,14 @@ def test_daily_archive_component_has_explicit_data_writer_boundaries() -> None:
         "command": "qsys-daily-archive",
         "target": "qsys.data.daily_archive_cli:main",
     }
+    assert archive["scan_roots"] == [
+        "src/qsys/core",
+        "src/qsys/data",
+        "src/qsys/live",
+        "src/qsys/ops",
+        "src/qsys/paper",
+        "scripts/win_download_minutes.py",
+    ]
     assert archive["release_root"] == "/opt/qsys/components/daily-archive/releases"
     assert archive["current"] == "/opt/qsys/components/daily-archive/current"
     assert archive["unit"] == "qsys-daily-archive.service"
@@ -916,6 +924,41 @@ def test_component_artifact_extraction_is_exact_and_rejects_traversal(tmp_path) 
     with pytest.raises(ValueError, match="manifest, one wheel and scan sources"):
         entrypoint._extract_component_archive(
             wrong_root, tmp_path / "wrong-root-release", "catalog-verify",
+        )
+
+
+def test_component_artifact_extraction_supports_an_exact_file_scan_root(
+    tmp_path,
+) -> None:
+    entrypoint = _production_entrypoint_module()
+    archive = tmp_path / "daily-archive.zip"
+    with zipfile.ZipFile(archive, "w") as output:
+        output.writestr("release.json", "{}")
+        output.writestr("dist/qsys-0.1.0-py3-none-any.whl", b"wheel")
+        output.writestr("source/src/qsys/data/example.py", b"DATA = 1\n")
+        output.writestr(
+            "source/scripts/win_download_minutes.py", b"WINDOWS_DOWNLOADER = 1\n",
+        )
+
+    destination = tmp_path / "daily-archive-release"
+    entrypoint._extract_component_archive(archive, destination, "daily-archive")
+    assert (destination / "source/scripts/win_download_minutes.py").is_file()
+
+    archive_with_sibling = tmp_path / "daily-archive-with-sibling.zip"
+    with zipfile.ZipFile(archive_with_sibling, "w") as output:
+        output.writestr("release.json", "{}")
+        output.writestr("dist/qsys-0.1.0-py3-none-any.whl", b"wheel")
+        output.writestr("source/src/qsys/data/example.py", b"DATA = 1\n")
+        output.writestr(
+            "source/scripts/win_download_minutes.py", b"WINDOWS_DOWNLOADER = 1\n",
+        )
+        output.writestr("source/scripts/unrelated.py", b"UNRELATED = 1\n")
+
+    with pytest.raises(ValueError, match="manifest, one wheel and scan sources"):
+        entrypoint._extract_component_archive(
+            archive_with_sibling,
+            tmp_path / "daily-archive-with-sibling-release",
+            "daily-archive",
         )
 
 

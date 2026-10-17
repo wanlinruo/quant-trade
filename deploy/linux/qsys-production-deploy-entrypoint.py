@@ -545,8 +545,8 @@ def _extract_component_archive(
 ) -> None:
     if component not in COMPONENT_RELEASES:
         raise ValueError("unsupported production component release")
-    prefixes = tuple(
-        f"source/{str(root).rstrip('/')}/"
+    roots = tuple(
+        str(root).rstrip("/")
         for root in COMPONENT_RELEASES[component]["scan_roots"]
     )
     with zipfile.ZipFile(archive_path) as archive:
@@ -570,7 +570,11 @@ def _extract_component_archive(
         ]
         source_members = [
             name for name in files
-            if name.endswith(".py") and name.startswith(prefixes)
+            if name.endswith(".py") and name.startswith("source/") and any(
+                name.removeprefix("source/") == root
+                or name.removeprefix("source/").startswith(f"{root}/")
+                for root in roots
+            )
         ]
         if (
             set(files) != {"release.json", *wheel_members, *source_members}

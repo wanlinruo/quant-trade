@@ -93,7 +93,7 @@
         "src/qsys/live",
         "src/qsys/ops",
         "src/qsys/paper",
-        "scripts"
+        "scripts/win_download_minutes.py"
       ],
       "release_root": "/opt/qsys/components/daily-archive/releases",
       "current": "/opt/qsys/components/daily-archive/current",
