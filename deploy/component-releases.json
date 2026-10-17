@@ -47,6 +47,46 @@
         "ExecStart=/opt/qsys/components/backtest-worker/current/venv/bin/qsys-backtest-worker --workspace /home/ubuntu/qsys/var/workbench --warehouse /data/qsys/warehouse --runs /home/ubuntu/qsys/var/runs"
       ]
     },
+    "web": {
+      "entrypoint": {
+        "command": "qsys-web",
+        "target": "qsys.web.monitor_cli:main"
+      },
+      "scan_roots": [
+        "src/qsys"
+      ],
+      "release_root": "/opt/qsys/components/web/releases",
+      "current": "/opt/qsys/components/web/current",
+      "executable": "venv/bin/qsys-web",
+      "unit": "qsys-monitor.service",
+      "dropin": "/etc/systemd/system/qsys-monitor.service.d/zz-isolated-release.conf",
+      "state_directories": [
+        {
+          "path": "/home/ubuntu/qsys/var/workbench",
+          "owner": "qsys-web",
+          "group": "qsys-workbench",
+          "mode": "0770"
+        },
+        {
+          "path": "/home/ubuntu/qsys/var/workbench/strategies",
+          "owner": "qsys-web",
+          "group": "qsys-workbench",
+          "mode": "0770"
+        }
+      ],
+      "seed": null,
+      "dropin_lines": [
+        "[Service]",
+        "User=qsys-web",
+        "Group=qsys-workbench",
+        "WorkingDirectory=/",
+        "Environment=QSYS_WINDOWS_SSH_KEY=/etc/qsys/web/windows-task-readonly",
+        "ExecStart=",
+        "ReadWritePaths=",
+        "ReadWritePaths=/home/ubuntu/qsys/var/workbench",
+        "ExecStart=/opt/qsys/components/web/current/venv/bin/qsys-web --host 127.0.0.1 --port 8420 --warehouse /home/ubuntu/qsys/warehouse --config /home/ubuntu/qsys/config/deploy.local.toml --workspace /home/ubuntu/qsys/var/workbench --strategies /home/ubuntu/qsys/var/workbench/strategies --runs /home/ubuntu/qsys/var/runs --service-runs /home/ubuntu/qsys/var/service-runs --state /home/ubuntu/qsys/var/shadow-state.sqlite3 --health-state /home/ubuntu/qsys/var/health-observer/service-health.sqlite3 --limit-up-shadow-state /data/qsys/var-prod/limit-up-shadow.sqlite3 --limit-up-research-run /data/qsys/research/issue-210/run-20261010 --tushare-config /home/ubuntu/qsys/config/deploy.local.toml"
+      ]
+    },
     "catalog-verify": {
       "entrypoint": {
         "command": "qsys-catalog-verify",

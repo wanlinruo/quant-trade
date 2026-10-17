@@ -182,6 +182,31 @@ def test_backtest_worker_release_binds_worker_dependencies(tmp_path: Path) -> No
     assert verify(repo, sha, "backtest-worker", release) == value
 
 
+def test_web_release_binds_packaged_entrypoint_and_all_runtime_sources(
+    tmp_path: Path,
+) -> None:
+    repo, sha = _repo(tmp_path)
+    wheel = _wheel(
+        tmp_path / "dist-web" / "qsys-0.1.0-py3-none-any.whl",
+        command="qsys-web", entrypoint="qsys.web.monitor_cli:main",
+    )
+    release = tmp_path / "web-release"
+
+    value = build(
+        repo, sha, "web", wheel.parent, release,
+        repository="owner/repo", run_id="458", run_attempt="1",
+    )
+
+    assert value["entrypoint"] == {
+        "command": "qsys-web", "target": "qsys.web.monitor_cli:main",
+    }
+    paths = {record["path"] for record in value["scan_files"]}
+    assert "src/qsys/web/example.py" in paths
+    assert "src/qsys/live/example.py" in paths
+    assert "scripts/run_monitor.py" not in paths
+    assert verify(repo, sha, "web", release) == value
+
+
 def test_storage_report_release_uses_its_own_entrypoint_and_ops_scan_root(
     tmp_path: Path,
 ) -> None:
