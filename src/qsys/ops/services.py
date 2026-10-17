@@ -172,7 +172,7 @@ SERVICES: tuple[ServiceSpec, ...] = (
         "health-observer", "服务健康采样器", "resident", "Linux",
         "qsys-health-observer", "常驻（关键时段 5 秒、盘外 30 秒）",
         ("systemd 只读", "Redis 心跳只读", "Windows 计划任务只读"),
-        ("service-health.sqlite3",),
+        ("var/health-observer/service-health.sqlite3", "var/alerts/health-observer"),
         "独立采样服务状态并留存变更/检查点；故障不影响交易进程",
     ),
     ServiceSpec(

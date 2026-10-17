@@ -22,7 +22,7 @@ def _repo(tmp_path: Path) -> tuple[Path, str]:
     (repo / "src/qsys/strategy/example.py").write_text(
         "STRATEGY = 1\n", encoding="utf-8",
     )
-    for package in ("live", "ops", "paper"):
+    for package in ("live", "ops", "paper", "web"):
         (repo / f"src/qsys/{package}").mkdir(parents=True)
         (repo / f"src/qsys/{package}/example.py").write_text(
             f"PACKAGE = {package!r}\n", encoding="utf-8",
@@ -185,3 +185,28 @@ def test_daily_digest_release_uses_its_own_entrypoint_and_read_scan_roots(
         "data", "live", "ops", "paper",
     }
     assert verify(repo, sha, "daily-digest", release) == value
+
+
+def test_health_observer_release_binds_its_resident_dependency_roots(
+    tmp_path: Path,
+) -> None:
+    repo, sha = _repo(tmp_path)
+    wheel = _wheel(
+        tmp_path / "dist-observer" / "qsys-0.1.0-py3-none-any.whl",
+        command="qsys-health-observer", entrypoint="qsys.ops.health_observer_cli:main",
+    )
+    release = tmp_path / "observer-release"
+
+    value = build(
+        repo, sha, "health-observer", wheel.parent, release,
+        repository="owner/repo", run_id="791", run_attempt="1",
+    )
+
+    assert value["entrypoint"] == {
+        "command": "qsys-health-observer",
+        "target": "qsys.ops.health_observer_cli:main",
+    }
+    assert {record["path"].split("/")[2] for record in value["scan_files"]} == {
+        "data", "live", "ops", "paper", "web",
+    }
+    assert verify(repo, sha, "health-observer", release) == value

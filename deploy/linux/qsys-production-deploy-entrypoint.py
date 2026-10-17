@@ -34,7 +34,7 @@ ALLOWED_WINDOWS_COMPONENTS = frozenset({
     "windows-agent", "windows-gateway", "windows-control",
 })
 WINDOWS_COORDINATOR_PATH = "deploy/linux/qsys-windows-deploy-coordinator.py"
-ENTRYPOINT_VERSION = 16
+ENTRYPOINT_VERSION = 17
 ENTRYPOINT_CAPABILITIES = (
     "systemd-apply-v1",
     "systemd-changed-artifacts-v1",
@@ -54,6 +54,7 @@ ENTRYPOINT_CAPABILITIES = (
     "component-release-v4",
     "component-release-v5",
     "component-release-v6",
+    "component-release-v7",
 )
 FAILURE_POINTS = frozenset({"none", "linux-health", "windows-switch"})
 GENERIC_COMPONENT_INSTALLER = "scripts/install_component_release.py"
@@ -1070,6 +1071,8 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
     tree = _fetch_and_validate_target(repo, args.sha)
     test_run = _successful_test_run(config, tree)
     before_component = _current_component_sha(args.component)
+    component_unit = str(COMPONENT_RELEASES[args.component]["unit"])
+    before_component_active = _active(component_unit, repo)
     before_live = _live_identity(repo)
     _live_preflight(repo)
     fingerprints = _fingerprints(config, repo)
@@ -1082,6 +1085,7 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
         "test_run_id": test_run,
         "production_sha": production_sha,
         "before_component_sha": before_component,
+        "before_component_active": before_component_active,
         "live_identity": before_live,
         "live_restart": False,
     }
@@ -1100,6 +1104,7 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
     success = False
     rollback_ok = False
     activation_attempted = False
+    component_stopped = False
     error = ""
     try:
         with tempfile.TemporaryDirectory(prefix="qsys-component-deploy-") as temporary:
@@ -1119,6 +1124,9 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
                     "name": "component-artifact", "status": "passed",
                     "detail": f"archive_sha256={args.artifact_sha256}; release={args.sha}",
                 })
+                if before_component_active:
+                    _run(["sudo", "-n", "systemctl", "stop", component_unit], cwd=repo)
+                    component_stopped = True
                 activation_attempted = True
                 installer = GENERIC_COMPONENT_INSTALLER
                 installer_environment = dict(os.environ)
@@ -1134,6 +1142,12 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
                     ], cwd=worktree,
                     env=installer_environment,
                 )
+                if before_component_active:
+                    _run(["sudo", "-n", "systemctl", "start", component_unit], cwd=repo)
+                    if not _active(component_unit, repo):
+                        raise ValueError("component unit did not return to active state")
+                elif _active(component_unit, repo):
+                    raise ValueError("inactive component unit was unexpectedly started")
             finally:
                 _run(["git", "worktree", "remove", "--force", str(worktree)],
                      cwd=repo, check=False)
@@ -1143,6 +1157,8 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
             raise ValueError("component deployment changed the live core identity or checkout")
         if _current_component_sha(args.component) != args.sha:
             raise ValueError("component current pointer does not match target SHA")
+        if _active(component_unit, repo) != before_component_active:
+            raise ValueError("component unit active state changed after activation")
         checks.append({
             "name": "live-core-continuity", "status": "passed",
             "detail": (
@@ -1150,12 +1166,36 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
                 f"repo_sha={production_sha}; heartbeat preflight passed before and after"
             ),
         })
+        checks.append({
+            "name": "component-unit-state", "status": "passed",
+            "detail": (
+                f"unit={component_unit}; preserved_active={before_component_active}"
+            ),
+        })
         success = True
     except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError,
             json.JSONDecodeError, zipfile.BadZipFile) as exc:
         error = _failure_detail(exc)
+        unit_quiesced = True
+        if component_stopped:
+            try:
+                if _active(component_unit, repo):
+                    _run(
+                        ["sudo", "-n", "systemctl", "stop", component_unit], cwd=repo,
+                    )
+            except (OSError, subprocess.CalledProcessError):
+                unit_quiesced = False
         if activation_attempted:
-            rollback_ok = _rollback_component(args.component, before_component, repo)
+            rollback_ok = (
+                unit_quiesced
+                and _rollback_component(args.component, before_component, repo)
+            )
+        if component_stopped and before_component_active:
+            try:
+                _run(["sudo", "-n", "systemctl", "start", component_unit], cwd=repo)
+                rollback_ok = rollback_ok and _active(component_unit, repo)
+            except (OSError, subprocess.CalledProcessError):
+                rollback_ok = False
         checks.append({"name": "component-deploy", "status": "failed", "detail": error})
 
     try:
@@ -1174,9 +1214,14 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
         current_component = _current_component_sha(args.component)
     except (OSError, ValueError):
         current_component = "unknown"
+    try:
+        after_component_active = _active(component_unit, repo)
+    except (OSError, subprocess.CalledProcessError):
+        after_component_active = False
     fully_rolled_back = (
         rollback_ok and current_component == before_component and after_live == before_live
         and _head(repo) == production_sha
+        and after_component_active == before_component_active
     )
     status_value = "success" if success else ("rolled_back" if fully_rolled_back else "failure")
     before = {
@@ -1184,12 +1229,14 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
         args.component: before_component,
         "live-core-pid": before_live["pid"],
         "live-core-started": before_live["started_monotonic"],
+        f"{args.component}-active": before_component_active,
     }
     after = {
         "linux": _head(repo),
         args.component: current_component,
         "live-core-pid": after_live["pid"],
         "live-core-started": after_live["started_monotonic"],
+        f"{args.component}-active": after_component_active,
     }
     record = {
         "schema_version": 1, "run_id": args.run_id,

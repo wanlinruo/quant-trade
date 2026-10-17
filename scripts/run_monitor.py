@@ -20,7 +20,7 @@ import uvicorn
 
 from qsys.data.storage import Warehouse
 from qsys.ops.journal import SessionJournal
-from qsys.ops.health import HealthStore
+from qsys.ops.health import HealthStore, HealthStoreReader
 from qsys.live.store import LiveStore
 from qsys.web.app import create_app
 from qsys.web.backtest_views import BacktestService
@@ -134,8 +134,12 @@ def build_app(
                 key=Path(os.environ.get("QSYS_WINDOWS_SSH_KEY",
                                         "/home/ubuntu/.ssh/id_ed25519_winnode")),
             ),
-            health_store=HealthStore(
-                health_state_path or Path("var/service-health.sqlite3")
+            health_store=(
+                HealthStore(Path(health_state_path)) if health_state_path else
+                HealthStoreReader((
+                    Path("var/health-observer/service-health.sqlite3"),
+                    Path("var/service-health.sqlite3"),
+                ))
             ),
             core_service_id={
                 "shadow": "shadow-core", "live": "live-core",
