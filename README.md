@@ -275,6 +275,8 @@ Windows agent 不依赖策略；Web 只编排和展示，不承载交易业务�
 - live/shadow、执行代理、Web 工作台和健康观察各自使用独立 SQLite 状态库。
 - 数据写任务通过全局 warehouse 写锁串行；Research Runner 读取显式不可变快照。Live Core、
   Web 和尚未迁移的数据消费者当前仍读取生产 Warehouse，不能假设全系统已切到 snapshot。
+- `daily-archive`、`premarket-limits` 与 `tushare-sync` 已具备独立 exact-SHA 制品边界；
+  生产账号、固定入口和首次激活仍需分别授权，不能把代码合入视为现场切换。
 - 实时交易事实不能被研究结果覆盖；研究产物进入独立目录并标注代码、数据和参数版本。
 
 ## 环境与发布

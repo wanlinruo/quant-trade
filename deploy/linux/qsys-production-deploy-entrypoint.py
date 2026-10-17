@@ -34,7 +34,7 @@ ALLOWED_WINDOWS_COMPONENTS = frozenset({
     "windows-agent", "windows-gateway", "windows-control",
 })
 WINDOWS_COORDINATOR_PATH = "deploy/linux/qsys-windows-deploy-coordinator.py"
-ENTRYPOINT_VERSION = 19
+ENTRYPOINT_VERSION = 20
 ENTRYPOINT_CAPABILITIES = (
     "systemd-apply-v1",
     "systemd-changed-artifacts-v1",
@@ -57,6 +57,7 @@ ENTRYPOINT_CAPABILITIES = (
     "component-release-v7",
     "component-release-v8",
     "component-release-v9",
+    "component-release-v10",
 )
 FAILURE_POINTS = frozenset({"none", "linux-health", "windows-switch"})
 GENERIC_COMPONENT_INSTALLER = "scripts/install_component_release.py"

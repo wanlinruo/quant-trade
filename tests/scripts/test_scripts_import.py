@@ -38,3 +38,10 @@ def test_premarket_legacy_script_delegates_to_packaged_entrypoint():
     packaged = importlib.import_module("qsys.data.premarket_limits_cli")
 
     assert legacy.main is packaged.main
+
+
+def test_tushare_sync_legacy_script_delegates_to_packaged_entrypoint():
+    legacy = importlib.import_module("scripts.tushare_daily_sync")
+    packaged = importlib.import_module("qsys.data.tushare_sync_cli")
+
+    assert legacy.main is packaged.main
