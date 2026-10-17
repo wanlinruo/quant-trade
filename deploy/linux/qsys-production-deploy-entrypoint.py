@@ -34,7 +34,7 @@ ALLOWED_WINDOWS_COMPONENTS = frozenset({
     "windows-agent", "windows-gateway", "windows-control",
 })
 WINDOWS_COORDINATOR_PATH = "deploy/linux/qsys-windows-deploy-coordinator.py"
-ENTRYPOINT_VERSION = 22
+ENTRYPOINT_VERSION = 23
 ENTRYPOINT_CAPABILITIES = (
     "systemd-apply-v1",
     "systemd-changed-artifacts-v1",
@@ -60,9 +60,23 @@ ENTRYPOINT_CAPABILITIES = (
     "component-release-v10",
     "component-release-v11",
     "component-release-v12",
+    "component-release-v13",
 )
 FAILURE_POINTS = frozenset({"none", "linux-health", "windows-switch"})
 GENERIC_COMPONENT_INSTALLER = "scripts/install_component_release.py"
+COMPONENT_PROTECTED_PEERS = {
+    "web": {"backtest-worker": "qsys-backtest-worker.service"},
+    "paper": {
+        "shadow-core": "qsys-shadow-core.service",
+        "web": "qsys-monitor.service",
+        "backtest-worker": "qsys-backtest-worker.service",
+    },
+    "shadow-core": {
+        "paper": "qsys-paper.service",
+        "web": "qsys-monitor.service",
+        "backtest-worker": "qsys-backtest-worker.service",
+    },
+}
 
 
 def _load_component_releases() -> dict[str, dict[str, Any]]:
@@ -1101,10 +1115,11 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
     component_unit = str(COMPONENT_RELEASES[args.component]["unit"])
     before_component_active = _active(component_unit, repo)
     before_live = _live_identity(repo)
-    protected_unit = "qsys-backtest-worker.service" if args.component == "web" else None
-    before_protected = (
-        _unit_identity_token(protected_unit, repo) if protected_unit else ""
-    )
+    protected_units = COMPONENT_PROTECTED_PEERS.get(args.component, {})
+    before_protected = {
+        name: _unit_identity_token(unit, repo)
+        for name, unit in protected_units.items()
+    }
     _live_preflight(repo)
     fingerprints = _fingerprints(config, repo)
     preview = {
@@ -1118,7 +1133,7 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
         "before_component_sha": before_component,
         "before_component_active": before_component_active,
         "live_identity": before_live,
-        **({"backtest_worker_identity": before_protected} if protected_unit else {}),
+        "protected_peer_identities": before_protected,
         "live_restart": False,
     }
     if args.dry_run:
@@ -1186,9 +1201,10 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
                 _run(["git", "worktree", "remove", "--force", str(worktree)],
                      cwd=repo, check=False)
         after_live = _live_identity(repo)
-        after_protected = (
-            _unit_identity_token(protected_unit, repo) if protected_unit else ""
-        )
+        after_protected = {
+            name: _unit_identity_token(unit, repo)
+            for name, unit in protected_units.items()
+        }
         _live_preflight(repo)
         if after_live != before_live or _head(repo) != production_sha:
             raise ValueError("component deployment changed the live core identity or checkout")
@@ -1196,8 +1212,8 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
             raise ValueError("component current pointer does not match target SHA")
         if _active(component_unit, repo) != before_component_active:
             raise ValueError("component unit active state changed after activation")
-        if protected_unit and after_protected != before_protected:
-            raise ValueError("Web deployment changed the backtest worker identity")
+        if after_protected != before_protected:
+            raise ValueError("component deployment changed a protected peer identity")
         checks.append({
             "name": "live-core-continuity", "status": "passed",
             "detail": (
@@ -1211,11 +1227,9 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
                 f"unit={component_unit}; preserved_active={before_component_active}"
             ),
         })
-        if protected_unit:
-            checks.append({
-                "name": "backtest-worker-continuity", "status": "passed",
-                "detail": before_protected,
-            })
+        checks.extend({
+            "name": f"{name}-continuity", "status": "passed", "detail": identity,
+        } for name, identity in before_protected.items())
         success = True
     except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError,
             json.JSONDecodeError, zipfile.BadZipFile) as exc:
@@ -1263,11 +1277,12 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
     except (OSError, subprocess.CalledProcessError):
         after_component_active = False
     try:
-        after_protected = (
-            _unit_identity_token(protected_unit, repo) if protected_unit else ""
-        )
+        after_protected = {
+            name: _unit_identity_token(unit, repo)
+            for name, unit in protected_units.items()
+        }
     except (OSError, subprocess.CalledProcessError):
-        after_protected = "unavailable"
+        after_protected = {name: "unavailable" for name in protected_units}
     fully_rolled_back = (
         rollback_ok and current_component == before_component and after_live == before_live
         and _head(repo) == production_sha
@@ -1281,7 +1296,7 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
         "live-core-pid": before_live["pid"],
         "live-core-started": before_live["started_monotonic"],
         f"{args.component}-active": before_component_active,
-        **({"backtest-worker-identity": before_protected} if protected_unit else {}),
+        **({f"{name}-identity": value for name, value in before_protected.items()}),
     }
     after = {
         "linux": _head(repo),
@@ -1289,7 +1304,7 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
         "live-core-pid": after_live["pid"],
         "live-core-started": after_live["started_monotonic"],
         f"{args.component}-active": after_component_active,
-        **({"backtest-worker-identity": after_protected} if protected_unit else {}),
+        **({f"{name}-identity": value for name, value in after_protected.items()}),
     }
     record = {
         "schema_version": 1, "run_id": args.run_id,

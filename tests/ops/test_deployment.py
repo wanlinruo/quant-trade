@@ -388,6 +388,47 @@ def test_web_component_has_an_isolated_release_and_minimal_write_boundary() -> N
     assert "scripts/run_monitor.py" not in dropin
 
 
+def test_paper_and_shadow_components_have_independent_release_boundaries() -> None:
+    specs = json.loads(Path("deploy/component-releases.json").read_text(encoding="utf-8"))
+    paper = specs["components"]["paper"]
+    shadow = specs["components"]["shadow-core"]
+
+    assert paper["entrypoint"] == {
+        "command": "qsys-paper", "target": "qsys.paper.runner_cli:main",
+    }
+    assert paper["release_root"] == "/opt/qsys/components/paper/releases"
+    assert paper["current"] == "/opt/qsys/components/paper/current"
+    assert paper["unit"] == "qsys-paper.service"
+    assert paper["state_directories"] == [{
+        "path": "/home/ubuntu/qsys/var/workbench",
+        "owner": "qsys-paper", "group": "qsys-workbench", "mode": "0770",
+    }]
+    paper_dropin = "\n".join(paper["dropin_lines"])
+    assert "User=qsys-paper" in paper_dropin
+    assert "Group=qsys-workbench" in paper_dropin
+    assert "ExecStart=/opt/qsys/components/paper/current/venv/bin/qsys-paper" in paper_dropin
+    assert paper_dropin.count("ReadWritePaths=") == 2
+    assert "ReadWritePaths=/data/qsys" not in paper_dropin
+    assert "scripts/run_paper.py" not in paper_dropin
+
+    assert shadow["entrypoint"] == {
+        "command": "qsys-shadow-core", "target": "qsys.live.shadow_cli:main",
+    }
+    assert shadow["release_root"] == "/opt/qsys/components/shadow-core/releases"
+    assert shadow["current"] == "/opt/qsys/components/shadow-core/current"
+    assert shadow["unit"] == "qsys-shadow-core.service"
+    shadow_dropin = "\n".join(shadow["dropin_lines"])
+    assert "User=qsys-shadow-core" in shadow_dropin
+    assert "qsys-live-preflight" in shadow_dropin
+    assert "ExecStart=/opt/qsys/components/shadow-core/current/venv/bin/qsys-shadow-core" in shadow_dropin
+    assert "--journal-warehouse /home/ubuntu/qsys/var/shadow-core/journal" in shadow_dropin
+    assert "--kill-switch /home/ubuntu/qsys/var/shadow-core/SHADOW_KILL" in shadow_dropin
+    assert shadow_dropin.count("ReadWritePaths=") == 3
+    assert "ReadWritePaths=/data/qsys" not in shadow_dropin
+    assert "scripts/run_shadow.py" not in shadow_dropin
+    assert "/opt/qsys/.venv" not in shadow_dropin
+
+
 def test_storage_report_component_has_a_read_only_release_boundary() -> None:
     specs = json.loads(Path("deploy/component-releases.json").read_text(encoding="utf-8"))
     storage = specs["components"]["storage-report"]
@@ -1024,7 +1065,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
 
     state = entrypoint.status({"production_repo": str(tmp_path)})
 
-    assert state["entrypoint_version"] == 22
+    assert state["entrypoint_version"] == 23
     assert set(state["capabilities"]) == {
         "systemd-apply-v1", "systemd-changed-artifacts-v1",
         "systemd-preview-v1", "systemd-rollback-v1",
@@ -1047,6 +1088,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
         "component-release-v10",
         "component-release-v11",
         "component-release-v12",
+        "component-release-v13",
     }
 
 
@@ -1315,6 +1357,21 @@ def test_protected_unit_identity_is_stable_and_record_safe(monkeypatch, tmp_path
         "qsys-backtest-worker.service", tmp_path,
     )) == {
         "load": "loaded", "active": "active", "pid": "77", "started": "1234",
+    }
+
+
+def test_paper_and_shadow_protect_each_other_and_non_trading_peers() -> None:
+    entrypoint = _production_entrypoint_module()
+
+    assert entrypoint.COMPONENT_PROTECTED_PEERS["paper"] == {
+        "shadow-core": "qsys-shadow-core.service",
+        "web": "qsys-monitor.service",
+        "backtest-worker": "qsys-backtest-worker.service",
+    }
+    assert entrypoint.COMPONENT_PROTECTED_PEERS["shadow-core"] == {
+        "paper": "qsys-paper.service",
+        "web": "qsys-monitor.service",
+        "backtest-worker": "qsys-backtest-worker.service",
     }
 
 
@@ -2117,10 +2174,13 @@ def test_component_workflow_streams_only_a_verified_artifact() -> None:
     assert ".before.linux == .after.linux" in workflow
     assert "PRODUCTION_DEPLOY_SSH_KEY" in workflow
     assert "cancel-in-progress: false" in workflow
-    assert "backtest-worker|web|catalog-verify|service-checks|storage-report|daily-digest|health-observer|daily-archive|premarket-limits|tushare-sync" in workflow
-    assert 'required = {"component-release-v12"}' in workflow
-    assert 'entrypoint_version", 0) < 22' in workflow
+    assert "backtest-worker|web|paper|shadow-core|catalog-verify|service-checks|storage-report|daily-digest|health-observer|daily-archive|premarket-limits|tushare-sync" in workflow
+    assert 'required = {"component-release-v13"}' in workflow
+    assert 'entrypoint_version", 0) < 23' in workflow
     assert '.before["backtest-worker-identity"] == .after["backtest-worker-identity"]' in workflow
+    assert '.before["shadow-core-identity"] == .after["shadow-core-identity"]' in workflow
+    assert '.before["paper-identity"] == .after["paper-identity"]' in workflow
+    assert '.before["web-identity"] == .after["web-identity"]' in workflow
 
 
 def test_test_research_workflow_streams_ci_artifact_without_activation() -> None:
