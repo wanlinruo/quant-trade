@@ -456,6 +456,51 @@ def test_premarket_limits_component_has_minimal_writer_boundaries() -> None:
     assert "scripts/tushare_premarket_limits.py" not in dropin
 
 
+def test_tushare_sync_component_owns_bounded_writer_and_convergence_paths() -> None:
+    specs = json.loads(Path("deploy/component-releases.json").read_text(encoding="utf-8"))
+    sync = specs["components"]["tushare-sync"]
+
+    assert sync["entrypoint"] == {
+        "command": "qsys-tushare-sync",
+        "target": "qsys.data.tushare_sync_cli:main",
+    }
+    assert sync["scan_roots"] == [
+        "src/qsys/core", "src/qsys/data", "src/qsys/live", "src/qsys/ops",
+        "src/qsys/paper", "scripts/win_download_minutes.py",
+    ]
+    assert sync["release_root"] == "/opt/qsys/components/tushare-sync/releases"
+    assert sync["current"] == "/opt/qsys/components/tushare-sync/current"
+    assert sync["unit"] == "qsys-tushare-sync.service"
+    assert sync["state_directories"] == [
+        {
+            "path": "/home/ubuntu/qsys/var/tushare-sync",
+            "owner": "qsys-tushare-sync", "group": "qsys-tushare-sync",
+            "mode": "0750",
+        },
+        {
+            "path": "/home/ubuntu/qsys/var/service-runs/tushare-sync",
+            "owner": "qsys-tushare-sync", "group": "qsys-tushare-sync",
+            "mode": "0750",
+        },
+    ]
+    dropin = "\n".join(sync["dropin_lines"])
+    assert "User=qsys-tushare-sync" in dropin
+    assert "WorkingDirectory=/" in dropin
+    assert "ReadWritePaths=/data/qsys/warehouse" in dropin
+    assert "ReadWritePaths=/home/ubuntu/qsys/var/warehouse-write.lock" in dropin
+    assert "ReadWritePaths=/home/ubuntu/qsys/var/tushare-sync" in dropin
+    assert "ReadWritePaths=/home/ubuntu/qsys/var/service-runs/tushare-sync" in dropin
+    assert dropin.count("ReadWritePaths=/home") == 3
+    assert "--late-minute-convergence" in dropin
+    assert "--late-minute-work-root /home/ubuntu/qsys/var/tushare-sync" in dropin
+    assert "--late-minute-record-root /home/ubuntu/qsys/var/service-runs/tushare-sync" in dropin
+    assert "--late-minute-paper-store /home/ubuntu/qsys/var/workbench/workbench.sqlite3" in dropin
+    assert "--late-minute-win-key /etc/qsys/tushare-sync/windows-data-writer" in dropin
+    assert "current/source/scripts/win_download_minutes.py" in dropin
+    assert "/home/ubuntu/qsys/.venv" not in dropin
+    assert "scripts/tushare_daily_sync.py" not in dropin
+
+
 def test_health_observer_component_owns_only_timeline_and_alert_namespaces() -> None:
     specs = json.loads(Path("deploy/component-releases.json").read_text(encoding="utf-8"))
     observer = specs["components"]["health-observer"]
@@ -903,7 +948,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
 
     state = entrypoint.status({"production_repo": str(tmp_path)})
 
-    assert state["entrypoint_version"] == 19
+    assert state["entrypoint_version"] == 20
     assert set(state["capabilities"]) == {
         "systemd-apply-v1", "systemd-changed-artifacts-v1",
         "systemd-preview-v1", "systemd-rollback-v1",
@@ -923,6 +968,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
         "component-release-v7",
         "component-release-v8",
         "component-release-v9",
+        "component-release-v10",
     }
 
 
@@ -1898,9 +1944,9 @@ def test_component_workflow_streams_only_a_verified_artifact() -> None:
     assert ".before.linux == .after.linux" in workflow
     assert "PRODUCTION_DEPLOY_SSH_KEY" in workflow
     assert "cancel-in-progress: false" in workflow
-    assert "catalog-verify|service-checks|storage-report|daily-digest|health-observer|daily-archive|premarket-limits" in workflow
-    assert 'required = {"component-release-v9"}' in workflow
-    assert 'entrypoint_version", 0) < 19' in workflow
+    assert "catalog-verify|service-checks|storage-report|daily-digest|health-observer|daily-archive|premarket-limits|tushare-sync" in workflow
+    assert 'required = {"component-release-v10"}' in workflow
+    assert 'entrypoint_version", 0) < 20' in workflow
 
 
 def test_test_research_workflow_streams_ci_artifact_without_activation() -> None:

@@ -167,6 +167,53 @@
         "ExecStart=/usr/bin/flock --exclusive --nonblock /home/ubuntu/qsys/var/warehouse-write.lock /opt/qsys/components/premarket-limits/current/venv/bin/qsys-premarket-limits --warehouse /data/qsys/warehouse --config /home/ubuntu/qsys/config/deploy.local.toml --service-runs /home/ubuntu/qsys/var/service-runs/premarket-limits"
       ]
     },
+    "tushare-sync": {
+      "entrypoint": {
+        "command": "qsys-tushare-sync",
+        "target": "qsys.data.tushare_sync_cli:main"
+      },
+      "scan_roots": [
+        "src/qsys/core",
+        "src/qsys/data",
+        "src/qsys/live",
+        "src/qsys/ops",
+        "src/qsys/paper",
+        "scripts/win_download_minutes.py"
+      ],
+      "release_root": "/opt/qsys/components/tushare-sync/releases",
+      "current": "/opt/qsys/components/tushare-sync/current",
+      "executable": "venv/bin/qsys-tushare-sync",
+      "unit": "qsys-tushare-sync.service",
+      "dropin": "/etc/systemd/system/qsys-tushare-sync.service.d/zz-isolated-release.conf",
+      "state_directories": [
+        {
+          "path": "/home/ubuntu/qsys/var/tushare-sync",
+          "owner": "qsys-tushare-sync",
+          "group": "qsys-tushare-sync",
+          "mode": "0750"
+        },
+        {
+          "path": "/home/ubuntu/qsys/var/service-runs/tushare-sync",
+          "owner": "qsys-tushare-sync",
+          "group": "qsys-tushare-sync",
+          "mode": "0750"
+        }
+      ],
+      "seed": null,
+      "dropin_lines": [
+        "[Service]",
+        "User=qsys-tushare-sync",
+        "Group=qsys-tushare-sync",
+        "WorkingDirectory=/",
+        "ExecStart=",
+        "ReadWritePaths=",
+        "ReadWritePaths=/data/qsys/warehouse",
+        "ReadWritePaths=/home/ubuntu/qsys/var/warehouse-write.lock",
+        "ReadWritePaths=/home/ubuntu/qsys/var/tushare-sync",
+        "ReadWritePaths=/home/ubuntu/qsys/var/service-runs/tushare-sync",
+        "ExecStart=/usr/bin/flock --exclusive --nonblock /home/ubuntu/qsys/var/warehouse-write.lock /opt/qsys/components/tushare-sync/current/venv/bin/qsys-tushare-sync --warehouse /data/qsys/warehouse --config /home/ubuntu/qsys/config/deploy.local.toml --service-runs /home/ubuntu/qsys/var/service-runs/tushare-sync --late-minute-convergence --late-minute-paper-store /home/ubuntu/qsys/var/workbench/workbench.sqlite3 --late-minute-record-root /home/ubuntu/qsys/var/service-runs/tushare-sync --late-minute-work-root /home/ubuntu/qsys/var/tushare-sync --late-minute-win-key /etc/qsys/tushare-sync/windows-data-writer --late-minute-win-script-source /opt/qsys/components/tushare-sync/current/source/scripts/win_download_minutes.py"
+      ]
+    },
     "daily-digest": {
       "entrypoint": {
         "command": "qsys-daily-digest",
