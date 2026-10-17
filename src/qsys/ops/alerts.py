@@ -233,7 +233,7 @@ def strategy_sinks(strategy_url: str, ops_url: str = "", *,
 
 # 各进程各写各的，按天一个文件，日报统一读。相对路径，进程的工作目录都是仓库根。
 LEDGER_DIR = Path("var/alerts")
-SERVICE_LEDGER_NAMESPACES = frozenset({"service-checks"})
+SERVICE_LEDGER_NAMESPACES = frozenset({"health-observer", "service-checks"})
 
 
 def ledger(root=None) -> AlertLedger:

@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from qsys.ops.alerts import AlertBus, RecordingAlertSink, Severity
 from qsys.ops.health import DEGRADED, DOWN, HEALTHY, MORNING
 from qsys.ops.trading_chain import ChainAssessment
-from scripts.run_health_observer import BusinessAlertTracker, observation
+from qsys.ops.health_observer_cli import BusinessAlertTracker, observation
 
 
 def row(service="shadow-core", state="ok"):
@@ -93,7 +93,7 @@ def _task(age_seconds=30, **over):
 
 def test_a_task_caught_mid_run_is_not_a_failure():
     """0x41301 是「正在运行、尚无结果」；看门狗每 5 分钟跑一次，探测可能正好撞上。"""
-    from scripts.run_health_observer import _watchdog_state
+    from qsys.ops.health_observer_cli import _watchdog_state
 
     task, now = _task()
     assert _watchdog_state(task, now)[1] == "watchdog_fresh"
@@ -105,14 +105,14 @@ def test_an_interrupted_run_left_by_a_reboot_is_not_a_failure():
     把它当失败，等于每次重启都推一条「看门狗已停止」——2026-10-04 真发过一条。
     真死了由下面的时长判定兜住。
     """
-    from scripts.run_health_observer import _watchdog_state
+    from qsys.ops.health_observer_cli import _watchdog_state
 
     task, now = _task(State="Ready", LastTaskResult=267009)
     assert _watchdog_state(task, now)[1] == "watchdog_fresh"
 
 
 def test_a_real_non_zero_result_is_still_a_failure():
-    from scripts.run_health_observer import _watchdog_state
+    from qsys.ops.health_observer_cli import _watchdog_state
 
     task, now = _task(State="Ready", LastTaskResult=1)
     assert _watchdog_state(task, now) == ("down", "watchdog_failed")
@@ -121,7 +121,7 @@ def test_a_real_non_zero_result_is_still_a_failure():
 def test_a_healthy_watchdog_seen_through_the_cache_is_not_called_late():
     """任务每 300 秒跑一次，查询又按 300 秒缓存：健康状态下观测到的「距上次运行」
     也能到 600 秒。阈值盖不住这个和，就会每几分钟误报一次。"""
-    from scripts.run_health_observer import (
+    from qsys.ops.health_observer_cli import (
         TASK_CACHE_SECONDS, WATCHDOG_INTERVAL_SECONDS, _watchdog_state,
     )
 
@@ -131,7 +131,7 @@ def test_a_healthy_watchdog_seen_through_the_cache_is_not_called_late():
 
 
 def test_a_watchdog_that_really_stopped_is_still_caught():
-    from scripts.run_health_observer import WATCHDOG_DOWN_AFTER, _watchdog_state
+    from qsys.ops.health_observer_cli import WATCHDOG_DOWN_AFTER, _watchdog_state
 
     task, now = _task(age_seconds=WATCHDOG_DOWN_AFTER + 60,
                       State="Ready", LastTaskResult=0)
@@ -139,7 +139,7 @@ def test_a_watchdog_that_really_stopped_is_still_caught():
 
 
 def test_a_disabled_watchdog_is_down_regardless_of_age():
-    from scripts.run_health_observer import _watchdog_state
+    from qsys.ops.health_observer_cli import _watchdog_state
 
     task, now = _task(State="Disabled", LastTaskResult=0)
     assert _watchdog_state(task, now) == ("down", "watchdog_disabled")
@@ -159,20 +159,20 @@ def _urls(sinks):
 
 def test_chain_alerts_go_to_the_ops_robot_not_the_strategy_one():
     """链路断了是运维事故，不是策略行情——发进实盘群会把实盘群淹掉。"""
-    from scripts.run_health_observer import ops_sinks
+    from qsys.ops.health_observer_cli import ops_sinks
 
     assert _urls(ops_sinks(_deploy(ops="https://x/ops"))) == ["https://x/ops"]
 
 
 def test_a_single_robot_still_gets_everything():
     """只配了一个机器人时不能静默——ops_url 会回落到它。"""
-    from scripts.run_health_observer import ops_sinks
+    from qsys.ops.health_observer_cli import ops_sinks
 
     assert _urls(ops_sinks(_deploy(ops="", strategy="https://x/only"))) == ["https://x/only"]
 
 
 def test_no_robot_configured_still_logs():
-    from scripts.run_health_observer import ops_sinks
+    from qsys.ops.health_observer_cli import ops_sinks
 
     sinks = ops_sinks(_deploy(ops="", strategy=""))
     assert _urls(sinks) == [] and len(sinks) == 1
@@ -181,7 +181,7 @@ def test_no_robot_configured_still_logs():
 # ---- 任何服务掉线都要报（以前只有 paper / shadow-core 的业务链路有）----
 
 from qsys.ops.health import UNKNOWN  # noqa: E402
-from scripts.run_health_observer import ProcessAlertTracker  # noqa: E402
+from qsys.ops.health_observer_cli import ProcessAlertTracker  # noqa: E402
 
 
 def _process(service, state):
@@ -253,7 +253,7 @@ def test_an_unobservable_service_is_not_called_down():
 # ---- 基础设施巡检：按间隔跑，边沿触发 ----
 
 from qsys.ops.infra_watch import Finding  # noqa: E402
-from scripts.run_health_observer import InfraAlerts  # noqa: E402
+from qsys.ops.health_observer_cli import InfraAlerts  # noqa: E402
 
 
 def _infra(sink, **kw):
@@ -277,7 +277,7 @@ def test_a_finding_is_pushed_once_and_its_recovery_once(monkeypatch):
     bad = [Finding("disk", Severity.CRITICAL, "磁盘即将写满", "剩余 6.0 GiB")]
     findings = bad
 
-    monkeypatch.setattr("scripts.run_health_observer.survey", lambda reading: findings)
+    monkeypatch.setattr("qsys.ops.health_observer_cli.survey", lambda reading: findings)
     watch.run(0.0)
     watch.run(300.0)
     assert [a.title for a in sink.alerts] == ["磁盘即将写满"]
@@ -294,7 +294,7 @@ def test_a_broken_survey_never_stops_the_sampling_loop(monkeypatch):
     def explode(reading):
         raise RuntimeError("boom")
 
-    monkeypatch.setattr("scripts.run_health_observer.survey", explode)
+    monkeypatch.setattr("qsys.ops.health_observer_cli.survey", explode)
     watch.run(0.0)          # 不抛
 
     assert sink.alerts == []
@@ -305,7 +305,7 @@ def test_a_broken_survey_never_stops_the_sampling_loop(monkeypatch):
 
 def _cached(answers):
     """answers 依次作为 windows_task_show 的返回值。"""
-    from scripts.run_health_observer import CachedWindowsTask
+    from qsys.ops.health_observer_cli import CachedWindowsTask
 
     calls = []
     cache = CachedWindowsTask("h", Path("k"), interval=300.0, retry=120.0)
@@ -315,11 +315,22 @@ def _cached(answers):
         calls.append(task)
         return seq.pop(0) if seq else {}
 
-    import scripts.run_health_observer as mod
+    import qsys.ops.health_observer_cli as mod
     return cache, calls, fake, mod
 
 
 GOOD = {"State": "Ready", "LastTaskResult": 0, "LastRunTime": "2026-10-04T11:00:00"}
+
+
+def test_component_parser_binds_owned_state_and_alert_namespaces(tmp_path):
+    from qsys.ops.health_observer_cli import _parser
+
+    state = tmp_path / "health-observer/service-health.sqlite3"
+    alerts = tmp_path / "alerts/health-observer"
+    args = _parser().parse_args(["--state", str(state), "--alert-ledger", str(alerts)])
+
+    assert Path(args.state) == state
+    assert Path(args.alert_ledger) == alerts
 
 
 def test_a_good_answer_is_held_for_the_whole_interval(monkeypatch):
@@ -350,5 +361,5 @@ def test_a_failed_answer_is_retried_well_before_the_full_interval(monkeypatch):
     monkeypatch.setattr(mod.time, "monotonic", lambda: 120.0)
     assert cache("t") == GOOD       # 远早于整个缓存周期
     assert len(calls) == 2
-    from scripts.run_health_observer import TASK_CACHE_SECONDS, TASK_RETRY_SECONDS
+    from qsys.ops.health_observer_cli import TASK_CACHE_SECONDS, TASK_RETRY_SECONDS
     assert TASK_RETRY_SECONDS < TASK_CACHE_SECONDS

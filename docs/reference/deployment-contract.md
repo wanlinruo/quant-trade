@@ -128,7 +128,7 @@ seed 与最终 systemd 命令统一来自 `deploy/component-releases.json` 静�
 把同一文件以 root-owned 0644 放到 `/etc/qsys/component-releases.json`；待发布 SHA 中的规格必须
 与已安装副本逐项相同，否则在 stage/activate 前失败关闭。artifact 不能提供路径、命令或新增组件。
 白名单当前允许已投产的 `catalog-verify`，以及待迁移的 `service-checks`、
-`storage-report`、`daily-digest`。新增组件必须先单独升级固定入口与 root-owned 白名单；代码合入本身
+`storage-report`、`daily-digest`、`health-observer`。新增组件必须先单独升级固定入口与 root-owned 白名单；代码合入本身
 不授权生产激活。
 
 通用 installer 在切换前验证 manifest、规格指纹、wheel、源码成员、权限、unit inactive 和 seed；
@@ -157,6 +157,13 @@ Web 和 daily digest 可跨迁移窗口工作。生产账号/目录预置、v14 
 storage 和 systemd 状态保持只读。代码中的 Redis 操作仅为读取 kill-switch 与 agent heartbeat，
 但生产首次激活仍必须单独验证 Redis 凭据为只读 ACL，并审计配置与 SMTP 最小权限；v16 固定入口
 升级、账号/目录预置和激活均不由代码合入自动授权。
+
+`health-observer` 作为首个常驻观测组件，wheel 入口为 `qsys-health-observer`，独立账号仅写
+`var/health-observer` 与 `var/alerts/health-observer`。Web reader 在每次查询时只读合并新旧健康库，
+因此 observer 激活不要求同步重启 Web，复制历史记录也会按观测 identity 去重。组件对 Redis 只读
+heartbeat/kill-switch，对 systemd 与 Windows Task 只做探测；生产首次激活前仍须预置受限 Windows
+只读 key，并审计 Redis ACL、配置/共享状态读取权限。v17 固定入口安装、账号/目录和密钥预置均需
+单独授权。
 
 ### 2026-10-16 catalog 组件发布复盘与固定约束
 

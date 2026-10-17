@@ -378,6 +378,43 @@ def test_daily_digest_component_has_one_owned_write_namespace() -> None:
     assert "scripts/send_daily_digest.py" not in dropin
 
 
+def test_health_observer_component_owns_only_timeline_and_alert_namespaces() -> None:
+    specs = json.loads(Path("deploy/component-releases.json").read_text(encoding="utf-8"))
+    observer = specs["components"]["health-observer"]
+
+    assert observer["entrypoint"] == {
+        "command": "qsys-health-observer",
+        "target": "qsys.ops.health_observer_cli:main",
+    }
+    assert observer["scan_roots"] == [
+        "src/qsys/data", "src/qsys/live", "src/qsys/ops", "src/qsys/paper",
+        "src/qsys/web",
+    ]
+    assert observer["release_root"] == "/opt/qsys/components/health-observer/releases"
+    assert observer["current"] == "/opt/qsys/components/health-observer/current"
+    assert observer["unit"] == "qsys-health-observer.service"
+    assert observer["state_directories"] == [
+        {
+            "path": "/home/ubuntu/qsys/var/health-observer",
+            "owner": "qsys-health-observer", "group": "qsys-health-observer",
+            "mode": "0750",
+        },
+        {
+            "path": "/home/ubuntu/qsys/var/alerts/health-observer",
+            "owner": "qsys-health-observer", "group": "qsys-health-observer",
+            "mode": "0750",
+        },
+    ]
+    dropin = "\n".join(observer["dropin_lines"])
+    assert "User=qsys-health-observer" in dropin
+    assert dropin.count("ReadWritePaths=/home") == 2
+    assert "--state /home/ubuntu/qsys/var/health-observer/service-health.sqlite3" in dropin
+    assert "--alert-ledger /home/ubuntu/qsys/var/alerts/health-observer" in dropin
+    assert "QSYS_WINDOWS_SSH_KEY=/etc/qsys/health-observer/windows-task-readonly" in dropin
+    assert "/home/ubuntu/qsys/.venv" not in dropin
+    assert "scripts/run_health_observer.py" not in dropin
+
+
 def test_shared_redis_change_targets_both_nodes() -> None:
     plan = DeploymentManifest.load(MANIFEST).plan(
         ["src/qsys/live/redis_transport.py"], environment="production",
@@ -788,7 +825,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
 
     state = entrypoint.status({"production_repo": str(tmp_path)})
 
-    assert state["entrypoint_version"] == 16
+    assert state["entrypoint_version"] == 17
     assert set(state["capabilities"]) == {
         "systemd-apply-v1", "systemd-changed-artifacts-v1",
         "systemd-preview-v1", "systemd-rollback-v1",
@@ -805,6 +842,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
         "component-release-v4",
         "component-release-v5",
         "component-release-v6",
+        "component-release-v7",
     }
 
 
@@ -1001,6 +1039,7 @@ def test_component_deploy_dry_run_proves_live_without_reading_artifact(
     monkeypatch.setattr(entrypoint, "_fetch_and_validate_target", lambda repo, value: "c" * 40)
     monkeypatch.setattr(entrypoint, "_successful_test_run", lambda config, tree: "test-1")
     monkeypatch.setattr(entrypoint, "_current_component_sha", lambda component: "uninstalled")
+    monkeypatch.setattr(entrypoint, "_active", lambda unit, repo: False)
     monkeypatch.setattr(entrypoint, "_live_identity", lambda repo: {
         "pid": "42", "started_monotonic": "99", "repo_sha": "b" * 40,
     })
@@ -1022,6 +1061,81 @@ def test_component_deploy_dry_run_proves_live_without_reading_artifact(
     assert result["live_identity"]["pid"] == "42"
 
 
+def test_resident_component_preserves_its_active_state_during_switch(
+    monkeypatch, tmp_path, capsys,
+) -> None:
+    entrypoint = _production_entrypoint_module()
+    target = "a" * 40
+    production = "b" * 40
+    previous = "c" * 40
+    live = {"pid": "42", "started_monotonic": "99", "repo_sha": production}
+    state = {"active": True, "component": previous}
+    records = []
+    commands = []
+    monkeypatch.setattr(entrypoint, "_branch", lambda repo: "main")
+    monkeypatch.setattr(entrypoint, "_dirty", lambda repo: False)
+    monkeypatch.setattr(entrypoint, "_head", lambda repo: production)
+    monkeypatch.setattr(entrypoint, "_fetch_and_validate_target", lambda repo, sha: "d" * 40)
+    monkeypatch.setattr(entrypoint, "_successful_test_run", lambda config, tree: "test-1")
+    monkeypatch.setattr(
+        entrypoint, "_current_component_sha", lambda component: state["component"],
+    )
+    monkeypatch.setattr(entrypoint, "_active", lambda unit, repo: state["active"])
+    monkeypatch.setattr(entrypoint, "_live_identity", lambda repo: dict(live))
+    monkeypatch.setattr(entrypoint, "_live_preflight", lambda repo: None)
+    monkeypatch.setattr(entrypoint, "_fingerprints", lambda config, repo: {"linux": "f"})
+    monkeypatch.setattr(
+        entrypoint, "_receive_component_archive",
+        lambda digest, root: root / "component.zip",
+    )
+    monkeypatch.setattr(entrypoint, "_extract_component_archive", lambda *args: None)
+    monkeypatch.setattr(entrypoint, "_verify_component_release", lambda *args: None)
+    monkeypatch.setattr(entrypoint, "_stage_component_release", lambda *args: tmp_path / target)
+
+    def fake_run(command, **kwargs):
+        command = [str(item) for item in command]
+        commands.append(command)
+        if command[-2:] == ["stop", "qsys-health-observer.service"]:
+            state["active"] = False
+        elif entrypoint.GENERIC_COMPONENT_INSTALLER in command:
+            assert state["active"] is False
+            state["component"] = target
+        elif command[-2:] == ["start", "qsys-health-observer.service"]:
+            state["active"] = True
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(entrypoint, "_run", fake_run)
+    monkeypatch.setattr(
+        entrypoint, "_write_record",
+        lambda config, run_id, record: records.append(record) or tmp_path / "record.json",
+    )
+    args = argparse.Namespace(
+        sha=target, component="health-observer", artifact_sha256="e" * 64,
+        run_id="release-observer", actor="maintainer", repository="owner/repo",
+        pr_number=381, dry_run=False,
+    )
+
+    assert entrypoint.component_deploy(
+        args, {
+            "production_repo": str(tmp_path), "test_record_root": str(tmp_path),
+            "production_record_root": str(tmp_path / "records"),
+        },
+    ) == 0
+    assert state == {"active": True, "component": target}
+    stop = next(i for i, command in enumerate(commands) if command[-2:] == [
+        "stop", "qsys-health-observer.service",
+    ])
+    install = next(i for i, command in enumerate(commands)
+                   if entrypoint.GENERIC_COMPONENT_INSTALLER in command)
+    start = next(i for i, command in enumerate(commands) if command[-2:] == [
+        "start", "qsys-health-observer.service",
+    ])
+    assert stop < install < start
+    assert records[0]["before"]["health-observer-active"] is True
+    assert records[0]["after"]["health-observer-active"] is True
+    assert json.loads(capsys.readouterr().out)["status"] == "success"
+
+
 def test_component_activation_failure_rolls_back_and_preserves_live_identity(
     monkeypatch, tmp_path, capsys,
 ) -> None:
@@ -1037,6 +1151,7 @@ def test_component_activation_failure_rolls_back_and_preserves_live_identity(
     monkeypatch.setattr(entrypoint, "_fetch_and_validate_target", lambda repo, sha: "d" * 40)
     monkeypatch.setattr(entrypoint, "_successful_test_run", lambda config, tree: "test-1")
     monkeypatch.setattr(entrypoint, "_current_component_sha", lambda component: previous)
+    monkeypatch.setattr(entrypoint, "_active", lambda unit, repo: False)
     monkeypatch.setattr(entrypoint, "_live_identity", lambda repo: dict(live))
     monkeypatch.setattr(entrypoint, "_live_preflight", lambda repo: None)
     monkeypatch.setattr(entrypoint, "_fingerprints", lambda config, repo: {"linux": "f"})
@@ -1668,9 +1783,9 @@ def test_component_workflow_streams_only_a_verified_artifact() -> None:
     assert ".before.linux == .after.linux" in workflow
     assert "PRODUCTION_DEPLOY_SSH_KEY" in workflow
     assert "cancel-in-progress: false" in workflow
-    assert "catalog-verify|service-checks|storage-report|daily-digest" in workflow
-    assert 'required = {"component-release-v6"}' in workflow
-    assert 'entrypoint_version", 0) < 16' in workflow
+    assert "catalog-verify|service-checks|storage-report|daily-digest|health-observer" in workflow
+    assert 'required = {"component-release-v7"}' in workflow
+    assert 'entrypoint_version", 0) < 17' in workflow
 
 
 def test_test_research_workflow_streams_ci_artifact_without_activation() -> None:

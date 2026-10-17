@@ -11,7 +11,8 @@ WorkingDirectory=/home/ubuntu/qsys
 Environment=PYTHONUNBUFFERED=1
 ExecStart=/home/ubuntu/qsys/.venv/bin/python scripts/run_health_observer.py \
           --config /home/ubuntu/qsys/config/deploy.local.toml \
-          --state /home/ubuntu/qsys/var/service-health.sqlite3 \
+          --state /home/ubuntu/qsys/var/health-observer/service-health.sqlite3 \
+          --alert-ledger /home/ubuntu/qsys/var/alerts/health-observer \
           --shadow-state /home/ubuntu/qsys/var/shadow-state.sqlite3 \
           --live-state /home/ubuntu/qsys/var/live-state.sqlite3 \
           --workbench /home/ubuntu/qsys/var/workbench/workbench.sqlite3 \
@@ -23,7 +24,8 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/home/ubuntu/qsys/var
+ReadWritePaths=/home/ubuntu/qsys/var/health-observer
+ReadWritePaths=/home/ubuntu/qsys/var/alerts/health-observer
 
 [Install]
 WantedBy=multi-user.target
