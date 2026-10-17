@@ -378,6 +378,41 @@ def test_daily_digest_component_has_one_owned_write_namespace() -> None:
     assert "scripts/send_daily_digest.py" not in dropin
 
 
+def test_daily_archive_component_has_explicit_data_writer_boundaries() -> None:
+    specs = json.loads(Path("deploy/component-releases.json").read_text(encoding="utf-8"))
+    archive = specs["components"]["daily-archive"]
+
+    assert archive["entrypoint"] == {
+        "command": "qsys-daily-archive",
+        "target": "qsys.data.daily_archive_cli:main",
+    }
+    assert archive["release_root"] == "/opt/qsys/components/daily-archive/releases"
+    assert archive["current"] == "/opt/qsys/components/daily-archive/current"
+    assert archive["unit"] == "qsys-daily-archive.service"
+    assert archive["state_directories"] == [
+        {
+            "path": "/home/ubuntu/qsys/var/daily-archive",
+            "owner": "qsys-daily-archive", "group": "qsys-daily-archive",
+            "mode": "0750",
+        },
+        {
+            "path": "/home/ubuntu/qsys/var/service-runs/daily-archive",
+            "owner": "qsys-daily-archive", "group": "qsys-daily-archive",
+            "mode": "0750",
+        },
+    ]
+    dropin = "\n".join(archive["dropin_lines"])
+    assert "User=qsys-daily-archive" in dropin
+    assert "ReadWritePaths=/data/qsys/warehouse" in dropin
+    assert "ReadWritePaths=/home/ubuntu/qsys/var/warehouse-write.lock" in dropin
+    assert "ReadWritePaths=/home/ubuntu/qsys/var/daily-archive" in dropin
+    assert "--work-root /home/ubuntu/qsys/var/daily-archive" in dropin
+    assert "--record-root /home/ubuntu/qsys/var/service-runs/daily-archive" in dropin
+    assert "--win-key /etc/qsys/daily-archive/windows-data-writer" in dropin
+    assert "current/source/scripts/win_download_minutes.py" in dropin
+    assert "/home/ubuntu/qsys/.venv" not in dropin
+
+
 def test_health_observer_component_owns_only_timeline_and_alert_namespaces() -> None:
     specs = json.loads(Path("deploy/component-releases.json").read_text(encoding="utf-8"))
     observer = specs["components"]["health-observer"]
@@ -825,7 +860,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
 
     state = entrypoint.status({"production_repo": str(tmp_path)})
 
-    assert state["entrypoint_version"] == 17
+    assert state["entrypoint_version"] == 18
     assert set(state["capabilities"]) == {
         "systemd-apply-v1", "systemd-changed-artifacts-v1",
         "systemd-preview-v1", "systemd-rollback-v1",
@@ -843,6 +878,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
         "component-release-v5",
         "component-release-v6",
         "component-release-v7",
+        "component-release-v8",
     }
 
 
@@ -1783,9 +1819,9 @@ def test_component_workflow_streams_only_a_verified_artifact() -> None:
     assert ".before.linux == .after.linux" in workflow
     assert "PRODUCTION_DEPLOY_SSH_KEY" in workflow
     assert "cancel-in-progress: false" in workflow
-    assert "catalog-verify|service-checks|storage-report|daily-digest|health-observer" in workflow
-    assert 'required = {"component-release-v7"}' in workflow
-    assert 'entrypoint_version", 0) < 17' in workflow
+    assert "catalog-verify|service-checks|storage-report|daily-digest|health-observer|daily-archive" in workflow
+    assert 'required = {"component-release-v8"}' in workflow
+    assert 'entrypoint_version", 0) < 18' in workflow
 
 
 def test_test_research_workflow_streams_ci_artifact_without_activation() -> None:

@@ -17,6 +17,7 @@ on:
           - storage-report
           - daily-digest
           - health-observer
+          - daily-archive
       release_id:
         description: Auditable release identifier
         required: true
@@ -92,7 +93,7 @@ jobs:
           printf '%s' "$RELEASE_ID" | grep -Eq '^[A-Za-z0-9._-]{1,100}$'
           printf '%s' "$TARGET_SHA" | grep -Eq '^[0-9a-f]{40}$'
           case "$COMPONENT" in
-            catalog-verify|service-checks|storage-report|daily-digest|health-observer) ;;
+            catalog-verify|service-checks|storage-report|daily-digest|health-observer|daily-archive) ;;
             *) exit 2 ;;
           esac
           git fetch --no-tags origin main test
@@ -129,8 +130,8 @@ jobs:
           state = json.loads(os.environ["NODE_JSON"])
           if state["branch"] != "main" or state["dirty"] or not state["healthy"]:
               raise SystemExit(f"production node is not deployable: {state}")
-          required = {"component-release-v7"}
-          if state.get("entrypoint_version", 0) < 17 or not required <= set(state.get("capabilities", [])):
+          required = {"component-release-v8"}
+          if state.get("entrypoint_version", 0) < 18 or not required <= set(state.get("capabilities", [])):
               raise SystemExit("production entrypoint lacks component release capability")
           print(f'production_sha={state["sha"]}')
           PY

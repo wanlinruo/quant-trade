@@ -128,7 +128,7 @@ seed 与最终 systemd 命令统一来自 `deploy/component-releases.json` 静�
 把同一文件以 root-owned 0644 放到 `/etc/qsys/component-releases.json`；待发布 SHA 中的规格必须
 与已安装副本逐项相同，否则在 stage/activate 前失败关闭。artifact 不能提供路径、命令或新增组件。
 白名单当前允许已投产的 `catalog-verify`，以及待迁移的 `service-checks`、
-`storage-report`、`daily-digest`、`health-observer`。新增组件必须先单独升级固定入口与 root-owned 白名单；代码合入本身
+`storage-report`、`daily-digest`、`health-observer`、`daily-archive`。新增组件必须先单独升级固定入口与 root-owned 白名单；代码合入本身
 不授权生产激活。
 
 通用 installer 在切换前验证 manifest、规格指纹、wheel、源码成员、权限、unit inactive 和 seed；
@@ -164,6 +164,15 @@ storage 和 systemd 状态保持只读。代码中的 Redis 操作仅为读取 k
 heartbeat/kill-switch，对 systemd 与 Windows Task 只做探测；生产首次激活前仍须预置受限 Windows
 只读 key，并审计 Redis ACL、配置/共享状态读取权限。v17 固定入口安装、账号/目录和密钥预置均需
 单独授权。
+
+`daily-archive` 是首个数据写组件边界。wheel 入口为 `qsys-daily-archive`，release/current
+位于 `/opt/qsys/components/daily-archive/{releases/<SHA>,current}`；下载中转与已导入文件只写
+`var/daily-archive`，运行记录只写 `var/service-runs/daily-archive`。warehouse 仍是数据平面的
+共享单写目标，所有写入继续持有同一 `warehouse-write.lock`，并使用独立预置的 Windows/QMT
+写入 key。上传到 Windows 的分钟下载器来自同一 release 的 `source/scripts`，其内容受 manifest
+hash 约束；Tushare 的晚到上市标的补采改由包内模块启动，不再依赖共享 checkout 脚本。
+生产首次激活前必须另行审计 qsys-daily-archive 账号、warehouse/lock 最小 Unix 权限、forced-command
+Windows key 和配置只读权限；v18 固定入口安装及激活不由代码合入授权。
 
 ### 2026-10-16 catalog 组件发布复盘与固定约束
 

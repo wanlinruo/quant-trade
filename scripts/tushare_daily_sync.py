@@ -90,7 +90,7 @@ def converge_late_listing_minutes(
             )
 
         command = [
-            sys.executable, "-u", "scripts/daily_archive.py",
+            sys.executable, "-u", "-m", "qsys.data.daily_archive_cli",
             "--warehouse", str(warehouse_path),
             "--config", str(config_path),
             "--service-runs", str(service_runs),
