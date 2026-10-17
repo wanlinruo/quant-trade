@@ -129,7 +129,7 @@ seed 与最终 systemd 命令统一来自 `deploy/component-releases.json` 静�
 与已安装副本逐项相同，否则在 stage/activate 前失败关闭。artifact 不能提供路径、命令或新增组件。
 白名单当前允许已投产的 `catalog-verify`，以及待迁移的 `service-checks`、
 `storage-report`、`daily-digest`、`health-observer`、`daily-archive`、`premarket-limits`、
-`tushare-sync`、`backtest-worker`。新增组件必须先单独升级固定入口与 root-owned 白名单；代码合入本身
+`tushare-sync`、`backtest-worker`、`web`。新增组件必须先单独升级固定入口与 root-owned 白名单；代码合入本身
 不授权生产激活。
 
 通用 installer 在切换前验证 manifest、规格指纹、wheel、源码成员、权限、unit inactive 和 seed；
@@ -201,6 +201,14 @@ Tushare 配置、workbench 读取权限和 Windows forced-command key；v20 固�
 `var/workbench` 与 `var/runs`，生产 Warehouse 保持只读。共享 SQLite 目录通过预置的
 `qsys-workbench` 组协调 Web/worker 访问。v21 固定入口安装、账号和组预置、现有目录权限迁移、
 unit 首次启用均需单独授权；本次代码合入不会激活或重启生产服务。
+
+`web` 将监控台从共享 checkout 与共享 venv 迁入独立 wheel 入口 `qsys-web`。exact-SHA
+release/current 位于 `/opt/qsys/components/web/{releases/<SHA>,current}`；固定 drop-in 以
+`qsys-web:qsys-workbench` 运行，只允许写 `var/workbench` 及其策略草稿子目录。Warehouse、回测
+结果、服务记录、健康状态、交易状态和冻结研究证据均保持只读，Windows 状态查询只允许使用 Web
+专用只读 key。Web 组件切换除 Live Core 身份外还固定比较 backtest worker 的 load/active/PID/
+启动时间身份，并要求恢复本机 HTTP health 后才成功。v22 固定入口、账号/组/key 预置、现有
+Workbench 与策略数据迁移及首次生产激活均需单独授权；代码合入不会切换生产 Web。
 
 ### 2026-10-16 catalog 组件发布复盘与固定约束
 

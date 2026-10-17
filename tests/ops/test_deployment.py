@@ -353,6 +353,41 @@ def test_backtest_worker_component_is_separate_from_web_and_write_bounded() -> N
     assert "ReadWritePaths=/data/qsys/warehouse" not in unit
 
 
+def test_web_component_has_an_isolated_release_and_minimal_write_boundary() -> None:
+    specs = json.loads(Path("deploy/component-releases.json").read_text(encoding="utf-8"))
+    web = specs["components"]["web"]
+
+    assert web["entrypoint"] == {
+        "command": "qsys-web", "target": "qsys.web.monitor_cli:main",
+    }
+    assert web["scan_roots"] == ["src/qsys"]
+    assert web["release_root"] == "/opt/qsys/components/web/releases"
+    assert web["current"] == "/opt/qsys/components/web/current"
+    assert web["unit"] == "qsys-monitor.service"
+    assert web["state_directories"] == [
+        {
+            "path": "/home/ubuntu/qsys/var/workbench",
+            "owner": "qsys-web", "group": "qsys-workbench", "mode": "0770",
+        },
+        {
+            "path": "/home/ubuntu/qsys/var/workbench/strategies",
+            "owner": "qsys-web", "group": "qsys-workbench", "mode": "0770",
+        },
+    ]
+    dropin = "\n".join(web["dropin_lines"])
+    assert "User=qsys-web" in dropin
+    assert "Group=qsys-workbench" in dropin
+    assert "WorkingDirectory=/" in dropin
+    assert "QSYS_WINDOWS_SSH_KEY=/etc/qsys/web/windows-task-readonly" in dropin
+    assert "ExecStart=/opt/qsys/components/web/current/venv/bin/qsys-web" in dropin
+    assert "--strategies /home/ubuntu/qsys/var/workbench/strategies" in dropin
+    assert dropin.count("ReadWritePaths=") == 2  # reset plus one explicit namespace
+    assert "ReadWritePaths=/home/ubuntu/qsys" not in web["dropin_lines"]
+    assert "ReadWritePaths=/data/qsys" not in web["dropin_lines"]
+    assert "/home/ubuntu/qsys/.venv" not in dropin
+    assert "scripts/run_monitor.py" not in dropin
+
+
 def test_storage_report_component_has_a_read_only_release_boundary() -> None:
     specs = json.loads(Path("deploy/component-releases.json").read_text(encoding="utf-8"))
     storage = specs["components"]["storage-report"]
@@ -989,7 +1024,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
 
     state = entrypoint.status({"production_repo": str(tmp_path)})
 
-    assert state["entrypoint_version"] == 21
+    assert state["entrypoint_version"] == 22
     assert set(state["capabilities"]) == {
         "systemd-apply-v1", "systemd-changed-artifacts-v1",
         "systemd-preview-v1", "systemd-rollback-v1",
@@ -1011,6 +1046,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
         "component-release-v9",
         "component-release-v10",
         "component-release-v11",
+        "component-release-v12",
     }
 
 
@@ -1264,6 +1300,24 @@ def test_component_deploy_dry_run_proves_live_without_reading_artifact(
     assert result["live_identity"]["pid"] == "42"
 
 
+def test_protected_unit_identity_is_stable_and_record_safe(monkeypatch, tmp_path) -> None:
+    entrypoint = _production_entrypoint_module()
+    monkeypatch.setattr(
+        entrypoint, "_run",
+        lambda command, **kwargs: subprocess.CompletedProcess(
+            command, 0,
+            "LoadState=loaded\nActiveState=active\nMainPID=77\n"
+            "ExecMainStartTimestampMonotonic=1234\n", "",
+        ),
+    )
+
+    assert json.loads(entrypoint._unit_identity_token(
+        "qsys-backtest-worker.service", tmp_path,
+    )) == {
+        "load": "loaded", "active": "active", "pid": "77", "started": "1234",
+    }
+
+
 def test_resident_component_preserves_its_active_state_during_switch(
     monkeypatch, tmp_path, capsys,
 ) -> None:
@@ -1336,6 +1390,83 @@ def test_resident_component_preserves_its_active_state_during_switch(
     assert stop < install < start
     assert records[0]["before"]["health-observer-active"] is True
     assert records[0]["after"]["health-observer-active"] is True
+    assert json.loads(capsys.readouterr().out)["status"] == "success"
+
+
+def test_web_component_requires_http_health_and_preserves_worker_identity(
+    monkeypatch, tmp_path, capsys,
+) -> None:
+    entrypoint = _production_entrypoint_module()
+    target = "a" * 40
+    production = "b" * 40
+    previous = "c" * 40
+    live = {"pid": "42", "started_monotonic": "99", "repo_sha": production}
+    state = {"active": True, "component": previous}
+    worker_identity = json.dumps({
+        "load": "loaded", "active": "active", "pid": "77", "started": "1234",
+    }, sort_keys=True, separators=(",", ":"))
+    records = []
+    health_checks = []
+    monkeypatch.setattr(entrypoint, "_branch", lambda repo: "main")
+    monkeypatch.setattr(entrypoint, "_dirty", lambda repo: False)
+    monkeypatch.setattr(entrypoint, "_head", lambda repo: production)
+    monkeypatch.setattr(entrypoint, "_fetch_and_validate_target", lambda repo, sha: "d" * 40)
+    monkeypatch.setattr(entrypoint, "_successful_test_run", lambda config, tree: "test-1")
+    monkeypatch.setattr(
+        entrypoint, "_current_component_sha", lambda component: state["component"],
+    )
+    monkeypatch.setattr(entrypoint, "_active", lambda unit, repo: state["active"])
+    monkeypatch.setattr(entrypoint, "_live_identity", lambda repo: dict(live))
+    monkeypatch.setattr(entrypoint, "_live_preflight", lambda repo: None)
+    monkeypatch.setattr(entrypoint, "_fingerprints", lambda config, repo: {"linux": "f"})
+    monkeypatch.setattr(entrypoint, "_unit_identity_token", lambda unit, repo: worker_identity)
+    monkeypatch.setattr(
+        entrypoint, "_web_healthy",
+        lambda config: health_checks.append(True) is None or True,
+    )
+    monkeypatch.setattr(
+        entrypoint, "_receive_component_archive",
+        lambda digest, root: root / "component.zip",
+    )
+    monkeypatch.setattr(entrypoint, "_extract_component_archive", lambda *args: None)
+    monkeypatch.setattr(entrypoint, "_verify_component_release", lambda *args: None)
+    monkeypatch.setattr(entrypoint, "_stage_component_release", lambda *args: tmp_path / target)
+
+    def fake_run(command, **kwargs):
+        command = [str(item) for item in command]
+        if command[-2:] == ["stop", "qsys-monitor.service"]:
+            state["active"] = False
+        elif entrypoint.GENERIC_COMPONENT_INSTALLER in command:
+            assert state["active"] is False
+            state["component"] = target
+        elif command[-2:] == ["start", "qsys-monitor.service"]:
+            state["active"] = True
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(entrypoint, "_run", fake_run)
+    monkeypatch.setattr(
+        entrypoint, "_write_record",
+        lambda config, run_id, record: records.append(record) or tmp_path / "record.json",
+    )
+    args = argparse.Namespace(
+        sha=target, component="web", artifact_sha256="e" * 64,
+        run_id="release-web", actor="maintainer", repository="owner/repo",
+        pr_number=396, dry_run=False,
+    )
+
+    assert entrypoint.component_deploy(
+        args, {
+            "production_repo": str(tmp_path), "test_record_root": str(tmp_path),
+            "production_record_root": str(tmp_path / "records"),
+        },
+    ) == 0
+    assert health_checks == [True]
+    assert records[0]["before"]["backtest-worker-identity"] == worker_identity
+    assert records[0]["after"]["backtest-worker-identity"] == worker_identity
+    assert any(
+        check["name"] == "backtest-worker-continuity"
+        for check in records[0]["checks"]
+    )
     assert json.loads(capsys.readouterr().out)["status"] == "success"
 
 
@@ -1986,9 +2117,10 @@ def test_component_workflow_streams_only_a_verified_artifact() -> None:
     assert ".before.linux == .after.linux" in workflow
     assert "PRODUCTION_DEPLOY_SSH_KEY" in workflow
     assert "cancel-in-progress: false" in workflow
-    assert "backtest-worker|catalog-verify|service-checks|storage-report|daily-digest|health-observer|daily-archive|premarket-limits|tushare-sync" in workflow
-    assert 'required = {"component-release-v11"}' in workflow
-    assert 'entrypoint_version", 0) < 21' in workflow
+    assert "backtest-worker|web|catalog-verify|service-checks|storage-report|daily-digest|health-observer|daily-archive|premarket-limits|tushare-sync" in workflow
+    assert 'required = {"component-release-v12"}' in workflow
+    assert 'entrypoint_version", 0) < 22' in workflow
+    assert '.before["backtest-worker-identity"] == .after["backtest-worker-identity"]' in workflow
 
 
 def test_test_research_workflow_streams_ci_artifact_without_activation() -> None:

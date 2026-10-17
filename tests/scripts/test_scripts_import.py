@@ -54,3 +54,11 @@ def test_monitor_cannot_host_the_backtest_worker():
     assert "BacktestQueue" not in monitor
     assert "BacktestQueue" not in app
     assert "queue.start()" not in app
+
+
+def test_monitor_legacy_script_delegates_to_packaged_entrypoint():
+    legacy = importlib.import_module("scripts.run_monitor")
+    packaged = importlib.import_module("qsys.web.monitor_cli")
+
+    assert legacy.main is packaged.main
+    assert legacy.build_app is packaged.build_app
