@@ -138,6 +138,14 @@ FILL_EXEMPTIONS: dict[tuple[str, str], str] = {
         'value_diffs.filter(pl.col("field") == "amount")["abs_diff"].max() or 0.0',
     ): "差异集合为空时最大差异按定义为 0，仅用于质量报告摘要",
     (
+        "src/qsys/data/daily_archive_cli.py",
+        'f"有数据 {int(progress.get(\'downloaded_stock_days\', 0)):,}，"',
+    ): "旧版 Windows 进度协议可不含该计数；缺字段表示尚未下载，展示计数按定义为 0",
+    (
+        "src/qsys/data/daily_archive_cli.py",
+        'rows=int(progress.get("downloaded_stock_days", 0)),',
+    ): "运行记录兼容旧版进度协议；缺少下载计数时按尚未下载的 0 行记录",
+    (
         "src/qsys/strategy/context.py",
         'market += held.total_qty * prices.get(symbol, 0.0)',
     ): "只读账户视图中无可见价格的持仓不计入当次可见市值，现金仍单独保留",
