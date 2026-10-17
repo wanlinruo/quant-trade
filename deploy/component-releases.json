@@ -82,6 +82,42 @@
         "ExecStart=/opt/qsys/components/service-checks/current/venv/bin/qsys-service-checks --warehouse /home/ubuntu/qsys/warehouse --config /home/ubuntu/qsys/config/deploy.local.toml --service-runs /home/ubuntu/qsys/var/service-runs --record-root /home/ubuntu/qsys/var/service-runs/service-checks --alert-ledger /home/ubuntu/qsys/var/alerts/service-checks --shadow-state /home/ubuntu/qsys/var/shadow-state.sqlite3 --live-state /home/ubuntu/qsys/var/live-state.sqlite3 --workbench /home/ubuntu/qsys/var/workbench/workbench.sqlite3 --storage-base /data/qsys --scratch /home/ubuntu/scratch --tls-site wanlinruo.cn --tls-port 8443"
       ]
     },
+    "daily-digest": {
+      "entrypoint": {
+        "command": "qsys-daily-digest",
+        "target": "qsys.ops.daily_digest_cli:main"
+      },
+      "scan_roots": [
+        "src/qsys/data",
+        "src/qsys/live",
+        "src/qsys/ops",
+        "src/qsys/paper"
+      ],
+      "release_root": "/opt/qsys/components/daily-digest/releases",
+      "current": "/opt/qsys/components/daily-digest/current",
+      "executable": "venv/bin/qsys-daily-digest",
+      "unit": "qsys-daily-digest.service",
+      "dropin": "/etc/systemd/system/qsys-daily-digest.service.d/zz-isolated-release.conf",
+      "state_directories": [
+        {
+          "path": "/home/ubuntu/qsys/var/service-runs/daily-digest",
+          "owner": "qsys-daily-digest",
+          "group": "qsys-daily-digest",
+          "mode": "0750"
+        }
+      ],
+      "seed": null,
+      "dropin_lines": [
+        "[Service]",
+        "User=qsys-daily-digest",
+        "Group=qsys-daily-digest",
+        "WorkingDirectory=/",
+        "ExecStart=",
+        "ReadWritePaths=",
+        "ReadWritePaths=/home/ubuntu/qsys/var/service-runs/daily-digest",
+        "ExecStart=/opt/qsys/components/daily-digest/current/venv/bin/qsys-daily-digest --config /home/ubuntu/qsys/config/deploy.local.toml --service-runs /home/ubuntu/qsys/var/service-runs --record-root /home/ubuntu/qsys/var/service-runs/daily-digest --alert-ledger /home/ubuntu/qsys/var/alerts --shadow-state /home/ubuntu/qsys/var/shadow-state.sqlite3 --live-state /home/ubuntu/qsys/var/live-state.sqlite3 --workbench /home/ubuntu/qsys/var/workbench/workbench.sqlite3 --warehouse /home/ubuntu/qsys/warehouse --storage-base /data/qsys --tls-site wanlinruo.cn --tls-port 8443"
+      ]
+    },
     "storage-report": {
       "entrypoint": {
         "command": "qsys-storage-report",

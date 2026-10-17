@@ -348,6 +348,36 @@ def test_storage_report_component_has_a_read_only_release_boundary() -> None:
     assert "scripts/storage_report.py" not in command
 
 
+def test_daily_digest_component_has_one_owned_write_namespace() -> None:
+    specs = json.loads(Path("deploy/component-releases.json").read_text(encoding="utf-8"))
+    digest = specs["components"]["daily-digest"]
+
+    assert digest["entrypoint"] == {
+        "command": "qsys-daily-digest",
+        "target": "qsys.ops.daily_digest_cli:main",
+    }
+    assert digest["scan_roots"] == [
+        "src/qsys/data", "src/qsys/live", "src/qsys/ops", "src/qsys/paper",
+    ]
+    assert digest["release_root"] == "/opt/qsys/components/daily-digest/releases"
+    assert digest["current"] == "/opt/qsys/components/daily-digest/current"
+    assert digest["unit"] == "qsys-daily-digest.service"
+    assert digest["state_directories"] == [{
+        "path": "/home/ubuntu/qsys/var/service-runs/daily-digest",
+        "owner": "qsys-daily-digest", "group": "qsys-daily-digest", "mode": "0750",
+    }]
+    dropin = "\n".join(digest["dropin_lines"])
+    assert "User=qsys-daily-digest" in dropin
+    assert "WorkingDirectory=/" in dropin
+    assert dropin.count("ReadWritePaths=/home") == 1
+    assert "ReadWritePaths=/home/ubuntu/qsys/var/service-runs/daily-digest" in dropin
+    assert "--service-runs /home/ubuntu/qsys/var/service-runs" in dropin
+    assert "--record-root /home/ubuntu/qsys/var/service-runs/daily-digest" in dropin
+    assert "--alert-ledger /home/ubuntu/qsys/var/alerts" in dropin
+    assert "/home/ubuntu/qsys/.venv" not in dropin
+    assert "scripts/send_daily_digest.py" not in dropin
+
+
 def test_shared_redis_change_targets_both_nodes() -> None:
     plan = DeploymentManifest.load(MANIFEST).plan(
         ["src/qsys/live/redis_transport.py"], environment="production",
@@ -758,7 +788,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
 
     state = entrypoint.status({"production_repo": str(tmp_path)})
 
-    assert state["entrypoint_version"] == 15
+    assert state["entrypoint_version"] == 16
     assert set(state["capabilities"]) == {
         "systemd-apply-v1", "systemd-changed-artifacts-v1",
         "systemd-preview-v1", "systemd-rollback-v1",
@@ -774,6 +804,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
         "component-release-v3",
         "component-release-v4",
         "component-release-v5",
+        "component-release-v6",
     }
 
 
@@ -1637,9 +1668,9 @@ def test_component_workflow_streams_only_a_verified_artifact() -> None:
     assert ".before.linux == .after.linux" in workflow
     assert "PRODUCTION_DEPLOY_SSH_KEY" in workflow
     assert "cancel-in-progress: false" in workflow
-    assert "catalog-verify|service-checks|storage-report" in workflow
-    assert 'required = {"component-release-v5"}' in workflow
-    assert 'entrypoint_version", 0) < 15' in workflow
+    assert "catalog-verify|service-checks|storage-report|daily-digest" in workflow
+    assert 'required = {"component-release-v6"}' in workflow
+    assert 'entrypoint_version", 0) < 16' in workflow
 
 
 def test_test_research_workflow_streams_ci_artifact_without_activation() -> None:

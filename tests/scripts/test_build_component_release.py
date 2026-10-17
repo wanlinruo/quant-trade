@@ -161,3 +161,27 @@ def test_storage_report_release_uses_its_own_entrypoint_and_ops_scan_root(
     }
     assert {record["path"].split("/")[2] for record in value["scan_files"]} == {"ops"}
     assert verify(repo, sha, "storage-report", release) == value
+
+
+def test_daily_digest_release_uses_its_own_entrypoint_and_read_scan_roots(
+    tmp_path: Path,
+) -> None:
+    repo, sha = _repo(tmp_path)
+    wheel = _wheel(
+        tmp_path / "dist-digest" / "qsys-0.1.0-py3-none-any.whl",
+        command="qsys-daily-digest", entrypoint="qsys.ops.daily_digest_cli:main",
+    )
+    release = tmp_path / "digest-release"
+
+    value = build(
+        repo, sha, "daily-digest", wheel.parent, release,
+        repository="owner/repo", run_id="790", run_attempt="1",
+    )
+
+    assert value["entrypoint"] == {
+        "command": "qsys-daily-digest", "target": "qsys.ops.daily_digest_cli:main",
+    }
+    assert {record["path"].split("/")[2] for record in value["scan_files"]} == {
+        "data", "live", "ops", "paper",
+    }
+    assert verify(repo, sha, "daily-digest", release) == value
