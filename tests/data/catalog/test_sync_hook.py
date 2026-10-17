@@ -3,7 +3,7 @@
 from datetime import date
 from types import SimpleNamespace
 
-from scripts import tushare_daily_sync
+from qsys.data import tushare_sync_cli as tushare_daily_sync
 
 D = date(2026, 9, 15)
 

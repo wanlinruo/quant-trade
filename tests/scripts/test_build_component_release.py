@@ -271,3 +271,33 @@ def test_premarket_limits_release_binds_writer_and_redis_dependencies(
         "core", "data", "live", "ops",
     }
     assert verify(repo, sha, "premarket-limits", release) == value
+
+
+def test_tushare_sync_release_binds_writer_and_late_minute_downloader(
+    tmp_path: Path,
+) -> None:
+    repo, sha = _repo(tmp_path)
+    wheel = _wheel(
+        tmp_path / "dist-tushare-sync" / "qsys-0.1.0-py3-none-any.whl",
+        command="qsys-tushare-sync",
+        entrypoint="qsys.data.tushare_sync_cli:main",
+    )
+    release = tmp_path / "tushare-sync-release"
+
+    value = build(
+        repo, sha, "tushare-sync", wheel.parent, release,
+        repository="owner/repo", run_id="794", run_attempt="1",
+    )
+
+    paths = {record["path"] for record in value["scan_files"]}
+    assert value["entrypoint"] == {
+        "command": "qsys-tushare-sync",
+        "target": "qsys.data.tushare_sync_cli:main",
+    }
+    assert "scripts/win_download_minutes.py" in paths
+    assert not any(
+        path.startswith("scripts/") and path != "scripts/win_download_minutes.py"
+        for path in paths
+    )
+    assert (release / "source/scripts/win_download_minutes.py").is_file()
+    assert verify(repo, sha, "tushare-sync", release) == value

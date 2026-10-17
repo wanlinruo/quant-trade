@@ -128,7 +128,8 @@ seed 与最终 systemd 命令统一来自 `deploy/component-releases.json` 静�
 把同一文件以 root-owned 0644 放到 `/etc/qsys/component-releases.json`；待发布 SHA 中的规格必须
 与已安装副本逐项相同，否则在 stage/activate 前失败关闭。artifact 不能提供路径、命令或新增组件。
 白名单当前允许已投产的 `catalog-verify`，以及待迁移的 `service-checks`、
-`storage-report`、`daily-digest`、`health-observer`、`daily-archive`、`premarket-limits`。新增组件必须先单独升级固定入口与 root-owned 白名单；代码合入本身
+`storage-report`、`daily-digest`、`health-observer`、`daily-archive`、`premarket-limits`、
+`tushare-sync`。新增组件必须先单独升级固定入口与 root-owned 白名单；代码合入本身
 不授权生产激活。
 
 通用 installer 在切换前验证 manifest、规格指纹、wheel、源码成员、权限、unit inactive 和 seed；
@@ -182,6 +183,16 @@ release/current 位于 `/opt/qsys/components/premarket-limits/{releases/<SHA>,cu
 Redis 的版本化当日 key，生产首次激活前必须单独预置/审计该 key namespace 的最小写 ACL、
 Tushare token 与配置只读权限、Warehouse/lock Unix 权限以及 qsys-premarket-limits 账号；
 v19 固定入口安装及激活不由代码合入授权。
+
+`tushare-sync` 是第三个数据写组件边界。wheel 入口为 `qsys-tushare-sync`，
+release/current 位于 `/opt/qsys/components/tushare-sync/{releases/<SHA>,current}`；
+独立账号只写共享 Warehouse、同一 `warehouse-write.lock`、`var/tushare-sync` 和
+`var/service-runs/tushare-sync`。Tushare token/config 与 paper workbench 保持只读。
+晚到上市标的的有限分钟补采继续复用包内 daily-archive 逻辑，但 manifest、下载中转、运行记录、
+Windows 限权 key 与上传下载器均显式绑定到 tushare-sync 自己的命名空间和当前 hash-bound release，
+不再落到 `/var` 默认目录或共享 checkout。生产首次激活前必须另行审计账号、Warehouse/lock 权限、
+Tushare 配置、workbench 读取权限和 Windows forced-command key；v20 固定入口安装及激活不由代码
+合入授权。
 
 ### 2026-10-16 catalog 组件发布复盘与固定约束
 

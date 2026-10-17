@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import polars as pl
 import pytest
 
-from scripts import tushare_daily_sync
+from qsys.data import tushare_sync_cli as tushare_daily_sync
 
 
 DAY = date(2026, 10, 9)
@@ -75,6 +75,13 @@ def test_convergence_runs_a_bounded_targeted_archive(monkeypatch, tmp_path):
     assert command[command.index("--minute-symbols") + 1] == "920157.BJ"
     assert "--skip-auction" in command
     assert command[command.index("--lookback-days") + 1] == "0"
+    assert command[command.index("--record-root") + 1] == str(tmp_path / "runs")
+    assert command[command.index("--work-root") + 1] == "var"
+    assert command[command.index("--paper-store") + 1] == "var/workbench/workbench.sqlite3"
+    assert command[command.index("--win-key") + 1] == "~/.ssh/id_ed25519_winnode"
+    assert command[command.index("--win-script-source") + 1] == (
+        "scripts/win_download_minutes.py"
+    )
     assert kwargs == {"timeout": 900, "check": False}
 
 
