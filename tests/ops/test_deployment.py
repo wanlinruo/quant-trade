@@ -312,6 +312,47 @@ def test_service_checks_component_has_an_isolated_release_and_state_boundary() -
     assert "scripts/service_checks.py" not in dropin
 
 
+def test_backtest_worker_component_is_separate_from_web_and_write_bounded() -> None:
+    specs = json.loads(Path("deploy/component-releases.json").read_text(encoding="utf-8"))
+    worker = specs["components"]["backtest-worker"]
+
+    assert worker["entrypoint"] == {
+        "command": "qsys-backtest-worker",
+        "target": "qsys.web.backtest_worker_cli:main",
+    }
+    assert worker["scan_roots"] == [
+        "src/qsys/backtest", "src/qsys/core", "src/qsys/data",
+        "src/qsys/markets", "src/qsys/strategy", "src/qsys/web/workbench.py",
+        "src/qsys/web/backtest_worker_cli.py",
+    ]
+    assert worker["release_root"] == "/opt/qsys/components/backtest-worker/releases"
+    assert worker["current"] == "/opt/qsys/components/backtest-worker/current"
+    assert worker["unit"] == "qsys-backtest-worker.service"
+    assert worker["state_directories"] == [
+        {
+            "path": "/home/ubuntu/qsys/var/workbench",
+            "owner": "qsys-backtest-worker", "group": "qsys-workbench", "mode": "0770",
+        },
+        {
+            "path": "/home/ubuntu/qsys/var/runs",
+            "owner": "qsys-backtest-worker", "group": "qsys-workbench", "mode": "0770",
+        },
+    ]
+    dropin = "\n".join(worker["dropin_lines"])
+    assert "User=qsys-backtest-worker" in dropin
+    assert "Group=qsys-workbench" in dropin
+    assert dropin.count("ReadWritePaths=") == 3  # reset plus two explicit namespaces
+    assert "ReadWritePaths=/data/qsys/warehouse" not in dropin
+    assert "/home/ubuntu/qsys/.venv" not in dropin
+
+    unit = Path("deploy/systemd/qsys-backtest-worker.service").read_text(encoding="utf-8")
+    assert "/venv/bin/qsys-backtest-worker" in unit
+    assert "--workspace /home/ubuntu/qsys/var/workbench" in unit
+    assert "ReadWritePaths=/home/ubuntu/qsys/var/workbench" in unit
+    assert "ReadWritePaths=/home/ubuntu/qsys/var/runs" in unit
+    assert "ReadWritePaths=/data/qsys/warehouse" not in unit
+
+
 def test_storage_report_component_has_a_read_only_release_boundary() -> None:
     specs = json.loads(Path("deploy/component-releases.json").read_text(encoding="utf-8"))
     storage = specs["components"]["storage-report"]
@@ -948,7 +989,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
 
     state = entrypoint.status({"production_repo": str(tmp_path)})
 
-    assert state["entrypoint_version"] == 20
+    assert state["entrypoint_version"] == 21
     assert set(state["capabilities"]) == {
         "systemd-apply-v1", "systemd-changed-artifacts-v1",
         "systemd-preview-v1", "systemd-rollback-v1",
@@ -969,6 +1010,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
         "component-release-v8",
         "component-release-v9",
         "component-release-v10",
+        "component-release-v11",
     }
 
 
@@ -1944,9 +1986,9 @@ def test_component_workflow_streams_only_a_verified_artifact() -> None:
     assert ".before.linux == .after.linux" in workflow
     assert "PRODUCTION_DEPLOY_SSH_KEY" in workflow
     assert "cancel-in-progress: false" in workflow
-    assert "catalog-verify|service-checks|storage-report|daily-digest|health-observer|daily-archive|premarket-limits|tushare-sync" in workflow
-    assert 'required = {"component-release-v10"}' in workflow
-    assert 'entrypoint_version", 0) < 20' in workflow
+    assert "backtest-worker|catalog-verify|service-checks|storage-report|daily-digest|health-observer|daily-archive|premarket-limits|tushare-sync" in workflow
+    assert 'required = {"component-release-v11"}' in workflow
+    assert 'entrypoint_version", 0) < 21' in workflow
 
 
 def test_test_research_workflow_streams_ci_artifact_without_activation() -> None:

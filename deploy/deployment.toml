@@ -146,6 +146,24 @@ health_checks = ["resident-services", "redis-heartbeats", "web-health"]
 rollback = "previous-successful-sha"
 
 [[components]]
+name = "linux-backtest-worker"
+environments = ["production"]
+paths = [
+  "src/qsys/backtest/**",
+  "src/qsys/core/**",
+  "src/qsys/data/**",
+  "src/qsys/markets/**",
+  "src/qsys/strategy/**",
+  "src/qsys/web/workbench.py",
+  "src/qsys/web/backtest_worker_cli.py",
+  "deploy/systemd/qsys-backtest-worker.service",
+]
+nodes = ["linux"]
+linux_units = ["qsys-backtest-worker.service"]
+health_checks = []
+rollback = "previous-successful-sha"
+
+[[components]]
 name = "linux-data-jobs"
 environments = ["production"]
 paths = [

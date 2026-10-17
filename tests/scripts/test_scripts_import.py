@@ -45,3 +45,12 @@ def test_tushare_sync_legacy_script_delegates_to_packaged_entrypoint():
     packaged = importlib.import_module("qsys.data.tushare_sync_cli")
 
     assert legacy.main is packaged.main
+
+
+def test_monitor_cannot_host_the_backtest_worker():
+    monitor = Path("scripts/run_monitor.py").read_text(encoding="utf-8")
+    app = Path("src/qsys/web/app.py").read_text(encoding="utf-8")
+
+    assert "BacktestQueue" not in monitor
+    assert "BacktestQueue" not in app
+    assert "queue.start()" not in app

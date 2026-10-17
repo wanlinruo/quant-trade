@@ -12,6 +12,7 @@ on:
         required: true
         type: choice
         options:
+          - backtest-worker
           - catalog-verify
           - service-checks
           - storage-report
@@ -95,7 +96,7 @@ jobs:
           printf '%s' "$RELEASE_ID" | grep -Eq '^[A-Za-z0-9._-]{1,100}$'
           printf '%s' "$TARGET_SHA" | grep -Eq '^[0-9a-f]{40}$'
           case "$COMPONENT" in
-            catalog-verify|service-checks|storage-report|daily-digest|health-observer|daily-archive|premarket-limits|tushare-sync) ;;
+            backtest-worker|catalog-verify|service-checks|storage-report|daily-digest|health-observer|daily-archive|premarket-limits|tushare-sync) ;;
             *) exit 2 ;;
           esac
           git fetch --no-tags origin main test
@@ -132,8 +133,8 @@ jobs:
           state = json.loads(os.environ["NODE_JSON"])
           if state["branch"] != "main" or state["dirty"] or not state["healthy"]:
               raise SystemExit(f"production node is not deployable: {state}")
-          required = {"component-release-v10"}
-          if state.get("entrypoint_version", 0) < 20 or not required <= set(state.get("capabilities", [])):
+          required = {"component-release-v11"}
+          if state.get("entrypoint_version", 0) < 21 or not required <= set(state.get("capabilities", [])):
               raise SystemExit("production entrypoint lacks component release capability")
           print(f'production_sha={state["sha"]}')
           PY

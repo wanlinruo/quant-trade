@@ -1,6 +1,52 @@
 {
   "schema_version": 1,
   "components": {
+    "backtest-worker": {
+      "entrypoint": {
+        "command": "qsys-backtest-worker",
+        "target": "qsys.web.backtest_worker_cli:main"
+      },
+      "scan_roots": [
+        "src/qsys/backtest",
+        "src/qsys/core",
+        "src/qsys/data",
+        "src/qsys/markets",
+        "src/qsys/strategy",
+        "src/qsys/web/workbench.py",
+        "src/qsys/web/backtest_worker_cli.py"
+      ],
+      "release_root": "/opt/qsys/components/backtest-worker/releases",
+      "current": "/opt/qsys/components/backtest-worker/current",
+      "executable": "venv/bin/qsys-backtest-worker",
+      "unit": "qsys-backtest-worker.service",
+      "dropin": "/etc/systemd/system/qsys-backtest-worker.service.d/zz-isolated-release.conf",
+      "state_directories": [
+        {
+          "path": "/home/ubuntu/qsys/var/workbench",
+          "owner": "qsys-backtest-worker",
+          "group": "qsys-workbench",
+          "mode": "0770"
+        },
+        {
+          "path": "/home/ubuntu/qsys/var/runs",
+          "owner": "qsys-backtest-worker",
+          "group": "qsys-workbench",
+          "mode": "0770"
+        }
+      ],
+      "seed": null,
+      "dropin_lines": [
+        "[Service]",
+        "User=qsys-backtest-worker",
+        "Group=qsys-workbench",
+        "WorkingDirectory=/",
+        "ExecStart=",
+        "ReadWritePaths=",
+        "ReadWritePaths=/home/ubuntu/qsys/var/workbench",
+        "ReadWritePaths=/home/ubuntu/qsys/var/runs",
+        "ExecStart=/opt/qsys/components/backtest-worker/current/venv/bin/qsys-backtest-worker --workspace /home/ubuntu/qsys/var/workbench --warehouse /data/qsys/warehouse --runs /home/ubuntu/qsys/var/runs"
+      ]
+    },
     "catalog-verify": {
       "entrypoint": {
         "command": "qsys-catalog-verify",
