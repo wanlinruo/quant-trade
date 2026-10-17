@@ -36,7 +36,7 @@ from qsys.web.research_jobs import ResearchJobConsole
 from qsys.web.service_views import ServiceConsole
 from qsys.web.svg import line_chart, multi_line_chart
 from qsys.web.views import MonitorService
-from qsys.web.workbench import BacktestQueue, WorkbenchStore
+from qsys.web.workbench import WorkbenchStore
 from qsys.backtest.runner import ENTRY_FILL_LABELS, ENTRY_FILL_MODES
 from qsys.strategy.parameters import validate_parameters
 from qsys.core.calendar import AShareCalendar
@@ -138,7 +138,6 @@ def create_app(
     backtests: BacktestService | None = None,
     catalog: CatalogService | None = None,
     workbench: WorkbenchStore | None = None,
-    queue: BacktestQueue | None = None,
     strategy_templates: Path | None = None,
     paper: PaperStore | None = None,
     market: MarketService | None = None,
@@ -153,15 +152,6 @@ def create_app(
 ) -> FastAPI:
     app = FastAPI(title=config.title, docs_url=None, redoc_url=None)
     app.state.research_jobs_enabled = research_jobs is not None
-
-    if queue is not None:
-        @app.on_event("startup")
-        def _start_queue():
-            queue.start()
-
-        @app.on_event("shutdown")
-        def _stop_queue():
-            queue.stop()
 
     def _require_session(session: date) -> None:
         if not service.has_session(session):

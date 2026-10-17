@@ -271,6 +271,11 @@ class BacktestQueue:
         self._thread = threading.Thread(target=self._loop, daemon=True, name="backtest-queue")
         self._thread.start()
 
+    def serve_forever(self) -> None:
+        """Run the queue in the calling process for the dedicated worker unit."""
+        self.store.recover_interrupted()
+        self._loop()
+
     def stop(self) -> None:
         self._stop.set()
         if self._process and self._process.poll() is None:
