@@ -378,6 +378,49 @@ def test_daily_digest_component_has_one_owned_write_namespace() -> None:
     assert "scripts/send_daily_digest.py" not in dropin
 
 
+def test_daily_archive_component_has_explicit_data_writer_boundaries() -> None:
+    specs = json.loads(Path("deploy/component-releases.json").read_text(encoding="utf-8"))
+    archive = specs["components"]["daily-archive"]
+
+    assert archive["entrypoint"] == {
+        "command": "qsys-daily-archive",
+        "target": "qsys.data.daily_archive_cli:main",
+    }
+    assert archive["scan_roots"] == [
+        "src/qsys/core",
+        "src/qsys/data",
+        "src/qsys/live",
+        "src/qsys/ops",
+        "src/qsys/paper",
+        "scripts/win_download_minutes.py",
+    ]
+    assert archive["release_root"] == "/opt/qsys/components/daily-archive/releases"
+    assert archive["current"] == "/opt/qsys/components/daily-archive/current"
+    assert archive["unit"] == "qsys-daily-archive.service"
+    assert archive["state_directories"] == [
+        {
+            "path": "/home/ubuntu/qsys/var/daily-archive",
+            "owner": "qsys-daily-archive", "group": "qsys-daily-archive",
+            "mode": "0750",
+        },
+        {
+            "path": "/home/ubuntu/qsys/var/service-runs/daily-archive",
+            "owner": "qsys-daily-archive", "group": "qsys-daily-archive",
+            "mode": "0750",
+        },
+    ]
+    dropin = "\n".join(archive["dropin_lines"])
+    assert "User=qsys-daily-archive" in dropin
+    assert "ReadWritePaths=/data/qsys/warehouse" in dropin
+    assert "ReadWritePaths=/home/ubuntu/qsys/var/warehouse-write.lock" in dropin
+    assert "ReadWritePaths=/home/ubuntu/qsys/var/daily-archive" in dropin
+    assert "--work-root /home/ubuntu/qsys/var/daily-archive" in dropin
+    assert "--record-root /home/ubuntu/qsys/var/service-runs/daily-archive" in dropin
+    assert "--win-key /etc/qsys/daily-archive/windows-data-writer" in dropin
+    assert "current/source/scripts/win_download_minutes.py" in dropin
+    assert "/home/ubuntu/qsys/.venv" not in dropin
+
+
 def test_health_observer_component_owns_only_timeline_and_alert_namespaces() -> None:
     specs = json.loads(Path("deploy/component-releases.json").read_text(encoding="utf-8"))
     observer = specs["components"]["health-observer"]
@@ -825,7 +868,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
 
     state = entrypoint.status({"production_repo": str(tmp_path)})
 
-    assert state["entrypoint_version"] == 17
+    assert state["entrypoint_version"] == 18
     assert set(state["capabilities"]) == {
         "systemd-apply-v1", "systemd-changed-artifacts-v1",
         "systemd-preview-v1", "systemd-rollback-v1",
@@ -843,6 +886,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
         "component-release-v5",
         "component-release-v6",
         "component-release-v7",
+        "component-release-v8",
     }
 
 
@@ -880,6 +924,41 @@ def test_component_artifact_extraction_is_exact_and_rejects_traversal(tmp_path) 
     with pytest.raises(ValueError, match="manifest, one wheel and scan sources"):
         entrypoint._extract_component_archive(
             wrong_root, tmp_path / "wrong-root-release", "catalog-verify",
+        )
+
+
+def test_component_artifact_extraction_supports_an_exact_file_scan_root(
+    tmp_path,
+) -> None:
+    entrypoint = _production_entrypoint_module()
+    archive = tmp_path / "daily-archive.zip"
+    with zipfile.ZipFile(archive, "w") as output:
+        output.writestr("release.json", "{}")
+        output.writestr("dist/qsys-0.1.0-py3-none-any.whl", b"wheel")
+        output.writestr("source/src/qsys/data/example.py", b"DATA = 1\n")
+        output.writestr(
+            "source/scripts/win_download_minutes.py", b"WINDOWS_DOWNLOADER = 1\n",
+        )
+
+    destination = tmp_path / "daily-archive-release"
+    entrypoint._extract_component_archive(archive, destination, "daily-archive")
+    assert (destination / "source/scripts/win_download_minutes.py").is_file()
+
+    archive_with_sibling = tmp_path / "daily-archive-with-sibling.zip"
+    with zipfile.ZipFile(archive_with_sibling, "w") as output:
+        output.writestr("release.json", "{}")
+        output.writestr("dist/qsys-0.1.0-py3-none-any.whl", b"wheel")
+        output.writestr("source/src/qsys/data/example.py", b"DATA = 1\n")
+        output.writestr(
+            "source/scripts/win_download_minutes.py", b"WINDOWS_DOWNLOADER = 1\n",
+        )
+        output.writestr("source/scripts/unrelated.py", b"UNRELATED = 1\n")
+
+    with pytest.raises(ValueError, match="manifest, one wheel and scan sources"):
+        entrypoint._extract_component_archive(
+            archive_with_sibling,
+            tmp_path / "daily-archive-with-sibling-release",
+            "daily-archive",
         )
 
 
@@ -1783,9 +1862,9 @@ def test_component_workflow_streams_only_a_verified_artifact() -> None:
     assert ".before.linux == .after.linux" in workflow
     assert "PRODUCTION_DEPLOY_SSH_KEY" in workflow
     assert "cancel-in-progress: false" in workflow
-    assert "catalog-verify|service-checks|storage-report|daily-digest|health-observer" in workflow
-    assert 'required = {"component-release-v7"}' in workflow
-    assert 'entrypoint_version", 0) < 17' in workflow
+    assert "catalog-verify|service-checks|storage-report|daily-digest|health-observer|daily-archive" in workflow
+    assert 'required = {"component-release-v8"}' in workflow
+    assert 'entrypoint_version", 0) < 18' in workflow
 
 
 def test_test_research_workflow_streams_ci_artifact_without_activation() -> None:

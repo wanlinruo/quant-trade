@@ -71,7 +71,7 @@ def test_convergence_runs_a_bounded_targeted_archive(monkeypatch, tmp_path):
     assert got == 1
     command, kwargs = called[0]
     assert command[0] == tushare_daily_sync.sys.executable
-    assert command[1:3] == ["-u", "scripts/daily_archive.py"]
+    assert command[1:4] == ["-u", "-m", "qsys.data.daily_archive_cli"]
     assert command[command.index("--minute-symbols") + 1] == "920157.BJ"
     assert "--skip-auction" in command
     assert command[command.index("--lookback-days") + 1] == "0"

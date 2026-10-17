@@ -22,11 +22,18 @@ def _repo(tmp_path: Path) -> tuple[Path, str]:
     (repo / "src/qsys/strategy/example.py").write_text(
         "STRATEGY = 1\n", encoding="utf-8",
     )
-    for package in ("live", "ops", "paper", "web"):
+    for package in ("core", "live", "ops", "paper", "web"):
         (repo / f"src/qsys/{package}").mkdir(parents=True)
         (repo / f"src/qsys/{package}/example.py").write_text(
             f"PACKAGE = {package!r}\n", encoding="utf-8",
         )
+    (repo / "scripts").mkdir()
+    (repo / "scripts/win_download_minutes.py").write_text(
+        "WINDOWS_DOWNLOADER = 1\n", encoding="utf-8",
+    )
+    (repo / "scripts/unrelated.py").write_text(
+        "UNRELATED = 1\n", encoding="utf-8",
+    )
     (repo / "deploy").mkdir()
     (repo / "deploy/component-releases.json").write_text(
         Path("deploy/component-releases.json").read_text(encoding="utf-8"),
@@ -210,3 +217,31 @@ def test_health_observer_release_binds_its_resident_dependency_roots(
         "data", "live", "ops", "paper", "web",
     }
     assert verify(repo, sha, "health-observer", release) == value
+
+
+def test_daily_archive_release_binds_data_code_and_windows_downloader(
+    tmp_path: Path,
+) -> None:
+    repo, sha = _repo(tmp_path)
+    wheel = _wheel(
+        tmp_path / "dist-archive" / "qsys-0.1.0-py3-none-any.whl",
+        command="qsys-daily-archive", entrypoint="qsys.data.daily_archive_cli:main",
+    )
+    release = tmp_path / "archive-release"
+
+    value = build(
+        repo, sha, "daily-archive", wheel.parent, release,
+        repository="owner/repo", run_id="792", run_attempt="1",
+    )
+
+    paths = {record["path"] for record in value["scan_files"]}
+    assert value["entrypoint"] == {
+        "command": "qsys-daily-archive", "target": "qsys.data.daily_archive_cli:main",
+    }
+    assert "scripts/win_download_minutes.py" in paths
+    assert not any(
+        path.startswith("scripts/") and path != "scripts/win_download_minutes.py"
+        for path in paths
+    )
+    assert (release / "source/scripts/win_download_minutes.py").is_file()
+    assert verify(repo, sha, "daily-archive", release) == value

@@ -66,7 +66,9 @@ def _scan_sources(
         if name.endswith(".py")
     ]
     for root in scan_roots:
-        if not any(name.startswith(f"{root}/") for name, _ in sources):
+        if not any(
+            name == root or name.startswith(f"{root}/") for name, _ in sources
+        ):
             raise ValueError(f"component scan source root is empty: {root}")
     return sources
 

@@ -34,7 +34,7 @@ ALLOWED_WINDOWS_COMPONENTS = frozenset({
     "windows-agent", "windows-gateway", "windows-control",
 })
 WINDOWS_COORDINATOR_PATH = "deploy/linux/qsys-windows-deploy-coordinator.py"
-ENTRYPOINT_VERSION = 17
+ENTRYPOINT_VERSION = 18
 ENTRYPOINT_CAPABILITIES = (
     "systemd-apply-v1",
     "systemd-changed-artifacts-v1",
@@ -55,6 +55,7 @@ ENTRYPOINT_CAPABILITIES = (
     "component-release-v5",
     "component-release-v6",
     "component-release-v7",
+    "component-release-v8",
 )
 FAILURE_POINTS = frozenset({"none", "linux-health", "windows-switch"})
 GENERIC_COMPONENT_INSTALLER = "scripts/install_component_release.py"
@@ -544,8 +545,8 @@ def _extract_component_archive(
 ) -> None:
     if component not in COMPONENT_RELEASES:
         raise ValueError("unsupported production component release")
-    prefixes = tuple(
-        f"source/{str(root).rstrip('/')}/"
+    roots = tuple(
+        str(root).rstrip("/")
         for root in COMPONENT_RELEASES[component]["scan_roots"]
     )
     with zipfile.ZipFile(archive_path) as archive:
@@ -569,7 +570,11 @@ def _extract_component_archive(
         ]
         source_members = [
             name for name in files
-            if name.endswith(".py") and name.startswith(prefixes)
+            if name.endswith(".py") and name.startswith("source/") and any(
+                name.removeprefix("source/") == root
+                or name.removeprefix("source/").startswith(f"{root}/")
+                for root in roots
+            )
         ]
         if (
             set(files) != {"release.json", *wheel_members, *source_members}

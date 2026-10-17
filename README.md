@@ -141,13 +141,15 @@ flowchart LR
 | Research Runner | 是 | 是 | test 节点已完成 staging、权限与压力验收；生产 unit 默认不激活 |
 | Windows Agent / Gateway | 是 | 是（应用级原子 release） | 可分别计划、切换、健康验证和回滚 |
 | Linux systemd 配置 | 是 | 不适用 | 可按实际变化文件 apply/verify/rollback，并恢复 enable/active 状态 |
-| Web、Live/Paper/Shadow、Health Observer | 是 | 否 | 仍共享生产 checkout 和 Python 环境，只能控制受影响 unit 的发布范围 |
-| 其余数据定时任务 | 是 | 否 | 仍主要共享生产 checkout；`catalog-verify` 是首个迁出的组件 |
+| 观测与只读运维组件 | 是 | 是 | Service Checks、Storage Report、Daily Digest、Health Observer 已有独立 exact-SHA 制品；生产激活分别受门禁 |
+| Daily Archive | 是 | 是 | 已有独立制品、工作目录与运行记录边界；warehouse/Windows 最小权限和首次激活仍需单独审查 |
+| Web、Live/Paper/Shadow | 是 | 否 | 仍共享生产 checkout 和 Python 环境；Web/Paper 共享 SQLite 所有权需先拆分 |
+| 其余数据定时任务 | 是 | 否 | 仍主要共享生产 checkout；按写权限与发布节奏继续拆分 |
 | Test runtime | 单一 `test-runtime` | 否 | 仍是集成测试用的整体运行时 |
 
 因此，系统已经具备了把高风险运行单元逐个迁移为独立发布组件的控制面和首批真实闭环，
-但“所有服务完全独立部署”仍是后续演进方向。下一批适合迁移的是 Web、数据同步/归档和
-Health Observer；Live Core 涉及实盘策略与状态兼容，必须最后按更严格门禁处理。
+但“所有服务完全独立部署”仍是后续演进方向。下一批需继续处理 Web/Paper 状态所有权和
+Tushare/Premarket 数据写单元；Live Core 涉及实盘策略与状态兼容，必须最后按更严格门禁处理。
 
 ## 已落地的隔离研究架构
 

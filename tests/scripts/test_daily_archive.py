@@ -11,11 +11,11 @@ import polars as pl
 
 from qsys.data.pipeline.auction import ImportResult
 from qsys.data import schema
-from scripts import daily_archive
+from qsys.data import daily_archive_cli as daily_archive
 
 DAY = date(2026, 9, 16)
 ARGS = Namespace(win_root="C:/qsys/daily", win_host="Administrator@win",
-                 win_python="python", win_auction_script="auction.py")
+                 win_python="python", win_auction_script="auction.py", work_root="var")
 WANTED = pl.DataFrame({"symbol": ["600036.SH"], "dt": [DAY]})
 
 
