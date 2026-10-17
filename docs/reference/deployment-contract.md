@@ -128,7 +128,7 @@ seed 与最终 systemd 命令统一来自 `deploy/component-releases.json` 静�
 把同一文件以 root-owned 0644 放到 `/etc/qsys/component-releases.json`；待发布 SHA 中的规格必须
 与已安装副本逐项相同，否则在 stage/activate 前失败关闭。artifact 不能提供路径、命令或新增组件。
 白名单当前允许已投产的 `catalog-verify`，以及待迁移的 `service-checks`、
-`storage-report`、`daily-digest`、`health-observer`、`daily-archive`。新增组件必须先单独升级固定入口与 root-owned 白名单；代码合入本身
+`storage-report`、`daily-digest`、`health-observer`、`daily-archive`、`premarket-limits`。新增组件必须先单独升级固定入口与 root-owned 白名单；代码合入本身
 不授权生产激活。
 
 通用 installer 在切换前验证 manifest、规格指纹、wheel、源码成员、权限、unit inactive 和 seed；
@@ -173,6 +173,15 @@ heartbeat/kill-switch，对 systemd 与 Windows Task 只做探测；生产首次
 hash 约束；Tushare 的晚到上市标的补采改由包内模块启动，不再依赖共享 checkout 脚本。
 生产首次激活前必须另行审计 qsys-daily-archive 账号、warehouse/lock 最小 Unix 权限、forced-command
 Windows key 和配置只读权限；v18 固定入口安装及激活不由代码合入授权。
+
+`premarket-limits` 是第二个数据写组件边界。wheel 入口为 `qsys-premarket-limits`，
+release/current 位于 `/opt/qsys/components/premarket-limits/{releases/<SHA>,current}`；
+独立账号只写共享 Warehouse、同一 `warehouse-write.lock` 与
+`var/service-runs/premarket-limits`。交易日判断、`suspend_d` 退化保留、`stk_limit`
+完整度门禁、09:25 截止、canonical 写后对账和失败关闭语义保持不变。涨跌停价继续发布到
+Redis 的版本化当日 key，生产首次激活前必须单独预置/审计该 key namespace 的最小写 ACL、
+Tushare token 与配置只读权限、Warehouse/lock Unix 权限以及 qsys-premarket-limits 账号；
+v19 固定入口安装及激活不由代码合入授权。
 
 ### 2026-10-16 catalog 组件发布复盘与固定约束
 

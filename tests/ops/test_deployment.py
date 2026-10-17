@@ -421,6 +421,41 @@ def test_daily_archive_component_has_explicit_data_writer_boundaries() -> None:
     assert "/home/ubuntu/qsys/.venv" not in dropin
 
 
+def test_premarket_limits_component_has_minimal_writer_boundaries() -> None:
+    specs = json.loads(Path("deploy/component-releases.json").read_text(encoding="utf-8"))
+    premarket = specs["components"]["premarket-limits"]
+
+    assert premarket["entrypoint"] == {
+        "command": "qsys-premarket-limits",
+        "target": "qsys.data.premarket_limits_cli:main",
+    }
+    assert premarket["scan_roots"] == [
+        "src/qsys/core", "src/qsys/data", "src/qsys/live", "src/qsys/ops",
+    ]
+    assert premarket["release_root"] == (
+        "/opt/qsys/components/premarket-limits/releases"
+    )
+    assert premarket["current"] == "/opt/qsys/components/premarket-limits/current"
+    assert premarket["unit"] == "qsys-premarket-limits.service"
+    assert premarket["state_directories"] == [{
+        "path": "/home/ubuntu/qsys/var/service-runs/premarket-limits",
+        "owner": "qsys-premarket-limits", "group": "qsys-premarket-limits",
+        "mode": "0750",
+    }]
+    dropin = "\n".join(premarket["dropin_lines"])
+    assert "User=qsys-premarket-limits" in dropin
+    assert "ReadWritePaths=/data/qsys/warehouse" in dropin
+    assert "ReadWritePaths=/home/ubuntu/qsys/var/warehouse-write.lock" in dropin
+    assert (
+        "ReadWritePaths=/home/ubuntu/qsys/var/service-runs/premarket-limits"
+        in dropin
+    )
+    assert dropin.count("ReadWritePaths=/home") == 2
+    assert "--service-runs /home/ubuntu/qsys/var/service-runs/premarket-limits" in dropin
+    assert "/home/ubuntu/qsys/.venv" not in dropin
+    assert "scripts/tushare_premarket_limits.py" not in dropin
+
+
 def test_health_observer_component_owns_only_timeline_and_alert_namespaces() -> None:
     specs = json.loads(Path("deploy/component-releases.json").read_text(encoding="utf-8"))
     observer = specs["components"]["health-observer"]
@@ -868,7 +903,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
 
     state = entrypoint.status({"production_repo": str(tmp_path)})
 
-    assert state["entrypoint_version"] == 18
+    assert state["entrypoint_version"] == 19
     assert set(state["capabilities"]) == {
         "systemd-apply-v1", "systemd-changed-artifacts-v1",
         "systemd-preview-v1", "systemd-rollback-v1",
@@ -887,6 +922,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
         "component-release-v6",
         "component-release-v7",
         "component-release-v8",
+        "component-release-v9",
     }
 
 
@@ -1862,9 +1898,9 @@ def test_component_workflow_streams_only_a_verified_artifact() -> None:
     assert ".before.linux == .after.linux" in workflow
     assert "PRODUCTION_DEPLOY_SSH_KEY" in workflow
     assert "cancel-in-progress: false" in workflow
-    assert "catalog-verify|service-checks|storage-report|daily-digest|health-observer|daily-archive" in workflow
-    assert 'required = {"component-release-v8"}' in workflow
-    assert 'entrypoint_version", 0) < 18' in workflow
+    assert "catalog-verify|service-checks|storage-report|daily-digest|health-observer|daily-archive|premarket-limits" in workflow
+    assert 'required = {"component-release-v9"}' in workflow
+    assert 'entrypoint_version", 0) < 19' in workflow
 
 
 def test_test_research_workflow_streams_ci_artifact_without_activation() -> None:
