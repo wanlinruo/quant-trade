@@ -1,6 +1,8 @@
 from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 
+import pytest
+
 from qsys.ops.health import (
     AFTERNOON,
     CALENDAR_UNKNOWN,
@@ -15,6 +17,7 @@ from qsys.ops.health import (
     HeartbeatCadence,
     HealthObservation,
     HealthStore,
+    HealthStoreReader,
     assess_heartbeat,
     heartbeat_policy,
     trading_phase,
@@ -143,3 +146,36 @@ def test_recovery_requires_two_consecutive_healthy_observations(tmp_path):
     assert store.latest("market-gateway")[0]["state"] == DOWN
     assert store.record(observation(start + timedelta(seconds=10), HEALTHY)) is True
     assert store.latest("market-gateway")[0]["state"] == HEALTHY
+
+
+def test_migration_reader_switches_without_restart_and_keeps_legacy_history(tmp_path):
+    legacy_path = tmp_path / "service-health.sqlite3"
+    component_path = tmp_path / "health-observer/service-health.sqlite3"
+    legacy = HealthStore(legacy_path)
+    start = datetime(2026, 9, 17, 2, tzinfo=timezone.utc)
+    legacy.record(observation(start, DOWN))
+    reader = HealthStoreReader((component_path, legacy_path))
+
+    assert reader.latest("market-gateway")[0]["state"] == DOWN
+    assert not component_path.exists()
+
+    component = HealthStore(component_path)
+    component.record(observation(start + timedelta(minutes=1), HEALTHY))
+
+    assert reader.latest("market-gateway")[0]["state"] == HEALTHY
+    assert [row["state"] for row in reader.history(
+        start, start + timedelta(minutes=2), "market-gateway",
+    )] == [DOWN, HEALTHY]
+
+
+def test_migration_reader_deduplicates_copied_records_and_never_writes(tmp_path):
+    first = tmp_path / "new.sqlite3"
+    second = tmp_path / "legacy.sqlite3"
+    start = datetime(2026, 9, 17, 2, tzinfo=timezone.utc)
+    HealthStore(first).record(observation(start))
+    HealthStore(second).record(observation(start))
+    reader = HealthStoreReader((first, second))
+
+    assert len(reader.history(start, start + timedelta(minutes=1))) == 1
+    with pytest.raises(RuntimeError, match="cannot record"):
+        reader.record(observation(start + timedelta(seconds=1)))

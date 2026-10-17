@@ -154,13 +154,15 @@ def test_alert_ledger_merges_component_namespace(tmp_path):
     today = date.today()
     shared = AlertLedger(tmp_path)
     component = AlertLedger(tmp_path / "service-checks")
+    observer = AlertLedger(tmp_path / "health-observer")
     alert = Alert(Severity.WARNING, "质检告警", "缺表", datetime.now())
     shared.record(alert, 1, [])
     component.record(Alert(Severity.INFO, "质检通过", "", datetime.now()), 1, [])
+    observer.record(Alert(Severity.CRITICAL, "观测告警", "", datetime.now()), 1, [])
 
     rows = shared.read(today)
 
-    assert [row["title"] for row in rows] == ["质检告警", "质检通过"]
+    assert [row["title"] for row in rows] == ["质检告警", "观测告警", "质检通过"]
 
 
 # ---- CRITICAL 双发：既是交易事件也是运维事故（2026-10-03）----

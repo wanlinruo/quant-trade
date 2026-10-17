@@ -190,14 +190,22 @@ class HealthObservation:
 class HealthStore:
     """只记状态变化与周期检查点的 SQLite WAL 存储。"""
 
-    def __init__(self, path: Path, *, checkpoint_interval: timedelta = timedelta(minutes=5)):
+    def __init__(
+        self, path: Path, *, checkpoint_interval: timedelta = timedelta(minutes=5),
+        initialize: bool = True, read_only: bool = False,
+    ):
         self.path = Path(path)
         self.checkpoint_interval = checkpoint_interval
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._initialize()
+        self.read_only = read_only
+        if initialize:
+            if read_only:
+                raise ValueError("a read-only health store cannot be initialized")
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self._initialize()
 
     def _connect(self) -> sqlite3.Connection:
-        con = sqlite3.connect(self.path, timeout=5)
+        target = f"file:{self.path}?mode=ro" if self.read_only else self.path
+        con = sqlite3.connect(target, timeout=5, uri=self.read_only)
         con.row_factory = sqlite3.Row
         con.execute("PRAGMA busy_timeout=5000")
         return con
@@ -242,6 +250,8 @@ class HealthStore:
         ))
 
     def record(self, observation: HealthObservation) -> bool:
+        if self.read_only:
+            raise RuntimeError("cannot record into a read-only health store")
         item = observation.normalized()
         payload = json.dumps(item.details or {}, ensure_ascii=False, sort_keys=True)
         values = (
@@ -384,3 +394,60 @@ class HealthStore:
         value["details"] = json.loads(value["details"])
         value["checkpoint"] = bool(value["checkpoint"])
         return value
+
+
+class HealthStoreReader(HealthStore):
+    """Read and de-duplicate new and legacy observer databases during migration.
+
+    Paths are checked on every call so the Web process can begin reading the
+    component-owned database as soon as the observer creates it, without a Web
+    restart.  The reader never initializes or writes either database.
+    """
+
+    def __init__(
+        self, paths: tuple[Path, ...], *,
+        checkpoint_interval: timedelta = timedelta(minutes=5),
+    ) -> None:
+        self.paths = tuple(Path(path) for path in paths)
+        self.checkpoint_interval = checkpoint_interval
+
+    def _stores(self) -> list[HealthStore]:
+        return [
+            HealthStore(
+                path, checkpoint_interval=self.checkpoint_interval,
+                initialize=False, read_only=True,
+            )
+            for path in self.paths if path.is_file()
+        ]
+
+    def record(self, observation: HealthObservation) -> bool:
+        raise RuntimeError("cannot record through a migrating health-store reader")
+
+    def latest(self, service_id: str | None = None) -> list[dict]:
+        rows = [row for store in self._stores() for row in store.latest(service_id)]
+        rows.sort(key=lambda row: row["observed_at_utc"], reverse=True)
+        latest: dict[str, dict] = {}
+        for row in rows:
+            latest.setdefault(row["service_id"], row)
+        return [latest[name] for name in sorted(latest)]
+
+    def history(
+        self, start: datetime, end: datetime, service_id: str | None = None,
+    ) -> list[dict]:
+        unique: dict[tuple[object, ...], dict] = {}
+        for store in self._stores():
+            for row in store.history(start, end, service_id):
+                identity = (
+                    row["service_id"], row["observed_at_utc"], row["phase"],
+                    row["expected_interval_s"], row["warn_after_s"],
+                    row["down_after_s"], row["state"], row["process_state"],
+                    row["business_state"], row["reason_code"], row["source"],
+                    row["last_beat_at_utc"],
+                    json.dumps(row["details"], ensure_ascii=False, sort_keys=True),
+                    row["checkpoint"],
+                )
+                unique.setdefault(identity, row)
+        return sorted(
+            unique.values(),
+            key=lambda row: (row["service_id"], row["observed_at_utc"], row["id"]),
+        )
