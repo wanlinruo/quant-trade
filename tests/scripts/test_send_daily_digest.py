@@ -8,6 +8,7 @@ from datetime import date
 from pathlib import Path
 
 from scripts.send_daily_digest import EXPECTED_SERVICES, checks_and_missing
+from qsys.ops.daily_digest_cli import _parser
 
 EMPTY = Path("/nonexistent/service-runs")
 DAY = date(2026, 10, 1)
@@ -32,10 +33,49 @@ def test_a_closed_day_does_not_expect_those_jobs_to_have_run():
 def test_the_digest_reports_today_not_the_last_closed_session():
     """定时器按 Mon..Fri 触发、不认节假日；取「最近已收盘交易日」会在假期里
     把节前那封日报原样重发（国庆能发五遍）。"""
-    source = Path("scripts/send_daily_digest.py").read_text(encoding="utf-8")
+    source = Path("src/qsys/ops/daily_digest_cli.py").read_text(encoding="utf-8")
 
     assert "last_closed_session" not in source
     assert "datetime.now().date()" in source
+
+
+def test_component_can_separate_read_protocol_from_its_write_namespace(tmp_path):
+    shared = tmp_path / "runs"
+    owned = shared / "daily-digest"
+
+    args = _parser().parse_args([
+        "--service-runs", str(shared), "--record-root", str(owned),
+        "--alert-ledger", str(tmp_path / "alerts"),
+    ])
+
+    assert args.service_runs == shared
+    assert args.record_root == owned
+    assert args.alert_ledger == tmp_path / "alerts"
+
+
+def test_component_writes_its_run_only_to_the_owned_namespace(monkeypatch, tmp_path):
+    from qsys.ops import daily_digest_cli
+
+    class Calendar:
+        @staticmethod
+        def is_trading_day(day):
+            return False
+
+    shared = tmp_path / "runs"
+    owned = shared / "daily-digest"
+    monkeypatch.setattr(daily_digest_cli, "load_trading_calendar", lambda config: Calendar())
+    monkeypatch.setattr(daily_digest_cli, "_run", lambda args, day, trading, run: 0)
+
+    assert daily_digest_cli.main([
+        "--service-runs", str(shared),
+        "--record-root", str(owned),
+        "--day", DAY.isoformat(),
+        "--print",
+    ]) == 0
+
+    records = list(owned.rglob("daily-digest-*.json"))
+    assert len(records) == 1
+    assert not list((shared / str(DAY.year)).rglob("*.json"))
 
 
 # ---- 连续零错误：不用手填起点，每天都能重算 ----

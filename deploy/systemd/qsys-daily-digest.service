@@ -11,6 +11,7 @@ WorkingDirectory=/home/ubuntu/qsys
 ExecStart=/home/ubuntu/qsys/.venv/bin/python -u scripts/send_daily_digest.py \
           --config config/deploy.local.toml \
           --service-runs /home/ubuntu/qsys/var/service-runs \
+          --record-root /home/ubuntu/qsys/var/service-runs \
           --shadow-state /home/ubuntu/qsys/var/shadow-state.sqlite3 \
           --live-state /home/ubuntu/qsys/var/live-state.sqlite3 \
           --workbench /home/ubuntu/qsys/var/workbench/workbench.sqlite3 \
@@ -22,10 +23,10 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-# 只读状态库与仓库，不写任何东西；发信走网络。
+# 状态库与仓库只读；只写自己的运行记录，发信走网络。
 # --warehouse 不给的话「数据质量」段会判成「当日没有验证结果」，
 # 交易日天天误报——参数是这一段的前提，不是可选项。
-ReadWritePaths=/home/ubuntu/qsys/var
+ReadWritePaths=/home/ubuntu/qsys/var/service-runs
 
 [Install]
 WantedBy=multi-user.target

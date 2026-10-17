@@ -144,7 +144,7 @@ SERVICES: tuple[ServiceSpec, ...] = (
         "daily-digest", "每日汇报（邮件）", "timer", "Linux", "qsys-daily-digest",
         "每天 20:30（含休市日）",
         ("服务运行记录", "影子盘状态库", "模拟盘工作台", "指标字典", "节点", "SMTP"),
-        (),
+        ("var/service-runs/daily-digest（只写日报运行记录）",),
         "把当日策略、账户、数据质量、服务、节点、通知与实盘就绪发一封邮件；"
         "休市日只报基础设施——机器照跑、磁盘照涨、证书照倒计时",
         due="21:00", max_runtime=timedelta(minutes=10), cadence="everyday",
