@@ -31,3 +31,10 @@ def test_every_listed_entry_script_exists():
 @pytest.mark.parametrize("name", SCRIPTS)
 def test_script_module_imports(name):
     importlib.import_module(f"scripts.{name}")
+
+
+def test_premarket_legacy_script_delegates_to_packaged_entrypoint():
+    legacy = importlib.import_module("scripts.tushare_premarket_limits")
+    packaged = importlib.import_module("qsys.data.premarket_limits_cli")
+
+    assert legacy.main is packaged.main
