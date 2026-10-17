@@ -129,6 +129,44 @@
         "ExecStart=/usr/bin/flock --exclusive --nonblock /home/ubuntu/qsys/var/warehouse-write.lock /opt/qsys/components/daily-archive/current/venv/bin/qsys-daily-archive --warehouse /data/qsys/warehouse --lookback-days 8 --config /home/ubuntu/qsys/config/deploy.local.toml --paper-store /home/ubuntu/qsys/var/workbench/workbench.sqlite3 --service-runs /home/ubuntu/qsys/var/service-runs --record-root /home/ubuntu/qsys/var/service-runs/daily-archive --work-root /home/ubuntu/qsys/var/daily-archive --win-key /etc/qsys/daily-archive/windows-data-writer --win-script-source /opt/qsys/components/daily-archive/current/source/scripts/win_download_minutes.py"
       ]
     },
+    "premarket-limits": {
+      "entrypoint": {
+        "command": "qsys-premarket-limits",
+        "target": "qsys.data.premarket_limits_cli:main"
+      },
+      "scan_roots": [
+        "src/qsys/core",
+        "src/qsys/data",
+        "src/qsys/live",
+        "src/qsys/ops"
+      ],
+      "release_root": "/opt/qsys/components/premarket-limits/releases",
+      "current": "/opt/qsys/components/premarket-limits/current",
+      "executable": "venv/bin/qsys-premarket-limits",
+      "unit": "qsys-premarket-limits.service",
+      "dropin": "/etc/systemd/system/qsys-premarket-limits.service.d/zz-isolated-release.conf",
+      "state_directories": [
+        {
+          "path": "/home/ubuntu/qsys/var/service-runs/premarket-limits",
+          "owner": "qsys-premarket-limits",
+          "group": "qsys-premarket-limits",
+          "mode": "0750"
+        }
+      ],
+      "seed": null,
+      "dropin_lines": [
+        "[Service]",
+        "User=qsys-premarket-limits",
+        "Group=qsys-premarket-limits",
+        "WorkingDirectory=/",
+        "ExecStart=",
+        "ReadWritePaths=",
+        "ReadWritePaths=/data/qsys/warehouse",
+        "ReadWritePaths=/home/ubuntu/qsys/var/warehouse-write.lock",
+        "ReadWritePaths=/home/ubuntu/qsys/var/service-runs/premarket-limits",
+        "ExecStart=/usr/bin/flock --exclusive --nonblock /home/ubuntu/qsys/var/warehouse-write.lock /opt/qsys/components/premarket-limits/current/venv/bin/qsys-premarket-limits --warehouse /data/qsys/warehouse --config /home/ubuntu/qsys/config/deploy.local.toml --service-runs /home/ubuntu/qsys/var/service-runs/premarket-limits"
+      ]
+    },
     "daily-digest": {
       "entrypoint": {
         "command": "qsys-daily-digest",

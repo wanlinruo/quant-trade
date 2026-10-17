@@ -245,3 +245,29 @@ def test_daily_archive_release_binds_data_code_and_windows_downloader(
     )
     assert (release / "source/scripts/win_download_minutes.py").is_file()
     assert verify(repo, sha, "daily-archive", release) == value
+
+
+def test_premarket_limits_release_binds_writer_and_redis_dependencies(
+    tmp_path: Path,
+) -> None:
+    repo, sha = _repo(tmp_path)
+    wheel = _wheel(
+        tmp_path / "dist-premarket" / "qsys-0.1.0-py3-none-any.whl",
+        command="qsys-premarket-limits",
+        entrypoint="qsys.data.premarket_limits_cli:main",
+    )
+    release = tmp_path / "premarket-release"
+
+    value = build(
+        repo, sha, "premarket-limits", wheel.parent, release,
+        repository="owner/repo", run_id="793", run_attempt="1",
+    )
+
+    assert value["entrypoint"] == {
+        "command": "qsys-premarket-limits",
+        "target": "qsys.data.premarket_limits_cli:main",
+    }
+    assert {record["path"].split("/")[2] for record in value["scan_files"]} == {
+        "core", "data", "live", "ops",
+    }
+    assert verify(repo, sha, "premarket-limits", release) == value
