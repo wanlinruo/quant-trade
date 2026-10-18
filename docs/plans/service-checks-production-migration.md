@@ -17,6 +17,17 @@
 - 输出根预置 ubuntu 的 access/default 读取 ACL，逐层验证 Web/daily-digest 的旧/新记录兼容。
   不移动或改写旧共享记录；新日期目录也必须让读者可遍历。
 
+## 旧生产读取器兼容
+
+生产 Web/daily-digest 的共享 checkout 仍为 447bdeef，只读取旧日期布局。组件结束时通过
+OnSuccess/OnFailure 触发专属 `qsys-service-run-index.service`，以当前不可变 venv 中的
+`python -I -m qsys.ops.service_checks_index` 将新记录快照发布到旧布局。
+
+发布器拒绝符号链接、错误 owner/identity/date 与超大记录；只创建未存在的 service-checks
+文件，已有不同内容立即报错，原记录不覆盖。源目录只读，目标目录仅共享运行记录，
+没有网络/凭据/仓库写权限；新建日期目录保留 ubuntu 写者。新读取器按 identity 去重。
+该伴随 unit 和组件同次审计安装，回切时保留全部新旧记录；不能以文件可读替代实际旧读取器验收。
+
 ## 执行顺序
 
 1. 只读复核 unit/timer、生产 SHA/健康、节点入口与 root 白名单、输入可访问范围、关键 peer 身份；

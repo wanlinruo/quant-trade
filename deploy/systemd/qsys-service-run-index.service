@@ -1,0 +1,22 @@
+[Unit]
+Description=qsys service-checks snapshots for legacy record readers
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/
+ExecStart=/opt/qsys/components/service-checks/current/venv/bin/python -I -m qsys.ops.service_checks_index
+TimeoutStartSec=60
+MemoryMax=128M
+CPUQuota=10%
+Nice=10
+IOSchedulingClass=idle
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateNetwork=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/ubuntu/qsys/var/service-runs
+ReadOnlyPaths=/home/ubuntu/qsys/var/service-runs/service-checks
+InaccessiblePaths=/home/ubuntu/qsys/config /etc/qsys/components /data/qsys
