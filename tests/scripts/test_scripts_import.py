@@ -18,7 +18,7 @@ SCRIPTS = [
     "run_health_observer", "run_live", "run_market_gateway", "run_monitor", "run_paper",
     "run_shadow", "limit_up_shadow_cycle", "run_limit_up_shadow", "observe_limit_up_shadow",
     "catalog_verify", "tushare_daily_sync", "tushare_premarket_limits", "verify_metrics",
-    "verify_warehouse_backup",
+    "verify_warehouse_backup", "auction_timing_study", "gate_study", "run_structural_backtest",
     "publish_joinquant_minute_overrides", "publish_paid_minute_overrides",
     "repair_minute_bars_padding", "repair_paid_minute_overrides", "storage_report",
 ]

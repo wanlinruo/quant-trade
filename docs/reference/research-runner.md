@@ -182,3 +182,77 @@ scripts/install_test_research_runner_isolation.sh <上一完整SHA>
 mount 会自动撤销。不要删除 `/data/qsys-test/research-jobs`、snapshot manifest 或 deployment
 record；这些是失败复盘与复现证据。旧的临时研究方式只可作为显式人工回退，不得获得生产写
 权限或订单链路访问。
+
+## 月度竞价/Gate 研究 task（#406，代码与协议）
+
+月度任务复用同一隔离 Runner，不另建共享 checkout/venv 的研究服务。新增 task：
+
+- `auction-timing-study`：调用 wheel 内的原竞价时点研究，产出
+  `auction-timing/report.json`，超时上限 1800 秒。
+- `gate-study`：先执行 wheel 内的原 `run_structural_backtest` 装配，再读取**同一作业**的
+  `backtests/gate/gate_decisions.csv` 做反事实分析，产出 `gate-study/gate_trades.csv` 和
+  `gate_study.json`，超时上限 3600 秒。原月度口径保持：10 万初始资金、continuous、
+  entry buffer 0.03、sizing buffer 0.005、auction_at 09:25:10、horizon 20；不替换成 Web
+  回测装配，不修改费用、策略、冻结阈值或成交规则。
+
+三份原脚本保留兼容导出；计算逻辑迁入 wheel，CLI 只增加显式 argv 调用支持。新 task 的
+参数**恰好**为 `start`、`end`、`market_data_facade`，日期为 ISO 格式，门面必须显式为
+`legacy` 或 `canonical`；结束日不得晚于绑定 snapshot 的 `complete_through`。没有路径、
+自定义源码、阈值文件或 shell 参数，Warehouse 固定来自 snapshot/warehouse，全部研究产物
+和 ServiceRun 记录固定在该 job 的 artifacts 下。环境覆盖在 task 结束/异常后恢复。
+
+原竞价 timer 没有显式日期边界；迁移时必须明确它实际覆盖的历史起点与 snapshot 截止日，
+用**相同数据区间和门面**做新旧对照，不能默认缩短为单月样本后声称研究结果不变。Gate 的
+年初至月末区间也由提交方显式给定；worker 不从启动时的当前日期推算。声明的截止日并不
+等于每张表覆盖完整，缺行情、缺表、缺候选仍由原研究逻辑报错/留痕，不造数据补齐。
+
+这两个 task 为 WarehouseQuery 启用作用域内 DuckDB 预算：每连接 memory_limit 为请求
+cgroup 内存 MiB 的一半，线程为 CPU quota 对应的整核数（至少 1），每连接溢写上限 1024 MiB，
+temp_directory 为该 job 的 `duckdb-temp/<连接ID>`。配置已用当前锁定版本的真实 DuckDB
+连接实测并纳入测试；study-context.json 记录预算、task、参数、code/snapshot 身份，结束时
+关闭连接。临时目录在 job 根而非产物清单内，失败/取消后的溢写残留随作业保留策略管理，
+不得当作 Warehouse 或回滚副本清理。该预算只约束 DuckDB；Polars/Python 仍受整个 Runner
+cgroup 限制，不声称任务一定能在上限内完成。其他旧查询调用保持原行为。
+
+### 受限提交入口
+
+`qsys-submit-monthly-research` 只从受信任 release/current 与 snapshot/current 读取身份，
+绑定 wheel hash/code SHA/snapshot hash 后写**既有** job-store inbox；不初始化服务目录、
+不启动 Runner、不修改任务状态或旧研究目录。调用者不能指定 code SHA、wheel hash、
+snapshot ID、输出路径或任意 task。显式资源参数必须与实际 Runner cgroup 一致；不一致时
+Runner 拒绝。旧 release 不支持这两个 task，因此提交入口与 Runner 应来自相同已验证版本。
+Web 的默认 task allowlist 仍仅含 verify-snapshot 和 structural-backtest，没有自动开放
+网页提交这两项研究。已有只读 job 列表、日志和 manifest 产物下载可展示它们的结果。
+
+以下仅是格式示例，**不代表已批准生产提交或激活**：
+
+```bash
+qsys-submit-monthly-research \
+  --jobs /data/qsys/research-jobs --release /opt/qsys-research/current \
+  --snapshots /data/qsys/warehouse-snapshot-store \
+  --job-id auction-202610-v1 --task auction-timing-study \
+  --start 2026-01-01 --end 2026-10-13 --market-data-facade legacy \
+  --memory-max-mb 4096 --cpu-quota-percent 100 --io-weight 10
+```
+
+同一 job ID 的重复提交会拒绝，不会覆盖或生成另一个任务。月度调度必须固定该轮 job ID；
+失败、取消或 interrupted 后只有维护者明确提交新 ID 才重跑。更换 snapshot/current 或
+release/current 后重试相同 ID 也不能隐式重放旧研究。
+
+### 尚未进行的生产迁移
+
+本轮不修改 `qsys-auction-study` / `qsys-gate-study` 实际 unit/timer，它们继续原 20:30/21:00
+路径；不激活生产 Runner、不发布生产 snapshot、不迁移旧产物、不把新任务写到生产 inbox。
+未来切换必须单独批准：
+
+1. 复核完整 snapshot 的表/日期/分钟覆盖、发布周期与单写者锁；stage 同一 SHA 的可信
+   Research Runner wheel，核对 sandbox、资源和 manifest。
+2. 在授权隔离环境做小样本新旧结果对照、全量资源/超时/溢写验收；普通 test Web 自动部署
+   不会运行月度研究，不能当作这些现场证据。
+3. 预置仅有 inbox 写权限的调度身份；暂停旧 timer，避免两套任务同时执行，再把调度改为
+   固定 ID 的提交，保留既有启用/活动状态。排队成功不等于研究成功，必须检查 job 最终状态。
+4. 明确日报/服务质检和 Web 回测列表的读取迁移：新运行记录/回测 ZIP 在 job artifacts 内，
+   不自动复制到旧 var/service-runs、var/runs 或 research/<年月>。在消费者未接通前，不能停旧
+   路径并假装原台账仍有到货；也不能给 Runner 开放旧目录写权限来掩盖协议缺口。
+5. 保留旧 unit/代码和历史产物。回滚先停新提交并处理/取消已排队作业，再恢复旧调度；作业
+   请求、失败/资源/日志和产物证据保留，不删除、不自动重放。生产 Runner 首次激活另行确认。

@@ -191,6 +191,11 @@ paths = [
   "src/qsys/research/runner_cli.py",
   "src/qsys/research/drill_cli.py",
   "src/qsys/research/task_worker.py",
+  "src/qsys/research/monthly_tasks.py",
+  "src/qsys/research/monthly_submit_cli.py",
+  "src/qsys/research/auction_timing_study_cli.py",
+  "src/qsys/research/gate_study_cli.py",
+  "src/qsys/research/structural_backtest_cli.py",
   "src/qsys/research/builtin_strategies/**",
 ]
 nodes = ["linux"]

@@ -6,11 +6,11 @@ from collections.abc import Sequence
 import json
 from datetime import date, datetime, time, timedelta
 
-import duckdb
 import polars as pl
 import pyarrow as pa
 
 from qsys.data import schema
+from qsys.data.query_budget import connect_warehouse_query
 from qsys.data.storage import Warehouse
 
 PAID_MINUTE_VISIBILITY_LAG = timedelta(minutes=1)
@@ -73,7 +73,7 @@ _DAILY_BAR_COLUMNS = "symbol, dt, open, high, low, close, volume, amount"
 class WarehouseQuery:
     def __init__(self, warehouse: Warehouse) -> None:
         self._wh = warehouse
-        self._con = duckdb.connect()
+        self._con = connect_warehouse_query()
 
     def _glob(self, dataset: str, partitioned: bool) -> str | None:
         base = self._wh.root / dataset

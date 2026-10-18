@@ -14,6 +14,7 @@ from pathlib import Path
 from qsys.backtest.runner import ENTRY_FILL_MODES, execute_backtest
 from qsys.data.snapshots import load_snapshot, verify_snapshot
 from qsys.research.jobs import JobRequest
+from qsys.research.monthly_tasks import auction_timing_study_task, gate_study_task
 
 
 def _require_no_parameters(request: JobRequest) -> None:
@@ -185,6 +186,8 @@ def structural_backtest_task(
 TASKS = {
     "verify-snapshot": verify_snapshot_task,
     "structural-backtest": structural_backtest_task,
+    "auction-timing-study": auction_timing_study_task,
+    "gate-study": gate_study_task,
     "isolation-permissions": isolation_permissions_task,
     "resource-pressure-cpu-io": resource_pressure_cpu_io_task,
     "resource-pressure-memory": resource_pressure_memory_task,
