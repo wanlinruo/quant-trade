@@ -118,8 +118,12 @@ def main(argv=None):
         raise ValueError("two distinct exact SHAs required")
     repo = Path(__file__).resolve().parents[1]
     suffix = os.environ["GITHUB_RUN_ID"] + "-" + os.environ["GITHUB_RUN_ATTEMPT"]
-    root = Path("/var/tmp") / ("qsys-storage-pilot-" + suffix)
-    root.mkdir(mode=0o755)  # Refuse reuse; never clean arbitrary paths.
+    # PrivateTmp hides /tmp and /var/tmp from the real service. Keep its
+    # executable and explicit bind paths in this ephemeral runner-only /opt root.
+    root = Path("/opt") / ("qsys-storage-pilot-" + suffix)
+    run(["sudo", "mkdir", root])  # No -p: refuse reuse; never clean arbitrary paths.
+    run(["sudo", "chown", f"{os.getuid()}:{os.getgid()}", root])
+    run(["sudo", "chmod", "0755", root])
     evidence_dir = Path(os.environ["RUNNER_TEMP"]) / root.name / "evidence"
     evidence_dir.mkdir(parents=True)
     evidence = {"schema_version": 1, "kind": "storage-report-preproduction",
