@@ -247,6 +247,9 @@
       ],
       "seed": null,
       "dropin_lines": [
+        "[Unit]",
+        "OnSuccess=qsys-service-run-index.service",
+        "OnFailure=qsys-service-run-index.service",
         "[Service]",
         "User=qsys-service-checks",
         "Group=qsys-service-checks",
