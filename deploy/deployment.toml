@@ -9,6 +9,8 @@ ignored_paths = [
   ".githooks/**",
   ".gitattributes",
   ".gitignore",
+  "AGENTS.md",
+  "CLAUDE.md",
   "HANDOFF.md",
   "README.md",
   "artifacts/**",
