@@ -106,8 +106,23 @@ QMT 连上券商、代理心跳、行情心跳。
 
 ```bash
 uv run python scripts/reboot_drill.py --dry-run   # 看今天跑不跑、采个基线
-uv run python scripts/reboot_drill.py --force     # 人工补做（交易日仍拒绝）
+# 本次得到明确批准后，人工补做还须显式给出执行模式、当天上海日期及获批目标：
+# qsys-reboot-drill --execute --force --host <获批SSH目标> \
+#   --approved-day <当天YYYY-MM-DD> --approved-host <同一获批SSH目标>
 ```
+
+**2026-10-18 入口安全边界（#408，代码层）**：旧命令不带模式现在会失败关闭；
+`--force` 本身不构成执行授权。`--execute` 要求日期为真实上海当日、目标精确匹配，
+`--day` 不能伪造执行日；发送危险命令前再次核对日期。确认参数只是操作员声明，
+不能替代维护者对本次故障注入的明确审批，不要把这些参数永久写入 timer。
+SSH 非零或超时立即失败并告警，不进入恢复等待、不自动重发；超时可能已在远端执行，
+需人工核验。`--dry-run` 仍会读取日历、SSH 与 Redis，不是离线演练。
+
+仓库内旧 `qsys-reboot-drill.service` 未增加模式参数，使用新入口时会失败关闭。
+本次未改生产 unit/timer；现场是否已运行新入口必须单独核验，不能声称现网已被保护。
+生产迁移前应单独审批暂停旧 timer，并设计每次审批后的节点侧一次性调度和审计记录。
+独立制品/release、账号、SSH key/known_hosts、最小状态目录与只 stage 不演练的
+部署/回滚仍属 #330 后续范围；本次仅完成包内入口与危险命令门禁。
 
 ### 排错时先看什么
 
