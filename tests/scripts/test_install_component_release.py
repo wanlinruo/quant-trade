@@ -199,3 +199,24 @@ def test_reboot_switch_and_restore_never_start_or_stop_units(monkeypatch, tmp_pa
         assert installer.activate(tmp_path, sha, "reboot-drill") == release
         assert current.resolve() == release
     assert not any("systemctl" in c and any(v in c for v in ("start", "stop", "restart")) for c in commands)
+
+
+@pytest.mark.parametrize("directive", ["ExecStart", "User", "ReadWritePaths", "ExecStartPre"])
+def test_later_platform_override_blocks_component_before_sudo(monkeypatch, tmp_path, directive):
+    sha = "a" * 40
+    spec, _, current, dropin = _prepare(monkeypatch, tmp_path, sha)
+    dropin.parent.mkdir(parents=True)
+    (dropin.parent / "zz-legacy.conf").write_text(f"[Service]\n{directive}=/shared/checkout\n")
+    monkeypatch.setattr(installer, "_sudo", lambda *args, **kw: pytest.fail("sudo reached"))
+    with pytest.raises(ValueError, match="later platform drop-in"):
+        installer.activate(tmp_path, sha, "example")
+    assert not current.exists()
+    assert not dropin.exists()
+
+
+def test_nonconflicting_later_platform_environment_is_allowed(monkeypatch, tmp_path):
+    sha = "a" * 40
+    _, release, _, dropin = _prepare(monkeypatch, tmp_path, sha)
+    dropin.parent.mkdir(parents=True)
+    (dropin.parent / "zz-market.conf").write_text("[Service]\nEnvironment=MARKET=canonical\n")
+    assert installer.activate(tmp_path, sha, "example") == release

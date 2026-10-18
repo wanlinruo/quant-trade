@@ -87,6 +87,28 @@ def _require_idle_reboot_drill(service: str) -> None:
             raise ValueError(f"refusing to switch reboot-drill while running or unknown: {unit}")
 
 
+def _require_no_later_component_override(spec: dict) -> None:
+    owned = Path(str(spec["dropin"]))
+    protected = {"ExecStart", "ExecStartPre", "ExecStartPost", "ExecStop", "ExecStopPost", "ExecCondition", "ExecReload",
+                 "User", "Group", "SupplementaryGroups", "WorkingDirectory", "ReadWritePaths",
+                 "UMask", "RootDirectory", "RootImage"}
+    protected.update(line.split("=", 1)[0] for line in spec["dropin_lines"] if "=" in line)
+    for path in owned.parent.glob("*.conf"):
+        if path.name <= owned.name:
+            continue
+        section = ""
+        for raw in path.read_text(encoding="utf-8-sig").splitlines():
+            line = raw.strip()
+            if line.startswith(("#", ";")):
+                continue
+            if line.startswith("[") and line.endswith("]"):
+                section = line
+            elif section == "[Service]" and "=" in line:
+                if line.split("=", 1)[0].strip() in protected:
+                    raise ValueError("later platform drop-in overrides component runtime; "
+                                     "migrate conflicting drop-in before activation")
+
+
 def activate(
     repo: Path, sha: str, component: str, *, trusted_spec: Path | None = None,
 ) -> Path:
@@ -122,6 +144,7 @@ def activate(
     if component == "reboot-drill":
         _require_idle_reboot_drill(str(spec["unit"]))
 
+    _require_no_later_component_override(spec)
     _sudo("chown", "-R", "root:root", str(release_root))
     for path in {release_root.parent, current.parent, dropin.parent}:
         _sudo("install", "-d", "-o", "root", "-g", "root", "-m", "0755", str(path))

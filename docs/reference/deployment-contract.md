@@ -385,3 +385,23 @@ active/activating/deactivating/未知状态全部拒绝，不能靠 `is-active` 
 只读配置/Redis ACL、独立 key/预置 host key、状态和告警读者权限、timer 迁移与恢复策略。
 固定 unit 的 dry-run 探测是否恢复定时调度也须明确裁决，不能把安装成功当演练成功。
 测试环境整体 Web 部署仅提供集成证据，不代表控制面真实激活或故障注入验收。
+
+### 平台与独立组件的 drop-in 所有权（#412）
+
+固定入口 v26 / `systemd-component-boundary-v1` 在平台 preview 与 apply 的备份/写入/重启前
+检查独立组件边界。若组件专属 drop-in 已存在，平台不得覆盖/删除它，也不得通过同 unit
+的其他 drop-in 改写组件拥有的启动、身份、工作目录、写目录等指令（包含组件规格明确声明的
+其他 Service 指令）。删除含冲突指令的旧 drop-in 同样需要单独迁移，不猜测最终合并结果。
+基础 unit 模板仍由平台管理；独立 drop-in 对其覆盖，不冲突的行情环境参数仍可更新。
+未安装独立 drop-in 的 legacy 部署保持原有行为。
+
+组件 installer 在任何 sudo 写入前检查同目录排序更晚的 `.conf`，有冲突则拒绝激活。
+例如旧 `zz-limit-up-shadow.conf` 排在 `zz-isolated-release.conf` 后，不能带着它直接迁 Web：
+否则 current 虽已切换，实际 ExecStart 仍可能回到共享 checkout。此修复不自动删除或重写旧
+配置，首次迁移必须在获批维护窗口盘点有效 FragmentPath/DropInPaths/ExecStart、备份旧文件，
+把仍需保留的参数纳入组件规格并经独立审批消除冲突。不要打印完整配置或秘密。
+此门禁防止已知覆盖，不代替所有 systemd 合并语义和现场有效 unit 验收；更早 drop-in 的
+累加指令、环境变量间语义冲突和非仓库 site 配置仍需逐项核对。
+
+平台发布与组件 release 分别回滚，不能以平台更新绕过组件制品、账号/状态或生产授权。
+本项仅代码与契约，不证明平台已形成独立不可变包，也不替代组件级预生产运行时验收。
