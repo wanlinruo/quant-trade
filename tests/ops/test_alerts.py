@@ -246,3 +246,8 @@ def test_a_sink_whose_accepts_explodes_is_still_sent_to():
     AlertBus([Moody()]).critical("对账失败")
 
     assert seen == ["对账失败"]
+
+
+def test_reboot_ledger_remains_visible_to_shared_reader(tmp_path):
+    AlertBus([RecordingAlertSink()], AlertLedger(tmp_path / "reboot-drill")).critical("演练命令失败")
+    assert [r["title"] for r in AlertLedger(tmp_path).read(date.today())] == ["演练命令失败"]

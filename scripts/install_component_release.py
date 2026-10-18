@@ -80,6 +80,13 @@ def _restore(
     _sudo("systemctl", "daemon-reload", check=False)
 
 
+def _require_idle_reboot_drill(service: str) -> None:
+    for unit in (service, "qsys-reboot-drill.timer"):
+        state = _run(["systemctl", "show", unit, "--property=ActiveState", "--value"])
+        if state.stdout.strip() not in {"inactive", "failed"}:
+            raise ValueError(f"refusing to switch reboot-drill while running or unknown: {unit}")
+
+
 def activate(
     repo: Path, sha: str, component: str, *, trusted_spec: Path | None = None,
 ) -> Path:
@@ -111,6 +118,9 @@ def activate(
     )
     if active.returncode == 0:
         raise ValueError(f"refusing to switch component while its unit is active: {spec['unit']}")
+
+    if component == "reboot-drill":
+        _require_idle_reboot_drill(str(spec["unit"]))
 
     _sudo("chown", "-R", "root:root", str(release_root))
     for path in {release_root.parent, current.parent, dropin.parent}:
@@ -148,6 +158,8 @@ def activate(
             raise ValueError("component current pointer does not match the target release")
     except (OSError, ValueError, subprocess.CalledProcessError):
         if activated:
+            if component == "reboot-drill":
+                _require_idle_reboot_drill(str(spec["unit"]))
             _restore(current, previous, dropin, previous_dropin)
         raise
     return release_root

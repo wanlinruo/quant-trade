@@ -29,19 +29,25 @@ SSH_TIMEOUT = 30
 SETTLE_SECONDS = 420
 
 
-def _ssh(host: str, key: Path, command: str, *, timeout: int = SSH_TIMEOUT):
+def _ssh(host: str, key: Path, command: str, *, timeout: int = SSH_TIMEOUT,
+         known_hosts: Path | None = None):
+    options = ["-o", "StrictHostKeyChecking=yes", "-o", "IdentitiesOnly=yes",
+               "-o", "IdentityAgent=none"]
+    if known_hosts is not None:
+        options += ["-o", f"UserKnownHostsFile={known_hosts}"]
     return subprocess.run(
         ["ssh", "-i", str(key), "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
-         "-o", "StrictHostKeyChecking=accept-new", host, command],
+         *options, host, command],
         capture_output=True, timeout=timeout,
     )
 
 
-def _powershell(host: str, key: Path, script: str) -> str:
+def _powershell(host: str, key: Path, script: str, *, known_hosts: Path | None = None) -> str:
     """UTF-16LE base64 送过去，绕开引号与编码。失败返回空串。"""
     encoded = base64.b64encode(script.encode("utf-16le")).decode()
     try:
-        out = _ssh(host, key, f"powershell -NoProfile -EncodedCommand {encoded}")
+        out = _ssh(host, key, f"powershell -NoProfile -EncodedCommand {encoded}",
+                   known_hosts=known_hosts)
     except (OSError, subprocess.SubprocessError) as exc:
         log.warning("reboot_drill.powershell_failed", error=str(exc))
         return ""
@@ -73,9 +79,9 @@ Write-Output ("broker_endpoint=" + $ep)
 """
 
 
-def probe_windows(host: str, key: Path) -> dict:
+def probe_windows(host: str, key: Path, *, known_hosts: Path | None = None) -> dict:
     reading: dict = {}
-    for line in _powershell(host, key, _PROBE).splitlines():
+    for line in _powershell(host, key, _PROBE, known_hosts=known_hosts).splitlines():
         key_name, _, value = line.strip().partition("=")
         if not _:
             continue
@@ -112,7 +118,7 @@ def probe_heartbeats(config_path: str) -> dict:
     return out
 
 
-def _alerts(config_path: str):
+def _alerts(config_path: str, root: Path | None = None):
     from qsys.live.config import load_deploy_config
     from qsys.ops.alerts import AlertBus, LogAlertSink, WebhookAlertSink, ledger
 
@@ -123,7 +129,7 @@ def _alerts(config_path: str):
             sinks.append(WebhookAlertSink(url))
     except Exception as exc:
         log.warning("reboot_drill.alerts_unavailable", error=str(exc))
-    return AlertBus(sinks, ledger())
+    return AlertBus(sinks, ledger(root))
 
 
 def _today() -> date:
@@ -145,6 +151,8 @@ def main(argv: list[str] | None = None) -> int:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--config", default="config/deploy.local.toml")
     parser.add_argument("--service-runs", type=Path, default=Path("var/service-runs"))
+    parser.add_argument("--alert-ledger", type=Path, help="专属告警流水目录")
+    parser.add_argument("--known-hosts", type=Path, help="预置且只读的 SSH host key 文件")
     parser.add_argument("--host", default="Administrator@118.25.42.149")
     parser.add_argument("--key", type=Path,
                         default=Path("/home/ubuntu/.ssh/id_ed25519_winnode"))
@@ -190,7 +198,7 @@ def _run(args, today, why, run) -> int:
         step.detail = why
 
     with run.step("重启前基线", interface="SSH Windows / Redis 心跳") as step:
-        before = {**probe_windows(args.host, args.key), **probe_heartbeats(args.config)}
+        before = {**probe_windows(args.host, args.key, known_hosts=args.known_hosts), **probe_heartbeats(args.config)}
         boot_age = before.get("boot_seconds_ago")
         boot_detail = (f"开机于 {boot_age / 3600:.1f} 小时前"
                        if boot_age is not None else "取不到开机时刻")
@@ -199,6 +207,7 @@ def _run(args, today, why, run) -> int:
     if args.dry_run:
         with run.step("演练", interface="SSH Windows") as step:
             step.skip("--dry-run，不重启")
+        run.skip("仅采基线，未执行重启演练")
         print("dry-run：今天会跑，但没有重启")
         return 0
 
@@ -210,15 +219,16 @@ def _run(args, today, why, run) -> int:
             return 1
         try:
             command = _ssh(args.host, args.key,
-                           'shutdown /r /t 5 /c "qsys monthly reboot drill"')
+                           'shutdown /r /t 5 /c "qsys monthly reboot drill"',
+                           known_hosts=args.known_hosts)
         except (OSError, subprocess.SubprocessError):
             # SSH 超时可能发生在远端已接受命令后；不得自动重试。
             step.fail("重启命令传输异常，远端是否接受未知；停止并人工核验，不自动重试")
-            _alerts(args.config).critical("重启演练命令结果未知", step.detail)
+            _alerts(args.config, args.alert_ledger).critical("重启演练命令结果未知", step.detail)
             return 1
         if command.returncode != 0:
             step.fail(f"重启命令 SSH 返回 {command.returncode}，未确认接受；停止且不自动重试")
-            _alerts(args.config).critical("重启演练命令失败", step.detail)
+            _alerts(args.config, args.alert_ledger).critical("重启演练命令失败", step.detail)
             return 1
         step.detail = "远端已接受重启命令，尚待核验恢复"
 
@@ -228,7 +238,8 @@ def _run(args, today, why, run) -> int:
         time.sleep(30)                                  # 先让它真的断开
         while time.monotonic() < deadline:
             try:
-                if _ssh(args.host, args.key, "echo up", timeout=15).returncode == 0:
+                if _ssh(args.host, args.key, "echo up", timeout=15,
+                        known_hosts=args.known_hosts).returncode == 0:
                     back = True
                     break
             except (OSError, subprocess.SubprocessError):
@@ -244,7 +255,7 @@ def _run(args, today, why, run) -> int:
         step.detail = f"等待 {SETTLE_SECONDS} 秒（看门狗每 5 分钟拉一次代理）"
 
     with run.step("核对恢复结果", interface="SSH Windows / Redis 心跳") as step:
-        reading = {**probe_windows(args.host, args.key), **probe_heartbeats(args.config),
+        reading = {**probe_windows(args.host, args.key, known_hosts=args.known_hosts), **probe_heartbeats(args.config),
                    "elapsed_seconds": time.monotonic() - started}
         result = assess(reading)
         step.detail = result.summary()
@@ -253,7 +264,7 @@ def _run(args, today, why, run) -> int:
 
     detail = "\n".join(f"{'✅' if f.ok else '❌'} {f.name}：{f.detail}"
                        for f in result.findings)
-    bus = _alerts(args.config)
+    bus = _alerts(args.config, args.alert_ledger)
     if result.passed:
         bus.info(f"月度重启演练通过（{today}）", detail)
     else:

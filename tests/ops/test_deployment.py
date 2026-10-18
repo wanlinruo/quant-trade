@@ -1116,7 +1116,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
 
     state = entrypoint.status({"production_repo": str(tmp_path)})
 
-    assert state["entrypoint_version"] == 24
+    assert state["entrypoint_version"] == 25
     assert set(state["capabilities"]) == {
         "systemd-apply-v1", "systemd-changed-artifacts-v1",
         "systemd-preview-v1", "systemd-rollback-v1",
@@ -1141,6 +1141,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
         "component-release-v12",
         "component-release-v13",
         "component-release-v14",
+        "component-release-v15",
     }
 
 
@@ -1502,13 +1503,16 @@ def test_resident_component_preserves_its_active_state_during_switch(
     assert json.loads(capsys.readouterr().out)["status"] == "success"
 
 
-@pytest.mark.parametrize("component,active,peer_drift", [
-    ("web", True, False),
-    ("limit-up-shadow", False, False),
-    ("limit-up-shadow", False, True),
+@pytest.mark.parametrize("component,active,peer_drift,busy_after_stage", [
+    ("web", True, False, False),
+    ("limit-up-shadow", False, False, False),
+    ("limit-up-shadow", False, True, False),
+    ("reboot-drill", False, False, False),
+    ("reboot-drill", False, True, False),
+    ("reboot-drill", False, False, True),
 ])
 def test_component_health_and_peer_identity_gate(
-    monkeypatch, tmp_path, capsys, component, active, peer_drift,
+    monkeypatch, tmp_path, capsys, component, active, peer_drift, busy_after_stage,
 ) -> None:
     entrypoint = _production_entrypoint_module()
     target = "a" * 40
@@ -1519,6 +1523,8 @@ def test_component_health_and_peer_identity_gate(
     worker_identity = json.dumps({
         "load": "loaded", "active": "active", "pid": "77", "started": "1234",
     }, sort_keys=True, separators=(",", ":"))
+    commands = []
+    idle_probes = 0
     records = []
     health_checks = []
     monkeypatch.setattr(entrypoint, "_branch", lambda repo: "main")
@@ -1551,7 +1557,15 @@ def test_component_health_and_peer_identity_gate(
     monkeypatch.setattr(entrypoint, "_stage_component_release", lambda *args: tmp_path / target)
 
     def fake_run(command, **kwargs):
+        nonlocal idle_probes
         command = [str(item) for item in command]
+        commands.append(command)
+        if command[:3] == ["systemctl", "show", "qsys-reboot-drill.service"]:
+            idle_probes += 1
+            value = "activating" if busy_after_stage and idle_probes > 1 else "inactive"
+            return subprocess.CompletedProcess(command, 0, value + "\n", "")
+        if command[:3] == ["systemctl", "show", "qsys-reboot-drill.timer"]:
+            return subprocess.CompletedProcess(command, 0, "inactive\n", "")
         if command[:3] == ["systemctl", "show", "qsys-limit-up-shadow.service"]:
             return subprocess.CompletedProcess(command, 0, "inactive\n", "")
         if command[-2:] == ["stop", "qsys-monitor.service"]:
@@ -1579,8 +1593,16 @@ def test_component_health_and_peer_identity_gate(
             "production_repo": str(tmp_path), "test_record_root": str(tmp_path),
             "production_record_root": str(tmp_path / "records"),
         },
-    ) == (1 if peer_drift else 0)
+    ) == (1 if peer_drift or busy_after_stage else 0)
     assert health_checks == ([True] if component == "web" else [])
+    if component == "reboot-drill":
+        assert idle_probes == (2 if busy_after_stage else 3)
+        assert not any("systemctl" in c and any(v in c for v in ("start", "stop", "restart")) for c in commands)
+    if busy_after_stage:
+        assert state["component"] == previous
+        assert json.loads(capsys.readouterr().out)["status"] == "failure"
+        assert not any(entrypoint.GENERIC_COMPONENT_INSTALLER in c for c in commands)
+        return
     if peer_drift:
         assert state["component"] == previous
         assert json.loads(capsys.readouterr().out)["status"] == "rolled_back"
@@ -2249,9 +2271,9 @@ def test_component_workflow_streams_only_a_verified_artifact() -> None:
     assert ".before.linux == .after.linux" in workflow
     assert "PRODUCTION_DEPLOY_SSH_KEY" in workflow
     assert "cancel-in-progress: false" in workflow
-    assert "backtest-worker|web|paper|shadow-core|limit-up-shadow|catalog-verify|service-checks|storage-report|daily-digest|health-observer|daily-archive|premarket-limits|tushare-sync" in workflow
-    assert 'required = {"component-release-v14"}' in workflow
-    assert 'entrypoint_version", 0) < 24' in workflow
+    assert "backtest-worker|web|paper|shadow-core|limit-up-shadow|reboot-drill|catalog-verify|service-checks|storage-report|daily-digest|health-observer|daily-archive|premarket-limits|tushare-sync" in workflow
+    assert 'required = {"component-release-v15"}' in workflow
+    assert 'entrypoint_version", 0) < 25' in workflow
     assert '.before["backtest-worker-identity"] == .after["backtest-worker-identity"]' in workflow
     assert '.before["shadow-core-identity"] == .after["shadow-core-identity"]' in workflow
     assert '.before["paper-identity"] == .after["paper-identity"]' in workflow
@@ -2464,3 +2486,46 @@ def test_deployment_record_rejects_secret_shaped_fields() -> None:
 
     with pytest.raises(ContractError, match="sensitive key"):
         validate_record(record)
+
+
+@pytest.mark.parametrize("unit", ["qsys-reboot-drill.service", "qsys-reboot-drill.timer"])
+@pytest.mark.parametrize("state", ["active", "activating", "deactivating", "reloading", ""])
+def test_reboot_release_refuses_busy_or_unknown_service_and_timer(monkeypatch, tmp_path, unit, state):
+    entrypoint = _production_entrypoint_module()
+    def probe(command, **kwargs):
+        value = state if unit in command else "inactive"
+        return subprocess.CompletedProcess(command, 0, value + "\n", "")
+    monkeypatch.setattr(entrypoint, "_run", probe)
+    with pytest.raises(ValueError, match="running or unknown"):
+        entrypoint._require_idle_reboot_drill(tmp_path)
+
+
+def test_reboot_component_never_encodes_execution_confirmation():
+    import shlex
+    from scripts.component_release_config import load_component_releases
+    spec = load_component_releases(Path("."))["reboot-drill"]
+    lines = spec["dropin_lines"]
+    command = shlex.split(next(line for line in lines if line.startswith("ExecStart=/"))[10:])
+    assert "--dry-run" in command
+    assert not {"--execute", "--approved-day", "--approved-host", "--force"} & set(command)
+    assert command[0] == spec["current"] + "/venv/bin/qsys-reboot-drill"
+    assert command[command.index("--known-hosts") + 1] == "/etc/qsys/reboot-drill/known_hosts"
+    assert command[command.index("--key") + 1] == "/etc/qsys/reboot-drill/windows-reboot"
+    writes = [line for line in lines if line.startswith("ReadWritePaths=")]
+    assert writes == ["ReadWritePaths=", "ReadWritePaths=/home/ubuntu/qsys/var/service-runs/reboot-drill",
+                      "ReadWritePaths=/home/ubuntu/qsys/var/alerts/reboot-drill"]
+    assert "User=qsys-reboot-drill" in lines
+    assert "Group=qsys-reboot-drill" in lines
+    assert {x["path"] for x in spec["state_directories"]} == {line.split("=", 1)[1] for line in writes[1:]}
+
+
+def test_reboot_rollback_refuses_mutation_when_timer_resumes(monkeypatch, tmp_path):
+    entrypoint = _production_entrypoint_module()
+    commands = []
+    def probe(command, **kwargs):
+        commands.append(command)
+        value = "active" if "qsys-reboot-drill.timer" in command else "inactive"
+        return subprocess.CompletedProcess(command, 0, value + "\n", "")
+    monkeypatch.setattr(entrypoint, "_run", probe)
+    assert entrypoint._rollback_component("reboot-drill", "uninstalled", tmp_path) is False
+    assert not any("sudo" in c for c in commands)
