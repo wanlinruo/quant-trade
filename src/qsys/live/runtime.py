@@ -75,6 +75,7 @@ class LiveRuntime:
         *,
         params: dict | None = None,
         local_kill_path: Path = Path("var/KILL"),
+        journal_warehouse: Path | None = None,
         alerts: AlertBus | None = None,
         risk: RiskConfig | None = None,
         shadow: bool = False,
@@ -128,7 +129,7 @@ class LiveRuntime:
         self._previous_amounts: dict[tuple[date, str], float] = {}
 
         wh = Warehouse(warehouse)
-        self.journal = SessionJournal(wh)
+        self.journal = SessionJournal(Warehouse(journal_warehouse or warehouse))
         query = WarehouseQuery(wh)
         market_data = CutoverMarketData(query, CutoverConfig.from_env())
         feed = HistoricalFeed(query, calendar, market_data)

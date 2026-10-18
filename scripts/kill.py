@@ -29,6 +29,12 @@ TARGETS: dict[str, tuple[str, Path]] = {
     "shadow": ("shadow:control:kill", Path("var/SHADOW_KILL")),
 }
 
+# 固定 installer 在首次激活时写入该 drop-in；存在时使用独立组件的本地急停路径。
+SHADOW_COMPONENT_DROPIN = Path(
+    "/etc/systemd/system/qsys-shadow-core.service.d/zz-isolated-release.conf"
+)
+SHADOW_COMPONENT_KILL = Path("/home/ubuntu/qsys/var/shadow-core/SHADOW_KILL")
+
 
 def _transport():
     """拿到 Redis；连不上也要能继续，本地标记才是保底的那条路。"""
@@ -51,6 +57,8 @@ def _switch(name: str, transport):
     from qsys.live.kill_switch import KillSwitch
 
     key, path = TARGETS[name]
+    if name == "shadow" and SHADOW_COMPONENT_DROPIN.is_file():
+        path = SHADOW_COMPONENT_KILL
     return KillSwitch(transport, key=key, local_path=path)
 
 
