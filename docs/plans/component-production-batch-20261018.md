@@ -65,3 +65,12 @@ service-checks 的 previous-release/故障注入未验收。其余组件只有�
 不重复建设控制面。正式切换按 Web → worker（就位后启用）→ health-observer → daily-digest，
 逐项确认 workflow/Deployment/节点记录后自动推进，失败停止后续。不同组件保留独立 record 与回退依据。
 本次运行时补丁本地全量 3101 passed；最终 CI 与现场验收另行记录。
+
+## 首次正式 Web 发布回退
+
+39134366395 在精确制品校验后切换，但 Type=simple 启动后的单次即时 HTTP 检查失败，自动恢复 legacy Web。
+节点 record 为 rolled_back，Live/Paper 未切换；zy-legacy-limit-up-shadow.conf 保留完整原命令参数。
+补控制面 v27：仅组件 Web 启动改为最长 60 秒有界 HTTP 就绪等待，真实成功仍须 200，超时仍回退。
+新增立即就绪/延迟就绪/持续失败的时钟测试。状态巡检仍保持单次查询。
+该控制面补丁经正常 CI/测试部署/PR 后安装，不改变已验证的 3c182a7 业务制品和四组件规格，
+重试使用新 run ID，保留失败 record；不重跑相同输入的预演或下载中间制品。

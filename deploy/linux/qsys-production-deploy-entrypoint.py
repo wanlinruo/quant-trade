@@ -34,7 +34,7 @@ ALLOWED_WINDOWS_COMPONENTS = frozenset({
     "windows-agent", "windows-gateway", "windows-control",
 })
 WINDOWS_COORDINATOR_PATH = "deploy/linux/qsys-windows-deploy-coordinator.py"
-ENTRYPOINT_VERSION = 26
+ENTRYPOINT_VERSION = 27
 ENTRYPOINT_CAPABILITIES = (
     "systemd-apply-v1",
     "systemd-component-boundary-v1",
@@ -64,6 +64,7 @@ ENTRYPOINT_CAPABILITIES = (
     "component-release-v13",
     "component-release-v14",
     "component-release-v15",
+    "component-web-readiness-v1",
 )
 FAILURE_POINTS = frozenset({"none", "linux-health", "windows-switch"})
 GENERIC_COMPONENT_INSTALLER = "scripts/install_component_release.py"
@@ -242,6 +243,18 @@ def _web_healthy(config: dict[str, object]) -> bool:
             return response.status == 200
     except OSError:
         return False
+
+
+def _wait_for_web_healthy(config: dict[str, object], timeout_seconds: float = 60) -> bool:
+    """systemctl start 对 Type=simple 只保证进程启动，HTTP 就绪须有界等待。"""
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        if _web_healthy(config):
+            return True
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        time.sleep(min(1, remaining))
 
 
 def status(config: dict[str, object]) -> dict[str, object]:
@@ -1280,7 +1293,7 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
                     _run(["sudo", "-n", "systemctl", "start", component_unit], cwd=repo)
                     if not _active(component_unit, repo):
                         raise ValueError("component unit did not return to active state")
-                    if args.component == "web" and not _web_healthy(config):
+                    if args.component == "web" and not _wait_for_web_healthy(config):
                         raise ValueError("Web component did not return a healthy HTTP endpoint")
                 elif _active(component_unit, repo):
                     raise ValueError("inactive component unit was unexpectedly started")

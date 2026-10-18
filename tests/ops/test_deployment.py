@@ -1119,7 +1119,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
 
     state = entrypoint.status({"production_repo": str(tmp_path)})
 
-    assert state["entrypoint_version"] == 26
+    assert state["entrypoint_version"] == 27
     assert set(state["capabilities"]) == {
         "systemd-apply-v1", "systemd-component-boundary-v1", "systemd-changed-artifacts-v1",
         "systemd-preview-v1", "systemd-rollback-v1",
@@ -1145,6 +1145,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
         "component-release-v13",
         "component-release-v14",
         "component-release-v15",
+        "component-web-readiness-v1",
     }
 
 
@@ -2284,8 +2285,8 @@ def test_component_workflow_streams_only_a_verified_artifact() -> None:
     assert "PRODUCTION_DEPLOY_SSH_KEY" in workflow
     assert "cancel-in-progress: false" in workflow
     assert "backtest-worker|web|paper|shadow-core|limit-up-shadow|reboot-drill|catalog-verify|service-checks|storage-report|daily-digest|health-observer|daily-archive|premarket-limits|tushare-sync" in workflow
-    assert 'required = {"component-release-v15", "systemd-component-boundary-v1"}' in workflow
-    assert 'entrypoint_version", 0) < 26' in workflow
+    assert 'required = {"component-release-v15", "systemd-component-boundary-v1", "component-web-readiness-v1"}' in workflow
+    assert 'entrypoint_version", 0) < 27' in workflow
     assert '.before["backtest-worker-identity"] == .after["backtest-worker-identity"]' in workflow
     assert '.before["shadow-core-identity"] == .after["shadow-core-identity"]' in workflow
     assert '.before["paper-identity"] == .after["paper-identity"]' in workflow
@@ -2596,3 +2597,21 @@ def test_platform_conflict_rejected_before_backup_or_restart(monkeypatch, tmp_pa
         else:
             entrypoint._apply_systemd({}, tmp_path, "run-1", [])
     assert not any("sudo" in c or "systemctl" in c for c in calls)
+
+
+@pytest.mark.parametrize("ready_after", [0, 3, None])
+def test_component_web_readiness_retries_and_times_out(monkeypatch, ready_after):
+    entrypoint = _production_entrypoint_module()
+    clock = [0.0]
+    probes = []
+    monkeypatch.setattr(entrypoint.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(entrypoint.time, "sleep", lambda seconds: clock.__setitem__(0, clock[0] + seconds))
+
+    def probe(config):
+        probes.append(clock[0])
+        return ready_after is not None and clock[0] >= ready_after
+
+    monkeypatch.setattr(entrypoint, "_web_healthy", probe)
+    assert entrypoint._wait_for_web_healthy({}, timeout_seconds=5) is (ready_after is not None)
+    assert probes == ([0.0] if ready_after == 0 else list(range(4 if ready_after == 3 else 6)))
+    assert clock[0] <= 5
