@@ -129,7 +129,7 @@ seed 与最终 systemd 命令统一来自 `deploy/component-releases.json` 静�
 与已安装副本逐项相同，否则在 stage/activate 前失败关闭。artifact 不能提供路径、命令或新增组件。
 白名单当前允许已投产的 `catalog-verify`，以及待迁移的 `service-checks`、
 `storage-report`、`daily-digest`、`health-observer`、`daily-archive`、`premarket-limits`、
-`tushare-sync`、`backtest-worker`、`web`、`paper`、`shadow-core`。新增组件必须先单独升级固定入口与 root-owned 白名单；代码合入本身
+`tushare-sync`、`backtest-worker`、`web`、`paper`、`shadow-core`、`limit-up-shadow`。新增组件必须先单独升级固定入口与 root-owned 白名单；代码合入本身
 不授权生产激活。
 
 通用 installer 在切换前验证 manifest、规格指纹、wheel、源码成员、权限、unit inactive 和 seed；
@@ -222,6 +222,41 @@ checkout 仍按全局门禁前后校验。v23/component-release-v13 固定入口
 `var/SHADOW_KILL`，独立部署使用 `/home/ubuntu/qsys/var/shadow-core/SHADOW_KILL`。
 首次激活前必须同步兼容的急停脚本，并核验维护者具备专用状态目录的写权限；回滚 installer
 会恢复原 drop-in，使急停路径随部署恢复。Redis 不可用时本地急停仍需有效。
+
+### Limit-up Shadow 独立发布边界（#404，代码与契约）
+
+`limit-up-shadow` 是收盘后的榜单 oneshot，与 `shadow-core` 不同。wheel 入口
+`qsys-limit-up-shadow` 按原顺序运行包内 observe/publish 子进程，不依赖仓库 cwd 或
+`scripts/`。模型、数据、漂移基线、冻结阈值、榜单/结果 SQLite schema 和不可变快照规则不变。
+原 19:35 timer、7200 秒超时和 Warehouse 共享读锁保持不变。任务运行中拒绝组件发布，
+不会为切换版本中断或重新执行榜单。查询 ActiveState 覆盖 oneshot 的 activating 状态，
+暂存后再查一次；生产维护窗口还必须暂停 timer 并记录/恢复其原 active/enabled 状态，
+排除调度与切换的竞态。不能仅以 is-active 返回非零认定任务空闲。
+
+组件拥有 `/opt/qsys/components/limit-up-shadow/{releases/<SHA>,current}`，固定入口要求
+v24/component-release-v14。运行用户 `qsys-limit-up-shadow`、读者共享组 `qsys-workbench`、
+`UMask=0027`；仅可写 `/data/qsys/var-prod/limit-up-shadow` 和
+`/home/ubuntu/qsys/var/service-runs/limit-up-shadow`。Warehouse、研究制品、漂移基线和配置只读。
+运行记录读者已支持按服务子目录读取；专用账号对共享 Warehouse lock 只需现有文件的读权限，
+不允许用放宽整个 var/warehouse 的写权限解决锁访问问题。
+
+**生产首次迁移尚未执行**。不能直接启用空状态目录：新 drop-in 的 `ExecStartPre` 要求
+`/data/qsys/var-prod/limit-up-shadow/limit-up-shadow.sqlite3` 为非空文件。经单独批准后，先在
+任务 inactive、没有写者时核对并备份原 `/data/qsys/var-prod/limit-up-shadow.sqlite3`（包括
+SQLite journal 状态），再用 SQLite 一致性备份方式复制全部历史到新目录，核对 schema、
+行数/键集合、已有不可变榜单和待结算结果；目录 0750、数据库 0640，禁止覆盖未核验目标。
+`ExecStartPre` 只防止漏迁移，不替代完整性验收。
+
+Web 默认/现有组件规格仍读取旧路径，本轮不自动切换。首次生产迁移须把 Web 的有效
+`--limit-up-shadow-state` 显式改到新路径，并检查运行身份具有组只读/目录遍历权限，
+`mode=ro`、DELETE journal 口径和页面历史连续；这属于单独审批的联合迁移，不能把需要
+重启 Web 的首次迁移伪装成“只发布榜单组件”。迁移后的普通组件发布才要求 Web、worker、
+Paper、Shadow 及 Live Core 身份保持不变，门禁同时写入节点 record 与 Actions 校验。
+
+stage/verify 不等于真实数据作业验收。首次组件运行、数据质量/运行记录健康、实际只读权限和
+previous release 回切须在授权维护窗口验证；不要在普通 CI 或 test 集成环境运行生产榜单。
+首次迁移前保留旧数据库、unit/drop-in、Web 命令及 SHA；代码/current 回滚不反向迁移或删除
+历史数据。发生新数据写入后的联合回滚另行核对状态连续性，不能简单恢复旧快照丢弃新结果。
 
 ### 2026-10-16 catalog 组件发布复盘与固定约束
 

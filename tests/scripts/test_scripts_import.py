@@ -16,7 +16,7 @@ SCRIPTS = [
     "backfill_canonical", "daily_archive", "deployment_contract", "kill",
     "live_preflight", "run_agent", "run_backtest",
     "run_health_observer", "run_live", "run_market_gateway", "run_monitor", "run_paper",
-    "run_shadow",
+    "run_shadow", "limit_up_shadow_cycle", "run_limit_up_shadow", "observe_limit_up_shadow",
     "catalog_verify", "tushare_daily_sync", "tushare_premarket_limits", "verify_metrics",
     "verify_warehouse_backup",
     "publish_joinquant_minute_overrides", "publish_paid_minute_overrides",

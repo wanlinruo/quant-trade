@@ -429,6 +429,57 @@ def test_paper_and_shadow_components_have_independent_release_boundaries() -> No
     assert "/opt/qsys/.venv" not in shadow_dropin
 
 
+def test_limit_up_shadow_is_write_bounded_and_preserves_read_only_inputs():
+    import shlex
+
+    specs = json.loads(Path("deploy/component-releases.json").read_text())
+    spec = specs["components"]["limit-up-shadow"]
+    lines = spec["dropin_lines"]
+    assert spec["entrypoint"] == {
+        "command": "qsys-limit-up-shadow", "target": "qsys.research.limit_up_shadow_cli:main",
+    }
+    assert {line for line in lines if line.startswith("ReadWritePaths=")} == {
+        "ReadWritePaths=",
+        "ReadWritePaths=/data/qsys/var-prod/limit-up-shadow",
+        "ReadWritePaths=/home/ubuntu/qsys/var/service-runs/limit-up-shadow",
+    }
+    assert "UMask=0027" in lines
+    assert "ExecStartPre=/usr/bin/test -s /data/qsys/var-prod/limit-up-shadow/limit-up-shadow.sqlite3" in lines
+    assert "User=qsys-limit-up-shadow" in lines and "Group=qsys-workbench" in lines
+    command = shlex.split(next(line[len("ExecStart="):] for line in lines
+                              if line.startswith("ExecStart=") and line != "ExecStart="))
+    assert command[:3] == ["/usr/bin/flock", "--shared", "/home/ubuntu/qsys/var/warehouse-write.lock"]
+    assert command[3] == spec["current"] + "/" + spec["executable"]
+    assert command[command.index("--state") + 1] == "/data/qsys/var-prod/limit-up-shadow/limit-up-shadow.sqlite3"
+    assert command[command.index("--service-runs") + 1] == spec["state_directories"][1]["path"]
+    assert "scripts/" not in " ".join(command)
+    assert "WorkingDirectory=/" in lines
+    assert "OnCalendar=Mon..Fri 19:35 Asia/Shanghai" in Path("deploy/systemd/qsys-limit-up-shadow.timer").read_text()
+
+
+@pytest.mark.parametrize("active_state", ["active", "activating", "deactivating", "reloading", ""])
+def test_running_limit_up_oneshot_cannot_be_interrupted_by_component_deploy(monkeypatch, tmp_path, active_state):
+    import argparse
+
+    entrypoint = _production_entrypoint_module()
+    monkeypatch.setattr(entrypoint, "_branch", lambda repo: "main")
+    monkeypatch.setattr(entrypoint, "_dirty", lambda repo: False)
+    monkeypatch.setattr(entrypoint, "_head", lambda repo: "b" * 40)
+    monkeypatch.setattr(entrypoint, "_fetch_and_validate_target", lambda *args: "c" * 40)
+    monkeypatch.setattr(entrypoint, "_successful_test_run", lambda *args: "test-1")
+    monkeypatch.setattr(entrypoint, "_current_component_sha", lambda component: "d" * 40)
+    # An activating Type=oneshot is not reliably represented by `is-active`.
+    monkeypatch.setattr(entrypoint, "_active", lambda *args: False)
+    monkeypatch.setattr(entrypoint, "_run", lambda command, **kwargs:
+                        subprocess.CompletedProcess(command, 0, active_state + "\n", ""))
+    args = argparse.Namespace(sha="a" * 40, component="limit-up-shadow", dry_run=True,
+                              run_id="release-1", actor="maintainer", repository="owner/repo")
+    with pytest.raises(ValueError, match="wait for the oneshot to finish"):
+        entrypoint.component_deploy(args, {
+            "production_repo": str(tmp_path), "production_record_root": str(tmp_path / "records"),
+        })
+
+
 def test_storage_report_component_has_a_read_only_release_boundary() -> None:
     specs = json.loads(Path("deploy/component-releases.json").read_text(encoding="utf-8"))
     storage = specs["components"]["storage-report"]
@@ -1065,7 +1116,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
 
     state = entrypoint.status({"production_repo": str(tmp_path)})
 
-    assert state["entrypoint_version"] == 23
+    assert state["entrypoint_version"] == 24
     assert set(state["capabilities"]) == {
         "systemd-apply-v1", "systemd-changed-artifacts-v1",
         "systemd-preview-v1", "systemd-rollback-v1",
@@ -1089,6 +1140,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
         "component-release-v11",
         "component-release-v12",
         "component-release-v13",
+        "component-release-v14",
     }
 
 
@@ -1450,15 +1502,20 @@ def test_resident_component_preserves_its_active_state_during_switch(
     assert json.loads(capsys.readouterr().out)["status"] == "success"
 
 
-def test_web_component_requires_http_health_and_preserves_worker_identity(
-    monkeypatch, tmp_path, capsys,
+@pytest.mark.parametrize("component,active,peer_drift", [
+    ("web", True, False),
+    ("limit-up-shadow", False, False),
+    ("limit-up-shadow", False, True),
+])
+def test_component_health_and_peer_identity_gate(
+    monkeypatch, tmp_path, capsys, component, active, peer_drift,
 ) -> None:
     entrypoint = _production_entrypoint_module()
     target = "a" * 40
     production = "b" * 40
     previous = "c" * 40
     live = {"pid": "42", "started_monotonic": "99", "repo_sha": production}
-    state = {"active": True, "component": previous}
+    state = {"active": active, "component": previous}
     worker_identity = json.dumps({
         "load": "loaded", "active": "active", "pid": "77", "started": "1234",
     }, sort_keys=True, separators=(",", ":"))
@@ -1476,7 +1533,11 @@ def test_web_component_requires_http_health_and_preserves_worker_identity(
     monkeypatch.setattr(entrypoint, "_live_identity", lambda repo: dict(live))
     monkeypatch.setattr(entrypoint, "_live_preflight", lambda repo: None)
     monkeypatch.setattr(entrypoint, "_fingerprints", lambda config, repo: {"linux": "f"})
-    monkeypatch.setattr(entrypoint, "_unit_identity_token", lambda unit, repo: worker_identity)
+    monkeypatch.setattr(entrypoint, "_unit_identity_token", lambda unit, repo:
+                        "changed" if peer_drift and state["component"] == target
+                        and unit == "qsys-monitor.service" else worker_identity)
+    monkeypatch.setattr(entrypoint, "_rollback_component", lambda *args:
+                        state.update(component=previous) is None)
     monkeypatch.setattr(
         entrypoint, "_web_healthy",
         lambda config: health_checks.append(True) is None or True,
@@ -1491,6 +1552,8 @@ def test_web_component_requires_http_health_and_preserves_worker_identity(
 
     def fake_run(command, **kwargs):
         command = [str(item) for item in command]
+        if command[:3] == ["systemctl", "show", "qsys-limit-up-shadow.service"]:
+            return subprocess.CompletedProcess(command, 0, "inactive\n", "")
         if command[-2:] == ["stop", "qsys-monitor.service"]:
             state["active"] = False
         elif entrypoint.GENERIC_COMPONENT_INSTALLER in command:
@@ -1506,7 +1569,7 @@ def test_web_component_requires_http_health_and_preserves_worker_identity(
         lambda config, run_id, record: records.append(record) or tmp_path / "record.json",
     )
     args = argparse.Namespace(
-        sha=target, component="web", artifact_sha256="e" * 64,
+        sha=target, component=component, artifact_sha256="e" * 64,
         run_id="release-web", actor="maintainer", repository="owner/repo",
         pr_number=396, dry_run=False,
     )
@@ -1516,8 +1579,20 @@ def test_web_component_requires_http_health_and_preserves_worker_identity(
             "production_repo": str(tmp_path), "test_record_root": str(tmp_path),
             "production_record_root": str(tmp_path / "records"),
         },
-    ) == 0
-    assert health_checks == [True]
+    ) == (1 if peer_drift else 0)
+    assert health_checks == ([True] if component == "web" else [])
+    if peer_drift:
+        assert state["component"] == previous
+        assert json.loads(capsys.readouterr().out)["status"] == "rolled_back"
+        return
+    assert state["active"] == active
+    assert set(entrypoint.COMPONENT_PROTECTED_PEERS[component]) == (
+        {"backtest-worker"} if component == "web" else
+        {"paper", "shadow-core", "web", "backtest-worker"}
+    )
+    for peer in entrypoint.COMPONENT_PROTECTED_PEERS[component]:
+        assert records[0]["before"][f"{peer}-identity"] == worker_identity
+        assert records[0]["after"][f"{peer}-identity"] == worker_identity
     assert records[0]["before"]["backtest-worker-identity"] == worker_identity
     assert records[0]["after"]["backtest-worker-identity"] == worker_identity
     assert any(
@@ -2174,9 +2249,9 @@ def test_component_workflow_streams_only_a_verified_artifact() -> None:
     assert ".before.linux == .after.linux" in workflow
     assert "PRODUCTION_DEPLOY_SSH_KEY" in workflow
     assert "cancel-in-progress: false" in workflow
-    assert "backtest-worker|web|paper|shadow-core|catalog-verify|service-checks|storage-report|daily-digest|health-observer|daily-archive|premarket-limits|tushare-sync" in workflow
-    assert 'required = {"component-release-v13"}' in workflow
-    assert 'entrypoint_version", 0) < 23' in workflow
+    assert "backtest-worker|web|paper|shadow-core|limit-up-shadow|catalog-verify|service-checks|storage-report|daily-digest|health-observer|daily-archive|premarket-limits|tushare-sync" in workflow
+    assert 'required = {"component-release-v14"}' in workflow
+    assert 'entrypoint_version", 0) < 24' in workflow
     assert '.before["backtest-worker-identity"] == .after["backtest-worker-identity"]' in workflow
     assert '.before["shadow-core-identity"] == .after["shadow-core-identity"]' in workflow
     assert '.before["paper-identity"] == .after["paper-identity"]' in workflow
