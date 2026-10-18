@@ -140,3 +140,18 @@ def test_coverage_accepts_a_warehouse_path_containing_a_quote(tmp_path):
     warehouse = Warehouse(tmp_path / "owner's warehouse")
     seed(warehouse)
     assert next(row for row in coverage(warehouse) if row.dataset == "bars_daily").rows == 3
+
+
+def test_coverage_cache_reuses_unchanged_files_and_invalidates_on_replace_and_delete(warehouse, monkeypatch):
+    import duckdb
+
+    seed(warehouse)
+    first = coverage(warehouse)
+    with monkeypatch.context() as scoped:
+        scoped.setattr(duckdb, "connect", lambda **kw: pytest.fail("unchanged files rescanned"))
+        assert coverage(warehouse) == first
+    table = pa.parquet.read_table(warehouse.path_for("bars_daily", 2024)).select(schema.BARS_DAILY.names)
+    warehouse.write("bars_daily", pa.concat_tables([table, table]).cast(schema.BARS_DAILY), year=2024)
+    assert next(row for row in coverage(warehouse) if row.dataset == "bars_daily").rows == 6
+    warehouse.path_for("bars_daily", 2024).unlink()
+    assert coverage(warehouse) == []

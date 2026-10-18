@@ -179,3 +179,35 @@ def test_migration_reader_deduplicates_copied_records_and_never_writes(tmp_path)
     assert len(reader.history(start, start + timedelta(minutes=1))) == 1
     with pytest.raises(RuntimeError, match="cannot record"):
         reader.record(observation(start + timedelta(seconds=1)))
+
+
+def test_producer_pins_wal_sidecars_for_readers_without_directory_write_permission(tmp_path):
+    import gc
+
+    folder = tmp_path / "observer"
+    store = HealthStore(folder / "health.sqlite3")
+    store.pin_reader_sidecars()
+    start = datetime(2026, 9, 17, 2, tzinfo=timezone.utc)
+    store.record(observation(start))
+    gc.collect()
+    assert (folder / "health.sqlite3-wal").is_file()
+    assert (folder / "health.sqlite3-shm").is_file()
+    folder.chmod(0o550)
+    try:
+        assert HealthStoreReader((store.path,)).latest()[0]["state"] == HEALTHY
+    finally:
+        folder.chmod(0o750)
+        store.close()
+
+
+def test_migration_reader_reports_unreadable_new_database_and_keeps_real_legacy_history(tmp_path, caplog):
+    legacy = HealthStore(tmp_path / "legacy.sqlite3")
+    start = datetime(2026, 9, 17, 2, tzinfo=timezone.utc)
+    legacy.record(observation(start, DOWN))
+    bad = tmp_path / "pending.sqlite3"
+    bad.write_bytes(b"not a database")
+    reader = HealthStoreReader((bad, legacy.path))
+    assert reader.latest()[0]["state"] == DOWN
+    assert len(reader.history(start, start + timedelta(minutes=1))) == 1
+    assert "health database unavailable" in caplog.text
+    assert HealthStoreReader((bad,)).latest() == []
