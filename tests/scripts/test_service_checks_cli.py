@@ -1,3 +1,10 @@
+from pathlib import Path
+
+import duckdb
+import pytest
+
+from qsys.ops import service_checks_cli
+from qsys.data.query_budget import connect_warehouse_query
 from scripts.service_checks import _exit_code
 from qsys.ops.service_checks_cli import _parser
 
@@ -26,8 +33,6 @@ def test_component_can_separate_read_protocol_from_its_write_namespace(tmp_path)
 
 # ---- 质检的是今天（2026-10-01 国庆第一天实际发生）----
 
-from pathlib import Path  # noqa: E402
-
 
 def test_the_checks_run_for_today_not_the_last_closed_session():
     """定时器按 Mon..Fri 触发、不认节假日。取「最近已收盘交易日」会在假期里
@@ -45,3 +50,32 @@ def test_a_non_trading_day_is_skipped_rather_than_rechecked():
     body = source[source.index("确定交易日"):source.index("sessions = calendar")]
 
     assert "不是交易日" in body and "run.skip" in body
+
+
+@pytest.mark.parametrize("raises", [False, True])
+def test_cli_bounds_real_queries_and_cleans_up_on_success_and_failure(monkeypatch, raises):
+    observed = {}
+
+    def checks(args):
+        connection = connect_warehouse_query()
+        observed["connection"] = connection
+        values = connection.execute("select current_setting('memory_limit'), "
+            "current_setting('temp_directory'), current_setting('max_temp_directory_size'), "
+            "current_setting('threads')").fetchone()
+        assert values[0] == "256.0 MiB"
+        assert values[2:] == ("512.0 MiB", 1)
+        observed["temporary"] = Path(values[1]).parent
+        assert observed["temporary"].is_dir()
+        if raises:
+            raise RuntimeError("check failed")
+        return 1  # Data-quality failure must remain a failure.
+
+    monkeypatch.setattr(service_checks_cli, "_run_checks", checks)
+    if raises:
+        with pytest.raises(RuntimeError, match="check failed"):
+            service_checks_cli.main([])
+    else:
+        assert service_checks_cli.main([]) == 1
+    assert not observed["temporary"].exists()
+    with pytest.raises(duckdb.ConnectionException):
+        observed["connection"].execute("select 1")

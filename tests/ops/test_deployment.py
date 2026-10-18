@@ -306,6 +306,9 @@ def test_service_checks_component_has_an_isolated_release_and_state_boundary() -
     assert "WorkingDirectory=/" in dropin
     assert "ReadWritePaths=/home/ubuntu/qsys/var/service-runs/service-checks" in dropin
     assert "ReadWritePaths=/home/ubuntu/qsys/var/alerts/service-checks" in dropin
+    assert "--config /etc/qsys/components/service-checks/deploy.toml" in dropin
+    assert "--config /home/ubuntu/qsys/config/deploy.local.toml" not in dropin
+    assert "MemoryMax=1G" in dropin and "CPUQuota=50%" in dropin
     assert "--record-root /home/ubuntu/qsys/var/service-runs/service-checks" in dropin
     assert "--alert-ledger /home/ubuntu/qsys/var/alerts/service-checks" in dropin
     assert "/home/ubuntu/qsys/.venv" not in dropin

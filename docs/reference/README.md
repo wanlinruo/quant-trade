@@ -3,7 +3,8 @@
 ## `component-acceptance-matrix.md`
 
 #330 的 14 组件分层验收矩阵、证据口径及 #414 storage-report 试点；生产迁移审阅包见
-`../plans/storage-report-production-migration.md`。
+`../plans/storage-report-production-migration.md`；service-checks 最小配置、查询预算和分支验收见
+`../plans/service-checks-production-migration.md`。
 
 ## `warehouse-snapshots.md`
 

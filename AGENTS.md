@@ -105,6 +105,8 @@ manifest → `HANDOFF.md` → 其他历史文档。
   `validate_record()`，不能只检查 mock 捕获的字段。
 - 状态目录换 owner 后逐层验证 Web/旧账号的遍历、读取和回切写权限；default ACL 不替代
   access ACL。跨文件系统保存回退文件不能直接 `rename`，须先留存副本再恢复控制入口。
+- 只读巡检账号使用专属最小配置，不为方便而开放完整生产配置；真实休市日的 skipped
+  只证明休市分支，不能冒充交易日全量质检验收。配置变更须同步各组件副本并重新核验。
 - 往节点同步代码**禁止整目录 rsync**（会毁掉 `warehouse` 软链接和 `.venv`）：逐个列文件，
   或带 `--exclude '.venv/' --exclude 'warehouse/' --exclude '.git/' --exclude 'var/'`。
   动节点前先 `ls -la` 看清目标是文件、目录还是软链接。
