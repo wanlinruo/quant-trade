@@ -1,0 +1,53 @@
+name: Verify storage-report preproduction
+
+on:
+  workflow_dispatch:
+    inputs:
+      baseline_sha:
+        description: Exact merged main SHA with a successful test CI storage-report artifact
+        required: true
+        type: string
+      target_sha:
+        description: Different exact merged main SHA to verify
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: storage-report-preproduction
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      BASELINE_SHA: ${{ inputs.baseline_sha }}
+      TARGET_SHA: ${{ inputs.target_sha }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out trusted main controller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Install uv
+        run: python3 -m pip install uv==0.12.10
+      - name: Verify real component releases in ephemeral systemd units
+        env:
+          QSYS_PILOT_RUNNER_ENVIRONMENT: ${{ runner.environment }}
+        run: >-
+          python3 scripts/verify_storage_report_preproduction.py
+          --baseline-sha "$BASELINE_SHA" --target-sha "$TARGET_SHA"
+      - name: Preserve component evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: storage-report-preproduction-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/qsys-storage-pilot-${{ github.run_id }}-${{ github.run_attempt }}/evidence
+          if-no-files-found: error
+          retention-days: 30

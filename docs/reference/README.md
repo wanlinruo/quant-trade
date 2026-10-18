@@ -1,5 +1,10 @@
 # 参考资料
 
+## `component-acceptance-matrix.md`
+
+#330 的 14 组件分层验收矩阵、证据口径及 #414 storage-report 试点；生产迁移审阅包见
+`../plans/storage-report-production-migration.md`。
+
 ## `warehouse-snapshots.md`
 
 Issue #285 的 Warehouse 不可变快照协议：snapshot manifest、分区 hash、完整性验证、
