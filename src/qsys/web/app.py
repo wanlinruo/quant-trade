@@ -190,14 +190,15 @@ def create_app(
     def data_overview(request: Request):
         if data is None:
             raise HTTPException(status_code=404, detail="data console not enabled")
-        rows, symbols = data.warehouse_totals()
+        coverage = data.coverage()
+        rows, symbols = data.warehouse_totals(coverage)
         pool_day, pool = data.delisting_pool()
         return TEMPLATES.TemplateResponse(
             request=request, name="data_overview.html",
             context={
                 "pool_day": pool_day, "pool": pool.to_dicts() if pool.height else [],
                 "title": config.title, "session": None, "page": "data",
-                "coverage": data.coverage(), "total_rows": rows,
+                "coverage": coverage, "total_rows": rows,
                 "total_symbols": symbols, "latest": data.latest_session(),
                 "catalog_summary": catalog.summary() if catalog else None,
             },
@@ -1002,11 +1003,7 @@ def create_app(
                      lineage_params=param_rows(getattr(lineage, "params", {}) or {}))
 
     def _shadow_vs_paper(service, store, lineage) -> dict | None:
-        """影子盘与它承袭的模拟账户，按累计收益率逐交易日对比。
-
-        两者本金不同（影子盘启用资金、模拟账户初始资金），只有收益率可比；
-        只取两边都有记录的交易日，缺的一天不插值。
-        """
+        """总资产观测不含资金变动流水，不能据此计算投资收益。"""
         if lineage is None or store is None or not lineage.paper_account_id:
             return None
         account = store.account(lineage.paper_account_id)
@@ -1019,17 +1016,11 @@ def create_app(
         sessions = sorted(set(shadow) & set(paper_daily))
         if not sessions:
             return None
-        shadow_base, paper_base = shadow[sessions[0]], account.initial_cash
-        if not shadow_base or not paper_base:
-            return None
         return {
             "sessions": sessions,
-            "chart": multi_line_chart([
-                ("影子盘", [shadow[s] / shadow_base - 1.0 for s in sessions], "#7a5bb5"),
-                ("模拟交易", [paper_daily[s] / paper_base - 1.0 for s in sessions], "#2463b5"),
-            ]),
-            "shadow_return": shadow[sessions[-1]] / shadow_base - 1.0,
-            "paper_return": paper_daily[sessions[-1]] / paper_base - 1.0,
+            "shadow_return": None,
+            "paper_return": None,
+            "unavailable_reason": "缺少完整资金变动流水，影子/实盘收益率及与模拟交易的收益对比暂不可用。总资产曲线保留原始观测，包含入出金和资金基准调整。",
         }
 
     @app.get("/s/{session}", response_class=HTMLResponse)

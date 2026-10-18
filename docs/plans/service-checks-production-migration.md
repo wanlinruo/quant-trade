@@ -50,3 +50,31 @@ OnSuccess/OnFailure 触发专属 `qsys-service-run-index.service`，以当前不
 不放宽规则、掩盖历史错误或以返回 0 替代落盘检查。若本轮只能完成休市分支，生产已激活与
 下一交易日全量验收待完成必须同时报告。首个 release 的 legacy 回切不冒充 previous-successful
 版本回滚；故障注入需另行明确授权。
+
+## 2026-10-18 晚间异常排查与调度恢复
+
+- 20:37 现场发现 service-checks timer 仍为 enabled/inactive，18:59:43 暂停后未恢复。
+  19:30 保护脚本只在 User=ubuntu 且 ExecStart 为 legacy 时恢复；组件已切换，
+  因此记录 safe_legacy=false、timer_restored=false。这是迁移未收尾，不能标作正常休市。
+- 正式 workflow `39121571064`、GitHub Deployment `7153601392` 和节点
+  `github/checks-prod-20261018-first-service-checks/record.json` 均为 success，绑定
+  `ac229960712f7f3aff0755ae6a462a46ec980551`；current、effective ExecStart、专用账号一致。
+  官方作业 19:05 成功退出，但只执行休市 skipped；交易日完整定时验收仍待 10-19。
+- 维护者要求继续处理异常后，核对上述三方证据、原 timer enabled 状态、组件已正常退出，
+  恢复原 timer 调度。恢复结果、下一触发时间与 Live/Paper/Web/隧道身份前后对照保存到
+  同目录 `timer-recovery-20261018.json`；未发布其他代码或重启交易组件。
+- 4 个 failed 均为本轮 `/run/systemd/transient/` 准备/暂存/基线探针的一次性失败，
+  只确认这些历史失败状态，保留原始 journal、制品和审计记录；不删除回退副本。
+- 最近交易日 10-16 的指标验证首轮 7 阻断，20:38、21:06 两轮结果均为 0 阻断、28 警告。
+  服务看板仍引用 20:00 的旧 service-checks 结果；不能改写历史来消除旧告警。
+  存储保留策略还有到期副本和未登记目录，未经逐项核验/删除确认不清理。
+- 同次发现两个独立的 Web 展示缺陷：coverage 只扫年度布局，漏统计日分区；
+  收益对比将 5 万到 10 万的资金基准变化算成收益。修复分别按日分区优先规则统计、
+  使用 ts/dt 实际时间列，以及缺少资金流水时收益率返回 null 并明确提示；不推断资金流，
+  不改生产金融数据。模拟盘原有收益计算保持不变。
+
+后续：完成修复分支的 CI/测试部署与发布 PR；生产 Web 发布需要针对候选版本的明确确认。
+service-checks legacy 回切、previous-release 回滚与故障注入不因 timer 恢复而视作完成。
+
+页面修复的[本地夹具截图](../../artifacts/monitoring-anomalies-20261018/overview-fixture.png)
+使用合成的 5 万到 10 万资产记录，仅说明展示行为，不作为生产验收证据。

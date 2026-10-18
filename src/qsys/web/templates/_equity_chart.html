@@ -16,6 +16,7 @@
     <button type="button" class="secondary" id="equity-reset">重置缩放</button>
   </div>
   {% if chart.notice %}<p class="muted equity-notice">{{ chart.notice }}</p>{% endif %}
+  {% if chart.shadow %}<p class="muted equity-notice">缺少完整资金变动流水，影子/实盘收益率暂不可用；模拟交易收益曲线照常展示。</p>{% endif %}
   <div class="chart-legend">
     <strong>{% if chart.view == 'history' %}累计收益（每日收盘）{% else %}{{ chart.day }} 当日收益（相对前一交易日收盘）{% endif %}</strong>
     <span><i class="legend-line" style="background:#2463b5"></i>策略</span>

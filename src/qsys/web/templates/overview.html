@@ -1,11 +1,12 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="card">
-  <h2>净值</h2>
+  <h2>总资产</h2>
+  <p class="muted">资产变动包含入出金和资金基准调整，不代表投资收益。</p>
   <div class="kpis">
     <div class="kpi"><div class="label">总值</div>
       <div class="value">{{ "{:,.2f}".format(view.equity_line.total_value) }}</div></div>
-    <div class="kpi"><div class="label">当日变动</div>
+    <div class="kpi"><div class="label">当日资产变动</div>
       <div class="value {{ 'up' if view.equity_line.change_pct >= 0 else 'down' }}">
         {{ "{:+.2%}".format(view.equity_line.change_pct) }}</div></div>
     <div class="kpi"><div class="label">现金</div>
@@ -31,13 +32,7 @@
 
 {% if compare %}<div class="card">
   <h2>影子盘 vs 模拟交易</h2>
-  <p class="muted">按累计收益率比较（本金不同，只有收益率可比）；只取两边都有记录的 {{ compare.sessions|length }} 个交易日。</p>
-  <div class="kpis">
-    <div class="kpi"><div class="label">影子盘</div><div class="value {{ 'up' if compare.shadow_return >= 0 else 'down' }}">{{ "{:+.2%}".format(compare.shadow_return) }}</div></div>
-    <div class="kpi"><div class="label">模拟交易</div><div class="value {{ 'up' if compare.paper_return >= 0 else 'down' }}">{{ "{:+.2%}".format(compare.paper_return) }}</div></div>
-    <div class="kpi"><div class="label">差额</div><div class="value">{{ "{:+.2%}".format(compare.shadow_return - compare.paper_return) }}</div></div>
-  </div>
-  <div style="margin-top:14px">{{ compare.chart | safe }}</div>
+  <p class="muted">{{ compare.unavailable_reason }}</p>
 </div>{% endif %}
 
 <div class="card">
