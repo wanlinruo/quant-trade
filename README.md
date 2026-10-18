@@ -147,6 +147,7 @@ flowchart LR
 | Web | 是 | 是 | 已有独立 wheel 入口、release/current、HTTP health 与最小 Workbench 写边界；生产数据迁移、账号/key 和首次激活待单独审批 |
 | Premarket Limits | 是 | 是 | 已有独立制品、运行记录与 Warehouse 写锁边界；Tushare 配置、Redis 最小 ACL 和首次激活仍需单独审查 |
 | Paper / Shadow | 是 | 是 | 已有各自 wheel、release/current、账号与状态边界；生产状态迁移、Redis ACL 和首次激活待单独审批 |
+| Limit-up Shadow | 是 | 是 | 榜单周期与两个子命令已迁入 wheel，具备专用状态和只读输入边界；生产历史状态迁移、Web 读取路径和首次激活待单独审批 |
 | Live Core | 是 | 否 | 仍共享生产 checkout 和 Python 环境；涉及实盘状态与协议，保持最后迁移 |
 | 其余数据定时任务 | 是 | 否 | 仍主要共享生产 checkout；按写权限与发布节奏继续拆分 |
 | Test runtime | 单一 `test-runtime` | 否 | 仍是集成测试用的整体运行时 |

@@ -558,3 +558,12 @@ GitHub Deployment、Actions Summary 和节点 `record.json` 为准。
 - [ ] 轮换部署期间在对话中出现过的账号密码（由 #122 统一跟踪）
 - [ ] 内存扩容或为全 A 回测设计分批方案（[#138](https://github.com/wanlinruo/quant-trade/issues/138)）
 - [ ] 手机访问方案（自建 WireGuard，需开 UDP 端口；[#139](https://github.com/wanlinruo/quant-trade/issues/139)）
+
+### Limit-up Shadow 的独立组件规格（#404）
+
+榜单周期已提供 `qsys-limit-up-shadow` wheel 入口，observe/publish 子进程也从安装包执行。
+生产目标为 `/opt/qsys/components/limit-up-shadow/current/venv/bin/qsys-limit-up-shadow`，
+只写专用 SQLite 与运行记录目录，保持原 timer 和共享读锁。当前代码合入不会安装或激活该
+组件；历史 SQLite、读者 Web 路径、组权限、v24 固定入口与首次运行仍需单独迁移审批。
+完整状态连续性、只读权限与回滚清单见 `docs/reference/deployment-contract.md` 的
+“Limit-up Shadow 独立发布边界”。

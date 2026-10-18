@@ -503,6 +503,50 @@
         "ReadWritePaths=/home/ubuntu/qsys/var/storage-history",
         "ExecStart=/opt/qsys/components/storage-report/current/venv/bin/qsys-storage-report --base /data/qsys --scratch /home/ubuntu/scratch --history-root /home/ubuntu/qsys/var/storage-history"
       ]
+    },
+    "limit-up-shadow": {
+      "entrypoint": {
+        "command": "qsys-limit-up-shadow",
+        "target": "qsys.research.limit_up_shadow_cli:main"
+      },
+      "scan_roots": [
+        "src/qsys"
+      ],
+      "release_root": "/opt/qsys/components/limit-up-shadow/releases",
+      "current": "/opt/qsys/components/limit-up-shadow/current",
+      "executable": "venv/bin/qsys-limit-up-shadow",
+      "unit": "qsys-limit-up-shadow.service",
+      "dropin": "/etc/systemd/system/qsys-limit-up-shadow.service.d/zz-isolated-release.conf",
+      "state_directories": [
+        {
+          "path": "/data/qsys/var-prod/limit-up-shadow",
+          "owner": "qsys-limit-up-shadow",
+          "group": "qsys-workbench",
+          "mode": "0750"
+        },
+        {
+          "path": "/home/ubuntu/qsys/var/service-runs/limit-up-shadow",
+          "owner": "qsys-limit-up-shadow",
+          "group": "qsys-workbench",
+          "mode": "0750"
+        }
+      ],
+      "seed": null,
+      "dropin_lines": [
+        "[Service]",
+        "User=qsys-limit-up-shadow",
+        "Group=qsys-workbench",
+        "UMask=0027",
+        "WorkingDirectory=/",
+        "ExecStartPre=",
+        "ExecStartPre=/usr/bin/test -s /data/qsys/var-prod/limit-up-shadow/limit-up-shadow.sqlite3",
+        "ExecStart=",
+        "ReadWritePaths=",
+        "ReadWritePaths=/data/qsys/var-prod/limit-up-shadow",
+        "ReadWritePaths=/home/ubuntu/qsys/var/service-runs/limit-up-shadow",
+        "ReadOnlyPaths=/data/qsys/warehouse /data/qsys/research /home/ubuntu/qsys/config /data/qsys/var-prod/limit-up-drift-reference.json",
+        "ExecStart=/usr/bin/flock --shared /home/ubuntu/qsys/var/warehouse-write.lock /opt/qsys/components/limit-up-shadow/current/venv/bin/qsys-limit-up-shadow --warehouse /data/qsys/warehouse --research-run /data/qsys/research/issue-210/run-20261010 --drift-reference /data/qsys/var-prod/limit-up-drift-reference.json --state /data/qsys/var-prod/limit-up-shadow/limit-up-shadow.sqlite3 --service-runs /home/ubuntu/qsys/var/service-runs/limit-up-shadow --config /home/ubuntu/qsys/config/deploy.local.toml"
+      ]
     }
   }
 }

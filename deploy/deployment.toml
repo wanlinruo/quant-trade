@@ -171,6 +171,9 @@ environments = ["production"]
 paths = [
   "src/qsys/data/**",
   "src/qsys/research/structural_gate_attribution.py",
+  "src/qsys/research/limit_up_shadow_cli.py",
+  "src/qsys/research/limit_up_shadow_publish_cli.py",
+  "src/qsys/research/limit_up_shadow_observe_cli.py",
   "scripts/*.py",
   "scripts/*.sh",
 ]

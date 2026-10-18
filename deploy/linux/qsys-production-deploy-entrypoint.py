@@ -34,7 +34,7 @@ ALLOWED_WINDOWS_COMPONENTS = frozenset({
     "windows-agent", "windows-gateway", "windows-control",
 })
 WINDOWS_COORDINATOR_PATH = "deploy/linux/qsys-windows-deploy-coordinator.py"
-ENTRYPOINT_VERSION = 23
+ENTRYPOINT_VERSION = 24
 ENTRYPOINT_CAPABILITIES = (
     "systemd-apply-v1",
     "systemd-changed-artifacts-v1",
@@ -61,10 +61,17 @@ ENTRYPOINT_CAPABILITIES = (
     "component-release-v11",
     "component-release-v12",
     "component-release-v13",
+    "component-release-v14",
 )
 FAILURE_POINTS = frozenset({"none", "linux-health", "windows-switch"})
 GENERIC_COMPONENT_INSTALLER = "scripts/install_component_release.py"
 COMPONENT_PROTECTED_PEERS = {
+    "limit-up-shadow": {
+        "paper": "qsys-paper.service",
+        "shadow-core": "qsys-shadow-core.service",
+        "web": "qsys-monitor.service",
+        "backtest-worker": "qsys-backtest-worker.service",
+    },
     "web": {"backtest-worker": "qsys-backtest-worker.service"},
     "paper": {
         "shadow-core": "qsys-shadow-core.service",
@@ -1093,6 +1100,17 @@ def _rollback_component(component: str, previous: str, repo: Path) -> bool:
         return False
 
 
+def _require_idle_limit_up_shadow(repo: Path) -> None:
+    # Type=oneshot stays activating while its command runs. `is-active` alone
+    # cannot establish that it is safe to switch its release.
+    result = _run([
+        "systemctl", "show", "qsys-limit-up-shadow.service",
+        "--property=ActiveState", "--value",
+    ], cwd=repo)
+    if result.stdout.strip() not in {"inactive", "failed"}:
+        raise ValueError("limit-up-shadow is running or unknown; wait for the oneshot to finish")
+
+
 def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int:
     if not RUN_ID_PATTERN.fullmatch(args.run_id):
         raise ValueError("run-id contains unsupported characters")
@@ -1114,6 +1132,9 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
     before_component = _current_component_sha(args.component)
     component_unit = str(COMPONENT_RELEASES[args.component]["unit"])
     before_component_active = _active(component_unit, repo)
+    if args.component == "limit-up-shadow":
+        _require_idle_limit_up_shadow(repo)
+        before_component_active = False  # Idle oneshots must never be started by a release.
     before_live = _live_identity(repo)
     protected_units = COMPONENT_PROTECTED_PEERS.get(args.component, {})
     before_protected = {
@@ -1171,6 +1192,8 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
                     "name": "component-artifact", "status": "passed",
                     "detail": f"archive_sha256={args.artifact_sha256}; release={args.sha}",
                 })
+                if args.component == "limit-up-shadow":
+                    _require_idle_limit_up_shadow(repo)
                 if before_component_active:
                     _run(["sudo", "-n", "systemctl", "stop", component_unit], cwd=repo)
                     component_stopped = True
