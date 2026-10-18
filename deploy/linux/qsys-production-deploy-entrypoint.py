@@ -34,9 +34,10 @@ ALLOWED_WINDOWS_COMPONENTS = frozenset({
     "windows-agent", "windows-gateway", "windows-control",
 })
 WINDOWS_COORDINATOR_PATH = "deploy/linux/qsys-windows-deploy-coordinator.py"
-ENTRYPOINT_VERSION = 25
+ENTRYPOINT_VERSION = 26
 ENTRYPOINT_CAPABILITIES = (
     "systemd-apply-v1",
+    "systemd-component-boundary-v1",
     "systemd-changed-artifacts-v1",
     "systemd-preview-v1",
     "systemd-rollback-v1",
@@ -806,6 +807,44 @@ def _systemd_artifacts(
     return desired
 
 
+def _service_directives(path: Path) -> set[str]:
+    """Read directive names only; never print configuration values."""
+    section = ""
+    keys: set[str] = set()
+    for raw in path.read_text(encoding="utf-8-sig").splitlines():
+        line = raw.strip()
+        if line.startswith(("#", ";")):
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            section = line
+        elif section == "[Service]" and "=" in line:
+            keys.add(line.split("=", 1)[0].strip())
+    return keys
+
+
+def _require_platform_component_boundary(artifacts: dict[Path, Path | None]) -> None:
+    for name, spec in COMPONENT_RELEASES.items():
+        owned = Path(str(spec["dropin"]))
+        if not owned.exists() and not owned.is_symlink():
+            continue  # Legacy deployments still use their platform command.
+        protected = {"ExecStart", "ExecStartPre", "ExecStartPost", "ExecStop", "ExecStopPost", "ExecCondition", "ExecReload",
+                     "User", "Group", "SupplementaryGroups", "WorkingDirectory", "ReadWritePaths",
+                     "UMask", "RootDirectory", "RootImage"}
+        protected.update(line.split("=", 1)[0] for line in spec["dropin_lines"] if "=" in line)
+        for target, source in artifacts.items():
+            if target == owned:
+                raise ValueError(f"platform cannot replace component-owned drop-in: {name}")
+            if target.parent != owned.parent:
+                continue  # Base units remain platform-owned; the isolated drop-in overrides them.
+            inspected = source if source is not None else target
+            if not inspected.exists():
+                continue
+            conflicts = _service_directives(inspected) & protected
+            if conflicts:
+                raise ValueError(f"platform conflicts with isolated component {name}: "
+                                 + ",".join(sorted(conflicts)))
+
+
 def _systemd_restart_units(artifacts: dict[Path, Path | None]) -> list[str]:
     units: set[str] = set()
     for target, source in artifacts.items():
@@ -835,6 +874,7 @@ def _preview_systemd(
         _run(["git", "worktree", "add", "--detach", str(worktree), target], cwd=repo)
         try:
             artifacts = _systemd_artifacts(worktree, changed_paths)
+            _require_platform_component_boundary(artifacts)
             units = _systemd_restart_units(artifacts)
             active_units = [unit for unit in units if _active(unit, repo)]
             enable_units = sorted(
@@ -1008,6 +1048,7 @@ def _apply_systemd(
 ) -> tuple[dict[str, str], Path]:
     """Install, reload and verify the declared systemd state, rolling back on failure."""
     artifacts = _systemd_artifacts(repo, changed_paths)
+    _require_platform_component_boundary(artifacts)
     units = _systemd_restart_units(artifacts)
     active = {unit: _active(unit, repo) for unit in units}
     enabled = {unit: _enabled(unit, repo) for unit in units}

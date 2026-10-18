@@ -1116,9 +1116,9 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
 
     state = entrypoint.status({"production_repo": str(tmp_path)})
 
-    assert state["entrypoint_version"] == 25
+    assert state["entrypoint_version"] == 26
     assert set(state["capabilities"]) == {
-        "systemd-apply-v1", "systemd-changed-artifacts-v1",
+        "systemd-apply-v1", "systemd-component-boundary-v1", "systemd-changed-artifacts-v1",
         "systemd-preview-v1", "systemd-rollback-v1",
         "release-checklist-v1", "controlled-failure-injection-v1",
         "successful-release-index-v1",
@@ -2272,8 +2272,8 @@ def test_component_workflow_streams_only_a_verified_artifact() -> None:
     assert "PRODUCTION_DEPLOY_SSH_KEY" in workflow
     assert "cancel-in-progress: false" in workflow
     assert "backtest-worker|web|paper|shadow-core|limit-up-shadow|reboot-drill|catalog-verify|service-checks|storage-report|daily-digest|health-observer|daily-archive|premarket-limits|tushare-sync" in workflow
-    assert 'required = {"component-release-v15"}' in workflow
-    assert 'entrypoint_version", 0) < 25' in workflow
+    assert 'required = {"component-release-v15", "systemd-component-boundary-v1"}' in workflow
+    assert 'entrypoint_version", 0) < 26' in workflow
     assert '.before["backtest-worker-identity"] == .after["backtest-worker-identity"]' in workflow
     assert '.before["shadow-core-identity"] == .after["shadow-core-identity"]' in workflow
     assert '.before["paper-identity"] == .after["paper-identity"]' in workflow
@@ -2529,3 +2529,58 @@ def test_reboot_rollback_refuses_mutation_when_timer_resumes(monkeypatch, tmp_pa
     monkeypatch.setattr(entrypoint, "_run", probe)
     assert entrypoint._rollback_component("reboot-drill", "uninstalled", tmp_path) is False
     assert not any("sudo" in c for c in commands)
+
+
+@pytest.mark.parametrize("delete", [False, True])
+@pytest.mark.parametrize("directive", ["ExecStart", "User", "ReadWritePaths", "ExecStartPre", "Environment"])
+def test_platform_cannot_override_installed_component(monkeypatch, tmp_path, delete, directive):
+    entrypoint = _production_entrypoint_module()
+    dropin = tmp_path / "unit.service.d/zz-isolated-release.conf"
+    dropin.parent.mkdir()
+    dropin.write_text("[Service]\nExecStart=/immutable/current/bin/app\n")
+    monkeypatch.setattr(entrypoint, "COMPONENT_RELEASES", {"example": {
+        "dropin": str(dropin), "dropin_lines": ["ExecStart=", "Environment=BOUND=value"],
+    }})
+    other = dropin.parent / "zz-legacy.conf"
+    other.write_text(f"[Service]\n{directive}=/legacy/checkout\n")
+    with pytest.raises(ValueError, match="platform conflicts"):
+        entrypoint._require_platform_component_boundary({other: None if delete else other})
+
+
+def test_platform_preserves_legacy_and_base_unit_updates(monkeypatch, tmp_path):
+    entrypoint = _production_entrypoint_module()
+    dropin = tmp_path / "unit.service.d/zz-isolated-release.conf"
+    dropin.parent.mkdir()
+    monkeypatch.setattr(entrypoint, "COMPONENT_RELEASES", {"example": {
+        "dropin": str(dropin), "dropin_lines": ["ExecStart="],
+    }})
+    legacy = dropin.parent / "zz-legacy.conf"
+    legacy.write_text("[Service]\nExecStart=/shared/checkout\n")
+    entrypoint._require_platform_component_boundary({legacy: legacy})
+    dropin.write_text("[Service]\nExecStart=/immutable/current\n")
+    base = tmp_path / "unit.service"
+    base.write_text("[Service]\nExecStart=/shared/checkout\n")
+    env = dropin.parent / "market-data.conf"
+    env.write_text("[Service]\nEnvironment=MARKET_DATA=canonical\n")
+    entrypoint._require_platform_component_boundary({base: base, env: env})
+    with pytest.raises(ValueError, match="component-owned"):
+        entrypoint._require_platform_component_boundary({dropin: None})
+
+
+@pytest.mark.parametrize("preview", [True, False])
+def test_platform_conflict_rejected_before_backup_or_restart(monkeypatch, tmp_path, preview):
+    entrypoint = _production_entrypoint_module()
+    calls = []
+    monkeypatch.setattr(entrypoint, "_systemd_artifacts", lambda *args: {})
+    def reject(_):
+        raise ValueError("platform conflicts")
+    monkeypatch.setattr(entrypoint, "_require_platform_component_boundary", reject)
+    monkeypatch.setattr(entrypoint, "_run", lambda command, **kw:
+                        calls.append(command) or subprocess.CompletedProcess(command, 0, "", ""))
+    monkeypatch.setattr(entrypoint, "_backup_systemd", lambda *args: pytest.fail("backup reached"))
+    with pytest.raises(ValueError, match="platform conflicts"):
+        if preview:
+            entrypoint._preview_systemd(tmp_path, "a" * 40, [])
+        else:
+            entrypoint._apply_systemd({}, tmp_path, "run-1", [])
+    assert not any("sudo" in c or "systemctl" in c for c in calls)

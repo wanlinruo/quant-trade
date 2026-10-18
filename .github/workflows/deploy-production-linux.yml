@@ -172,6 +172,7 @@ jobs:
           if state["branch"] != "main" or state["dirty"] or not state["healthy"]:
               raise SystemExit(f"production node is not deployable: {state}")
           required = {
+              "systemd-component-boundary-v1",
               "systemd-apply-v1", "systemd-changed-artifacts-v1",
               "systemd-preview-v1", "systemd-rollback-v1",
               "release-checklist-v1", "controlled-failure-injection-v1",
@@ -182,7 +183,7 @@ jobs:
               "monitor-research-command-v1",
               "component-release-v1",
           }
-          if state.get("entrypoint_version", 0) < 11 or not required <= set(state.get("capabilities", [])):
+          if state.get("entrypoint_version", 0) < 26 or not required <= set(state.get("capabilities", [])):
               raise SystemExit("production entrypoint lacks required deployment capabilities")
           print(f'before_sha={state["sha"]}')
           PY
