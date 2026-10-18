@@ -1384,7 +1384,7 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
         args.component: before_component,
         "live-core-pid": before_live["pid"],
         "live-core-started": before_live["started_monotonic"],
-        f"{args.component}-active": before_component_active,
+        f"{args.component}-active": str(before_component_active).lower(),
         **({f"{name}-identity": value for name, value in before_protected.items()}),
     }
     after = {
@@ -1392,7 +1392,7 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
         args.component: current_component,
         "live-core-pid": after_live["pid"],
         "live-core-started": after_live["started_monotonic"],
-        f"{args.component}-active": after_component_active,
+        f"{args.component}-active": str(after_component_active).lower(),
         **({f"{name}-identity": value for name, value in after_protected.items()}),
     }
     record = {

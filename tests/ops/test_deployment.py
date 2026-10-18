@@ -1428,15 +1428,16 @@ def test_paper_and_shadow_protect_each_other_and_non_trading_peers() -> None:
     }
 
 
-def test_resident_component_preserves_its_active_state_during_switch(
-    monkeypatch, tmp_path, capsys,
+@pytest.mark.parametrize("component,active", [("health-observer", True), ("storage-report", False)])
+def test_component_record_preserves_state_and_matches_contract(
+    monkeypatch, tmp_path, capsys, component, active,
 ) -> None:
     entrypoint = _production_entrypoint_module()
     target = "a" * 40
     production = "b" * 40
-    previous = "c" * 40
+    previous = "c" * 40 if active else "uninstalled"
     live = {"pid": "42", "started_monotonic": "99", "repo_sha": production}
-    state = {"active": True, "component": previous}
+    state = {"active": active, "component": previous}
     records = []
     commands = []
     monkeypatch.setattr(entrypoint, "_branch", lambda repo: "main")
@@ -1462,12 +1463,12 @@ def test_resident_component_preserves_its_active_state_during_switch(
     def fake_run(command, **kwargs):
         command = [str(item) for item in command]
         commands.append(command)
-        if command[-2:] == ["stop", "qsys-health-observer.service"]:
+        if command[-2:] == ["stop", f"qsys-{component}.service"]:
             state["active"] = False
         elif entrypoint.GENERIC_COMPONENT_INSTALLER in command:
             assert state["active"] is False
             state["component"] = target
-        elif command[-2:] == ["start", "qsys-health-observer.service"]:
+        elif command[-2:] == ["start", f"qsys-{component}.service"]:
             state["active"] = True
         return subprocess.CompletedProcess(command, 0, "", "")
 
@@ -1477,7 +1478,7 @@ def test_resident_component_preserves_its_active_state_during_switch(
         lambda config, run_id, record: records.append(record) or tmp_path / "record.json",
     )
     args = argparse.Namespace(
-        sha=target, component="health-observer", artifact_sha256="e" * 64,
+        sha=target, component=component, artifact_sha256="e" * 64,
         run_id="release-observer", actor="maintainer", repository="owner/repo",
         pr_number=381, dry_run=False,
     )
@@ -1488,18 +1489,24 @@ def test_resident_component_preserves_its_active_state_during_switch(
             "production_record_root": str(tmp_path / "records"),
         },
     ) == 0
-    assert state == {"active": True, "component": target}
-    stop = next(i for i, command in enumerate(commands) if command[-2:] == [
-        "stop", "qsys-health-observer.service",
-    ])
-    install = next(i for i, command in enumerate(commands)
-                   if entrypoint.GENERIC_COMPONENT_INSTALLER in command)
-    start = next(i for i, command in enumerate(commands) if command[-2:] == [
-        "start", "qsys-health-observer.service",
-    ])
-    assert stop < install < start
-    assert records[0]["before"]["health-observer-active"] is True
-    assert records[0]["after"]["health-observer-active"] is True
+    assert state == {"active": active, "component": target}
+    if active:
+        stop = next(i for i, command in enumerate(commands) if command[-2:] == [
+            "stop", f"qsys-{component}.service",
+        ])
+        install = next(i for i, command in enumerate(commands)
+                       if entrypoint.GENERIC_COMPONENT_INSTALLER in command)
+        start = next(i for i, command in enumerate(commands) if command[-2:] == [
+            "start", f"qsys-{component}.service",
+        ])
+        assert stop < install < start
+    else:
+        assert not any("systemctl" in command and
+                       any(action in command for action in ("start", "stop", "restart"))
+                       for command in commands)
+    assert records[0]["before"][f"{component}-active"] == str(active).lower()
+    assert records[0]["after"][f"{component}-active"] == str(active).lower()
+    validate_record(records[0])
     assert json.loads(capsys.readouterr().out)["status"] == "success"
 
 
@@ -1594,6 +1601,7 @@ def test_component_health_and_peer_identity_gate(
             "production_record_root": str(tmp_path / "records"),
         },
     ) == (1 if peer_drift or busy_after_stage else 0)
+    validate_record(records[0])
     assert health_checks == ([True] if component == "web" else [])
     if component == "reboot-drill":
         assert idle_probes == (2 if busy_after_stage else 3)
@@ -1676,6 +1684,7 @@ def test_component_activation_failure_rolls_back_and_preserves_live_identity(
         },
     ) == 1
 
+    validate_record(records[0])
     assert records[0]["status"] == "rolled_back"
     assert records[0]["before"] == records[0]["after"]
     assert records[0]["rollback_targets"] == {"catalog-verify": previous}

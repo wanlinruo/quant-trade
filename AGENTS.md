@@ -100,6 +100,11 @@ manifest → `HANDOFF.md` → 其他历史文档。
   触发 `dry_run=false`、生产故障注入演练。"继续""按建议处理"不算对这类操作的确认。
   其余流程（开分支、测试、squash、建 PR、代做自审）可以一路推进；代做自审必须在 PR 正文
   如实写明是代行，并且要真查。
+- 组件发布必须等待 workflow 最终成功，并核对 GitHub Deployment 与节点 record，三者一致后
+  才启动验收作业；节点切换成功不能替代 workflow 后验成功。生产记录生成测试须调用实际
+  `validate_record()`，不能只检查 mock 捕获的字段。
+- 状态目录换 owner 后逐层验证 Web/旧账号的遍历、读取和回切写权限；default ACL 不替代
+  access ACL。跨文件系统保存回退文件不能直接 `rename`，须先留存副本再恢复控制入口。
 - 往节点同步代码**禁止整目录 rsync**（会毁掉 `warehouse` 软链接和 `.venv`）：逐个列文件，
   或带 `--exclude '.venv/' --exclude 'warehouse/' --exclude '.git/' --exclude 'var/'`。
   动节点前先 `ls -la` 看清目标是文件、目录还是软链接。

@@ -1,7 +1,7 @@
 # storage-report 首次生产迁移审阅包（#414）
 
-状态：准备与只读盘点；**未获生产执行授权**。精确候选 SHA、artifact/wheel/spec hash、
-预生产 workflow run 与记录由 #414 的最终验收评论固定。审核时必须同时查看该评论；
+状态：本文是迁移流程；**实时授权、准备与部署状态以 #414 最新记录为准**。精确候选 SHA、
+artifact/wheel/spec hash、预生产 workflow run 与记录由 #414 验收评论固定。审核时必须同时查看；
 任何候选变化重新取得证据，不使用浮动 main 作为执行目标。
 
 ## 已核实现场（2026-10-18，只读）
@@ -47,7 +47,8 @@ A：固定入口/账号/目录准备；B：单组件正式切换、真实作业�
    该组件只读盘点，不需 Redis、Tushare 配置、Windows key 或生产 Warehouse 写权限。
    如需扩展只读 ACL，先列出精确路径和拟加权限再批准，不递归 chmod/chown Warehouse。
 6. 历史目录保持原路径、6 份历史 JSON 的内容/hash 和原文件 owner/mode。
-   仅调整**目录本身**为专用 owner/group 0750，保留 ubuntu 与 Web/读取者的只读/遍历权限。
+   A 阶段保留原目录 owner/group 和 ubuntu 写权限，仅为专用账号增加必要 ACL；
+   owner 切换留到 B 安装器执行，并显式补 ubuntu 的 access ACL，不能只设置 default ACL。
    如需 ACL，保存/恢复原 ACL，并针对新建日期子目录与报告预置最小 default ACL；
    现有年/月/日子目录也须逐项列出：只调整这些目录的最小 ACL，给予专用用户创建权限、
    读取者遍历权限；仅 chown 顶层目录不足以在 ubuntu 拥有的旧日期目录内写新报告。
@@ -64,6 +65,10 @@ A：固定入口/账号/目录准备；B：单组件正式切换、真实作业�
   该次切换不应自动启动 inactive oneshot；核对 effective ExecStart 指向
   `/opt/qsys/components/storage-report/current/venv/bin/qsys-storage-report`、User/Group、
   ReadWritePaths 仅 history，current/read-only release 及部署记录正确。
+- 等待 workflow、GitHub Deployment、节点 record 三者均成功，才继续 runtime 验收；
+  节点切换成功但 workflow 后验失败时保留失败证据、停止推进并恢复 legacy。
+- owner 切换后先验证 history 根、年/月/日目录与报告对 Web/ubuntu 可读可遍历；
+  必要时仅在根增加 `u:ubuntu:r-x`，保持专用 owner 的写权限和原 mask。
 - 在获批窗口单独触发一次 service：核验真实盘点成功、新增一份历史、schema/分类与硬链接
   去重口径、旧 6 份 hash 不变、读者可读、关键 peer 身份/健康不变。实际生产大目录扫描和
   盘容量是现场验收内容，预生产小夹具不替代这一项。
@@ -79,8 +84,11 @@ A：固定入口/账号/目录准备；B：单组件正式切换、真实作业�
   只恢复本次安装对象，不删除制品、回滚备份或历史。
 - 组件切换失败：先核对 gateway/installer 的回滚记录；不得用重跑 workflow 掩盖原因。
   首次无旧 current 时，恢复原 drop-in/命令，保留全部新报告。
+- 跨文件系统留存 drop-in/current 回切副本时，使用复制并校验（软链接保存 link text），
+  再移除当前控制入口；不得直接跨盘 rename，不删除 release、报告或回退副本。
 - 目录 owner/mode/ACL 恢复到 before 清单，新增历史保留并给予维护者读取权限；不得删除
   新文件来伪造“完全回到之前”。timer 仅恢复原状态，失败时保持暂停并记录人工处置。
 - 任一 hash、有效入口、历史、权限、peer 身份或业务健康不符即停止，不推进下一组件。
 
-本轮只准备该审阅包与隔离验证，以上生产步骤均未执行。
+实时执行状态、首次发布记录格式问题（#416）及后续重试见 #414；不得以本文初始快照
+推断生产步骤尚未执行或已经完成。
