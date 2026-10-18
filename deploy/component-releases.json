@@ -54,7 +54,8 @@
         "Environment=QSYS_QUERY_MEMORY_MB=256",
         "Environment=QSYS_QUERY_MAX_TEMP_MB=512",
         "Environment=QSYS_QUERY_THREADS=1",
-        "Environment=QSYS_QUERY_TEMP_ROOT=/tmp/qsys-backtest-query"
+        "Environment=QSYS_QUERY_TEMP_ROOT=/tmp/qsys-backtest-query",
+        "EnvironmentFile=/etc/qsys/market-data.env"
       ]
     },
     "web": {

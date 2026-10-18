@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import logging
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
@@ -197,11 +198,25 @@ class HealthStore:
         self.path = Path(path)
         self.checkpoint_interval = checkpoint_interval
         self.read_only = read_only
+        self._reader_anchor = None
         if initialize:
             if read_only:
                 raise ValueError("a read-only health store cannot be initialized")
             self.path.parent.mkdir(parents=True, exist_ok=True)
             self._initialize()
+
+    def pin_reader_sidecars(self) -> None:
+        """生产者保留 WAL/SHM 生命周期，读者不需要目录写权限。"""
+        if getattr(self, "read_only", True):
+            raise RuntimeError("only a health producer can pin reader sidecars")
+        if self._reader_anchor is None:
+            self._reader_anchor = self._connect()
+            self._reader_anchor.execute("SELECT name FROM sqlite_master LIMIT 1").fetchone()
+
+    def close(self) -> None:
+        if getattr(self, "_reader_anchor", None) is not None:
+            self._reader_anchor.close()
+            self._reader_anchor = None
 
     def _connect(self) -> sqlite3.Connection:
         target = f"file:{self.path}?mode=ro" if self.read_only else self.path
@@ -423,8 +438,18 @@ class HealthStoreReader(HealthStore):
     def record(self, observation: HealthObservation) -> bool:
         raise RuntimeError("cannot record through a migrating health-store reader")
 
+    def _read_rows(self, method: str, *args) -> list[dict]:
+        rows = []
+        for store in self._stores():
+            try:
+                rows.extend(getattr(store, method)(*args))
+            except sqlite3.Error as exc:
+                # 新库准备/切换期间可暂不可读；保留其他已观测历史，缺测仍是未知。
+                logging.getLogger(__name__).warning("health database unavailable: %s: %s", store.path, exc)
+        return rows
+
     def latest(self, service_id: str | None = None) -> list[dict]:
-        rows = [row for store in self._stores() for row in store.latest(service_id)]
+        rows = self._read_rows("latest", service_id)
         rows.sort(key=lambda row: row["observed_at_utc"], reverse=True)
         latest: dict[str, dict] = {}
         for row in rows:
@@ -435,18 +460,17 @@ class HealthStoreReader(HealthStore):
         self, start: datetime, end: datetime, service_id: str | None = None,
     ) -> list[dict]:
         unique: dict[tuple[object, ...], dict] = {}
-        for store in self._stores():
-            for row in store.history(start, end, service_id):
-                identity = (
-                    row["service_id"], row["observed_at_utc"], row["phase"],
-                    row["expected_interval_s"], row["warn_after_s"],
-                    row["down_after_s"], row["state"], row["process_state"],
-                    row["business_state"], row["reason_code"], row["source"],
-                    row["last_beat_at_utc"],
-                    json.dumps(row["details"], ensure_ascii=False, sort_keys=True),
-                    row["checkpoint"],
-                )
-                unique.setdefault(identity, row)
+        for row in self._read_rows("history", start, end, service_id):
+            identity = (
+                row["service_id"], row["observed_at_utc"], row["phase"],
+                row["expected_interval_s"], row["warn_after_s"],
+                row["down_after_s"], row["state"], row["process_state"],
+                row["business_state"], row["reason_code"], row["source"],
+                row["last_beat_at_utc"],
+                json.dumps(row["details"], ensure_ascii=False, sort_keys=True),
+                row["checkpoint"],
+            )
+            unique.setdefault(identity, row)
         return sorted(
             unique.values(),
             key=lambda row: (row["service_id"], row["observed_at_utc"], row["id"]),

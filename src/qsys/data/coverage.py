@@ -9,6 +9,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime
 from tempfile import TemporaryDirectory
+from pathlib import Path
+from functools import lru_cache
+from threading import RLock
 
 import duckdb
 
@@ -60,6 +63,27 @@ def _describe(
 
 def coverage(warehouse: Warehouse) -> list[DatasetCoverage]:
     """每张已落盘的表一行。从未写过的表不出现。"""
+    snapshot = []
+    for dataset, arrow_schema in sorted(schema.ALL.items()):
+        files = []
+        for filename in _files(warehouse, dataset):
+            path = Path(filename).resolve()
+            info = path.stat()
+            files.append((str(path), info.st_dev, info.st_ino, info.st_size,
+                          info.st_mtime_ns, info.st_ctime_ns))
+        if files:
+            snapshot.append((dataset, tuple(arrow_schema.names), tuple(files)))
+    # 缓存实际聚合结果，文件增删/原子替换/内容或元数据变化都使缓存失效。
+    # 同一进程内只允许一次冷扫描，避免并发页面重复扫描数十亿行。
+    with _COVERAGE_LOCK:
+        return list(_coverage_snapshot(tuple(snapshot)))
+
+
+_COVERAGE_LOCK = RLock()
+
+
+@lru_cache(maxsize=4)
+def _coverage_snapshot(snapshot: tuple) -> tuple[DatasetCoverage, ...]:
     out: list[DatasetCoverage] = []
     # 分钟表可能有数十亿行；只聚合所需列，限制内存、线程和临时落盘。
     with TemporaryDirectory(prefix="qsys-coverage-") as temporary:
@@ -68,18 +92,15 @@ def coverage(warehouse: Warehouse) -> list[DatasetCoverage]:
             "temp_directory": temporary,
             "max_temp_directory_size": "512MiB",
         }) as con:
-            for dataset, arrow_schema in sorted(schema.ALL.items()):
-                files = _files(warehouse, dataset)
-                if not files:
-                    continue
-                names = set(arrow_schema.names)
+            for dataset, names, observed_files in snapshot:
+                files = [item[0] for item in observed_files]
                 time_column = "dt" if "dt" in names else "ts" if "ts" in names else None
                 rows, symbols, first, last = _describe(
                     con, files, time_column, "symbol" in names
                 )
                 out.append(DatasetCoverage(dataset, int(rows), int(symbols),
                                            first, last))
-    return out
+    return tuple(out)
 
 
 def symbol_coverage(warehouse: Warehouse, symbol: str) -> DatasetCoverage | None:

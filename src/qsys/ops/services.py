@@ -169,6 +169,11 @@ SERVICES: tuple[ServiceSpec, ...] = (
         ("仓库只读", "Redis 只读"), (), "本页面（8443 经 nginx 反代）",
     ),
     ServiceSpec(
+        "backtest-worker", "回测工作进程", "resident", "Linux", "qsys-backtest-worker", "常驻",
+        ("Workbench 任务队列", "仓库只读"), ("workbench.sqlite3", "var/runs"),
+        "单独领取并执行回测任务，与 Web 分离运行和发布",
+    ),
+    ServiceSpec(
         "health-observer", "服务健康采样器", "resident", "Linux",
         "qsys-health-observer", "常驻（关键时段 5 秒、盘外 30 秒）",
         ("systemd 只读", "Redis 心跳只读", "Windows 计划任务只读"),

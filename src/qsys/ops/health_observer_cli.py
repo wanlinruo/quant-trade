@@ -431,6 +431,9 @@ def main(argv: list[str] | None = None) -> int:
         windows_task=windows,
     )
     store = HealthStore(Path(args.state))
+    store.pin_reader_sidecars()
+    import atexit
+    atexit.register(store.close)
     log.info("health_observer.started", state=args.state)
     active_core = active_core_service(deploy.safety.mode)
     while True:
