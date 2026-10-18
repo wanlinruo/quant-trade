@@ -57,9 +57,9 @@ class DataService:
     def coverage(self) -> list[DatasetCoverage]:
         return coverage(self._warehouse)
 
-    def warehouse_totals(self) -> tuple[int, int]:
+    def warehouse_totals(self, rows: list[DatasetCoverage] | None = None) -> tuple[int, int]:
         """(总行数, 最大标的数)——给页首的 KPI。"""
-        rows = self.coverage()
+        rows = self.coverage() if rows is None else rows
         if not rows:
             return 0, 0
         return sum(c.rows for c in rows), max(c.symbols for c in rows)

@@ -104,11 +104,12 @@ def client_for(rig) -> TestClient:
 
 
 def test_session_data_reaches_the_overview_page(rig):
-    """总览页呈现净值。持仓来自券商快照，FakeAdapter 不跟踪持仓，故此处不断言持仓。"""
+    """总览页呈现总资产。持仓来自券商快照，FakeAdapter 不跟踪持仓，故此处不断言持仓。"""
     run_session(rig)
     r = client_for(rig).get(f"/s/{D}")
     assert r.status_code == 200
-    assert "净值" in r.text
+    assert "总资产" in r.text
+    assert "不代表投资收益" in r.text
     assert "<svg" in r.text
 
 

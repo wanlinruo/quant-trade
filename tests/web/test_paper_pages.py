@@ -273,10 +273,10 @@ class _Lineage:
         self.params = {"auction_at": "09:25:10", "entry_price_buffer": 0.03}
 
 
-def test_paper_chart_overlays_the_shadow_only_when_it_follows_this_account(
+def test_paper_chart_explains_unavailable_returns_only_for_the_followed_account(
     warehouse, tmp_path,
 ):
-    """影子盘承袭的是哪个账户，就只在那个账户页上叠加它的曲线。"""
+    """仅关联账户显示资金流水缺失提示，不将资产变化叠成收益曲线。"""
     follows = {"lineage": None}
     client, job = make_client(warehouse, tmp_path, lineage=lambda: follows["lineage"])
     mine = client.post("/api/paper-accounts", json={
@@ -291,6 +291,8 @@ def test_paper_chart_overlays_the_shadow_only_when_it_follows_this_account(
 
     assert '"shadow":true' in client.get(f"/paper/{mine}").text.replace(" ", "")
     assert '"shadow":false' in client.get(f"/paper/{other}").text.replace(" ", "")
+    assert "缺少完整资金变动流水" in client.get(f"/paper/{mine}").text
+    assert "缺少完整资金变动流水" not in client.get(f"/paper/{other}").text
 
 
 def _seed_equity(tmp_path: Path, ident: str) -> None:

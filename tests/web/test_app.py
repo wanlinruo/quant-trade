@@ -205,10 +205,11 @@ class _PaperStub:
         ]
 
 
-def test_live_page_shows_the_followed_paper_account_and_compares_returns(warehouse):
+@pytest.mark.parametrize("closing_equity", [50_500.0, 100_022.72])
+def test_live_page_does_not_infer_returns_without_cash_flow_records(warehouse, closing_equity):
     journal = SessionJournal(warehouse)
     journal.record_equity(D0, cash=50_000.0, market_value=0.0)      # 2024-01-02
-    journal.record_equity(D, cash=50_000.0, market_value=500.0)     # 2024-01-03
+    journal.record_equity(D, cash=closing_equity, market_value=0.0)
     cfg = WebConfig()
     service = MonitorService(journal, config=cfg)
     http = TestClient(create_app(service, cfg, paper=_PaperStub(),
@@ -219,8 +220,12 @@ def test_live_page_shows_the_followed_paper_account_and_compares_returns(warehou
     assert "策略与来源" in body and "模拟-09:25入场" in body
     assert "bt-9" in body and "竞价决策时刻" in body and "09:25:10" in body
     assert "影子盘 vs 模拟交易" in body
-    assert "+1.00%" in body      # 影子盘 50,000 → 50,500
-    assert "+2.00%" in body      # 模拟盘 100,000 → 102,000
+    assert "缺少完整资金变动流水" in body
+    assert "收益对比暂不可用" in body
+    comparison = body.split("影子盘 vs 模拟交易", 1)[1].split("</div>", 1)[0]
+    assert "+100.05%" not in comparison and "+1.00%" not in comparison
+    assert "按累计收益率比较" not in body
+    assert f"{closing_equity:,.2f}" in body
 
 
 def test_health_page_survives_a_null_cash_diff(warehouse):

@@ -79,6 +79,20 @@ def test_data_overview_opens_on_an_empty_warehouse(warehouse):
     assert client_for(warehouse).get("/data").status_code == 200
 
 
+def test_data_overview_uses_one_coverage_snapshot_for_totals_and_table(warehouse, monkeypatch):
+    seed(warehouse)
+    original = DataService.coverage
+    calls = []
+
+    def counted(service):
+        calls.append(True)
+        return original(service)
+
+    monkeypatch.setattr(DataService, "coverage", counted)
+    assert client_for(warehouse).get("/data").status_code == 200
+    assert len(calls) == 1
+
+
 def test_regime_page_renders_a_chart(warehouse):
     seed(warehouse)
     response = client_for(warehouse).get("/market")

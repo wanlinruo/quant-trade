@@ -1,8 +1,9 @@
 """数据覆盖查询：回答「我有哪些数据」。"""
 
-from datetime import date
+from datetime import date, datetime
 
 import pyarrow as pa
+import pytest
 
 from qsys.data import schema
 from qsys.data.coverage import coverage, symbol_coverage
@@ -101,3 +102,41 @@ def test_derived_tables_are_reported_too(warehouse):
         )
     reported = {c.dataset for c in coverage(warehouse)}
     assert {"daily_flags", "market_regime", "valuation_snapshot"} <= reported
+
+
+def _minute_table(dataset, day, symbol="600036.SH"):
+    arrow_schema = schema.ALL[dataset]
+    values = {field.name: [None] for field in arrow_schema}
+    values["symbol"] = [symbol]
+    values["ts" if dataset == "bar_minute_1m" else "dt"] = [
+        datetime.combine(day, datetime.min.time()).replace(hour=9, minute=31)
+    ]
+    return pa.table(values, schema=arrow_schema)
+
+
+@pytest.mark.parametrize("dataset", ["minute_bars", "bar_minute_1m"])
+def test_daily_minute_partitions_report_real_timestamp_bounds(warehouse, dataset):
+    day = date(2026, 10, 16)
+    warehouse.write_day(dataset, _minute_table(dataset, day), day=day)
+    got = next(row for row in coverage(warehouse) if row.dataset == dataset)
+    assert got.rows == 1 and got.symbols == 1
+    assert got.first_dt == got.last_dt == datetime(2026, 10, 16, 9, 31)
+
+
+def test_daily_partitions_supersede_same_year_annual_copy_but_keep_older_years(warehouse):
+    dataset = "minute_bars"
+    older = date(2025, 12, 31)
+    day = date(2026, 10, 16)
+    warehouse.write(dataset, _minute_table(dataset, older), year=2025)
+    warehouse.write(dataset, _minute_table(dataset, day), year=2026)
+    warehouse.write_day(dataset, _minute_table(dataset, day, "000001.SZ"), day=day)
+    got = next(row for row in coverage(warehouse) if row.dataset == dataset)
+    assert got.rows == 2 and got.symbols == 2
+    assert got.first_dt == datetime(2025, 12, 31, 9, 31)
+    assert got.last_dt == datetime(2026, 10, 16, 9, 31)
+
+
+def test_coverage_accepts_a_warehouse_path_containing_a_quote(tmp_path):
+    warehouse = Warehouse(tmp_path / "owner's warehouse")
+    seed(warehouse)
+    assert next(row for row in coverage(warehouse) if row.dataset == "bars_daily").rows == 3
