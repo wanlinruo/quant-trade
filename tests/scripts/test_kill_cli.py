@@ -20,6 +20,8 @@ def at(tmp_path, monkeypatch):
         "shadow": ("shadow:control:kill", tmp_path / "SHADOW_KILL"),
     })
     monkeypatch.setattr(kill, "_transport", lambda: (transport, None))
+    monkeypatch.setattr(kill, "SHADOW_COMPONENT_DROPIN", tmp_path / "isolated.conf")
+    monkeypatch.setattr(kill, "SHADOW_COMPONENT_KILL", tmp_path / "isolated/SHADOW_KILL")
     return tmp_path, transport
 
 
@@ -82,6 +84,37 @@ def test_resume_clears_only_the_named_core(at, monkeypatch):
 
 def test_resume_rejects_an_unknown_target(at, monkeypatch):
     assert _run(monkeypatch, "resume", "paper") == 2
+
+
+def test_isolated_shadow_local_stop_status_and_resume_without_redis(at, monkeypatch, capsys):
+    from qsys.live.kill_switch import KillSwitch
+
+    tmp_path, _ = at
+    kill.SHADOW_COMPONENT_DROPIN.write_text("[Service]\n")
+    # _transport 在 Redis 故障时使用同样的本地 MemoryTransport 兜底。
+    isolated = KillSwitch(MemoryTransport(), key="shadow:control:kill",
+                          local_path=kill.SHADOW_COMPONENT_KILL)
+    assert _run(monkeypatch, "stop", "独立组件急停", "shadow") == 0
+    assert isolated.is_engaged()
+    assert not (tmp_path / "SHADOW_KILL").exists()
+    assert _run(monkeypatch, "status") == 0
+    assert "独立组件急停" in capsys.readouterr().out
+    assert _run(monkeypatch, "resume", "shadow") == 0
+    assert not isolated.is_engaged()
+
+
+def test_isolated_shadow_kill_path_matches_production_command():
+    import json
+    import shlex
+    from pathlib import Path
+
+    specs = json.loads(Path("deploy/component-releases.json").read_text())
+    command = next(line.removeprefix("ExecStart=") for line in
+                   specs["components"]["shadow-core"]["dropin_lines"]
+                   if line.startswith("ExecStart=") and line != "ExecStart=")
+    args = shlex.split(command)
+    assert kill.SHADOW_COMPONENT_KILL == Path(args[args.index("--kill-switch") + 1])
+    assert str(kill.SHADOW_COMPONENT_DROPIN) == specs["components"]["shadow-core"]["dropin"]
 
 
 def test_the_targets_match_what_the_cores_actually_use():

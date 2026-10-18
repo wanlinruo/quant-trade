@@ -218,6 +218,10 @@ Warehouse 只读，preflight 也从同一 release 的 `qsys-live-preflight` 执�
 另一运行核心、Web 与 backtest worker 的 load/active/PID/启动时间身份；Live Core 身份与共享
 checkout 仍按全局门禁前后校验。v23/component-release-v13 固定入口、账号/组、Redis 最小 ACL、
 现有 Workbench/Shadow 状态迁移及首次生产激活均需单独授权；代码合入不会切换生产 Paper/Shadow。
+`scripts/kill.py` 根据固定 Shadow component drop-in 是否存在选择本地急停文件：共享部署使用
+`var/SHADOW_KILL`，独立部署使用 `/home/ubuntu/qsys/var/shadow-core/SHADOW_KILL`。
+首次激活前必须同步兼容的急停脚本，并核验维护者具备专用状态目录的写权限；回滚 installer
+会恢复原 drop-in，使急停路径随部署恢复。Redis 不可用时本地急停仍需有效。
 
 ### 2026-10-16 catalog 组件发布复盘与固定约束
 
