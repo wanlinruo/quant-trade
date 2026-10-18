@@ -360,3 +360,18 @@ def test_tushare_sync_release_binds_writer_and_late_minute_downloader(
     )
     assert (release / "source/scripts/win_download_minutes.py").is_file()
     assert verify(repo, sha, "tushare-sync", release) == value
+
+
+def test_reboot_release_binds_control_plane_members_and_entrypoint(tmp_path):
+    repo, sha = _repo(tmp_path)
+    wheel = _wheel(tmp_path / "dist/qsys-0.1.0-py3-none-any.whl",
+                   command="qsys-reboot-drill", entrypoint="qsys.ops.reboot_drill_cli:main")
+    release = tmp_path / "release"
+    value = build(repo, sha, "reboot-drill", wheel.parent, release,
+                  repository="owner/repo", run_id="123", run_attempt="1")
+    assert value["entrypoint"] == {"command": "qsys-reboot-drill", "target": "qsys.ops.reboot_drill_cli:main"}
+    assert verify(repo, sha, "reboot-drill", release) == value
+    # The packaged control plane, not shared scripts, must be hash-bound.
+    (release / "source/src/qsys/ops/example.py").write_text("CHANGED = True\n")
+    with pytest.raises(ValueError):
+        verify(repo, sha, "reboot-drill", release)

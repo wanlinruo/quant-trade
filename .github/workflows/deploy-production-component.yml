@@ -16,6 +16,7 @@ on:
           - web
           - paper
           - shadow-core
+          - reboot-drill
           - limit-up-shadow
           - catalog-verify
           - service-checks
@@ -100,7 +101,7 @@ jobs:
           printf '%s' "$RELEASE_ID" | grep -Eq '^[A-Za-z0-9._-]{1,100}$'
           printf '%s' "$TARGET_SHA" | grep -Eq '^[0-9a-f]{40}$'
           case "$COMPONENT" in
-            backtest-worker|web|paper|shadow-core|limit-up-shadow|catalog-verify|service-checks|storage-report|daily-digest|health-observer|daily-archive|premarket-limits|tushare-sync) ;;
+            backtest-worker|web|paper|shadow-core|limit-up-shadow|reboot-drill|catalog-verify|service-checks|storage-report|daily-digest|health-observer|daily-archive|premarket-limits|tushare-sync) ;;
             *) exit 2 ;;
           esac
           git fetch --no-tags origin main test
@@ -137,8 +138,8 @@ jobs:
           state = json.loads(os.environ["NODE_JSON"])
           if state["branch"] != "main" or state["dirty"] or not state["healthy"]:
               raise SystemExit(f"production node is not deployable: {state}")
-          required = {"component-release-v14"}
-          if state.get("entrypoint_version", 0) < 24 or not required <= set(state.get("capabilities", [])):
+          required = {"component-release-v15"}
+          if state.get("entrypoint_version", 0) < 25 or not required <= set(state.get("capabilities", [])):
               raise SystemExit("production entrypoint lacks component release capability")
           print(f'production_sha={state["sha"]}')
           PY
@@ -212,7 +213,7 @@ jobs:
               and .before["web-identity"] == .after["web-identity"]
               and .before["backtest-worker-identity"] == .after["backtest-worker-identity"]
               else true end)
-            and (if $component == "limit-up-shadow" then
+            and (if ($component == "limit-up-shadow" or $component == "reboot-drill") then
               .before["paper-identity"] == .after["paper-identity"]
               and .before["shadow-core-identity"] == .after["shadow-core-identity"]
               and .before["web-identity"] == .after["web-identity"]

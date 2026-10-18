@@ -34,7 +34,7 @@ ALLOWED_WINDOWS_COMPONENTS = frozenset({
     "windows-agent", "windows-gateway", "windows-control",
 })
 WINDOWS_COORDINATOR_PATH = "deploy/linux/qsys-windows-deploy-coordinator.py"
-ENTRYPOINT_VERSION = 24
+ENTRYPOINT_VERSION = 25
 ENTRYPOINT_CAPABILITIES = (
     "systemd-apply-v1",
     "systemd-changed-artifacts-v1",
@@ -62,10 +62,17 @@ ENTRYPOINT_CAPABILITIES = (
     "component-release-v12",
     "component-release-v13",
     "component-release-v14",
+    "component-release-v15",
 )
 FAILURE_POINTS = frozenset({"none", "linux-health", "windows-switch"})
 GENERIC_COMPONENT_INSTALLER = "scripts/install_component_release.py"
 COMPONENT_PROTECTED_PEERS = {
+    "reboot-drill": {
+        "paper": "qsys-paper.service",
+        "shadow-core": "qsys-shadow-core.service",
+        "web": "qsys-monitor.service",
+        "backtest-worker": "qsys-backtest-worker.service",
+    },
     "limit-up-shadow": {
         "paper": "qsys-paper.service",
         "shadow-core": "qsys-shadow-core.service",
@@ -1079,6 +1086,8 @@ def _rollback_component(component: str, previous: str, repo: Path) -> bool:
     spec = COMPONENT_RELEASES[component]
     current = Path(str(spec["current"]))
     try:
+        if component == "reboot-drill":
+            _require_idle_reboot_drill(repo)
         if SHA_PATTERN.fullmatch(previous):
             target = Path(str(spec["release_root"])) / previous
             if not target.is_dir():
@@ -1111,6 +1120,15 @@ def _require_idle_limit_up_shadow(repo: Path) -> None:
         raise ValueError("limit-up-shadow is running or unknown; wait for the oneshot to finish")
 
 
+def _require_idle_reboot_drill(repo: Path) -> None:
+    # Never stop or start a fault drill to deploy code. The timer must be paused
+    # separately in the approved maintenance window, including rollback.
+    for unit in ("qsys-reboot-drill.service", "qsys-reboot-drill.timer"):
+        state = _run(["systemctl", "show", unit, "--property=ActiveState", "--value"], cwd=repo)
+        if state.stdout.strip() not in {"inactive", "failed"}:
+            raise ValueError(f"{unit} is running or unknown; pause timer and wait for the oneshot to finish")
+
+
 def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int:
     if not RUN_ID_PATTERN.fullmatch(args.run_id):
         raise ValueError("run-id contains unsupported characters")
@@ -1135,6 +1153,9 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
     if args.component == "limit-up-shadow":
         _require_idle_limit_up_shadow(repo)
         before_component_active = False  # Idle oneshots must never be started by a release.
+    if args.component == "reboot-drill":
+        _require_idle_reboot_drill(repo)
+        before_component_active = False
     before_live = _live_identity(repo)
     protected_units = COMPONENT_PROTECTED_PEERS.get(args.component, {})
     before_protected = {
@@ -1194,6 +1215,8 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
                 })
                 if args.component == "limit-up-shadow":
                     _require_idle_limit_up_shadow(repo)
+                if args.component == "reboot-drill":
+                    _require_idle_reboot_drill(repo)
                 if before_component_active:
                     _run(["sudo", "-n", "systemctl", "stop", component_unit], cwd=repo)
                     component_stopped = True
@@ -1229,6 +1252,8 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
             for name, unit in protected_units.items()
         }
         _live_preflight(repo)
+        if args.component == "reboot-drill":
+            _require_idle_reboot_drill(repo)
         if after_live != before_live or _head(repo) != production_sha:
             raise ValueError("component deployment changed the live core identity or checkout")
         if _current_component_sha(args.component) != args.sha:

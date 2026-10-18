@@ -9,6 +9,7 @@ import pytest
 from qsys.ops import reboot_drill_cli as cli
 from qsys.ops.services import ServiceRun
 
+SSH = cli._ssh
 DAY = date(2026, 10, 31)
 HOST = "operator@example.invalid"
 
@@ -72,20 +73,22 @@ def test_force_only_bypasses_monthly_date(monkeypatch, tmp_path):
 def test_dry_run_with_simulated_day_never_reboots(monkeypatch, tmp_path, capsys):
     simulated = date(2026, 10, 30)
     calendar(monkeypatch, drill_day=simulated)
-    monkeypatch.setattr(cli, "probe_windows", lambda *_: {})
-    monkeypatch.setattr(cli, "probe_heartbeats", lambda *_: {})
+    monkeypatch.setattr(cli, "probe_windows", lambda *_, **kw: {})
+    monkeypatch.setattr(cli, "probe_heartbeats", lambda *_, **kw: {})
     assert cli.main(["--dry-run", "--day", simulated.isoformat(),
                      "--service-runs", str(tmp_path)]) == 0
     assert "没有重启" in capsys.readouterr().out
     records = list(tmp_path.rglob("*.json"))
     assert len(records) == 1
     assert "取不到开机时刻" in records[0].read_text()
+    import json
+    assert json.loads(records[0].read_text())["status"] == "skipped"
 
 
 def args():
     return SimpleNamespace(execute=True, dry_run=False, approved_day=DAY,
                            approved_host=HOST, host=HOST, day=None,
-                           key="unused", config="unused")
+                           key="unused", config="unused", known_hosts=None, alert_ledger=None)
 
 
 @pytest.mark.parametrize("response", [
@@ -96,10 +99,10 @@ def args():
 def test_shutdown_failure_stops_without_wait_or_retry(monkeypatch, response):
     ssh = Mock(side_effect=response) if isinstance(response, Exception) else Mock(return_value=response)
     monkeypatch.setattr(cli, "_ssh", ssh)
-    monkeypatch.setattr(cli, "probe_windows", lambda *_: {})
-    monkeypatch.setattr(cli, "probe_heartbeats", lambda *_: {})
+    monkeypatch.setattr(cli, "probe_windows", lambda *_, **kw: {})
+    monkeypatch.setattr(cli, "probe_heartbeats", lambda *_, **kw: {})
     bus = Mock()
-    monkeypatch.setattr(cli, "_alerts", lambda _: bus)
+    monkeypatch.setattr(cli, "_alerts", lambda *_: bus)
     with ServiceRun.open(None, "reboot-drill") as run:
         assert cli._run(args(), DAY, "test", run) == 1
     assert run.status == "failed"
@@ -111,7 +114,7 @@ def test_shutdown_failure_stops_without_wait_or_retry(monkeypatch, response):
 
 
 def test_confirmation_rechecked_after_baseline(monkeypatch):
-    monkeypatch.setattr(cli, "probe_windows", lambda *_: {})
+    monkeypatch.setattr(cli, "probe_windows", lambda *_, **kw: {})
     def cross_midnight(_):
         monkeypatch.setattr(cli, "_today", lambda: date(2026, 11, 1))
         return {}
@@ -123,15 +126,15 @@ def test_confirmation_rechecked_after_baseline(monkeypatch):
 
 
 def test_accepted_shutdown_continues_to_recovery(monkeypatch):
-    monkeypatch.setattr(cli, "probe_windows", lambda *_: {
+    monkeypatch.setattr(cli, "probe_windows", lambda *_, **kw: {
         "boot_seconds_ago": 60, "session_name": "console", "rdp_logons": 0,
         "broker_endpoint": "example.invalid:1"})
-    monkeypatch.setattr(cli, "probe_heartbeats", lambda *_: {"agent_age": 10, "market_age": 10})
+    monkeypatch.setattr(cli, "probe_heartbeats", lambda *_, **kw: {"agent_age": 10, "market_age": 10})
     ssh = Mock(return_value=SimpleNamespace(returncode=0))
     monkeypatch.setattr(cli, "_ssh", ssh)
     cli.time.sleep = Mock()
     bus = Mock()
-    monkeypatch.setattr(cli, "_alerts", lambda _: bus)
+    monkeypatch.setattr(cli, "_alerts", lambda *_: bus)
     with ServiceRun.open(None, "reboot-drill") as run:
         assert cli._run(args(), DAY, "test", run) == 0
     assert run.status == "succeeded"
@@ -143,3 +146,38 @@ def test_accepted_shutdown_continues_to_recovery(monkeypatch):
 def test_legacy_script_uses_same_guarded_entry():
     from scripts import reboot_drill
     assert reboot_drill.main is cli.main
+
+
+def test_ssh_pins_readonly_hosts_and_identity(monkeypatch, tmp_path):
+    subprocess_run = Mock(return_value=SimpleNamespace(returncode=0))
+    monkeypatch.setattr(cli.subprocess, "run", subprocess_run)
+    hosts = tmp_path / "known_hosts"
+    SSH(HOST, tmp_path / "key", "echo up", known_hosts=hosts)
+    command = subprocess_run.call_args.args[0]
+    assert "StrictHostKeyChecking=yes" in command
+    assert "IdentitiesOnly=yes" in command
+    assert "IdentityAgent=none" in command
+    assert f"UserKnownHostsFile={hosts}" in command
+    assert command[-2:] == [HOST, "echo up"]
+    assert subprocess_run.call_args.kwargs["timeout"] == 30
+
+
+def test_custom_paths_reach_baseline_recovery_and_alerts(monkeypatch, tmp_path):
+    calendar(monkeypatch)
+    hosts = tmp_path / "known_hosts"
+    ledger = tmp_path / "alerts"
+    probes = Mock(return_value={"boot_seconds_ago": 60, "session_name": "console",
+                                "rdp_logons": 0, "broker_endpoint": "example.invalid:1"})
+    monkeypatch.setattr(cli, "probe_windows", probes)
+    monkeypatch.setattr(cli, "probe_heartbeats", lambda *_: {"agent_age": 1, "market_age": 1})
+    ssh = Mock(return_value=SimpleNamespace(returncode=0))
+    monkeypatch.setattr(cli, "_ssh", ssh)
+    cli.time.sleep = Mock()
+    alerts = Mock(return_value=Mock())
+    monkeypatch.setattr(cli, "_alerts", alerts)
+    assert cli.main(execution("--known-hosts", str(hosts), "--alert-ledger", str(ledger),
+                              "--service-runs", str(tmp_path / "runs"))) == 0
+    assert probes.call_count == 2
+    assert all(c.kwargs["known_hosts"] == hosts for c in probes.call_args_list)
+    assert all(c.kwargs["known_hosts"] == hosts for c in ssh.call_args_list)
+    assert alerts.call_args.args[1] == ledger

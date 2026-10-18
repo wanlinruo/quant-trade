@@ -129,7 +129,7 @@ seed 与最终 systemd 命令统一来自 `deploy/component-releases.json` 静�
 与已安装副本逐项相同，否则在 stage/activate 前失败关闭。artifact 不能提供路径、命令或新增组件。
 白名单当前允许已投产的 `catalog-verify`，以及待迁移的 `service-checks`、
 `storage-report`、`daily-digest`、`health-observer`、`daily-archive`、`premarket-limits`、
-`tushare-sync`、`backtest-worker`、`web`、`paper`、`shadow-core`、`limit-up-shadow`。新增组件必须先单独升级固定入口与 root-owned 白名单；代码合入本身
+`tushare-sync`、`backtest-worker`、`web`、`paper`、`shadow-core`、`limit-up-shadow`、`reboot-drill`。新增组件必须先单独升级固定入口与 root-owned 白名单；代码合入本身
 不授权生产激活。
 
 通用 installer 在切换前验证 manifest、规格指纹、wheel、源码成员、权限、unit inactive 和 seed；
@@ -351,3 +351,37 @@ uv run python scripts/deployment_contract.py validate-record record.json
 
 记录拒绝密码、token、账户、webhook 等敏感形状的字段。代码发布只能记录迁移摘要，
 不得把数据回滚混入代码回滚。
+
+### Reboot Drill 控制面独立发布边界（#410，代码与契约）
+
+`reboot-drill` 是有生产重启能力的控制面，不能复用隔离研究 Runner。专用制品由 CI
+绑定 exact SHA/tree、wheel hash、组件规格与来源，安装至
+`/opt/qsys/components/reboot-drill/releases/<SHA>`，独立 venv/current；要求固定入口
+v25/component-release-v15 与相同的 root-owned 白名单。制品健康验证只导入/检查入口，
+不能以执行 CLI dry-run 替代：dry-run 仍读取生产日历、SSH 和 Redis。
+
+固定 drop-in 使用 `qsys-reboot-drill` 用户/组、`WorkingDirectory=/`、`UMask=0077`，
+仅可写 `/home/ubuntu/qsys/var/service-runs/reboot-drill` 和
+`/home/ubuntu/qsys/var/alerts/reboot-drill`。共享告警读取器纳入该专属 namespace；
+Web/Digest 的目录遍历与只读 ACL 要在首次生产迁移单独核验。配置与 SSH 目录只读，
+固定 key `/etc/qsys/reboot-drill/windows-reboot`，host keys 为同目录 `known_hosts`。
+SSH 强制 `StrictHostKeyChecking=yes`、`IdentitiesOnly=yes`、`IdentityAgent=none`；
+不学习 host key，不借用个人 agent 身份，不写 known_hosts。
+
+unit 永久只带 `--dry-run`，基线运行记录为 skipped，不冒充演练通过；没有 --force/执行确认参数；这只改变未来获批安装后的
+有效 unit，不改旧基础 unit/timer 或当前生产现场。显式 `--execute` 与当日/目标确认
+仍只用于每次获得维护者明确批准后的节点侧一次性调度；参数不是审批凭据，不能
+永久写入 timer。专用密钥在远端的命令/身份约束须另行核验，本项不改 Windows 配置。
+
+发布必须先在获批维护窗口暂停 timer，保留 enabled/active 原值并确认 service 无执行者。
+固定入口在预检和 staging 后检查 service/timer 的 ActiveState；installer 在切换前再查。
+active/activating/deactivating/未知状态全部拒绝，不能靠 `is-active` 判断 oneshot 空闲。
+发布及失败恢复不 start/stop/restart service 或 timer，不为发布中断演练，也不发 SSH 探针。
+回滚前再次核验空闲；若被人为启动而不再空闲，回滚失败关闭，保留证据与制品供人工处置，
+不得自动停止演练。暂停 timer 排除自动调度竞态；维护期间禁止并发人工启动。
+
+只切换 current/drop-in，保护 Live Core、Paper、Shadow Core、Web 和 backtest worker
+身份连续；回滚为 previous current/drop-in，不回退状态。生产首次安装另行批准账号、
+只读配置/Redis ACL、独立 key/预置 host key、状态和告警读者权限、timer 迁移与恢复策略。
+固定 unit 的 dry-run 探测是否恢复定时调度也须明确裁决，不能把安装成功当演练成功。
+测试环境整体 Web 部署仅提供集成证据，不代表控制面真实激活或故障注入验收。

@@ -547,6 +547,55 @@
         "ReadOnlyPaths=/data/qsys/warehouse /data/qsys/research /home/ubuntu/qsys/config /data/qsys/var-prod/limit-up-drift-reference.json",
         "ExecStart=/usr/bin/flock --shared /home/ubuntu/qsys/var/warehouse-write.lock /opt/qsys/components/limit-up-shadow/current/venv/bin/qsys-limit-up-shadow --warehouse /data/qsys/warehouse --research-run /data/qsys/research/issue-210/run-20261010 --drift-reference /data/qsys/var-prod/limit-up-drift-reference.json --state /data/qsys/var-prod/limit-up-shadow/limit-up-shadow.sqlite3 --service-runs /home/ubuntu/qsys/var/service-runs/limit-up-shadow --config /home/ubuntu/qsys/config/deploy.local.toml"
       ]
+    },
+    "reboot-drill": {
+      "entrypoint": {
+        "command": "qsys-reboot-drill",
+        "target": "qsys.ops.reboot_drill_cli:main"
+      },
+      "scan_roots": [
+        "src/qsys/core",
+        "src/qsys/data",
+        "src/qsys/live",
+        "src/qsys/ops",
+        "src/qsys/paper"
+      ],
+      "release_root": "/opt/qsys/components/reboot-drill/releases",
+      "current": "/opt/qsys/components/reboot-drill/current",
+      "executable": "venv/bin/qsys-reboot-drill",
+      "unit": "qsys-reboot-drill.service",
+      "dropin": "/etc/systemd/system/qsys-reboot-drill.service.d/zz-isolated-release.conf",
+      "state_directories": [
+        {
+          "path": "/home/ubuntu/qsys/var/service-runs/reboot-drill",
+          "owner": "qsys-reboot-drill",
+          "group": "qsys-reboot-drill",
+          "mode": "0750"
+        },
+        {
+          "path": "/home/ubuntu/qsys/var/alerts/reboot-drill",
+          "owner": "qsys-reboot-drill",
+          "group": "qsys-reboot-drill",
+          "mode": "0750"
+        }
+      ],
+      "seed": null,
+      "dropin_lines": [
+        "[Service]",
+        "User=qsys-reboot-drill",
+        "Group=qsys-reboot-drill",
+        "UMask=0077",
+        "WorkingDirectory=/",
+        "ExecStartPre=",
+        "ExecStartPre=/usr/bin/test -s /etc/qsys/reboot-drill/windows-reboot",
+        "ExecStartPre=/usr/bin/test -s /etc/qsys/reboot-drill/known_hosts",
+        "ExecStart=",
+        "ReadWritePaths=",
+        "ReadWritePaths=/home/ubuntu/qsys/var/service-runs/reboot-drill",
+        "ReadWritePaths=/home/ubuntu/qsys/var/alerts/reboot-drill",
+        "ReadOnlyPaths=/home/ubuntu/qsys/config /etc/qsys/reboot-drill",
+        "ExecStart=/opt/qsys/components/reboot-drill/current/venv/bin/qsys-reboot-drill --dry-run --config /home/ubuntu/qsys/config/deploy.local.toml --service-runs /home/ubuntu/qsys/var/service-runs/reboot-drill --alert-ledger /home/ubuntu/qsys/var/alerts/reboot-drill --host Administrator@118.25.42.149 --key /etc/qsys/reboot-drill/windows-reboot --known-hosts /etc/qsys/reboot-drill/known_hosts"
+      ]
     }
   }
 }

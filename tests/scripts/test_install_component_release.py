@@ -152,3 +152,50 @@ def test_generic_installer_rejects_repository_spec_drift(
         )
 
     assert not current.exists()
+
+
+@pytest.mark.parametrize("unit", ["qsys-reboot-drill.service", "qsys-reboot-drill.timer"])
+@pytest.mark.parametrize("state", ["active", "activating", "deactivating", ""])
+def test_reboot_installer_final_idle_gate_prevents_switch(monkeypatch, tmp_path, unit, state):
+    sha = "a" * 40
+    spec, _, current, dropin = _prepare(monkeypatch, tmp_path, sha)
+    spec["unit"] = "qsys-reboot-drill.service"
+    monkeypatch.setattr(installer, "load_component_releases", lambda repo: {"reboot-drill": spec})
+    def probe(command, **kwargs):
+        if "show" in command:
+            value = state if unit in command else "inactive"
+            return subprocess.CompletedProcess(command, 0, value + "\n", "")
+        return subprocess.CompletedProcess(command, 3, "", "")
+    monkeypatch.setattr(installer, "_run", probe)
+    with pytest.raises(ValueError, match="running or unknown"):
+        installer.activate(tmp_path, sha, "reboot-drill")
+    assert not current.exists()
+    assert not dropin.exists()
+
+
+@pytest.mark.parametrize("fail_reload", [False, True])
+def test_reboot_switch_and_restore_never_start_or_stop_units(monkeypatch, tmp_path, fail_reload):
+    sha = "a" * 40
+    spec, release, current, dropin = _prepare(monkeypatch, tmp_path, sha)
+    spec["unit"] = "qsys-reboot-drill.service"
+    monkeypatch.setattr(installer, "load_component_releases", lambda repo: {"reboot-drill": spec})
+    def probe(command, **kwargs):
+        return subprocess.CompletedProcess(command, 0 if "show" in command else 3,
+                                           "inactive\n" if "show" in command else "", "")
+    monkeypatch.setattr(installer, "_run", probe)
+    commands = []
+    def sudo(*command, check=True):
+        commands.append(command)
+        if fail_reload and command == ("systemctl", "daemon-reload") and check:
+            raise subprocess.CalledProcessError(1, command)
+        return _fake_sudo(*command, check=check)
+    monkeypatch.setattr(installer, "_sudo", sudo)
+    if fail_reload:
+        with pytest.raises(subprocess.CalledProcessError):
+            installer.activate(tmp_path, sha, "reboot-drill")
+        assert not current.exists()
+        assert not dropin.exists()
+    else:
+        assert installer.activate(tmp_path, sha, "reboot-drill") == release
+        assert current.resolve() == release
+    assert not any("systemctl" in c and any(v in c for v in ("start", "stop", "restart")) for c in commands)

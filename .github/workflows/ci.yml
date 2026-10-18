@@ -261,6 +261,19 @@ jobs:
           --dist dist --output limit-up-shadow-release
           --repository "$SOURCE_REPOSITORY"
           --run-id "$SOURCE_RUN_ID" --run-attempt "$SOURCE_RUN_ATTEMPT"
+      - name: Build Reboot Drill release manifest
+        if: github.event_name != 'pull_request'
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+          SOURCE_REPOSITORY: ${{ github.repository }}
+          SOURCE_RUN_ID: ${{ github.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: >-
+          python scripts/build_component_release.py build
+          --sha "$SOURCE_SHA" --component reboot-drill
+          --dist dist --output reboot-drill-release
+          --repository "$SOURCE_REPOSITORY"
+          --run-id "$SOURCE_RUN_ID" --run-attempt "$SOURCE_RUN_ATTEMPT"
       - name: Build service checks release manifest
         if: github.event_name != 'pull_request'
         env:
@@ -406,6 +419,14 @@ jobs:
         with:
           name: qsys-limit-up-shadow-${{ github.sha }}
           path: limit-up-shadow-release
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload immutable Reboot Drill release
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: qsys-reboot-drill-${{ github.sha }}
+          path: reboot-drill-release
           if-no-files-found: error
           retention-days: 30
       - name: Upload immutable service checks release

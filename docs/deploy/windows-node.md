@@ -121,8 +121,10 @@ SSH 非零或超时立即失败并告警，不进入恢复等待、不自动重�
 仓库内旧 `qsys-reboot-drill.service` 未增加模式参数，使用新入口时会失败关闭。
 本次未改生产 unit/timer；现场是否已运行新入口必须单独核验，不能声称现网已被保护。
 生产迁移前应单独审批暂停旧 timer，并设计每次审批后的节点侧一次性调度和审计记录。
-独立制品/release、账号、SSH key/known_hosts、最小状态目录与只 stage 不演练的
-部署/回滚仍属 #330 后续范围；本次仅完成包内入口与危险命令门禁。
+#410 已补代码层的专用制品、账号/只读 SSH/独立状态与只切换发布契约，详见
+`docs/reference/deployment-contract.md` 的 Reboot Drill 小节；现场安装与演练仍未执行。
+新入口 SSH 改为严格 host key 检查，不再 accept-new；旧命令依赖已有 known_hosts，
+独立 unit 显式使用预置文件。未知 host key 会失败关闭，必须先离线验真并经批准预置。
 
 ### 排错时先看什么
 
