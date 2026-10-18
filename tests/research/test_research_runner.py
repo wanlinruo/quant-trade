@@ -111,6 +111,20 @@ def test_runner_rejects_test_drill_without_explicit_unit_flag(tmp_path: Path):
     assert "test drill task is disabled" in _status(store, "verify-1")["detail"]
 
 
+def test_monthly_worker_rejects_future_period_and_keeps_failure_resources(tmp_path):
+    store, runner, snapshot, wheel_sha = _rig(tmp_path)
+    store.enqueue(_request(snapshot, wheel_sha, task="auction-timing-study", parameters={
+        "start": "2026-01-01", "end": "2026-10-14", "market_data_facade": "legacy",
+    }))
+    assert runner.run_once()
+    assert _status(store, "verify-1")["state"] == "failed"
+    job = store.root / "jobs" / "verify-1"
+    assert "complete_through" in (job / "run.log").read_text()
+    resources = json.loads((job / "resources.json").read_text())
+    assert resources["exit_code"] != 0
+    assert not (job / "artifacts" / "auction-timing").exists()
+
+
 def test_runner_fails_closed_on_release_or_snapshot_mismatch(tmp_path: Path):
     store, runner, snapshot, wheel_sha = _rig(tmp_path)
     store.enqueue(_request(snapshot, "d" * 64))
