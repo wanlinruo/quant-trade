@@ -19,8 +19,11 @@ from qsys.paper.store import _decode, _encode
 
 
 class LiveStore:
-    def __init__(self, path: str | Path) -> None:
+    def __init__(self, path: str | Path, *, read_only: bool = False) -> None:
         self.path = Path(path)
+        self.read_only = read_only
+        if read_only:
+            return
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as con:
             con.executescript("""
@@ -94,9 +97,10 @@ class LiveStore:
             )
 
     def _connect(self):
-        con = sqlite3.connect(self.path, timeout=30)
+        con = (sqlite3.connect(self.path.resolve().as_uri() + "?mode=ro", uri=True, timeout=30)
+               if self.read_only else sqlite3.connect(self.path, timeout=30))
         con.row_factory = sqlite3.Row
-        con.execute("PRAGMA journal_mode=WAL")
+        con.execute("PRAGMA query_only=ON" if self.read_only else "PRAGMA journal_mode=WAL")
         return con
 
     def exists(self) -> bool:

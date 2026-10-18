@@ -19,7 +19,7 @@ import uvicorn
 
 from qsys.data.storage import Warehouse
 from qsys.ops.journal import SessionJournal
-from qsys.ops.health import HealthStore, HealthStoreReader
+from qsys.ops.health import HealthStoreReader
 from qsys.live.store import LiveStore
 from qsys.web.app import create_app
 from qsys.web.backtest_views import BacktestService
@@ -94,7 +94,7 @@ def build_app(
         journal,
         config=config,
         transport=transport,
-        store=LiveStore(selected_state),
+        store=LiveStore(selected_state.resolve(), read_only=True) if selected_state.is_file() else None,
     )
     trading_calendar = _daily_trading_calendar(tushare_config_path or config_path)
     research_console = None
@@ -133,7 +133,7 @@ def build_app(
                                         "/home/ubuntu/.ssh/id_ed25519_winnode")),
             ),
             health_store=(
-                HealthStore(Path(health_state_path)) if health_state_path else
+                HealthStoreReader((Path(health_state_path),)) if health_state_path else
                 HealthStoreReader((
                     Path("var/health-observer/service-health.sqlite3"),
                     Path("var/service-health.sqlite3"),

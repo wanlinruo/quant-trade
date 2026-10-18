@@ -328,6 +328,16 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from tempfile import TemporaryDirectory
+    from qsys.data.query_budget import query_budget
+
+    with TemporaryDirectory(prefix="qsys-daily-digest-query-") as temporary:
+        with query_budget(memory_limit_mb=256, temp_root=Path(temporary),
+                          max_temp_directory_mb=512, threads=1):
+            return _main(argv)
+
+
+def _main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
 
     calendar = load_trading_calendar(args.config)

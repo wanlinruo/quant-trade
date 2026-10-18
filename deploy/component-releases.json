@@ -84,7 +84,15 @@
         "ExecStart=",
         "ReadWritePaths=",
         "ReadWritePaths=/home/ubuntu/qsys/var/workbench",
-        "ExecStart=/opt/qsys/components/web/current/venv/bin/qsys-web --host 127.0.0.1 --port 8420 --warehouse /home/ubuntu/qsys/warehouse --config /home/ubuntu/qsys/config/deploy.local.toml --workspace /home/ubuntu/qsys/var/workbench --strategies /home/ubuntu/qsys/var/workbench/strategies --runs /home/ubuntu/qsys/var/runs --service-runs /home/ubuntu/qsys/var/service-runs --state /home/ubuntu/qsys/var/shadow-state.sqlite3 --health-state /home/ubuntu/qsys/var/health-observer/service-health.sqlite3 --limit-up-shadow-state /data/qsys/var-prod/limit-up-shadow.sqlite3 --limit-up-research-run /data/qsys/research/issue-210/run-20261010 --tushare-config /home/ubuntu/qsys/config/deploy.local.toml"
+        "ExecStart=/opt/qsys/components/web/current/venv/bin/qsys-web --host 127.0.0.1 --port 8420 --warehouse /home/ubuntu/qsys/warehouse --config /etc/qsys/components/web/deploy.toml --workspace /home/ubuntu/qsys/var/workbench --strategies /home/ubuntu/qsys/var/workbench/strategies --runs /home/ubuntu/qsys/var/runs --service-runs /home/ubuntu/qsys/var/service-runs --state /home/ubuntu/qsys/var/shadow-state.sqlite3 --health-state /home/ubuntu/qsys/var/health-observer/service-health.sqlite3 --limit-up-shadow-state /data/qsys/var-prod/limit-up-shadow.sqlite3 --limit-up-research-run /data/qsys/research/issue-210/run-20261010 --tushare-config /etc/qsys/components/web/deploy.toml",
+        "MemoryMax=2G",
+        "CPUQuota=100%",
+        "Environment=POLARS_MAX_THREADS=1",
+        "Environment=QSYS_QUERY_MEMORY_MB=256",
+        "Environment=QSYS_QUERY_MAX_TEMP_MB=512",
+        "Environment=QSYS_QUERY_THREADS=1",
+        "Environment=QSYS_QUERY_TEMP_ROOT=/tmp/qsys-web-query",
+        "UMask=0007"
       ]
     },
     "paper": {
@@ -431,7 +439,12 @@
         "ExecStart=",
         "ReadWritePaths=",
         "ReadWritePaths=/home/ubuntu/qsys/var/service-runs/daily-digest",
-        "ExecStart=/opt/qsys/components/daily-digest/current/venv/bin/qsys-daily-digest --config /home/ubuntu/qsys/config/deploy.local.toml --service-runs /home/ubuntu/qsys/var/service-runs --record-root /home/ubuntu/qsys/var/service-runs/daily-digest --alert-ledger /home/ubuntu/qsys/var/alerts --shadow-state /home/ubuntu/qsys/var/shadow-state.sqlite3 --live-state /home/ubuntu/qsys/var/live-state.sqlite3 --workbench /home/ubuntu/qsys/var/workbench/workbench.sqlite3 --warehouse /home/ubuntu/qsys/warehouse --storage-base /data/qsys --tls-site wanlinruo.cn --tls-port 8443"
+        "ExecStart=/opt/qsys/components/daily-digest/current/venv/bin/qsys-daily-digest --config /etc/qsys/components/daily-digest/deploy.toml --service-runs /home/ubuntu/qsys/var/service-runs --record-root /home/ubuntu/qsys/var/service-runs/daily-digest --alert-ledger /home/ubuntu/qsys/var/alerts --shadow-state /home/ubuntu/qsys/var/shadow-state.sqlite3 --live-state /home/ubuntu/qsys/var/live-state.sqlite3 --workbench /home/ubuntu/qsys/var/workbench/workbench.sqlite3 --warehouse /home/ubuntu/qsys/warehouse --storage-base /data/qsys --tls-site wanlinruo.cn --tls-port 8443",
+        "MemoryMax=1G",
+        "CPUQuota=50%",
+        "Nice=10",
+        "IOSchedulingClass=idle",
+        "Environment=POLARS_MAX_THREADS=1"
       ]
     },
     "health-observer": {
@@ -476,7 +489,12 @@
         "ReadWritePaths=",
         "ReadWritePaths=/home/ubuntu/qsys/var/health-observer",
         "ReadWritePaths=/home/ubuntu/qsys/var/alerts/health-observer",
-        "ExecStart=/opt/qsys/components/health-observer/current/venv/bin/qsys-health-observer --config /home/ubuntu/qsys/config/deploy.local.toml --service-runs /home/ubuntu/qsys/var/service-runs --state /home/ubuntu/qsys/var/health-observer/service-health.sqlite3 --alert-ledger /home/ubuntu/qsys/var/alerts/health-observer --shadow-state /home/ubuntu/qsys/var/shadow-state.sqlite3 --live-state /home/ubuntu/qsys/var/live-state.sqlite3 --workbench /home/ubuntu/qsys/var/workbench/workbench.sqlite3 --storage-base /data/qsys --tls-site wanlinruo.cn --tls-port 8443"
+        "ExecStart=/opt/qsys/components/health-observer/current/venv/bin/qsys-health-observer --config /etc/qsys/components/health-observer/deploy.toml --service-runs /home/ubuntu/qsys/var/service-runs --state /home/ubuntu/qsys/var/health-observer/service-health.sqlite3 --alert-ledger /home/ubuntu/qsys/var/alerts/health-observer --shadow-state /home/ubuntu/qsys/var/shadow-state.sqlite3 --live-state /home/ubuntu/qsys/var/live-state.sqlite3 --workbench /home/ubuntu/qsys/var/workbench/workbench.sqlite3 --storage-base /data/qsys --tls-site wanlinruo.cn --tls-port 8443",
+        "MemoryMax=1G",
+        "CPUQuota=50%",
+        "Nice=10",
+        "IOSchedulingClass=idle",
+        "Environment=POLARS_MAX_THREADS=1"
       ]
     },
     "storage-report": {

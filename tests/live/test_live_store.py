@@ -8,6 +8,36 @@ from qsys.core.trading import Order, OrderType, Side
 from qsys.core.types import Symbol
 
 
+def test_read_only_store_reads_committed_wal_and_rejects_writes(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "live.sqlite3"
+    writer = LiveStore(path)
+    writer.initialize(AccountSnapshot(at=datetime.now(), cash=50_000.0, positions={}))
+    connection = writer._connect()
+    try:
+        connection.execute("UPDATE live_state SET cash=12345 WHERE id=1")
+        connection.commit()
+        reader = LiveStore(path, read_only=True)
+        assert reader.load()[0].cash == 12345
+        with pytest.raises(sqlite3.OperationalError):
+            reader.set_day_start_value(1, at=datetime.now())
+        assert writer.load()[3] == 50_000.0
+    finally:
+        connection.close()
+
+
+def test_read_only_store_does_not_create_missing_database(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "absent" / "live.sqlite3"
+    reader = LiveStore(path, read_only=True)
+    assert not path.parent.exists()
+    with pytest.raises(sqlite3.OperationalError):
+        reader.load()
+    assert not path.exists()
+
+
 def test_store_initializes_from_broker_and_recovers_state(tmp_path):
     store = LiveStore(tmp_path / "live.sqlite3")
     remote = AccountSnapshot(
