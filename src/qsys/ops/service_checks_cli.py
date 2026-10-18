@@ -6,10 +6,12 @@ import argparse
 from dataclasses import replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import structlog
 
 from qsys.data.query import WarehouseQuery
+from qsys.data.query_budget import query_budget
 from qsys.data.storage import Warehouse
 from qsys.ops.service_checks import (
     BAD,
@@ -96,6 +98,15 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+    # Every warehouse connection shares the established bounded-query context.
+    # PrivateTmp keeps spill files outside both warehouse and shared checkout.
+    with TemporaryDirectory(prefix="qsys-service-checks-query-") as temporary:
+        with query_budget(memory_limit_mb=256, temp_root=Path(temporary),
+                          max_temp_directory_mb=512, threads=1):
+            return _run_checks(args)
+
+
+def _run_checks(args) -> int:
     from qsys.live.config import load_deploy_config
 
     mode = load_deploy_config(args.config).safety.mode
