@@ -133,7 +133,9 @@ def build_app(
                                         "/home/ubuntu/.ssh/id_ed25519_winnode")),
             ),
             health_store=(
-                HealthStoreReader((Path(health_state_path),)) if health_state_path else
+                HealthStoreReader(tuple(dict.fromkeys((
+                    Path(health_state_path), workspace.parent / "service-health.sqlite3",
+                )))) if health_state_path else
                 HealthStoreReader((
                     Path("var/health-observer/service-health.sqlite3"),
                     Path("var/service-health.sqlite3"),

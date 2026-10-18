@@ -44,7 +44,17 @@
         "ReadWritePaths=",
         "ReadWritePaths=/home/ubuntu/qsys/var/workbench",
         "ReadWritePaths=/home/ubuntu/qsys/var/runs",
-        "ExecStart=/opt/qsys/components/backtest-worker/current/venv/bin/qsys-backtest-worker --workspace /home/ubuntu/qsys/var/workbench --warehouse /data/qsys/warehouse --runs /home/ubuntu/qsys/var/runs"
+        "ExecStart=/opt/qsys/components/backtest-worker/current/venv/bin/qsys-backtest-worker --workspace /home/ubuntu/qsys/var/workbench --warehouse /data/qsys/warehouse --runs /home/ubuntu/qsys/var/runs",
+        "MemoryMax=2G",
+        "CPUQuota=50%",
+        "Nice=10",
+        "IOSchedulingClass=idle",
+        "UMask=0007",
+        "Environment=POLARS_MAX_THREADS=1",
+        "Environment=QSYS_QUERY_MEMORY_MB=256",
+        "Environment=QSYS_QUERY_MAX_TEMP_MB=512",
+        "Environment=QSYS_QUERY_THREADS=1",
+        "Environment=QSYS_QUERY_TEMP_ROOT=/tmp/qsys-backtest-query"
       ]
     },
     "web": {
