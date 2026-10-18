@@ -43,3 +43,23 @@ def test_budget_closes_connections_after_failure_and_rejects_invalid_limits(tmp_
         with query_budget(memory_limit_mb=0, temp_root=tmp_path,
                           max_temp_directory_mb=1024, threads=1):
             pass
+
+
+def test_component_environment_limits_are_effective_and_missing_values_fail_closed(tmp_path, monkeypatch):
+    monkeypatch.setenv("QSYS_QUERY_TEMP_ROOT", str(tmp_path / "web-temp"))
+    monkeypatch.setenv("QSYS_QUERY_MEMORY_MB", "64")
+    monkeypatch.setenv("QSYS_QUERY_MAX_TEMP_MB", "128")
+    monkeypatch.setenv("QSYS_QUERY_THREADS", "1")
+    query = WarehouseQuery(Warehouse(tmp_path))
+    try:
+        values = query._con.execute("select current_setting('memory_limit'), "
+            "current_setting('temp_directory'), current_setting('max_temp_directory_size'), "
+            "current_setting('threads')").fetchone()
+        assert values[0] == "64.0 MiB"
+        assert Path(values[1]).parent == tmp_path / "web-temp"
+        assert values[2:] == ("128.0 MiB", 1)
+    finally:
+        query._con.close()
+    monkeypatch.delenv("QSYS_QUERY_MEMORY_MB")
+    with pytest.raises(KeyError):
+        WarehouseQuery(Warehouse(tmp_path))
