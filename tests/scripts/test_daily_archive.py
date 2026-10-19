@@ -5,9 +5,11 @@ from __future__ import annotations
 from argparse import Namespace
 import json
 import sys
-from datetime import date
+from datetime import date, datetime
+from types import SimpleNamespace
 
 import polars as pl
+import pytest
 
 from qsys.data.pipeline.auction import ImportResult
 from qsys.data import schema
@@ -236,3 +238,103 @@ def test_streaming_command_distinguishes_a_stall_from_process_failure():
     )
     assert result.returncode == 125
     assert "没有进度" in result.error
+
+
+# #440：整轮编排保留真实交易日历和候选选择器，外部 I/O 用替身。
+@pytest.mark.parametrize("as_of,closed", [
+    ("2026-10-20T00:45:00", "2026-10-19"),
+    ("2026-10-20T09:00:00", "2026-10-19"),
+    ("2026-10-20T14:59:59", "2026-10-19"),
+    ("2026-10-20T15:00:00", "2026-10-20"),
+    ("2026-10-20T16:00:00", "2026-10-20"),
+    ("2026-10-24T00:45:00", "2026-10-23"),
+])
+def test_archive_only_requests_closed_sessions(monkeypatch, tmp_path, as_of, closed):
+    import pyarrow as pa
+    from qsys.core.calendar import AShareCalendar
+    from qsys.data.storage import Warehouse
+
+    now = datetime.fromisoformat(as_of)
+    last_closed = date.fromisoformat(closed)
+    sessions = [date(2026, 10, d) for d in (16, 19, 20, 21, 22, 23, 26)]
+
+    class Clock:
+        @staticmethod
+        def now():
+            return now
+
+    warehouse = Warehouse(tmp_path / "warehouse")
+    # 每个日子都给一个首板，确保上界错误会产生真实的次日候选。
+    rows = [{"symbol": "600001.SH", "dt": day, "is_first_board": True}
+            for day in sessions]
+    warehouse.write("daily_flags", pa.Table.from_pylist(rows, schema=schema.DAILY_FLAGS),
+                    year=2026)
+    instruments = pl.DataFrame({
+        "symbol": ["600001.SH"], "board": ["main"],
+        "list_date": [date(2020, 1, 1)],
+        "delist_date": pl.Series([None], dtype=pl.Date),
+    })
+    monkeypatch.setattr(daily_archive, "datetime", Clock)
+    monkeypatch.setattr(daily_archive, "load_trading_calendar",
+                        lambda _: AShareCalendar(sessions))
+    monkeypatch.setattr(daily_archive, "load_tushare_config",
+                        lambda _: SimpleNamespace(token="test"))
+    monkeypatch.setattr(daily_archive, "sync_premarket_suspensions",
+                        lambda *a: SimpleNamespace(row_count=0, detail="test", accepted=True))
+    monkeypatch.setattr(daily_archive.WarehouseQuery, "instruments", lambda _: instruments)
+    monkeypatch.setattr(daily_archive, "_paper_fills", lambda _: pl.DataFrame({
+        "account_id": ["test"], "symbol": ["600002.SH"], "side": ["buy"],
+        "qty": [100], "filled_at": ["2026-10-16T09:30:00"],
+    }))
+    # 真实候选/持仓/全市场清单均参与合并；只隔离远端采集与质检发布 I/O。
+    monkeypatch.setattr(daily_archive, "drop_suspended", lambda _, wanted: wanted)
+    captures = {}
+
+    def auction(args, wh, wanted, *unused):
+        captures["auction"] = wanted
+        return True
+
+    def missing(wh, wanted):
+        captures["minute"] = wanted
+        return wanted.clear()
+
+    monkeypatch.setattr(daily_archive, "_archive_auction", auction)
+    monkeypatch.setattr(daily_archive, "missing_stock_days", missing)
+    monkeypatch.setattr(daily_archive, "_check_minute_days", lambda *a: 0)
+    monkeypatch.setattr(daily_archive, "_publish_canonical_minutes",
+                        lambda wh, start, end, run: captures.update(publish=(start, end)))
+    assert daily_archive.main([
+        "--warehouse", str(warehouse.root), "--config", "unused.toml",
+        "--record-root", str(tmp_path / "records"),
+        "--paper-store", str(tmp_path / "absent.sqlite3"),
+    ]) == 0
+    for kind in ("auction", "minute"):
+        days = captures[kind]["dt"].to_list()
+        assert days
+        assert max(days) == last_closed
+        assert all(day <= last_closed for day in days)
+    held_days = captures["minute"].filter(pl.col("symbol") == "600002.SH")["dt"].to_list()
+    assert max(held_days) == last_closed
+    assert captures["publish"][1] == last_closed
+
+
+def test_archive_without_closed_session_skips_all_collection(monkeypatch, tmp_path):
+    from qsys.core.calendar import AShareCalendar
+
+    class Clock:
+        @staticmethod
+        def now():
+            return datetime(2026, 10, 20, 0, 45)
+
+    monkeypatch.setattr(daily_archive, "datetime", Clock)
+    monkeypatch.setattr(daily_archive, "load_trading_calendar",
+                        lambda _: AShareCalendar([date(2026, 10, 20)]))
+    # 没有已收盘交易日时不得访问数据源或创建仓库分区。
+    def unexpected(*args, **kwargs):
+        raise AssertionError("不应采集")
+    monkeypatch.setattr(daily_archive, "load_tushare_config", unexpected)
+    assert daily_archive.main([
+        "--warehouse", str(tmp_path / "warehouse"),
+        "--record-root", str(tmp_path / "records"),
+    ]) == 0
+    assert not (tmp_path / "warehouse").exists()
