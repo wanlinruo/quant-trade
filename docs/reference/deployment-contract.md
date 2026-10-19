@@ -122,6 +122,9 @@ SSH stdin 交给 `component-deploy`；节点拒绝额外文件、路径穿越、
 切换前后各执行一次 `live_preflight --require-live`，同时固定比较 Live Core 的 MainPID、
 单调启动时间和共享生产 checkout SHA。任一字段变化或心跳门禁失败，组件指针回滚；部署
 记录把这些字段放入 `before` / `after`，workflow 再做一次独立断言。
+该部署门禁要求 agent 明确上报停机闸布尔状态，但允许停机闸保持生效，以免故障期间必须先
+恢复交易才能发布修复；交易激活与 commissioning 必须额外使用
+`--require-kill-released`，且既有运行时停机闸不会被发布流程修改。
 
 组件名、console entrypoint、扫描根、release/current 路径、可执行文件、unit/drop-in、状态目录、
 seed 与最终 systemd 命令统一来自 `deploy/component-releases.json` 静态白名单。固定生产入口安装时

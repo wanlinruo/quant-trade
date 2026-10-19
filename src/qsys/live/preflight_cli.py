@@ -35,8 +35,21 @@ def heartbeat_freshness(
     return -1 <= age <= down_after, age, down_after
 
 
-def agent_live_posture(beat: Heartbeat | None) -> tuple[tuple[bool, str], ...]:
-    """Effective Windows-side write protections reported by the agent itself."""
+def agent_live_posture(
+    beat: Heartbeat | None, *, require_kill_released: bool = False,
+) -> tuple[tuple[bool, str], ...]:
+    """Effective Windows posture, optionally requiring the local kill to be clear."""
+    kill_reported = beat is not None and beat.local_kill_engaged is not None
+    if require_kill_released:
+        kill_check = beat is not None and beat.local_kill_engaged is False
+        kill_label = "Windows agent 本地停机闸未生效"
+    else:
+        kill_check = kill_reported
+        state = (
+            "未知" if not kill_reported
+            else ("已生效" if beat.local_kill_engaged else "未生效")
+        )
+        kill_label = f"Windows agent 本地停机闸状态已上报（{state}）"
     return (
         (beat is not None and beat.trading_mode == "live",
          "Windows agent trading_mode=live"),
@@ -44,8 +57,7 @@ def agent_live_posture(beat: Heartbeat | None) -> tuple[tuple[bool, str], ...]:
          "Windows agent orders_enabled=true"),
         (beat is not None and beat.account_protected is True,
          "Windows agent 当前账号在白名单"),
-        (beat is not None and beat.local_kill_engaged is False,
-         "Windows agent 本地停机闸未生效"),
+        (kill_check, kill_label),
     )
 
 
@@ -55,7 +67,13 @@ def main() -> int:
     parser.add_argument("--strategy", default="strategies/structural_v1_2.py")
     parser.add_argument("--warehouse", default="warehouse")
     parser.add_argument("--require-live", action="store_true")
+    parser.add_argument(
+        "--require-kill-released", action="store_true",
+        help="require the Windows agent local kill to be clear before trading activation",
+    )
     args = parser.parse_args()
+    if args.require_kill_released and not args.require_live:
+        parser.error("--require-kill-released requires --require-live")
 
     cfg = load_deploy_config(args.config)
     checks: list[tuple[bool, str]] = []
@@ -95,7 +113,9 @@ def main() -> int:
         checks.append((fresh,
                        f"{source} 心跳新鲜度 {age:.1f}s（阈值 {threshold:.1f}s）"))
         if args.require_live and source == "agent":
-            checks.extend(agent_live_posture(beat))
+            checks.extend(agent_live_posture(
+                beat, require_kill_released=args.require_kill_released,
+            ))
 
     for ok, label in checks:
         print(f"[{'PASS' if ok else 'FAIL'}] {label}")
