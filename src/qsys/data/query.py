@@ -1009,6 +1009,28 @@ class WarehouseQuery:
             "corporate_actions", schema.CORPORATE_ACTIONS, symbols
         )
 
+    def adj_factor_ratios(self, start: date, end: date) -> pl.DataFrame:
+        """Return only the requested ratios, retaining the true previous observation.
+
+        The lower date predicate must stay outside the window: a security may
+        have no factor observation for months before resuming trading.
+        """
+        if start > end:
+            raise ValueError("start must not be after end")
+        glob = self._glob("adj_factors", partitioned=False)
+        if glob is None:
+            return pl.DataFrame(schema={"symbol": pl.String, "dt": pl.Date,
+                                        "daily_factor": pl.Float64})
+        return self._con.execute(f"""
+            SELECT symbol, dt, daily_factor FROM (
+                SELECT symbol, dt,
+                       cum_factor / lag(cum_factor) OVER (
+                           PARTITION BY symbol ORDER BY dt
+                       ) AS daily_factor
+                FROM {_read(glob)} WHERE dt <= ?
+            ) WHERE dt BETWEEN ? AND ? ORDER BY symbol, dt
+        """, [end, start, end]).pl()
+
     def adj_factors(
         self,
         symbols: Sequence[str] | None = None,

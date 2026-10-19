@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from dataclasses import dataclass
 from pathlib import Path
 
 import polars as pl
@@ -32,10 +33,34 @@ from qsys.data.pipeline.canonical_reference import (
     name_interval_issues,
     reconcile_frames,
     reference_reconciliation,
+    require_calendar_coverage,
 )
 from qsys.data.pipeline.canonical_state import state_reconciliation
 from qsys.data.query import WarehouseQuery
+from qsys.data.query_budget import connect_warehouse_query
 from qsys.data.storage import Warehouse
+
+
+def refresh_session_health(warehouse: Warehouse, day: date, config: str) -> dict[str, HealthStatus]:
+    """Refresh the 12 supported canonical tables for one real trading day.
+
+    Other tables retain missing evidence. This does not publish business data,
+    change cutover switches, or extend the existing evidence TTL.
+    """
+    from qsys.data.providers.tushare import TushareProvider
+    from qsys.data.providers.tushare_client import TushareClient
+    from qsys.live.config import load_tushare_config
+
+    raw = TushareProvider(TushareClient(load_tushare_config(config).token)).trade_cal(
+        day, day, exchange="SSE"
+    )
+    require_calendar_coverage(raw, day, day, market="SSE")
+    # The canonical generator iterates only actual open sessions for minutes.
+    from qsys.data.pipeline.canonical_reference import normalize_trading_calendar
+    calendar = normalize_trading_calendar(raw, market="SSE")
+    if calendar.filter(pl.col("is_open")).height != 1:
+        raise ValueError(f"{day} is not a confirmed trading day")
+    return generate_cutover_health(warehouse, day, day, raw)
 
 
 _STATUS_ORDER = {
@@ -44,6 +69,44 @@ _STATUS_ORDER = {
     HealthStatus.GRAY: 2,
     HealthStatus.RED: 3,
 }
+
+
+@dataclass(frozen=True)
+class ReconciliationCounts:
+    left_rows: int
+    right_rows: int
+    left_only_count: int
+    right_only_count: int
+    mismatch_count: int
+
+    @property
+    def matches(self) -> bool:
+        return not (self.left_only_count or self.right_only_count or self.mismatch_count)
+
+
+def _minute_reconciliation(source: pl.DataFrame, target: pl.DataFrame) -> ReconciliationCounts:
+    """Aggregate one partition with the configured DuckDB spill/memory budget.
+
+    No per-row Python dictionaries or full-history minute temporary tables.
+    Null versus a real value is a mismatch, including rows present on one side.
+    """
+    connection = connect_warehouse_query()
+    try:
+        connection.register("health_source", source.to_arrow())
+        connection.register("health_target", target.to_arrow())
+        columns = [column for column in source.columns if column not in ("symbol", "ts")]
+        different = " OR ".join(f's."{c}" IS DISTINCT FROM t."{c}"' for c in columns)
+        counts = connection.execute(f"""
+            SELECT count(*) FILTER (WHERE s.present AND t.present IS NULL),
+                   count(*) FILTER (WHERE t.present AND s.present IS NULL),
+                   count(*) FILTER (WHERE s.present AND t.present AND ({different}))
+            FROM (SELECT *, true AS present FROM health_source) s
+            FULL OUTER JOIN (SELECT *, true AS present FROM health_target) t
+            ON s.symbol IS NOT DISTINCT FROM t.symbol AND s.ts IS NOT DISTINCT FROM t.ts
+        """).fetchone()
+        return ReconciliationCounts(source.height, target.height, *counts)
+    finally:
+        connection.close()
 
 
 def _combine_evidence(items: list[HealthEvidence]) -> HealthEvidence:
@@ -71,7 +134,7 @@ def _combine_evidence(items: list[HealthEvidence]) -> HealthEvidence:
 
 def _reconciliation_evidence(
     dataset: str,
-    result: Reconciliation,
+    result: Reconciliation | ReconciliationCounts,
     observed_at: datetime,
     *,
     validity_warning: str | None = None,
@@ -80,9 +143,13 @@ def _reconciliation_evidence(
     if policy is None:
         raise ValueError(f"{dataset} 没有健康策略")
     expires_at = observed_at + policy.evidence_ttl if policy.evidence_ttl else None
-    violations = (
-        len(result.left_only) + len(result.right_only) + len(result.mismatched)
-    )
+    if isinstance(result, ReconciliationCounts):
+        left_only, right_only, mismatched = (
+            result.left_only_count, result.right_only_count, result.mismatch_count)
+    else:
+        left_only, right_only, mismatched = (
+            len(result.left_only), len(result.right_only), len(result.mismatched))
+    violations = left_only + right_only + mismatched
     if not result.matches:
         validity = lineage = HealthStatus.RED
     else:
@@ -90,8 +157,8 @@ def _reconciliation_evidence(
         lineage = HealthStatus.GREEN
     comparison = (
         f"source/target={result.left_rows}/{result.right_rows}; "
-        f"source_only={len(result.left_only)}; target_only={len(result.right_only)}; "
-        f"mismatched={len(result.mismatched)}"
+        f"source_only={left_only}; target_only={right_only}; "
+        f"mismatched={mismatched}"
     )
     validity_detail = f"{comparison}; {validity_warning}" if validity_warning else comparison
     return (
@@ -297,7 +364,7 @@ def generate_cutover_health(
         )
 
     minute_contract: list[HealthEvidence] = []
-    minute_diffs: list[Reconciliation] = []
+    minute_diffs: list[ReconciliationCounts] = []
     nonstandard = 0
     calendar = query.trading_calendar(start, end, market=market, open_only=True)
     for day in calendar["dt"].to_list():
@@ -305,7 +372,7 @@ def generate_cutover_health(
         hi = datetime.combine(day, datetime.max.time())
         source = canonical_minute_frame(warehouse, day)
         target = query.bar_minute_1m(None, lo, hi)
-        minute_diffs.append(reconcile_frames(source, target, ("symbol", "ts")))
+        minute_diffs.append(_minute_reconciliation(source, target))
         minute_contract.extend(check_table_contract("bar_minute_1m", target, now))
         nonstandard += target.group_by("symbol").len().filter(
             ~pl.col("len").is_in([240, 241])
@@ -316,12 +383,12 @@ def generate_cutover_health(
         ])
         for dimension in (HealthDimension.STRUCTURE, HealthDimension.COMPLETENESS)
     }
-    minute_diff = Reconciliation(
+    minute_diff = ReconciliationCounts(
         sum(item.left_rows for item in minute_diffs),
         sum(item.right_rows for item in minute_diffs),
-        tuple(key for item in minute_diffs for key in item.left_only),
-        tuple(key for item in minute_diffs for key in item.right_only),
-        tuple(key for item in minute_diffs for key in item.mismatched),
+        sum(item.left_only_count for item in minute_diffs),
+        sum(item.right_only_count for item in minute_diffs),
+        sum(item.mismatch_count for item in minute_diffs),
     )
     warning = f"非 240/241 根的标的日 {nonstandard} 个，需保留审阅" if nonstandard else None
     minute_evidence = (

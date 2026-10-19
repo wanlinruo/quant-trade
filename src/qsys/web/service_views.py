@@ -129,9 +129,12 @@ class Cell:
     checks: list[dict] = ()
     health: dict | None = None
     service_id: str | None = None
+    execution: dict | None = None
 
     @property
     def label(self) -> str:
+        if self.execution is not None:
+            return "启动/执行失败"
         if self.health is not None:
             return {
                 HEALTHY: "当前正常",
@@ -148,7 +151,7 @@ class Cell:
         acceptance cells only have a service-check run.  The route therefore
         has to use the run's start date instead of the board column date.
         """
-        if self.health is not None and self.service_id:
+        if (self.health is not None or self.execution is not None) and self.service_id:
             return f"/services/{self.service_id}"
         if self.runs:
             run = self.runs[-1]
@@ -269,6 +272,7 @@ class ServiceConsole:
         rows = []
         for spec in specs:
             mine = [r for r in runs if r.get("service") == spec.id]
+            failure = self.execution_failure(spec.id) if spec.kind == "timer" else None
             cells = []
             for day in columns:
                 today_runs = [r for r in mine if _run_session(r) == day.isoformat()]
@@ -277,7 +281,11 @@ class ServiceConsole:
                     self._cell_state(spec, day, today_runs, trading, first_record, now),
                     found, resident=spec.kind == "resident",
                 )
-                cells.append(Cell(day, state, today_runs, found))
+                execution = failure if failure and failure["failed_at"].date() == day else None
+                if execution is not None:
+                    state = "bad"
+                cells.append(Cell(day, state, today_runs, found,
+                                  service_id=spec.id, execution=execution))
             rows.append((spec, cells))
         return columns, rows, trading is not None
 
@@ -378,6 +386,45 @@ class ServiceConsole:
                 "%Y-%m-%d %H:%M:%S"
             ),
         }
+
+    def execution_failure(self, service: str) -> dict | None:
+        """Read a task's actual failed attempt without inventing a ServiceRun."""
+        spec = SERVICE_BY_ID[service]
+        if spec.kind != "timer" or not spec.unit:
+            return None
+        if self._health_store is not None:
+            observation = self.service_health(service)
+            if observation is None:
+                return None
+            now = self._now()
+            if now.tzinfo is None:
+                now = now.replace(tzinfo=SHANGHAI)
+            age = now.astimezone(timezone.utc) - observation["observed_at_utc"]
+            if not timedelta(0) <= age <= self._health_store.checkpoint_interval + timedelta(minutes=2):
+                return None
+            raw = (observation.get("details") or {}).get("systemd_execution", {})
+        else:
+            raw = self._systemd(f"{spec.unit}.service")
+        if raw.get("Result") in (None, "", "success"):
+            return None
+        stamp = raw.get("ExecMainExitTimestamp", "")
+        try:
+            # systemd prints e.g. Mon 2026-10-19 15:41:59 CST.
+            moment = datetime.fromisoformat(stamp)
+        except ValueError:
+            try:
+                moment = datetime.fromisoformat(" ".join(stamp.split()[1:3]))
+            except ValueError:
+                return None
+        if moment.tzinfo is not None:
+            moment = moment.astimezone(SHANGHAI).replace(tzinfo=None)
+        now = self._now()
+        if now.tzinfo is not None:
+            now = now.astimezone(SHANGHAI).replace(tzinfo=None)
+        if moment > now:
+            return None
+        return {"failed_at": moment, "result": raw["Result"],
+                "exit_status": raw.get("ExecMainStatus"), "source": "systemd"}
 
     # ---- 进程状态 ----
 

@@ -363,3 +363,14 @@ def test_a_failed_answer_is_retried_well_before_the_full_interval(monkeypatch):
     assert len(calls) == 2
     from qsys.ops.health_observer_cli import TASK_CACHE_SECONDS, TASK_RETRY_SECONDS
     assert TASK_RETRY_SECONDS < TASK_CACHE_SECONDS
+
+
+def test_observer_retains_only_readonly_execution_facts_for_timer():
+    item = row('daily-archive', 'bad')
+    item['last_exit'] = {'Result': 'exit-code', 'ExecMainStatus': '226',
+        'ExecMainExitTimestamp': 'Mon 2026-10-19 15:41:59 CST',
+        'ExecStart': 'must not persist command or config'}
+    observed = observation(item, datetime(2026, 10, 19, 16), MORNING)
+    assert observed.details['systemd_execution'] == {
+        'Result': 'exit-code', 'ExecMainStatus': '226',
+        'ExecMainExitTimestamp': 'Mon 2026-10-19 15:41:59 CST'}

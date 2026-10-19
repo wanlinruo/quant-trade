@@ -383,3 +383,15 @@ def test_bar_minute_1m_sources_on_empty_warehouse_returns_empty_frame_with_colum
     got = WarehouseQuery(warehouse).bar_minute_1m_sources()
     assert got.height == 0
     assert got.columns == ["source"]
+
+
+def test_factor_ratios_keep_predecessor_outside_requested_window_and_nulls(warehouse):
+    frame = pl.DataFrame({'symbol': ['A', 'A', 'B', 'B'],
+        'dt': [date(2025,1,1), date(2026,9,17), date(2025,1,1), date(2026,9,17)],
+        'cum_factor': [2.0, 3.0, None, 4.0],
+        'cum_share_factor': [1.0, 1.0, 1.0, 1.0]})
+    warehouse.write('adj_factors', frame.to_arrow().cast(schema.ADJ_FACTORS))
+    result = WarehouseQuery(warehouse).adj_factor_ratios(date(2026,9,17), date(2026,9,17))
+    assert result.height == 2
+    assert result.filter(pl.col('symbol')=='A')['daily_factor'][0] == 1.5
+    assert result.filter(pl.col('symbol')=='B')['daily_factor'][0] is None

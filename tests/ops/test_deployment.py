@@ -1252,10 +1252,10 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
 
     state = entrypoint.status({"production_repo": str(tmp_path)})
 
-    assert state["entrypoint_version"] == 28
+    assert state["entrypoint_version"] == 29
     assert set(state["capabilities"]) == {
         "systemd-apply-v1", "systemd-component-boundary-v1", "systemd-changed-artifacts-v1",
-        "systemd-preview-v1", "systemd-rollback-v1",
+        "systemd-preview-v1", "systemd-runtime-paths-v1", "systemd-rollback-v1",
         "release-checklist-v1", "controlled-failure-injection-v1",
         "successful-release-index-v1",
         "windows-baseline-plan-v1",
@@ -2076,7 +2076,8 @@ def _fake_systemd_run(command, *, cwd, check=True):
     if command[:2] == ["systemctl", "is-active"]:
         return subprocess.CompletedProcess(command, 0, "active\n", "")
     if command[:2] == ["systemctl", "show"]:
-        value = "loaded\n" if "--property=LoadState" in command else "simple\n"
+        value = ("" if "--property=ReadWritePaths" in command else
+                 "loaded\n" if "--property=LoadState" in command else "simple\n")
         return subprocess.CompletedProcess(command, 0, value, "")
     return subprocess.CompletedProcess(command, 0, "", "")
 
@@ -2749,3 +2750,65 @@ def test_component_web_readiness_retries_and_times_out(monkeypatch, ready_after)
     assert entrypoint._wait_for_web_healthy({}, timeout_seconds=5) is (ready_after is not None)
     assert probes == ([0.0] if ready_after == 0 else list(range(4 if ready_after == 3 else 6)))
     assert clock[0] <= 5
+
+
+def test_systemd_apply_prepares_archive_before_loading_inactive_oneshot(monkeypatch, tmp_path):
+    entrypoint = _production_entrypoint_module()
+    source = tmp_path / 'source.service'
+    source.write_text('[Service]\nType=oneshot\nExecStart=/bin/true\n')
+    unit_root = tmp_path / 'etc'
+    target = unit_root / 'qsys-daily-archive.service'
+    work = tmp_path / 'var' / 'daily-archive'
+    records = tmp_path / 'var' / 'service-runs' / 'daily-archive'
+    records.parent.mkdir(parents=True)
+    monkeypatch.setattr(entrypoint, 'SYSTEMD_UNIT_ROOT', unit_root)
+    monkeypatch.setattr(entrypoint, 'SYSTEMD_RUNTIME_DIRECTORIES', {target.name: (work, records)})
+    monkeypatch.setattr(entrypoint, 'COMPONENT_RELEASES', {})
+    monkeypatch.setattr(entrypoint, '_systemd_artifacts', lambda *a: {target: source})
+    monkeypatch.setattr(entrypoint, '_active', lambda *a: False)
+    monkeypatch.setattr(entrypoint, '_enabled', lambda *a: False)
+    def run(command, *, cwd, check=True):
+        if command[:4] == ['sudo', '-n', 'install', '-d']:
+            Path(command[-1]).mkdir()
+        if command[:4] == ['sudo', '-n', 'systemctl', 'daemon-reload']:
+            assert work.is_dir() and records.is_dir()
+        if '--property=ReadWritePaths' in command:
+            return subprocess.CompletedProcess(command, 0, f'{work} {records}', '')
+        return _fake_systemd_run(command, cwd=cwd, check=check)
+    monkeypatch.setattr(entrypoint, '_run', run)
+    result, _ = entrypoint._apply_systemd(
+        {'production_record_root': str(tmp_path / 'records' / 'github')},
+        tmp_path, 'archive-paths', ['deploy/systemd/qsys-daily-archive.service'])
+    assert result['status'] == 'passed'
+
+
+def test_systemd_runtime_rejects_missing_required_path_even_for_inactive_service(monkeypatch, tmp_path):
+    entrypoint = _production_entrypoint_module()
+    missing = tmp_path / 'missing'
+    monkeypatch.setattr(entrypoint, '_run', lambda command, **kw:
+        subprocess.CompletedProcess(command, 0, str(missing), ''))
+    with pytest.raises(ValueError, match='required writable path missing'):
+        entrypoint._verify_systemd_runtime('qsys-example.service', tmp_path)
+    monkeypatch.setattr(entrypoint, '_run', lambda command, **kw:
+        subprocess.CompletedProcess(command, 0, '-' + str(missing), ''))
+    entrypoint._verify_systemd_runtime('qsys-example.service', tmp_path)
+
+
+def test_systemd_runtime_preparation_refuses_redirected_parent(monkeypatch, tmp_path):
+    entrypoint = _production_entrypoint_module()
+    outside = tmp_path / 'outside'
+    outside.mkdir()
+    link = tmp_path / 'link'
+    link.symlink_to(outside, target_is_directory=True)
+    target = tmp_path / 'qsys-daily-archive.service'
+    monkeypatch.setattr(entrypoint, 'SYSTEMD_UNIT_ROOT', tmp_path)
+    monkeypatch.setattr(entrypoint, 'COMPONENT_RELEASES', {})
+    monkeypatch.setattr(entrypoint, 'SYSTEMD_RUNTIME_DIRECTORIES', {target.name: (link / 'work',)})
+    with pytest.raises(ValueError, match='symlink'):
+        entrypoint._prepare_systemd_runtime({target: Path('source')}, tmp_path)
+    assert not (outside / 'work').exists()
+
+
+def test_production_workflow_requires_runtime_path_capability():
+    workflow = Path('.github/workflows/deploy-production-linux.yml').read_text()
+    assert '"systemd-runtime-paths-v1"' in workflow

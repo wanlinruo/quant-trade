@@ -124,8 +124,9 @@ def _source_label(metric_id: str) -> str:
 
 
 class CatalogService:
-    def __init__(self, warehouse: Warehouse) -> None:
+    def __init__(self, warehouse: Warehouse, *, sample_root: Path | None = None) -> None:
         self._query = WarehouseQuery(warehouse)
+        self._sample_root = (sample_root or Path("artifacts/metric_checks")).resolve()
 
     def _latest(self) -> dict[str, list[dict]]:
         frame = self._query.latest_metric_checks()
@@ -265,11 +266,16 @@ class CatalogService:
             ),
         )
 
-    @staticmethod
-    def sample_bytes(path: str) -> tuple[bytes, str] | None:
+    def sample_bytes(self, path: str) -> tuple[bytes, str] | None:
         """只允许下载 ``artifacts/metric_checks`` 内的规则样本。"""
-        root = Path("artifacts/metric_checks").resolve()
-        target = Path(path).resolve()
+        root = self._sample_root
+        target = Path(path)
+        if not target.is_absolute():
+            try:
+                target = root / target.relative_to("artifacts/metric_checks")
+            except ValueError:
+                return None
+        target = target.resolve()
         if not target.is_file() or root not in target.parents:
             return None
         return target.read_bytes(), "application/octet-stream"

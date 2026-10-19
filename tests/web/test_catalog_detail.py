@@ -117,3 +117,18 @@ def test_sample_route_downloads_only_allowed_artifact(warehouse, tmp_path, monke
     assert client.get(
         "/data/catalog/sample", params={"path": str(tmp_path / "outside")}
     ).status_code == 404
+
+
+def test_isolated_web_reads_existing_samples_independently_of_cwd(warehouse, tmp_path, monkeypatch):
+    root = tmp_path / 'checkout' / 'artifacts' / 'metric_checks'
+    root.mkdir(parents=True)
+    (root / 'sample.parquet').write_bytes(b'PAR1sample')
+    secret = tmp_path / 'secret'
+    secret.write_bytes(b'private')
+    (root / 'redirect.parquet').symlink_to(secret)
+    monkeypatch.chdir(tmp_path)
+    service = CatalogService(warehouse, sample_root=root)
+    assert service.sample_bytes('artifacts/metric_checks/sample.parquet')[0] == b'PAR1sample'
+    assert service.sample_bytes(str(root / 'sample.parquet'))[0] == b'PAR1sample'
+    assert service.sample_bytes('artifacts/metric_checks/../../secret') is None
+    assert service.sample_bytes(str(root / 'redirect.parquet')) is None

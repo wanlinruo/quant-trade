@@ -321,3 +321,17 @@ def test_a_pool_row_announced_later_does_not_override_yet(ctx, warehouse):
     _delisting([{"symbol": "301139.SZ", "dt": D[0], "ann_date": D[1]}], warehouse)
     assert _run(ctx, "A2.recompute.is_st")["passed"] is True
     assert _run(ctx, "A2.recompute.st_source")["passed"] is True
+
+
+def test_regime_batch_reuses_small_result_but_next_run_recomputes(ctx, monkeypatch, tmp_path):
+    calls = []
+    def compute(context):
+        calls.append((context.start, context.end))
+        return pl.DataFrame({'dt': [D[0]], 'limit_up_count': [len(calls)],
+                             'limit_down_count': [0]})
+    monkeypatch.setattr(rules_recompute, '_compute_expected_regime', compute)
+    checks = [C.CHECKS[name] for name in ('A2.recompute.limit_up_count', 'A2.recompute.limit_down_count')]
+    C.run_checks(ctx, 'first', NOW, only=checks, artifacts=tmp_path)
+    assert len(calls) == 1
+    C.run_checks(ctx, 'second', NOW, only=checks, artifacts=tmp_path)
+    assert len(calls) == 2

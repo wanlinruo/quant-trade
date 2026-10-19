@@ -111,7 +111,8 @@ def build_app(
         config,
         DataService(warehouse),
         BacktestService(runs_root),
-        CatalogService(warehouse),
+        CatalogService(warehouse, sample_root=(service_runs_dir or Path("var/service-runs"))
+                       .resolve().parent.parent / "artifacts/metric_checks"),
         workbench, strategies_path or Path("strategies"), paper,
         MarketService(
             warehouse, transport, snapshot_key=market_snapshot_key,

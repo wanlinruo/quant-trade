@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import importlib
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from enum import StrEnum
 from pathlib import Path
@@ -42,6 +42,7 @@ class CheckContext:
     warehouse: Warehouse
     start: date
     end: date
+    cache: dict[str, pl.DataFrame] = field(default_factory=dict, compare=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,6 +109,9 @@ def run_checks(
         check for check in CHECKS.values()
         if scope is None or check.scope is scope
     ]
+    # Cache only small derived check results within this immutable batch.
+    # A subsequent run must observe new inputs even when the caller reuses ctx.
+    ctx = replace(ctx, cache={})
     root = Path(artifacts) if artifacts is not None else _ARTIFACTS
     rows: list[dict[str, object]] = []
 

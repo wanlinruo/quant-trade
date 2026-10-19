@@ -216,6 +216,12 @@ def observation(
         ):
             state, reason = business.state, business.reason_code
     details = {"host": spec.host}
+    if row.get("last_exit"):
+        details["systemd_execution"] = {
+            key: value for key, value in row["last_exit"].items()
+            if key in {"ActiveState", "SubState", "Result", "ExecMainStatus",
+                       "ExecMainStartTimestamp", "ExecMainExitTimestamp"}
+        }
     heartbeat = row.get("heartbeat") or {}
     if heartbeat.get("activity") is not None:
         details["heartbeat_activity"] = {
