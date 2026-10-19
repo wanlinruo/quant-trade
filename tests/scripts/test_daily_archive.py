@@ -92,18 +92,38 @@ def test_full_market_stock_days_respect_board_and_listing_boundaries():
         "symbol": ["600001.SH", "300001.SZ", "920001.BJ", "200001.SZ"],
         "board": ["main", "gem", "bse", "b_share"],
         "list_date": [date(2026, 9, 15), date(2026, 9, 17), None, None],
-        "delist_date": [None, None, date(2026, 9, 16), None],
+        "delist_date": [None, None, date(2026, 9, 17), None],
     })
     got = daily_archive._full_market_stock_days(
         instruments,
         [date(2026, 9, 16), date(2026, 9, 17)],
         {"main", "gem", "bse"},
     )
+    # 920001.BJ 在 delist_date（9-17）当天不交易，不进分钟采集清单。
     assert got.rows() == [
         ("600001.SH", date(2026, 9, 16)),
         ("920001.BJ", date(2026, 9, 16)),
         ("300001.SZ", date(2026, 9, 17)),
         ("600001.SH", date(2026, 9, 17)),
+    ]
+
+
+def test_delist_day_is_excluded_from_minute_manifest():
+    """2026-10-19 现场：601059/601198 当日退市，QMT 空结果曾被判为未知空。"""
+    instruments = pl.DataFrame({
+        "symbol": ["601059.SH", "601198.SH", "600000.SH"],
+        "board": ["main", "main", "main"],
+        "list_date": [date(2023, 2, 1), date(2015, 2, 26), None],
+        "delist_date": [date(2026, 10, 19), date(2026, 10, 19), None],
+    })
+    got = daily_archive._full_market_stock_days(
+        instruments, [date(2026, 10, 16), date(2026, 10, 19)], {"main"},
+    )
+    assert got.rows() == [
+        ("600000.SH", date(2026, 10, 16)),
+        ("601059.SH", date(2026, 10, 16)),
+        ("601198.SH", date(2026, 10, 16)),
+        ("600000.SH", date(2026, 10, 19)),
     ]
 
 

@@ -1,5 +1,10 @@
 # 参考资料
 
+## `delist-date-trading.md`
+
+2026-10-19 探针：Tushare `delist_date` 当天及之后都没有日线，因此每日归档的分钟采集清单不再
+请求退市日当天的数据。`alive_on` 的闭区间语义和其他消费者不在这次修复范围内。
+
 ## `component-acceptance-matrix.md`
 
 #330 的 14 组件分层验收矩阵、证据口径及 #414 storage-report 试点；生产迁移审阅包见

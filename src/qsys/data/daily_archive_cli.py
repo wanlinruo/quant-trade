@@ -247,10 +247,16 @@ def _full_market_stock_days(
     sessions: list[date],
     boards: set[str],
 ) -> pl.DataFrame:
-    """按上市/退市边界生成全市场应采的股票日。"""
+    """按上市/退市边界生成全市场应采的股票日。
+
+    退市日当天不再交易：2026-10-19 探针核对 340 只有日线的退市股，Tushare
+    日线在 ``delist_date`` 当天及之后均无行（见 docs/reference/delist-date-trading.md）。
+    ``alive_on`` 的闭区间语义另有消费者，这里只收窄分钟采集清单。
+    """
     frames = [
         alive_on(instruments, day)
         .filter(pl.col("board").is_in(list(boards)))
+        .filter(pl.col("delist_date").is_null() | (pl.col("delist_date") > day))
         .select("symbol")
         .with_columns(pl.lit(day, dtype=pl.Date).alias("dt"))
         for day in sessions
