@@ -37,7 +37,8 @@
 2. 先武装 lease，等 agent 心跳明确报告 commissioning lease active，再停止
    `qsys-live-core`。顺序不能颠倒，否则 agent 会在 lease 生效前因 core 失联落闸。
 3. 等 core 心跳超过 10 秒，确认 agent 仍报告 live / orders enabled / account protected /
-   local kill false / commissioning lease active；执行 `live_preflight --require-live`，必须全绿。
+   local kill false / commissioning lease active；执行
+   `live_preflight --require-live --require-kill-released`，必须全绿。
 4. 用 `commissioning_quote.py` 读取实时盘口，以卖一附近、且不超过保护带的 0.001 元档位
    提交 100 份限价买单。只执行一次。
 5. 核对 qsys 与券商端委托号、`order_remark`、成交号、数量、均价；账户快照必须显示
