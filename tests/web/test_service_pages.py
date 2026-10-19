@@ -621,3 +621,51 @@ def test_fundamental_detail_names_tushare_not_only_qmt(tmp_path, warehouse):
     """spec §5.1 的预期是基本面来自 Tushare Pro。一跳只能看到 QMT·capital。"""
     body = client(tmp_path / "runs", warehouse).get("/data/domains/fundamental").text
     assert "Tushare Pro·daily_basic" in body
+
+
+def test_timer_failure_is_visible_before_due_without_inventing_a_run(tmp_path, warehouse):
+    failure = {'Result': 'exit-code', 'ExecMainStatus': '226',
+               'ExecMainExitTimestamp': 'Thu 2026-09-17 15:41:59 CST'}
+    c = ServiceConsole(tmp_path, calendar=lambda: AShareCalendar(SESSIONS),
+                       systemd=lambda unit: failure if unit == 'qsys-daily-archive.service' else {},
+                       now=lambda: datetime(2026, 9, 17, 16))
+    _, rows, _ = c.board()
+    cell = next(cells[0] for spec, cells in rows if spec.id == 'daily-archive')
+    assert cell.state == 'bad' and cell.label == '启动/执行失败'
+    assert cell.runs == [] and cell.detail_url == '/services/daily-archive'
+    assert c.recent_runs('daily-archive') == []
+    config = WebConfig()
+    http = TestClient(create_app(MonitorService(SessionJournal(warehouse), config=config),
+                                config, services=c))
+    page = http.get('/services/daily-archive')
+    assert 'NAMESPACE' in page.text and '226' in page.text
+    assert '2026-09-17 15:41:59' in page.text
+    assert '启动/执行失败' in http.get('/services').text
+
+
+def test_yesterdays_failure_does_not_mark_today_failed_and_success_clears_it(tmp_path):
+    raw = {'Result': 'exit-code', 'ExecMainStatus': '226',
+           'ExecMainExitTimestamp': 'Wed 2026-09-16 15:41:59 CST'}
+    c = ServiceConsole(tmp_path, systemd=lambda unit: raw,
+                       now=lambda: datetime(2026, 9, 17, 16))
+    assert states(c.board(), 'daily-archive')[date(2026, 9, 17)] != 'bad'
+    raw['Result'] = 'success'
+    assert c.execution_failure('daily-archive') is None
+
+
+def test_timer_failure_uses_fresh_observer_without_systemd_calls(tmp_path):
+    store = HealthStore(tmp_path / 'health.sqlite3')
+    now = datetime(2026, 9, 17, 16, tzinfo=SHANGHAI)
+    store.record(HealthObservation(
+        service_id='daily-archive', observed_at_utc=now, phase=MORNING,
+        expected_interval_s=30, warn_after_s=60, down_after_s=90,
+        state=DOWN, process_state=DOWN, business_state='unknown',
+        reason_code='process_inactive', source='systemd', details={
+            'systemd_execution': {'Result': 'exit-code', 'ExecMainStatus': '226',
+                'ExecMainExitTimestamp': 'Thu 2026-09-17 15:41:59 CST'}}))
+    def forbidden(unit):
+        raise AssertionError('Web must read local observer data')
+    c = ServiceConsole(tmp_path / 'runs', health_store=store, systemd=forbidden, now=lambda: now)
+    assert c.execution_failure('daily-archive')['exit_status'] == '226'
+    c._now = lambda: now + timedelta(minutes=8)
+    assert c.execution_failure('daily-archive') is None

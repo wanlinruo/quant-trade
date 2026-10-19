@@ -7,6 +7,7 @@ from datetime import date, datetime
 
 from qsys.data import catalog_verify_cli as catalog_verify
 from qsys.data.catalog.verification import VerificationSummary
+from qsys.data.catalog.health import HealthStatus
 
 DAY = date(2026, 9, 17)
 
@@ -21,6 +22,8 @@ class _Calendar:
 
 def _argv(monkeypatch, warehouse, runs):
     monkeypatch.setattr(catalog_verify, "load_trading_calendar", lambda config: _Calendar())
+    monkeypatch.setattr(catalog_verify, "refresh_session_health",
+                        lambda wh, day, config: {"bar_daily": HealthStatus.GREEN})
     monkeypatch.setattr("sys.argv", [
         "catalog_verify.py", "--warehouse", str(warehouse.root),
         "--service-runs", str(runs), "--day", DAY.isoformat(),
@@ -33,7 +36,7 @@ def _record(runs):
 
 def test_verification_is_recorded_as_its_own_run(monkeypatch, tmp_path, warehouse):
     summary = VerificationSummary(DAY, "r", 364, 0, 7, ("C3.span_gaps",))
-    monkeypatch.setattr(catalog_verify, "verify_session", lambda wh, day: summary)
+    monkeypatch.setattr(catalog_verify, "verify_session", lambda wh, day, **kw: summary)
     runs = tmp_path / "runs"
     _argv(monkeypatch, warehouse, runs)
 
@@ -63,10 +66,41 @@ def test_verification_is_skipped_while_the_sync_is_still_running(
         "status": "running", "steps": [],
     }), encoding="utf-8")
     called = []
-    monkeypatch.setattr(catalog_verify, "verify_session", lambda wh, day: called.append(day))
+    monkeypatch.setattr(catalog_verify, "verify_session", lambda wh, day, **kw: called.append(day))
     _argv(monkeypatch, warehouse, runs)
 
     assert catalog_verify.main() == 0
     assert called == []
     step = _record(runs)["steps"][1]
     assert step["status"] == "skipped" and "同步仍在运行" in step["detail"]
+
+
+def test_table_health_is_a_separate_step_and_red_fails_the_task(monkeypatch, tmp_path, warehouse):
+    runs = tmp_path / 'runs'
+    _argv(monkeypatch, warehouse, runs)
+    monkeypatch.setattr(catalog_verify, 'verify_session',
+                        lambda wh, day, **kw: VerificationSummary(DAY, 'r', 2, 0, 0, ()))
+    monkeypatch.setattr(catalog_verify, 'refresh_session_health',
+                        lambda wh, day, config: {'bar_daily': HealthStatus.RED})
+    assert catalog_verify.main() == 1
+    record = _record(runs)
+    assert record['status'] == 'failed'
+    assert record['steps'][-1]['name'] == '表级五维健康'
+    assert record['steps'][-1]['status'] == 'failed'
+    assert record['steps'][-1]['rows'] == 1
+    assert '未覆盖表继续缺证据' in record['steps'][-1]['detail']
+
+
+def test_table_health_exception_is_recorded_without_refreshing_old_evidence(monkeypatch, tmp_path, warehouse):
+    import pytest
+    runs = tmp_path / 'runs'
+    _argv(monkeypatch, warehouse, runs)
+    monkeypatch.setattr(catalog_verify, 'verify_session',
+                        lambda wh, day, **kw: VerificationSummary(DAY, 'r', 2, 0, 0, ()))
+    def fail(*args):
+        raise RuntimeError('calendar unavailable')
+    monkeypatch.setattr(catalog_verify, 'refresh_session_health', fail)
+    with pytest.raises(RuntimeError, match='calendar unavailable'):
+        catalog_verify.main()
+    assert _record(runs)['status'] == 'failed'
+    assert not (warehouse.root / 'dataset_checks').exists()

@@ -305,6 +305,7 @@ def create_app(
             request=request, name="service_detail.html",
             context={"title": config.title, "session": None, "page": "services_detail",
                      "spec": spec, "run": None, "recent": console.recent_runs(service_id),
+                     "execution_failure": console.execution_failure(service_id),
                      "health": console.service_health(service_id)},
         )
 

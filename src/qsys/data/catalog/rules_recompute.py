@@ -316,6 +316,13 @@ _add(
 # ---- market_regime：从日线、flags、因子和指数重新聚合 -----------------
 
 def _expected_regime(ctx: CheckContext) -> pl.DataFrame:
+    key = "A2.expected_regime"
+    if key not in ctx.cache:
+        ctx.cache[key] = _compute_expected_regime(ctx)
+    return ctx.cache[key]
+
+
+def _compute_expected_regime(ctx: CheckContext) -> pl.DataFrame:
     start = ctx.start - timedelta(days=40)
     bars = ctx.query.tushare_daily(
         None, start, ctx.end,
@@ -332,12 +339,8 @@ def _expected_regime(ctx: CheckContext) -> pl.DataFrame:
     joined = joined.with_columns(
         pl.col("is_limit_up").shift(1).over("symbol").alias("was_limit_up")
     )
-    factors = ctx.query.adj_factors()
-    if factors.height:
-        ratios = factors.sort(["symbol", "dt"]).with_columns(
-            (pl.col("cum_factor") / pl.col("cum_factor").shift(1).over("symbol"))
-            .alias("daily_factor")
-        ).select("symbol", "dt", "daily_factor")
+    ratios = ctx.query.adj_factor_ratios(start, ctx.end)
+    if ratios.height:
         joined = joined.join(ratios, on=["symbol", "dt"], how="left")
         ret = (pl.col("close") / pl.col("prev_close")
                * pl.col("daily_factor").fill_null(1.0) - 1).round(12)

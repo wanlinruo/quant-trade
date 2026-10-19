@@ -4,6 +4,15 @@
 <div class="page-head"><div><h2>{{ spec.name }}</h2>
 <p class="muted">{{ spec.purpose }}</p></div><a class="button secondary" href="/services">← 服务管理</a></div>
 
+{% if execution_failure %}
+<div class="card">
+  <h2 class="error">启动/执行失败</h2>
+  <p>失败时间 {{ execution_failure.failed_at }}；systemd 结果 {{ execution_failure.result }}；退出码 {{ execution_failure.exit_status or "未知" }}。</p>
+  {% if execution_failure.exit_status == "226" %}<p class="error">systemd 文件系统隔离准备失败（NAMESPACE）；具体路径需核对节点日志。</p>{% endif %}
+  <p class="muted">来源：{{ execution_failure.source }}。这是服务执行状态，不是任务运行记录；脚本开始前失败可能没有运行明细。</p>
+</div>
+{% endif %}
+
 {% if run %}
 {% if run.effective_status == "running" %}<script>setTimeout(() => location.reload(), 10000);</script>{% endif %}
 <div class="card">

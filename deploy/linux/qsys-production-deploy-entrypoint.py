@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import stat
 import subprocess
@@ -35,12 +36,13 @@ ALLOWED_WINDOWS_COMPONENTS = frozenset({
     "windows-agent", "windows-gateway", "windows-control",
 })
 WINDOWS_COORDINATOR_PATH = "deploy/linux/qsys-windows-deploy-coordinator.py"
-ENTRYPOINT_VERSION = 28
+ENTRYPOINT_VERSION = 29
 ENTRYPOINT_CAPABILITIES = (
     "systemd-apply-v1",
     "systemd-component-boundary-v1",
     "systemd-changed-artifacts-v1",
     "systemd-preview-v1",
+    "systemd-runtime-paths-v1",
     "systemd-rollback-v1",
     "release-checklist-v1",
     "controlled-failure-injection-v1",
@@ -144,6 +146,15 @@ ALLOWED_UNITS = frozenset({
 SYSTEMD_SOURCE_ROOT = Path("deploy/systemd")
 SYSTEMD_UNIT_ROOT = Path("/etc/systemd/system")
 QSYS_ETC_ROOT = Path("/etc/qsys")
+# Only these legacy task directories may be provisioned by the platform.
+# Component-owned releases prepare their own state via the component installer.
+SYSTEMD_RUNTIME_DIRECTORIES = {
+    "qsys-catalog-verify.service": (Path("/data/qsys/catalog-verify-state"),),
+    "qsys-daily-archive.service": (
+        Path("/home/ubuntu/qsys/var/daily-archive"),
+        Path("/home/ubuntu/qsys/var/service-runs/daily-archive"),
+    ),
+}
 # These are repository templates, not canonical production artifacts.  The two
 # strategy-core units are deliberately customized for the site's user and
 # checkout path after copying; the web-test unit belongs only to test.
@@ -926,6 +937,42 @@ def _systemd_restart_units(artifacts: dict[Path, Path | None]) -> list[str]:
     return sorted(units)
 
 
+def _prepare_systemd_runtime(artifacts: dict[Path, Path | None], repo: Path) -> None:
+    for unit, directories in SYSTEMD_RUNTIME_DIRECTORIES.items():
+        if artifacts.get(SYSTEMD_UNIT_ROOT / unit) is None:
+            continue
+        component = COMPONENT_RELEASES.get(unit.removeprefix("qsys-").removesuffix(".service"))
+        if component and Path(component["dropin"]).exists():
+            continue
+        for directory in directories:
+            # Refuse redirected parents; do not chown existing state or follow
+            # a symlink into a different component's namespace.
+            if any(parent.is_symlink() for parent in (directory, *directory.parents)):
+                raise ValueError(f"runtime directory contains symlink: {directory}")
+            if not directory.exists():
+                if not directory.parent.is_dir():
+                    raise ValueError(f"runtime parent is missing: {directory.parent}")
+                _run(["sudo", "-n", "install", "-d", "-o", "ubuntu", "-g", "ubuntu",
+                      "-m", "0755", str(directory)], cwd=repo)
+            if not directory.is_dir():
+                raise ValueError(f"runtime path is not a directory: {directory}")
+            for access in ("-O", "-w", "-x"):
+                _run(["sudo", "-n", "-u", "ubuntu", "test", access, str(directory)], cwd=repo)
+
+
+def _verify_systemd_runtime(unit: str, repo: Path) -> None:
+    if not unit.endswith(".service"):
+        return
+    raw = _run(["systemctl", "show", unit, "--property=ReadWritePaths", "--value"],
+               cwd=repo).stdout.strip()
+    for value in shlex.split(raw):
+        if value.startswith("-"):
+            continue  # systemd explicitly permits this path to be absent.
+        path = Path(value.removeprefix("+"))
+        if not path.is_absolute() or not path.exists():
+            raise ValueError(f"systemd required writable path missing: {unit}: {value}")
+
+
 def _preview_systemd(
     repo: Path, target: str, changed_paths: list[str],
 ) -> dict[str, list[str]]:
@@ -1020,6 +1067,7 @@ def _verify_systemd_artifacts(
     if installed_units:
         _run(["systemd-analyze", "verify", *installed_units], cwd=repo)
     for unit in units:
+        _verify_systemd_runtime(unit, repo)
         load_state = _run(
             ["systemctl", "show", unit, "--property=LoadState", "--value"],
             cwd=repo, check=False,
@@ -1117,6 +1165,7 @@ def _apply_systemd(
         config, run_id, artifacts, active, enabled,
     )
     try:
+        _prepare_systemd_runtime(artifacts, repo)
         for target, source in artifacts.items():
             if source is None:
                 _run(["sudo", "-n", "rm", "-f", "--", str(target)], cwd=repo)
@@ -1126,6 +1175,8 @@ def _apply_systemd(
                     "-m", "0644", str(source), str(target),
                 ], cwd=repo)
         _run(["sudo", "-n", "systemctl", "daemon-reload"], cwd=repo)
+        for unit in units:
+            _verify_systemd_runtime(unit, repo)
         _restart_previously_active(units, active, repo)
         for unit in units:
             if (

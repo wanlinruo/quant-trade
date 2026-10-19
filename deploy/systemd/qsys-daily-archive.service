@@ -29,6 +29,8 @@ ProtectHome=read-only
 # 少了这一行，ProtectSystem=strict 会让归档在第一次写入时失败。
 ReadWritePaths=/data/qsys/warehouse
 ReadWritePaths=/home/ubuntu/qsys/var/warehouse-write.lock
+# The platform provisions these two directories before loading this unit;
+# systemd resolves ReadWritePaths before any ExecStartPre or Python code runs.
 ReadWritePaths=/home/ubuntu/qsys/var/daily-archive
 ReadWritePaths=/home/ubuntu/qsys/var/service-runs/daily-archive
 

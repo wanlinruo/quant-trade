@@ -24,7 +24,7 @@ log = structlog.get_logger(__name__)
 TIMEOUT = 5.0
 
 _SHOW_PROPS = ("ActiveState", "SubState", "Result", "ExecMainStatus",
-               "ExecMainExitTimestamp", "ActiveEnterTimestamp",
+               "ExecMainExitTimestamp", "ExecMainStartTimestamp", "ActiveEnterTimestamp",
                "NextElapseUSecRealtime", "LastTriggerUSec")
 
 Runner = Callable[[list[str]], "subprocess.CompletedProcess[str]"]
