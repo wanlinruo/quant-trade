@@ -183,6 +183,9 @@ class QuoteRequest(Message):
 class MarketQuote(BaseModel):
     symbol: str
     at: datetime
+    # 网关完成本次按需请求的时间，不是交易所行情事实。调用方用它区分
+    # “刚请求到的集合竞价最终快照”和“传输链路里滞留的旧响应”。
+    received_at: datetime | None = None
     price: float
     open: float
     high: float

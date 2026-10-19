@@ -87,6 +87,18 @@ def test_live_runtime_executes_event_once_and_recovers(warehouse, tmp_path):
     assert runtime.journal.sessions() == [date.today()]
 
 
+def test_each_event_discards_the_previous_protected_price_quote(warehouse, tmp_path):
+    runtime, _ = _runtime_with_store(warehouse, tmp_path)
+    runtime._latest_quotes["600036.SH"] = MarketQuote(
+        symbol="600036.SH", at=datetime.now(), price=10, open=10, high=10,
+        low=10, prev_close=10, bid1=9.99, ask1=10.01,
+    )
+
+    runtime.tick(datetime.combine(date.today(), time(9, 15, 10)))
+
+    assert runtime._latest_quotes == {}
+
+
 def test_live_runtime_honors_explicit_canonical_facade(
     warehouse, tmp_path, monkeypatch
 ):
@@ -227,6 +239,31 @@ def test_failed_event_stays_visible_when_retry_window_expires(
     assert row[0] == "failed" and "行情响应积压" in row[1]
     run = store.strategy_runs(day)[-1]
     assert run["error"] == "行情响应积压"
+
+
+def test_retried_event_notifies_only_on_the_first_failure(
+    warehouse, tmp_path, monkeypatch
+):
+    from qsys.ops.alerts import AlertBus, RecordingAlertSink
+    from qsys.ops.notify import StrategyNotifier
+
+    runtime, _ = _runtime_with_store(warehouse, tmp_path)
+    runtime.schedule.checkpoint("10:30")
+    sink = RecordingAlertSink()
+    runtime.alerts = AlertBus([sink])
+    runtime.notifier = StrategyNotifier(runtime.alerts, "实盘")
+
+    def boom(ctx, at):
+        raise RuntimeError("行情响应积压")
+
+    monkeypatch.setattr(runtime.strategy, "on_checkpoint", boom)
+    day = date.today()
+    for second in (1, 3, 5):
+        with pytest.raises(RuntimeError, match="行情响应积压"):
+            runtime.tick(datetime.combine(day, time(10, 30, second)))
+
+    assert len(sink.alerts) == 1
+    assert sink.alerts[0].title == "实盘｜checkpoint 出错"
 
 
 def test_an_expired_event_leaves_a_run_row(warehouse, tmp_path):

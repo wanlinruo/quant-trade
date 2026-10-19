@@ -82,7 +82,13 @@ class QuoteClient:
     def _unwrap(snapshot: QuoteSnapshot) -> dict[str, MarketQuote]:
         if snapshot.error:
             raise QuoteUnavailable(f"QMT 行情错误: {snapshot.error}")
-        return snapshot.quotes
+        # ``at`` 是交易所源时间；集合竞价结束后的最终一笔会停在 09:25:00，
+        # 不能拿它判断这次请求本身是否新鲜。把响应发布时间作为传输元数据随
+        # quote 带回，定价层仍会分别校验源时间与响应时间。
+        return {
+            symbol: quote.model_copy(update={"received_at": snapshot.published_at})
+            for symbol, quote in snapshot.quotes.items()
+        }
 
 
 class MarketGateway:

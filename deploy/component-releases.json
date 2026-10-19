@@ -90,6 +90,7 @@
         "[Service]",
         "User=qsys-web",
         "Group=qsys-workbench",
+        "SupplementaryGroups=qsys-web",
         "WorkingDirectory=/",
         "Environment=QSYS_WINDOWS_SSH_KEY=/etc/qsys/web/windows-task-readonly",
         "ExecStart=",

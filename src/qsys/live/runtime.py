@@ -24,7 +24,7 @@ from qsys.live.heartbeat import CoreHeartbeatPublisher, HeartbeatMonitor
 from qsys.live.kill_switch import KillSwitch
 from qsys.live.live_broker import LiveBroker
 from qsys.live.messages import AccountSnapshot, MarketQuote
-from qsys.live.pricing import protected_limit_price
+from qsys.live.pricing import QuoteError, protected_limit_price
 from qsys.live.reconcile import reconcile_positions
 from qsys.live.risk import RiskContext, default_ashare_gate
 from qsys.live.shadow_broker import ShadowBroker
@@ -385,6 +385,7 @@ class LiveRuntime:
                     key, moment, phase, expired, datetime.now(),
                     orders=0, rejects=0,
                     error=failure or "策略事件超过执行宽限",
+                    notify=not failure,
                 )
                 continue
             self._run_event(key, moment, phase, skip_strategy=late)
@@ -400,6 +401,10 @@ class LiveRuntime:
         self._event_orders.clear()
         self._event_fills.clear()
         self._event_rejects.clear()
+        # 每个事件（包括宽限期内的重试）都重新向网关取行情。保护价缓存若跨
+        # 事件保留，上一轮的 received_at 会让新请求语义失真，也可能把早先
+        # 的盘口用于后续委托。
+        self._latest_quotes.clear()
         try:
             if phase is Phase.SESSION_START:
                 self.turnover_today = 0.0
@@ -466,7 +471,7 @@ class LiveRuntime:
             # independent heartbeat has already engaged the remote kill, but
             # this local guard makes the event result fail closed as well.
             self._assert_event_within_sla(key)
-            orders = self._flush(api, key, moment)
+            orders = self._flush(api, key, moment, phase=phase)
             self._assert_event_within_sla(key)
             rejects = self._record_results()
             if phase is Phase.SESSION_END:
@@ -510,6 +515,11 @@ class LiveRuntime:
                 orders=orders, rejects=rejects, error="",
             )
         except Exception as exc:
+            previous_failure = self.store.event_detail(key)
+            repeated_failure = previous_failure == str(exc) or (
+                isinstance(exc, QuoteError)
+                and previous_failure.startswith(f"{exc.code}:")
+            )
             try:
                 self.store.record_event_failure(key, str(exc))
             except Exception as store_exc:
@@ -520,6 +530,7 @@ class LiveRuntime:
             self._record_run(
                 key, moment, phase, report, started,
                 orders=0, rejects=0, error=str(exc),
+                notify=not repeated_failure,
             )
             raise
         finally:
@@ -560,6 +571,7 @@ class LiveRuntime:
         orders: int,
         rejects: int,
         error: str,
+        notify: bool = True,
     ) -> None:
         """写运行记录；记录失败只能告警，不能影响交易。"""
         try:
@@ -582,17 +594,28 @@ class LiveRuntime:
                 error=error,
             )
             self.store.record_run(record)
-            self.notifier.on_run(record, self._trade_context(phase, record))
+            if notify:
+                self.notifier.on_run(record, self._trade_context(phase, record))
         except Exception as exc:
             log.warning("strategy_run.record_failed", event_key=key, error=str(exc))
 
-    def _flush(self, api: OrderApi, event_key: str, moment: datetime) -> int:
+    def _flush(
+        self, api: OrderApi, event_key: str, moment: datetime,
+        *, phase: Phase | None = None,
+    ) -> int:
         orders = []
         for intent in api.drain():
             quote = self._quote(intent.symbol)
             protected = protected_limit_price(
                 quote, intent.side, limits=self._limits.on(moment.date()).get(str(intent.symbol)),
                 now=datetime.now(),
+                source_not_before=(
+                    datetime.combine(moment.date(), time(9, 25))
+                    if (
+                        phase is Phase.AUCTION
+                        and time(9, 25) <= moment.time() < time(9, 30)
+                    ) else None
+                ),
             )
             if intent.limit_price is not None:
                 protected = (
