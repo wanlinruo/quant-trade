@@ -14,7 +14,8 @@ Actions Summary 和节点 record 都包含这个关联键。旧的交互式 SSH 
 - 节点位于干净 `main`，固定入口能力版本满足 workflow；
 - 配置只写脱敏 fingerprint，磁盘至少 5 GiB、可用内存至少 512 MiB；
 - 当前版本存在成功 production record，可作为 rollback target；
-- 交易日 08:45–15:40 禁止重启，确认短语不能绕过；
+- 交易日 08:45–15:40 默认禁止重启，确认短语不能绕过；维护者针对具体紧急修复明确授权
+  交易时段发布时，可使用下述精确授权例外；
 - Linux unit、Windows 任务、进程、心跳和 watchdog 在切换后验证。
 - Windows 计划以每个应用实际 `DEPLOYED_SHA` 为基线分别计算后取并集，不得借用 Linux SHA；
   两个节点或两个 Windows 应用暂时版本不同时仍能生成准确计划。
@@ -25,6 +26,23 @@ Actions Summary 和节点 record 都包含这个关联键。旧的交互式 SSH 
 
 每次先用相同 target 和 release ID 执行 dry-run，再执行正式发布。故障注入只接受
 `drill-*` release ID 和 `DRILL_ROLLBACK`，普通发布无法启用。
+
+### 维护者明确授权的紧急发布
+
+仅 Linux 标准发布入口支持此例外，不改变生产停机闸、资金上限或交易恢复权限。
+维护者必须明确授权本次交易时段发布；常规确认短语不能建立该授权。安装到工作树外的
+入口须来自已合并、CI 与测试部署成功的精确 main SHA，安装前保存旧入口与哈希。
+
+通过维护者管理通道在 `/etc/qsys/emergency-restart-authorization.json` 安装 root-owned、
+非软链接、group/other 不可写的 JSON。字段必须精确为 `schema_version=1`、
+`confirmation="ALLOW_EMERGENCY_RESTART"`、`target_sha`、`run_id`（含 `-linux`）、
+`actor`、`repository`、`authorized_at`、`expires_at` 和非空 `reason`；时间含时区，
+有效期最多两小时，并精确绑定一次发布目标和运行标识。故障注入不能使用此例外。
+
+随后仍运行标准 dry-run 和正式 workflow，来源、测试证据、配置、资源、回滚和健康门禁
+全部保留。dry-run 显示原始 `restart_allowed=false` 与授权；正式 record 的
+`restart-window` check 如实记录显式例外和完整授权。发布后将授权文件归档到本次审计目录，
+移除活动授权；不要把恢复交易与代码发布混为一个操作。
 
 ## 固定跨节点顺序
 

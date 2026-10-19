@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 CONFIG_PATH = Path("/etc/qsys/production-deployment-entrypoint.json")
+EMERGENCY_RESTART_AUTHORIZATION = Path("/etc/qsys/emergency-restart-authorization.json")
 COMPONENT_RELEASE_CONFIG_PATH = Path("/etc/qsys/component-releases.json")
 SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
@@ -34,7 +35,7 @@ ALLOWED_WINDOWS_COMPONENTS = frozenset({
     "windows-agent", "windows-gateway", "windows-control",
 })
 WINDOWS_COORDINATOR_PATH = "deploy/linux/qsys-windows-deploy-coordinator.py"
-ENTRYPOINT_VERSION = 27
+ENTRYPOINT_VERSION = 28
 ENTRYPOINT_CAPABILITIES = (
     "systemd-apply-v1",
     "systemd-component-boundary-v1",
@@ -65,6 +66,7 @@ ENTRYPOINT_CAPABILITIES = (
     "component-release-v14",
     "component-release-v15",
     "component-web-readiness-v1",
+    "emergency-restart-authorization-v1",
 )
 FAILURE_POINTS = frozenset({"none", "linux-health", "windows-switch"})
 GENERIC_COMPONENT_INSTALLER = "scripts/install_component_release.py"
@@ -298,6 +300,48 @@ print(json.dumps({
     return value
 
 
+def _emergency_restart_authorization(args: argparse.Namespace) -> dict[str, Any] | None:
+    """Accept only a root-installed, short-lived approval for this exact release."""
+    try:
+        fd = os.open(EMERGENCY_RESTART_AUTHORIZATION, os.O_RDONLY | os.O_NOFOLLOW)
+    except FileNotFoundError:
+        return None
+    with os.fdopen(fd, "r", encoding="utf-8") as stream:
+        info = os.fstat(stream.fileno())
+        if (
+            not stat.S_ISREG(info.st_mode) or info.st_uid != 0
+            or info.st_mode & 0o022 or info.st_size > 8192
+        ):
+            raise ValueError("emergency restart authorization must be a bounded root-owned file")
+        value = json.load(stream)
+    fields = {
+        "schema_version", "confirmation", "target_sha", "run_id", "actor",
+        "repository", "authorized_at", "expires_at", "reason",
+    }
+    if not isinstance(value, dict) or set(value) != fields:
+        raise ValueError("invalid emergency restart authorization fields")
+    if (
+        value["schema_version"] != 1
+        or value["confirmation"] != "ALLOW_EMERGENCY_RESTART"
+        or value["target_sha"] != args.sha or value["run_id"] != args.run_id
+        or value["actor"] != args.actor or value["repository"] != args.repository
+        or args.failure_point != "none"
+        or not isinstance(value["reason"], str) or not value["reason"].strip()
+        or len(value["reason"]) > 1000
+    ):
+        raise ValueError("emergency restart authorization does not match this release")
+    authorized = datetime.fromisoformat(value["authorized_at"])
+    expires = datetime.fromisoformat(value["expires_at"])
+    now = datetime.now(UTC)
+    if (
+        authorized.tzinfo is None or expires.tzinfo is None
+        or not authorized <= now < expires
+        or not timedelta(0) < expires - authorized <= timedelta(hours=2)
+    ):
+        raise ValueError("emergency restart authorization is expired or exceeds two hours")
+    return value
+
+
 def _resources(config: dict[str, object]) -> dict[str, object]:
     disk = shutil.disk_usage(Path(str(config["production_record_root"])).parent)
     fields: dict[str, int] = {}
@@ -329,6 +373,7 @@ def _rollback_ready(config: dict[str, object], sha: str) -> bool:
 def _checklist_checks(
     restart_window: dict[str, object], resources: dict[str, object],
     rollback_ready: bool, test_run: str, *, needs_rollback: bool,
+    restart_authorization: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
     return [
         {
@@ -337,10 +382,13 @@ def _checklist_checks(
         },
         {
             "name": "restart-window",
-            "status": "passed" if restart_window["restart_allowed"] else "failed",
+            "status": "passed" if restart_window["restart_allowed"] or restart_authorization else "failed",
             "detail": (
                 f"checked_at={restart_window['checked_at']}; "
                 f"trading_day={str(restart_window['trading_day']).lower()}"
+                f"; restart_allowed={str(restart_window['restart_allowed']).lower()}"
+                + ("; explicit emergency exception=" + json.dumps(restart_authorization, ensure_ascii=False)
+                   if restart_authorization else "")
             ),
         },
         {
@@ -1435,6 +1483,8 @@ def deploy(args: argparse.Namespace, config: dict[str, object]) -> int:
         raise ValueError("actor contains unsupported characters")
     if not REPOSITORY_PATTERN.fullmatch(args.repository):
         raise ValueError("repository must be owner/name")
+    if (Path(str(config["production_record_root"])) / args.run_id).exists():
+        raise ValueError("production deployment run-id already exists")
     _validate_drill(args, expected="linux-health")
     repo = Path(str(config["production_repo"])).resolve(strict=True)
     if _branch(repo) != "main" or _dirty(repo):
@@ -1447,6 +1497,10 @@ def deploy(args: argparse.Namespace, config: dict[str, object]) -> int:
     units = sorted(set(plan["linux_units"]) & ALLOWED_UNITS)
     active_units = [unit for unit in units if _active(unit, repo)]
     restart_window = _restart_window(repo)
+    restart_authorization = (
+        _emergency_restart_authorization(args)
+        if not restart_window["restart_allowed"] else None
+    )
     resources = _resources(config)
     rollback_ready = _rollback_ready(config, before)
     systemd_preview = (
@@ -1460,13 +1514,14 @@ def deploy(args: argparse.Namespace, config: dict[str, object]) -> int:
         "inactive_units": sorted(set(units) - set(active_units)),
         "health_checks": plan["health_checks"], "rollback_sha": before,
         "restart_window": restart_window, "resources": resources,
+        "emergency_restart_authorization": restart_authorization,
         "rollback_ready": rollback_ready,
         **({"systemd": systemd_preview} if systemd_preview is not None else {}),
     }
     if args.dry_run:
         print(json.dumps(preview, ensure_ascii=False))
         return 0
-    if active_units and not restart_window["restart_allowed"]:
+    if active_units and not restart_window["restart_allowed"] and not restart_authorization:
         raise ValueError("production restart is prohibited during the trading window")
     if not resources["ok"]:
         raise ValueError("production node lacks minimum disk or memory headroom")
@@ -1477,6 +1532,7 @@ def deploy(args: argparse.Namespace, config: dict[str, object]) -> int:
     checks = _checklist_checks(
         restart_window, resources, rollback_ready, test_run,
         needs_rollback=before != args.sha,
+        restart_authorization=restart_authorization,
     )
     success = False
     rollback_ok = False

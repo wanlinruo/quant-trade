@@ -78,6 +78,130 @@ def _production_dispatcher_module():
     return module
 
 
+def _emergency_authorization(entrypoint, tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    path = tmp_path / "emergency.json"
+    monkeypatch.setattr(entrypoint, "EMERGENCY_RESTART_AUTHORIZATION", path)
+    original = entrypoint.os.fstat
+
+    def trusted_file(fd):
+        info = original(fd)
+        return SimpleNamespace(st_uid=0, st_mode=info.st_mode, st_size=info.st_size)
+
+    monkeypatch.setattr(entrypoint.os, "fstat", trusted_file)
+    now = datetime.now(UTC)
+    value = {
+        "schema_version": 1, "confirmation": "ALLOW_EMERGENCY_RESTART",
+        "target_sha": "a" * 40, "run_id": "incident-linux", "actor": "maintainer",
+        "repository": "owner/repo", "authorized_at": (now - timedelta(minutes=1)).isoformat(),
+        "expires_at": (now + timedelta(minutes=30)).isoformat(),
+        "reason": "维护者明确授权本次紧急修复在交易时段发布",
+    }
+    path.write_text(json.dumps(value), encoding="utf-8")
+    args = argparse.Namespace(
+        sha=value["target_sha"], run_id=value["run_id"], actor=value["actor"],
+        repository=value["repository"], failure_point="none", drill_confirmation="",
+        dry_run=False, components=["linux-resident"], pr_number=1,
+    )
+    return path, value, args
+
+
+@pytest.mark.parametrize("field,bad", [
+    ("schema_version", 2), ("confirmation", "yes"), ("target_sha", "b" * 40),
+    ("run_id", "other-release"), ("actor", "other-maintainer"),
+    ("repository", "other/repo"), ("reason", ""),
+    ("expires_at", "2020-01-01T00:00:00+00:00"),
+    ("expires_at", "2099-01-01T00:00:00+00:00"),
+    ("authorized_at", "2099-01-01T00:00:00+00:00"),
+    ("authorized_at", "2020-01-01T00:00:00"),
+])
+def test_emergency_release_rejects_unbound_or_expired_authorization(monkeypatch, tmp_path, field, bad):
+    entrypoint = _production_entrypoint_module()
+    path, value, args = _emergency_authorization(entrypoint, tmp_path, monkeypatch)
+    value[field] = bad
+    path.write_text(json.dumps(value), encoding="utf-8")
+    with pytest.raises(ValueError):
+        entrypoint._emergency_restart_authorization(args)
+
+
+@pytest.mark.parametrize("unsafe", ["owner", "writable", "symlink", "drill"])
+def test_emergency_release_rejects_unsafe_approval_file(monkeypatch, tmp_path, unsafe):
+    from types import SimpleNamespace
+
+    entrypoint = _production_entrypoint_module()
+    path, value, args = _emergency_authorization(entrypoint, tmp_path, monkeypatch)
+    if unsafe == "owner":
+        monkeypatch.setattr(entrypoint.os, "fstat", lambda fd: SimpleNamespace(
+            st_uid=1000, st_mode=0o100644, st_size=500,
+        ))
+    elif unsafe == "writable":
+        path.chmod(0o666)
+    elif unsafe == "symlink":
+        link = tmp_path / "link"
+        link.symlink_to(path)
+        monkeypatch.setattr(entrypoint, "EMERGENCY_RESTART_AUTHORIZATION", link)
+    else:
+        args.failure_point = "linux-health"
+    with pytest.raises((ValueError, OSError)):
+        entrypoint._emergency_restart_authorization(args)
+
+
+@pytest.mark.parametrize("approved", [False, True])
+def test_emergency_release_preserves_gate_and_validates_real_record(monkeypatch, tmp_path, approved):
+    entrypoint = _production_entrypoint_module()
+    path, approval, args = _emergency_authorization(entrypoint, tmp_path, monkeypatch)
+    if not approved:
+        path.unlink()
+    commands, records = [], []
+    monkeypatch.setattr(entrypoint, "_branch", lambda repo: "main")
+    monkeypatch.setattr(entrypoint, "_dirty", lambda repo: False)
+    monkeypatch.setattr(entrypoint, "_head", lambda repo: args.sha)
+    monkeypatch.setattr(entrypoint, "_fetch_and_validate_target", lambda *a: "b" * 40)
+    monkeypatch.setattr(entrypoint, "_successful_test_run", lambda *a: "test-1")
+    monkeypatch.setattr(entrypoint, "_plan", lambda *a: {
+        "components": ["linux-resident"], "unknown_paths": [], "changed_paths": [],
+        "linux_units": ["qsys-live-core.service"], "health_checks": [],
+    })
+    monkeypatch.setattr(entrypoint, "_active", lambda *a: True)
+    monkeypatch.setattr(entrypoint, "_restart_window", lambda *a: {
+        "checked_at": datetime.now(UTC).isoformat(), "trading_day": True,
+        "restart_allowed": False,
+    })
+    monkeypatch.setattr(entrypoint, "_resources", lambda *a: {
+        "ok": True, "disk_free_bytes": 10 ** 10, "memory_available_bytes": 10 ** 9,
+    })
+    monkeypatch.setattr(entrypoint, "_rollback_ready", lambda *a: True)
+    monkeypatch.setattr(entrypoint, "_fingerprints", lambda *a: {})
+    monkeypatch.setattr(entrypoint, "_wait_healthy", lambda *a: True)
+    monkeypatch.setattr(entrypoint, "_run", lambda cmd, **kw:
+        commands.append(cmd) or subprocess.CompletedProcess(cmd, 0, "", ""))
+
+    def write_record(config, run_id, record):
+        validate_record(record)
+        records.append(record)
+        return tmp_path / "record.json"
+
+    monkeypatch.setattr(entrypoint, "_write_record", write_record)
+    config = {"production_repo": str(tmp_path), "production_record_root": str(tmp_path / "records")}
+    if not approved:
+        with pytest.raises(ValueError, match="prohibited during the trading window"):
+            entrypoint.deploy(args, config)
+        assert commands == records == []
+    else:
+        assert entrypoint.deploy(args, config) == 0
+        assert records[0]["status"] == "success"
+        check = next(c for c in records[0]["checks"] if c["name"] == "restart-window")
+        assert "restart_allowed=false" in check["detail"]
+        assert approval["reason"] in check["detail"]
+        assert ["sudo", "-n", "systemctl", "restart", "qsys-live-core.service"] in commands
+        (tmp_path / "records" / args.run_id).mkdir(parents=True)
+        before_commands = list(commands)
+        with pytest.raises(ValueError, match="run-id already exists"):
+            entrypoint.deploy(args, config)
+        assert commands == before_commands
+
+
 def _production_key_installer_module():
     path = Path("deploy/linux/install-production-deploy-key.py")
     spec = importlib.util.spec_from_file_location("qsys_install_production_key", path)
@@ -1128,7 +1252,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
 
     state = entrypoint.status({"production_repo": str(tmp_path)})
 
-    assert state["entrypoint_version"] == 27
+    assert state["entrypoint_version"] == 28
     assert set(state["capabilities"]) == {
         "systemd-apply-v1", "systemd-component-boundary-v1", "systemd-changed-artifacts-v1",
         "systemd-preview-v1", "systemd-rollback-v1",
@@ -1155,6 +1279,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
         "component-release-v14",
         "component-release-v15",
         "component-web-readiness-v1",
+        "emergency-restart-authorization-v1",
     }
 
 
