@@ -43,6 +43,27 @@ def account_auction_time(config_json: str | None) -> time:
         return DEFAULT_AUCTION
 
 
+def recorded_auction_time(path: Path) -> time:
+    """从核心实际落盘的最近竞价事件读取时刻；取不到则退回默认值。
+
+    live-core 的独立巡检账户无权读取含凭据的生产配置，但它本来就能只读
+    live-state。事件键是运行时按真实 Schedule 生成的，因此比监控侧常量可靠。
+    """
+    from qsys.strategy.structural.strategy import auction_time
+
+    try:
+        with sqlite3.connect(f"file:{Path(path)}?mode=ro", uri=True) as con:
+            row = con.execute(
+                "SELECT event_key FROM live_events "
+                "WHERE event_key LIKE '%:auction:%' ORDER BY event_key DESC LIMIT 1"
+            ).fetchone()
+        if not row:
+            return DEFAULT_AUCTION
+        return auction_time(str(row[0]).split(":", 2)[2])
+    except (OSError, sqlite3.Error, ValueError, TypeError, IndexError):
+        return DEFAULT_AUCTION
+
+
 @dataclass(frozen=True, slots=True)
 class ChainAssessment:
     state: str

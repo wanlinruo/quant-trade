@@ -2,7 +2,7 @@ import sqlite3
 from datetime import datetime
 
 from qsys.ops.health import DEGRADED, DOWN, HEALTHY
-from qsys.ops.trading_chain import assess_paper, assess_shadow
+from qsys.ops.trading_chain import assess_paper, assess_shadow, recorded_auction_time
 
 
 DAY = "2026-09-21"
@@ -138,6 +138,24 @@ def test_the_shadow_core_follows_the_account_it_inherits_from(tmp_path):
     assert ok.state == HEALTHY, ok.detail
     # 不传参数就退回 09:30，正是修复前的错误行为——留着这条说明差别从哪来
     assert stale.state == DOWN and "09:30:00" in stale.detail
+
+
+def test_live_core_monitor_uses_the_auction_time_recorded_by_runtime(tmp_path):
+    from datetime import time as _time
+
+    path = shadow_db(tmp_path / "live.sqlite3", [
+        (f"{DAY}:auction:09:25:10", "completed", ""),
+    ])
+
+    assert recorded_auction_time(path) == _time(9, 25, 10)
+
+
+def test_live_core_monitor_falls_back_if_no_auction_was_recorded(tmp_path):
+    from qsys.ops.trading_chain import DEFAULT_AUCTION
+
+    path = shadow_db(tmp_path / "new-live.sqlite3")
+
+    assert recorded_auction_time(path) == DEFAULT_AUCTION
 
 
 def test_unreadable_params_fall_back_to_the_default_instead_of_failing(tmp_path):

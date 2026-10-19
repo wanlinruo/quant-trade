@@ -31,6 +31,7 @@ def test_quote_request_round_trip_is_read_only():
     gateway.run_once()
     thread.join(2)
     assert output["600036.SH"].price == 10
+    assert output["600036.SH"].received_at is not None
     assert transport.all_messages(streams.orders) == []
 
 

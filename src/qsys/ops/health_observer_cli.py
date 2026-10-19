@@ -467,11 +467,16 @@ def main(argv: list[str] | None = None) -> int:
                             Path(args.live_state) if service_id == "live-core"
                             else Path(args.shadow_state)
                         )
-                        business = assess_shadow(
-                            state_path, now,
-                            auction_at=shadow_auction_at(
+                        if service_id == "live-core":
+                            from qsys.ops.trading_chain import recorded_auction_time
+
+                            auction_at = recorded_auction_time(state_path)
+                        else:
+                            auction_at = shadow_auction_at(
                                 args.config, Path(args.workbench)
-                            ),
+                            )
+                        business = assess_shadow(
+                            state_path, now, auction_at=auction_at,
                         )
                 item = observation(row, now, phase, business)
                 alert_tracker.update(item)

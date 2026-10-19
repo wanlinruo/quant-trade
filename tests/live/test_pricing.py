@@ -33,6 +33,33 @@ def test_stale_quote_is_rejected():
         protected_limit_price(quote(), Side.BUY, limits=LIMITS, now=T + timedelta(seconds=4))
 
 
+def test_freshly_requested_final_auction_quote_is_accepted():
+    now = T + timedelta(seconds=12)
+    final_auction = quote(at=T, received_at=now)
+
+    assert protected_limit_price(
+        final_auction, Side.BUY, limits=LIMITS, now=now,
+        source_not_before=T,
+    ) == 10.02
+
+
+@pytest.mark.parametrize(
+    "changes, expected",
+    [
+        ({"at": T - timedelta(seconds=1), "received_at": T + timedelta(seconds=12)},
+         "早于"),
+        ({"received_at": T + timedelta(seconds=8)}, "行情响应年龄"),
+        ({"received_at": None}, "行情响应时间缺失"),
+    ],
+)
+def test_auction_allowance_still_rejects_untrusted_or_stale_responses(changes, expected):
+    with pytest.raises(QuoteError, match=expected):
+        protected_limit_price(
+            quote(**changes), Side.BUY, limits=LIMITS,
+            now=T + timedelta(seconds=12), source_not_before=T,
+        )
+
+
 def test_missing_opponent_is_rejected():
     with pytest.raises(QuoteError, match="NO_OPPONENT"):
         protected_limit_price(quote(ask1=0), Side.BUY, limits=LIMITS, now=T)
