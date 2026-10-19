@@ -319,6 +319,12 @@ def test_backtest_worker_component_is_separate_from_web_and_write_bounded() -> N
     specs = json.loads(Path("deploy/component-releases.json").read_text(encoding="utf-8"))
     worker = specs["components"]["backtest-worker"]
 
+    # worker 已由独立不可变制品发布，不能同时残留一个固定入口不接受的
+    # ``linux-backtest-worker`` 共享发布组件；否则共享 checkout 落后时，
+    # 历史路径会让 production dry-run 在节点门禁处失败。
+    legacy = DeploymentManifest.load(MANIFEST)
+    assert "linux-backtest-worker" not in {item.name for item in legacy.components}
+
     assert worker["entrypoint"] == {
         "command": "qsys-backtest-worker",
         "target": "qsys.web.backtest_worker_cli:main",
