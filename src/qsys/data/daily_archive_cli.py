@@ -452,14 +452,20 @@ def main(argv: list[str] | None = None) -> int:
 
 def _archive(args, service_run: ServiceRun) -> int:
     warehouse = Warehouse(Path(args.warehouse))
-    today = date.today()
+    now = datetime.now()
+    today = now.date()
     started = time.time()
 
     # --- 1. 交易日历，确定采到哪天。与其他任务同源：Tushare trade_cal ---
     with service_run.step("确定交易日", interface="Tushare trade_cal") as step:
         calendar = load_trading_calendar(args.config)
-        sessions = calendar.sessions_in_range(today - timedelta(days=90), today)
-        complete_through = last_closed_session(calendar, datetime.now())
+        complete_through = last_closed_session(calendar, now)
+        # 候选选择器会沿 sessions 向后推进，不能把尚未收盘的当日传进去。
+        # 竞价、持仓与全市场分钟清单统一使用已收盘的交易日。
+        sessions = (
+            calendar.sessions_in_range(today - timedelta(days=90), complete_through)
+            if complete_through is not None else []
+        )
         step.detail = f"归档至 {complete_through}" if complete_through else "没有已收盘的交易日"
     if complete_through is None:
         log.warning("archive.no_closed_session")
