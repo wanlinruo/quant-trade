@@ -1,6 +1,6 @@
 # 项目交接入口
 
-> 快照时间：2026-10-20 01:00（Asia/Shanghai）。这是接手入口，不替代 GitHub、节点和机器可读
+> 快照时间：2026-10-20 01:24（Asia/Shanghai）。这是接手入口，不替代 GitHub、节点和机器可读
 > 契约的实时状态。执行任何写操作前必须重新核验。
 
 ## 先读什么
@@ -23,7 +23,7 @@
 
 ### 生产版本
 
-- 共享 checkout：`c328b8c85e857bae4b35ad3ee3247afc263f00ce`（PR #439），工作区干净；固定入口
+- 共享 checkout：`ee7b0a34ba1e3f9ad8b84aa8f37531dae2024b9b`（PR #441），工作区干净；固定入口
   **v29**（`systemd-runtime-paths-v1`），旧版 v28 备份在
   `/data/qsys/var-deployments/issue434-436-20261019/`。
 - 独立组件 current：web、health-observer、catalog-verify 为 `dfd65bf`（PR #437）；
@@ -31,7 +31,7 @@
   paper、shadow-core、tushare-sync、daily-archive、premarket-limits、limit-up-shadow、reboot-drill
   仍跑在共享 checkout 上（没有组件 drop-in）。
 - 最近一次发布证据（workflow / Deployment / 节点 record 三方 success，record 都用实际
-  validator 校验过）：Linux 39236856031 / 7171244616、39287419932 / 7179296712；observer
+  validator 校验过）：Linux 39292155034 / 7179993822（dry-run 39292039046）；observer
   39237136934 / 7171286699；Web 39237450942 / 7171338710；catalog-verify 39273505287 / 7177176010。
 
 ### 实盘（#137）
@@ -43,24 +43,48 @@
   （`qsys-issue137-auction-20261020`）。
 - #433：停机闸状态在页面上不显眼，P1 / ready。
 
-### 数据与定时任务（截至 10-20 01:00）
+### 数据与定时任务（截至 10-20 01:24）
 
-- 10-19 归档：#434 的 226/NAMESPACE 已修复，补采入库竞价 53 组、分钟 1,340,844 行，跨源校验
-  0 阻断。但 canonical `bar_minute_1m` **10-19 还没发布**：19:05 因退市日空分钟失败（#438，已修复
-  并发布）；00:45 重跑又碰到午夜后的候选问题（#440，P2，只在手动夜间运行时触发）。
-  **预期 10-20 15:41 定时归档会同时发布 10-19 和 10-20**，需要核验。
-- catalog-verify 新组件 00:47 实测：峰值 1.5G，无 OOM，指标阻断 0；表级健康 10 绿 /
-  1 黄（`security_name_history` 已知问题）/ 1 红（`bar_minute_1m`，待上面的 canonical 发布）。
-- 10-19 晚间 service-checks 退出码 1，反映的是真实业务失败（早盘竞价、catalog-verify OOM），
-  详见 #418。daily-digest 运行成功。
+- 10-19 归档恢复：#434 运行目录、#438 退市日、#440 未收盘候选问题均已修复并发布。
+  10-20 01:13:47–01:16:47 手动归档成功，按最近已收盘日 10-19 执行；竞价候选 195 组、
+  分钟 33,381 组全部已齐，6 个交易日跨源校验 0 阻断。canonical 10-19 已发布；没有请求或
+  写入未收盘的 10-20 数据。生产恢复前保留 20 个分区备份及 SHA-256，审计目录
+  `/data/qsys/var-deployments/issue440-20261020/`，代码回滚点 `c328b8c`，数据不随代码反向恢复。
+  本次仅发布 linux-data-jobs，Live Core PID 1748883 / 启动时间 10-19 18:21:47 保持不变。
+- canonical 10-19 与原始分钟线均为 **1,340,844 行 / 5,564 只**，重复键 0；写后对账
+  source_only / target_only / mismatched 均为 0。旧 canonical 分区、原始竞价和分钟文件 hash
+  未变，20 份备份完整。已知 D-23 未结，不切换回测分钟源。
+- catalog-verify 01:17:22–01:18:22 成功，无 OOM：636 条字段结果、阻断 0、既有警告 28；
+  支持的 12 张规范表为 **10 绿 / 2 黄 / 0 红 / 0 灰**，7 条关系全绿。
+  黄项如实保留：名称区间 246 个已知问题；分钟 8 个非 240/241 根标的日。
+  其他未覆盖表仍可灰色，不能将本结果表述为全仓库已验收。
+- service-checks 按 10-19 业务日回看：01:18:44–01:19:29，28 项、数据失败 0、策略失败 1；
+  catalog 两项旧失败显示 repaired，10-19 早盘 STALE_QUOTE 保留，存储保留告警保留。
+  使用临时最小配置禁用额外告警发送，随后删除临时配置；归档与质检 runtime drop-in 均已移除，
+  实际 unit 与执行前逐字比较一致。没有 reset-failed 或改写历史。
+- 当前独立 Web 与日报的实际账号/venv 均能读取 15 条新旧记录，identity 无重复；Web 归档
+  详情已消除启动失败 banner，服务/实盘/回测/表页均 HTTP 200。16 项实盘只读检查全通过，
+  当前空仓 / 活动委托 0、三处停机闸未生效、启用资金仍 1 万元；systemd failed unit 为 0。
+- **#442（P2 / ready）**：目录与分钟表详情仍各需约 30 秒，首次 20 秒客户端超时。
+  页面实际显示上述黄项且覆盖到 10-19；此性能问题单独跟踪，不能写成已经解决。
 
 ### 在途 Issue（validation / in-progress）
 
-- #434、#435、#438：等 10-20 15:41 归档成功（#435 还需要确认失败标记能恢复）。
-- #436：canonical 发布后，catalog-verify 转绿并完成消费者核对。
-- #418、#422：建议以 10-20 晚间的干净交易日作为最终验收，并拆分回切 / 故障注入尾项。
+- #434、#435、#436、#438、#440：本轮已完成代码、正式发布与手动数据/消费者验收，证据见 Issue。
+- #418、#422：继续等待 10-20 自然交易日定时验收；回切、previous-release / 故障注入仍未执行。
+  节点已安排 **10-20 20:45 只读采证**（`qsys-issue440-natural-20261020.timer`），覆盖当日
+  归档、catalog、checks、日报、分区与页面，不触发业务作业。结果届时写入审计目录下
+  `natural-timer-20261020-2045.json`；未到时间不得当作通过。09:28 的 #137 竞价采证仍保留。
 - 需要维护者裁决才能收口的：#234、#230、#250、#139（建议关闭），#142（定口径），
   #143（涉及删改生产数据，需要明确授权）。
+
+### 本轮授权与证据
+
+维护者明确指示“全权授予你部署和发布”，本轮据此完成 #440 发布及 10-19 数据恢复。
+发布 PR #441 由 Codex 代行逐文件自审；test CI 39291429145、测试部署 39291676091、
+PR CI 39291812341、生产 dry-run 39292039046、正式发布 39292155034 均 success。
+GitHub Deployment 7179993822 success，节点 `issue440-20261020-release-linux/record.json`
+经实际 validator 校验成功，三方一致后才启动归档。本轮没有故障注入、删备份、改资金或交易开关。
 
 以上 SHA 和健康状态会变化。接手时至少重新查看 Issue、Actions、远端分支和节点只读状态。
 
@@ -88,7 +112,7 @@ gh run list --workflow deploy-production-linux.yml --limit 5
 ```
 
 Linux 节点只读检查应确认生产 SHA、工作区、监控、health 和密码认证状态；不要在检查命令中
-打印配置内容或任何 secret。预期快照是：生产 `c328b8c`、入口 v29、工作区干净、
+打印配置内容或任何 secret。预期快照是：生产 `ee7b0a3`、入口 v29、工作区干净、
 `qsys-live-core` / `qsys-monitor.service` active、`8420/healthz` 为 200、`PasswordAuthentication=yes`。
 
 ## GitHub 与节点名称
