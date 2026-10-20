@@ -1,28 +1,46 @@
 # 运行单元分层验收矩阵
 
-快照：2026-10-18，开始 #414 试点时（代码基准 `c1a1b27`）。这是证据清单，
-不是现场状态承诺；最新执行结果以 #414/#330 的记录为准，生产操作前重新盘点。
-“代码完成”仅表示入口、组件规格和 CI 制品完成，不表示账号已创建或生产已切换。
+快照：2026-10-20 20:50（Asia/Shanghai）。当前生产与历史证据以 #330 和各子 Issue
+最新记录为准；写操作前重新核验。**7/14 独立生产激活，不能表述为7个组件完整回滚验收通过。**
 
-| 组件 | 代码/制品 | 独立预生产运行与回滚 | 生产激活/回滚证据 | 主要剩余项 |
+#418/#422 的生产迁移和自然运行阶段已有结案证据；正常回切入口/现场验收由 #453 承接，
+生产故障注入由 #454 承接（blocked，逐次明确授权）。阶段结案不减少这两项的验收范围。
+当前 gateway 无独立 legacy 回切命令；安装器内部失败补偿不等同逐组件生产回切。
+
+| 组件 | 代码/制品 | 独立预生产 | 生产激活/自然运行 | 回切与主要剩余项 |
 |---|---|---|---|---|
-| catalog-verify | 完成 | 未单列独立预生产证据 | #346 已有生产发布/实跑记录；不可将框架 mock 当逐组件故障注入证据 | 核对当前现场与完整回滚验收 |
-| service-checks | #372 完成 | 待 | 待 | 只读配置/Redis、账号、记录/告警读者权限 |
-| storage-report | #375 完成 | 本轮 #414 试点；成功记录前仍算待 | 待 | v12→v26 控制面、专用账号、历史目录、timer、首次回切 |
-| daily-digest | #378 完成 | 待 | 待 | 跨组件报告输入、读取权限与新 namespace |
-| health-observer | #381 完成 | 待 | 待 | 独立状态、最小 Redis/Windows 只读权限 |
-| daily-archive | 完成 | 待 | 待 | Warehouse 单写锁、专属暂存/记录、Windows 下载权限 |
-| premarket-limits | #387 完成 | 待 | 待 | Warehouse 单写锁、配置权限、任务验真 |
-| tushare-sync | #390 完成 | 待 | 待 | 写锁、晚到标的补采链、独立 Windows key |
-| backtest-worker | #393 完成 | 待 | 待 | Workbench 共享权限、队列领取/取消/恢复与 Web 联合切换 |
-| web | #396 完成 | 待；整体 Web test 部署不能替代独立制品验收 | 待 | 旧较晚 drop-in 冲突、Workbench/worker、只读研究/榜单路径 |
-| paper | #399 完成 | 待 | 待 | Workbench/协议、账号及与 Web/worker 的联合权限 |
-| shadow-core | #399 完成 | 待 | 待 | 独立状态、Redis ACL、急停与历史连续 |
-| limit-up-shadow | #404 完成 | 待 | 待 | 非空 SQLite 完整迁移、暂停 timer、Web 只读消费者联动 |
-| reboot-drill | #408/#410 完成 | 待；仅 mock 不计真实运行 | 待 | 专用 SSH/known_hosts、只允许基线的 unit、逐次演练审批 |
+| catalog-verify | 完成 | 未单列完整证据 | current `dfd65bf`；10-20自然运行636条、0阻断、28警告 | 仍ubuntu/共享配置；专属账号/最小配置、完整回切待，不因实跑通过补勾 |
+| service-checks | #372/#418完成 | 真实制品/账号隔离试跑见#418 | current `ac22996`；10-20自然28项、数据/策略未通过均0，业务记录warning | legacy/previous-release未验收，转#453；仅一个生产成功release，previous待第二版本 |
+| storage-report | #375完成 | #414真实双制品试点 | current `5a54901`；生产实跑与legacy回切见#414 | previous-release/故障注入未验收，#330继续跟踪 |
+| daily-digest | #378/#422完成 | 真实制品print/隔离输出见#422 | current `3c182a7`；10-20 20:30自然记录succeeded | legacy/previous-release未验收，转#453；不额外发邮件 |
+| health-observer | #381/#422完成 | 真实制品/账号试跑见#422 | current `dfd65bf`、active；健康历史被当前Web/日报读取 | 正常回切与新旧namespace连续性转#453；故障注入#454 |
+| backtest-worker | #393/#422完成 | 隔离真实制品作业succeeded、报告存在 | current `3c182a7`、active；新旧Web无双消费者，当前健康观测healthy | 生产队列业务作业/取消恢复与正常联合回切转#453；active不替代业务验收 |
+| web | #396/#422及后续修复 | 真实制品隔离端口/只读验证 | current `fe6d52d`；#442/#433/#448/#449生产验收通过 | 历史首次失败恢复legacy只记Web本身；正常回切转#453，不泛化为其他组件证据 |
+| daily-archive | 完成 | 待 | 仍共享；10-20自然作业succeeded | 独立迁移未执行，不能把数据恢复当迁移完成 |
+| premarket-limits | #387完成 | 待 | 仍共享 | 独立迁移待 |
+| tushare-sync | #390完成 | 待 | 仍共享 | 独立迁移待 |
+| paper | #399完成 | 待 | 仍共享 | 独立迁移待 |
+| shadow-core | #399完成 | 待 | 仍共享；live模式下inactive | 独立迁移待 |
+| limit-up-shadow | #404完成 | 待 | 仍共享 | 独立迁移待 |
+| reboot-drill | #408/#410完成 | 仅mock不计真实演练 | 仍共享；#444参数修复实际dry-run交易日分支成功 | 独立迁移、休市月度基线/真实恢复未验收；真实故障逐次审批 |
 
-14 个规格中，13 个尚无生产独立迁移验收记录；catalog-verify 有生产记录，不代表其所有
-独立预生产和故障注入维度都已完成。不能用“3069 项测试通过”填满各组件运行/回滚格子。
+### 本轮只读复核
+
+- 实际Web和日报账号/当前制品各读到25条唯一记录（10-19..10-20），重复identity为0，
+  包含今晚catalog/checks/日报自然记录；健康读取器各见20个服务，worker观测healthy。
+- Web/digest/checks/observer可读各自最小配置，均不能读完整配置；Warehouse/Live状态只读。
+  Workbench仅Web/worker可写，observer仅其健康库可写；worker不需要部署配置文件。
+- 最小配置选中字段核对：日报/observer与源一致；Web的Workbench绝对路径和源相对路径
+  解析到同一目录；checks显式orders_enabled=false是只读组件隔离，mode与源一致。
+  不为“同步”打开checks的订单能力，也不在文档记录配置值或秘密。
+- 20:45节点采证已生成：归档/日报业务记录succeeded，catalog/checks为warning，
+  相关页面HTTP200、无启动失败banner。自然任务退出成功不等于无业务警告。
+- 常驻peer身份不变、failed units=0；共享checkout `98fff8b`，交易控制和1万元上限未改。
+
+历史审计：`/data/qsys/var-deployments/service-checks-20261018/`、
+`/data/qsys/var-deployments/issue330-batch-20261018/`、
+`/data/qsys/var-deployments/issue440-20261020/natural-timer-20261020-2045.json`。
+本轮消费者/权限复核见 #418/#422 结案记录；#453/#454 明确保留未执行维度。
 
 以下单独跟踪，不混入 14 个组件的计数：
 

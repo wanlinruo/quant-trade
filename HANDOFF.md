@@ -1,6 +1,6 @@
 # 项目交接入口
 
-> 快照时间：2026-10-20 01:24（Asia/Shanghai）。这是接手入口，不替代 GitHub、节点和机器可读
+> 快照时间：2026-10-20 20:50（Asia/Shanghai）。这是接手入口，不替代 GitHub、节点和机器可读
 > 契约的实时状态。执行任何写操作前必须重新核验。
 
 ## 先读什么
@@ -23,27 +23,42 @@
 
 ### 生产版本
 
-- 共享 checkout：`ee7b0a34ba1e3f9ad8b84aa8f37531dae2024b9b`（PR #441），工作区干净；固定入口
-  **v29**（`systemd-runtime-paths-v1`），旧版 v28 备份在
-  `/data/qsys/var-deployments/issue434-436-20261019/`。
-- 独立组件 current：web、health-observer、catalog-verify 为 `dfd65bf`（PR #437）；
-  service-checks 为 `ac22996`；daily-digest、backtest-worker 为 `3c182a7`；storage-report 为 `5a54901`。
-  paper、shadow-core、tushare-sync、daily-archive、premarket-limits、limit-up-shadow、reboot-drill
-  仍跑在共享 checkout 上（没有组件 drop-in）。
-- 最近一次发布证据（workflow / Deployment / 节点 record 三方 success，record 都用实际
-  validator 校验过）：Linux 39292155034 / 7179993822（dry-run 39292039046）；observer
-  39237136934 / 7171286699；Web 39237450942 / 7171338710；catalog-verify 39273505287 / 7177176010。
+- 共享checkout：`98fff8b837a08b21acb1ff9826a154a50df704e4`（#444），干净；固定入口v29。
+- 独立Web current：`fe6d52dffdb4e45e58c450cc66f54d6aa237c60b`（PR#452）。
+  catalog/observer仍`dfd65bf`，checks `ac22996`，digest/worker `3c182a7`，storage `5a54901`。
+- 最近正式发布均已核对workflow/Deployment/实际validate-record三方success：
+  #444 Linux39419956053/7199251758；#448 Web39421535317/7199505475；
+  #449 Web39424192480/7199941830。Web回滚点2a291ef及其他回退副本均保留。
+- 7/14独立激活、7/14尚未迁移；组件分层验收以`docs/reference/component-acceptance-matrix.md`
+  和#330最新记录为准，不用激活数量替代完整回滚验收。
 
 ### 实盘（#137）
 
-- 10-19 14:41 经维护者授权恢复 1 万元实盘，三处停机闸已解除。10-19 18:21 因共享发布重启了
-  Live Core，带 `--require-live` 的盘前检查 16 通过 / 0 失败；之后的组件发布都没有改变它的 PID。
-- 10-19 09:25 竞价事件因 `STALE_QUOTE` 失败（#426），修复已经上线；按规则不补跑，页面会如实
-  显示当日"事件失败"。**10-20 09:25 是修复后第一次真实竞价**，节点已安排 09:28 只读采证
-  （`qsys-issue137-auction-20261020`）。
-- #433：停机闸状态在页面上不显眼，P1 / ready。
+- 仍为1万元实盘上限，未改资金/交易开关；Live Core PID1748883，启动于10-19 18:21:47，
+  本轮所有组件发布及#444共享发布均未重启它。组件发布前后严格preflight通过。
+- 10-20 09:25:10竞价事件completed，09:28只读采证无错误；首笔自然股票费用/入场成本仍待，
+  #137保持monitoring，不用零成交代替费用验收。
+- #433停机闸只读状态与布局已发布；三处均有效解除才显示解除，过期/异常立即未知。
+  来源默认折叠、两级导航紧邻。#448服务页延迟、#449窄屏SVG溢出均已发布验收关闭。
+- #444实际安装unit显式--dry-run，真实交易日分支exit0、拒绝重启Windows；timer恢复正常，
+  failed units=0，旧失败journal保留。实际重启演练仍未授权。
 
-### 数据与定时任务（截至 10-20 01:24）
+### 本轮迁移收尾与未决项
+
+- #418/#422生产迁移、消费者/权限和真实交易日自然运行已有结案证据；正常legacy/previous
+  回切与worker业务验收由#453承接，生产故障注入由#454承接（blocked、须逐次明确批准）。
+- 当前受限gateway没有独立legacy回切操作；不能通过手工恢复控制文件绕过workflow证据链。
+  安装器自动失败补偿或Web历史首次失败不能记为其他组件生产回切成功。
+- 实际Web/日报账号各读到25条唯一运行记录、20个健康服务；新旧记录可见且不重复。
+  最小配置保持隔离；checks显式禁用订单，Web的Workbench绝对路径与源相对路径等价。
+- 10-20自然归档15:40:53–16:09:43成功，原始分钟/canonical各1,341,803行；只证明行数，
+  不把该快照当逐字段对账。19:40 catalog：636条/0阻断/28警告；20:00 checks：28项/
+  数据和策略未通过均0，二者业务记录warning；20:30日报succeeded。
+- 20:45只读采证已实际生成：
+  `/data/qsys/var-deployments/issue440-20261020/natural-timer-20261020-2045.json`。
+  新历史不得因回切删除；#453常规回切与#454故障注入分别验收。
+
+### 数据恢复历史证据（10-20 01:24快照，当前状态以上文为准）
 
 - 10-19 归档恢复：#434 运行目录、#438 退市日、#440 未收盘候选问题均已修复并发布。
   10-20 01:13:47–01:16:47 手动归档成功，按最近已收盘日 10-19 执行；竞价候选 195 组、
@@ -70,15 +85,12 @@
   `docs/reference/data-catalog-latency.md`。本条记录代码推进状态，生产激活与实际时延以
   #442 最新发布证据为准；不能把本地测试写成生产已经解决。
 
-### 在途 Issue（validation / in-progress）
+### 在途 Issue
 
-- #434、#435、#436、#438、#440：本轮已完成代码、正式发布与手动数据/消费者验收，证据见 Issue。
-- #418、#422：继续等待 10-20 自然交易日定时验收；回切、previous-release / 故障注入仍未执行。
-  节点已安排 **10-20 20:45 只读采证**（`qsys-issue440-natural-20261020.timer`），覆盖当日
-  归档、catalog、checks、日报、分区与页面，不触发业务作业。结果届时写入审计目录下
-  `natural-timer-20261020-2045.json`；未到时间不得当作通过。09:28 的 #137 竞价采证仍保留。
-- 需要维护者裁决才能收口的：#234、#230、#250、#139（建议关闭），#142（定口径），
-  #143（涉及删改生产数据，需要明确授权）。
+- #330仍为独立化总跟踪；#453正常回切入口/现场验收ready，#454生产故障注入blocked。
+- #137/#126继续自然交易费用和30日容量观察；#123/#122/#283/#138/#250按维护者排期。
+- #304/#234/#230/#139/#142/#143保持各自外部/口径阻塞，不擅自购买、删数据或更改认证入口。
+- 历史数据恢复#434/#435/#436/#438/#440、页面#442/#433/#448/#449、参数#444均已闭环。
 
 ### 本轮授权与证据
 
@@ -92,9 +104,9 @@ GitHub Deployment 7179993822 success，节点 `issue440-20261020-release-linux/r
 
 ## 不可擅自跨越的授权边界
 
-- 未获得维护者新的明确确认，不得触发 `dry_run=false`。
+- 本轮普通部署与发布已有维护者“全权授予”明确授权，执行前仍核对精确候选、受控 workflow 与现场门禁；该权限不扩展到故障注入、交易开关或不可逆数据处置。
 - 未获得维护者明确确认，不得执行生产自动回滚故障注入演练。
-- 不能把“继续”“按建议处理”或本交接文档解释为新的生产变更确认。
+- 不能仅凭“继续”“按建议处理”或本交接文档推定超出现有明确授权范围的新许可。
 - Linux 与 Windows 都必须保留维护者的密码登录能力。
 - 不得关闭 `PasswordAuthentication`，不得删除个人 SSH key，也不得更改 Windows
   Administrator 密码、RDP、Sysinternals Autologon 或 QMT 自动恢复配置。
@@ -114,7 +126,7 @@ gh run list --workflow deploy-production-linux.yml --limit 5
 ```
 
 Linux 节点只读检查应确认生产 SHA、工作区、监控、health 和密码认证状态；不要在检查命令中
-打印配置内容或任何 secret。预期快照是：生产 `ee7b0a3`、入口 v29、工作区干净、
+打印配置内容或任何 secret。预期快照是：共享生产 `98fff8b`、独立Web `fe6d52d`、入口 v29、工作区干净、
 `qsys-live-core` / `qsys-monitor.service` active、`8420/healthz` 为 200、`PasswordAuthentication=yes`。
 
 ## GitHub 与节点名称
