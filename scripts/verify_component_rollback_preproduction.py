@@ -190,10 +190,14 @@ def verify_component(repo, root, entrypoint, component, sha, evidence_dir):
 
     run(["sudo", "touch", SHIM_FLAG])
     try:
-        activate(False)
+        failed = activate(False)
     finally:
         run(["sudo", "rm", "-f", SHIM_FLAG])
+    # Only the injected reload failure proves compensation ran after the switch.
+    if "daemon-reload" not in failed.stderr:
+        raise ValueError(f"{component}: installer failed before the injected point")
     assert_legacy("failed-activation-restored")
+    record["phases"][-1]["installer_error"] = failed.stderr.strip()[-300:]
     assert_markers("failed-activation-restored")
 
     activate(True)
