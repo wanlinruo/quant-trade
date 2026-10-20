@@ -120,6 +120,68 @@ def test_market_page_separates_real_mismatch_unbounded_and_coverage(warehouse):
     assert "QMT 未覆盖 41 只" in body and "430017.BJ" in body
 
 
+def _write_instruments(warehouse, symbols):
+    import pyarrow as pa
+    from datetime import date
+
+    from qsys.data import schema
+
+    rows = {name: [None] * len(symbols) for name in schema.INSTRUMENTS.names}
+    rows["symbol"] = list(symbols)
+    if "as_of" in rows:
+        rows["as_of"] = [date(2026, 10, 20)] * len(symbols)
+    warehouse.write("instruments", pa.table(rows, schema=schema.INSTRUMENTS))
+
+
+def _limit_report(transport, missing):
+    import json
+
+    today = datetime.now().date()
+    transport.set_key(f"state:price_limits_check:{today:%Y%m%d}", json.dumps({
+        "session": str(today), "checked": 5653, "missing_in_qmt": len(missing),
+        "mismatched": 0, "unbounded_equivalent": 0, "samples": [],
+        "missing_samples": [{"symbol": s, "tushare": [1.0, 0.8], "qmt": None} for s in missing],
+    }))
+
+
+def test_limit_check_splits_missing_by_stock_basic_roster(warehouse):
+    """#460：不在 A 股名录（stock_basic）的缺失与真实 A 股覆盖缺口分开展示。"""
+    _write_instruments(warehouse, ["600000.SH", "000001.SZ"])
+    transport = MemoryTransport()
+    _limit_report(transport, ["900901.BJ", "900902.BJ", "000001.SZ"])
+    client, market = _client(warehouse, transport)
+    check = market.limit_check()
+    assert check["missing_in_roster"] == ["000001.SZ"]
+    assert check["missing_outside_roster"] == ["900901.BJ", "900902.BJ"]
+    assert check["missing_split_complete"] is True
+    body = client.get("/market").text
+    assert "QMT 未覆盖 A 股 1 只" in body and "不在 A 股名录 2 只" in body
+
+
+def test_limit_check_does_not_split_without_roster(warehouse):
+    transport = MemoryTransport()
+    _limit_report(transport, ["900901.BJ"])
+    client, market = _client(warehouse, transport)
+    check = market.limit_check()
+    assert "missing_outside_roster" not in check
+    assert "QMT 未覆盖 1 只" in client.get("/market").text
+
+
+def test_limit_check_marks_split_partial_when_samples_are_truncated(warehouse):
+    import json
+
+    _write_instruments(warehouse, ["600000.SH"])
+    transport = MemoryTransport()
+    today = datetime.now().date()
+    transport.set_key(f"state:price_limits_check:{today:%Y%m%d}", json.dumps({
+        "session": str(today), "checked": 9, "missing_in_qmt": 3, "mismatched": 0, "samples": [],
+        "missing_samples": [{"symbol": "900901.BJ", "tushare": [1.0, 0.8], "qmt": None}],
+    }))
+    client, market = _client(warehouse, transport)
+    assert market.limit_check()["missing_split_complete"] is False
+    assert "仅已列出的 1 只完成分类" in client.get("/market").text
+
+
 def test_market_page_says_when_the_limit_check_has_not_run(warehouse):
     client, market = _client(warehouse, MemoryTransport())
     assert market.limit_check() is None

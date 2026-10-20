@@ -25,4 +25,11 @@
   不是 A 股覆盖缺口。
 - B 股不在日线、名录与标志表里，因此不会进入候选池、广度、回测或交易链路；
   仅停留在两张涨跌停价表中。
-- 处置方式由 #460 裁决；源 `ts_code` 不改写、不推断后缀，既有行不删除。
+- 源 `ts_code` 不改写、不推断后缀，既有行不删除。
+
+## 处置（维护者 2026-10-21 选 A）
+
+只改 Web 展示：`MarketService.limit_check` 用 `instruments`（Tushare `stock_basic` L/D/P 直取名录）
+把报告里的 `missing_samples` 拆成 `missing_in_roster`（A 股真实覆盖缺口，黄色并列出代码）与
+`missing_outside_roster`（不在名录，灰色说明）。名录读不到或为空时不拆分，回到原显示；
+样本被截断（>200）时标明只分类了已列出部分。网关报告与 Redis 原值不变，不需要 Windows 发布。

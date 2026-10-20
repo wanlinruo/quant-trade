@@ -83,6 +83,10 @@ class DataService:
 
     # ---- 市场生态因子 ----
 
+    def instrument_symbols(self) -> list[str]:
+        """Tushare stock_basic（L/D/P）名录里的全部代码。"""
+        return self._query.instruments()["symbol"].to_list()
+
     def regime(self, limit: int = 60) -> pl.DataFrame:
         frame = self._market_data.market_regime()
         if frame.height == 0:
@@ -148,9 +152,31 @@ class MarketService:
         if raw is None:
             return None
         try:
-            return json.loads(raw)
+            report = json.loads(raw)
         except ValueError:
             return None
+        return self._split_missing_by_roster(report)
+
+    def _split_missing_by_roster(self, report: dict) -> dict:
+        """#460：按 Tushare stock_basic 名录（instruments）拆分 QMT 未覆盖证券。
+
+        名录读不到或为空时不拆分——空名录不能当成"全部不在名录"。只分类报告里
+        已列出的样本；样本被截断时如实标记未完成。原报告字段不改。
+        """
+        samples = report.get("missing_samples")
+        if not samples:
+            return report
+        try:
+            roster = set(self._data.instrument_symbols())
+        except Exception:
+            return report
+        if not roster:
+            return report
+        symbols = [item["symbol"] for item in samples]
+        report["missing_in_roster"] = [s for s in symbols if s in roster]
+        report["missing_outside_roster"] = [s for s in symbols if s not in roster]
+        report["missing_split_complete"] = len(symbols) == report.get("missing_in_qmt")
+        return report
 
     def history(self, limit: int = 60) -> list[dict]:
         frame = self._data.regime(limit)
