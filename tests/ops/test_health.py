@@ -211,3 +211,23 @@ def test_migration_reader_reports_unreadable_new_database_and_keeps_real_legacy_
     assert len(reader.history(start, start + timedelta(minutes=1))) == 1
     assert "health database unavailable" in caplog.text
     assert HealthStoreReader((bad,)).latest() == []
+
+
+@pytest.mark.parametrize("service_id", [None, "market-gateway", "paper", "absent"])
+def test_latest_index_lookup_matches_historical_order_with_tied_and_late_rows(tmp_path, service_id):
+    store = HealthStore(tmp_path / "latest.sqlite3")
+    start = datetime(2026, 9, 17, 2, tzinfo=timezone.utc)
+    for name in ("market-gateway", "paper"):
+        store.record(replace(observation(start), service_id=name))
+        store.record(replace(observation(start, DOWN), service_id=name))
+        # 晚入库的旧观测不能覆盖较新的观测；同时间取 id 较大的行。
+        store.record(replace(observation(start-timedelta(days=1), UNKNOWN), service_id=name))
+    with store._connect() as con:
+        rows = con.execute(
+            "SELECT * FROM (SELECT *, row_number() OVER (PARTITION BY service_id "
+            "ORDER BY observed_at_utc DESC,id DESC) AS rank FROM health_observations "
+            + ("WHERE service_id=?" if service_id is not None else "")
+            + ") WHERE rank=1 ORDER BY service_id",
+            (service_id,) if service_id is not None else (),
+        ).fetchall()
+    assert store.latest(service_id) == [store._row(row) for row in rows]

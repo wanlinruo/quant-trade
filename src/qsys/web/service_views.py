@@ -230,7 +230,11 @@ class ServiceConsole:
 
         now = self._now()
         start = datetime.combine(columns[-1], time.min)
-        observations = self._health_store.history(start, now)
+        # 验收看板只需要当前核心与 paper，不读取所有服务的两周明细。
+        observations = (
+            observation for name in names
+            for observation in self._health_store.history(start, now, name)
+        )
         latest: dict[tuple[str, date], dict] = {}
         for observation in observations:
             if observation["service_id"] not in names:

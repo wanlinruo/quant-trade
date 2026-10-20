@@ -436,9 +436,18 @@ def test_live_business_health_populates_acceptance_board_and_service_detail(
         now=lambda: NOW,
     )
 
+    # 不读取其他服务两周的全量 details；仍保留每个目标服务完整历史。
+    original_history = store.history
+    requested = []
+    def scoped_history(start, end, service_id=None):
+        assert service_id in ("shadow-core", "paper")
+        requested.append(service_id)
+        return original_history(start, end, service_id)
+    store.history = scoped_history
     cells = next(cells for spec, cells in live.acceptance_board(14)[1]
                  if spec.id == "shadow-core")
     today = next(cell for cell in cells if cell.day == NOW.date())
+    assert requested == ["shadow-core", "paper"]
     assert today.state == "bad"
     assert today.label == "事件失败"
     assert today.detail_url == "/services/shadow-core"
