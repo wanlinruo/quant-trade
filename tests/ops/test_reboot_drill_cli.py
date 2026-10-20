@@ -181,3 +181,52 @@ def test_custom_paths_reach_baseline_recovery_and_alerts(monkeypatch, tmp_path):
     assert all(c.kwargs["known_hosts"] == hosts for c in probes.call_args_list)
     assert all(c.kwargs["known_hosts"] == hosts for c in ssh.call_args_list)
     assert alerts.call_args.args[1] == ledger
+
+
+@pytest.mark.parametrize('entry', ['shared-unit', 'component-spec'])
+@pytest.mark.parametrize('branch', ['trading-day', 'other-closed-day', 'monthly-day'])
+def test_timer_entrypoints_use_explicit_dry_run_and_preserve_calendar_gates(
+    entry, branch, monkeypatch, tmp_path,
+):
+    """将受 Git 管理的真实 ExecStart 交给 CLI，而不只断言 unit 文本。"""
+    import json
+    from pathlib import Path
+    import shlex
+
+    if entry == 'shared-unit':
+        text = Path('deploy/systemd/qsys-reboot-drill.service').read_text()
+        logical = text.replace('\\\n', '')
+        command = next(line.removeprefix('ExecStart=') for line in logical.splitlines()
+                       if line.startswith('ExecStart='))
+        argv = shlex.split(command)
+        argv = argv[argv.index('scripts/reboot_drill.py') + 1:]
+    else:
+        spec = json.loads(Path('deploy/component-releases.json').read_text())
+        # 复用正式制品规格的 ExecStart，确认与共享入口遵循同一 CLI 契约。
+        lines = spec['components']['reboot-drill']['dropin_lines']
+        command = next(line.removeprefix('ExecStart=') for line in lines
+                       if line.startswith('ExecStart=') and line != 'ExecStart=')
+        argv = shlex.split(command)[1:]
+    assert '--dry-run' in argv
+    assert not {'--execute', '--force', '--day', '--approved-day', '--approved-host'} & set(argv)
+    runs = tmp_path / 'runs'
+    argv[argv.index('--service-runs') + 1] = str(runs)
+    calendar(monkeypatch, trading=branch == 'trading-day',
+             drill_day=DAY if branch == 'monthly-day' else date(2026, 10, 30))
+    windows = Mock(return_value={'boot_seconds_ago': 3600})
+    beats = Mock(return_value={'agent_age': 1, 'market_age': 1})
+    monkeypatch.setattr(cli, 'probe_windows', windows)
+    monkeypatch.setattr(cli, 'probe_heartbeats', beats)
+    assert cli.main(argv) == 0
+    records = list(runs.rglob('*.json'))
+    if branch == 'monthly-day':
+        windows.assert_called_once()
+        beats.assert_called_once()
+        assert len(records) == 1
+        record = json.loads(records[0].read_text())
+        assert record['status'] == 'skipped'
+        assert '未执行重启演练' in records[0].read_text()
+    else:
+        windows.assert_not_called()
+        beats.assert_not_called()
+        assert records == []  # 交易日/非执行日只记退出日志，不伪造基线或演练结果。
