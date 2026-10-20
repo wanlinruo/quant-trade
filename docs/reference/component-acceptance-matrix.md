@@ -1,21 +1,25 @@
 # 运行单元分层验收矩阵
 
-快照：2026-10-20 20:50（Asia/Shanghai）。当前生产与历史证据以 #330 和各子 Issue
+快照：2026-10-20 22:25（Asia/Shanghai）。当前生产与历史证据以 #330 和各子 Issue
 最新记录为准；写操作前重新核验。**7/14 独立生产激活，不能表述为7个组件完整回滚验收通过。**
 
-#418/#422 的生产迁移和自然运行阶段已有结案证据；正常回切入口/现场验收由 #453 承接，
-生产故障注入由 #454 承接（blocked，逐次明确授权）。阶段结案不减少这两项的验收范围。
-当前 gateway 无独立 legacy 回切命令；安装器内部失败补偿不等同逐组件生产回切。
+**维护者 2026-10-20 裁决：独立组件只前进不回退**，异常直接修复发布，legacy 回切不作为生产回滚
+手段，只作一次性预生产验证（AGENTS.md §4）。据此 #453 不建生产回切入口、不做生产 legacy 现场切换。
+#453 一次性预生产验证 [39437976513](https://github.com/wanlinruo/quant-trade/actions/runs/39437976513)（main `c784c7a`）：5 个组件以当前生产 SHA 的真实制品、目标 SHA 自带
+安装器与生产 entrypoint `_rollback_component()`，按生产白名单路径完成 激活 → legacy → 注入
+daemon-reload 失败后安装器自动恢复 legacy → 重新激活，有效身份、release 与 state 标记均保留。
+托管 runner 不证明生产账号/ACL/真实数据；web/worker 只验证 `--help` 级可执行，不含业务作业。
+previous-release 不为验收造版本，待自然发布覆盖。生产故障注入仍由 #454 承接（blocked）。
 
 | 组件 | 代码/制品 | 独立预生产 | 生产激活/自然运行 | 回切与主要剩余项 |
 |---|---|---|---|---|
 | catalog-verify | 完成 | 未单列完整证据 | current `dfd65bf`；10-20自然运行636条、0阻断、28警告 | 仍ubuntu/共享配置；专属账号/最小配置、完整回切待，不因实跑通过补勾 |
-| service-checks | #372/#418完成 | 真实制品/账号隔离试跑见#418 | current `ac22996`；10-20自然28项、数据/策略未通过均0，业务记录warning | legacy/previous-release未验收，转#453；仅一个生产成功release，previous待第二版本 |
+| service-checks | #372/#418完成 | 真实制品/账号隔离试跑见#418 | current `ac22996`；10-20自然28项、数据/策略未通过均0，业务记录warning | 回切机制预生产验证通过（#453 [39437976513](https://github.com/wanlinruo/quant-trade/actions/runs/39437976513)）；previous待自然第二版本 |
 | storage-report | #375完成 | #414真实双制品试点 | current `5a54901`；生产实跑与legacy回切见#414 | previous-release/故障注入未验收，#330继续跟踪 |
-| daily-digest | #378/#422完成 | 真实制品print/隔离输出见#422 | current `3c182a7`；10-20 20:30自然记录succeeded | legacy/previous-release未验收，转#453；不额外发邮件 |
-| health-observer | #381/#422完成 | 真实制品/账号试跑见#422 | current `dfd65bf`、active；健康历史被当前Web/日报读取 | 正常回切与新旧namespace连续性转#453；故障注入#454 |
-| backtest-worker | #393/#422完成 | 隔离真实制品作业succeeded、报告存在 | current `3c182a7`、active；新旧Web无双消费者，当前健康观测healthy | 生产队列业务作业/取消恢复与正常联合回切转#453；active不替代业务验收 |
-| web | #396/#422及后续修复 | 真实制品隔离端口/只读验证 | current `fe6d52d`；#442/#433/#448/#449生产验收通过 | 历史首次失败恢复legacy只记Web本身；正常回切转#453，不泛化为其他组件证据 |
+| daily-digest | #378/#422完成 | 真实制品print/隔离输出见#422 | current `3c182a7`；10-20 20:30自然记录succeeded | 回切机制预生产验证通过（#453 [39437976513](https://github.com/wanlinruo/quant-trade/actions/runs/39437976513)）；previous待自然第二版本 |
+| health-observer | #381/#422完成 | 真实制品/账号试跑见#422 | current `dfd65bf`、active；健康历史被当前Web/日报读取 | 回切机制预生产验证通过（#453 [39437976513](https://github.com/wanlinruo/quant-trade/actions/runs/39437976513)）；故障注入#454 |
+| backtest-worker | #393/#422完成 | 隔离真实制品作业succeeded、报告存在 | current `3c182a7`、active；新旧Web无双消费者，当前健康观测healthy | 无legacy路径（基础unit即独立release），失败补偿预生产验证通过（#453 [39437976513](https://github.com/wanlinruo/quant-trade/actions/runs/39437976513)）；生产队列业务作业不在本轮 |
+| web | #396/#422及后续修复 | 真实制品隔离端口/只读验证 | current `fe6d52d`；#442/#433/#448/#449生产验收通过 | 回切机制预生产验证通过（#453 [39437976513](https://github.com/wanlinruo/quant-trade/actions/runs/39437976513)，legacy unit 用 stub 代表节点文件） |
 | daily-archive | 完成 | 待 | 仍共享；10-20自然作业succeeded | 独立迁移未执行，不能把数据恢复当迁移完成 |
 | premarket-limits | #387完成 | 待 | 仍共享 | 独立迁移待 |
 | tushare-sync | #390完成 | 待 | 仍共享 | 独立迁移待 |
@@ -40,7 +44,7 @@
 历史审计：`/data/qsys/var-deployments/service-checks-20261018/`、
 `/data/qsys/var-deployments/issue330-batch-20261018/`、
 `/data/qsys/var-deployments/issue440-20261020/natural-timer-20261020-2045.json`。
-本轮消费者/权限复核见 #418/#422 结案记录；#453/#454 明确保留未执行维度。
+本轮消费者/权限复核见 #418/#422 结案记录；#453 已按裁决收口，#454 保留未执行维度。
 
 以下单独跟踪，不混入 14 个组件的计数：
 
