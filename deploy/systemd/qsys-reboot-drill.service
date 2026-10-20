@@ -1,5 +1,5 @@
 [Unit]
-Description=qsys monthly reboot drill (reboots the Windows node on purpose)
+Description=qsys monthly reboot drill baseline (dry-run, no automatic reboot)
 After=network-online.target
 Wants=network-online.target
 
@@ -9,9 +9,11 @@ User=ubuntu
 Group=ubuntu
 WorkingDirectory=/home/ubuntu/qsys
 ExecStart=/home/ubuntu/qsys/.venv/bin/python -u scripts/reboot_drill.py \
+          --dry-run \
           --config config/deploy.local.toml \
           --service-runs /home/ubuntu/qsys/var/service-runs
-# 重启 + 等回来 + 等看门狗拉起代理，最坏约 20 分钟
+# 定时入口只采真实基线；实际重启另需当次日期/主机审批及显式 --execute。
+# 保留人工演练的等待预算；--dry-run 不执行重启或恢复等待。
 TimeoutStartSec=1800
 NoNewPrivileges=true
 PrivateTmp=true
