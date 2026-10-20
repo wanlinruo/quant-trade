@@ -13,7 +13,7 @@ import pytest
 # 生产入口：systemd 服务、定时任务与运维命令直接调用的脚本。一次性分析脚本
 # （regression_* / reconcile_* 等）在导入时就读数据文件，不在此列。
 SCRIPTS = [
-    "verify_storage_report_preproduction", "backfill_canonical", "daily_archive", "deployment_contract", "kill",
+    "verify_storage_report_preproduction", "verify_component_rollback_preproduction", "backfill_canonical", "daily_archive", "deployment_contract", "kill",
     "reboot_drill", "live_preflight", "run_agent", "run_backtest",
     "run_health_observer", "run_live", "run_market_gateway", "run_monitor", "run_paper",
     "run_shadow", "limit_up_shadow_cycle", "run_limit_up_shadow", "observe_limit_up_shadow",

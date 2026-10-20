@@ -1,0 +1,49 @@
+name: Verify component rollback preproduction
+
+on:
+  workflow_dispatch:
+    inputs:
+      releases:
+        description: Space-separated <component>=<exact merged main SHA> pairs with successful test CI artifacts
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: component-rollback-preproduction
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      RELEASES: ${{ inputs.releases }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out trusted main controller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Install uv
+        run: python3 -m pip install uv==0.12.10
+      - name: Verify real component releases switch to legacy and back
+        env:
+          QSYS_PILOT_RUNNER_ENVIRONMENT: ${{ runner.environment }}
+        run: |
+          args=()
+          for release in $RELEASES; do args+=(--release "$release"); done
+          python3 scripts/verify_component_rollback_preproduction.py "${args[@]}"
+      - name: Preserve rollback evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: component-rollback-preproduction-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/qsys-rollback-pilot-${{ github.run_id }}-${{ github.run_attempt }}/evidence
+          if-no-files-found: error
+          retention-days: 30
