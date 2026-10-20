@@ -1,5 +1,9 @@
 {% extends "base.html" %}
 {% block content %}
+<style>
+.overview-equity-chart { margin-top:14px; }
+.overview-equity-chart svg { display:block; max-width:100%; height:auto; }
+</style>
 <div class="card">
   <h2>总资产</h2>
   <p class="muted">资产变动包含入出金和资金基准调整，不代表投资收益。</p>
@@ -14,7 +18,7 @@
     <div class="kpi"><div class="label">持仓市值</div>
       <div class="value">{{ "{:,.2f}".format(view.equity_line.market_value) }}</div></div>
   </div>
-  <div style="margin-top:14px">{{ chart | safe }}</div>
+  <div class="overview-equity-chart">{{ chart | safe }}</div>
 </div>
 
 {% if lineage %}<div class="card">
