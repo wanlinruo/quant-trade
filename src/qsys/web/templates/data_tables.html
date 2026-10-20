@@ -11,8 +11,9 @@
     <td><a href="/data/tables/{{ row.dataset.id }}"><span class="mono">{{ row.dataset.id }}</span></a><div class="muted">{{ row.dataset.name }}</div></td>
     <td>{{ row.dataset.layer.value }}</td><td>{{ row.dataset.role.value }}</td>
     <td>{{ row.dataset.grain }}</td>
-    <td class="num">{{ "{:,}".format(row.coverage.rows) if row.coverage else "—" }}</td>
-    <td>{% if row.coverage and row.coverage.first_dt %}{{ row.coverage.first_dt }} ~ {{ row.coverage.last_dt }}{% else %}—{% endif %}</td>
+    <td class="num" id="coverage-{{ row.dataset.id }}-rows" data-coverage-pending="{{ 'true' if row.coverage_pending else 'false' }}">{% if row.coverage %}{{ "{:,}".format(row.coverage.rows) }}{% if row.coverage_pending or row.coverage_failed %}（上次统计 {{ row.coverage.measured_at.strftime('%H:%M:%S') if row.coverage.measured_at else '时间未知' }}，{{ '更新中' if row.coverage_pending else '更新暂不可用' }}）{% endif %}{% elif row.coverage_pending %}统计中{% elif row.coverage_failed %}统计暂不可用{% else %}—{% endif %}</td>
+    <td id="coverage-{{ row.dataset.id }}-range" data-coverage-pending="{{ 'true' if row.coverage_pending else 'false' }}">{% if row.coverage and row.coverage.first_dt %}{{ row.coverage.first_dt }} ~ {{ row.coverage.last_dt }}{% if row.coverage_pending or row.coverage_failed %}（上次统计）{% endif %}{% elif row.coverage_pending %}统计中{% elif row.coverage_failed %}统计暂不可用{% else %}—{% endif %}</td>
   </tr>{% endfor %}
 </table></div></div>
+{% if rows|selectattr('coverage_pending')|list %}{% include '_coverage_refresh.html' %}{% endif %}
 {% endblock %}

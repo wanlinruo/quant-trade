@@ -157,3 +157,111 @@ def test_a_table_whose_root_sources_cannot_be_resolved_says_so(warehouse):
     """
     text = _client(warehouse).get("/data/tables/daily_flags").text
     assert "解不出（上游未登记到源）" in text
+
+
+def _seed_bar_daily(warehouse):
+    import pyarrow as pa
+    from qsys.data import schema
+    from datetime import date
+
+    warehouse.write('bar_daily', pa.Table.from_pylist(
+        [{'symbol': '600001.SH', 'dt': date(2026, 10, 19)}], schema=schema.BAR_DAILY),
+        year=2026)
+
+
+def _background_client(warehouse):
+    config = WebConfig()
+    assets = DataAssetService(warehouse, background_coverage=True)
+    app = create_app(MonitorService(SessionJournal(warehouse), config=config),
+                     config, assets=assets)
+    return TestClient(app), assets
+
+
+def test_cold_catalog_and_detail_return_while_exact_statistics_are_still_running(warehouse, monkeypatch):
+    from threading import Event
+    import qsys.web.asset_views as module
+
+    _seed_bar_daily(warehouse)
+    started, release = Event(), Event()
+    calls = []
+    original = module.coverage
+
+    def blocked(wh):
+        calls.append(wh)
+        started.set()
+        assert release.wait(5), 'test did not release worker'
+        return original(wh)
+
+    monkeypatch.setattr(module, 'coverage', blocked)
+    client, assets = _background_client(warehouse)
+    try:
+        page = client.get('/data/tables')
+        assert started.wait(1)
+        assert page.status_code == 200
+        assert '统计中' in page.text
+        assert '灰·缺证据' in page.text
+        detail = client.get('/data/tables/bar_daily')
+        assert detail.status_code == 200
+        assert '统计中' in detail.text
+        assert '未落盘' not in detail.text
+        assert len(calls) == 1  # 两个页面共享一次实际统计。
+        assert 'location.reload' not in page.text  # 异步更新单元格，不打断阅读。
+    finally:
+        release.set()
+        assets._coverage_thread.join(5)
+    ready = client.get('/data/tables/bar_daily')
+    assert '1 行' in ready.text
+    assert 'data-coverage-pending="false"' in ready.text
+    assert '灰·缺证据' in ready.text  # 统计完成不能冒充质量检查通过。
+
+
+def test_statistics_failure_is_not_rendered_as_missing_data_or_retried_on_every_request(warehouse, monkeypatch):
+    import qsys.web.asset_views as module
+
+    _seed_bar_daily(warehouse)
+    calls = []
+
+    def fail(wh):
+        calls.append(wh)
+        raise OSError('cannot read statistics')
+
+    monkeypatch.setattr(module, 'coverage', fail)
+    client, assets = _background_client(warehouse)
+    client.get('/data/tables')
+    assets._coverage_thread.join(5)
+    detail = client.get('/data/tables/bar_daily')
+    assert detail.status_code == 200
+    assert '统计暂不可用' in detail.text
+    assert '未落盘' not in detail.text
+    assert '灰·缺证据' in detail.text
+    assert len(calls) == 1
+
+
+def test_changed_table_shows_timestamped_previous_count_while_refreshing(warehouse, monkeypatch):
+    from qsys.data import schema
+    import qsys.web.asset_views as module
+    from threading import Event
+
+    _seed_bar_daily(warehouse)
+    module.coverage(warehouse)
+    warehouse.write('bar_daily', schema.BAR_DAILY.empty_table(), year=2026)
+    release = Event()
+    original = module.coverage
+
+    def blocked(wh):
+        assert release.wait(5)
+        return original(wh)
+
+    monkeypatch.setattr(module, 'coverage', blocked)
+    client, assets = _background_client(warehouse)
+    try:
+        page = client.get('/data/tables/bar_daily')
+        assert '1 行' in page.text
+        assert '上次统计' in page.text and '更新中' in page.text
+        assert 'data-coverage-pending="true"' in page.text
+    finally:
+        release.set()
+        assets._coverage_thread.join(5)
+    page = client.get('/data/tables/bar_daily')
+    assert '0 行' in page.text
+    assert '上次统计' not in page.text

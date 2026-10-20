@@ -1,0 +1,25 @@
+<script>
+(() => {
+  async function refreshCoverage() {
+    try {
+      const response = await fetch(window.location.href, {cache: 'no-store'});
+      if (!response.ok || response.redirected) throw new Error('coverage unavailable');
+      const next = new DOMParser().parseFromString(await response.text(), 'text/html');
+      let pending = false;
+      document.querySelectorAll('[data-coverage-pending]').forEach(cell => {
+        const update = next.getElementById(cell.id);
+        if (!update) throw new Error('coverage missing');
+        cell.textContent = update.textContent;
+        cell.dataset.coveragePending = update.dataset.coveragePending;
+        pending ||= update.dataset.coveragePending === 'true';
+      });
+      if (pending) setTimeout(refreshCoverage, 5000);
+    } catch (_) {
+      document.querySelectorAll('[data-coverage-pending="true"]').forEach(cell => {
+        cell.textContent = '统计暂不可用';
+      });
+    }
+  }
+  setTimeout(refreshCoverage, 5000);
+})();
+</script>

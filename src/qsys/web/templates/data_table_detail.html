@@ -7,7 +7,7 @@
   <div class="metric"><div class="label">业务域</div><div class="value" style="font-size:15px">{{ d.domain_label }}</div></div>
   <div class="metric"><div class="label">粒度</div><div class="value" style="font-size:15px">{{ d.row.dataset.grain }}</div></div>
   <div class="metric"><div class="label">主键</div><div class="value mono" style="font-size:14px">{{ d.row.dataset.primary_key|join(', ') or '未登记' }}</div></div>
-  <div class="metric"><div class="label">覆盖</div><div class="value" style="font-size:15px">{% if d.row.coverage %}{{ "{:,}".format(d.row.coverage.rows) }} 行{% else %}未落盘{% endif %}</div></div>
+  <div class="metric"><div class="label">覆盖</div><div class="value" style="font-size:15px" id="coverage-{{ d.row.dataset.id }}-rows" data-coverage-pending="{{ 'true' if d.row.coverage_pending else 'false' }}">{% if d.row.coverage %}{{ "{:,}".format(d.row.coverage.rows) }} 行{% if d.row.coverage_pending or d.row.coverage_failed %}（上次统计 {{ d.row.coverage.measured_at.strftime('%H:%M:%S') if d.row.coverage.measured_at else '时间未知' }}，{{ '更新中' if d.row.coverage_pending else '更新暂不可用' }}）{% endif %}{% elif d.row.coverage_pending %}统计中{% elif d.row.coverage_failed %}统计暂不可用{% else %}未落盘{% endif %}</div></div>
 </div>
 <div class="card"><h2>契约</h2><table>
   <tr><th>构建器</th><td class="mono">{{ d.row.dataset.builder }}</td></tr><tr><th>更新方式</th><td>{{ d.row.dataset.update_mode }}</td></tr>
@@ -26,4 +26,5 @@
 <div class="card"><h2>结构建议</h2><p><span class="pill todo">{{ d.suggestion.kind.value }}</span></p><ul>{% for item in d.suggestion.reasons %}<li>{{ item }}</li>{% endfor %}</ul>
 {% if d.related_suggestions %}<h3 style="font-size:13px">关系级建议</h3><table><tr><th>关系</th><th>结论</th><th>依据</th></tr>{% for edge, advice in d.related_suggestions %}<tr><td><a href="/data/relations/{{ edge.upstream }}/{{ edge.downstream }}">{{ edge.upstream }} → {{ edge.downstream }}</a></td><td><span class="pill todo">{{ advice.kind.value }}</span></td><td>{{ advice.reasons|join('；') }}</td></tr>{% endfor %}</table>{% endif %}
 <p class="muted">确定性静态建议，仅供人工决策；不提供自动执行入口。</p></div>
+{% if d.row.coverage_pending %}{% include '_coverage_refresh.html' %}{% endif %}
 {% endblock %}
