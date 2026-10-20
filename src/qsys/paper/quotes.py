@@ -20,6 +20,21 @@ from qsys.live.messages import (
     QuoteSnapshot,
 )
 from qsys.live.transport import Transport
+# 新股上市初期「无涨跌幅限制」时两边各用哨兵值表达（不是价格）。只认实测见过的组合，
+# 其余形态一律按真实不一致报出（#283）。Tushare stk_limit：仓库实测 up=1,000,000
+# （2,283 行，见 deferred-corrections）与 2026-10-13 盘前发布的 999999.999，down=0.01；
+# QMT get_instrument_detail：UpStopPrice=100000.0、DownStopPrice=0.0。
+TUSHARE_UNBOUNDED = ((1_000_000.0, 0.01), (999_999.999, 0.01))
+QMT_UNBOUNDED = ((100_000.0, 0.0),)
+LIMIT_CHECK_SAMPLE_LIMIT = 20
+LIMIT_CHECK_MISSING_SAMPLE_LIMIT = 200
+
+
+def _is_sentinel(pair, sentinels) -> bool:
+    return any(abs(pair[0] - up) <= 1e-6 and abs(pair[1] - down) <= 1e-6
+               for up, down in sentinels)
+
+
 MARKET_INDICES = {
     "000001.SH": "上证指数",
     "399001.SZ": "深证成指",
@@ -160,13 +175,20 @@ class MarketGateway:
         if pending:
             return False
         missing = [r for r in results if r["qmt"] is None or None in r["qmt"]]
+        compared = [r for r in results if r not in missing]
+        unbounded = [
+            r for r in compared
+            if _is_sentinel(r["tushare"], TUSHARE_UNBOUNDED) and _is_sentinel(r["qmt"], QMT_UNBOUNDED)
+        ]
         mismatched = [
-            r for r in results if r not in missing
+            r for r in compared if r not in unbounded
             and (abs(r["qmt"][0] - r["tushare"][0]) > 1e-6 or abs(r["qmt"][1] - r["tushare"][1]) > 1e-6)
         ]
         report = {"session": str(day), "checked_at": datetime.now().isoformat(timespec="seconds"),
                   "checked": len(results), "missing_in_qmt": len(missing),
-                  "mismatched": len(mismatched), "samples": mismatched[:20]}
+                  "mismatched": len(mismatched), "unbounded_equivalent": len(unbounded),
+                  "samples": mismatched[:LIMIT_CHECK_SAMPLE_LIMIT],
+                  "missing_samples": missing[:LIMIT_CHECK_MISSING_SAMPLE_LIMIT]}
         self._t.set_key(f"{self._s.price_limits}_check:{day:%Y%m%d}", json.dumps(report))
         self._limit_checked, self._limit_check = day, None
         return True

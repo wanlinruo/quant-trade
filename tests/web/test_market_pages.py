@@ -101,6 +101,25 @@ def test_market_page_shows_the_qmt_limit_check_result(warehouse):
     assert "涨跌停价核对" in body and "000010.SZ" in body
 
 
+def test_market_page_separates_real_mismatch_unbounded_and_coverage(warehouse):
+    """#283：只有真实价格不一致标红；无限制等价与 QMT 覆盖缺口分开展示。"""
+    import json
+
+    transport = MemoryTransport()
+    today = datetime.now().date()
+    transport.set_key(f"state:price_limits_check:{today:%Y%m%d}", json.dumps({
+        "session": str(today), "checked": 5653, "missing_in_qmt": 41, "mismatched": 0,
+        "unbounded_equivalent": 2, "samples": [],
+        "missing_samples": [{"symbol": "430017.BJ", "tushare": [12.0, 8.0], "qmt": None}],
+    }))
+    client, _ = _client(warehouse, transport)
+    body = client.get("/market").text
+    assert '<p class="down">' not in body.split("涨跌停价核对")[1].split("</section>")[0]
+    assert "价格不一致 0 只" in body
+    assert "无涨跌幅限制" in body and "2 只" in body
+    assert "QMT 未覆盖 41 只" in body and "430017.BJ" in body
+
+
 def test_market_page_says_when_the_limit_check_has_not_run(warehouse):
     client, market = _client(warehouse, MemoryTransport())
     assert market.limit_check() is None

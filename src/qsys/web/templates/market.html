@@ -42,10 +42,17 @@
 <section class="panel market-section">
   <div class="panel-title">涨跌停价核对（Tushare stk_limit × QMT）</div>
   {% if limit_check %}
-  <p class="{{ 'down' if limit_check.mismatched or limit_check.missing_in_qmt else 'muted' }}">
-    {{ limit_check.session }} 核对 {{ limit_check.checked }} 只：不一致 {{ limit_check.mismatched }} 只，QMT 缺失 {{ limit_check.missing_in_qmt }} 只
+  <p class="{{ 'down' if limit_check.mismatched else 'muted' }}">
+    {{ limit_check.session }} 核对 {{ limit_check.checked }} 只：价格不一致 {{ limit_check.mismatched }} 只
   </p>
   {% for item in limit_check.samples %}<div class="muted">{{ item.symbol }} Tushare {{ item.tushare }} / QMT {{ item.qmt }}</div>{% endfor %}
+  {% if limit_check.unbounded_equivalent %}<p class="muted">无涨跌幅限制（两边哨兵值语义一致，不计入不一致）{{ limit_check.unbounded_equivalent }} 只</p>{% endif %}
+  {% if limit_check.missing_in_qmt %}
+  <p class="warn">QMT 未覆盖 {{ limit_check.missing_in_qmt }} 只（合约详情无涨跌停价，只是核对覆盖缺口，不是价格异常）</p>
+  {% if limit_check.missing_samples %}<details><summary>查看未覆盖证券（{{ limit_check.missing_samples|length }} 只）</summary>
+  {% for item in limit_check.missing_samples %}<div class="muted">{{ item.symbol }} Tushare {{ item.tushare }}</div>{% endfor %}
+  </details>{% endif %}
+  {% endif %}
   {% else %}<p class="muted">今日未核对：盘前 stk_limit 尚未发布或行情网关未运行。</p>{% endif %}
 </section>
 

@@ -203,6 +203,51 @@ def test_limit_check_runs_in_batches_and_publishes_once_complete():
     assert len(calls) == 2
 
 
+def _run_limit_check(published, qmt):
+    import json
+
+    transport, streams = MemoryTransport(), StreamConfig()
+    day = date(2026, 10, 13)
+    transport.set_key(publish_key(streams, day), json.dumps(published))
+    gateway = MarketGateway(transport, streams, lambda symbols: {})
+    assert gateway.check_limits_step(lambda s: {k: qmt[k] for k in s if k in qmt}, day) is True
+    return json.loads(transport.get_key(f"{streams.price_limits}_check:20261013"))
+
+
+def test_limit_check_treats_both_unbounded_sentinels_as_equivalent():
+    """#283：新股无涨跌幅限制时两边用不同哨兵，语义相同，不算不一致。"""
+    report = _run_limit_check(
+        {"001246.SZ": [999999.999, 0.01], "301660.SZ": [1000000.0, 0.01],
+         "600000.SH": [10.01, 8.19]},
+        {"001246.SZ": (100000.0, 0.0), "301660.SZ": (100000.0, 0.0),
+         "600000.SH": (10.01, 8.19)},
+    )
+    assert report["mismatched"] == 0 and report["samples"] == []
+    assert report["unbounded_equivalent"] == 2
+    assert report["checked"] == 3 and report["missing_in_qmt"] == 0
+
+
+def test_limit_check_flags_one_sided_or_real_price_differences():
+    report = _run_limit_check(
+        {"001246.SZ": [999999.999, 0.01], "000010.SZ": [1.73, 1.41],
+         "300001.SZ": [12.0, 8.0]},
+        # 只有一边无限制、或实际价格不同，都是真实不一致
+        {"001246.SZ": (11.0, 9.0), "000010.SZ": (1.74, 1.41),
+         "300001.SZ": (100000.0, 0.0)},
+    )
+    assert report["unbounded_equivalent"] == 0
+    assert report["mismatched"] == 3
+    assert {r["symbol"] for r in report["samples"]} == {"001246.SZ", "000010.SZ", "300001.SZ"}
+
+
+def test_limit_check_keeps_missing_qmt_symbols_for_follow_up():
+    published = {f"{i:06d}.SZ": [10.0, 8.0] for i in range(205)}
+    report = _run_limit_check(published, {"000000.SZ": (10.0, 8.0)})
+    assert report["missing_in_qmt"] == 204
+    assert len(report["missing_samples"]) == 200
+    assert report["missing_samples"][0] == {"symbol": "000001.SZ", "tushare": [10.0, 8.0], "qmt": None}
+
+
 def test_limit_check_waits_until_tushare_limits_are_published():
     transport, streams = MemoryTransport(), StreamConfig()
     gateway = MarketGateway(transport, streams, lambda symbols: {})
