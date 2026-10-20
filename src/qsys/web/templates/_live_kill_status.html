@@ -1,0 +1,104 @@
+<style>
+.kill-badge { padding:5px 10px; border-radius:5px; text-decoration:none; white-space:nowrap; font-weight:600; }
+.kill-clear { background:#dcfce7; color:#166534; }
+.kill-stopped { background:#fee2e2; color:#991b1b; }
+.kill-unknown { background:#fef3c7; color:#92400e; }
+.kill-panel { max-width:1132px; margin:16px auto 0; padding:14px 18px; border-radius:8px; border:1px solid currentColor; }
+.kill-panel h2 { font-size:18px; margin:0 0 6px; }
+.kill-panel p { margin:6px 0; }
+.kill-panel ul { padding-left:20px; overflow-wrap:anywhere; }
+.kill-panel li { margin:8px 0; }
+@media(max-width:700px) { .kill-panel { margin:12px 14px 0; } }
+</style>
+{% if page == 'live' %}
+<aside id="live-kill-panel" class="kill-panel kill-{{ live_kill.state }}" role="status" aria-live="polite">
+<h2 id="live-kill-title">{{ live_kill.label }}</h2>
+<p id="live-kill-message">{{ live_kill.message }}</p>
+<p>状态更新时间：<span id="live-kill-checked">{{ live_kill.checked_at }}</span></p>
+<ul>{% for source in live_kill.sources %}<li>{{ source.name }}：<strong id="live-kill-{{ source.id }}-state">{{ {'clear':'已解除','stopped':'已停机','unknown':'未知'}[source.state] }}</strong><br><span id="live-kill-{{ source.id }}-reason">{{ source.reason }}</span>；记录时间：<span id="live-kill-{{ source.id }}-time">{{ source.recorded_at or '未知' }}</span></li>{% endfor %}</ul>
+</aside>
+{% endif %}
+<div id="live-kill-notice" class="kill-panel kill-unknown" role="status" aria-live="polite" hidden></div>
+<script>
+(() => {
+  const badge = document.getElementById('live-kill-nav');
+  const panel = document.getElementById('live-kill-panel');
+  const notice = document.getElementById('live-kill-notice');
+  let previous = null;
+  let initialized = false;
+  let validUntil = 0;
+  let validUntilWall = 0;
+  let busy = false;
+  function text(id, value) { const node = document.getElementById(id); if (node) node.textContent = value; }
+  function unknown() {
+    badge.textContent = '停机状态未知'; badge.className = 'kill-badge kill-unknown';
+    badge.dataset.state = 'unknown';
+    if (panel) panel.className = 'kill-panel kill-unknown';
+    text('live-kill-title', '停机状态未知');
+    text('live-kill-message', '状态已过期或刷新失败，请核对异常来源。');
+    text('live-kill-checked', '当前状态未确认');
+    ['linux', 'redis', 'agent'].forEach(id => {
+      text('live-kill-' + id + '-state', '未知');
+      text('live-kill-' + id + '-reason', '当前状态未确认');
+      text('live-kill-' + id + '-time', '未知');
+    });
+    if (initialized && previous !== 'unknown') {
+      notice.hidden = false; notice.className = 'kill-panel kill-unknown';
+      notice.textContent = '停机状态未知：状态已过期或刷新失败。';
+    }
+    if (initialized) previous = 'unknown';
+  }
+  async function refresh() {
+    if (busy) return;
+    busy = true;
+    const started = performance.now();
+    const wallStarted = Date.now();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    try {
+      const response = await fetch('/api/live/kill-status', {cache:'no-store', signal:controller.signal});
+      if (!response.ok || response.redirected) throw new Error('unavailable');
+      const data = await response.json();
+      if (!['clear','stopped','unknown'].includes(data.state) || !Number.isFinite(data.valid_for_seconds)
+          || data.valid_for_seconds <= 0 || data.valid_for_seconds > 10
+          || !Array.isArray(data.sources) || data.sources.length !== 3) throw new Error('invalid');
+      const ids = new Set(data.sources.map(source => source.id));
+      if (ids.size !== 3 || !['linux','redis','agent'].every(id => ids.has(id))
+          || data.sources.some(source => !['clear','stopped','unknown'].includes(source.state))) throw new Error('sources');
+      const derived = data.sources.some(source => source.state === 'stopped') ? 'stopped'
+        : data.sources.every(source => source.state === 'clear') ? 'clear' : 'unknown';
+      if (derived !== data.state) throw new Error('inconsistent');
+      validUntil = started + data.valid_for_seconds * 1000;
+      validUntilWall = wallStarted + data.valid_for_seconds * 1000;
+      if (performance.now() >= validUntil || Date.now() >= validUntilWall) throw new Error('expired');
+      badge.textContent = data.label; badge.className = 'kill-badge kill-' + data.state;
+      badge.dataset.state = data.state;
+      if (panel) panel.className = 'kill-panel kill-' + data.state;
+      text('live-kill-title', data.label); text('live-kill-message', data.message);
+      text('live-kill-checked', data.checked_at);
+      data.sources.forEach(source => {
+        if (!['linux','redis','agent'].includes(source.id)) throw new Error('source');
+        text('live-kill-' + source.id + '-state', {clear:'已解除',stopped:'已停机',unknown:'未知'}[source.state] || '未知');
+        text('live-kill-' + source.id + '-reason', source.reason);
+        text('live-kill-' + source.id + '-time', source.recorded_at || '未知');
+      });
+      if (initialized && previous !== data.state) {
+        notice.hidden = false; notice.className = 'kill-panel kill-' + data.state;
+        notice.textContent = data.label + '：' + data.message;
+      }
+      previous = data.state; initialized = true;
+    } catch (_) { validUntil = 0; unknown(); }
+    finally { clearTimeout(timeout); busy = false; }
+  }
+  // 不让初始渲染、历史页面或后台标签中残留的绿状态继续有效。
+  unknown();
+  async function poll() { await refresh(); setTimeout(poll, 3000); }
+  function expire() {
+    if (performance.now() >= validUntil || Date.now() >= validUntilWall) unknown();
+    setTimeout(expire, 250);
+  }
+  poll(); expire();
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { unknown(); refresh(); } });
+  window.addEventListener('pageshow', event => { if (event.persisted) { unknown(); refresh(); } });
+})();
+</script>

@@ -93,6 +93,7 @@
         "SupplementaryGroups=qsys-web",
         "WorkingDirectory=/",
         "Environment=QSYS_WINDOWS_SSH_KEY=/etc/qsys/web/windows-task-readonly",
+        "Environment=QSYS_LIVE_KILL_PATH=/home/ubuntu/qsys/var/KILL",
         "ExecStart=",
         "ReadWritePaths=",
         "ReadWritePaths=/home/ubuntu/qsys/var/workbench",

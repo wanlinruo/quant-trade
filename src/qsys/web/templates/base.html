@@ -131,11 +131,13 @@ button:disabled { opacity:.55; cursor:not-allowed; }
     <a href="/paper" class="{{ 'active' if page == 'paper' }}">模拟交易</a>
     <a href="/live" class="{{ 'active' if page in ('live','overview','trades','health','report','runs') }}">实盘监控</a>
   </nav>
+  <a id="live-kill-nav" href="/live" class="kill-badge kill-{{ live_kill.state }}" data-state="{{ live_kill.state }}">{{ live_kill.label }}</a>
   <span class="header-spacer"></span>
   {% if session %}<span id="status"></span>{% endif %}
   <a class="utility-link {{ 'active' if page and page.startswith('data') }}" href="/data">数据管理</a>
   <a class="utility-link {{ 'active' if page and page.startswith('services') }}" href="/services">服务管理</a>
 </header>
+{% include '_live_kill_status.html' %}
 {% if page in ('strategies', 'backtests', 'research_jobs', 'paper') %}
 <div class="subnav"><a href="/strategies" class="{{ 'active' if page == 'strategies' }}">策略研究</a><a href="/backtests" class="{{ 'active' if page == 'backtests' }}">回测记录</a>{% if request.app.state.research_jobs_enabled %}<a href="/research-jobs" class="{{ 'active' if page == 'research_jobs' }}">隔离研究</a>{% endif %}<a href="/paper" class="{{ 'active' if page == 'paper' }}">模拟交易</a></div>
 {% elif page in ('market', 'limit_up_shadow', 'limit_up_research') %}

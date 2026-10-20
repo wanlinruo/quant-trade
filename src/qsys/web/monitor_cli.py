@@ -58,6 +58,7 @@ def build_app(
     research_release_path: Path | None = None,
     research_snapshots_path: Path | None = None,
     strategies_path: Path | None = None,
+    live_kill_path: Path | None = None,
 ):
     warehouse = Warehouse(warehouse_root)
     journal = SessionJournal(warehouse)
@@ -73,9 +74,9 @@ def build_app(
         from qsys.live.redis_transport import RedisTransport
 
         deploy = load_deploy_config(config_path)
-        transport = RedisTransport.from_config(deploy)
         strategy_cfg = deploy.strategy
         strategy_mode = deploy.safety.mode
+        transport = RedisTransport.from_config(deploy)
         market_snapshot_key = deploy.streams.market_snapshot
         market_schedule_key = deploy.streams.market_schedule
         limits_prefix = deploy.streams.price_limits
@@ -106,6 +107,8 @@ def build_app(
                 JobLimits(4096, 100, 10, 14_400),
             )
         research_console = ResearchJobConsole(research_jobs_path, profile=profile)
+    from qsys.web.live_kill_status import LiveKillReader
+
     return create_app(
         monitor,
         config,
@@ -118,6 +121,13 @@ def build_app(
             warehouse, transport, snapshot_key=market_snapshot_key,
             schedule_key=market_schedule_key,
             limit_check_prefix=f"{limits_prefix}_check",
+        ),
+        live_kill=LiveKillReader(
+            transport if strategy_mode == "live" else None,
+            live_kill_path if strategy_mode == "live" else None,
+            heartbeat_prefix=(deploy.streams.heartbeat
+                              if transport is not None and strategy_mode == "live"
+                              else config.heartbeat_prefix),
         ),
         paper_calendar=trading_calendar,
         # 影子核心承袭的模拟账户；每次请求现查，配置改了不用重启监控台
@@ -191,6 +201,9 @@ def main() -> int:
     from qsys.data.cutover import add_facade_argument, apply_facade_argument
 
     parser = argparse.ArgumentParser(description="量化监控与回测工作台")
+    parser.add_argument("--live-kill-path", type=Path,
+                        default=os.environ.get("QSYS_LIVE_KILL_PATH"),
+                        help="实盘 Linux 停机标记的明确路径；未配置时显示未知")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--warehouse", default="warehouse")
@@ -258,7 +271,7 @@ def main() -> int:
         Path(args.research_jobs) if args.research_jobs else None,
         Path(args.research_release) if args.research_release else None,
         Path(args.research_snapshots) if args.research_snapshots else None,
-        Path(args.strategies),
+        Path(args.strategies), args.live_kill_path,
     )
     log.info("monitor.started", host=args.host, port=args.port)
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
