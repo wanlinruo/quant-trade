@@ -318,16 +318,23 @@ class HealthStore:
         return True
 
     def latest(self, service_id: str | None = None) -> list[dict]:
-        params: tuple = ()
-        where = ""
-        if service_id is not None:
-            where, params = "WHERE service_id=?", (service_id,)
         with self._connect() as con:
-            rows = con.execute(
-                "SELECT * FROM (SELECT *, row_number() OVER (PARTITION BY service_id "
-                "ORDER BY observed_at_utc DESC, id DESC) AS rank FROM health_observations "
-                f"{where}) WHERE rank=1 ORDER BY service_id", params,
-            ).fetchall()
+            if service_id is not None:
+                rows = con.execute(
+                    "SELECT * FROM health_observations WHERE service_id=? "
+                    "ORDER BY observed_at_utc DESC, id DESC LIMIT 1", (service_id,),
+                ).fetchall()
+            else:
+                # 复用既有 (service_id, observed_at_utc) 索引，每个服务只取最新行。
+                # 避免窗口函数把全部历史 details 排序/物化后再丢弃。
+                rows = con.execute(
+                    "SELECT * FROM health_observations WHERE id IN ("
+                    "SELECT (SELECT id FROM health_observations h "
+                    "WHERE h.service_id=s.service_id "
+                    "ORDER BY observed_at_utc DESC, id DESC LIMIT 1) "
+                    "FROM (SELECT DISTINCT service_id FROM health_observations) s) "
+                    "ORDER BY service_id"
+                ).fetchall()
         return [self._row(row) for row in rows]
 
     def history(self, start: datetime, end: datetime, service_id: str | None = None) -> list[dict]:
