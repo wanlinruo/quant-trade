@@ -47,7 +47,14 @@
   </p>
   {% for item in limit_check.samples %}<div class="muted">{{ item.symbol }} Tushare {{ item.tushare }} / QMT {{ item.qmt }}</div>{% endfor %}
   {% if limit_check.unbounded_equivalent %}<p class="muted">无涨跌幅限制（两边哨兵值语义一致，不计入不一致）{{ limit_check.unbounded_equivalent }} 只</p>{% endif %}
-  {% if limit_check.missing_in_qmt %}
+  {% if limit_check.missing_in_qmt and limit_check.missing_outside_roster is defined %}
+  <p class="{{ 'warn' if limit_check.missing_in_roster else 'muted' }}">QMT 未覆盖 A 股 {{ limit_check.missing_in_roster|length }} 只{% if limit_check.missing_in_roster %}：{{ limit_check.missing_in_roster|join('、') }}{% endif %}</p>
+  <p class="muted">不在 A 股名录 {{ limit_check.missing_outside_roster|length }} 只（Tushare stock_basic 未收录，如沪市 B 股被 stk_limit 标为 .BJ，QMT 查无此代码；不影响交易与研究链路）</p>
+  {% if not limit_check.missing_split_complete %}<p class="warn">未覆盖共 {{ limit_check.missing_in_qmt }} 只，仅已列出的 {{ limit_check.missing_samples|length }} 只完成分类。</p>{% endif %}
+  {% if limit_check.missing_samples %}<details><summary>查看未覆盖证券（{{ limit_check.missing_samples|length }} 只）</summary>
+  {% for item in limit_check.missing_samples %}<div class="muted">{{ item.symbol }} Tushare {{ item.tushare }}</div>{% endfor %}
+  </details>{% endif %}
+  {% elif limit_check.missing_in_qmt %}
   <p class="warn">QMT 未覆盖 {{ limit_check.missing_in_qmt }} 只（合约详情无涨跌停价，只是核对覆盖缺口，不是价格异常）</p>
   {% if limit_check.missing_samples %}<details><summary>查看未覆盖证券（{{ limit_check.missing_samples|length }} 只）</summary>
   {% for item in limit_check.missing_samples %}<div class="muted">{{ item.symbol }} Tushare {{ item.tushare }}</div>{% endfor %}
