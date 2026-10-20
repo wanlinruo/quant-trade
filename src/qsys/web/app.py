@@ -26,6 +26,7 @@ from fastapi.templating import Jinja2Templates
 from qsys.web.backtest_views import BacktestService, param_rows
 from qsys.web.asset_views import DataAssetService
 from qsys.web.catalog_views import CatalogService, Status
+from qsys.web.live_kill_status import LiveKillReader
 from qsys.web.config import WebConfig
 from qsys.web.domain_views import DOMAIN_LABELS, NOT_INGESTED, STATUS_LABELS, DomainService
 from qsys.web.data_views import DataService, MarketService
@@ -47,7 +48,13 @@ from qsys.paper.store import PaperStore
 
 log = structlog.get_logger(__name__)
 
-TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+
+def _live_kill_context(request: Request) -> dict:
+    return {"live_kill": request.app.state.live_kill.read().to_dict()}
+
+
+TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"),
+                           context_processors=[_live_kill_context])
 
 
 def _elapsed(started: str, finished: str = "") -> str:
@@ -149,9 +156,17 @@ def create_app(
     research_jobs: ResearchJobConsole | None = None,
     # 影子核心承袭的模拟账户（只读查询；没配承袭时返回 None）
     shadow_lineage: Callable[[], object | None] | None = None,
+    live_kill: LiveKillReader | None = None,
 ) -> FastAPI:
     app = FastAPI(title=config.title, docs_url=None, redoc_url=None)
     app.state.research_jobs_enabled = research_jobs is not None
+    app.state.live_kill = live_kill or LiveKillReader(None, None)
+
+    @app.get("/api/live/kill-status")
+    def live_kill_status():
+        from fastapi.responses import JSONResponse
+        return JSONResponse(app.state.live_kill.read().to_dict(),
+                            headers={"Cache-Control": "no-store"})
 
     def _require_session(session: date) -> None:
         if not service.has_session(session):
