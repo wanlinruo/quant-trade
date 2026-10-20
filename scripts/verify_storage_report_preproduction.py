@@ -53,7 +53,7 @@ def extract_zip(archive, destination):
         z.extractall(destination)
 
 
-def stage(repo, root, sha):
+def stage(repo, root, sha, component="storage-report", release=None):
     # Only commits already merged into trusted main may supply code/artifacts.
     run(["git", "merge-base", "--is-ancestor", sha, "origin/main"], cwd=repo)
     runs = gh(f"repos/{REPOSITORY}/actions/workflows/ci.yml/runs?head_sha={sha}&per_page=100")
@@ -68,22 +68,23 @@ def stage(repo, root, sha):
         if not any(j["name"] == name and j["conclusion"] == "success" for j in jobs):
             raise ValueError("required CI job missing")
     artifacts = gh(f"repos/{REPOSITORY}/actions/runs/{ci['id']}/artifacts?per_page=100")["artifacts"]
-    matches = [a for a in artifacts if a["name"] == f"qsys-storage-report-{sha}" and not a["expired"]]
+    matches = [a for a in artifacts if a["name"] == f"qsys-{component}-{sha}" and not a["expired"]]
     if len(matches) != 1:
         raise ValueError("missing or ambiguous component artifact")
     artifact = matches[0]
-    archive = root / f"{sha}.zip"
+    archive = root / f"{component}-{sha}.zip"
     with archive.open("wb") as f:
         subprocess.run(["gh", "api", f"repos/{REPOSITORY}/actions/artifacts/{artifact['id']}/zip"],
                        stdout=f, check=True, timeout=120)
     digest = "sha256:" + hashlib.sha256(archive.read_bytes()).hexdigest()
     if digest != artifact.get("digest"):
         raise ValueError("artifact digest mismatch")
-    release = root / "releases" / sha
+    release = release or root / "releases" / sha
     extract_zip(archive, release)
     checkout = root / "checkouts" / sha
-    run(["git", "worktree", "add", "--detach", checkout, sha], cwd=repo)
-    manifest = verify(checkout, sha, "storage-report", release)
+    if not checkout.exists():  # Components built from one SHA share its checkout.
+        run(["git", "worktree", "add", "--detach", checkout, sha], cwd=repo)
+    manifest = verify(checkout, sha, component, release)
     if (manifest["ci"]["repository"] != REPOSITORY
             or str(manifest["ci"]["run_id"]) != str(ci["id"])
             or str(manifest["ci"]["run_attempt"]) != str(ci["run_attempt"])):
@@ -95,7 +96,7 @@ def stage(repo, root, sha):
          release / "dist" / manifest["wheel_filename"]])
     run(["sudo", "chown", "-R", "root:root", release])
     run(["sudo", "chmod", "-R", "go-w", release])
-    return release, {"sha": sha, "tree": manifest["source_tree"], "ci_run_id": ci["id"],
+    return release, {"sha": sha, "component": component, "tree": manifest["source_tree"], "ci_run_id": ci["id"],
                      "artifact_id": artifact["id"], "artifact_digest": digest,
                      "wheel_sha256": manifest["wheel_sha256"]}
 
