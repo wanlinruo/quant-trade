@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+import logging
+from threading import Lock, Thread
+from time import monotonic
 from qsys.data import schema
 from qsys.data.catalog import DATASETS, DEPENDENCIES, REGISTRY, SOURCES
 from qsys.data.catalog.advisor import (
@@ -32,7 +35,7 @@ from qsys.data.catalog.types import (
     JoinCardinality,
     Kind,
 )
-from qsys.data.coverage import DatasetCoverage, coverage
+from qsys.data.coverage import DatasetCoverage, cached_coverage, coverage, previous_coverage
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
 from qsys.web.domain_views import (
@@ -49,6 +52,7 @@ _STATUS_LABELS = {
     HealthStatus.GREEN: "绿·健康",
     HealthStatus.GRAY: "灰·缺证据",
 }
+log = logging.getLogger(__name__)
 _DIMENSION_LABELS = {
     HealthDimension.FRESHNESS: "时效",
     HealthDimension.COMPLETENESS: "完整",
@@ -74,6 +78,8 @@ class DatasetRow:
     dataset: Dataset
     status: HealthStatus
     coverage: DatasetCoverage | None
+    coverage_pending: bool = False
+    coverage_failed: bool = False
 
     @property
     def status_label(self) -> str:
@@ -151,9 +157,39 @@ def _health_evidence(rows: list[dict]) -> tuple[HealthEvidence, ...]:
 class DataAssetService:
     """把代码内契约与仓库内证据合成页面所需的稳定结构。"""
 
-    def __init__(self, warehouse: Warehouse) -> None:
+    def __init__(self, warehouse: Warehouse, *, background_coverage: bool = False) -> None:
         self._warehouse = warehouse
         self._query = WarehouseQuery(warehouse)
+        self._background_coverage = background_coverage
+        self._coverage_lock = Lock()
+        self._coverage_thread: Thread | None = None
+        self._coverage_failed = False
+        self._coverage_retry_at = 0.0
+
+    def _refresh_coverage(self) -> None:
+        try:
+            coverage(self._warehouse)
+        except Exception:
+            log.exception("数据表统计失败")
+            with self._coverage_lock:
+                self._coverage_failed = True
+                self._coverage_retry_at = monotonic() + 30
+
+    def _coverage_view(self):
+        if not self._background_coverage:
+            return {row.dataset: row for row in coverage(self._warehouse)}, frozenset(), False
+        ready, pending = cached_coverage(self._warehouse)
+        previous = previous_coverage(self._warehouse, pending)
+        with self._coverage_lock:
+            if (pending and monotonic() >= self._coverage_retry_at
+                    and (self._coverage_thread is None or not self._coverage_thread.is_alive())):
+                self._coverage_failed = False
+                self._coverage_thread = Thread(
+                    target=self._refresh_coverage, name="qsys-table-coverage", daemon=True,
+                )
+                self._coverage_thread.start()
+            failed = self._coverage_failed
+        return {row.dataset: row for row in (*previous, *ready)}, pending, failed
 
     def _assessment(self, dataset_id: str, now: datetime | None = None):
         rows = _latest_rows(self._query.dataset_checks(dataset_id).to_dicts())
@@ -162,9 +198,10 @@ class DataAssetService:
         )
 
     def tables(self, *, include_raw: bool = False) -> list[DatasetRow]:
-        cover = {item.dataset: item for item in coverage(self._warehouse)}
+        cover, pending, failed = self._coverage_view()
         rows = [
-            DatasetRow(item, self._assessment(item.id).status, cover.get(item.id))
+            DatasetRow(item, self._assessment(item.id).status, cover.get(item.id),
+                       item.id in pending and not failed, item.id in pending and failed)
             for item in DATASETS.values()
             if include_raw or item.layer is not DatasetLayer.RAW
         ]
@@ -176,7 +213,7 @@ class DataAssetService:
         dataset = DATASETS.get(dataset_id)
         if dataset is None:
             return None
-        cover = {item.dataset: item for item in coverage(self._warehouse)}
+        cover, pending, failed = self._coverage_view()
         raw_evidence = self._query.dataset_checks(dataset_id).to_dicts()
         assessment = self._assessment(dataset_id)
         arrow_schema = (schema.ALL | schema.READ_ONLY).get(dataset_id)
@@ -242,7 +279,8 @@ class DataAssetService:
             (edge, self._pair_advice(edge)) for edge in (*upstream, *downstream)
         )
         return DatasetDetail(
-            DatasetRow(dataset, assessment.status, cover.get(dataset_id)),
+            DatasetRow(dataset, assessment.status, cover.get(dataset_id),
+                       dataset_id in pending and not failed, dataset_id in pending and failed),
             domain_label(dataset.domain),
             classify_sources(dataset.sources),
             root_source_refs(dataset_id),

@@ -155,3 +155,97 @@ def test_coverage_cache_reuses_unchanged_files_and_invalidates_on_replace_and_de
     assert next(row for row in coverage(warehouse) if row.dataset == "bars_daily").rows == 6
     warehouse.path_for("bars_daily", 2024).unlink()
     assert coverage(warehouse) == []
+
+
+def test_changing_equity_does_not_rescan_unchanged_market_history(warehouse, monkeypatch):
+    import qsys.data.coverage as module
+
+    seed(warehouse)
+    warehouse.write('live_equity', schema.LIVE_EQUITY.empty_table(), year=2024)
+    coverage(warehouse)
+    scanned = []
+    original = module._describe
+
+    def measured(con, files, *args, **kwargs):
+        scanned.append(files)
+        return original(con, files, *args, **kwargs)
+
+    monkeypatch.setattr(module, '_describe', measured)
+    warehouse.write('live_equity', pa.Table.from_pylist(
+        [{'dt': D[1]}], schema=schema.LIVE_EQUITY), year=2024)
+    result = {row.dataset: row for row in coverage(warehouse)}
+    assert result['bars_daily'].rows == 3
+    assert result['bars_daily'].symbols == 2
+    assert result['live_equity'].rows == 1
+    assert len(scanned) == 1
+    assert all('/live_equity/' in path for path in scanned[0])
+
+
+def test_cached_coverage_never_scans_or_reports_stale_replaced_data(warehouse, monkeypatch):
+    from qsys.data.coverage import cached_coverage
+    import duckdb
+
+    seed(warehouse)
+    with monkeypatch.context() as scoped:
+        scoped.setattr(duckdb, 'connect', lambda **kw: pytest.fail('request scanned data'))
+        assert cached_coverage(warehouse) == ([], frozenset({'bars_daily'}))
+    ready = coverage(warehouse)
+    assert cached_coverage(warehouse) == (ready, frozenset())
+    table = pa.parquet.read_table(warehouse.path_for('bars_daily', 2024)).select(schema.BARS_DAILY.names)
+    warehouse.write('bars_daily', pa.concat_tables([table, table]).cast(schema.BARS_DAILY), year=2024)
+    assert cached_coverage(warehouse) == ([], frozenset({'bars_daily'}))
+    assert coverage(warehouse)[0].rows == 6
+    warehouse.path_for('bars_daily', 2024).unlink()
+    assert cached_coverage(warehouse) == ([], frozenset())
+
+
+def test_new_daily_partition_invalidates_only_its_dataset(warehouse):
+    from qsys.data.coverage import cached_coverage
+
+    seed(warehouse)
+    first, second = date(2026, 10, 16), date(2026, 10, 19)
+    warehouse.write_day('minute_bars', _minute_table('minute_bars', first), day=first)
+    coverage(warehouse)
+    warehouse.write_day('minute_bars', _minute_table('minute_bars', second, '000001.SZ'), day=second)
+    ready, pending = cached_coverage(warehouse)
+    assert [r.dataset for r in ready] == ['bars_daily']
+    assert pending == {'minute_bars'}
+    result = {r.dataset: r for r in coverage(warehouse)}
+    assert result['minute_bars'].rows == 2
+    assert result['minute_bars'].symbols == 2
+    assert result['minute_bars'].last_dt.date() == second
+
+
+def test_replace_during_aggregation_is_not_published_to_the_cache(warehouse, monkeypatch):
+    import qsys.data.coverage as module
+
+    seed(warehouse)
+    table = pa.parquet.read_table(warehouse.path_for('bars_daily', 2024)).select(schema.BARS_DAILY.names)
+    original = module._describe
+
+    def replace_after_read(*args, **kwargs):
+        result = original(*args, **kwargs)
+        warehouse.write('bars_daily', pa.concat_tables([table, table]).cast(schema.BARS_DAILY), year=2024)
+        return result
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(module, '_describe', replace_after_read)
+        assert coverage(warehouse)[0].rows == 3
+    assert module.cached_coverage(warehouse) == ([], frozenset({'bars_daily'}))
+    assert coverage(warehouse)[0].rows == 6
+
+
+def test_previous_statistics_are_timestamped_scoped_and_never_substitute_current_cache(warehouse, tmp_path):
+    from qsys.data.coverage import cached_coverage, previous_coverage
+
+    seed(warehouse)
+    old = coverage(warehouse)[0]
+    assert old.measured_at is not None
+    warehouse.write('bars_daily', schema.BARS_DAILY.empty_table(), year=2024)
+    assert cached_coverage(warehouse) == ([], frozenset({'bars_daily'}))
+    assert previous_coverage(warehouse, frozenset({'bars_daily'})) == [old]
+    assert previous_coverage(Warehouse(tmp_path / 'other'), frozenset({'bars_daily'})) == []
+    current = coverage(warehouse)[0]
+    assert current.rows == 0
+    assert current.measured_at >= old.measured_at
+    assert previous_coverage(warehouse, frozenset({'bars_daily'})) == [current]

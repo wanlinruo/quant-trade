@@ -146,7 +146,7 @@ def build_app(
                 "shadow": "shadow-core", "live": "live-core",
             }.get(strategy_mode),
         ),
-        assets=DataAssetService(warehouse),
+        assets=DataAssetService(warehouse, background_coverage=True),
         limit_up_shadow=LimitUpShadowReader(
             limit_up_shadow_state_path or Path("var/limit-up-shadow.sqlite3")
         ),
