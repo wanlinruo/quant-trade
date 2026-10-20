@@ -18,7 +18,7 @@ qsys 是面向 A 股的个人量化交易系统，**包含真实交易能力**�
 1. `HANDOFF.md`：当前生产状态与**不可擅自跨越的授权边界**（快照会过期，写操作前重新核验）。
 2. `docs/development-governance.md`：分支模型、提交与发布规范。
 3. 涉及数据：`docs/reference/data-source-migration-record.md`（每张表的真值源、换源过程）
-   和 `docs/reference/deferred-corrections.md`（待办 D-x 清单）。
+   和 `docs/reference/deferred-corrections.md`（D-1~D-24 历史事实与结论，**不是待办清单**）。
 4. 其他专题：`docs/reference/README.md` 是参考资料索引，先查再动手，别重新摸索。
 
 信息冲突时的优先级：维护者最新明确指示 → GitHub Issue 最新记录 → 当前 workflow / 节点入口与
@@ -26,6 +26,10 @@ manifest → `HANDOFF.md` → 其他历史文档。
 
 ## 2. 开发流程
 
+- **需求、缺陷、待办一律走 GitHub Issue**（维护者 2026-10-20 要求）：新发现的问题直接开 Issue
+  （带 `priority:*`、`area:*`、`status:*` 标签），进度与结论记在 Issue 评论里。
+  `deferred-corrections.md` 只保留既有 D-x 的历史事实与裁决，**不再新增 D 编号、不在其中登记待办**；
+  需要沉淀的数据事实可写进对应参考文档，但必须链接承接它的 Issue。
 - `main` 是唯一生产分支，禁止直接 push / force-push；`test` 是集成分支。
 - 新需求从最新 `test` 开 `feat/<slug>`（缺陷用 `fix/<slug>`，文档用 `docs/<slug>`），
   完成后在本地 `git merge --squash` 到 `test` 再 push；只有 `test -> main` 需要 PR。
@@ -141,4 +145,4 @@ manifest → `HANDOFF.md` → 其他历史文档。
 
 - 新发现的**长期项目规则**写进本文件，不要只存在某个工具的私有记忆里。
 - 进行中的工作在停下或切换工具前，把进展、未决问题、下一步写进对应文档
-  （`docs/reference/deferred-corrections.md`、相关 Issue 或计划文档），接手方先读这些再动手。
+  （优先写进相关 Issue；长篇方案放计划文档并在 Issue 里链接），接手方先读这些再动手。

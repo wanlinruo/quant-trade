@@ -153,7 +153,8 @@ Tushare 直连去掉了全部人工环节。
 
 ## 七、还没做的事
 
-全部登记在 `docs/reference/deferred-corrections.md`：
+原登记在 `docs/reference/deferred-corrections.md`（2026-10-20 起该表转为历史档案，
+后续工作一律以 GitHub Issue 为准，对应关系见其文首）：
 
 | 编号 | 内容 | 状态 |
 |---|---|---|
