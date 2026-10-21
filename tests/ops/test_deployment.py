@@ -581,7 +581,7 @@ def test_limit_up_shadow_is_write_bounded_and_preserves_read_only_inputs():
     }
     assert "UMask=0027" in lines
     assert "ExecStartPre=/usr/bin/test -s /data/qsys/var-prod/limit-up-shadow/limit-up-shadow.sqlite3" in lines
-    assert "User=qsys-limit-up-shadow" in lines and "Group=qsys-workbench" in lines
+    assert "User=qsys-limit-up-shadow" in lines and "Group=qsys-limit-up-shadow" in lines
     command = shlex.split(next(line[len("ExecStart="):] for line in lines
                               if line.startswith("ExecStart=") and line != "ExecStart="))
     assert command[:3] == ["/usr/bin/flock", "--shared", "/home/ubuntu/qsys/var/warehouse-write.lock"]
@@ -591,7 +591,7 @@ def test_limit_up_shadow_is_write_bounded_and_preserves_read_only_inputs():
     assert command[command.index("--config") + 1] == "/etc/qsys/components/limit-up-shadow/deploy.toml"
     assert spec["seed"]["source"] == "/data/qsys/var-prod/limit-up-shadow.sqlite3"
     assert spec["seed"]["target"] == command[command.index("--state") + 1]
-    assert "SupplementaryGroups=qsys-limit-up-shadow" in lines
+    assert "SupplementaryGroups=qsys-observers" in lines
     web_command = next(line for line in specs["components"]["web"]["dropin_lines"]
                        if line.startswith("ExecStart=") and line != "ExecStart=")
     web_args = shlex.split(web_command.removeprefix("ExecStart="))
@@ -2827,3 +2827,13 @@ def test_systemd_runtime_preparation_refuses_redirected_parent(monkeypatch, tmp_
 def test_production_workflow_requires_runtime_path_capability():
     workflow = Path('.github/workflows/deploy-production-linux.yml').read_text()
     assert '"systemd-runtime-paths-v1"' in workflow
+
+
+@pytest.mark.parametrize("component", ["catalog-verify", "limit-up-shadow"])
+def test_readonly_component_identity_never_inherits_workbench_write_group(component):
+    from scripts.component_release_config import load_component_releases
+    spec = load_component_releases(Path("."))[component]
+    assert "Group=qsys-" + component in spec["dropin_lines"]
+    assert "SupplementaryGroups=qsys-observers" in spec["dropin_lines"]
+    assert not any("qsys-workbench" in line for line in spec["dropin_lines"]
+                   if line.startswith(("Group=", "SupplementaryGroups=")))
