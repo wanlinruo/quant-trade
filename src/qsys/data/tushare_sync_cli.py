@@ -78,6 +78,8 @@ def converge_late_listing_minutes(
     win_key: Path = Path("~/.ssh/id_ed25519_winnode"),
     win_script_source: Path = Path("scripts/win_download_minutes.py"),
     run: ServiceRun | None = None,
+    win_transport: str = "legacy",
+    win_known_hosts: Path | None = None,
 ) -> int:
     """在收盘主数据更新后，对少量晚到上市标的执行一次受控幂等补采。"""
     with record_step(
@@ -95,7 +97,7 @@ def converge_late_listing_minutes(
             )
 
         command = [
-            sys.executable, "-u", "-m", "qsys.data.daily_archive_cli",
+            sys.executable, "-B", "-u", "-m", "qsys.data.daily_archive_cli",
             "--warehouse", str(warehouse_path),
             "--config", str(config_path),
             "--service-runs", str(service_runs),
@@ -103,6 +105,8 @@ def converge_late_listing_minutes(
             "--work-root", str(work_root),
             "--paper-store", str(paper_store),
             "--win-key", str(win_key),
+            "--win-transport", win_transport,
+            "--win-component", "tushare-sync",
             "--win-script-source", str(win_script_source),
             "--lookback-days", "0",
             "--skip-auction",
@@ -110,6 +114,8 @@ def converge_late_listing_minutes(
             "--minute-timeout", str(max(timeout - 120, 60)),
             "--minute-stall-timeout", str(min(300, max(timeout // 3, 60))),
         ]
+        if win_known_hosts is not None:
+            command += ["--win-known-hosts", str(win_known_hosts)]
         completed = subprocess.run(command, timeout=timeout, check=False)
         if completed.returncode:
             raise RuntimeError(
@@ -217,6 +223,8 @@ def main() -> int:
         default=Path("scripts/win_download_minutes.py"),
         help="随当前制品校验并上传的 Windows 分钟下载器",
     )
+    parser.add_argument("--late-minute-win-known-hosts", type=Path, default=None)
+    parser.add_argument("--late-minute-win-transport", choices=("legacy", "gateway"), default="legacy")
     parser.add_argument(
         "--late-minute-convergence", action="store_true",
         help="同步成功后收敛当日晚到上市标的；生产定时任务显式启用",
@@ -260,6 +268,8 @@ def main() -> int:
                 work_root=args.late_minute_work_root,
                 win_key=args.late_minute_win_key,
                 win_script_source=args.late_minute_win_script_source,
+                win_transport=args.late_minute_win_transport,
+                win_known_hosts=args.late_minute_win_known_hosts,
                 run=run,
             )
         after_sync(warehouse, day, ok=True, run=run)

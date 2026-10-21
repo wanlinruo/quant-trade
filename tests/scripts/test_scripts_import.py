@@ -67,3 +67,11 @@ def test_monitor_legacy_script_delegates_to_packaged_entrypoint():
 @pytest.mark.parametrize("name", ["qsys.ops.service_checks_index"])
 def test_packaged_production_entrypoint_imports(name):
     importlib.import_module(name)
+
+
+@pytest.mark.parametrize("path", ["deploy/windows/data_gateway.py"])
+def test_fixed_windows_data_entrypoint_imports(path):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("qsys_windows_data_gateway", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)

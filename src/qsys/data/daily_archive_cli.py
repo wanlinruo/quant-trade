@@ -61,6 +61,7 @@ from qsys.data.providers.tushare_client import TushareClient
 from qsys.data.quality.minute_rules import MinuteIssue, check_minute_bars
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
+from qsys.data.windows_data_transport import WindowsDataTransport
 from qsys.live.config import load_tushare_config
 from qsys.ops.services import FAILED, SKIPPED, SUCCEEDED, ServiceRun
 from qsys.paper.calendar import load_trading_calendar
@@ -348,7 +349,7 @@ def _check_minute_days(
     return issues
 
 
-def _archive_auction(args, warehouse, wanted, ssh, key, stamp) -> bool:
+def _archive_auction(args, warehouse, wanted, ssh, key, stamp, run_id=None) -> bool:
     """竞价 tick 归档，返回是否成功。
 
     失败**不中断**整个归档——分钟线照做；但结果要带回 main 决定退出码。
@@ -368,20 +369,32 @@ def _archive_auction(args, warehouse, wanted, ssh, key, stamp) -> bool:
 
     win_dir = f"{args.win_root}/auction_{stamp}"
     try:
-        run(ssh + [f"New-Item -ItemType Directory -Force -Path {win_dir} | Out-Null"],
-            what="建竞价目录")
-        run(["scp", "-i", key, "-o", "BatchMode=yes", str(manifest),
-             f"{args.win_host}:{win_dir}/manifest.csv"], what="上传竞价清单")
-        output = run(ssh + [
-            f'$env:PYTHONIOENCODING="utf-8"; {args.win_python} -u '
-            f'{args.win_auction_script} --manifest {win_dir}\\manifest.csv '
-            f'--out {win_dir} --sleep 0.1'
-        ], what="Windows 下载竞价 tick", timeout=7200)
-        for line in output.strip().splitlines()[-3:]:
-            print("  " + line)
-        run(["scp", "-i", key, "-o", "BatchMode=yes",
-             f"{args.win_host}:{win_dir}/*.parquet", str(local)],
-            what="回传竞价 parquet")
+        if getattr(args, "win_transport", "legacy") == "gateway":
+            transport = WindowsDataTransport(args.win_host, key, component=args.win_component,
+                                             known_hosts=args.win_known_hosts)
+            transport.probe()
+            job = f"auction_{stamp}"
+            transport.prepare(job, manifest)
+            output = run(transport.download_command(
+                job, Path(args.win_auction_script_source), run_id or f"auction-{stamp}",
+                min(missing["dt"].to_list()), max(missing["dt"].to_list())),
+                what="Windows 限权下载竞价 tick", timeout=7200)
+            transport.receive(job, local)
+        else:
+            run(ssh + [f"New-Item -ItemType Directory -Force -Path {win_dir} | Out-Null"],
+                what="建竞价目录")
+            run(["scp", "-i", key, "-o", "BatchMode=yes", str(manifest),
+                 f"{args.win_host}:{win_dir}/manifest.csv"], what="上传竞价清单")
+            output = run(ssh + [
+                f'$env:PYTHONIOENCODING="utf-8"; {args.win_python} -u '
+                f'{args.win_auction_script} --manifest {win_dir}\\manifest.csv '
+                f'--out {win_dir} --sleep 0.1'
+            ], what="Windows 下载竞价 tick", timeout=7200)
+            for line in output.strip().splitlines()[-3:]:
+                print("  " + line)
+            run(["scp", "-i", key, "-o", "BatchMode=yes",
+                 f"{args.win_host}:{win_dir}/*.parquet", str(local)],
+                what="回传竞价 parquet")
     except Exception as exc:
         log.error("archive.auction_failed", error=str(exc))
         print(f"  [竞价 tick 失败] {exc}——继续做分钟线，最终以失败退出")
@@ -411,6 +424,12 @@ def _parser() -> argparse.ArgumentParser:
                         help="只做竞价 tick。窗口只有 20 天，出问题要能单独重试")
     parser.add_argument("--win-auction-script",
                         default=r"C:\qsys\win_download_auction_ticks.py")
+    parser.add_argument("--win-transport", choices=("legacy", "gateway"), default="legacy")
+    parser.add_argument("--win-known-hosts", default=None, help="限权传输专用、预先核验的Windows主机公钥文件")
+    parser.add_argument("--win-component", choices=("daily-archive", "tushare-sync"),
+                        default="daily-archive")
+    parser.add_argument("--win-auction-script-source", default="scripts/win_download_auction_ticks.py",
+                        help="当前制品内竞价下载器；限权入口按其hash选择已批准的Windows只读副本")
     parser.add_argument("--win-host", default="Administrator@118.25.42.149")
     parser.add_argument("--win-key", default="~/.ssh/id_ed25519_winnode")
     parser.add_argument("--win-python", default=r"C:\qsys\.venv\Scripts\python.exe")
@@ -533,7 +552,7 @@ def _archive(args, service_run: ServiceRun) -> int:
                     candidate_stock_days(warehouse, start, complete_through,
                                          sessions=sessions),
                 ),
-                ssh, key, stamp,
+                ssh, key, stamp, service_run.run_id,
             )
             if not auction_ok:
                 step.fail("竞价采集或导入失败；QMT 只留约 20 个交易日，需尽快补采")
@@ -637,24 +656,36 @@ def _archive(args, service_run: ServiceRun) -> int:
         try:
             if not source_script.is_file():
                 raise FileNotFoundError(f"分钟下载器不存在：{source_script}")
-            run(ssh + [f"New-Item -ItemType Directory -Force -Path {win_dir} | Out-Null"],
-                what="建 Windows 目录")
-            run(["scp", "-i", key, "-o", "BatchMode=yes", str(manifest),
-                 f"{args.win_host}:{win_manifest}"], what="上传清单")
-            # 固定入口只负责执行；业务下载器来自当前目标版本，杜绝 Windows 旧脚本漂移。
-            run(["scp", "-i", key, "-o", "BatchMode=yes", str(source_script),
-                 f"{args.win_host}:{remote_script}"], what="上传分钟下载器")
+            transport = None
+            if getattr(args, "win_transport", "legacy") == "gateway":
+                transport = WindowsDataTransport(args.win_host, key, component=args.win_component,
+                                             known_hosts=args.win_known_hosts)
+                transport.probe()
+                job = f"minute_{stamp}"
+                transport.prepare(job, manifest)
+                download_command = transport.download_command(
+                    job, source_script, service_run.run_id, lo, hi)
+            else:
+                run(ssh + [f"New-Item -ItemType Directory -Force -Path {win_dir} | Out-Null"],
+                    what="建 Windows 目录")
+                run(["scp", "-i", key, "-o", "BatchMode=yes", str(manifest),
+                     f"{args.win_host}:{win_manifest}"], what="上传清单")
+                # 固定入口只负责执行；业务下载器来自当前目标版本，杜绝 Windows 旧脚本漂移。
+                run(["scp", "-i", key, "-o", "BatchMode=yes", str(source_script),
+                     f"{args.win_host}:{remote_script}"], what="上传分钟下载器")
 
-            remote_windows = remote_script.replace("/", "\\")
-            manifest_windows = win_manifest.replace("/", "\\")
-            out_windows = win_dir.replace("/", "\\")
-            download = (
-                f'$env:PYTHONIOENCODING="utf-8"; {args.win_python} -u {remote_windows} '
-                f'--manifest {manifest_windows} --out {out_windows} '
-                f'--window-start {lo.strftime("%Y%m%d")} '
-                f'--window-end {hi.strftime("%Y%m%d")} '
-                f'--run-id {service_run.run_id} --sleep 0.1 --whole-window'
-            )
+                remote_windows = remote_script.replace("/", "\\")
+                manifest_windows = win_manifest.replace("/", "\\")
+                out_windows = win_dir.replace("/", "\\")
+                download = (
+                    f'$env:PYTHONIOENCODING="utf-8"; {args.win_python} -u {remote_windows} '
+                    f'--manifest {manifest_windows} --out {out_windows} '
+                    f'--window-start {lo.strftime("%Y%m%d")} '
+                    f'--window-end {hi.strftime("%Y%m%d")} '
+                    f'--run-id {service_run.run_id} --sleep 0.1 --whole-window'
+                )
+
+                download_command = ssh + [download]
 
             def on_line(line: str) -> bool:
                 progress = parse_minute_progress(line)
@@ -672,7 +703,7 @@ def _archive(args, service_run: ServiceRun) -> int:
                 return True
 
             stream_result = run_streaming(
-                ssh + [download], what="Windows 下载分钟线",
+                download_command, what="Windows 下载分钟线",
                 timeout=args.minute_timeout,
                 stall_timeout=args.minute_stall_timeout,
                 on_line=on_line,
@@ -684,9 +715,12 @@ def _archive(args, service_run: ServiceRun) -> int:
         # 不论下载器返回什么状态，都先回收已经原子落盘的 Parquet、续传账本和摘要。
         if not setup_error:
             try:
-                run(["scp", "-i", key, "-o", "BatchMode=yes",
-                     f"{args.win_host}:{win_dir}/*", str(local_dir)],
-                    what="回传分钟产物")
+                if transport is not None:
+                    transport.receive(job, local_dir)
+                else:
+                    run(["scp", "-i", key, "-o", "BatchMode=yes",
+                         f"{args.win_host}:{win_dir}/*", str(local_dir)],
+                        what="回传分钟产物")
             except Exception as exc:
                 transfer_error = f"{type(exc).__name__}: {exc}"
                 log.error("archive.minute_transfer_failed", error=transfer_error)
