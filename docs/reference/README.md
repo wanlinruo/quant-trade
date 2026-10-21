@@ -1,5 +1,10 @@
 # 参考资料
 
+## 数据组件 Windows 限权取数（#476 / #475 / #330）
+
+见 `../plans/windows-data-component-transport.md`：固定操作协议、组件独立key/命名空间、
+下载器hash批准、产物完整性和Windows控制面引导/真实验收顺序。
+
 ## catalog-verify 账号与权限隔离（#469 / #330）
 
 见 `../plans/catalog-verify-production-isolation.md`：全局记录只读/专属记录写入、三张质检结果表

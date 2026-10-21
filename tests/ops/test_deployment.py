@@ -704,7 +704,7 @@ def test_daily_archive_component_has_explicit_data_writer_boundaries() -> None:
         "src/qsys/live",
         "src/qsys/ops",
         "src/qsys/paper",
-        "scripts/win_download_minutes.py",
+        "scripts/win_download_minutes.py", "scripts/win_download_auction_ticks.py",
     ]
     assert archive["release_root"] == "/opt/qsys/components/daily-archive/releases"
     assert archive["current"] == "/opt/qsys/components/daily-archive/current"
@@ -778,7 +778,7 @@ def test_tushare_sync_component_owns_bounded_writer_and_convergence_paths() -> N
     }
     assert sync["scan_roots"] == [
         "src/qsys/core", "src/qsys/data", "src/qsys/live", "src/qsys/ops",
-        "src/qsys/paper", "scripts/win_download_minutes.py",
+        "src/qsys/paper", "scripts/win_download_minutes.py", "scripts/win_download_auction_ticks.py",
     ]
     assert sync["release_root"] == "/opt/qsys/components/tushare-sync/releases"
     assert sync["current"] == "/opt/qsys/components/tushare-sync/current"

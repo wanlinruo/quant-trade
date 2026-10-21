@@ -56,6 +56,7 @@ def _repo(tmp_path: Path) -> tuple[Path, str]:
     (repo / "scripts/win_download_minutes.py").write_text(
         "WINDOWS_DOWNLOADER = 1\n", encoding="utf-8",
     )
+    (repo / "scripts/win_download_auction_ticks.py").write_text("AUCTION = 1\n")
     (repo / "scripts/unrelated.py").write_text(
         "UNRELATED = 1\n", encoding="utf-8",
     )
@@ -317,8 +318,10 @@ def test_daily_archive_release_binds_data_code_and_windows_downloader(
         "command": "qsys-daily-archive", "target": "qsys.data.daily_archive_cli:main",
     }
     assert "scripts/win_download_minutes.py" in paths
+    assert "scripts/win_download_auction_ticks.py" in paths
     assert not any(
-        path.startswith("scripts/") and path != "scripts/win_download_minutes.py"
+        path.startswith("scripts/") and path not in {"scripts/win_download_minutes.py",
+                                                       "scripts/win_download_auction_ticks.py"}
         for path in paths
     )
     assert (release / "source/scripts/win_download_minutes.py").is_file()
@@ -373,8 +376,10 @@ def test_tushare_sync_release_binds_writer_and_late_minute_downloader(
         "target": "qsys.data.tushare_sync_cli:main",
     }
     assert "scripts/win_download_minutes.py" in paths
+    assert "scripts/win_download_auction_ticks.py" in paths
     assert not any(
-        path.startswith("scripts/") and path != "scripts/win_download_minutes.py"
+        path.startswith("scripts/") and path not in {"scripts/win_download_minutes.py",
+                                                       "scripts/win_download_auction_ticks.py"}
         for path in paths
     )
     assert (release / "source/scripts/win_download_minutes.py").is_file()

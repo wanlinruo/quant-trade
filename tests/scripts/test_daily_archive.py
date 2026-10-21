@@ -338,3 +338,64 @@ def test_archive_without_closed_session_skips_all_collection(monkeypatch, tmp_pa
         "--record-root", str(tmp_path / "records"),
     ]) == 0
     assert not (tmp_path / "warehouse").exists()
+
+
+@pytest.mark.parametrize('transfer_fails', [False, True])
+def test_gateway_minute_flow_keeps_progress_protocol_and_blocks_bad_transfer(
+        monkeypatch, tmp_path, transfer_fails):
+    from qsys.core.calendar import AShareCalendar
+    day=date(2026,10,21)
+    class Clock:
+        @staticmethod
+        def now():return datetime(2026,10,21,20)
+    monkeypatch.setattr(daily_archive,'datetime',Clock)
+    monkeypatch.setattr(daily_archive,'load_trading_calendar',lambda _:AShareCalendar([day]))
+    monkeypatch.setattr(daily_archive,'load_tushare_config',lambda _:SimpleNamespace(token='test'))
+    monkeypatch.setattr(daily_archive,'sync_premarket_suspensions',
+                        lambda *a:SimpleNamespace(row_count=0,detail='test',accepted=True))
+    instruments=pl.DataFrame({'symbol':['600036.SH'],'board':['main'],
+        'list_date':[date(2020,1,1)],'delist_date':pl.Series([None],dtype=pl.Date)})
+    wanted=pl.DataFrame({'symbol':['600036.SH'],'dt':[day]})
+    monkeypatch.setattr(daily_archive.WarehouseQuery,'instruments',lambda _:instruments)
+    monkeypatch.setattr(daily_archive,'candidate_stock_days',lambda *a,**k:wanted)
+    monkeypatch.setattr(daily_archive,'_paper_fills',lambda _:pl.DataFrame())
+    monkeypatch.setattr(daily_archive,'held_stock_days',lambda *a:wanted.clear())
+    monkeypatch.setattr(daily_archive,'drop_suspended',lambda q,w:w)
+    monkeypatch.setattr(daily_archive,'missing_stock_days',lambda q,w:w)
+    monkeypatch.setattr(daily_archive,'run',lambda *a,**k:pytest.fail('legacy transport called'))
+    captured={}
+    class Transport:
+        def __init__(self,host,key,**kw):
+            assert kw=={'component':'tushare-sync','known_hosts':'trusted-hosts'}
+        def probe(self):return {'protocol':1,'component':'tushare-sync'}
+        def prepare(self,job,manifest):
+            assert job=='minute_20261021'
+            assert '600036.SH,2026-10-21' in manifest.read_text()
+        def download_command(self,job,script,run_id,start,end):
+            captured['run_id']=run_id
+            assert start==end==day and script.is_file()
+            return ['fixed-data-command']
+        def receive(self,job,destination):
+            if transfer_fails:raise ValueError('output hash mismatch')
+            (destination/'result.json').write_text(json.dumps({
+                'schema_version':1,'run_id':captured['run_id'],'empty':[],'failed':[],
+                'total_stock_days':1,'completed_stock_days':1,'downloaded_stock_days':1,
+                'empty_stock_days':0,'failed_symbols':0,'parquet_files':1,
+                'last_progress_at':'2026-10-21T20:00:00','estimated_remaining_seconds':0}))
+            return 1
+    monkeypatch.setattr(daily_archive,'WindowsDataTransport',Transport)
+    def stream(command,**kw):
+        assert command==['fixed-data-command']
+        return daily_archive.StreamResult(0,'download complete')
+    monkeypatch.setattr(daily_archive,'run_streaming',stream)
+    monkeypatch.setattr(daily_archive,'import_minute_bars',lambda *a,**k:ImportResult(1,241,0))
+    monkeypatch.setattr(daily_archive,'_check_minute_days',lambda *a:0)
+    published=[]
+    monkeypatch.setattr(daily_archive,'_publish_canonical_minutes',lambda *a:published.append(True))
+    source=tmp_path/'approved.py';source.write_text('approved')
+    result=daily_archive.main(['--warehouse',str(tmp_path/'warehouse'),'--record-root',str(tmp_path/'records'),
+        '--work-root',str(tmp_path/'work'),'--config','unused','--lookback-days','0','--skip-auction',
+        '--win-transport','gateway','--win-component','tushare-sync','--win-known-hosts','trusted-hosts',
+        '--win-script-source',str(source)])
+    assert result==(1 if transfer_fails else 0)
+    assert bool(published) is not transfer_fails

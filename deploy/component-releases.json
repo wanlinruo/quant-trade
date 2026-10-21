@@ -321,7 +321,8 @@
         "src/qsys/live",
         "src/qsys/ops",
         "src/qsys/paper",
-        "scripts/win_download_minutes.py"
+        "scripts/win_download_minutes.py",
+        "scripts/win_download_auction_ticks.py"
       ],
       "release_root": "/opt/qsys/components/daily-archive/releases",
       "current": "/opt/qsys/components/daily-archive/current",
@@ -406,7 +407,8 @@
         "src/qsys/live",
         "src/qsys/ops",
         "src/qsys/paper",
-        "scripts/win_download_minutes.py"
+        "scripts/win_download_minutes.py",
+        "scripts/win_download_auction_ticks.py"
       ],
       "release_root": "/opt/qsys/components/tushare-sync/releases",
       "current": "/opt/qsys/components/tushare-sync/current",
