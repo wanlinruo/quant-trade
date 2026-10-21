@@ -91,6 +91,43 @@ def test_table_health_is_a_separate_step_and_red_fails_the_task(monkeypatch, tmp
     assert '未覆盖表继续缺证据' in record['steps'][-1]['detail']
 
 
+def test_private_output_still_observes_sync_in_global_records(monkeypatch, tmp_path, warehouse):
+    import sys
+
+    global_runs = tmp_path / "global"
+    own_runs = global_runs / "catalog-verify"
+    folder = global_runs / "tushare-sync" / f"{DAY:%Y/%m/%d}"
+    folder.mkdir(parents=True)
+    (folder / "tushare-sync-active.json").write_text(json.dumps({
+        "run_id": "tushare-sync-active", "service": "tushare-sync",
+        "started_at": datetime.now().isoformat(timespec="seconds"),
+        "session": DAY.isoformat(), "status": "running", "steps": [],
+    }))
+    _argv(monkeypatch, warehouse, own_runs)
+    monkeypatch.setattr(sys, "argv", sys.argv + ["--service-runs-input", str(global_runs)])
+    monkeypatch.setattr(catalog_verify, "verify_session",
+                        lambda *a, **kw: __import__("pytest").fail("sync guard bypassed"))
+    assert catalog_verify.main() == 0
+    assert "同步仍在运行" in _record(own_runs)["steps"][1]["detail"]
+
+
+def test_explicit_samples_do_not_follow_private_record_directory(monkeypatch, tmp_path, warehouse):
+    import sys
+
+    own_runs = tmp_path / "service-runs/catalog-verify"
+    artifacts = tmp_path / "state/artifacts/metric_checks"
+    observed = []
+    def verify(wh, day, **kw):
+        observed.append(kw["artifacts"])
+        return VerificationSummary(DAY, "r", 2, 0, 0, ())
+    _argv(monkeypatch, warehouse, own_runs)
+    monkeypatch.setattr(sys, "argv", sys.argv + ["--artifacts", str(artifacts)])
+    monkeypatch.setattr(catalog_verify, "verify_session", verify)
+    assert catalog_verify.main() == 0
+    assert observed == [artifacts]
+    assert _record(own_runs)["status"] == "succeeded"
+
+
 def test_table_health_exception_is_recorded_without_refreshing_old_evidence(monkeypatch, tmp_path, warehouse):
     import pytest
     runs = tmp_path / 'runs'

@@ -218,6 +218,12 @@
           "owner": "ubuntu",
           "group": "ubuntu",
           "mode": "0750"
+        },
+        {
+          "path": "/home/ubuntu/qsys/var/service-runs/catalog-verify",
+          "owner": "qsys-catalog-verify",
+          "group": "qsys-workbench",
+          "mode": "0750"
         }
       ],
       "seed": {
@@ -230,10 +236,27 @@
       },
       "dropin_lines": [
         "[Service]",
+        "User=qsys-catalog-verify",
+        "Group=qsys-workbench",
+        "SupplementaryGroups=qsys-catalog-verify qsys-observers",
+        "UMask=0027",
+        "WorkingDirectory=/",
+        "ExecStartPre=",
+        "ExecStartPre=/usr/bin/test -s /data/qsys/catalog-verify-state/frozen_baseline.json",
         "ExecStart=",
+        "ReadWritePaths=",
+        "ReadWritePaths=/data/qsys/warehouse/metric_checks /data/qsys/warehouse/dataset_checks /data/qsys/warehouse/relation_checks",
+        "ReadWritePaths=/home/ubuntu/qsys/artifacts/metric_checks /home/ubuntu/qsys/var/service-runs/catalog-verify",
+        "ReadOnlyPaths=/etc/qsys/components/catalog-verify/deploy.toml /data/qsys/catalog-verify-state/frozen_baseline.json",
         "Environment=QSYS_CATALOG_SOURCE_ROOT=/opt/qsys-data/catalog-verify/current/source",
         "Environment=QSYS_CATALOG_FROZEN_BASELINE=/data/qsys/catalog-verify-state/frozen_baseline.json",
-        "ExecStart=/usr/bin/flock --exclusive --nonblock /home/ubuntu/qsys/var/warehouse-write.lock /opt/qsys-data/catalog-verify/current/venv/bin/qsys-catalog-verify --warehouse /home/ubuntu/qsys/warehouse --config /home/ubuntu/qsys/config/deploy.local.toml --service-runs /home/ubuntu/qsys/var/service-runs"
+        "ExecStart=/usr/bin/flock --exclusive --nonblock /home/ubuntu/qsys/var/warehouse-write.lock /opt/qsys-data/catalog-verify/current/venv/bin/qsys-catalog-verify --warehouse /data/qsys/warehouse --config /etc/qsys/components/catalog-verify/deploy.toml --service-runs /home/ubuntu/qsys/var/service-runs/catalog-verify --service-runs-input /home/ubuntu/qsys/var/service-runs --artifacts /home/ubuntu/qsys/artifacts/metric_checks",
+        "MemoryHigh=2G",
+        "MemoryMax=3G",
+        "CPUQuota=50%",
+        "Nice=10",
+        "IOSchedulingClass=idle",
+        "Environment=POLARS_MAX_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1"
       ]
     },
     "service-checks": {

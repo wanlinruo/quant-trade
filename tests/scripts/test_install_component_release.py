@@ -138,6 +138,26 @@ def test_generic_installer_fails_before_activation_when_seed_is_missing(
     assert not dropin.exists()
 
 
+def test_catalog_upgrade_never_recreates_a_missing_frozen_baseline(monkeypatch, tmp_path):
+    sha = "c" * 40
+    spec, _, current, dropin = _prepare(monkeypatch, tmp_path, sha)
+    monkeypatch.setattr(installer, "load_component_releases", lambda repo: {"catalog-verify": spec})
+    current.parent.mkdir(parents=True)
+    previous = tmp_path / "previous"
+    previous.mkdir()
+    current.symlink_to(previous)
+    source = tmp_path / "old-baseline.json"
+    source.write_text('{"historical": true}')
+    target = tmp_path / "state/frozen_baseline.json"
+    spec["seed"] = dict(source=source.name, source_environment="QSYS_TEST_SEED",
+                        target=str(target), owner="ubuntu", group="ubuntu", mode="0640")
+    with pytest.raises(ValueError, match="missing frozen baseline"):
+        installer.activate(tmp_path, sha, "catalog-verify")
+    assert current.resolve() == previous
+    assert not target.exists()
+    assert not dropin.exists()
+
+
 def test_generic_installer_rejects_repository_spec_drift(
     monkeypatch, tmp_path: Path,
 ) -> None:

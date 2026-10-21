@@ -22,6 +22,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--warehouse", type=Path, default=Path("warehouse"))
     parser.add_argument("--config", default="config/deploy.local.toml")
     parser.add_argument("--service-runs", type=Path, default=Path("var/service-runs"))
+    parser.add_argument("--service-runs-input", type=Path, default=None,
+                        help="只读全局运行记录根；默认与 --service-runs 相同")
     parser.add_argument("--artifacts", type=Path, default=None,
                         help="规则样本根；默认与 service-runs 所属 checkout 的 artifacts 一致")
     parser.add_argument("--day", type=date.fromisoformat, default=None,
@@ -43,7 +45,8 @@ def main(argv: list[str] | None = None) -> int:
         run.session = day
 
         with run.step("指标字典验证", interface="仓库内规则", table="metric_checks") as step:
-            runs = load_runs(args.service_runs, day, day + timedelta(days=1))
+            runs = load_runs(args.service_runs_input or args.service_runs,
+                             day, day + timedelta(days=1))
             running = [
                 item for item in runs
                 if item.get("service") == "tushare-sync"
