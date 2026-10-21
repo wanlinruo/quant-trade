@@ -253,6 +253,8 @@ def activate(
         _seed_limit_up_shadow(source, seed, initial=not current.is_symlink())
         _require_idle_limit_up_shadow(str(spec["unit"]))
     elif seed is not None and not Path(str(seed["target"])).is_file():
+        if component == "catalog-verify" and current.is_symlink():
+            raise ValueError("refusing to recreate missing frozen baseline during catalog upgrade")
         source = Path(
             os.environ.get(str(seed["source_environment"]), str(repo / str(seed["source"])))
         )

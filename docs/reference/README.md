@@ -1,5 +1,10 @@
 # 参考资料
 
+## catalog-verify 账号与权限隔离（#469 / #330）
+
+见 `../plans/catalog-verify-production-isolation.md`：全局记录只读/专属记录写入、三张质检结果表
+精确写权限、冻结基线保留、真实 Linux ACL 与消费者验证，以及逐组件推进顺序。
+
 ## limit-up-shadow 独立迁移（#463 / #330）
 
 见 `../plans/limit-up-shadow-production-migration.md`：交易时段开发验证、维护窗口内

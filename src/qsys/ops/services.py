@@ -89,9 +89,10 @@ SERVICES: tuple[ServiceSpec, ...] = (
     ServiceSpec(
         "catalog-verify", "指标字典验证", "timer", "Linux", "qsys-catalog-verify",
         "交易日 19:40",
-        ("仓库只读", "运行记录"), ("metric_checks",),
+        ("业务表只读", "全局运行记录只读", "冻结表基线只读"),
+        ("metric_checks", "dataset_checks", "relation_checks", "规则样本", "自身运行记录"),
         "按指标字典的规则验证当日数据：当日增量规则 + 当年至今的全量规则，"
-        "结果写 metric_checks，供指标字典页与当晚服务质检读取",
+        "结果写三类质检表，供指标字典页与当晚服务质检读取",
         due="20:00", max_runtime=timedelta(minutes=30),
     ),
     ServiceSpec(
