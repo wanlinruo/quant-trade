@@ -97,6 +97,11 @@ manifest → `HANDOFF.md` → 其他历史文档。
   下一项只登记依赖与结论。窗口不足时按当前有效版本恢复原 timer 并交接，不抢自然任务时间，
   不让 timer 长期暂停。复盘必须落到本文件及对应 Issue，不能只在会话中解释耗时。
 
+- **无需写工作台的组件不得加入写组**（2026-10-21，#479）：`qsys-workbench` 不只是 home
+  遍历组，它能写工作台目录与SQLite。账号与unit均使用组件私有组，输入读取通过
+  `qsys-observers` 或精确只读ACL；home遍历已有observers ACL，不为方便加入写组。
+  权限验收同时检查真实Unix身份和unit沙箱，明确测试Workbench、他组件状态、完整配置与
+  业务表的写入拒绝，不能用沙箱阻断代替账号最小权限，也不能只检查Warehouse。
 - **验收探针不得污染不可变制品**（2026-10-21，#469 / #473）：候选 venv 的 Python 统一用
   `-B` 或 `PYTHONDONTWRITEBYTECODE=1`；隔离运行前将已验证 release 归属 root 并确保 group/other
   不可写，探针后再检查。不能在已做 `chmod go-w` 的 venv 中用维护账号直接运行 Python，

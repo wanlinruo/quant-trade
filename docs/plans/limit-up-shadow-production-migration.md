@@ -18,21 +18,21 @@
 
 ## 改动与边界
 
-1. 组件主组仍为qsys-workbench，让Web读取小型状态库；单独建立
-   qsys-limit-up-shadow私有组，通过SupplementaryGroups只给该服务读取最小配置。
+1. #479后组件主组为qsys-limit-up-shadow，仅补充qsys-observers；Web/日报通过
+   observers只读ACL读取小型状态库。私有组只给该服务读取最小配置。
    `/etc/qsys/components/limit-up-shadow/deploy.toml` root:私有组0640，仅schema_version与
    Tushare日历token。不得复制Redis、账号、订单、邮件或Windows凭据。
 2. 首次seed来源固定为旧库绝对路径，仅此组件允许这个固定绝对来源；其他组件seed仍须仓库相对路径。
    gateway从可信规格显式传入来源，不依赖临时worktree的现场状态。
 3. installer用SQLite backup一致性复制，校验完整性、schema和所有历史行的确定性摘要，
-   保留null及源值；新库DELETE journal、owner为组件账号、group为qsys-workbench、0640。
+   保留null及源值；新库DELETE journal、owner为组件账号、group为qsys-limit-up-shadow、0640。
    使用不覆盖的原子发布；存在非等价目标、软链接或异常库立即失败关闭。
    首次迁移已有目标须与旧库等价；普通升级保留新库，绝不再次从冻结旧库覆盖。
    升级时新库缺失必须报错，不允许从冻结旧库重建而丢掉迁移后的历史。
 4. Web规格显式读取新路径 `/data/qsys/var-prod/limit-up-shadow/limit-up-shadow.sqlite3`。
    现有reader不改，仍mode=ro/query_only。当前生产reader在切换前必须验证新历史可读且一致。
 5. 新状态目录与新记录子树保留ubuntu与qsys-observers的access/default读取ACL；
-   ubuntu不属于qsys-workbench，须显式赋予目录遍历和新文件读取权限，保证安装器能够
+   ubuntu须显式获得目录遍历和新文件读取权限，保证安装器能够
    校验root安装的0640状态库；不得因此开放私有配置。验证祖先遍历、
    新日期目录读取，以及当前Web/日报实际账号的新旧记录发现和identity无重复。
    #470现场确认GNU `install`会移除文件继承的named ACL：安装器必须在新文件原子发布前
@@ -89,3 +89,10 @@ premarket-limits→paper/shadow-core→reboot-drill只读控制面迁移。写wa
 精确写目录、锁与读者兼容方案；premarket-limits关系当日买单fail-closed，排在数据任务之后。
 Live Core最后单独审阅，Research Runner/月度研究/platform/Windows兼容分别验收。
 14组件激活数、账号/配置隔离、真实业务验收和其余运行单元分别计数，不以14/14代替#330整体完成。
+
+## #479 Unix身份收紧
+
+qsys-workbench同时授予Workbench目录/DB写权限，不能用于榜单账号。主组及输出组改为
+qsys-limit-up-shadow，仅补充qsys-observers；新身份真实探针已确认模型/参考/最小配置可读、
+自身输出可写，而Workbench、完整配置及业务表不可写。正式变更账号及unit后需复验，
+系统沙箱与原始Unix身份分别记录；现有评分/旧数据内容不变，复用有效业务证据。

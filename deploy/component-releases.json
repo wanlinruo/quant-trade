@@ -222,7 +222,7 @@
         {
           "path": "/home/ubuntu/qsys/var/service-runs/catalog-verify",
           "owner": "qsys-catalog-verify",
-          "group": "qsys-workbench",
+          "group": "qsys-catalog-verify",
           "mode": "0750"
         }
       ],
@@ -237,8 +237,8 @@
       "dropin_lines": [
         "[Service]",
         "User=qsys-catalog-verify",
-        "Group=qsys-workbench",
-        "SupplementaryGroups=qsys-catalog-verify qsys-observers",
+        "Group=qsys-catalog-verify",
+        "SupplementaryGroups=qsys-observers",
         "UMask=0027",
         "WorkingDirectory=/",
         "ExecStartPre=",
@@ -585,13 +585,13 @@
         {
           "path": "/data/qsys/var-prod/limit-up-shadow",
           "owner": "qsys-limit-up-shadow",
-          "group": "qsys-workbench",
+          "group": "qsys-limit-up-shadow",
           "mode": "0750"
         },
         {
           "path": "/home/ubuntu/qsys/var/service-runs/limit-up-shadow",
           "owner": "qsys-limit-up-shadow",
-          "group": "qsys-workbench",
+          "group": "qsys-limit-up-shadow",
           "mode": "0750"
         }
       ],
@@ -600,14 +600,14 @@
         "source_environment": "QSYS_LIMIT_UP_SHADOW_LEGACY_STATE",
         "target": "/data/qsys/var-prod/limit-up-shadow/limit-up-shadow.sqlite3",
         "owner": "qsys-limit-up-shadow",
-        "group": "qsys-workbench",
+        "group": "qsys-limit-up-shadow",
         "mode": "0640"
       },
       "dropin_lines": [
         "[Service]",
         "User=qsys-limit-up-shadow",
-        "Group=qsys-workbench",
-        "SupplementaryGroups=qsys-limit-up-shadow",
+        "Group=qsys-limit-up-shadow",
+        "SupplementaryGroups=qsys-observers",
         "UMask=0027",
         "WorkingDirectory=/",
         "ExecStartPre=",

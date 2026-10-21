@@ -6,7 +6,8 @@
 ## 路径与身份
 
 - 保留现有 release/current 与冻结 baseline；以 qsys-catalog-verify 无登录账号运行，主组
-  qsys-workbench 仅提供 home 遍历，补充私有同名组与只读 qsys-observers。
+  私有同名组，仅补充只读 qsys-observers。#479实测qsys-workbench同时能写工作台，
+  因此不用于只读组件；home已对observers开放遍历，权限以新身份实测为准。
 - `/etc/qsys/components/catalog-verify/deploy.toml` 为 root:私有组0640，仅 schema_version、
   Tushare token；不输出凭据，原完整配置 hash 保持不变。
 - `--service-runs` 仅写专属 `service-runs/catalog-verify`；新增 `--service-runs-input`
