@@ -228,11 +228,15 @@ Workbench 与策略数据迁移及首次生产激活均需单独授权；代码�
 Web不读取AlertLedger，只做原Workbench接口兼容验收。
 共享SQLite和Redis5无原生ACL的残余边界如实保留，见 `../plans/paper-production-isolation.md` 和#488。
 Shadow 的策略快照、SQLite、运行台账、
-告警账、锁和本地 kill switch 全部收敛到 `var/shadow-core` / `var/alerts/shadow-core`，市场事实
+告警账、锁和本地 kill switch 全部收敛到 `var/shadow-core` / `var/alerts/shadow-core`，私有主组+
+observers、最小配置在/etc/qsys/components/shadow-core，市场事实
 Warehouse 只读，preflight 也从同一 release 的 `qsys-live-preflight` 执行。组件切换会固定比较
 另一运行核心、Web 与 backtest worker 的 load/active/PID/启动时间身份；Live Core 身份与共享
 checkout 仍按全局门禁前后校验。v23/component-release-v13 固定入口、账号/组、Redis最小权限边界、
 现有 Workbench/Shadow 状态迁移及首次生产激活均需单独授权；代码合入不会切换生产 Paper/Shadow。
+Shadow当前Live/true停用门禁与inactive保持，不因制品部署启动；隔离验证可显式使用
+--validation-namespace，统一映射所有传输操作（含硬编码kill/intents），生产默认协议不变。
+当前消费者的新路径阅读与生产消费路径切换必须区分，见 `../plans/shadow-core-production-isolation.md`。
 `scripts/kill.py` 根据固定 Shadow component drop-in 是否存在选择本地急停文件：共享部署使用
 `var/SHADOW_KILL`，独立部署使用 `/home/ubuntu/qsys/var/shadow-core/SHADOW_KILL`。
 首次激活前必须同步兼容的急停脚本，并核验维护者具备专用状态目录的写权限；回滚 installer
