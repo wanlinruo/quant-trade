@@ -1,5 +1,10 @@
 # 参考资料
 
+## 每日归档生产隔离（#485）
+
+见 `../plans/daily-archive-production-isolation.md`：四张写表、原工作区和续传历史保留、
+专属账号/最小配置/Windows限权入口、资源与真实消费者分层验收。
+
 ## Tushare 同步生产隔离（#475）
 
 见 `../plans/tushare-sync-production-isolation.md`：写表集合、账号/配置/Windows限权凭据、

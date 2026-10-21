@@ -171,10 +171,11 @@ heartbeat/kill-switch，对 systemd 与 Windows Task 只做探测；生产首次
 
 `daily-archive` 是首个数据写组件边界。wheel 入口为 `qsys-daily-archive`，release/current
 位于 `/opt/qsys/components/daily-archive/{releases/<SHA>,current}`；下载中转与已导入文件只写
-`var/daily-archive`，运行记录只写 `var/service-runs/daily-archive`。warehouse 仍是数据平面的
-共享单写目标，所有写入继续持有同一 `warehouse-write.lock`，并使用独立预置的 Windows/QMT
-写入 key。上传到 Windows 的分钟下载器来自同一 release 的 `source/scripts`，其内容受 manifest
-hash 约束；Tushare 的晚到上市标的补采改由包内模块启动，不再依赖共享 checkout 脚本。
+`var/daily-archive`，运行记录只写 `var/service-runs/daily-archive`。#485将Warehouse写集合
+限定为auction_ticks/minute_bars/bar_minute_1m/suspend_daily，其他表只读；共享单写锁以只读
+描述符取得排他flock。最小配置与#476专属Windows key/known_hosts位于
+`/etc/qsys/components/daily-archive/`；固定gateway只运行已批准且与本制品source/scripts
+hash一致的分钟/竞价下载器，不上传任意执行代码；Tushare 的晚到上市标的补采改由包内模块启动，不再依赖共享 checkout 脚本。
 生产首次激活前必须另行审计 qsys-daily-archive 账号、warehouse/lock 最小 Unix 权限、forced-command
 Windows key 和配置只读权限；v18 固定入口安装及激活不由代码合入授权。
 
