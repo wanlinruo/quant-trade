@@ -34,6 +34,7 @@ CATEGORY_ROOTS: tuple[tuple[str, str], ...] = (
     ("backups", "操作回滚副本"),
     ("baidupan", "付费源下载区"),
     ("var-prod", "生产运行状态"),
+    ("catalog-verify-state", "指标验证基线"),
     ("repair-cache", "修复缓存"),
     ("lost+found", "文件系统"),
 )

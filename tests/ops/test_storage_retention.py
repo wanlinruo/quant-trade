@@ -139,3 +139,21 @@ def test_the_research_output_directory_is_registered(tmp_path):
     assert items["research"].category == "研究产物"
     assert items["research"].policy == S.PERMANENT
     assert S.unregistered(base) == []
+
+
+def test_verification_baseline_and_referenced_research_snapshots_do_not_expire(tmp_path):
+    base = tmp_path / "qsys"
+    baseline = _file(base / "catalog-verify-state/frozen_baseline.json")
+    jobs = _file(base / "test-env/research-jobs/jobs/old/request.json")
+    store = base / "test-env/warehouse-snapshot-store"
+    for name in ("old", "middle", "current"):
+        _file(store / "snapshots" / name / "manifest.json")
+    (store / "current").symlink_to("snapshots/current")
+    for path in (baseline.parent, jobs.parents[2], store):
+        _age_dir(path, 400)
+    _file(base / "test-env/unknown/file.json")
+
+    items = {item.path: item for item in S.inventory(base, None, NOW)}
+    for path in (baseline.parent, jobs.parents[2], store):
+        assert items[path].verdict == S.PERMANENT
+    assert set(S.unregistered(base)) == {base / "test-env/unknown"}

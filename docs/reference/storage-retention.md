@@ -33,11 +33,18 @@ warehouse、测试快照和隔离构建目录的硬链接只计一次，并优�
 | `repair-cache` | 修复缓存 | 30 天 |
 | `test-env/warehouse-snapshots/*`、`test-env/snapshots/*` | 测试快照 | 保留最新 2 份；`test-env/warehouse-current` 指向的快照始终保留 |
 | `test-env/var`、`var-deployments`、`var-prod` | 运行状态与记录 | 永久 |
+| `catalog-verify-state` | 冻结源验证基线 | 永久，不随临时工作区清理 |
+| `test-env/research-jobs` | 隔离研究请求、状态、日志与产物 | 永久保留，待独立清理协议 |
+| `test-env/warehouse-snapshot-store` | 隔离研究不可变快照 | 永久保留，不能套用旧测试快照的最新 2 份规则 |
 | `~/scratch/*` | 临时工作区 | 最近修改 14 天后可申请删除 |
 
 `/data/qsys` 顶层出现任何未登记的条目都会被报出，新目录必须先在 `RULES` 登记策略。
 warehouse 内的数据集由指标字典与质量规则管理，不在本策略内。规则按登记顺序认领，
 具体规则写在通用规则之前。
+
+上述三个精确路径由 [#465](https://github.com/wanlinruo/quant-trade/issues/465) 补登记。
+研究作业绑定固定 snapshot_id，不能只保护 current 而删除历史作业引用的快照；
+制定引用感知的清理协议并取得删除授权前，保留整个作业与快照目录。未登记的新目录仍照常告警。
 
 `moneyflow_daily` 等规范事实的历史分区不参与 30 天回滚副本清理；
 `industry_membership` 按需全表原子刷新并保留当前完整 PIT 表；隔离态
