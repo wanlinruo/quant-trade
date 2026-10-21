@@ -799,7 +799,7 @@ def test_tushare_sync_component_owns_bounded_writer_and_convergence_paths() -> N
     assert "User=qsys-tushare-sync" in dropin
     assert "WorkingDirectory=/" in dropin
     assert "ReadWritePaths=/data/qsys/warehouse" in dropin
-    assert "ReadWritePaths=/home/ubuntu/qsys/var/warehouse-write.lock" in dropin
+    assert "ReadWritePaths=/home/ubuntu/qsys/var/warehouse-write.lock" not in dropin
     assert "ReadWritePaths=/home/ubuntu/qsys/var/tushare-sync" in dropin
     assert "ReadWritePaths=/home/ubuntu/qsys/var/service-runs/tushare-sync" in dropin
     assert dropin.count("ReadWritePaths=/home") == 3
@@ -807,7 +807,14 @@ def test_tushare_sync_component_owns_bounded_writer_and_convergence_paths() -> N
     assert "--late-minute-work-root /home/ubuntu/qsys/var/tushare-sync" in dropin
     assert "--late-minute-record-root /home/ubuntu/qsys/var/service-runs/tushare-sync" in dropin
     assert "--late-minute-paper-store /home/ubuntu/qsys/var/workbench/workbench.sqlite3" in dropin
-    assert "--late-minute-win-key /etc/qsys/tushare-sync/windows-data-writer" in dropin
+    assert "Group=qsys-tushare-sync" in dropin
+    assert "SupplementaryGroups=qsys-observers" in dropin
+    assert "qsys-workbench" not in dropin
+    assert "--late-minute-win-transport gateway" in dropin
+    assert "--late-minute-win-known-hosts /etc/qsys/components/tushare-sync/windows-known-hosts" in dropin
+    assert "--config /etc/qsys/components/tushare-sync/deploy.toml" in dropin
+    assert "ReadWritePaths=/data/qsys/warehouse" not in sync["dropin_lines"]
+    assert "--late-minute-win-key /etc/qsys/components/tushare-sync/windows-data-writer" in dropin
     assert "current/source/scripts/win_download_minutes.py" in dropin
     assert "/home/ubuntu/qsys/.venv" not in dropin
     assert "scripts/tushare_daily_sync.py" not in dropin

@@ -434,14 +434,24 @@
         "[Service]",
         "User=qsys-tushare-sync",
         "Group=qsys-tushare-sync",
+        "SupplementaryGroups=qsys-observers",
+        "UMask=0027",
         "WorkingDirectory=/",
         "ExecStart=",
         "ReadWritePaths=",
-        "ReadWritePaths=/data/qsys/warehouse",
-        "ReadWritePaths=/home/ubuntu/qsys/var/warehouse-write.lock",
+        "ReadWritePaths=/data/qsys/warehouse/tushare_daily /data/qsys/warehouse/price_limits_daily /data/qsys/warehouse/suspend_daily /data/qsys/warehouse/stock_st_daily /data/qsys/warehouse/index_bars /data/qsys/warehouse/instruments /data/qsys/warehouse/name_history /data/qsys/warehouse/limit_list_daily /data/qsys/warehouse/moneyflow_daily /data/qsys/warehouse/adj_factors /data/qsys/warehouse/daily_flags /data/qsys/warehouse/market_regime /data/qsys/warehouse/valuation_snapshot /data/qsys/warehouse/delisting_pool /data/qsys/warehouse/security_master /data/qsys/warehouse/security_name_history /data/qsys/warehouse/trading_calendar /data/qsys/warehouse/bar_daily /data/qsys/warehouse/valuation_daily /data/qsys/warehouse/share_capital_history /data/qsys/warehouse/adjustment_factor_daily /data/qsys/warehouse/price_limit_daily /data/qsys/warehouse/security_status_daily /data/qsys/warehouse/market_flags_daily /data/qsys/warehouse/market_regime_daily /data/qsys/warehouse/minute_bars /data/qsys/warehouse/bar_minute_1m /data/qsys/warehouse/metric_checks",
+        "ReadWritePaths=/home/ubuntu/qsys/artifacts/metric_checks",
+        "ReadOnlyPaths=/etc/qsys/components/tushare-sync /home/ubuntu/qsys/var/workbench",
         "ReadWritePaths=/home/ubuntu/qsys/var/tushare-sync",
         "ReadWritePaths=/home/ubuntu/qsys/var/service-runs/tushare-sync",
-        "ExecStart=/usr/bin/flock --exclusive --nonblock /home/ubuntu/qsys/var/warehouse-write.lock /opt/qsys/components/tushare-sync/current/venv/bin/qsys-tushare-sync --warehouse /data/qsys/warehouse --config /home/ubuntu/qsys/config/deploy.local.toml --service-runs /home/ubuntu/qsys/var/service-runs/tushare-sync --late-minute-convergence --late-minute-paper-store /home/ubuntu/qsys/var/workbench/workbench.sqlite3 --late-minute-record-root /home/ubuntu/qsys/var/service-runs/tushare-sync --late-minute-work-root /home/ubuntu/qsys/var/tushare-sync --late-minute-win-key /etc/qsys/tushare-sync/windows-data-writer --late-minute-win-script-source /opt/qsys/components/tushare-sync/current/source/scripts/win_download_minutes.py"
+        "ExecStart=/usr/bin/flock --exclusive --nonblock /home/ubuntu/qsys/var/warehouse-write.lock /opt/qsys/components/tushare-sync/current/venv/bin/qsys-tushare-sync --warehouse /data/qsys/warehouse --config /etc/qsys/components/tushare-sync/deploy.toml --service-runs /home/ubuntu/qsys/var/service-runs/tushare-sync --late-minute-convergence --late-minute-paper-store /home/ubuntu/qsys/var/workbench/workbench.sqlite3 --late-minute-record-root /home/ubuntu/qsys/var/service-runs/tushare-sync --late-minute-work-root /home/ubuntu/qsys/var/tushare-sync --late-minute-win-key /etc/qsys/components/tushare-sync/windows-data-writer --late-minute-win-script-source /opt/qsys/components/tushare-sync/current/source/scripts/win_download_minutes.py --late-minute-win-transport gateway --late-minute-win-known-hosts /etc/qsys/components/tushare-sync/windows-known-hosts --artifacts /home/ubuntu/qsys/artifacts/metric_checks",
+        "MemoryHigh=3G",
+        "MemoryMax=4G",
+        "CPUQuota=50%",
+        "Nice=10",
+        "IOSchedulingClass=idle",
+        "Environment=POLARS_MAX_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1",
+        "Environment=QSYS_QUERY_MEMORY_MB=512 QSYS_QUERY_MAX_TEMP_MB=1024 QSYS_QUERY_THREADS=1 QSYS_QUERY_TEMP_ROOT=/tmp/qsys-tushare-query"
       ]
     },
     "daily-digest": {
