@@ -1,5 +1,10 @@
 # 参考资料
 
+## Tushare 同步生产隔离（#475）
+
+见 `../plans/tushare-sync-production-isolation.md`：写表集合、账号/配置/Windows限权凭据、
+原子写与消费者兼容、资源依据及分层验收顺序。
+
 ## 数据组件 Windows 限权取数（#476 / #475 / #330）
 
 见 `../plans/windows-data-component-transport.md`：固定操作协议、组件独立key/命名空间、

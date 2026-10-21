@@ -129,7 +129,8 @@ def converge_late_listing_minutes(
         return len(missing)
 
 
-def run_incremental_verification(warehouse: Warehouse, day: date) -> int:
+def run_incremental_verification(warehouse: Warehouse, day: date, *,
+                                 artifacts: Path | None = None) -> int:
     """执行当日增量规则、落盘结果并返回 blocking 指标结果数。"""
     from qsys.data.catalog import checks as catalog_checks
     from qsys.data.query import WarehouseQuery
@@ -143,6 +144,7 @@ def run_incremental_verification(warehouse: Warehouse, day: date) -> int:
         now.strftime("%Y%m%dT%H%M%S%f"),
         now,
         scope=catalog_checks.Scope.INCREMENTAL,
+        artifacts=artifacts,
     )
     catalog_checks.write_results(warehouse, frame)
     return frame.filter(
@@ -151,14 +153,16 @@ def run_incremental_verification(warehouse: Warehouse, day: date) -> int:
 
 
 def after_sync(warehouse: Warehouse, day: date, *, ok: bool,
-               run: ServiceRun | None = None) -> None:
+               run: ServiceRun | None = None,
+               artifacts: Path | None = None) -> None:
     """只在同步成功后验证；验证器故障不得改变同步任务退出码（运行记录里记为警告）。"""
     if not ok:
         log.info("verify.skipped_after_failed_sync", day=str(day))
         return
     with record_step(run, "增量质检", interface="仓库内规则", table="metric_checks") as step:
         try:
-            blocking = run_incremental_verification(warehouse, day)
+            blocking = (run_incremental_verification(warehouse, day, artifacts=artifacts)
+                        if artifacts is not None else run_incremental_verification(warehouse, day))
         except Exception as exc:
             # 数据已经落盘。把同步改报失败会误导 systemd/Persistent 重补已完成数据。
             log.warning("verify.hook_crashed", day=str(day), error=str(exc))
@@ -196,6 +200,8 @@ def main() -> int:
                         help="指定交易日；不给则取最近一个已收盘交易日")
     parser.add_argument("--service-runs", type=Path, default=Path("var/service-runs"),
                         help="运行记录目录（服务管理页读取）")
+    parser.add_argument("--artifacts", type=Path, default=None,
+                        help="增量质检样本目录；独立组件必须显式指定")
     parser.add_argument("--late-minute-limit", type=int, default=20,
                         help="收盘同步后自动补采晚到上市标的的安全上限")
     parser.add_argument("--late-minute-timeout", type=int, default=900,
@@ -272,7 +278,10 @@ def main() -> int:
                 win_known_hosts=args.late_minute_win_known_hosts,
                 run=run,
             )
-        after_sync(warehouse, day, ok=True, run=run)
+        if args.artifacts is None:
+            after_sync(warehouse, day, ok=True, run=run)
+        else:
+            after_sync(warehouse, day, ok=True, run=run, artifacts=args.artifacts)
     print(f"=== {day} ===")
     for name, rows in counts.items():
         print(f"  {name:22s} {rows:>9,} 行")

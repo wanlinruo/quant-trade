@@ -1,6 +1,7 @@
 """同步后的验证挂钩；验证故障不得把已落盘同步改报失败。"""
 
 from datetime import date
+from pathlib import Path
 from types import SimpleNamespace
 
 from qsys.data import tushare_sync_cli as tushare_daily_sync
@@ -75,3 +76,23 @@ def test_main_calls_hook_after_facts_and_derived_refresh(monkeypatch, tmp_path):
     assert tushare_daily_sync.main() == 0
     assert events == ["facts", "derived", "canonical", ("verify", True)]
     assert len(list((tmp_path / "runs").rglob("*.json"))) == 1
+
+
+def test_explicit_samples_work_from_unwritable_service_cwd(monkeypatch, warehouse, tmp_path):
+    import polars as pl
+    from qsys.data.catalog import checks as C
+    from qsys.data.query import WarehouseQuery
+
+    sample = pl.DataFrame({'symbol': ['600000.SH']})
+    check = C.Check('X.sample', C.Category.TRUTHFULNESS, C.Scope.INCREMENTAL,
+                    ('tushare_daily.close',), (), '测试样本',
+                    lambda _: C.CheckResult(1, 1, sample=sample))
+    monkeypatch.setattr(C, 'CHECKS', {check.id: check})
+    monkeypatch.chdir('/')
+    target = tmp_path / 'explicit-samples'
+    tushare_daily_sync.after_sync(warehouse, D, ok=True, artifacts=target)
+    frame = WarehouseQuery(warehouse).metric_checks()
+    assert frame.height == 1
+    path = Path(frame['sample_path'][0])
+    assert path.is_relative_to(target)
+    assert pl.read_parquet(path).equals(sample)
