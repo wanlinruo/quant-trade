@@ -131,8 +131,14 @@
       "state_directories": [
         {
           "path": "/home/ubuntu/qsys/var/workbench",
-          "owner": "qsys-paper",
+          "owner": "qsys-web",
           "group": "qsys-workbench",
+          "mode": "0770"
+        },
+        {
+          "path": "/home/ubuntu/qsys/var/alerts/paper",
+          "owner": "qsys-paper",
+          "group": "qsys-paper",
           "mode": "0770"
         }
       ],
@@ -140,12 +146,23 @@
       "dropin_lines": [
         "[Service]",
         "User=qsys-paper",
-        "Group=qsys-workbench",
+        "Group=qsys-paper",
+        "SupplementaryGroups=",
+        "SupplementaryGroups=qsys-observers",
+        "UMask=0027",
         "WorkingDirectory=/",
         "ExecStart=",
         "ReadWritePaths=",
         "ReadWritePaths=/home/ubuntu/qsys/var/workbench",
-        "ExecStart=/opt/qsys/components/paper/current/venv/bin/qsys-paper --warehouse /data/qsys/warehouse --workspace /home/ubuntu/qsys/var/workbench --config /home/ubuntu/qsys/config/deploy.local.toml"
+        "ReadWritePaths=/home/ubuntu/qsys/var/alerts/paper",
+        "ReadOnlyPaths=/etc/qsys/components/paper",
+        "InaccessiblePaths=/home/ubuntu/qsys/config",
+        "ExecStart=/opt/qsys/components/paper/current/venv/bin/qsys-paper --warehouse /data/qsys/warehouse --workspace /home/ubuntu/qsys/var/workbench --config /etc/qsys/components/paper/deploy.toml --alert-ledger /home/ubuntu/qsys/var/alerts/paper",
+        "MemoryHigh=1536M",
+        "MemoryMax=2G",
+        "MemorySwapMax=1G",
+        "CPUWeight=80",
+        "Environment=POLARS_MAX_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 QSYS_QUERY_MEMORY_MB=256 QSYS_QUERY_MAX_TEMP_MB=1024 QSYS_QUERY_THREADS=1 QSYS_QUERY_TEMP_ROOT=/tmp/qsys-paper-query PYTHONDONTWRITEBYTECODE=1"
       ]
     },
     "shadow-core": {

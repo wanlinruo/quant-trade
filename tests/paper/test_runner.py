@@ -44,6 +44,59 @@ class Clock:
         self.now += timedelta(seconds=seconds)
 
 
+@pytest.mark.parametrize("custom", [False, True])
+def test_cli_worker_passes_custom_ledger_into_runtime(account, tmp_path, monkeypatch, custom):
+    import sys
+    from qsys.core.calendar import AShareCalendar
+    from qsys.live.config import DeployConfig
+    from qsys.live.transport import MemoryTransport
+    from qsys.paper import runner_cli as cli
+
+    store, ident = account
+    target = tmp_path / "custom alerts" / "paper"
+    args = ["paper", "--account", ident, "--workspace", str(store.path.parent)]
+    if custom:
+        args += ["--alert-ledger", str(target)]
+    monkeypatch.setattr(sys, "argv", args)
+    monkeypatch.setattr(cli, "load_deploy_config", lambda path: DeployConfig())
+    monkeypatch.setattr(cli, "load_trading_calendar", lambda path: AShareCalendar([date.today()]))
+    monkeypatch.setattr(cli.RedisTransport, "from_config", lambda cfg: MemoryTransport())
+    seen = []
+    monkeypatch.setattr(cli, "PaperRuntime", lambda *a, **k: seen.append(k) or object())
+    monkeypatch.setattr(cli, "run_account_loop", lambda s, i, build, **k: (build(), 0)[1])
+    assert cli.main() == 0
+    assert seen[0]["alert_ledger"] == (target if custom else None)
+
+
+def test_supervisor_passes_ledger_to_account_subprocess(account, tmp_path, monkeypatch):
+    import sys
+    from types import SimpleNamespace
+    from qsys.core.calendar import AShareCalendar
+    from qsys.live.config import DeployConfig
+    from qsys.live.transport import MemoryTransport
+    from qsys.paper import runner_cli as cli
+
+    class Stop(BaseException):
+        pass
+
+    store, ident = account
+    target = tmp_path / "custom alerts" / "paper"
+    monkeypatch.setattr(sys, "argv", ["paper", "--workspace", str(store.path.parent),
+                                      "--alert-ledger", str(target)])
+    monkeypatch.setattr(cli, "load_deploy_config", lambda path: DeployConfig())
+    monkeypatch.setattr(cli, "load_trading_calendar", lambda path: AShareCalendar([date.today()]))
+    monkeypatch.setattr(cli.RedisTransport, "from_config", lambda cfg: MemoryTransport())
+    commands = []
+    monkeypatch.setattr(cli.subprocess, "Popen", lambda command: commands.append(command) or SimpleNamespace(pid=123, poll=lambda: None))
+    monkeypatch.setattr(cli.time, "sleep", lambda seconds: (_ for _ in ()).throw(Stop()))
+    with pytest.raises(Stop):
+        cli.main()
+    assert len(commands) == 1
+    command = commands[0]
+    assert command[command.index("--account") + 1] == ident
+    assert command[command.index("--alert-ledger") + 1] == str(target)
+
+
 def _run(store, ident, steps, limit=timedelta(minutes=3)):
     """steps：每次 tick 依次抛出其中的异常；None 表示正常。用完后结束账户以退出循环。"""
     clock, pending, builds = Clock(), list(steps), []

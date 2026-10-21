@@ -535,15 +535,21 @@ def test_paper_and_shadow_components_have_independent_release_boundaries() -> No
     assert paper["release_root"] == "/opt/qsys/components/paper/releases"
     assert paper["current"] == "/opt/qsys/components/paper/current"
     assert paper["unit"] == "qsys-paper.service"
-    assert paper["state_directories"] == [{
-        "path": "/home/ubuntu/qsys/var/workbench",
-        "owner": "qsys-paper", "group": "qsys-workbench", "mode": "0770",
-    }]
+    assert paper["state_directories"] == [
+        {"path": "/home/ubuntu/qsys/var/workbench",
+         "owner": "qsys-web", "group": "qsys-workbench", "mode": "0770"},
+        {"path": "/home/ubuntu/qsys/var/alerts/paper",
+         "owner": "qsys-paper", "group": "qsys-paper", "mode": "0770"},
+    ]
     paper_dropin = "\n".join(paper["dropin_lines"])
     assert "User=qsys-paper" in paper_dropin
-    assert "Group=qsys-workbench" in paper_dropin
+    assert "Group=qsys-paper" in paper_dropin
+    assert "SupplementaryGroups=qsys-observers" in paper_dropin
+    assert "qsys-workbench" not in paper_dropin
+    assert "--config /etc/qsys/components/paper/deploy.toml" in paper_dropin
+    assert "--alert-ledger /home/ubuntu/qsys/var/alerts/paper" in paper_dropin
     assert "ExecStart=/opt/qsys/components/paper/current/venv/bin/qsys-paper" in paper_dropin
-    assert paper_dropin.count("ReadWritePaths=") == 2
+    assert paper_dropin.count("ReadWritePaths=") == 3
     assert "ReadWritePaths=/data/qsys" not in paper_dropin
     assert "scripts/run_paper.py" not in paper_dropin
 

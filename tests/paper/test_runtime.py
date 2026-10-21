@@ -97,6 +97,30 @@ def _runtime(warehouse, tmp_path, quotes, source=SOURCE):
     return runtime, store, account.id, today
 
 
+@pytest.mark.parametrize("custom", [False, True])
+def test_notified_account_writes_actual_explicit_or_legacy_ledger(
+    warehouse, tmp_path, monkeypatch, custom,
+):
+    from qsys.ops.alerts import AlertLedger, RecordingAlertSink
+
+    monkeypatch.chdir(tmp_path)
+    _, store, ident, today = _runtime(warehouse, tmp_path, Quotes())
+    store.set_notify_webhook(ident, "https://example.invalid/test-only")
+    sink = RecordingAlertSink()
+    monkeypatch.setattr("qsys.paper.runtime.strategy_sinks", lambda *a: [sink])
+    explicit = tmp_path / "component alerts" / "paper"
+    runtime = PaperRuntime(
+        ident, store, warehouse.root, AShareCalendar([today]), Quotes(), tmp_path,
+        alert_ledger=explicit if custom else None,
+    )
+    runtime.notifier._alerts.info("local ledger verification")
+    target = explicit if custom else tmp_path / "var/alerts"
+    assert [r["title"] for r in AlertLedger(target).read(today)] == ["local ledger verification"]
+    assert len(sink.alerts) == 1
+    if custom:
+        assert not (tmp_path / "var/alerts").exists()
+
+
 def test_no_quotes_or_equity_rows_outside_the_session_window(warehouse, tmp_path):
     """B：2026-09-17 00:00 ~ 00:49 每秒请求一次行情、写一条权益，共 2,704 条，
     最后一次超时把账户打成 error。盘外不该碰 QMT。"""

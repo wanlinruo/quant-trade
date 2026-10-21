@@ -35,6 +35,7 @@ def main() -> int:
     parser.add_argument("--warehouse", default="warehouse")
     parser.add_argument("--workspace", default="var/workbench")
     parser.add_argument("--config", default=None)
+    parser.add_argument("--alert-ledger", type=Path, default=None)
     parser.add_argument("--poll", type=float, default=1.0)
     parser.add_argument("--account", default="", help=argparse.SUPPRESS)
     add_facade_argument(parser)
@@ -174,7 +175,8 @@ def run_worker(args) -> int:
     return run_account_loop(
         store, args.account,
         lambda: PaperRuntime(args.account, store, Path(args.warehouse), calendar,
-                             client, workspace, deploy.alerts.ops_url),
+                             client, workspace, deploy.alerts.ops_url,
+                             alert_ledger=args.alert_ledger),
         poll=args.poll,
     )
 
@@ -211,6 +213,8 @@ def run_supervisor(args) -> int:
             ]
             if args.config:
                 command += ["--config", args.config]
+            if args.alert_ledger is not None:
+                command += ["--alert-ledger", str(args.alert_ledger)]
             workers[ident] = subprocess.Popen(command)
             log.info("paper.worker_started", account_id=ident,
                      pid=workers[ident].pid)
