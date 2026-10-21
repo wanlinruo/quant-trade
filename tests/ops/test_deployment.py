@@ -759,17 +759,24 @@ def test_premarket_limits_component_has_minimal_writer_boundaries() -> None:
     assert premarket["state_directories"] == [{
         "path": "/home/ubuntu/qsys/var/service-runs/premarket-limits",
         "owner": "qsys-premarket-limits", "group": "qsys-premarket-limits",
-        "mode": "0750",
+        "mode": "0770",
     }]
     dropin = "\n".join(premarket["dropin_lines"])
     assert "User=qsys-premarket-limits" in dropin
-    assert "ReadWritePaths=/data/qsys/warehouse" in dropin
-    assert "ReadWritePaths=/home/ubuntu/qsys/var/warehouse-write.lock" in dropin
+    assert "IPAddressDeny=127.0.0.1/32 ::1/128 ::ffff:127.0.0.1/128" in dropin
+    assert "ReadWritePaths=/data/qsys/warehouse" not in premarket["dropin_lines"]
+    assert "ReadWritePaths=/data/qsys/warehouse/price_limits_daily /data/qsys/warehouse/suspend_daily /data/qsys/warehouse/price_limit_daily" in dropin
+    assert "ReadWritePaths=/home/ubuntu/qsys/var/warehouse-write.lock" not in dropin
+    assert "SupplementaryGroups=qsys-observers" in dropin
+    assert "qsys-workbench" not in dropin
+    assert "--config /etc/qsys/components/premarket-limits/deploy.toml" in dropin
+    assert "--publisher-key /etc/qsys/components/premarket-limits/price-limits-publisher" in dropin
+    assert "--publisher-known-hosts /etc/qsys/components/premarket-limits/publisher-known-hosts" in dropin
     assert (
         "ReadWritePaths=/home/ubuntu/qsys/var/service-runs/premarket-limits"
         in dropin
     )
-    assert dropin.count("ReadWritePaths=/home") == 2
+    assert dropin.count("ReadWritePaths=/home") == 1
     assert "--service-runs /home/ubuntu/qsys/var/service-runs/premarket-limits" in dropin
     assert "/home/ubuntu/qsys/.venv" not in dropin
     assert "scripts/tushare_premarket_limits.py" not in dropin

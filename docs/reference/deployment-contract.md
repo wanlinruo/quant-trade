@@ -181,11 +181,17 @@ Windows key 和配置只读权限；v18 固定入口安装及激活不由代码�
 
 `premarket-limits` 是第二个数据写组件边界。wheel 入口为 `qsys-premarket-limits`，
 release/current 位于 `/opt/qsys/components/premarket-limits/{releases/<SHA>,current}`；
-独立账号只写共享 Warehouse、同一 `warehouse-write.lock` 与
-`var/service-runs/premarket-limits`。交易日判断、`suspend_d` 退化保留、`stk_limit`
+独立账号仅写price_limits_daily/suspend_daily/price_limit_daily三张表与
+`var/service-runs/premarket-limits`，共享写锁以只读描述符取得排他flock。
+私有主组+observers，采集最小配置只含Tushare与缓存prefix。
+交易日判断、`suspend_d` 退化保留、`stk_limit`
 完整度门禁、09:25 截止、canonical 写后对账和失败关闭语义保持不变。涨跌停价继续发布到
-Redis 的版本化当日 key，生产首次激活前必须单独预置/审计该 key namespace 的最小写 ACL、
-Tushare token 与配置只读权限、Warehouse/lock Unix 权限以及 qsys-premarket-limits 账号；
+Redis 的版本化当日 key；节点Redis5无ACL，使用本机SSH forced-command与独立发布身份
+限定固定prefix的SET；当前无密码Redis隧道仅监听127.0.0.1，采集unit以IPAddressDeny
+阻断该地址/IPv6映射直连，限权SSH改用127.0.0.2。不重启Redis或改交易Transport。
+协议/资源上限、原值兼容和残余可信边界见 `../plans/premarket-limits-production-isolation.md`。
+生产首次激活前必须单独预置/审计Tushare与发布配置只读权限、专属限权key、
+Warehouse/lock Unix权限以及 qsys-premarket-limits 账号；
 v19 固定入口安装及激活不由代码合入授权。
 
 `tushare-sync` 是第三个数据写组件边界。wheel 入口为 `qsys-tushare-sync`，

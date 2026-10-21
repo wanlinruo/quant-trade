@@ -388,7 +388,7 @@
           "path": "/home/ubuntu/qsys/var/service-runs/premarket-limits",
           "owner": "qsys-premarket-limits",
           "group": "qsys-premarket-limits",
-          "mode": "0750"
+          "mode": "0770"
         }
       ],
       "seed": null,
@@ -396,13 +396,23 @@
         "[Service]",
         "User=qsys-premarket-limits",
         "Group=qsys-premarket-limits",
+        "SupplementaryGroups=",
+        "SupplementaryGroups=qsys-observers",
+        "UMask=0027",
+        "IPAddressDeny=127.0.0.1/32 ::1/128 ::ffff:127.0.0.1/128",
         "WorkingDirectory=/",
         "ExecStart=",
         "ReadWritePaths=",
-        "ReadWritePaths=/data/qsys/warehouse",
-        "ReadWritePaths=/home/ubuntu/qsys/var/warehouse-write.lock",
+        "ReadWritePaths=/data/qsys/warehouse/price_limits_daily /data/qsys/warehouse/suspend_daily /data/qsys/warehouse/price_limit_daily",
         "ReadWritePaths=/home/ubuntu/qsys/var/service-runs/premarket-limits",
-        "ExecStart=/usr/bin/flock --exclusive --nonblock /home/ubuntu/qsys/var/warehouse-write.lock /opt/qsys/components/premarket-limits/current/venv/bin/qsys-premarket-limits --warehouse /data/qsys/warehouse --config /home/ubuntu/qsys/config/deploy.local.toml --service-runs /home/ubuntu/qsys/var/service-runs/premarket-limits"
+        "ReadOnlyPaths=/etc/qsys/components/premarket-limits",
+        "ExecStart=/usr/bin/flock --exclusive --nonblock /home/ubuntu/qsys/var/warehouse-write.lock /opt/qsys/components/premarket-limits/current/venv/bin/qsys-premarket-limits --warehouse /data/qsys/warehouse --config /etc/qsys/components/premarket-limits/deploy.toml --publisher-key /etc/qsys/components/premarket-limits/price-limits-publisher --publisher-known-hosts /etc/qsys/components/premarket-limits/publisher-known-hosts --service-runs /home/ubuntu/qsys/var/service-runs/premarket-limits",
+        "MemoryHigh=768M",
+        "MemoryMax=1G",
+        "CPUQuota=50%",
+        "Nice=10",
+        "IOSchedulingClass=idle",
+        "Environment=POLARS_MAX_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 QSYS_QUERY_MEMORY_MB=256 QSYS_QUERY_MAX_TEMP_MB=512 QSYS_QUERY_THREADS=1 QSYS_QUERY_TEMP_ROOT=/tmp/qsys-premarket-limits-query PYTHONDONTWRITEBYTECODE=1"
       ]
     },
     "tushare-sync": {

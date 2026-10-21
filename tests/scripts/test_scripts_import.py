@@ -64,7 +64,7 @@ def test_monitor_legacy_script_delegates_to_packaged_entrypoint():
     assert legacy.build_app is packaged.build_app
 
 
-@pytest.mark.parametrize("name", ["qsys.ops.service_checks_index"])
+@pytest.mark.parametrize("name", ["qsys.ops.service_checks_index", "qsys.data.price_limits_publisher"])
 def test_packaged_production_entrypoint_imports(name):
     importlib.import_module(name)
 

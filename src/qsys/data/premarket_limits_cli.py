@@ -31,11 +31,15 @@ def main() -> int:
     parser.add_argument("--warehouse", type=Path, default=Path("warehouse"))
     parser.add_argument("--config", type=Path, default=Path("config/deploy.local.toml"))
     parser.add_argument("--day", type=date.fromisoformat, default=None)
+    parser.add_argument("--publisher-key", type=Path)
+    parser.add_argument("--publisher-known-hosts", type=Path)
     parser.add_argument(
         "--service-runs", type=Path, default=Path("var/service-runs"),
         help="运行记录目录（服务管理页读取）",
     )
     args = parser.parse_args()
+    if bool(args.publisher_key) != bool(args.publisher_known_hosts):
+        parser.error("publisher-key 和 publisher-known-hosts 必须同时指定")
 
     with ServiceRun.open(args.service_runs, "premarket-limits") as run:
         now = datetime.now(ZoneInfo("Asia/Shanghai")).replace(tzinfo=None)
@@ -58,6 +62,14 @@ def main() -> int:
         run.session = day
 
         deploy = load_deploy_config(args.config)
+        if args.publisher_key:
+            from qsys.data.price_limits_publisher import SshPriceLimitsPublisher
+
+            transport = SshPriceLimitsPublisher(
+                args.publisher_key, args.publisher_known_hosts, deploy.streams,
+            )
+        else:
+            transport = RedisTransport.from_config(deploy)
         warehouse = Warehouse(args.warehouse)
         suspension_code = 0
         with run.step(
@@ -83,7 +95,7 @@ def main() -> int:
         ) as step:
             code = run_premarket_limits(
                 TushareProvider(client), warehouse,
-                RedisTransport.from_config(deploy), deploy.streams, day,
+                transport, deploy.streams, day,
                 deadline=datetime.combine(day, DEADLINE),
             )
             step.rows = WarehouseQuery(warehouse).price_limits(None, day, day).height
