@@ -46,3 +46,24 @@
 本项完成后优先 tushare-sync → daily-archive → premarket-limits，逐项落实专属配置、
 输入/输出和当前消费者兼容；随后 paper/shadow-core 与 reboot-drill。Live Core 最后。
 研究 Runner、平台、Windows 属于独立工作域，不用14组件计数代替全部工作完成。
+
+## 已取得证据（2026-10-21）
+
+- PR#472 已合并，候选 main/test `3e40c218d266ed00706952fef4c66711412119ef`；
+  源CI39593880066、测试部署39594088976/Deployment7225135353、PR CI39594255503、
+  最终CI39594463980均成功。可信main/候选planner无未知路径，55项专项与本地全量pytest通过。
+- 真实账号/最终制品/最小配置/受限systemd实跑10-21已收盘日：636条、0阻断、28警告；
+  CPU52.955s、峰值1.7G、swap0；三类结果表全部旧行保留，生产结果与baseline hash未变。
+  当前Web验证记录和样本下载；当前日报验证记录和质检结果读取。
+- 探针按实际消费者职责调用，不假设旧日报支持Web的新API。审计父目录也必须具备读者遍历ACL。
+- 首次正式workflow39596077181/Deployment7225444858在切换前被可写缓存门禁拒绝：
+  维护账号Python在已chmod的候选venv新建775缓存目录。current保持dfd65bf，自动补偿记录为
+  rolled_back，未写生产数据；#473记录权限修复和`-B`规则。保留失败record，重发使用新run-id，
+  不重跑未变CI/业务计算、不放宽安装门禁。
+- 证据根 `/data/qsys/var-deployments/issue469-20261021/`；正式发布及后续自然作业状态以
+  #469最新记录为准，本节不提前宣告完成。
+
+正式重发39596600730、GitHub Deployment7225528413、节点实际validate_record三方success；
+current为3e40c21，专属账号和五处写集合生效，严格preflight16/16，所有关键peer身份不变。
+timer已恢复，下次10-22 19:40；20:05启动发布后生产验收作业，后续结果见#469。
+10-22 19:50自然业务采证已由节点systemd timer调度，不用手工实跑代替自然验收。
