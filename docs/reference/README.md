@@ -1,5 +1,10 @@
 # 参考资料
 
+## 盘前涨跌停独立隔离（#487）
+
+见 `../plans/premarket-limits-production-isolation.md`：三表精确写权限、Redis5受限发布入口、
+原payload兼容与隔离namespace验证、首次自然盘前任务验收。
+
 ## 每日归档生产隔离（#485）
 
 见 `../plans/daily-archive-production-isolation.md`：四张写表、原工作区和续传历史保留、
