@@ -39,7 +39,7 @@ def _spec(tmp_path: Path, sha: str) -> tuple[dict[str, object], Path, Path, Path
 
 
 def _fake_sudo(*command: str, check: bool = True):
-    if command[0] == "chown" or command[:2] == ("systemctl", "daemon-reload"):
+    if command[0] in {"chown", "setfacl"} or command[:2] == ("systemctl", "daemon-reload"):
         return subprocess.CompletedProcess(command, 0, "", "")
     if command[0] == "install" and "-d" in command:
         Path(command[-1]).mkdir(parents=True, exist_ok=True)
@@ -245,6 +245,11 @@ def _sqlite_seed(source, target):
             "target":str(target), "owner":"ubuntu", "group":"ubuntu", "mode":"0640"}
 
 
+def _only_reader_acl(*command, **kwargs):
+    assert command[:-1] == ("setfacl", "-P", "-m", "u:ubuntu:r--,g:qsys-observers:r--", "--")
+    return subprocess.CompletedProcess(command, 0, "", "")
+
+
 def test_sqlite_seed_copies_committed_wal_history_and_preserves_original(monkeypatch, tmp_path):
     source = tmp_path / "legacy.sqlite3"
     target = tmp_path / "isolated.sqlite3"
@@ -264,12 +269,54 @@ def test_sqlite_seed_copies_committed_wal_history_and_preserves_original(monkeyp
         original.close()
 
 
+def test_sqlite_seed_applies_reader_acl_before_atomic_publication(monkeypatch, tmp_path):
+    source, target = tmp_path / "legacy.sqlite3", tmp_path / "isolated.sqlite3"
+    _history_database(source).close()
+    commands = []
+
+    def sudo(*command, **kwargs):
+        commands.append(command)
+        if command[:2] == ("ln", "-T"):
+            staged = command[-2]
+            assert ("setfacl", "-P", "-m", "u:ubuntu:r--,g:qsys-observers:r--", "--", staged) in commands
+        return _fake_sudo(*command, **kwargs)
+
+    monkeypatch.setattr(installer, "_sudo", sudo)
+    installer._seed_limit_up_shadow(source, _sqlite_seed(source, target), initial=True)
+    assert not any(command[-1] == str(source) for command in commands if command[0] == "setfacl")
+
+
+def test_retained_seed_reader_acl_is_repaired_before_unprivileged_verification(monkeypatch, tmp_path):
+    source, target = tmp_path / "legacy.sqlite3", tmp_path / "isolated.sqlite3"
+    _history_database(source).close()
+    shutil.copyfile(source, target)
+    before = target.read_bytes()
+    repaired = False
+    original = installer._read_sqlite_fingerprint
+
+    def sudo(*command, **kwargs):
+        nonlocal repaired
+        _only_reader_acl(*command, **kwargs)
+        assert command[-1] == str(target)
+        repaired = True
+
+    def read(path, **kwargs):
+        if path == target:
+            assert repaired, "unprivileged verification reached an unreadable retained seed"
+        return original(path, **kwargs)
+
+    monkeypatch.setattr(installer, "_sudo", sudo)
+    monkeypatch.setattr(installer, "_read_sqlite_fingerprint", read)
+    installer._seed_limit_up_shadow(source, _sqlite_seed(source, target), initial=True)
+    assert repaired and target.read_bytes() == before
+
+
 def test_sqlite_upgrade_keeps_new_history_without_requiring_legacy(monkeypatch, tmp_path):
     target = tmp_path / "isolated.sqlite3"
     with _history_database(target) as current:
         current.execute("INSERT INTO limit_up_shadow_runs VALUES ('new-day','new-result')")
     before = target.read_bytes()
-    monkeypatch.setattr(installer, "_sudo", lambda *a,**k: pytest.fail("unexpected overwrite"))
+    monkeypatch.setattr(installer, "_sudo", _only_reader_acl)
     installer._seed_limit_up_shadow(tmp_path/"missing-legacy.sqlite3",
                                    _sqlite_seed(tmp_path/"missing",target),initial=False)
     assert target.read_bytes() == before
@@ -278,7 +325,7 @@ def test_sqlite_upgrade_keeps_new_history_without_requiring_legacy(monkeypatch, 
 def test_existing_wal_target_is_rejected_without_changing_journal(monkeypatch,tmp_path):
     target=tmp_path/"isolated.sqlite3"
     connection=_history_database(target,wal=True)
-    monkeypatch.setattr(installer,"_sudo",lambda *a,**k:pytest.fail("unexpected overwrite"))
+    monkeypatch.setattr(installer,"_sudo",_only_reader_acl)
     try:
         with pytest.raises(ValueError,match="DELETE journal"):
             installer._seed_limit_up_shadow(tmp_path/"missing",_sqlite_seed(tmp_path/"missing",target),initial=False)
@@ -304,7 +351,7 @@ def test_first_sqlite_migration_rejects_different_existing_history(monkeypatch, 
     with _history_database(target) as copied:
         copied.execute("INSERT INTO limit_up_shadow_runs VALUES ('other','do-not-overwrite')")
     before = target.read_bytes()
-    monkeypatch.setattr(installer,"_sudo",lambda *a,**k: pytest.fail("unexpected overwrite"))
+    monkeypatch.setattr(installer,"_sudo",_only_reader_acl)
     with pytest.raises(ValueError, match="differs from legacy"):
         installer._seed_limit_up_shadow(source,_sqlite_seed(source,target),initial=True)
     assert target.read_bytes() == before

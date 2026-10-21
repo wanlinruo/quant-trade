@@ -35,6 +35,8 @@
    ubuntu不属于qsys-workbench，须显式赋予目录遍历和新文件读取权限，保证安装器能够
    校验root安装的0640状态库；不得因此开放私有配置。验证祖先遍历、
    新日期目录读取，以及当前Web/日报实际账号的新旧记录发现和identity无重复。
+   #470现场确认GNU `install`会移除文件继承的named ACL：安装器必须在新文件原子发布前
+   显式设置ubuntu/observers只读access ACL；已有目标重试也先幂等补齐ACL再回读，不能只依赖目录default ACL。
 
 ## 交易时段：开发与证据
 

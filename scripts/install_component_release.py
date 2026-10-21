@@ -138,6 +138,11 @@ def _seed_limit_up_shadow(source: Path, seed: dict, *, initial: bool) -> None:
     if any(path.is_symlink() for path in (target, *target.parents)):
         raise ValueError("limit-up-shadow state path must not contain symlinks")
     if target.exists():
+        if not target.is_file() or not target.stat().st_size:
+            raise ValueError("limit-up-shadow state must be an existing nonempty regular file")
+        # GNU install removes inherited named ACLs. Repair a retained seed from
+        # an interrupted first activation before the unprivileged reader opens it.
+        _sudo("setfacl", "-P", "-m", "u:ubuntu:r--,g:qsys-observers:r--", "--", str(target))
         existing = _read_sqlite_fingerprint(target, require_delete=True)
         if initial and existing != _read_sqlite_fingerprint(source):
             raise ValueError("existing isolated history differs from legacy; reconcile without overwriting")
@@ -164,6 +169,7 @@ def _seed_limit_up_shadow(source: Path, seed: dict, *, initial: bool) -> None:
         try:
             _sudo("install", "-o", str(seed["owner"]), "-g", str(seed["group"]),
                   "-m", str(seed["mode"]), str(snapshot), str(staged))
+            _sudo("setfacl", "-P", "-m", "u:ubuntu:r--,g:qsys-observers:r--", "--", str(staged))
             # ln without -f atomically fails when another target already exists.
             _sudo("ln", "-T", "--", str(staged), str(target))
         finally:
