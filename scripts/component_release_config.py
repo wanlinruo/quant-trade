@@ -86,7 +86,11 @@ def _validate_component(name: str, value: object) -> dict[str, Any]:
             "source", "source_environment", "target", "owner", "group", "mode",
         }:
             raise ValueError(f"component seed is invalid: {name}")
-        _relative(seed["source"], "seed source")
+        if name == "limit-up-shadow":
+            if seed["source"] != "/data/qsys/var-prod/limit-up-shadow.sqlite3":
+                raise ValueError("limit-up-shadow seed must use the fixed legacy state")
+        else:
+            _relative(seed["source"], "seed source")
         if not isinstance(seed["source_environment"], str) or not re.fullmatch(
             r"[A-Z][A-Z0-9_]{0,63}", seed["source_environment"]
         ):

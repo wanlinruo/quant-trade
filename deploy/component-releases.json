@@ -97,7 +97,7 @@
         "ExecStart=",
         "ReadWritePaths=",
         "ReadWritePaths=/home/ubuntu/qsys/var/workbench",
-        "ExecStart=/opt/qsys/components/web/current/venv/bin/qsys-web --host 127.0.0.1 --port 8420 --warehouse /home/ubuntu/qsys/warehouse --config /etc/qsys/components/web/deploy.toml --workspace /home/ubuntu/qsys/var/workbench --strategies /home/ubuntu/qsys/var/workbench/strategies --runs /home/ubuntu/qsys/var/runs --service-runs /home/ubuntu/qsys/var/service-runs --state /home/ubuntu/qsys/var/shadow-state.sqlite3 --health-state /home/ubuntu/qsys/var/health-observer/service-health.sqlite3 --limit-up-shadow-state /data/qsys/var-prod/limit-up-shadow.sqlite3 --limit-up-research-run /data/qsys/research/issue-210/run-20261010 --tushare-config /etc/qsys/components/web/deploy.toml",
+        "ExecStart=/opt/qsys/components/web/current/venv/bin/qsys-web --host 127.0.0.1 --port 8420 --warehouse /home/ubuntu/qsys/warehouse --config /etc/qsys/components/web/deploy.toml --workspace /home/ubuntu/qsys/var/workbench --strategies /home/ubuntu/qsys/var/workbench/strategies --runs /home/ubuntu/qsys/var/runs --service-runs /home/ubuntu/qsys/var/service-runs --state /home/ubuntu/qsys/var/shadow-state.sqlite3 --health-state /home/ubuntu/qsys/var/health-observer/service-health.sqlite3 --limit-up-shadow-state /data/qsys/var-prod/limit-up-shadow/limit-up-shadow.sqlite3 --limit-up-research-run /data/qsys/research/issue-210/run-20261010 --tushare-config /etc/qsys/components/web/deploy.toml",
         "MemoryMax=2G",
         "CPUQuota=100%",
         "Environment=POLARS_MAX_THREADS=1",
@@ -570,11 +570,19 @@
           "mode": "0750"
         }
       ],
-      "seed": null,
+      "seed": {
+        "source": "/data/qsys/var-prod/limit-up-shadow.sqlite3",
+        "source_environment": "QSYS_LIMIT_UP_SHADOW_LEGACY_STATE",
+        "target": "/data/qsys/var-prod/limit-up-shadow/limit-up-shadow.sqlite3",
+        "owner": "qsys-limit-up-shadow",
+        "group": "qsys-workbench",
+        "mode": "0640"
+      },
       "dropin_lines": [
         "[Service]",
         "User=qsys-limit-up-shadow",
         "Group=qsys-workbench",
+        "SupplementaryGroups=qsys-limit-up-shadow",
         "UMask=0027",
         "WorkingDirectory=/",
         "ExecStartPre=",
@@ -583,8 +591,18 @@
         "ReadWritePaths=",
         "ReadWritePaths=/data/qsys/var-prod/limit-up-shadow",
         "ReadWritePaths=/home/ubuntu/qsys/var/service-runs/limit-up-shadow",
-        "ReadOnlyPaths=/data/qsys/warehouse /data/qsys/research /home/ubuntu/qsys/config /data/qsys/var-prod/limit-up-drift-reference.json",
-        "ExecStart=/usr/bin/flock --shared /home/ubuntu/qsys/var/warehouse-write.lock /opt/qsys/components/limit-up-shadow/current/venv/bin/qsys-limit-up-shadow --warehouse /data/qsys/warehouse --research-run /data/qsys/research/issue-210/run-20261010 --drift-reference /data/qsys/var-prod/limit-up-drift-reference.json --state /data/qsys/var-prod/limit-up-shadow/limit-up-shadow.sqlite3 --service-runs /home/ubuntu/qsys/var/service-runs/limit-up-shadow --config /home/ubuntu/qsys/config/deploy.local.toml"
+        "ReadOnlyPaths=/data/qsys/warehouse /data/qsys/research /etc/qsys/components/limit-up-shadow/deploy.toml /data/qsys/var-prod/limit-up-drift-reference.json",
+        "ExecStart=/usr/bin/flock --shared /home/ubuntu/qsys/var/warehouse-write.lock /opt/qsys/components/limit-up-shadow/current/venv/bin/qsys-limit-up-shadow --warehouse /data/qsys/warehouse --research-run /data/qsys/research/issue-210/run-20261010 --drift-reference /data/qsys/var-prod/limit-up-drift-reference.json --state /data/qsys/var-prod/limit-up-shadow/limit-up-shadow.sqlite3 --service-runs /home/ubuntu/qsys/var/service-runs/limit-up-shadow --config /etc/qsys/components/limit-up-shadow/deploy.toml --threads 1",
+        "MemoryHigh=3G",
+        "MemoryMax=4G",
+        "CPUQuota=50%",
+        "Nice=10",
+        "IOSchedulingClass=idle",
+        "Environment=POLARS_MAX_THREADS=1",
+        "Environment=QSYS_QUERY_MEMORY_MB=2048",
+        "Environment=QSYS_QUERY_MAX_TEMP_MB=512",
+        "Environment=QSYS_QUERY_THREADS=1",
+        "Environment=QSYS_QUERY_TEMP_ROOT=/tmp/qsys-limit-up-shadow-query"
       ]
     },
     "reboot-drill": {

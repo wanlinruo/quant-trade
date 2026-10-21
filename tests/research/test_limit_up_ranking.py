@@ -26,6 +26,28 @@ from qsys.research.limit_up_ranking import (
 )
 
 
+def test_scoring_frame_uses_component_duckdb_budget(tmp_path, monkeypatch):
+    from qsys.research import limit_up_ranking as ranking
+
+    for key,value in {
+        "QSYS_QUERY_TEMP_ROOT":str(tmp_path/"spill"),
+        "QSYS_QUERY_MEMORY_MB":"64", "QSYS_QUERY_MAX_TEMP_MB":"16", "QSYS_QUERY_THREADS":"1",
+    }.items():
+        monkeypatch.setenv(key,value)
+    monkeypatch.setattr(ranking,"dataset_sql",lambda *a,**kw:"""
+        SELECT DATE '2026-10-20' prediction_date, DATE '2026-10-21' target_session,
+               current_setting('memory_limit') memory_budget,
+               current_setting('temp_directory') spill_directory,
+               current_setting('max_temp_directory_size') spill_budget,
+               current_setting('threads') query_threads
+    """)
+    row=ranking.scoring_frame(tmp_path,date(2026,10,20),date(2026,10,21),threads=1).row(0,named=True)
+    assert row["memory_budget"].replace(" ","")=="64.0MiB"
+    assert row["spill_budget"].replace(" ","")=="16.0MiB"
+    assert Path(row["spill_directory"]).is_relative_to(tmp_path/"spill")
+    assert row["query_threads"]==1
+
+
 def _sessions(start: date, count: int) -> list[date]:
     days: list[date] = []
     day = start

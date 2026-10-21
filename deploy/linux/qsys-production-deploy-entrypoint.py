@@ -36,7 +36,7 @@ ALLOWED_WINDOWS_COMPONENTS = frozenset({
     "windows-agent", "windows-gateway", "windows-control",
 })
 WINDOWS_COORDINATOR_PATH = "deploy/linux/qsys-windows-deploy-coordinator.py"
-ENTRYPOINT_VERSION = 29
+ENTRYPOINT_VERSION = 30
 ENTRYPOINT_CAPABILITIES = (
     "systemd-apply-v1",
     "systemd-component-boundary-v1",
@@ -68,6 +68,7 @@ ENTRYPOINT_CAPABILITIES = (
     "component-release-v14",
     "component-release-v15",
     "component-web-readiness-v1",
+    "component-sqlite-seed-v1",
     "emergency-restart-authorization-v1",
 )
 FAILURE_POINTS = frozenset({"none", "linux-health", "windows-switch"})
@@ -1517,7 +1518,11 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
         "components": [args.component], "before": before, "after": after,
         "config_fingerprints": fingerprints, "checks": checks,
         "rollback_targets": {args.component: before_component},
-        "migration_summary": "component release only; no data or state migration",
+        "migration_summary": (
+            "limit-up-shadow initial SQLite history seed; legacy database retained"
+            if args.component == "limit-up-shadow" and before_component == "uninstalled"
+            else "component release only; no data or state migration"
+        ),
     }
     path = _write_record(config, args.run_id, record)
     print(json.dumps({

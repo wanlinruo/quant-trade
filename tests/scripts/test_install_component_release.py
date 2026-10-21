@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import sqlite3
 import subprocess
 from pathlib import Path
 
@@ -49,8 +50,11 @@ def _fake_sudo(*command: str, check: bool = True):
     elif command[0] == "ln":
         target = Path(command[-1])
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.unlink(missing_ok=True)
-        target.symlink_to(command[-2])
+        if "-sfn" in command:
+            target.unlink(missing_ok=True)
+            target.symlink_to(command[-2])
+        else:
+            os.link(command[-2],target)
     elif command[0] == "mv":
         os.replace(command[-2], command[-1])
     elif command[0] == "rm":
@@ -220,3 +224,165 @@ def test_nonconflicting_later_platform_environment_is_allowed(monkeypatch, tmp_p
     dropin.parent.mkdir(parents=True)
     (dropin.parent / "zz-market.conf").write_text("[Service]\nEnvironment=MARKET=canonical\n")
     assert installer.activate(tmp_path, sha, "example") == release
+
+
+def _history_database(path, *, wal=False):
+    connection = sqlite3.connect(path)
+    if wal:
+        connection.execute("PRAGMA journal_mode=WAL")
+        connection.execute("PRAGMA wal_autocheckpoint=0")
+    for name in ("runs", "entries", "outcomes"):
+        table = f"limit_up_shadow_{name}"
+        connection.execute(f"CREATE TABLE {table}(id TEXT PRIMARY KEY, value BLOB)")
+        connection.execute(f"INSERT INTO {table} VALUES (?,?)", ("historical", b"\x00original\xff"))
+        connection.execute(f"INSERT INTO {table} VALUES (?,?)", ("null-value", None))
+    connection.commit()
+    return connection
+
+
+def _sqlite_seed(source, target):
+    return {"source":str(source), "source_environment":"QSYS_LIMIT_UP_SHADOW_LEGACY_STATE",
+            "target":str(target), "owner":"ubuntu", "group":"ubuntu", "mode":"0640"}
+
+
+def test_sqlite_seed_copies_committed_wal_history_and_preserves_original(monkeypatch, tmp_path):
+    source = tmp_path / "legacy.sqlite3"
+    target = tmp_path / "isolated.sqlite3"
+    original = _history_database(source, wal=True)
+    before = source.read_bytes()
+    expected = installer._sqlite_fingerprint(original)
+    monkeypatch.setattr(installer, "_sudo", _fake_sudo)
+    try:
+        installer._seed_limit_up_shadow(source,_sqlite_seed(source,target),initial=True)
+        assert installer._read_sqlite_fingerprint(target) == expected
+        assert source.read_bytes() == before
+        assert installer._sqlite_fingerprint(original) == expected
+        with sqlite3.connect(target) as copied:
+            assert copied.execute("PRAGMA journal_mode").fetchone() == ("delete",)
+        assert not list(tmp_path.glob("*.seed-*"))
+    finally:
+        original.close()
+
+
+def test_sqlite_upgrade_keeps_new_history_without_requiring_legacy(monkeypatch, tmp_path):
+    target = tmp_path / "isolated.sqlite3"
+    with _history_database(target) as current:
+        current.execute("INSERT INTO limit_up_shadow_runs VALUES ('new-day','new-result')")
+    before = target.read_bytes()
+    monkeypatch.setattr(installer, "_sudo", lambda *a,**k: pytest.fail("unexpected overwrite"))
+    installer._seed_limit_up_shadow(tmp_path/"missing-legacy.sqlite3",
+                                   _sqlite_seed(tmp_path/"missing",target),initial=False)
+    assert target.read_bytes() == before
+
+
+def test_existing_wal_target_is_rejected_without_changing_journal(monkeypatch,tmp_path):
+    target=tmp_path/"isolated.sqlite3"
+    connection=_history_database(target,wal=True)
+    monkeypatch.setattr(installer,"_sudo",lambda *a,**k:pytest.fail("unexpected overwrite"))
+    try:
+        with pytest.raises(ValueError,match="DELETE journal"):
+            installer._seed_limit_up_shadow(tmp_path/"missing",_sqlite_seed(tmp_path/"missing",target),initial=False)
+        assert connection.execute("PRAGMA journal_mode").fetchone()==("wal",)
+    finally:
+        connection.close()
+
+
+def test_sqlite_upgrade_rejects_missing_target_without_restoring_old_history(monkeypatch, tmp_path):
+    source = tmp_path / "legacy.sqlite3"
+    target = tmp_path / "isolated.sqlite3"
+    _history_database(source).close()
+    monkeypatch.setattr(installer, "_sudo", lambda *a, **k: pytest.fail("unexpected seed"))
+    with pytest.raises(ValueError, match="missing during upgrade"):
+        installer._seed_limit_up_shadow(source, _sqlite_seed(source, target), initial=False)
+    assert not target.exists()
+
+
+def test_first_sqlite_migration_rejects_different_existing_history(monkeypatch, tmp_path):
+    source = tmp_path/"legacy.sqlite3"
+    target = tmp_path/"isolated.sqlite3"
+    _history_database(source).close()
+    with _history_database(target) as copied:
+        copied.execute("INSERT INTO limit_up_shadow_runs VALUES ('other','do-not-overwrite')")
+    before = target.read_bytes()
+    monkeypatch.setattr(installer,"_sudo",lambda *a,**k: pytest.fail("unexpected overwrite"))
+    with pytest.raises(ValueError, match="differs from legacy"):
+        installer._seed_limit_up_shadow(source,_sqlite_seed(source,target),initial=True)
+    assert target.read_bytes() == before
+
+
+def test_sqlite_seed_rejects_symlink_and_missing_history_before_publish(monkeypatch, tmp_path):
+    source = tmp_path/"empty.sqlite3"
+    source.touch()
+    target = tmp_path/"isolated.sqlite3"
+    monkeypatch.setattr(installer,"_sudo",_fake_sudo)
+    with pytest.raises(ValueError, match="missing history tables"):
+        installer._seed_limit_up_shadow(source,_sqlite_seed(source,target),initial=True)
+    assert not target.exists()
+    target.symlink_to(source)
+    with pytest.raises(ValueError, match="symlinks"):
+        installer._seed_limit_up_shadow(source,_sqlite_seed(source,target),initial=True)
+    assert source.read_bytes() == b""
+
+
+def test_sqlite_target_publication_cannot_overwrite_a_racing_file(monkeypatch, tmp_path):
+    source = tmp_path/"legacy.sqlite3"
+    target = tmp_path/"isolated.sqlite3"
+    _history_database(source).close()
+    def race(*command,check=True):
+        if command[:2] == ("ln","-T"):
+            target.write_bytes(b"concurrent-state")
+        return _fake_sudo(*command,check=check)
+    monkeypatch.setattr(installer,"_sudo",race)
+    with pytest.raises(FileExistsError):
+        installer._seed_limit_up_shadow(source,_sqlite_seed(source,target),initial=True)
+    assert target.read_bytes() == b"concurrent-state"
+
+
+@pytest.mark.parametrize("state",["active","activating","deactivating","reloading",""])
+def test_limit_up_shadow_installer_rejects_unknown_or_busy_state(monkeypatch,tmp_path,state):
+    sha = "a"*40
+    spec,_,current,_ = _prepare(monkeypatch,tmp_path,sha)
+    monkeypatch.setattr(installer,"load_component_releases",lambda repo:{"limit-up-shadow":spec})
+    monkeypatch.setattr(installer,"_run",lambda cmd,**kw:subprocess.CompletedProcess(
+        cmd,0 if "show" in cmd else 3,state+"\n",""))
+    monkeypatch.setattr(installer,"_sudo",lambda *a,**k:pytest.fail("sudo reached"))
+    with pytest.raises(ValueError,match="running or unknown"):
+        installer.activate(tmp_path,sha,"limit-up-shadow")
+    assert not current.exists()
+
+
+def test_limit_up_activation_seeds_history_before_switching_pointer(monkeypatch,tmp_path):
+    sha = "a"*40
+    spec,release,current,_ = _prepare(monkeypatch,tmp_path,sha)
+    source=tmp_path/"legacy.sqlite3"
+    _history_database(source).close()
+    target=tmp_path/"state/history.sqlite3"
+    spec["seed"]=_sqlite_seed(source,target)
+    monkeypatch.setattr(installer,"load_component_releases",lambda repo:{"limit-up-shadow":spec})
+    monkeypatch.setattr(installer,"_run",lambda cmd,**kw:subprocess.CompletedProcess(
+        cmd,0 if "show" in cmd else 3,"inactive\n" if "show" in cmd else "",""))
+    assert installer.activate(tmp_path,sha,"limit-up-shadow")==release
+    assert current.resolve()==release
+    assert installer._read_sqlite_fingerprint(target)==installer._read_sqlite_fingerprint(source)
+
+
+def test_seeded_history_is_visible_to_the_existing_web_reader(monkeypatch,tmp_path):
+    from datetime import date
+    from qsys.web.limit_up_shadow import LimitUpShadowPublisher, LimitUpShadowReader, LimitUpShadowSnapshot
+
+    source=tmp_path/"legacy.sqlite3"
+    target=tmp_path/"isolated.sqlite3"
+    snapshot=LimitUpShadowSnapshot.model_validate({
+        "prediction_date":"2026-10-20", "target_session":"2026-10-21",
+        "generated_at":"2026-10-20T19:35:00+08:00", "model_version":"fixture-v1",
+        "model_sha":"1234567", "data_version":"fixture-data", "data_sha":"abcdef0",
+        "eligible_count":1, "entries":[{"rank":1,"symbol":"600000.SH",
+            "p_touch":0.5,"p_seal_given_touch":0.5,"p_close_limit":0.25}],
+    })
+    LimitUpShadowPublisher(source).publish(snapshot)
+    old=LimitUpShadowReader(source).view(date(2026,10,20),today=date(2026,10,21))
+    monkeypatch.setattr(installer,"_sudo",_fake_sudo)
+    installer._seed_limit_up_shadow(source,_sqlite_seed(source,target),initial=True)
+    new=LimitUpShadowReader(target).view(date(2026,10,20),today=date(2026,10,21))
+    assert new==old and new.available
+    assert new.snapshot==snapshot

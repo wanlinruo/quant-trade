@@ -11,6 +11,25 @@ import pytest
 from scripts.build_component_release import build, verify
 
 
+def test_sqlite_seed_only_accepts_the_pinned_legacy_source(tmp_path):
+    from scripts.component_release_config import load_component_releases_file
+
+    path=tmp_path/"components.json"
+    specs=json.loads(Path("deploy/component-releases.json").read_text())
+    path.write_text(json.dumps(specs))
+    assert load_component_releases_file(path)["limit-up-shadow"]["seed"]["source"] == \
+        "/data/qsys/var-prod/limit-up-shadow.sqlite3"
+    specs["components"]["limit-up-shadow"]["seed"]["source"]="/etc/other.sqlite3"
+    path.write_text(json.dumps(specs))
+    with pytest.raises(ValueError,match="fixed legacy state"):
+        load_component_releases_file(path)
+    specs=json.loads(Path("deploy/component-releases.json").read_text())
+    specs["components"]["catalog-verify"]["seed"]["source"]="/etc/other.json"
+    path.write_text(json.dumps(specs))
+    with pytest.raises(ValueError,match="relative path"):
+        load_component_releases_file(path)
+
+
 def _repo(tmp_path: Path) -> tuple[Path, str]:
     repo = tmp_path / "repo"
     repo.mkdir()

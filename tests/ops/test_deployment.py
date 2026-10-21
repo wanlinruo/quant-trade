@@ -588,6 +588,14 @@ def test_limit_up_shadow_is_write_bounded_and_preserves_read_only_inputs():
     assert command[3] == spec["current"] + "/" + spec["executable"]
     assert command[command.index("--state") + 1] == "/data/qsys/var-prod/limit-up-shadow/limit-up-shadow.sqlite3"
     assert command[command.index("--service-runs") + 1] == spec["state_directories"][1]["path"]
+    assert command[command.index("--config") + 1] == "/etc/qsys/components/limit-up-shadow/deploy.toml"
+    assert spec["seed"]["source"] == "/data/qsys/var-prod/limit-up-shadow.sqlite3"
+    assert spec["seed"]["target"] == command[command.index("--state") + 1]
+    assert "SupplementaryGroups=qsys-limit-up-shadow" in lines
+    web_command = next(line for line in specs["components"]["web"]["dropin_lines"]
+                       if line.startswith("ExecStart=") and line != "ExecStart=")
+    web_args = shlex.split(web_command.removeprefix("ExecStart="))
+    assert web_args[web_args.index("--limit-up-shadow-state")+1] == spec["seed"]["target"]
     assert "scripts/" not in " ".join(command)
     assert "WorkingDirectory=/" in lines
     assert "OnCalendar=Mon..Fri 19:35 Asia/Shanghai" in Path("deploy/systemd/qsys-limit-up-shadow.timer").read_text()
@@ -1252,7 +1260,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
 
     state = entrypoint.status({"production_repo": str(tmp_path)})
 
-    assert state["entrypoint_version"] == 29
+    assert state["entrypoint_version"] == 30
     assert set(state["capabilities"]) == {
         "systemd-apply-v1", "systemd-component-boundary-v1", "systemd-changed-artifacts-v1",
         "systemd-preview-v1", "systemd-runtime-paths-v1", "systemd-rollback-v1",
@@ -1279,6 +1287,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
         "component-release-v14",
         "component-release-v15",
         "component-web-readiness-v1",
+        "component-sqlite-seed-v1",
         "emergency-restart-authorization-v1",
     }
 
@@ -1566,7 +1575,8 @@ def test_paper_and_shadow_protect_each_other_and_non_trading_peers() -> None:
     }
 
 
-@pytest.mark.parametrize("component,active", [("health-observer", True), ("storage-report", False)])
+@pytest.mark.parametrize("component,active", [("health-observer", True), ("storage-report", False),
+                                            ("limit-up-shadow", False)])
 def test_component_record_preserves_state_and_matches_contract(
     monkeypatch, tmp_path, capsys, component, active,
 ) -> None:
@@ -1590,6 +1600,7 @@ def test_component_record_preserves_state_and_matches_contract(
     monkeypatch.setattr(entrypoint, "_live_identity", lambda repo: dict(live))
     monkeypatch.setattr(entrypoint, "_live_preflight", lambda repo: None)
     monkeypatch.setattr(entrypoint, "_fingerprints", lambda config, repo: {"linux": "f"})
+    monkeypatch.setattr(entrypoint, "_unit_identity_token", lambda unit, repo: "unchanged")
     monkeypatch.setattr(
         entrypoint, "_receive_component_archive",
         lambda digest, root: root / "component.zip",
@@ -1601,6 +1612,8 @@ def test_component_record_preserves_state_and_matches_contract(
     def fake_run(command, **kwargs):
         command = [str(item) for item in command]
         commands.append(command)
+        if command[:3] == ["systemctl", "show", "qsys-limit-up-shadow.service"]:
+            return subprocess.CompletedProcess(command, 0, "inactive\n", "")
         if command[-2:] == ["stop", f"qsys-{component}.service"]:
             state["active"] = False
         elif entrypoint.GENERIC_COMPONENT_INSTALLER in command:
@@ -1644,6 +1657,8 @@ def test_component_record_preserves_state_and_matches_contract(
                        for command in commands)
     assert records[0]["before"][f"{component}-active"] == str(active).lower()
     assert records[0]["after"][f"{component}-active"] == str(active).lower()
+    if component == "limit-up-shadow":
+        assert "initial SQLite history seed" in records[0]["migration_summary"]
     validate_record(records[0])
     assert json.loads(capsys.readouterr().out)["status"] == "success"
 
