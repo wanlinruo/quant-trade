@@ -1,5 +1,11 @@
 # 参考资料
 
+## `catalog-warning-review-20261020.md`
+
+#465：10-20 指标验证的 28 条字段警告、两张黄色规范表及分钟根数样本复核；
+源差异保持可见，不把字段结果条数当作新增故障数。存储到期清单见
+`../plans/storage-retention-review-20261020.md`。
+
 ## `b-share-limit-codes.md`
 
 #460 探针：Tushare `stk_limit` 把沪市 B 股标为 `900xxx.BJ`（`.SH` 查无），日线与
