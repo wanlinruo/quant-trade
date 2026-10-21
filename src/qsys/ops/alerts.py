@@ -231,9 +231,11 @@ def strategy_sinks(strategy_url: str, ops_url: str = "", *,
     return sinks
 
 
-# 各进程各写各的，按天一个文件，日报统一读。相对路径，进程的工作目录都是仓库根。
+# 按天留账，日报合并显式组件目录与旧flat历史；legacy默认相对仓库根，独立入口须传绝对路径。
 LEDGER_DIR = Path("var/alerts")
-SERVICE_LEDGER_NAMESPACES = frozenset({"health-observer", "service-checks", "reboot-drill"})
+SERVICE_LEDGER_NAMESPACES = frozenset({
+    "health-observer", "service-checks", "reboot-drill", "paper", "shadow-core",
+})
 
 
 def ledger(root=None) -> AlertLedger:

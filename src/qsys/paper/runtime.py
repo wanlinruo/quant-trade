@@ -153,6 +153,7 @@ class PaperRuntime:
         self, account_id: str, store: PaperStore, warehouse: Path,
         calendar, quote_client: QuoteClient, workspace: Path,
         ops_webhook: str = "",
+        *, alert_ledger: Path | None = None,
     ) -> None:
         self.id, self.store, self.calendar = account_id, store, calendar
         account = store.account(account_id)
@@ -166,7 +167,7 @@ class PaperRuntime:
         self._event_rejects: list = []
         self._today_fills: list = []       # 当日累计，收盘那条用
         self.notifier = StrategyNotifier(
-            AlertBus(strategy_sinks(hook, ops_webhook), ledger()) if hook else None,
+            AlertBus(strategy_sinks(hook, ops_webhook), ledger(alert_ledger)) if hook else None,
             engine_label(account.name, account_id),
         )
         wh = Warehouse(warehouse)

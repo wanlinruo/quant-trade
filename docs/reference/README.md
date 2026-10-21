@@ -1,5 +1,10 @@
 # 参考资料
 
+## Paper 独立生产迁移（#490）
+
+见 `../plans/paper-production-isolation.md`：共享Workbench合法写者、私有身份/最小配置、
+显式告警路径与日报读取器先行、SQLite一致性隔离副本和自然模拟事件分层验收。
+
 ## 盘前涨跌停独立隔离（#487）
 
 见 `../plans/premarket-limits-production-isolation.md`：三表精确写权限、Redis5受限发布入口、

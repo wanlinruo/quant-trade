@@ -251,3 +251,10 @@ def test_a_sink_whose_accepts_explodes_is_still_sent_to():
 def test_reboot_ledger_remains_visible_to_shared_reader(tmp_path):
     AlertBus([RecordingAlertSink()], AlertLedger(tmp_path / "reboot-drill")).critical("演练命令失败")
     assert [r["title"] for r in AlertLedger(tmp_path).read(date.today())] == ["演练命令失败"]
+
+
+def test_paper_and_shadow_ledgers_are_visible_alongside_legacy(tmp_path):
+    for namespace, title in [("", "legacy"), ("paper", "paper"), ("shadow-core", "shadow")]:
+        AlertBus([RecordingAlertSink()], AlertLedger(tmp_path / namespace)).info(title)
+    rows = AlertLedger(tmp_path).read(date.today())
+    assert [r["title"] for r in rows] == ["legacy", "paper", "shadow"]

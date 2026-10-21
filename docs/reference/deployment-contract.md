@@ -221,12 +221,17 @@ release/current 位于 `/opt/qsys/components/web/{releases/<SHA>,current}`；固
 Workbench 与策略数据迁移及首次生产激活均需单独授权；代码合入不会切换生产 Web。
 
 `paper` 与 `shadow-core` 分别使用 wheel 入口 `qsys-paper`、`qsys-shadow-core`，不再从
-共享 checkout/venv 执行。Paper 仅写 `var/workbench`，并通过 `qsys-workbench` 共享组与 Web、
-backtest worker 协作；生产 Warehouse 和配置保持只读。Shadow 的策略快照、SQLite、运行台账、
+共享 checkout/venv 执行。Paper私有主组+observers，通过精确named ACL与Web/worker共同写
+原Workbench（保留owner=qsys-web），另仅写var/alerts/paper；生产Warehouse只读，完整配置不可读，
+最小配置在/etc/qsys/components/paper。显式--alert-ledger传至每个worker，legacy默认兼容；
+日报读取器必须先升级识别paper/shadow-core告警目录，再迁移Paper生产者，旧flat历史保留；
+Web不读取AlertLedger，只做原Workbench接口兼容验收。
+共享SQLite和Redis5无原生ACL的残余边界如实保留，见 `../plans/paper-production-isolation.md` 和#488。
+Shadow 的策略快照、SQLite、运行台账、
 告警账、锁和本地 kill switch 全部收敛到 `var/shadow-core` / `var/alerts/shadow-core`，市场事实
 Warehouse 只读，preflight 也从同一 release 的 `qsys-live-preflight` 执行。组件切换会固定比较
 另一运行核心、Web 与 backtest worker 的 load/active/PID/启动时间身份；Live Core 身份与共享
-checkout 仍按全局门禁前后校验。v23/component-release-v13 固定入口、账号/组、Redis 最小 ACL、
+checkout 仍按全局门禁前后校验。v23/component-release-v13 固定入口、账号/组、Redis最小权限边界、
 现有 Workbench/Shadow 状态迁移及首次生产激活均需单独授权；代码合入不会切换生产 Paper/Shadow。
 `scripts/kill.py` 根据固定 Shadow component drop-in 是否存在选择本地急停文件：共享部署使用
 `var/SHADOW_KILL`，独立部署使用 `/home/ubuntu/qsys/var/shadow-core/SHADOW_KILL`。
