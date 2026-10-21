@@ -1,6 +1,6 @@
 # 项目交接入口
 
-> 快照时间：2026-10-21 01:45（Asia/Shanghai）。这是接手入口，不替代 GitHub、节点和机器可读
+> 快照时间：2026-10-21 20:05（Asia/Shanghai）。这是接手入口，不替代 GitHub、节点和机器可读
 > 契约的实时状态。执行任何写操作前必须重新核验。
 
 ## 先读什么
@@ -23,15 +23,16 @@
 
 ### 生产版本
 
-- 共享checkout：`98fff8b837a08b21acb1ff9826a154a50df704e4`（#444），干净；固定入口v29。
-- 独立Web current：`42454561106b00410125b255385640c5b548e26e`（PR#462，#460），回滚点`43f3f81`。
+- 共享checkout：`98fff8b837a08b21acb1ff9826a154a50df704e4`（#444），干净；固定入口v30。
+- 独立Web current：`34f9cf647926153982178de69fddb803c93653ac`（PR#471，#463），既有回退副本保留。
 - Windows live_app（执行代理）与paper_app（行情网关）：`43f3f81`（10-20 23:07，#283；agent仅含#427可选字段）。
-  catalog/observer仍`dfd65bf`，checks `ac22996`，digest/worker `3c182a7`，storage `5a54901`。
+  catalog `3e40c21`（#469）、observer `dfd65bf`，checks/storage `b48e84b`，digest/worker `3c182a7`，
+  limit-up-shadow `34f9cf6`（#463）。
 - 最近正式发布均已核对workflow/Deployment/实际validate-record三方success：
   #444 Linux39419956053/7199251758；#448 Web39421535317/7199505475；
   #449 Web39424192480/7199941830；#283 Windows39445434427/7203344670、Web39445890080/7203415298；#460 Web39463842681/7206198116。
   其他回退副本均保留。#283代码也命中linux-resident（会重启Live Core），共享checkout未随发，待正常维护窗口。
-- 7/14独立激活、7/14尚未迁移；组件分层验收以`docs/reference/component-acceptance-matrix.md`
+- 8/14独立激活、6/14尚未迁移；组件分层验收以`docs/reference/component-acceptance-matrix.md`
   和#330最新记录为准，不用激活数量替代完整回滚验收。
 
 ### 实盘（#137）
@@ -46,6 +47,20 @@
   failed units=0，旧失败journal保留。实际重启演练仍未授权。
 
 ### 本轮迁移收尾与未决项
+
+- #463已关闭：榜单/Web联合发布三方success，10-21 19:35自然运行及19:45报告通过；
+  旧库hash/全部旧行保留，实际Web/日报读取新榜单和24条唯一记录、对新库不可写。
+- #469：PR#472合并，catalog current `3e40c21`，专属无登录账号/最小配置/五处精确写集合已生效。
+  源CI39593880066、测试部署39594088976、PR CI39594255503、最终CI39594463980均成功；
+  dry-run39595402784，正式重发39596600730/Deployment7225528413/节点实际validate_record三方成功。
+  严格preflight16/16，所有关键peer身份和共享checkout不变，baseline/原配置hash不变。
+  真实隔离实跑636条/0阻断/28警告、1.7G峰值、swap0；20:05发布后生产实跑进行中。
+  timer已恢复，首次新版本自然任务10-22 19:40；19:50节点只读采证已调度。
+- #473保留首次正式失败39596077181/Deployment7225444858/节点rolled_back记录：
+  验收Python生成775缓存目录，被安装器切换前拒绝；仅修生成缓存权限、root持有release并禁写字节码，
+  未改源代码或生产事实，未重跑未变CI/业务。复发规则见AGENTS.md §2.2。
+- 接着推进#330的tushare-sync→daily-archive→premarket-limits，再paper/shadow-core/reboot-drill；
+  Live Core最后。各组件必须先有子Issue及实际权限/消费者证据，不以“8个激活”冒充整体完成。
 
 - **维护者10-20裁决：独立组件只前进不回退**，异常直接修复发布；legacy回切只作一次性预生产验证
   （AGENTS.md §4）。#453已按此收口：#455/#456新增`Verify component rollback preproduction`，
@@ -130,7 +145,7 @@ gh run list --workflow deploy-production-linux.yml --limit 5
 ```
 
 Linux 节点只读检查应确认生产 SHA、工作区、监控、health 和密码认证状态；不要在检查命令中
-打印配置内容或任何 secret。预期快照是：共享生产 `98fff8b`、独立Web `4245456`、入口 v29、工作区干净、
+打印配置内容或任何 secret。预期快照是：共享生产 `98fff8b`、独立Web `34f9cf6`、入口 v30、工作区干净、
 `qsys-live-core` / `qsys-monitor.service` active、`8420/healthz` 为 200、`PasswordAuthentication=yes`。
 
 ## GitHub 与节点名称
