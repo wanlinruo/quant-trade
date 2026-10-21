@@ -404,6 +404,7 @@
       "scan_roots": [
         "src/qsys/core",
         "src/qsys/data",
+        "src/qsys/strategy",
         "src/qsys/live",
         "src/qsys/ops",
         "src/qsys/paper",
@@ -451,7 +452,8 @@
         "Nice=10",
         "IOSchedulingClass=idle",
         "Environment=POLARS_MAX_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1",
-        "Environment=QSYS_QUERY_MEMORY_MB=512 QSYS_QUERY_MAX_TEMP_MB=1024 QSYS_QUERY_THREADS=1 QSYS_QUERY_TEMP_ROOT=/tmp/qsys-tushare-query"
+        "Environment=QSYS_QUERY_MEMORY_MB=512 QSYS_QUERY_MAX_TEMP_MB=1024 QSYS_QUERY_THREADS=1 QSYS_QUERY_TEMP_ROOT=/tmp/qsys-tushare-query",
+        "Environment=QSYS_CATALOG_SOURCE_ROOT=/opt/qsys/components/tushare-sync/current/source"
       ]
     },
     "daily-digest": {

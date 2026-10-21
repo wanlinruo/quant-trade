@@ -777,7 +777,7 @@ def test_tushare_sync_component_owns_bounded_writer_and_convergence_paths() -> N
         "target": "qsys.data.tushare_sync_cli:main",
     }
     assert sync["scan_roots"] == [
-        "src/qsys/core", "src/qsys/data", "src/qsys/live", "src/qsys/ops",
+        "src/qsys/core", "src/qsys/data", "src/qsys/strategy", "src/qsys/live", "src/qsys/ops",
         "src/qsys/paper", "scripts/win_download_minutes.py", "scripts/win_download_auction_ticks.py",
     ]
     assert sync["release_root"] == "/opt/qsys/components/tushare-sync/releases"
@@ -796,6 +796,7 @@ def test_tushare_sync_component_owns_bounded_writer_and_convergence_paths() -> N
         },
     ]
     dropin = "\n".join(sync["dropin_lines"])
+    assert "Environment=QSYS_CATALOG_SOURCE_ROOT=/opt/qsys/components/tushare-sync/current/source" in dropin
     assert "User=qsys-tushare-sync" in dropin
     assert "WorkingDirectory=/" in dropin
     assert "ReadWritePaths=/data/qsys/warehouse" in dropin

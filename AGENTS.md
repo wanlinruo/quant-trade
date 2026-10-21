@@ -102,6 +102,9 @@ manifest → `HANDOFF.md` → 其他历史文档。
   `qsys-observers` 或精确只读ACL；home遍历已有observers ACL，不为方便加入写组。
   权限验收同时检查真实Unix身份和unit沙箱，明确测试Workbench、他组件状态、完整配置与
   业务表的写入拒绝，不能用沙箱阻断代替账号最小权限，也不能只检查Warehouse。
+- **候选安装使用实际维护账号与既有依赖缓存**（2026-10-21，#475）：调用组件 staging
+  工具时使用发布流程相同的 ubuntu 身份，root 仅执行必要的账号/权限准备；避免让 uv 使用
+  root 冷缓存重复下载整套依赖。仅重试失败的候选安装，复用未变制品与 CI 证据。
 - **验收探针不得污染不可变制品**（2026-10-21，#469 / #473）：候选 venv 的 Python 统一用
   `-B` 或 `PYTHONDONTWRITEBYTECODE=1`；隔离运行前将已验证 release 归属 root 并确保 group/other
   不可写，探针后再检查。不能在已做 `chmod go-w` 的 venv 中用维护账号直接运行 Python，
