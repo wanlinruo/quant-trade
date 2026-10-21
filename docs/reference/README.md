@@ -1,5 +1,10 @@
 # 参考资料
 
+## limit-up-shadow 独立迁移（#463 / #330）
+
+见 `../plans/limit-up-shadow-production-migration.md`：交易时段开发验证、维护窗口内
+最小配置/一致性SQLite seed/控制面bootstrap/榜单与Web联合发布，以及自然运行分层验收。
+
 ## `catalog-warning-review-20261020.md`
 
 #465：10-20 指标验证的 28 条字段警告、两张黄色规范表及分钟根数样本复核；

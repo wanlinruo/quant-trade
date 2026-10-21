@@ -295,7 +295,9 @@ def scoring_frame(
         min_observations=min_observations,
         threads=max(threads, 1),
     )
-    con = duckdb.connect()
+    from qsys.data.query_budget import connect_warehouse_query
+
+    con = connect_warehouse_query()
     try:
         con.execute(f"PRAGMA threads={config.threads}")
         frame = con.execute(dataset_sql(

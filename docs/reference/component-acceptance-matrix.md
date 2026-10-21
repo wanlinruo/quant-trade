@@ -1,6 +1,6 @@
 # 运行单元分层验收矩阵
 
-快照：2026-10-21 01:45（Asia/Shanghai）。当前生产与历史证据以 #330 和各子 Issue
+快照：2026-10-21 13:30（Asia/Shanghai）。当前生产与历史证据以 #330 和各子 Issue
 最新记录为准；写操作前重新核验。**7/14 独立生产激活，不能表述为7个组件完整回滚验收通过。**
 
 **维护者 2026-10-20 裁决：独立组件只前进不回退**，异常直接修复发布，legacy 回切不作为生产回滚
@@ -9,15 +9,16 @@
 安装器与生产 entrypoint `_rollback_component()`，按生产白名单路径完成 激活 → legacy → 注入
 daemon-reload 失败后安装器自动恢复 legacy → 重新激活，有效身份、release 与 state 标记均保留。
 托管 runner 不证明生产账号/ACL/真实数据；web/worker 只验证 `--help` 级可执行，不含业务作业。
-previous-release 不为验收造版本，待自然发布覆盖。生产故障注入仍由 #454 承接（blocked）。
+previous-release 不为验收造版本，待自然发布覆盖。#454已按维护者裁决关闭（not planned），
+不再将生产legacy回切/故障注入列为完成独立化的门槛；组件自带失败补偿保持。
 
-| 组件 | 代码/制品 | 独立预生产 | 生产激活/自然运行 | 回切与主要剩余项 |
+| 组件 | 代码/制品 | 独立预生产 | 生产激活/自然运行 | 隔离与主要剩余项 |
 |---|---|---|---|---|
-| catalog-verify | 完成 | 未单列完整证据 | current `dfd65bf`；10-20自然运行636条、0阻断、28警告 | 仍ubuntu/共享配置；专属账号/最小配置、完整回切待，不因实跑通过补勾 |
-| service-checks | #372/#418完成 | 真实制品/账号隔离试跑见#418 | current `ac22996`；10-20自然28项、数据/策略未通过均0，业务记录warning | 回切机制预生产验证通过（#453 [39437976513](https://github.com/wanlinruo/quant-trade/actions/runs/39437976513)）；previous待自然第二版本 |
-| storage-report | #375完成 | #414真实双制品试点 | current `5a54901`；生产实跑与legacy回切见#414 | previous-release/故障注入未验收，#330继续跟踪 |
+| catalog-verify | 完成 | 未单列完整证据 | current `dfd65bf`；10-20自然运行636条、0阻断、28警告 | 仍ubuntu/共享配置；专属账号/最小配置待，不因实跑通过补勾 |
+| service-checks | #372/#418/#465完成 | 真实制品/账号隔离试跑见#418 | current `b48e84b`（#465）；10-20自然28项无失败；10-21仅定点存储检查 | 预生产机制验证通过（#453）；新版本当晚自然运行另行观察，不把定点检查当全量验收 |
+| storage-report | #375/#465完成 | #414真实双制品试点 | current `b48e84b`；10-21实际账号正式CLI盘点35项/7到期/未登记0 | 原147项经明确批准清理146项，保留项由#467承接；未新增生产回切/故障注入 |
 | daily-digest | #378/#422完成 | 真实制品print/隔离输出见#422 | current `3c182a7`；10-20 20:30自然记录succeeded | 回切机制预生产验证通过（#453 [39437976513](https://github.com/wanlinruo/quant-trade/actions/runs/39437976513)）；previous待自然第二版本 |
-| health-observer | #381/#422完成 | 真实制品/账号试跑见#422 | current `dfd65bf`、active；健康历史被当前Web/日报读取 | 回切机制预生产验证通过（#453 [39437976513](https://github.com/wanlinruo/quant-trade/actions/runs/39437976513)）；故障注入#454 |
+| health-observer | #381/#422完成 | 真实制品/账号试跑见#422 | current `dfd65bf`、active；健康历史被当前Web/日报读取 | 回切机制预生产验证通过（#453 [39437976513](https://github.com/wanlinruo/quant-trade/actions/runs/39437976513)）；不新增生产故障注入 |
 | backtest-worker | #393/#422完成 | 隔离真实制品作业succeeded、报告存在 | current `3c182a7`、active；新旧Web无双消费者，当前健康观测healthy | 无legacy路径（基础unit即独立release），失败补偿预生产验证通过（#453 [39437976513](https://github.com/wanlinruo/quant-trade/actions/runs/39437976513)）；生产队列业务作业不在本轮 |
 | web | #396/#422及后续修复 | 真实制品隔离端口/只读验证 | current `4245456`（#460）；#442/#433/#448/#449/#283/#460生产验收通过 | 回切机制预生产验证通过（#453 [39437976513](https://github.com/wanlinruo/quant-trade/actions/runs/39437976513)，legacy unit 用 stub 代表节点文件） |
 | daily-archive | 完成 | 待 | 仍共享；10-20自然作业succeeded | 独立迁移未执行，不能把数据恢复当迁移完成 |
@@ -25,7 +26,7 @@ previous-release 不为验收造版本，待自然发布覆盖。生产故障注
 | tushare-sync | #390完成 | 待 | 仍共享 | 独立迁移待 |
 | paper | #399完成 | 待 | 仍共享 | 独立迁移待 |
 | shadow-core | #399完成 | 待 | 仍共享；live模式下inactive | 独立迁移待 |
-| limit-up-shadow | #404完成 | 待 | 仍共享 | 独立迁移待 |
+| limit-up-shadow | #404；#463迁移改造中 | 代码专项进行中，不计真实制品验收 | 仍共享；10-20自然成功、2.8GiB峰值 | #463：最小配置、SQLite seed、Web新路径与窗口发布；见迁移计划，不计为已激活 |
 | reboot-drill | #408/#410完成 | 仅mock不计真实演练 | 仍共享；#444参数修复实际dry-run交易日分支成功 | 独立迁移、休市月度基线/真实恢复未验收；真实故障逐次审批 |
 
 ### 本轮只读复核
@@ -44,7 +45,7 @@ previous-release 不为验收造版本，待自然发布覆盖。生产故障注
 历史审计：`/data/qsys/var-deployments/service-checks-20261018/`、
 `/data/qsys/var-deployments/issue330-batch-20261018/`、
 `/data/qsys/var-deployments/issue440-20261020/natural-timer-20261020-2045.json`。
-本轮消费者/权限复核见 #418/#422 结案记录；#453 已按裁决收口，#454 保留未执行维度。
+本轮消费者/权限复核见 #418/#422 结案记录；#453 已按裁决收口，#454按裁决关闭，未执行维度不伪装为已验收。
 
 以下单独跟踪，不混入 14 个组件的计数：
 
@@ -52,7 +53,7 @@ previous-release 不为验收造版本，待自然发布覆盖。生产故障注
 |---|---|---|
 | Research Runner | #285 已有 test staging/压力证据 | 生产激活、快照周期与权限、消费者迁移 |
 | auction/Gate 月度研究 | #406 复用 Runner，代码完成 | 同区间结果、全量资源/输入和实际调度迁移 |
-| Live Core | 主要业务组件尚未独立改造 | 最后迁移；协议、订单/成交/心跳连续与即时回切 |
+| Live Core | 主要业务组件尚未独立改造 | 最后迁移；协议、订单/成交/心跳连续、失败补偿与向前修复 |
 | systemd/platform | #412 已防止已知 drop-in 覆盖 | 更早累加指令、site 配置、平台/组件独立回滚与现场验收 |
 | 组件级预生产 | #414 先做 storage-report 单组件试点 | 实际证据成功后再推广，保留整体集成测试 |
 | Windows / 物理故障域 | 独立工作域 | 协议兼容矩阵与 #138 容量评估；不将容器当独立内核 |
