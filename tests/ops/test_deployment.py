@@ -713,22 +713,29 @@ def test_daily_archive_component_has_explicit_data_writer_boundaries() -> None:
         {
             "path": "/home/ubuntu/qsys/var/daily-archive",
             "owner": "qsys-daily-archive", "group": "qsys-daily-archive",
-            "mode": "0750",
+            "mode": "0770",
         },
         {
             "path": "/home/ubuntu/qsys/var/service-runs/daily-archive",
             "owner": "qsys-daily-archive", "group": "qsys-daily-archive",
-            "mode": "0750",
+            "mode": "0770",
         },
     ]
     dropin = "\n".join(archive["dropin_lines"])
     assert "User=qsys-daily-archive" in dropin
-    assert "ReadWritePaths=/data/qsys/warehouse" in dropin
-    assert "ReadWritePaths=/home/ubuntu/qsys/var/warehouse-write.lock" in dropin
+    assert "ReadWritePaths=/data/qsys/warehouse" not in archive["dropin_lines"]
+    assert "ReadWritePaths=/data/qsys/warehouse/auction_ticks /data/qsys/warehouse/minute_bars /data/qsys/warehouse/bar_minute_1m /data/qsys/warehouse/suspend_daily" in dropin
+    assert "SupplementaryGroups=qsys-observers" in dropin
+    assert "qsys-workbench" not in dropin
+    assert "--win-transport gateway" in dropin
+    assert "--config /etc/qsys/components/daily-archive/deploy.toml" in dropin
+    assert "--win-known-hosts /etc/qsys/components/daily-archive/windows-known-hosts" in dropin
+    assert "--win-auction-script-source /opt/qsys/components/daily-archive/current/source/scripts/win_download_auction_ticks.py" in dropin
+    assert "ReadWritePaths=/home/ubuntu/qsys/var/warehouse-write.lock" not in dropin
     assert "ReadWritePaths=/home/ubuntu/qsys/var/daily-archive" in dropin
     assert "--work-root /home/ubuntu/qsys/var/daily-archive" in dropin
     assert "--record-root /home/ubuntu/qsys/var/service-runs/daily-archive" in dropin
-    assert "--win-key /etc/qsys/daily-archive/windows-data-writer" in dropin
+    assert "--win-key /etc/qsys/components/daily-archive/windows-data-writer" in dropin
     assert "current/source/scripts/win_download_minutes.py" in dropin
     assert "/home/ubuntu/qsys/.venv" not in dropin
 
