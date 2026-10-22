@@ -72,3 +72,12 @@ Gateway JSON、文件取回和分钟下载流仅对rc255且输出严格符合认
 和forced command建立连接；probe/prepare/run/list/get复用同一认证连接，不能跨组件共享。
 空闲持久最多30秒，作业结束显式-O exit并清理socket；认证前重试与执行阶段禁止重放规则保持。
 真实专属账号只读两次probe已验证同master、约1秒完成；正式版本及真实补采结果仍以Issue为准。
+
+## Windows混合命令复用不兼容（#515）
+
+10-22限流切换后真实只读混合探针确认：同一master先probe再list，list却返回首次probe响应；
+新建连接list可正确返回files。因此此前两次相同probe成功只证明连接，不能证明混合协议。
+#515修复强制ControlMaster=no/ControlPath=none/ControlPersist=no，每次操作独立认证，
+保留严格认证前有限重试；JSON响应必须包含相应操作字段，否则拒绝，不重放业务命令。
+服务端已获明确批准新增PerSourceMaxStartups3，全局上限/密码及公钥/120秒认证时间保留；
+实际激活与混合probe/list/get的字节hash验收以#515/#508最新记录为准。

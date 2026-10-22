@@ -8,11 +8,9 @@ import math
 import os
 from pathlib import Path
 import re
-import shutil
 import subprocess
 import tempfile
 import time
-import weakref
 
 import structlog
 
@@ -46,34 +44,21 @@ class WindowsDataTransport:
         if not re.fullmatch(r"[A-Za-z0-9_.@:-]+", host) or host.startswith("-"):
             raise ValueError("invalid SSH destination")
         self.component = component
-        self._control_dir = None
         self.ssh = ["ssh", "-F", "/dev/null", "-o", "IdentitiesOnly=yes", "-i", str(Path(key).expanduser()), "-o", "BatchMode=yes",
                     "-o", "ConnectTimeout=20", "-o", "ServerAliveInterval=15",
                     "-o", "ServerAliveCountMax=2", "-o", "StrictHostKeyChecking=yes",
-                    "-o", "UserKnownHostsFile=" + str(known_hosts), host]
+                    "-o", "UserKnownHostsFile=" + str(known_hosts),
+                    "-o", "ControlMaster=no", "-o", "ControlPath=none", "-o", "ControlPersist=no", host]
 
     def command(self, op: str, **fields) -> list[str]:
         payload = json.dumps({"op": op, **fields}, separators=(",", ":"), ensure_ascii=True)
         encoded = base64.urlsafe_b64encode(payload.encode()).decode()
-        if self._control_dir is None:
-            self._control_dir = Path(tempfile.mkdtemp(prefix='qsys-data-ssh-'))
-            self._cleanup = weakref.finalize(self, shutil.rmtree, self._control_dir, ignore_errors=True)
-        multiplex = ['-o', 'ControlMaster=auto', '-o', 'ControlPersist=30',
-                     '-o', 'ControlPath=' + str(self._control_dir / 'control')]
-        return self.ssh[:-1] + multiplex + self.ssh[-1:] + ["qsys-data " + encoded]
+        # Windows forced-command can retain the first SSH_ORIGINAL_COMMAND across
+        # multiplexed channels. Each RPC must authenticate a separate connection.
+        return self.ssh + ["qsys-data " + encoded]
 
     def close(self):
-        directory = getattr(self, '_control_dir', None)
-        if directory is None:
-            return
-        try:
-            subprocess.run(self.ssh[:-1] + ['-S', str(directory/'control'), '-O', 'exit', self.ssh[-1]],
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5, check=False)
-        except (OSError, subprocess.TimeoutExpired):
-            log.warning('ssh.control_close_failed', component=self.component)
-        finally:
-            self._cleanup()
-            self._control_dir = None
+        """No persistent SSH process or socket remains between operations."""
 
     def __enter__(self):
         return self
@@ -87,6 +72,10 @@ class WindowsDataTransport:
         value = json.loads(completed.stdout)
         if not isinstance(value, dict):
             raise ValueError("invalid data gateway response")
+        required = {"probe": {"protocol", "component"}, "prepare": {"prepared"},
+                    "put": {"uploaded"}, "list": {"files"}}.get(op)
+        if required is not None and not required <= value.keys():
+            raise ValueError(f"data gateway response does not match {op}")
         return value
 
     def _run_ssh(self, command, **kwargs):

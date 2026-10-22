@@ -21,6 +21,16 @@
 
 ## 10-22 20:12最新交接（覆盖下文历史快照）
 
+> 20:38补充（#122/#508/#515）：维护者明确确认应急入口及SSH维护窗口后，Windows
+> 已新增`PerSourceMaxStartups 3`；全局10:30:100、LoginGraceTime120、密码/公钥yes均保留。
+> 节点恢复保护先行；首次Get-ScheduledTask既有WMI错误拦在写配置前，失败证据保留，改用
+> 任务文件核验后切换成功。Mac/Linux连接、Redis PONG、原Windows5业务进程/4任务/keys与
+> ACL/boot保持、Live3385058/Web3448094/worker1300978保持通过；临时apply/rollback任务已
+> disabled，原配置备份保留。Windows审计`C:/qsys/var-deployments/issue508-20261022-ssh-preparation`。
+> 后续混合probe/list发现Windows复用通道重复首次响应，**两次相同probe不能证明协议正确**。
+> #515改为每次操作独立连接并拒绝响应操作错配；正式发布/真实混合文件取回和自然验收以
+> #515/#508/#475最新评论为准，不用下文“复用probe通过”证明混合协议已通过。
+
 - main/test已对齐`b760b5f91eb0ff00e8737ed90e627c2a1f4557da`（PR#513）；共享checkout仍
   `505d7e885e7d98154c1d83cc150eaec59b4f6f7c`，入口v31。15/15独立部署数量不变，#330未关闭。
 - **#485/#506/#492/#469/#512本轮已关闭**。归档15:40自然6步骤完成，18:15审计通过，
