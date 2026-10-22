@@ -195,12 +195,28 @@ def setup_live_fixture(checkout, python):
     config.write_text('[safety]\nmode="live"\norders_enabled=true\nprotected_account_ids=["validation-only"]\n[tushare]\ntoken="validation-only"\n[strategy]\nfile='+json.dumps(str(checkout / 'strategies/structural_v1_2.py'))+'\n')
     run(["sudo", "install", "-m", "0644", config, "/home/ubuntu/qsys/config/deploy.local.toml"])
     for table in ("live_equity", "live_fills", "live_rejects", "live_recon"):
+        if table == "live_rejects":
+            continue  # A real zero-reject installation has no table directory yet.
         run(["sudo", "install", "-d", "-m", "0755", "/data/qsys/warehouse/" + table])
     run(["sudo", "install", "-d", "-m", "0755", "/data/qsys/var-deployments/github"])
     helper = checkout / "scripts/prepare_live_core_release.py"
     base = ["sudo", "env", "PYTHONDONTWRITEBYTECODE=1", "PYTHONPATH="+str(checkout)+":"+str(checkout/'src'),
             python, "-B", helper, "--repo", "/home/ubuntu/qsys"]
+    before = effective('qsys-live-core.service')
+    missing = run([*base, "--check-only"], check=False)
+    if missing.returncode == 0 or 'journal directory missing or unsafe before Live stop' not in missing.stderr:
+        raise ValueError('missing journal must fail before Live stop or state binding')
+    assert effective('qsys-live-core.service') == before
+    assert not Path('/etc/qsys/components/live-core/state-binding-v1').exists()
+    assert not Path('/home/ubuntu/qsys/var/live-core/var/live-state.sqlite3').exists()
+    run(["sudo", "install", "-d", "-m", "0755", "/data/qsys/warehouse/live_rejects"])
     run([*base, "--prepare-only"])
+    run(["sudo", "setfacl", "-m", "u:qsys-live-core:r-x", "/data/qsys/warehouse/live_recon"])
+    denied = run([*base, "--check-only"], check=False)
+    assert denied.returncode != 0 and effective('qsys-live-core.service') == before
+    assert not Path('/etc/qsys/components/live-core/state-binding-v1').exists()
+    run(["sudo", "setfacl", "-m", "u:qsys-live-core:rwx", "/data/qsys/warehouse/live_recon"])
+    run([*base, "--check-only"])
     seed = live_fixture_command(checkout, python, "seed", legacy=True)
     run(["sudo", "-u", "ubuntu", python, "-B", "-c", "import sqlite3; c=sqlite3.connect('/home/ubuntu/qsys/var/live-state.sqlite3'); c.execute('PRAGMA journal_mode=DELETE'); c.close()"], cwd=Path("/home/ubuntu/qsys"))
     run([*base, "--bind", "--audit-root", "/data/qsys/var-deployments/github/live-fixture"])
@@ -277,6 +293,7 @@ def verify_component(repo, root, entrypoint, component, sha, evidence_dir):
     if component == "live-core":
         live_evidence = setup_live_fixture(checkout, live_python)
         record["live_state_initial"] = live_evidence
+        record["live_journal_precheck"] = "missing directory and Unix write denial rejected before state binding; unit unchanged"
     for directory in spec["state_directories"]:
         marker = Path(directory["path"]) / f".rollback-pilot-{component}"
         run(["sudo", "-u", directory["owner"], "sh", "-c", f"echo {component} > '{marker}'"])
