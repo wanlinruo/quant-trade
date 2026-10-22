@@ -17,7 +17,7 @@ HOST = "operator@example.invalid"
 @pytest.fixture(autouse=True)
 def offline(monkeypatch):
     monkeypatch.setattr(cli, "_today", lambda: DAY)
-    for name in ("_ssh", "probe_windows", "probe_heartbeats", "_alerts",
+    for name in ("_ssh", "probe_windows", "probe_windows_readonly", "probe_heartbeats", "_alerts",
                  "load_trading_calendar"):
         monkeypatch.setattr(cli, name, Mock(side_effect=AssertionError(f"unexpected {name}")))
     # 只替换本模块 time 引用，避免修改 pytest 或其他模块的全局时钟。
@@ -216,6 +216,7 @@ def test_timer_entrypoints_use_explicit_dry_run_and_preserve_calendar_gates(
     windows = Mock(return_value={'boot_seconds_ago': 3600})
     beats = Mock(return_value={'agent_age': 1, 'market_age': 1})
     monkeypatch.setattr(cli, 'probe_windows', windows)
+    monkeypatch.setattr(cli, 'probe_windows_readonly', windows)
     monkeypatch.setattr(cli, 'probe_heartbeats', beats)
     assert cli.main(argv) == 0
     records = list(runs.rglob('*.json'))

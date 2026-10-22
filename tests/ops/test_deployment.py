@@ -2872,3 +2872,16 @@ def test_readonly_component_identity_never_inherits_workbench_write_group(compon
     assert "SupplementaryGroups=qsys-observers" in spec["dropin_lines"]
     assert not any("qsys-workbench" in line for line in spec["dropin_lines"]
                    if line.startswith(("Group=", "SupplementaryGroups=")))
+
+
+def test_reboot_component_has_private_dry_only_baseline_transport():
+    import json
+    from pathlib import Path
+    spec = json.loads(Path("deploy/component-releases.json").read_text())["components"]["reboot-drill"]
+    lines = "\n".join(spec["dropin_lines"])
+    assert "SupplementaryGroups=qsys-observers" in lines
+    assert "--dry-run" in lines and "--win-transport readonly-baseline" in lines
+    assert "--execute" not in lines
+    assert "--config /etc/qsys/components/reboot-drill/deploy.toml" in lines
+    assert "InaccessiblePaths=/home/ubuntu/qsys/config" in lines
+    assert {p["mode"] for p in spec["state_directories"]} == {"0770"}

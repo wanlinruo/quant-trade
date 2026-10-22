@@ -711,13 +711,13 @@
           "path": "/home/ubuntu/qsys/var/service-runs/reboot-drill",
           "owner": "qsys-reboot-drill",
           "group": "qsys-reboot-drill",
-          "mode": "0750"
+          "mode": "0770"
         },
         {
           "path": "/home/ubuntu/qsys/var/alerts/reboot-drill",
           "owner": "qsys-reboot-drill",
           "group": "qsys-reboot-drill",
-          "mode": "0750"
+          "mode": "0770"
         }
       ],
       "seed": null,
@@ -725,17 +725,25 @@
         "[Service]",
         "User=qsys-reboot-drill",
         "Group=qsys-reboot-drill",
-        "UMask=0077",
+        "SupplementaryGroups=",
+        "SupplementaryGroups=qsys-observers",
+        "UMask=0027",
         "WorkingDirectory=/",
         "ExecStartPre=",
         "ExecStartPre=/usr/bin/test -s /etc/qsys/reboot-drill/windows-reboot",
         "ExecStartPre=/usr/bin/test -s /etc/qsys/reboot-drill/known_hosts",
         "ExecStart=",
+        "InaccessiblePaths=/home/ubuntu/qsys/config",
         "ReadWritePaths=",
         "ReadWritePaths=/home/ubuntu/qsys/var/service-runs/reboot-drill",
         "ReadWritePaths=/home/ubuntu/qsys/var/alerts/reboot-drill",
-        "ReadOnlyPaths=/home/ubuntu/qsys/config /etc/qsys/reboot-drill",
-        "ExecStart=/opt/qsys/components/reboot-drill/current/venv/bin/qsys-reboot-drill --dry-run --config /home/ubuntu/qsys/config/deploy.local.toml --service-runs /home/ubuntu/qsys/var/service-runs/reboot-drill --alert-ledger /home/ubuntu/qsys/var/alerts/reboot-drill --host Administrator@118.25.42.149 --key /etc/qsys/reboot-drill/windows-reboot --known-hosts /etc/qsys/reboot-drill/known_hosts"
+        "ReadOnlyPaths=/etc/qsys/components/reboot-drill /etc/qsys/reboot-drill",
+        "ExecStart=/opt/qsys/components/reboot-drill/current/venv/bin/qsys-reboot-drill --dry-run --win-transport readonly-baseline --config /etc/qsys/components/reboot-drill/deploy.toml --service-runs /home/ubuntu/qsys/var/service-runs/reboot-drill --alert-ledger /home/ubuntu/qsys/var/alerts/reboot-drill --host Administrator@118.25.42.149 --key /etc/qsys/reboot-drill/windows-reboot --known-hosts /etc/qsys/reboot-drill/known_hosts",
+        "MemoryHigh=256M",
+        "MemoryMax=512M",
+        "MemorySwapMax=256M",
+        "CPUWeight=50",
+        "Environment=POLARS_MAX_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 PYTHONDONTWRITEBYTECODE=1"
       ]
     }
   }

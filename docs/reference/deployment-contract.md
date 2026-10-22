@@ -424,3 +424,11 @@ active/activating/deactivating/未知状态全部拒绝，不能靠 `is-active` 
 
 平台发布与组件 release 分别回滚，不能以平台更新绕过组件制品、账号/状态或生产授权。
 本项仅代码与契约，不证明平台已形成独立不可变包，也不替代组件级预生产运行时验收。
+
+
+### reboot-drill 私有只读基线（#495）
+
+独立单元显式--dry-run/--win-transport readonly-baseline，私有配置/root持有的known_hosts与
+专属key；Windows forced-command只接受固定基线命令，不接受任意PowerShell/重启。
+真实读取失败显式失败；旧授权/ACL/任务和历史保持。生产只写自身运行与告警namespace，
+交易日日期门禁和模拟休市日真实基线分开记录；见 `../plans/reboot-drill-production-isolation.md`。
