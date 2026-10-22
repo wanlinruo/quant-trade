@@ -1,6 +1,6 @@
 # 项目交接入口
 
-> 快照时间：2026-10-22 17:30（Asia/Shanghai）。这是接手入口，不替代 GitHub、节点和机器可读
+> 快照时间：2026-10-22 20:12（Asia/Shanghai）。这是接手入口，不替代 GitHub、节点和机器可读
 > 契约的实时状态。执行任何写操作前必须重新核验。
 
 ## 先读什么
@@ -19,7 +19,41 @@
 发生冲突时，优先级是：维护者最新明确指示 → GitHub Issue 最新记录 → 当前 workflow/
 节点入口和 manifest → 本快照 → 其他历史文档。不得用旧文档覆盖维护者的新要求。
 
-## 10-22 17:30最新交接（覆盖下文10:52历史快照）
+## 10-22 20:12最新交接（覆盖下文历史快照）
+
+- main/test已对齐`b760b5f91eb0ff00e8737ed90e627c2a1f4557da`（PR#513）；共享checkout仍
+  `505d7e885e7d98154c1d83cc150eaec59b4f6f7c`，入口v31。15/15独立部署数量不变，#330未关闭。
+- **#485/#506/#492/#469/#512本轮已关闭**。归档15:40自然6步骤完成，18:15审计通过，
+  canonical当时1341933行逐键逐字段对账通过；晚到新股缺口另由#475/#512承接。
+  Live四张journal检查已提前至停旧/marker之前；hosted39765323139真实权限拒绝与连续性通过，
+  共享正式39765540832/Deployment7250125728/实际validator三方success。
+- Web current `b760b5f`，正式39775105208/Deployment7251627559/实际validator三方success。
+  新PID3448094，UID990/GID982，仅私有组及observers；runs的47目录/769文件全可读不可写。
+  Workbench access/default ACL已补，owner/group、worker/Paper合法写者与原事实保留；
+  隔离真实SQLite/WAL/草稿/入队与worker领取取消通过，未写生产测试队列。Live3385058、
+  worker1300978未重启，四个关键页面200。审计`issue492-20261022/production-acceptance.json`。
+  Web既有Windows只读key缺失仍由**#511**承接，不能称该入口已验收。
+- Tushare/archive current均`b760b5f`，分别正式39773504561/Deployment7251378853、
+  39775472006/Deployment7251684725，workflow/Deployment/实际validator三方success。
+  **#508/#475仍在进行**：Windows无效登录挤占MaxStartups已由精确服务端事件证实；
+  有限重试及0700私有SSH multiplex已发布。Tushare实际两次probe复用同socket并清理通过，
+  archive20:08实际probe仍在首次握手连续reset，客户端修复不能代替#122服务端治理。
+  未改密码登录、个人key、Windows SSH配置、RDP/Autologon/QMT恢复。
+- 17:00/19:00 Tushare自然任务失败记录保留；19:00真实raw已到301718.SZ的241行，
+  但取result.json失败阻断canonical。#512已修复raw/canonical双重存在判断。
+  **维护者本会话明确批准“更新该分区并运行质检”后**，持warehouse写锁并重新核验hash，
+  原子更新10-22唯一canonical分区：1341933→1342174，只增该股241条，旧行改动0/删除0，
+  owner/group/ACL与原备份保留。审计`issue512-20261022/{review,publication}.json`；
+  此次特定授权不扩展到其他数据覆盖或删除备份，不切换D-23回测分钟源。
+- catalog实际独立根为**`/opt/qsys-data/catalog-verify/current`**，current仍80f7068。
+  19:40自然任务failed确因上述241条canonical缺口；获批修复后20:06–20:08实际unit复验
+  exit0：636指标/阻断0/既有警告28，12规范表10绿2黄0红0灰。人工复验不改称自然成功。
+  原三张质检表历史与冻结基线保留，当前Web/日报读取原failed及新warning共14条唯一记录，
+  样本可读/结果只读。`issue469-20261021/post-repair-audit-2026-10-22.json`，原自然审计不覆盖。
+- #495明日10:00/10:05自然dry-run待；#488 Redis5强制只读、#482通知语义、#511及
+  #475/#508/#122仍未解决。Live仍c741c5f/3385058/重启0、1万元/live/true，marker及旧备份保留。
+
+## 10-22 17:30历史交接
 
 - **#497/#499已关闭，15/15 manifest组件已独立生产部署**；Shadow保持inactive/enabled/live/true，
   reboot-drill保持dry-run，不能称全部业务激活或#330完成。逐项current清单：
