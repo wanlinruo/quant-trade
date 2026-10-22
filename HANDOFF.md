@@ -1,6 +1,6 @@
 # 项目交接入口
 
-> 快照时间：2026-10-22 10:52（Asia/Shanghai）。这是接手入口，不替代 GitHub、节点和机器可读
+> 快照时间：2026-10-22 17:30（Asia/Shanghai）。这是接手入口，不替代 GitHub、节点和机器可读
 > 契约的实时状态。执行任何写操作前必须重新核验。
 
 ## 先读什么
@@ -19,7 +19,36 @@
 发生冲突时，优先级是：维护者最新明确指示 → GitHub Issue 最新记录 → 当前 workflow/
 节点入口和 manifest → 本快照 → 其他历史文档。不得用旧文档覆盖维护者的新要求。
 
-## 当前状态
+## 10-22 17:30最新交接（覆盖下文10:52历史快照）
+
+- **#497/#499已关闭，15/15 manifest组件已独立生产部署**；Shadow保持inactive/enabled/live/true，
+  reboot-drill保持dry-run，不能称全部业务激活或#330完成。逐项current清单：
+  `/data/qsys/var-deployments/issue497-20261022/all-component-currents.json`。
+- main/test与生产共享基线`c741c5f7871eef01ab4a01bbce9325ec84ee085d`，固定入口v31。
+  Live current同SHA，User/Group=qsys-live-core（UID976），PID3385058/NRestarts0，包内入口，
+  WorkingDirectory=/；仍1万元/live/true，严格preflight16/16。Web/digest/observer/checks current
+  `06cb7c1`；Shadow current`1e7fd0e`；其余current见清单，不用旧列表覆盖它。
+- Live重试dry39753936011、正式39754118067、Deployment7248389752及实际record validator
+  三方success。第一次39753509764因缺空live_rejects目录失败，自动补偿到共享入口；失败记录保留。
+  #504直接脚本导入修复已通过PR#505及正式39752058392发布；#506承接目录检查提前到停旧前。
+- 稳定marker `/etc/qsys/components/live-core/state-binding-v1` **已激活并必须保留**。最新state为
+  `/home/ubuntu/qsys/var/live-core/var/live-state.sqlite3`，kill/lock/workspace也在该私有根。
+  共享补偿入口同读最新私有状态，**不得移除marker或复制旧库覆盖新事实**。原库未移动或改symlink，
+  与停旧一致性备份逐值相等；新库保留63事件/63策略记录/2历史成交，历史行无丢失/改写。
+- 四个真实生产消费者已自动切读新库/kill，各自账号对主库及父目录只读，9 sessions/0pending。
+  Live仅四张journal目录可写；完整配置不可读，旧state/Workbench/runs/日线不可写。
+  证据`final-consumers.json`、`final-state-continuity.json`在issue497审计根。
+- 分层证据：hosted真实安装器/代码补偿/部分成交连续性39739215169通过；生产第一次真实失败补偿
+  与重试成功分别记录，不能把失败workflow写成成功。没有生产故障注入或重复交易实例探针。
+- **#475 17:00自然任务失败**：17:02–17:05更新主数据/派生后，301718.SZ分钟补采Windows SSH
+  握手被reset（rc255），收敛入口exit1。发生于Live切换之前，不归因于Live部署；失败journal保留，
+  不reset-failed、不造分钟。19:00自然重试/19:15采证仍按既有timer，未手动恢复数据。
+- #485今日15:40自然任务/18:15审计、#469 19:40/19:50、#495明日10:00/10:05仍须据实际证据
+  收口；#488 Redis强制权限、#492 Web Unix权限、#482维护/异常通知区分继续保留。
+  #137首笔自然费用仍待。#330以这些实际剩余项推进，不因15/15计数关闭。
+- 本轮普通发布明确授权仍有效，不扩展到交易开关、Windows重启、生产故障注入或删除备份。
+
+## 10:52历史快照（以上述最新交接为准）
 
 ### 生产版本
 
