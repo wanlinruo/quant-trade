@@ -1,4 +1,7 @@
 import sqlite3
+import os
+import subprocess
+import sys
 import tomllib
 from pathlib import Path
 
@@ -6,6 +9,15 @@ import pytest
 
 from scripts.prepare_live_core_release import dump_toml, snapshot
 from scripts.verify_live_core_preproduction import state_fingerprint
+
+
+def test_prepare_script_executes_directly_without_repository_on_pythonpath(tmp_path):
+    repo = Path(__file__).resolve().parents[2]
+    environment = dict(os.environ, PYTHONPATH=str(repo / 'src'))
+    result = subprocess.run([sys.executable, str(repo / 'scripts/prepare_live_core_release.py'), '--help'],
+                            cwd=tmp_path, env=environment, text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
+    assert '--check-only' in result.stdout
 
 
 def test_config_serializer_preserves_nested_explicit_values():
