@@ -183,3 +183,35 @@ def test_stream_retry_does_not_reset_total_timeout_budget(monkeypatch):
         calls.append(kw);clock[0]=119.0;return result
     assert client.run_download(['ssh'],runner=runner,timeout=120) is result
     assert len(calls)==1
+
+
+def test_connection_socket_is_private_per_client_and_reused_for_every_operation(monkeypatch):
+    from pathlib import Path
+    from qsys.data import windows_data_transport as module
+    a=WindowsDataTransport('host','key',component='tushare-sync',known_hosts='pinned')
+    b=WindowsDataTransport('host','key',component='daily-archive',known_hosts='pinned')
+    def control(command):
+        return Path(next(x.split('=',1)[1] for x in command if x.startswith('ControlPath=')))
+    first=a.command('probe');second=a.command('get',job='minute_20261022',file='result.json')
+    path=control(first)
+    assert path==control(second) and path!=control(b.command('probe'))
+    assert path.parent.stat().st_mode & 0o077 == 0
+    assert 'ControlMaster=auto' in first and 'ControlPersist=30' in first
+    assert 'StrictHostKeyChecking=yes' in first and first[-2]=='host'
+    closed=[]
+    monkeypatch.setattr(module.subprocess,'run',lambda command,**kw:closed.append((command,kw)) or subprocess.CompletedProcess(command,0))
+    a.close();a.close();b.close()
+    assert len(closed)==2 and closed[0][0][-5:]==['-S',str(path),'-O','exit','host']
+    assert not path.parent.exists()
+
+
+def test_gateway_context_closes_authenticated_connection_after_failure(monkeypatch):
+    from qsys.data import windows_data_transport as module
+    closed=[]
+    monkeypatch.setattr(module.subprocess,'run',lambda command,**kw:closed.append(command) or subprocess.CompletedProcess(command,0))
+    with pytest.raises(ValueError,match='business failure'):
+        with WindowsDataTransport('host','key',component='tushare-sync',known_hosts='pinned') as client:
+            client.command('probe')
+            root=client._control_dir
+            raise ValueError('business failure')
+    assert len(closed)==1 and not root.exists()

@@ -35,7 +35,7 @@ log = structlog.get_logger(__name__)
 
 
 def late_listing_minute_gaps(warehouse: Warehouse, day: date) -> list[str]:
-    """找出上市日当天有成交、但 QMT 分钟线尚未落库的证券。
+    """找出上市日有成交、原始或canonical分钟线尚未到齐的证券。
 
     只看 ``list_date == day``，避免把一般下载故障变成每次 Tushare 同步都会
     自动重试的无限恢复环；普通缺口仍由 service-checks 告警后人工处置。
@@ -59,7 +59,15 @@ def late_listing_minute_gaps(warehouse: Warehouse, day: date) -> list[str]:
         datetime.combine(day, datetime.min.time()),
         datetime.combine(day, datetime.max.time()),
     )
-    arrived = set(bars["symbol"].unique().to_list())
+    published = query.bar_minute_1m(
+        symbols,
+        datetime.combine(day, datetime.min.time()),
+        datetime.combine(day, datetime.max.time()),
+        columns=["symbol"],
+    )
+    # 产物回传失败时可能已导入raw而尚未发布canonical。两层都到达
+    # 才算收敛；raw已齐的重试由归档入口重新质检并发布，不重复下载。
+    arrived = set(bars["symbol"].unique().to_list()) & set(published["symbol"].unique().to_list())
     return [symbol for symbol in symbols if symbol not in arrived]
 
 

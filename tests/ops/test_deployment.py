@@ -509,10 +509,11 @@ def test_web_component_has_an_isolated_release_and_minimal_write_boundary() -> N
     ]
     dropin = "\n".join(web["dropin_lines"])
     assert "User=qsys-web" in dropin
-    assert "Group=qsys-workbench" in dropin
-    # 配置目录保持 root:qsys-web 0750、文件 0640；主组改成共享 workbench 后，
-    # 必须显式补回私有配置组，不能为了可读而把凭据开放给共享组。
-    assert "SupplementaryGroups=qsys-web" in dropin
+    assert "Group=qsys-web" in web["dropin_lines"]
+    assert "Group=qsys-workbench" not in web["dropin_lines"]
+    assert "SupplementaryGroups=\nSupplementaryGroups=qsys-observers" in dropin
+    # Workbench保留原owner/共享worker组；Web通过精确named ACL写入，
+    # 不继承该共享组对回测结果的额外Unix写权限。私有配置仍由私有组读取。
     assert "WorkingDirectory=/" in dropin
     assert "QSYS_WINDOWS_SSH_KEY=/etc/qsys/web/windows-task-readonly" in dropin
     assert "ExecStart=/opt/qsys/components/web/current/venv/bin/qsys-web" in dropin
