@@ -368,6 +368,7 @@ def _archive_auction(args, warehouse, wanted, ssh, key, stamp, run_id=None) -> b
     write_manifest(missing, manifest)
 
     win_dir = f"{args.win_root}/auction_{stamp}"
+    transport = None
     try:
         if getattr(args, "win_transport", "legacy") == "gateway":
             transport = WindowsDataTransport(args.win_host, key, component=args.win_component,
@@ -399,6 +400,9 @@ def _archive_auction(args, warehouse, wanted, ssh, key, stamp, run_id=None) -> b
         log.error("archive.auction_failed", error=str(exc))
         print(f"  [竞价 tick 失败] {exc}——继续做分钟线，最终以失败退出")
         return False
+    finally:
+        if transport is not None:
+            transport.close()
 
     result = import_auction_ticks(
         warehouse, local, archive_dir=work_root / "auction-done"
@@ -653,10 +657,10 @@ def _archive(args, service_run: ServiceRun) -> int:
         setup_error = ""
         source_script = Path(args.win_script_source)
         remote_script = f"{win_dir}/win_download_minutes.py"
+        transport = None
         try:
             if not source_script.is_file():
                 raise FileNotFoundError(f"分钟下载器不存在：{source_script}")
-            transport = None
             if getattr(args, "win_transport", "legacy") == "gateway":
                 transport = WindowsDataTransport(args.win_host, key, component=args.win_component,
                                              known_hosts=args.win_known_hosts)
@@ -726,6 +730,8 @@ def _archive(args, service_run: ServiceRun) -> int:
             except Exception as exc:
                 transfer_error = f"{type(exc).__name__}: {exc}"
                 log.error("archive.minute_transfer_failed", error=transfer_error)
+        if transport is not None:
+            transport.close()
 
         result_path = local_dir / "result.json"
         result_error = ""
