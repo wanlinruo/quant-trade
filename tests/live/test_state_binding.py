@@ -62,3 +62,52 @@ def test_valid_root_owned_marker_selects_fixed_paths(monkeypatch, tmp_path):
     assert actual.kill == tmp_path / "var/KILL"
     assert actual.lock == tmp_path / "var/live-core.lock"
     assert actual.workspace == tmp_path / "var/live"
+
+
+def test_existing_readers_and_legacy_writer_follow_latest_bound_state(tmp_path, monkeypatch):
+    import sqlite3
+    from qsys.live.store import LiveStore
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(binding, 'current_binding', lambda: None)
+    original = LiveStore('var/live-state.sqlite3')
+    reader = LiveStore('var/live-state.sqlite3', read_only=True)
+    target = binding.LiveStateBinding(tmp_path / 'private')
+    fresh = LiveStore(target.state)
+    with fresh._connect() as con:
+        con.execute("INSERT INTO live_events(event_key,scheduled_at,phase,status) VALUES ('new-fact','t','auction','completed')")
+    monkeypatch.setattr(binding, 'current_binding', lambda: target)
+    assert original.path == reader.path == target.state
+    with reader._connect() as con:
+        assert con.execute('SELECT event_key FROM live_events').fetchall()[0][0] == 'new-fact'
+    # 删除组件代码drop-in不影响绑定；旧入口写者追加最新事实，不回读/覆盖原库。
+    with original._connect() as con:
+        con.execute("INSERT INTO live_events(event_key,scheduled_at,phase,status) VALUES ('after-compensation','t','auction','completed')")
+    with reader._connect() as con:
+        assert con.execute('SELECT count(*) FROM live_events').fetchone()[0] == 2
+    with sqlite3.connect(tmp_path / 'var/live-state.sqlite3') as con:
+        assert con.execute('SELECT count(*) FROM live_events').fetchone()[0] == 0
+
+
+def test_legacy_entry_redirects_defaults_but_keeps_validation_and_custom_paths(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    target = binding.LiveStateBinding(tmp_path / 'private')
+    monkeypatch.setattr(binding, 'current_binding', lambda: target)
+    def args():
+        return SimpleNamespace(validation_namespace=None, state='var/live-state.sqlite3',
+                               workspace='var/live', lock='var/live-core.lock', kill_switch='var/KILL')
+    normal = args()
+    binding.apply_entry_binding(normal)
+    assert Path(normal.state) == target.state
+    assert Path(normal.workspace) == target.workspace
+    assert Path(normal.lock) == target.lock
+    assert Path(normal.kill_switch) == target.kill
+    custom = args()
+    custom.state = str(tmp_path / 'custom.sqlite3')
+    binding.apply_entry_binding(custom)
+    assert custom.state == str(tmp_path / 'custom.sqlite3')
+    validation = args()
+    validation.validation_namespace = 'component-validation:explicit'
+    binding.apply_entry_binding(validation)
+    assert validation.state == 'var/live-state.sqlite3'

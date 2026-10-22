@@ -399,3 +399,23 @@ def test_reboot_release_binds_control_plane_members_and_entrypoint(tmp_path):
     (release / "source/src/qsys/ops/example.py").write_text("CHANGED = True\n")
     with pytest.raises(ValueError):
         verify(repo, sha, "reboot-drill", release)
+
+
+def test_live_release_binds_entrypoint_and_runtime_sources(tmp_path):
+    repo, sha = _repo(tmp_path)
+    (repo/'src/qsys/agent').mkdir()
+    (repo/'src/qsys/agent/example.py').write_text('AGENT=1\n')
+    (repo/'strategies').mkdir()
+    (repo/'strategies/structural_v1_2.py').write_text('STRATEGY=1\n')
+    subprocess.run(['git','add','.'],cwd=repo,check=True)
+    subprocess.run(['git','-c','user.name=test','-c','user.email=test@example.invalid','commit','-m','fixture live sources'],cwd=repo,check=True,capture_output=True)
+    sha=subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip()
+    wheel = _wheel(tmp_path/'dist/qsys-0.1.0-py3-none-any.whl',
+                   command='qsys-live-core',entrypoint='qsys.live.core_cli:main')
+    release = tmp_path/'live-release'
+    value = build(repo,sha,'live-core',wheel.parent,release,repository='owner/repo',run_id='123',run_attempt='1')
+    assert value['entrypoint']=={'command':'qsys-live-core','target':'qsys.live.core_cli:main'}
+    assert verify(repo,sha,'live-core',release)==value
+    (release/'source/src/qsys/live/example.py').write_text('CHANGED=True\n')
+    with pytest.raises(ValueError):
+        verify(repo,sha,'live-core',release)

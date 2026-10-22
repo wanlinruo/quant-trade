@@ -58,3 +58,27 @@ def local_kill_path(configured: Path | None) -> Path | None:
         return configured
     binding = current_binding()
     return binding.kill if binding is not None else configured
+
+
+def state_path(configured: Path) -> Path:
+    if configured not in (Path("var/live-state.sqlite3"), Path("/home/ubuntu/qsys/var/live-state.sqlite3")):
+        return configured
+    binding = current_binding()
+    return binding.state if binding is not None else configured
+
+
+def apply_entry_binding(args) -> None:
+    """共享入口失败补偿也读同一最新状态；验证与自定义路径保持显式选择。"""
+    if args.validation_namespace is not None:
+        return
+    binding = current_binding()
+    if binding is None:
+        return
+    for name, legacy, target in (
+        ("state", "var/live-state.sqlite3", binding.state),
+        ("workspace", "var/live", binding.workspace),
+        ("lock", "var/live-core.lock", binding.lock),
+        ("kill_switch", "var/KILL", binding.kill),
+    ):
+        if Path(getattr(args, name)) in (Path(legacy), Path("/home/ubuntu/qsys") / legacy):
+            setattr(args, name, str(target))

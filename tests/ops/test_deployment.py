@@ -1295,7 +1295,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
 
     state = entrypoint.status({"production_repo": str(tmp_path)})
 
-    assert state["entrypoint_version"] == 30
+    assert state["entrypoint_version"] == 31
     assert set(state["capabilities"]) == {
         "systemd-apply-v1", "systemd-component-boundary-v1", "systemd-changed-artifacts-v1",
         "systemd-preview-v1", "systemd-runtime-paths-v1", "systemd-rollback-v1",
@@ -1323,6 +1323,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
         "component-release-v15",
         "component-web-readiness-v1",
         "component-sqlite-seed-v1",
+        "component-live-continuity-v1",
         "emergency-restart-authorization-v1",
     }
 
@@ -2469,7 +2470,7 @@ def test_component_workflow_streams_only_a_verified_artifact() -> None:
     assert ".before.linux == .after.linux" in workflow
     assert "PRODUCTION_DEPLOY_SSH_KEY" in workflow
     assert "cancel-in-progress: false" in workflow
-    assert "backtest-worker|web|paper|shadow-core|limit-up-shadow|reboot-drill|catalog-verify|service-checks|storage-report|daily-digest|health-observer|daily-archive|premarket-limits|tushare-sync" in workflow
+    assert "backtest-worker|web|paper|shadow-core|live-core|limit-up-shadow|reboot-drill|catalog-verify|service-checks|storage-report|daily-digest|health-observer|daily-archive|premarket-limits|tushare-sync" in workflow
     assert 'required = {"component-release-v15", "systemd-component-boundary-v1", "component-web-readiness-v1"}' in workflow
     assert 'entrypoint_version", 0) < 27' in workflow
     assert '.before["backtest-worker-identity"] == .after["backtest-worker-identity"]' in workflow
@@ -2885,3 +2886,121 @@ def test_reboot_component_has_private_dry_only_baseline_transport():
     assert "--config /etc/qsys/components/reboot-drill/deploy.toml" in lines
     assert "InaccessiblePaths=/home/ubuntu/qsys/config" in lines
     assert {p["mode"] for p in spec["state_directories"]} == {"0770"}
+
+
+@pytest.mark.parametrize('failure', [None, 'binding', 'activation', 'peer'])
+def test_live_target_record_uses_latest_binding_and_preserves_other_peers(monkeypatch, tmp_path, capsys, failure):
+    entrypoint = _production_entrypoint_module()
+    target, production = 'a'*40, 'b'*40
+    state = {'active': True, 'current': 'uninstalled', 'pid': '42', 'started': '99', 'bound': False, 'latest': 0}
+    records, calls = [], []
+    for name, value in {'_branch': lambda repo:'main', '_dirty':lambda repo:False,
+                        '_head':lambda repo:production, '_fetch_and_validate_target':lambda *a:'d'*40,
+                        '_successful_test_run':lambda *a:'test-1', '_live_preflight':lambda *a:None,
+                        '_fingerprints':lambda *a:{'linux':'f'},
+                        '_require_live_release_ready':lambda *a,**kw:{'private_config_sha256':'f'*64,'private_strategy_sha256':'e'*64},
+                        '_wait_live_ready':lambda *a:True,
+                        '_receive_component_archive':lambda digest,root:root/'component.zip',
+                        '_extract_component_archive':lambda *a:None, '_verify_component_release':lambda *a:None,
+                        '_stage_component_release':lambda *a:None}.items():
+        monkeypatch.setattr(entrypoint,name,value)
+    monkeypatch.setattr(entrypoint,'_current_component_sha',lambda c:state['current'])
+    monkeypatch.setattr(entrypoint,'_active',lambda unit,repo:state['active'])
+    monkeypatch.setattr(entrypoint,'_live_identity',lambda repo:{'pid':state['pid'],'started_monotonic':state['started'],'repo_sha':production})
+    monkeypatch.setattr(entrypoint,'_unit_identity_token',lambda unit,repo:'changed' if failure=='peer' and state['current']==target and unit=='qsys-monitor.service' else 'same')
+    monkeypatch.setattr(entrypoint,'_write_record',lambda config,run_id,record:records.append(record) or tmp_path/'record.json')
+    def rollback(component, previous, repo):
+        state['current']=previous
+        assert state['bound'] and state['latest']==2  # 恢复代码，绝不恢复旧状态。
+        return True
+    monkeypatch.setattr(entrypoint,'_rollback_component',rollback)
+    def run(command, **kwargs):
+        calls.append(command)
+        if command[-2:]==['stop','qsys-live-core.service']:
+            state['active']=False
+        elif '--bind' in command:
+            assert not state['active']
+            state.update(bound=True, latest=1)
+            if failure=='binding': raise ValueError('after-marker failure')
+            return subprocess.CompletedProcess(command,0,json.dumps({'ok':True,'original_state_retained':True}),'')
+        elif entrypoint.GENERIC_COMPONENT_INSTALLER in command:
+            assert state['bound'] and not state['active']
+            state.update(current=target,latest=2)
+            if failure=='activation': raise ValueError('after-activation failure')
+        elif command[-2:]==['start','qsys-live-core.service']:
+            state.update(active=True,pid=str(int(state['pid'])+1),started=str(int(state['started'])+1))
+        return subprocess.CompletedProcess(command,0,'','')
+    monkeypatch.setattr(entrypoint,'_run',run)
+    args=argparse.Namespace(sha=target,component='live-core',artifact_sha256='e'*64,run_id='live-release',actor='maintainer',repository='owner/repo',pr_number=503,dry_run=False)
+    result=entrypoint.component_deploy(args,{'production_repo':str(tmp_path),'production_record_root':str(tmp_path/'records')})
+    validate_record(records[0])
+    assert result==(0 if failure is None else 1)
+    assert records[0]['status']==('success' if failure is None else 'rolled_back')
+    assert state['bound'] and state['latest']==(1 if failure=='binding' else 2)
+    assert records[0]['before']['live-core-pid']!=records[0]['after']['live-core-pid']
+    assert set(entrypoint.COMPONENT_PROTECTED_PEERS['live-core'])=={'paper','shadow-core','web','backtest-worker','health-observer'}
+    if failure is None:
+        assert any(c['name']=='live-core-transition' and c['status']=='passed' for c in records[0]['checks'])
+        if shutil.which('jq'):
+            workflow=Path('.github/workflows/deploy-production-component.yml').read_text()
+            filter_text=chr(10).join(workflow.split("jq -e --arg sha",1)[1].splitlines()[1:]).split("' record.json",1)[0]
+            def accepted(record,component):
+                result=subprocess.run(['jq','-e','--arg','sha',target,'--arg','component',component,filter_text],input=json.dumps(record),text=True,capture_output=True)
+                return result.returncode==0
+            assert accepted(records[0],'live-core')
+            changed=json.loads(json.dumps(records[0]))
+            changed['after']['web-identity']='changed'
+            assert not accepted(changed,'live-core')
+            other=json.loads(json.dumps(records[0]))
+            other['components']=['health-observer'];other['after']['health-observer']=target
+            assert not accepted(other,'health-observer')  # 普通组件不得借Live例外改变PID。
+
+
+
+def test_live_release_gate_blocks_trading_window_before_source_or_network(monkeypatch, tmp_path):
+    e = _production_entrypoint_module()
+    monkeypatch.setattr(e, '_restart_window', lambda repo:{'restart_allowed':False})
+    monkeypatch.setattr(e, '_run', lambda *a,**kw:pytest.fail('blocked window must not run preparation'))
+    with pytest.raises(ValueError, match='maintenance window'):
+        e._require_live_release_ready(tmp_path, 'a'*40, initial=True)
+
+
+def test_first_live_migration_requires_installed_consumers_but_upgrades_do_not_republish_shared_code(monkeypatch, tmp_path):
+    e = _production_entrypoint_module()
+    monkeypatch.setattr(e, '_restart_window', lambda repo:{'restart_allowed':True})
+    critical=('src/qsys/live/state_binding.py','src/qsys/live/store.py','src/qsys/live/core_cli.py',
+              'scripts/kill.py','scripts/prepare_live_core_release.py','src/qsys/web/live_kill_status.py')
+    for relative in critical:
+        path=tmp_path/relative;path.parent.mkdir(parents=True,exist_ok=True);path.write_text('exact source\n')
+    specs={}
+    for name in ('web','daily-digest','health-observer','service-checks'):
+        current=tmp_path/name;specs[name]={'current':str(current)}
+        for module in ('live/state_binding.py','live/store.py','web/live_kill_status.py'):
+            path=current/'venv/lib/python3.12/site-packages/qsys'/module
+            path.parent.mkdir(parents=True,exist_ok=True);path.write_text('exact source\n')
+    monkeypatch.setattr(e,'COMPONENT_RELEASES',specs)
+    def run(command,**kw):
+        value='exact source\n' if command[:2]==['git','show'] else json.dumps({'private_config_sha256':'f'*64,'private_strategy_sha256':'e'*64})
+        return subprocess.CompletedProcess(command,0,value,'')
+    monkeypatch.setattr(e,'_run',run)
+    assert e._require_live_release_ready(tmp_path,'a'*40,initial=True)['private_config_sha256']=='f'*64
+    (tmp_path/'web/venv/lib/python3.12/site-packages/qsys/live/store.py').unlink()
+    with pytest.raises(ValueError,match='current production consumer'):
+        e._require_live_release_ready(tmp_path,'a'*40,initial=True)
+    # 已独立的组件正常升级不再依赖共享源码/四消费者逐字相同，保留稳定v1绑定。
+    assert e._require_live_release_ready(tmp_path,'a'*40,initial=False)['private_config_sha256']=='f'*64
+
+
+def test_restart_calendar_probe_has_budgets_and_runs_outside_checkout(monkeypatch,tmp_path):
+    e=_production_entrypoint_module();seen=[]
+    def run(command,**kw):
+        seen.append((command,kw))
+        code=command[command.index('-c')+1]
+        compile(code,'restart-probe','exec')
+        assert 'memory_limit_mb=128' in code and 'max_temp_directory_mb=128' in code
+        assert 'rows.height != 1' in code and 'open_only=False' in code
+        return subprocess.CompletedProcess(command,0,json.dumps({'checked_at':'2026-10-22T14:00:00+08:00','trading_day':True,'restart_allowed':False}),'')
+    monkeypatch.setattr(e,'_run',run)
+    assert not e._restart_window(tmp_path)['restart_allowed']
+    assert seen[0][0][:6]==['nice','-n','10','ionice','-c3','timeout']
+    assert seen[0][1]['cwd']==Path('/data/qsys/var-deployments')
