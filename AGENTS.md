@@ -68,6 +68,10 @@ manifest → `HANDOFF.md` → 其他历史文档。
   这个"新 unit + 旧组件"的组合可以运行（曾因 `MemoryMax=3G` 套在旧 catalog-verify 上而 OOM），
   否则就把组件发布紧跟在共享发布之后。合并后 Align/Direct push audit 若报"未关联已合并 PR"，
   先用 `commits/<sha>/pulls` 确认关联已经存在，再重跑失败的 job，不要追加提交。
+- **reboot-drill先暂停timer再验证发布计划**（2026-10-22，#495）：其控制面dry-run也要求
+  timer inactive且oneshot结束；先记现场/确认既有任务终态，暂停该timer后再dry-run/正式发布。
+  不因门禁拒绝重跑未变CI；正式三方核验后恢复原active/enabled状态。人工交易日入口检查与
+  新版本自然timer采证分开，保留首次拒绝及恢复记录，不为验收执行Windows重启。
 - **手动运行按日运行的任务要注意时间点**：午夜后到当天收盘前，交易日历会包含尚未收盘的当日，
   可能被当作采集目标（#440）。补采优先放在当晚收盘后到午夜前执行。
 - **区分验收层级**：CI、测试部署、制品校验、人工页面验收、生产激活分别记录；测试环境

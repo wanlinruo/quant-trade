@@ -1,6 +1,6 @@
 # 项目交接入口
 
-> 快照时间：2026-10-21 20:05（Asia/Shanghai）。这是接手入口，不替代 GitHub、节点和机器可读
+> 快照时间：2026-10-22 10:52（Asia/Shanghai）。这是接手入口，不替代 GitHub、节点和机器可读
 > 契约的实时状态。执行任何写操作前必须重新核验。
 
 ## 先读什么
@@ -25,15 +25,16 @@
 
 - 共享checkout：`98fff8b837a08b21acb1ff9826a154a50df704e4`（#444），干净；固定入口v30。
 - 独立Web current：`34f9cf647926153982178de69fddb803c93653ac`（PR#471，#463），既有回退副本保留。
-- Windows live_app（执行代理）与paper_app（行情网关）：`43f3f81`（10-20 23:07，#283；agent仅含#427可选字段）。
-  catalog `3e40c21`（#469）、observer `dfd65bf`，checks/storage `b48e84b`，digest/worker `3c182a7`，
-  limit-up-shadow `34f9cf6`（#463）。
-- 最近正式发布均已核对workflow/Deployment/实际validate-record三方success：
-  #444 Linux39419956053/7199251758；#448 Web39421535317/7199505475；
-  #449 Web39424192480/7199941830；#283 Windows39445434427/7203344670、Web39445890080/7203415298；#460 Web39463842681/7206198116。
-  其他回退副本均保留。#283代码也命中linux-resident（会重启Live Core），共享checkout未随发，待正常维护窗口。
-- 8/14独立激活、6/14尚未迁移；组件分层验收以`docs/reference/component-acceptance-matrix.md`
-  和#330最新记录为准，不用激活数量替代完整回滚验收。
+- Windows live_app（执行代理）与paper_app（行情网关）仍为`43f3f81`（#283）；本轮只新增
+  专属取数/只读基线forced-command入口，未重启QMT/代理、未改任务XML/登录与恢复配置。
+- catalog/limit-up-shadow `80f7068`、observer `dfd65bf`，checks/storage `b48e84b`，worker `3c182a7`；
+  digest/paper `987175e`，tushare-sync `2e89e66`，daily-archive `e005bab`，premarket-limits `37bb3c4`，
+  shadow-core `6e4393a`，reboot-drill `57562f4`。Web仍`34f9cf6`。
+- **14/14个manifest目标已有独立制品与生产单元**；Shadow仍inactive/enabled/live/true，
+  reboot-drill仍--dry-run，不能称全部业务激活或#330整体完成。catalog的既有独立根目录为
+  `/opt/qsys/catalog-verify/`，其余在`/opt/qsys/components/`，计数以manifest为准，不只glob后者。
+- 最新现场current清单：`/data/qsys/var-deployments/issue495-20261022/all-component-currents.json`。
+  分层验收见`docs/reference/component-acceptance-matrix.md`与#330最新记录，所有历史副本保留。
 
 ### 实盘（#137）
 
@@ -48,33 +49,35 @@
 
 ### 本轮迁移收尾与未决项
 
-- #463已关闭：榜单/Web联合发布三方success，10-21 19:35自然运行及19:45报告通过；
-  旧库hash/全部旧行保留，实际Web/日报读取新榜单和24条唯一记录、对新库不可写。
-- #469：PR#472合并，catalog current `3e40c21`，专属无登录账号/最小配置/五处精确写集合已生效。
-  源CI39593880066、测试部署39594088976、PR CI39594255503、最终CI39594463980均成功；
-  dry-run39595402784，正式重发39596600730/Deployment7225528413/节点实际validate_record三方成功。
-  严格preflight16/16，所有关键peer身份和共享checkout不变，baseline/原配置hash不变。
-  真实隔离实跑636条/0阻断/28警告、1.7G峰值、swap0；20:05发布后生产实跑进行中。
-  timer已恢复，首次新版本自然任务10-22 19:40；19:50节点只读采证已调度。
-- #473保留首次正式失败39596077181/Deployment7225444858/节点rolled_back记录：
-  验收Python生成775缓存目录，被安装器切换前拒绝；仅修生成缓存权限、root持有release并禁写字节码，
-  未改源代码或生产事实，未重跑未变CI/业务。复发规则见AGENTS.md §2.2。
-- 接着推进#330的tushare-sync→daily-archive→premarket-limits，再paper/shadow-core/reboot-drill；
-  Live Core最后。各组件必须先有子Issue及实际权限/消费者证据，不以“8个激活”冒充整体完成。
-
-- **维护者10-20裁决：独立组件只前进不回退**，异常直接修复发布；legacy回切只作一次性预生产验证
-  （AGENTS.md §4）。#453已按此收口：#455/#456新增`Verify component rollback preproduction`，
-  run 39437976513对5个组件验证激活→legacy→注入失败自动恢复→重新激活，全部success；
-  托管runner不证明生产ACL/业务作业。#418/#422随之关闭，生产故障注入仍由#454承接（blocked）。
-- 未新增生产gateway命令；不得通过手工恢复控制文件做生产回切。
-- 实际Web/日报账号各读到25条唯一运行记录、20个健康服务；新旧记录可见且不重复。
-  最小配置保持隔离；checks显式禁用订单，Web的Workbench绝对路径与源相对路径等价。
-- 10-20自然归档15:40:53–16:09:43成功，原始分钟/canonical各1,341,803行；只证明行数，
-  不把该快照当逐字段对账。19:40 catalog：636条/0阻断/28警告；20:00 checks：28项/
-  数据和策略未通过均0，二者业务记录warning；20:30日报succeeded。
-- 20:45只读采证已实际生成：
-  `/data/qsys/var-deployments/issue440-20261020/natural-timer-20261020-2045.json`。
-  新历史不得删除；故障注入另由#454逐次审批。
+- #463/#476/#479/#487/#490/#493已关闭；盘前10-22 08:58/09:15/09:24三次自然任务成功，
+  09:35采证通过。5655条今日限价直取，QMT校验mismatched0/missing41如实保留，不称全覆盖。
+- Paper #490与必要日报读取器联合发布均为`987175e`，各自三方success；Paper实际私有UID、
+  supervisor+2workers，MainPID3011011、重启0。10-22两个运行账户开盘/竞价各2项completed，
+  09:43采证healthy、Web200、日报可读2条真实投递账；不能据此代替维护者外部收件验收。
+  原账户/订单/成交事实保留；Workbench保留原owner，Paper精确named ACL，没有加入workbench组。
+- #493 Shadow正式39704790276/Deployment7241246964与7241250075/实际validate_record三方success。
+  独立私有身份/配置/状态已生效，仍inactive/enabled/live/true；旧状态/kill/其他peer保持。
+  隔离真实初始化与当前消费者显式新路径只读通过，不等于生产启动/自然策略事件或切读路径。
+  未来启用需另行明确授权，并联合切换实际生产消费者，不能为验收改成shadow/false。
+- #495 reboot-drill正式39712705553/Deployment7242347709与7242350244/实际validate_record三方success。
+  实际私有unit保持--dry-run/readonly-baseline；Windows专属key可读基线、shell/SFTP/额外命令拒绝。
+  原授权/ACL/boot/关键进程/任务XML保持，未执行重启或外发测试通知。隔离真实基线、Web/日报
+  新旧记录只读与实际生产入口交易日门禁通过；**timer已恢复active/enabled**，原定义不变。
+  status:validation：10-23 10:00首次新版本自然timer待，10:05节点只读采证已安排。
+- #485 daily-archive current`e005bab`，正式39642942325三方success；6步骤真实任务成功，
+  7天质检0阻断、canonical9,387,766行逐键逐字段对账及当前消费者通过；10-22 15:40自然任务待，
+  18:15只读采证已安排，不能提前关闭。
+- #475 tushare-sync current`2e89e66`，真实19步骤/限权Windows取数/当前消费者通过；
+  10-22 17:00/19:00自然任务及19:15采证待。#469 catalog当前`80f7068`，19:40任务/19:50采证待。
+- 下一主项 **#497 Live Core最后独立迁移**：生产仍共享`98fff8b`/Ubuntu，PID1748883保持。
+  当前只做方案/依赖与隔离准备，不在交易时段顺手重启；先联查Web/日报/observer/checks的
+  live-state及kill/preflight/共享journal写者，停止旧生产者后再取最新一致性状态，防止漏订单/成交。
+  现有14组件通道要求Live身份不变，不能关闭全局peer保护或借其他组件发布绕过它。
+- #488：Redis5经无密码loopback隧道访问、无ACL，代码只GET不等于强制只读；不擅自升级/重启Redis。
+  #492：Web既有Unix workbench组还可写var/runs，unit沙箱阻断不等于Unix权限收敛，待单独修复。
+  #482运维通知维护/失败区分仍未实现，不宣称全部异常告警根因已解决。
+- #485/#487/#490/#493/#495证据根为`/data/qsys/var-deployments/issue<编号>-20261022/`；
+  #473首次缓存权限失败、#495首次timer门禁拒绝等证据均保留。新失败先摘要/定点修复，未变CI不重复跑。
 
 ### 数据恢复历史证据（10-20 01:24快照，当前状态以上文为准）
 
@@ -105,11 +108,11 @@
 
 ### 在途 Issue
 
-- #330仍为独立化总跟踪（ready）；下一批 limit-up-shadow 审阅包 #463（blocked，待确认节点准备）。
-  #453/#454已关闭。需求、缺陷一律走Issue（AGENTS.md §2），deferred-corrections 仅历史档案。
+- #330仍为总跟踪：14个manifest组件已独立部署，#497承接Live Core；#485/#475/#469及#495
+  保留各自自然验收，#488/#492保留残余权限，不因计数完成提前关闭总项。
 - #137/#126继续自然交易费用和30日容量观察；#123/#122/#283/#138/#250按维护者排期。
 - #304/#234/#230/#139/#142/#143保持各自外部/口径阻塞，不擅自购买、删数据或更改认证入口。
-- 历史数据恢复#434/#435/#436/#438/#440、页面#442/#433/#448/#449、参数#444均已闭环。
+- 历史数据恢复#434/#435/#436/#438/#440、页面#442/#433/#448/#449、参数#444已闭环。
 
 ### 本轮授权与证据
 
