@@ -2398,7 +2398,8 @@ def test_post_merge_alignment_is_evidence_bound_and_lease_safe() -> None:
     assert "qsys-test-release-evidence" in workflow
     assert "scripts/release_evidence.py validate" in workflow
     assert "ci_check_suite_id" in workflow
-    assert "event=pull_request" in workflow
+    assert 'github_api_read.py select-ci-run' in workflow
+    assert '"$REPOSITORY" "$PR_HEAD" pr' in workflow
     assert "record --environment test" in workflow
     assert "scripts/check_secrets.py" in workflow
     assert "scripts/check_repo_policy.py" in workflow
@@ -2430,7 +2431,8 @@ def test_production_workflow_is_manual_and_fail_closed() -> None:
     assert "ref: main" in workflow
     assert "DEPLOY_PRODUCTION" in workflow
     assert "git merge-base --is-ancestor" in workflow
-    assert "actions/workflows/ci.yml/runs?head_sha=$pr_head&event=pull_request" in workflow
+    assert 'github_api_read.py select-ci-run' in workflow
+    assert '"$GITHUB_REPOSITORY" "$pr_head" pr' in workflow
     assert "check-suites/$check_suite_id/check-runs?per_page=100" in workflow
     assert '.status == "completed" and .conclusion == "success"' in workflow
     assert "PRODUCTION_DEPLOY_SSH_KEY" in workflow
@@ -2472,7 +2474,8 @@ def test_component_workflow_streams_only_a_verified_artifact() -> None:
     assert "push:" not in workflow
     assert "DEPLOY_COMPONENT" in workflow
     assert "qsys-$COMPONENT-$TARGET_SHA" in workflow
-    assert '.event == "push" or .event == "workflow_dispatch"' in workflow
+    assert 'github_api_read.py select-ci-run' in workflow
+    assert '"$GITHUB_REPOSITORY" "$TARGET_SHA" artifact' in workflow
     assert "actions/artifacts/$ARTIFACT_ID/zip" in workflow
     assert "component-deploy --sha $TARGET_SHA" in workflow
     assert "<component.zip" in workflow
