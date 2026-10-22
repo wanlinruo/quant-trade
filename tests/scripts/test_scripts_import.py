@@ -71,7 +71,7 @@ def test_packaged_production_entrypoint_imports(name):
     importlib.import_module(name)
 
 
-@pytest.mark.parametrize("path", ["deploy/windows/data_gateway.py"])
+@pytest.mark.parametrize("path", ["deploy/windows/data_gateway.py", ".github/scripts/github_api_read.py"])
 def test_fixed_windows_data_entrypoint_imports(path):
     import importlib.util
     spec = importlib.util.spec_from_file_location("qsys_windows_data_gateway", path)

@@ -37,7 +37,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$MAIN_SHA"
-          pulls=$(gh api -H 'Accept: application/vnd.github+json' \
+          pulls=$(python3 .github/scripts/github_api_read.py -H 'Accept: application/vnd.github+json' \
             "repos/$REPOSITORY/commits/$MAIN_SHA/pulls")
           pr=$(printf '%s' "$pulls" | jq --arg main "$MAIN_SHA" \
             '[.[] | select(.merged_at != null and .merge_commit_sha == $main and .base.ref == "main" and .head.ref == "test")] | max_by(.merged_at)')
@@ -61,7 +61,7 @@ jobs:
           TREE_SHA: ${{ steps.source.outputs.tree_sha }}
         run: |
           set -euo pipefail
-          deployments=$(gh api -H 'Accept: application/vnd.github+json' \
+          deployments=$(python3 .github/scripts/github_api_read.py -H 'Accept: application/vnd.github+json' \
             "repos/$REPOSITORY/deployments?sha=$PR_HEAD&environment=testing&per_page=100")
           deployment=$(printf '%s' "$deployments" | jq \
             '[.[] | select(.payload.kind == "qsys-test-release-evidence" and .payload.schema_version == 2)] | max_by(.id)')
@@ -70,33 +70,33 @@ jobs:
           printf '%s' "$deployment" | jq '.payload' >evidence.json
           python3 scripts/release_evidence.py validate \
             --source-sha "$PR_HEAD" --tree-sha "$TREE_SHA" --evidence evidence.json
-          status=$(gh api -H 'Accept: application/vnd.github+json' \
+          status=$(python3 .github/scripts/github_api_read.py -H 'Accept: application/vnd.github+json' \
             "repos/$REPOSITORY/deployments/$deployment_id/statuses?per_page=100" \
             --jq 'max_by(.id).state')
           test "$status" = success
 
           ci_run_id=$(jq -r .ci_run_id evidence.json)
           ci_suite_id=$(jq -r .ci_check_suite_id evidence.json)
-          ci_run=$(gh api "repos/$REPOSITORY/actions/runs/$ci_run_id")
+          ci_run=$(python3 .github/scripts/github_api_read.py "repos/$REPOSITORY/actions/runs/$ci_run_id")
           printf '%s' "$ci_run" | jq -e \
             --arg sha "$PR_HEAD" --argjson suite "$ci_suite_id" \
             '.event == "push" and .head_branch == "test" and .head_sha == $sha
              and .status == "completed" and .conclusion == "success"
              and .check_suite_id == $suite' >/dev/null
-          push_checks=$(gh api \
+          push_checks=$(python3 .github/scripts/github_api_read.py \
             "repos/$REPOSITORY/check-suites/$ci_suite_id/check-runs?per_page=100")
           printf '%s' "$push_checks" | jq -e '
             [.check_runs[] | select(.name == "policy" or .name == "secret-scan" or .name == "test" or .name == "package")]
             | length == 4 and all(.conclusion == "success")' >/dev/null
 
-          pr_ci=$(gh api \
+          pr_ci=$(python3 .github/scripts/github_api_read.py \
             "repos/$REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$PR_HEAD&event=pull_request&per_page=100" \
             --jq '.workflow_runs | max_by(.id)')
           test "$pr_ci" != null
           printf '%s' "$pr_ci" | jq -e --arg head "$PR_HEAD" \
             '.head_sha == $head and .status == "completed" and .conclusion == "success"' >/dev/null
           pr_suite_id=$(printf '%s' "$pr_ci" | jq -r .check_suite_id)
-          pr_checks=$(gh api \
+          pr_checks=$(python3 .github/scripts/github_api_read.py \
             "repos/$REPOSITORY/check-suites/$pr_suite_id/check-runs?per_page=100")
           printf '%s' "$pr_checks" | jq -e '
             [.check_runs[] | select(.name == "policy" or .name == "secret-scan" or .name == "test" or .name == "package")]
