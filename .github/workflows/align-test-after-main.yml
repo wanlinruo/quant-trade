@@ -89,9 +89,9 @@ jobs:
             [.check_runs[] | select(.name == "policy" or .name == "secret-scan" or .name == "test" or .name == "package")]
             | length == 4 and all(.conclusion == "success")' >/dev/null
 
-          pr_ci=$(python3 .github/scripts/github_api_read.py \
-            "repos/$REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$PR_HEAD&event=pull_request&per_page=100" \
-            --jq '.workflow_runs | max_by(.id)')
+          pr_ci=$(python3 .github/scripts/github_api_read.py select-ci-run \
+            "$REPOSITORY" "$PR_HEAD" pr)
+          test -n "$pr_ci"
           test "$pr_ci" != null
           printf '%s' "$pr_ci" | jq -e --arg head "$PR_HEAD" \
             '.head_sha == $head and .status == "completed" and .conclusion == "success"' >/dev/null

@@ -141,12 +141,13 @@ jobs:
           pr_json=$(python3 .github/scripts/github_api_read.py -H 'Accept: application/vnd.github+json' \
             "repos/$GITHUB_REPOSITORY/commits/$TARGET_SHA/pulls" \
             --jq '[.[] | select(.merged_at != null and .base.ref == "main")] | max_by(.merged_at)')
+          test -n "$pr_json"
           test "$pr_json" != null
           pr_number=$(printf '%s' "$pr_json" | jq -r .number)
           pr_head=$(printf '%s' "$pr_json" | jq -r .head.sha)
-          pr_ci=$(python3 .github/scripts/github_api_read.py -H 'Accept: application/vnd.github+json' \
-            "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$pr_head&event=pull_request&per_page=100" \
-            --jq '.workflow_runs | max_by(.id)')
+          pr_ci=$(python3 .github/scripts/github_api_read.py select-ci-run \
+            "$GITHUB_REPOSITORY" "$pr_head" pr)
+          test -n "$pr_ci"
           test "$pr_ci" != null
           printf '%s' "$pr_ci" | jq -e --arg head "$pr_head" \
             '.head_sha == $head and .status == "completed" and .conclusion == "success"' >/dev/null

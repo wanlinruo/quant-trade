@@ -112,14 +112,13 @@ jobs:
           pr_json=$(python3 .github/scripts/github_api_read.py -H 'Accept: application/vnd.github+json' \
             "repos/$GITHUB_REPOSITORY/commits/$TARGET_SHA/pulls" \
             --jq '[.[] | select(.merged_at != null and .base.ref == "main")] | max_by(.merged_at)')
+          test -n "$pr_json"
           test "$pr_json" != null
           echo "pr_number=$(printf '%s' "$pr_json" | jq -r .number)" >>"$GITHUB_OUTPUT"
 
-          ci_run=$(python3 .github/scripts/github_api_read.py -H 'Accept: application/vnd.github+json' \
-            "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$TARGET_SHA&per_page=100" \
-            --jq '[.workflow_runs[] | select(.head_branch == "test"
-              and (.event == "push" or .event == "workflow_dispatch")
-              and .conclusion == "success")] | max_by(.id)')
+          ci_run=$(python3 .github/scripts/github_api_read.py select-ci-run \
+            "$GITHUB_REPOSITORY" "$TARGET_SHA" artifact)
+          test -n "$ci_run"
           test "$ci_run" != null
           ci_run_id=$(printf '%s' "$ci_run" | jq -r .id)
           artifact_name="qsys-$COMPONENT-$TARGET_SHA"
