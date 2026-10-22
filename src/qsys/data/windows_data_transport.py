@@ -4,15 +4,35 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
 import subprocess
 import tempfile
+import time
+
+import structlog
 
 PROTOCOL = 1
 MAX_FILE = 256 * 1024 * 1024
 NAME = re.compile(r"(?:[A-Za-z0-9_.-]{1,100}\.(?:parquet|json)|(?:done|failed)\.csv)")
+PREAUTH_DELAYS = (2, 5)
+log = structlog.get_logger('windows_data_transport')
+
+
+def preauthentication_reset(returncode: int, output: bytes | str, *, error: str = '') -> bool:
+    """Only the observed SSH key-exchange failure, before authentication/exec.
+
+    Any business output, timeout, authentication or session error forbids replay.
+    """
+    if returncode != 255 or error:
+        return False
+    text = output.decode('utf-8', errors='replace') if isinstance(output, bytes) else output
+    lines = text.strip().splitlines()
+    return bool(lines and lines[0] == 'kex_exchange_identification: read: Connection reset by peer'
+                and all(re.fullmatch(r'Connection reset by [A-Za-z0-9.:_-]+ port [0-9]+', line)
+                        for line in lines[1:]))
 
 
 class WindowsDataTransport:
@@ -35,12 +55,39 @@ class WindowsDataTransport:
         return self.ssh + ["qsys-data " + encoded]
 
     def _json(self, op: str, *, data: bytes | None = None, **fields) -> dict:
-        completed = subprocess.run(self.command(op, **fields), input=data,
-                                   capture_output=True, timeout=120, check=True)
+        completed = self._run_ssh(self.command(op, **fields), input=data,
+                                  capture_output=True, timeout=120, check=True)
         value = json.loads(completed.stdout)
         if not isinstance(value, dict):
             raise ValueError("invalid data gateway response")
         return value
+
+    def _run_ssh(self, command, **kwargs):
+        stream = kwargs.get('stdout')
+        start_position = stream.tell() if stream is not None else None
+        deadline = time.monotonic() + kwargs['timeout']
+        for attempt in range(len(PREAUTH_DELAYS) + 1):
+            try:
+                return subprocess.run(command, **{**kwargs, 'timeout': max(1, math.ceil(deadline-time.monotonic()))})
+            except subprocess.CalledProcessError as exc:
+                no_output = not exc.stdout and (stream is None or stream.tell() == start_position)
+                if (not no_output or not preauthentication_reset(exc.returncode, exc.stderr or b'')
+                        or attempt == len(PREAUTH_DELAYS) or deadline-time.monotonic() <= PREAUTH_DELAYS[attempt]):
+                    raise
+                delay = PREAUTH_DELAYS[attempt]
+                log.warning('ssh.preauth_retry', component=self.component, attempt=attempt+1, delay_seconds=delay)
+                time.sleep(delay)
+
+    def run_download(self, command, *, runner, **kwargs):
+        deadline = time.monotonic() + kwargs['timeout']
+        for attempt in range(len(PREAUTH_DELAYS) + 1):
+            result = runner(command, **{**kwargs, 'timeout': max(1, math.ceil(deadline-time.monotonic()))})
+            if (not preauthentication_reset(result.returncode, result.output, error=result.error)
+                    or attempt == len(PREAUTH_DELAYS) or deadline-time.monotonic() <= PREAUTH_DELAYS[attempt]):
+                return result
+            delay = PREAUTH_DELAYS[attempt]
+            log.warning('ssh.preauth_retry', component=self.component, attempt=attempt+1, delay_seconds=delay)
+            time.sleep(delay)
 
     def probe(self) -> dict:
         value = self._json("probe")
@@ -96,8 +143,8 @@ class WindowsDataTransport:
             with tempfile.NamedTemporaryFile(dir=destination, prefix=".download-", delete=False) as stream:
                 temporary = Path(stream.name)
                 try:
-                    subprocess.run(self.command("get", job=job, file=name), stdout=stream,
-                                   stderr=subprocess.PIPE, timeout=120, check=True)
+                    self._run_ssh(self.command("get", job=job, file=name), stdout=stream,
+                                  stderr=subprocess.PIPE, timeout=120, check=True)
                     stream.flush()
                     with temporary.open("rb") as downloaded:
                         actual = hashlib.file_digest(downloaded, "sha256").hexdigest()

@@ -702,7 +702,9 @@ def _archive(args, service_run: ServiceRun) -> int:
                 print("  [分钟进度] " + detail, flush=True)
                 return True
 
-            stream_result = run_streaming(
+            streaming = (lambda command, **options: transport.run_download(command, runner=run_streaming, **options)
+                         if transport is not None else run_streaming(command, **options))
+            stream_result = streaming(
                 download_command, what="Windows 下载分钟线",
                 timeout=args.minute_timeout,
                 stall_timeout=args.minute_stall_timeout,

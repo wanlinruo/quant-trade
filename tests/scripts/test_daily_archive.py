@@ -364,9 +364,10 @@ def test_gateway_minute_flow_keeps_progress_protocol_and_blocks_bad_transfer(
     monkeypatch.setattr(daily_archive,'missing_stock_days',lambda q,w:w)
     monkeypatch.setattr(daily_archive,'run',lambda *a,**k:pytest.fail('legacy transport called'))
     captured={}
-    class Transport:
+    class Transport(daily_archive.WindowsDataTransport):
         def __init__(self,host,key,**kw):
             assert kw=={'component':'tushare-sync','known_hosts':'trusted-hosts'}
+            self.component = 'tushare-sync'
         def probe(self):return {'protocol':1,'component':'tushare-sync'}
         def prepare(self,job,manifest):
             assert job=='minute_20261021'
