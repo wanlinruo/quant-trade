@@ -148,3 +148,19 @@ def test_isolation_rejects_unsafe_paths_and_notifications_before_transport(monke
         core_cli.main(argv)
     assert exc.value.code == 2
     forbidden.assert_not_called()
+
+
+def test_held_instance_lock_prevents_all_runtime_initialization(monkeypatch, tmp_path):
+    from qsys.agent.locking import AlreadyRunning, single_instance
+
+    lock = tmp_path / "live-core.lock"
+    config = DeployConfig(safety=SafetyConfig(mode="live", orders_enabled=True))
+    monkeypatch.setattr(core_cli, "load_deploy_config", lambda _: config)
+    forbidden = Mock(side_effect=AssertionError("duplicate instance initialized before locking"))
+    monkeypatch.setattr(core_cli.RedisTransport, "from_config", forbidden)
+    for name in ("resolve_strategy", "LiveStore", "LiveRuntime"):
+        monkeypatch.setattr(core_cli, name, forbidden)
+    with single_instance(lock):
+        with pytest.raises(AlreadyRunning):
+            core_cli.main(["--lock", str(lock)])
+    forbidden.assert_not_called()

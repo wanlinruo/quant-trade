@@ -70,47 +70,48 @@ def main(argv: list[str] | None = None) -> int:
     if config.safety.mode != "live" or not config.safety.orders_enabled:
         raise RuntimeError("实盘核心只在 [safety] mode='live' 且 orders_enabled=true 时启动")
     _validate_isolated_paths(args, config, parser)
-    transport = RedisTransport.from_config(config)
-    if args.validation_namespace is not None:
-        from qsys.live.validation_transport import ValidationTransport
+    with single_instance(args.lock):
+        transport = RedisTransport.from_config(config)
+        if args.validation_namespace is not None:
+            from qsys.live.validation_transport import ValidationTransport
 
-        transport = ValidationTransport(transport, args.validation_namespace)
-    # CRITICAL 同时进运维群——实盘停机既是交易事件也是运维事故
-    sinks = strategy_sinks(
-        config.alerts.strategy_url(shadow=False), config.alerts.ops_url,
-        timeout=config.alerts.timeout_seconds,
-    )
-    source = (StrategySource(Path(args.strategy)) if args.strategy
-              else resolve_strategy(config.strategy, Path(args.workspace)))
-    runtime = LiveRuntime(
-        source.path, Path(args.warehouse), load_trading_calendar(args.config),
-        QuoteClient(transport, config.streams, consumer="live-core",
-                    timeout=DECISION_TIMEOUT),
-        transport, config.streams, LiveStore(args.state),
-        local_kill_path=Path(args.kill_switch),
-        journal_warehouse=Path(args.journal_warehouse) if args.journal_warehouse else None,
-        alerts=AlertBus(sinks, ledger(args.alert_ledger)),
-        shadow=False,
-        risk=config.risk, params=dict(source.params),
-    )
-    with single_instance(args.lock), runtime.heartbeats:
-        log.info("live_core.started", strategy=str(source.path),
-                 follows=source.paper_account_id or None)
-        consecutive_errors = 0
-        while True:
-            try:
-                runtime.tick()
-                consecutive_errors = 0
-            except Exception as exc:
-                consecutive_errors += 1
-                log.error("live_core.tick_failed", error=str(exc),
-                          consecutive_errors=consecutive_errors)
-                if consecutive_errors == 3:
-                    reason = "three consecutive live-core loop failures"
-                    runtime.kill_switch.engage(reason)
-                    runtime.broker.cancel_all()
-                    runtime.alerts.critical("实盘核心连续故障熔断", f"{reason}: {exc}")
-            time.sleep(max(0.2, args.poll))
+            transport = ValidationTransport(transport, args.validation_namespace)
+        # CRITICAL 同时进运维群——实盘停机既是交易事件也是运维事故
+        sinks = strategy_sinks(
+            config.alerts.strategy_url(shadow=False), config.alerts.ops_url,
+            timeout=config.alerts.timeout_seconds,
+        )
+        source = (StrategySource(Path(args.strategy)) if args.strategy
+                  else resolve_strategy(config.strategy, Path(args.workspace)))
+        runtime = LiveRuntime(
+            source.path, Path(args.warehouse), load_trading_calendar(args.config),
+            QuoteClient(transport, config.streams, consumer="live-core",
+                        timeout=DECISION_TIMEOUT),
+            transport, config.streams, LiveStore(args.state),
+            local_kill_path=Path(args.kill_switch),
+            journal_warehouse=Path(args.journal_warehouse) if args.journal_warehouse else None,
+            alerts=AlertBus(sinks, ledger(args.alert_ledger)),
+            shadow=False,
+            risk=config.risk, params=dict(source.params),
+        )
+        with runtime.heartbeats:
+            log.info("live_core.started", strategy=str(source.path),
+                     follows=source.paper_account_id or None)
+            consecutive_errors = 0
+            while True:
+                try:
+                    runtime.tick()
+                    consecutive_errors = 0
+                except Exception as exc:
+                    consecutive_errors += 1
+                    log.error("live_core.tick_failed", error=str(exc),
+                              consecutive_errors=consecutive_errors)
+                    if consecutive_errors == 3:
+                        reason = "three consecutive live-core loop failures"
+                        runtime.kill_switch.engage(reason)
+                        runtime.broker.cancel_all()
+                        runtime.alerts.critical("实盘核心连续故障熔断", f"{reason}: {exc}")
+                time.sleep(max(0.2, args.poll))
 
 
 if __name__ == "__main__":

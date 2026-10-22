@@ -8,7 +8,8 @@
 将原scripts/run_live.py实现移到qsys.live.core_cli，旧脚本调用同一main；新增qsys-live-core
 console entry。默认仍为旧state/workspace/lock、本地var/KILL、主warehouse journal与var/alerts；
 mode=live且orders_enabled=true的原双条件门禁先于任何Redis与状态构造，三次连续失败的急停、
-cancel_all和critical通知保持。显式--state/--workspace/--lock及新增--kill-switch/
+cancel_all和critical通知保持。单实例锁先于Redis/策略快照/Store/Runtime初始化，避免重复
+实例抢锁前产生副作用（#499）；Shadow同类问题另验，当前仍停用。显式--state/--workspace/--lock及新增--kill-switch/
 --journal-warehouse/--alert-ledger为后续私有单元准备，不改策略、风险阈值或订单/成交协议。
 
 预生产显式--validation-namespace复用全部9类传输地址映射，包括订单/成交/消费组/硬编码kill

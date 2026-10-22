@@ -68,6 +68,9 @@ manifest → `HANDOFF.md` → 其他历史文档。
   这个"新 unit + 旧组件"的组合可以运行（曾因 `MemoryMax=3G` 套在旧 catalog-verify 上而 OOM），
   否则就把组件发布紧跟在共享发布之后。合并后 Align/Direct push audit 若报"未关联已合并 PR"，
   先用 `commits/<sha>/pulls` 确认关联已经存在，再重跑失败的 job，不要追加提交。
+- **先抢单实例锁，再初始化运行时**（2026-10-22，#499）：交易姿态/隔离参数的只读守卫后，
+  Redis消费组、策略快照、Store、Runtime及对账/通知之前先取得实际锁；已有锁时应在初始化
+  前退出。重复实例回归用离线真实锁和禁止调用探针，不在生产重复启动交易核心。
 - **reboot-drill先暂停timer再验证发布计划**（2026-10-22，#495）：其控制面dry-run也要求
   timer inactive且oneshot结束；先记现场/确认既有任务终态，暂停该timer后再dry-run/正式发布。
   不因门禁拒绝重跑未变CI；正式三方核验后恢复原active/enabled状态。人工交易日入口检查与
