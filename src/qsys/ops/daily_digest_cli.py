@@ -172,10 +172,10 @@ def _kill_reason(config_path: str):
     try:
         from qsys.live.config import load_deploy_config
         from qsys.live.kill_switch import KillSwitch
-        from qsys.live.redis_transport import RedisTransport
+        from qsys.live.readonly_transport import readonly_from_config
 
         config = load_deploy_config(config_path)
-        switch = KillSwitch(RedisTransport.from_config(config))
+        switch = KillSwitch(readonly_from_config(config))
         return switch.reason()
     except Exception as exc:
         log.warning("digest.kill_switch_failed", error=str(exc))
@@ -192,10 +192,10 @@ def _agent_beat(config_path: str) -> dict:
     try:
         from qsys.live.config import load_deploy_config
         from qsys.live.heartbeat import HeartbeatMonitor
-        from qsys.live.redis_transport import RedisTransport
+        from qsys.live.readonly_transport import readonly_from_config
 
         config = load_deploy_config(config_path)
-        transport = RedisTransport.from_config(config)
+        transport = readonly_from_config(config)
         beat = HeartbeatMonitor(transport, prefix=config.streams.heartbeat).read("agent")
         if beat is None or beat.at is None:
             return {"state": "absent"}

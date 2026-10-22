@@ -100,12 +100,12 @@ def probe_windows(host: str, key: Path, *, known_hosts: Path | None = None) -> d
 def probe_heartbeats(config_path: str) -> dict:
     from qsys.live.config import load_deploy_config
     from qsys.live.heartbeat import HeartbeatMonitor
-    from qsys.live.redis_transport import RedisTransport
+    from qsys.live.readonly_transport import readonly_from_config
 
     out: dict = {}
     try:
         config = load_deploy_config(config_path)
-        monitor = HeartbeatMonitor(RedisTransport.from_config(config),
+        monitor = HeartbeatMonitor(readonly_from_config(config),
                                    prefix=config.streams.heartbeat)
         for source in ("agent", "market"):
             beat = monitor.read(source)
