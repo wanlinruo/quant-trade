@@ -1,5 +1,10 @@
 # 参考资料
 
+## Live Core最后独立迁移（#497）
+
+见 `../plans/live-core-production-isolation.md`：包内入口默认兼容、预生产传输/文件/通知
+守卫、当前消费者与最新状态一致性、受控Live发布例外及后续真实现场验收。
+
 ## reboot-drill 独立只读部署（#495）
 
 见 `../plans/reboot-drill-production-isolation.md`：专属Windows只读基线key、严格事实协议、
