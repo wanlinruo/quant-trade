@@ -33,3 +33,14 @@ unit改Group=qsys-web，重置SupplementaryGroups后仅列qsys-observers。
 
 异常保留证据，按#453修复正常发布；安装器自带失败补偿保留，不能以删除数据、放宽配置或
 给回共享组掩盖失败。准备ACL不改变原生产者的业务数据，未执行项必须如实交接。
+
+## 隔离验证补充
+
+真实Web私有投影身份与当前worker制品已在专属审计目录验证草稿创建/修改、入队、worker
+领取/取消及Web回读；保留worker打开的真实WAL/SHM时Web仍可写。首次全新SQLite主库按0644
+创建导致ACL mask只读，未模拟计划中的“现有主库access ACL”；保留该初次隔离库，另用新
+夹具明确补现有主库named access ACL后通过。不能用default ACL代替主库access ACL。
+生产队列未写，未执行回测；原Workbench一致性备份和完整ACL已留存。
+
+另发现既有Web Windows任务key路径不存在，由#511单独承接；本项不改变该路径、不借用
+observer凭据，不将现有观测记录或页面200写成专属key已验证。
