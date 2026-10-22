@@ -86,10 +86,10 @@ def test_only_preauth_reset_retries_then_succeeds(monkeypatch, tmp_path, kind):
             raise subprocess.CalledProcessError(255, command, output=b'', stderr=PREAUTH)
         if 'stdout' in kwargs:
             kwargs['stdout'].write(b'complete')
-        return subprocess.CompletedProcess(command, 0, stdout=b'{"ok":true}')
+        return subprocess.CompletedProcess(command, 0, stdout=b'{"protocol":1,"component":"tushare-sync"}')
     monkeypatch.setattr(module.subprocess, 'run', execute)
     if kind == 'json':
-        assert client._json('probe') == {'ok': True}
+        assert client._json('probe') == {'protocol': 1, 'component': 'tushare-sync'}
     elif kind == 'get':
         with (tmp_path/'download').open('w+b') as stream:
             client._run_ssh(['ssh'], stdout=stream, check=True, timeout=120)
@@ -185,33 +185,36 @@ def test_stream_retry_does_not_reset_total_timeout_budget(monkeypatch):
     assert len(calls)==1
 
 
-def test_connection_socket_is_private_per_client_and_reused_for_every_operation(monkeypatch):
-    from pathlib import Path
-    from qsys.data import windows_data_transport as module
-    a=WindowsDataTransport('host','key',component='tushare-sync',known_hosts='pinned')
-    b=WindowsDataTransport('host','key',component='daily-archive',known_hosts='pinned')
-    def control(command):
-        return Path(next(x.split('=',1)[1] for x in command if x.startswith('ControlPath=')))
-    first=a.command('probe');second=a.command('get',job='minute_20261022',file='result.json')
-    path=control(first)
-    assert path==control(second) and path!=control(b.command('probe'))
-    assert path.parent.stat().st_mode & 0o077 == 0
-    assert 'ControlMaster=auto' in first and 'ControlPersist=30' in first
-    assert 'StrictHostKeyChecking=yes' in first and first[-2]=='host'
-    closed=[]
-    monkeypatch.setattr(module.subprocess,'run',lambda command,**kw:closed.append((command,kw)) or subprocess.CompletedProcess(command,0))
-    a.close();a.close();b.close()
-    assert len(closed)==2 and closed[0][0][-5:]==['-S',str(path),'-O','exit','host']
-    assert not path.parent.exists()
+@pytest.mark.parametrize('component', ['tushare-sync', 'daily-archive'])
+def test_mixed_operations_cannot_reuse_first_forced_command(monkeypatch, component):
+    import base64
+    client = WindowsDataTransport('host', 'key', component=component, known_hosts='pinned')
+    seen = []
+    def execute(command, **kwargs):
+        # Simulate the observed server: a multiplexed channel repeats probe.
+        assert 'ControlMaster=no' in command and 'ControlPath=none' in command
+        assert 'ControlPersist=no' in command
+        request = json.loads(base64.urlsafe_b64decode(command[-1].split(' ', 1)[1]))
+        seen.append(request['op'])
+        value = {'protocol': 1, 'component': component} if request['op'] == 'probe' else {'files': []}
+        return subprocess.CompletedProcess(command, 0, stdout=json.dumps(value).encode())
+    monkeypatch.setattr(subprocess, 'run', execute)
+    with client:
+        assert client.probe()['component'] == component
+        assert client._json('list', job='minute_20261022') == {'files': []}
+    assert seen == ['probe', 'list']
 
 
-def test_gateway_context_closes_authenticated_connection_after_failure(monkeypatch):
-    from qsys.data import windows_data_transport as module
-    closed=[]
-    monkeypatch.setattr(module.subprocess,'run',lambda command,**kw:closed.append(command) or subprocess.CompletedProcess(command,0))
-    with pytest.raises(ValueError,match='business failure'):
-        with WindowsDataTransport('host','key',component='tushare-sync',known_hosts='pinned') as client:
-            client.command('probe')
-            root=client._control_dir
-            raise ValueError('business failure')
-    assert len(closed)==1 and not root.exists()
+@pytest.mark.parametrize('op,fields', [('prepare', {'job': 'minute_20261022'}),
+                                     ('list', {'job': 'minute_20261022'}),
+                                     ('put', {'job': 'minute_20261022'})])
+def test_stale_probe_response_is_rejected_without_replay(monkeypatch, op, fields):
+    client = WindowsDataTransport('host', 'key', component='tushare-sync', known_hosts='pinned')
+    calls = []
+    def execute(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout=b'{"protocol":1,"component":"tushare-sync"}')
+    monkeypatch.setattr(subprocess, 'run', execute)
+    with pytest.raises(ValueError, match='response does not match'):
+        client._json(op, **fields)
+    assert len(calls) == 1
