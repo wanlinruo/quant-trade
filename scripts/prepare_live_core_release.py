@@ -20,7 +20,10 @@ import tomllib
 from qsys.agent.locking import single_instance
 from qsys.live.config import load_deploy_config
 from qsys.live import state_binding as binding
-from scripts.verify_live_core_preproduction import state_fingerprint
+if __package__:
+    from scripts.verify_live_core_preproduction import state_fingerprint
+else:
+    from verify_live_core_preproduction import state_fingerprint
 
 CONFIG_ROOT = Path('/etc/qsys/components/live-core')
 PRIVATE_CONFIG = CONFIG_ROOT / 'deploy.toml'

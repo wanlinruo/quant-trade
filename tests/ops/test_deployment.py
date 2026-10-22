@@ -937,6 +937,16 @@ def test_ci_runner_control_plane_never_deploys_to_application_nodes() -> None:
     assert plan.deployable is False
 
 
+def test_live_preparation_helper_is_shipped_without_resident_restarts() -> None:
+    plan = DeploymentManifest.load(MANIFEST).plan(
+        ["scripts/prepare_live_core_release.py"], environment="production",
+    )
+    assert plan.components == ("linux-data-jobs",)
+    assert plan.linux_units == ()
+    assert plan.ignored_paths == ()
+    assert plan.unknown_paths == ()
+
+
 def test_structural_gate_research_module_targets_linux_data_jobs() -> None:
     plan = DeploymentManifest.load(MANIFEST).plan(
         ["src/qsys/research/structural_gate_attribution.py"],
