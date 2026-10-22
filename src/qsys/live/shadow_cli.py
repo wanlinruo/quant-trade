@@ -40,6 +40,10 @@ def main() -> int:
     parser.add_argument("--poll", type=float, default=1.0)
     parser.add_argument("--lock", default="var/shadow-core.lock")
     parser.add_argument("--kill-switch", default="var/SHADOW_KILL")
+    parser.add_argument(
+        "--validation-namespace", default=None,
+        help="仅隔离预生产使用，统一隔离所有Redis key/stream（含kill与intents）",
+    )
     add_facade_argument(parser)
     args = parser.parse_args()
     apply_facade_argument(args.market_data_facade)
@@ -50,6 +54,10 @@ def main() -> int:
             "影子核心只在 [safety] mode='shadow' 且 orders_enabled=false 时启动"
         )
     transport = RedisTransport.from_config(config)
+    if args.validation_namespace is not None:
+        from qsys.live.validation_transport import ValidationTransport
+
+        transport = ValidationTransport(transport, args.validation_namespace)
     # 判断解析后的地址：只配了影子那个、没配 webhook_url 时也要能发。
     # CRITICAL 同时进运维群——停机既是交易事件也是运维事故。
     alerts = AlertBus(strategy_sinks(

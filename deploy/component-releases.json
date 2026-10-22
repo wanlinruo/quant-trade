@@ -171,6 +171,7 @@
         "target": "qsys.live.shadow_cli:main"
       },
       "scan_roots": [
+        "src/qsys/agent",
         "src/qsys/backtest",
         "src/qsys/core",
         "src/qsys/data",
@@ -191,13 +192,13 @@
           "path": "/home/ubuntu/qsys/var/shadow-core",
           "owner": "qsys-shadow-core",
           "group": "qsys-shadow-core",
-          "mode": "0750"
+          "mode": "0770"
         },
         {
           "path": "/home/ubuntu/qsys/var/alerts/shadow-core",
           "owner": "qsys-shadow-core",
           "group": "qsys-shadow-core",
-          "mode": "0750"
+          "mode": "0770"
         }
       ],
       "seed": null,
@@ -205,14 +206,24 @@
         "[Service]",
         "User=qsys-shadow-core",
         "Group=qsys-shadow-core",
+        "SupplementaryGroups=",
+        "SupplementaryGroups=qsys-observers",
+        "UMask=0027",
         "WorkingDirectory=/",
         "ExecStartPre=",
-        "ExecStartPre=/opt/qsys/components/shadow-core/current/venv/bin/qsys-live-preflight --config /home/ubuntu/qsys/config/deploy.local.toml --strategy /opt/qsys/components/shadow-core/current/source/strategies/structural_v1_2.py --warehouse /data/qsys/warehouse",
+        "ExecStartPre=/opt/qsys/components/shadow-core/current/venv/bin/qsys-live-preflight --config /etc/qsys/components/shadow-core/deploy.toml --strategy /opt/qsys/components/shadow-core/current/source/strategies/structural_v1_2.py --warehouse /data/qsys/warehouse",
         "ExecStart=",
         "ReadWritePaths=",
         "ReadWritePaths=/home/ubuntu/qsys/var/shadow-core",
         "ReadWritePaths=/home/ubuntu/qsys/var/alerts/shadow-core",
-        "ExecStart=/opt/qsys/components/shadow-core/current/venv/bin/qsys-shadow-core --config /home/ubuntu/qsys/config/deploy.local.toml --warehouse /data/qsys/warehouse --workspace /home/ubuntu/qsys/var/shadow-core/strategy --state /home/ubuntu/qsys/var/shadow-core/shadow-state.sqlite3 --journal-warehouse /home/ubuntu/qsys/var/shadow-core/journal --alert-ledger /home/ubuntu/qsys/var/alerts/shadow-core --lock /home/ubuntu/qsys/var/shadow-core/shadow-core.lock --kill-switch /home/ubuntu/qsys/var/shadow-core/SHADOW_KILL"
+        "ReadOnlyPaths=/home/ubuntu/qsys/var/workbench /etc/qsys/components/shadow-core",
+        "InaccessiblePaths=/home/ubuntu/qsys/config",
+        "ExecStart=/opt/qsys/components/shadow-core/current/venv/bin/qsys-shadow-core --config /etc/qsys/components/shadow-core/deploy.toml --warehouse /data/qsys/warehouse --workspace /home/ubuntu/qsys/var/shadow-core/strategy --state /home/ubuntu/qsys/var/shadow-core/shadow-state.sqlite3 --journal-warehouse /home/ubuntu/qsys/var/shadow-core/journal --alert-ledger /home/ubuntu/qsys/var/alerts/shadow-core --lock /home/ubuntu/qsys/var/shadow-core/shadow-core.lock --kill-switch /home/ubuntu/qsys/var/shadow-core/SHADOW_KILL",
+        "MemoryHigh=1G",
+        "MemoryMax=2G",
+        "MemorySwapMax=1G",
+        "CPUWeight=100",
+        "Environment=POLARS_MAX_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 QSYS_QUERY_MEMORY_MB=256 QSYS_QUERY_MAX_TEMP_MB=1024 QSYS_QUERY_THREADS=1 QSYS_QUERY_TEMP_ROOT=/tmp/qsys-shadow-core-query PYTHONDONTWRITEBYTECODE=1"
       ]
     },
     "catalog-verify": {

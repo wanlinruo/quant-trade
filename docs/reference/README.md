@@ -1,5 +1,10 @@
 # 参考资料
 
+## Shadow Core 独立休眠部署（#493）
+
+见 `../plans/shadow-core-production-isolation.md`：保留Live模式停用门禁、旧状态/kill/血缘保持、
+完整传输命名空间隔离及当前消费者显式新路径阅读，生产启动和切读路径另行验收。
+
 ## Paper 独立生产迁移（#490）
 
 见 `../plans/paper-production-isolation.md`：共享Workbench合法写者、私有身份/最小配置、

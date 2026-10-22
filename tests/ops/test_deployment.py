@@ -561,6 +561,13 @@ def test_paper_and_shadow_components_have_independent_release_boundaries() -> No
     assert shadow["unit"] == "qsys-shadow-core.service"
     shadow_dropin = "\n".join(shadow["dropin_lines"])
     assert "User=qsys-shadow-core" in shadow_dropin
+    assert "SupplementaryGroups=qsys-observers" in shadow_dropin
+    assert "qsys-workbench" not in shadow_dropin
+    assert "src/qsys/agent" in shadow["scan_roots"]
+    assert "--config /etc/qsys/components/shadow-core/deploy.toml" in shadow_dropin
+    assert "--validation-namespace" not in shadow_dropin
+    assert "InaccessiblePaths=/home/ubuntu/qsys/config" in shadow_dropin
+    assert {item["mode"] for item in shadow["state_directories"]} == {"0770"}
     assert "qsys-live-preflight" in shadow_dropin
     assert "ExecStart=/opt/qsys/components/shadow-core/current/venv/bin/qsys-shadow-core" in shadow_dropin
     assert "--journal-warehouse /home/ubuntu/qsys/var/shadow-core/journal" in shadow_dropin
