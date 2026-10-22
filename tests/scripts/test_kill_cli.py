@@ -144,3 +144,31 @@ def test_the_targets_match_what_the_cores_actually_use():
     assert default is not None, "shadow_cli.py 不再声明 kill-switch 默认值了"
     assert "local_kill_path=Path(args.kill_switch)" in runner_source
     assert kill.TARGETS["shadow"][1] == Path(default.group(1))
+
+
+def test_broken_live_binding_still_stops_both_known_paths_and_refuses_resume(at, monkeypatch):
+    from pathlib import Path
+    from qsys.live import state_binding
+
+    root, transport = at
+    monkeypatch.setitem(kill.TARGETS, "live", ("control:kill", Path("var/KILL")))
+    monkeypatch.chdir(root)
+    monkeypatch.setattr(state_binding, "STATE_ROOT", root / "private")
+    monkeypatch.setattr(state_binding, "current_binding", lambda: (_ for _ in ()).throw(ValueError("bad marker")))
+    assert _run(monkeypatch, "stop", "explicit stop", "live") == 1
+    assert (root / "var/KILL").is_file()
+    assert (root / "private/var/KILL").is_file()
+    assert transport.get_key("control:kill") is not None
+    assert _run(monkeypatch, "resume", "live") == 1
+    assert transport.get_key("control:kill") is not None
+    assert (root / "private/var/KILL").exists()
+
+
+def test_resume_checks_local_directory_access_before_clearing_remote(at, monkeypatch):
+    root, transport = at
+    (root / "KILL").write_text("keep stopped")
+    transport.set_key("control:kill", "keep stopped")
+    monkeypatch.setattr(kill.os, "access", lambda *args: False)
+    assert _run(monkeypatch, "resume", "live") == 1
+    assert transport.get_key("control:kill") == "keep stopped"
+    assert (root / "KILL").read_text() == "keep stopped"

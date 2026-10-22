@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import sys
+import os
 from pathlib import Path
 
 # 名称 -> (Redis 键, 本地标记)。取值与 runtime.py、run_shadow.py 必须一致，
@@ -53,12 +54,17 @@ def _transport():
         return MemoryTransport(), None
 
 
-def _switch(name: str, transport):
+def _switch(name: str, transport, *, require_local_write: bool = False):
     from qsys.live.kill_switch import KillSwitch
 
     key, path = TARGETS[name]
+    if name == "live":
+        from qsys.live.state_binding import local_kill_path
+        path = local_kill_path(path)
     if name == "shadow" and SHADOW_COMPONENT_DROPIN.is_file():
         path = SHADOW_COMPONENT_KILL
+    if require_local_write and (not path.parent.is_dir() or not os.access(path.parent, os.R_OK | os.W_OK | os.X_OK)):
+        raise PermissionError("本地停机目录不可读写，拒绝解除")
     return KillSwitch(transport, key=key, local_path=path)
 
 
@@ -85,12 +91,18 @@ def main() -> int:
 
     if action == "status":
         transport, _ = _transport()
+        unknown = False
         for name in TARGETS:
-            switch = _switch(name, transport)
+            try:
+                switch = _switch(name, transport)
+            except (OSError, ValueError):
+                print(f"{name:7} 状态未知（本地状态绑定异常）", file=sys.stderr)
+                unknown = True
+                continue
             engaged = switch.is_engaged()
             print(f"{name:7} {'已停机' if engaged else '运行中'}"
                   + (f"  原因: {switch.reason()}" if engaged else ""))
-        return 0
+        return 1 if unknown else 0
 
     if action == "resume":
         # 恢复必须指名，不接受默认值：解除停机是危险方向
@@ -99,7 +111,12 @@ def main() -> int:
             print(f"resume 必须指明恢复哪一个：{' / '.join(TARGETS)}", file=sys.stderr)
             return 2
         transport, cfg = _transport()
-        _switch(name, transport).release()
+        try:
+            switch = _switch(name, transport, require_local_write=True)
+        except (OSError, ValueError):
+            print("状态绑定或本地目录权限异常，拒绝解除停机", file=sys.stderr)
+            return 1
+        switch.release()
         _announce(transport, cfg, "resume", "manual")
         print(f"已恢复: {name}")
         return 0
@@ -108,11 +125,31 @@ def main() -> int:
     reason = argv[1] if len(argv) > 1 else "manual"
     names = [argv[2]] if len(argv) > 2 and argv[2] in TARGETS else list(TARGETS)
     transport, cfg = _transport()
+    failed = False
     for name in names:
-        _switch(name, transport).engage(reason)
+        try:
+            _switch(name, transport).engage(reason)
+        except (OSError, ValueError):
+            # 无法确认绑定时仍执行所有已定义本地路径与Redis急停，拒绝报告完整成功。
+            from qsys.live.kill_switch import KillSwitch
+            from qsys.live.state_binding import LiveStateBinding, STATE_ROOT
+            paths = [TARGETS[name][1]]
+            if name == "live":
+                paths.append(LiveStateBinding(STATE_ROOT).kill)
+            elif SHADOW_COMPONENT_DROPIN.is_file():
+                paths.append(SHADOW_COMPONENT_KILL)
+            for path in paths:
+                try:
+                    KillSwitch(transport, key=TARGETS[name][0], local_path=path).engage(reason)
+                except OSError:
+                    pass
+            KillSwitch(transport, key=TARGETS[name][0]).engage(reason)
+            print(f"{name}: 状态绑定或本地写入异常，已尝试急停，须核验", file=sys.stderr)
+            failed = True
     _announce(transport, cfg, "kill", reason)
-    print(f"已停机: {'、'.join(names)}（{reason}）")
-    return 0
+    if not failed:
+        print(f"已停机: {'、'.join(names)}（{reason}）")
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
