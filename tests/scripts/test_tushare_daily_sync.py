@@ -39,6 +39,28 @@ class FakeQuery:
         assert end.date() == DAY
         return pl.DataFrame({"symbol": ["688001.SH"]})
 
+    def bar_minute_1m(self, symbols, start, end, *, columns):
+        assert columns == ["symbol"]
+        return self.minute_bars(symbols, start, end)
+
+
+@pytest.mark.parametrize('raw,published,missing', [
+    (['688001.SH','920157.BJ'], ['688001.SH'], ['920157.BJ']),
+    (['688001.SH','920157.BJ'], ['688001.SH','920157.BJ'], []),
+    (['688001.SH'], ['688001.SH','920157.BJ'], ['920157.BJ']),
+    ([], [], ['688001.SH','920157.BJ']),
+])
+def test_late_listing_convergence_requires_both_raw_and_published_minutes(monkeypatch, raw, published, missing):
+    class Query(FakeQuery):
+        def minute_bars(self, symbols, start, end):
+            super().minute_bars(symbols, start, end)
+            return pl.DataFrame({'symbol':raw}, schema={'symbol':pl.String})
+        def bar_minute_1m(self, symbols, start, end, *, columns):
+            assert columns == ['symbol']
+            return pl.DataFrame({'symbol':published}, schema={'symbol':pl.String})
+    monkeypatch.setattr(tushare_daily_sync,'WarehouseQuery',Query)
+    assert tushare_daily_sync.late_listing_minute_gaps(object(),DAY) == missing
+
 
 def test_late_listing_gaps_require_same_day_listing_trade_and_missing_minutes(
     monkeypatch,
