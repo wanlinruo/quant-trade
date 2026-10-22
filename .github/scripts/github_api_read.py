@@ -63,6 +63,8 @@ def select_ci_run(repo: str, sha: str, kind: str, *, read=read_api) -> dict:
                    and (kind == 'pr' or run.get('head_branch') == 'test') and run.get('event') in events
                    and (kind == 'pr' or run.get('status') == 'completed' and run.get('conclusion') == 'success')]
         if matches:
+            if any(type(run.get('id')) is not int or run['id'] <= 0 for run in matches):
+                raise ValueError('CI run ID is missing or invalid')
             selected = max(matches, key=lambda run: run['id'])
             if selected.get('status') != 'completed' or selected.get('conclusion') != 'success':
                 raise ValueError('latest exact-SHA PR CI is not successful')

@@ -122,3 +122,9 @@ def test_workflow_ci_lookup_never_uses_upstream_sha_search_index():
         assert 'github_api_read.py select-ci-run' in text
     align=Path('.github/workflows/align-test-after-main.yml').read_text()
     assert '.check_suite_id == $suite' in align and 'length == 4 and all(.conclusion == "success")' in align
+
+
+@pytest.mark.parametrize('run_id', [None, '', True, 0])
+def test_missing_or_invalid_run_id_fails_before_artifact_url(run_id):
+    with pytest.raises(ValueError,match='CI run ID'):
+        reader.select_ci_run('owner/repo',SHA,'artifact',read=Mock(return_value=pages(ci(run_id))))
