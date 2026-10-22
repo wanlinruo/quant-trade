@@ -56,11 +56,16 @@ class LiveKillReader:
         if self.local_path is None:
             return KillSource(*source, 'unknown', '实盘路径未配置')
         try:
-            info = self.local_path.lstat()
+            from qsys.live.state_binding import local_kill_path
+            path = local_kill_path(self.local_path)
+        except (OSError, ValueError):
+            return KillSource(*source, 'unknown', '实盘状态绑定异常')
+        try:
+            info = path.lstat()
         except FileNotFoundError:
             # ENOENT 也可能来自丢失的父目录；必须先确认目录真实可访问。
             try:
-                parent = self.local_path.parent
+                parent = path.parent
                 if not parent.is_dir() or not os.access(parent, os.R_OK | os.X_OK):
                     raise OSError('parent unavailable')
             except OSError:
@@ -72,7 +77,7 @@ class LiveKillReader:
             return KillSource(*source, 'unknown', '停机标记类型异常')
         try:
             # 文件存在即停机，内容不可读时也不能显示解除；限制展示输入大小。
-            with self.local_path.open() as stream:
+            with path.open() as stream:
                 value = stream.read(4096).strip()
             reason, stamp = _stamp(value)
         except (OSError, UnicodeError):

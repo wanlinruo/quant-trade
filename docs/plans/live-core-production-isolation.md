@@ -83,3 +83,32 @@ ProtectSystem=strict、ProtectHome=read-only，只写专属验证目录，非Liv
 同一验证状态副本：四者均成功读到9个策略session、0持仓/0待处理订单，副本与父目录均不可写。
 证据`initialization-1220/current-consumers.json`。该项证明显式新路径可读，尚未改变生产发现路径，
 不能代替最终切换后自动发现/去重及页面验收。SQLite WAL读者还须逐个核对sidecar access ACL。
+
+## 稳定绑定与首次发布失败补偿设计（实施中）
+
+选定独立根`/home/ubuntu/qsys/var/live-core`，其内保留`var/live-state.sqlite3`、`var/KILL`、
+`var/live-core.lock`与`var/live`布局，使旧代码的相对默认本地急停与新入口显式路径一致。
+代码current切换与状态绑定必须分开：一次性root只读marker为
+`/etc/qsys/components/live-core/state-binding-v1`，固定内容`qsys-live-core-state-v1\n`。
+marker不接受任意路径；拒绝symlink、非root owner及group/other可写，异常时Web显示未知、
+CLI拒绝resume，显式stop仍尝试所有已定义本地路径与Redis并以非零退出要求核验。
+
+Web每次读本地急停时重新解析绑定，预发布读取器不用等Live迁移时重启才能发现新路径；显式
+自定义验证路径与未配置仍保持原语义。绑定不依赖`zz-isolated-release.conf`存在，组件失败
+补偿移除该drop-in后不会自动切回旧kill。没有marker时现有生产路径保持。
+
+**这里只新增路径选择器、Web只读识别和维护CLI兼容，尚无创建生产marker或迁移状态。**
+选择器回归不冒充N/N-1安装器/交易连续性验证。正式通道尚须实现：
+
+1. 当前生产维护脚本与Web先具有该识别能力，并逐一核验实际版本；不因main已合入而假定生效。
+2. 在受控Live通道停旧并持有真实单实例锁后，最新一致性SQLite备份逐值校验到新私有根，保留
+   原库、WAL及审计；原本地kill状态按事实保留，不解除/触发生产急停来验收。
+3. 安装一个独立于组件drop-in的持久continuity drop-in，旧入口绝对脚本/配置/warehouse，
+   WorkingDirectory为新私有根，显式state/workspace/lock；旧代码本地`var/KILL`自动落在同一
+   私有根。该旧代码失败补偿桥只服务安装器，不新增生产legacy回切命令。
+4. 在首次新Runtime运行前，失败补偿已能用同一私有最新库恢复旧代码；组件drop-in移除只改
+   代码入口，不删除marker/桥、不复制旧库覆盖新事实。必须用实际安装器N/N-1隔离夹具证明。
+5. 四类当前消费者的新状态可发现/只读/不重复与实际急停路径全部就绪后才激活绑定。状态旧入口
+   如采用只读兼容链接，须保留旧文件且在停旧后切换；KILL绝不采用文件链接。
+6. 主Warehouse四张journal表保留既有事实与合法写者，以精确ACL限写这四表，其余市场表只读；
+   如改journal目录，必须先联合发布全部实际读取器，不跳过历史。
