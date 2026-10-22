@@ -118,6 +118,15 @@ def probe_heartbeats(config_path: str) -> dict:
     return out
 
 
+def probe_windows_readonly(host: str, key: Path, *, known_hosts: Path) -> dict:
+    from qsys.ops.windows_reboot_baseline import COMMAND, decode_reading
+
+    result = _ssh(host, key, COMMAND, known_hosts=known_hosts)
+    if result.returncode:
+        raise RuntimeError("Windows只读基线入口失败")
+    return decode_reading(result.stdout)
+
+
 def _alerts(config_path: str, root: Path | None = None):
     from qsys.live.config import load_deploy_config
     from qsys.ops.alerts import AlertBus, LogAlertSink, WebhookAlertSink, ledger
@@ -153,6 +162,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--service-runs", type=Path, default=Path("var/service-runs"))
     parser.add_argument("--alert-ledger", type=Path, help="专属告警流水目录")
     parser.add_argument("--known-hosts", type=Path, help="预置且只读的 SSH host key 文件")
+    parser.add_argument("--win-transport", choices=("legacy", "readonly-baseline"), default="legacy")
     parser.add_argument("--host", default="Administrator@118.25.42.149")
     parser.add_argument("--key", type=Path,
                         default=Path("/home/ubuntu/.ssh/id_ed25519_winnode"))
@@ -166,6 +176,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--approved-host", help="本次获批的完整 SSH 目标，与 --host 完全相同")
     parser.add_argument("--day", type=date.fromisoformat, default=None)
     args = parser.parse_args(argv)
+    if args.win_transport == "readonly-baseline" and (not args.dry_run or args.known_hosts is None):
+        parser.error("只读Windows基线入口仅允许--dry-run，并须显式--known-hosts")
     if not args.host or args.host.startswith("-"):
         parser.error("--host 必须是 SSH 目标，不能是选项")
     if args.execute and not _execution_confirmed(args):
@@ -198,7 +210,8 @@ def _run(args, today, why, run) -> int:
         step.detail = why
 
     with run.step("重启前基线", interface="SSH Windows / Redis 心跳") as step:
-        before = {**probe_windows(args.host, args.key, known_hosts=args.known_hosts), **probe_heartbeats(args.config)}
+        probe = probe_windows_readonly if getattr(args, "win_transport", "legacy") == "readonly-baseline" else probe_windows
+        before = {**probe(args.host, args.key, known_hosts=args.known_hosts), **probe_heartbeats(args.config)}
         boot_age = before.get("boot_seconds_ago")
         boot_detail = (f"开机于 {boot_age / 3600:.1f} 小时前"
                        if boot_age is not None else "取不到开机时刻")

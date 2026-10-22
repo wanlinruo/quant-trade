@@ -1,5 +1,10 @@
 # 参考资料
 
+## reboot-drill 独立只读部署（#495）
+
+见 `../plans/reboot-drill-production-isolation.md`：专属Windows只读基线key、严格事实协议、
+私有配置/写集合及dry-run与实际重启验收分层。
+
 ## Shadow Core 独立休眠部署（#493）
 
 见 `../plans/shadow-core-production-isolation.md`：保留Live模式停用门禁、旧状态/kill/血缘保持、
