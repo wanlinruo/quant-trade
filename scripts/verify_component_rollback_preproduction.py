@@ -20,7 +20,7 @@ if __package__:
 else:
     from verify_storage_report_preproduction import SHA, run, stage, validate_host
 
-COMPONENTS = ("service-checks", "daily-digest", "health-observer", "web", "backtest-worker")
+COMPONENTS = ("service-checks", "daily-digest", "health-observer", "web", "backtest-worker", "live-core")
 # qsys-monitor.service lives only on the node; the stub stands in for its legacy identity.
 MONITOR_STUB = """[Unit]
 Description=qsys monitor legacy stand-in for preproduction rollback verification
@@ -30,6 +30,19 @@ Type=simple
 User=ubuntu
 WorkingDirectory=/home/ubuntu/qsys
 ExecStart=/home/ubuntu/qsys/.venv/bin/python -u scripts/monitor.py
+"""
+LIVE_STUB = """[Unit]
+Description=qsys Live legacy layout stand-in; no business process is started
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/qsys
+ExecStart=/home/ubuntu/qsys/.venv/bin/python scripts/run_live.py --config config/deploy.local.toml
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/ubuntu/qsys/var /data/qsys
 """
 # sudo's secure_path searches /usr/local/sbin before /usr/bin.
 SHIM = Path("/usr/local/sbin/systemctl")
@@ -95,11 +108,11 @@ def ensure_identities(spec):
 def install_base_unit(repo, unit):
     source = repo / "deploy/systemd" / unit
     target = Path("/etc/systemd/system") / unit
-    if source.is_file():
+    if source.is_file() and unit != "qsys-live-core.service":
         run(["sudo", "install", "-m", "0644", source, target])
         return "repository"
     staged = Path(os.environ["RUNNER_TEMP"]) / unit
-    staged.write_text(MONITOR_STUB)
+    staged.write_text(LIVE_STUB if unit == "qsys-live-core.service" else MONITOR_STUB)
     run(["sudo", "install", "-m", "0644", staged, target])
     return "node-only-stub"
 
@@ -116,6 +129,87 @@ def fingerprint(path):
     raw = run(["sudo", "cat", path]).stdout
     return hashlib.sha256(raw.encode()).hexdigest()
 
+
+
+LIVE_FIXTURE = r"""
+import json,sys,sqlite3
+from datetime import datetime
+from pathlib import Path
+from qsys.core.portfolio import Portfolio
+from qsys.core.trading import Order,OrderType,Side,Fill
+from qsys.core.types import Symbol
+from qsys.live.store import LiveStore
+from scripts.verify_live_core_preproduction import state_fingerprint
+phase=sys.argv[1];s=LiveStore('var/live-state.sqlite3');at=datetime(2026,1,5,9,15)
+symbol=Symbol.parse('600000.SH')
+def order(name): return Order(name,symbol,Side.BUY,100,OrderType.LIMIT,10.0,at)
+def fill(name,qty,trade): return Fill(name,symbol,Side.BUY,qty,10.0,5.0,at,'fixture-broker',trade)
+if phase=='seed':
+ s.save(Portfolio(10000),{}, {},at=at,initial_value=10000)
+ assert s.begin_event('fixture-completed',at,'auction')
+ s.commit_event('fixture-completed',Portfolio(10000),{}, {},at=at)
+ s.record_orders('fixture-completed',[order('pending-0'),order('done-0')])
+ s.record_results([fill('done-0',100,'trade-0')],[],{'done-0':0})
+elif phase=='advance':
+ s.record_orders('fixture-new',[order('pending-1'),order('done-1')])
+ s.record_results([fill('done-1',100,'trade-1'),fill('pending-0',50,'trade-partial-0')],[],{'done-1':0,'pending-0':50})
+elif phase=='legacy-advance':
+ s.record_results([fill('pending-1',40,'trade-after-compensation')],[],{'pending-1':60})
+assert not s.begin_event('fixture-completed',at,'auction')
+with s._connect() as c:
+ counts={name:c.execute('SELECT count(*) FROM '+name).fetchone()[0] for name in ('live_events','live_orders','live_runtime_fills')}
+remaining={o.order_id:left for o,left in s.pending_orders()}
+# old filename stays intact and is never made into a symlink or overwritten.
+original=Path('/home/ubuntu/qsys/var/live-state.sqlite3')
+assert not original.is_symlink()
+with sqlite3.connect(original.resolve().as_uri()+'?mode=ro',uri=True) as c:
+ original_fills=c.execute('SELECT count(*) FROM live_runtime_fills').fetchone()[0]
+print(json.dumps({'counts':counts,'remaining':remaining,'original_fills':original_fills,'actual_path':str(s.path),'fingerprint':state_fingerprint(s.path)}))
+"""
+
+
+def live_fixture_command(checkout, python, phase, *, legacy=False):
+    validate_host(os.environ)
+    user = "ubuntu" if legacy else "qsys-live-core"
+    module_path = str(checkout) + (":" + str(checkout / "src") if legacy else "")
+    result = run(["sudo", "-u", user, "env", "PYTHONDONTWRITEBYTECODE=1",
+                  "PYTHONPATH=" + module_path, python, "-B", "-c", LIVE_FIXTURE, phase],
+                 cwd=Path("/home/ubuntu/qsys"))
+    return json.loads(result.stdout)
+
+
+def setup_live_fixture(checkout, python):
+    validate_host(os.environ)
+    for path in (Path('/home/ubuntu/qsys/config/deploy.local.toml'),
+                 Path('/home/ubuntu/qsys/var/live-state.sqlite3'),
+                 Path('/etc/qsys/components/live-core/state-binding-v1')):
+        if path.exists() or path.is_symlink():
+            raise ValueError('refuse fixture over an existing production layout')
+    if run(["getent", "passwd", "ubuntu"], check=False).returncode:
+        run(["sudo", "useradd", "--system", "--user-group", "--home-dir", "/home/ubuntu", "--shell", "/usr/sbin/nologin", "ubuntu"])
+    run(["sudo", "install", "-d", "-m", "0755", "/home/ubuntu/qsys/config"])
+    run(["sudo", "install", "-d", "-o", "ubuntu", "-g", "ubuntu", "-m", "0755", "/home/ubuntu/qsys/var"])
+    run(["sudo", "usermod", "-aG", "qsys-observers", "qsys-live-core"])
+    run(["sudo", "setfacl", "-m", "g:qsys-observers:--x", "/home/ubuntu"])
+    config = Path(os.environ["RUNNER_TEMP"]) / "live-fixture.toml"
+    config.write_text('[safety]\nmode="live"\norders_enabled=true\nprotected_account_ids=["validation-only"]\n[tushare]\ntoken="validation-only"\n[strategy]\nfile='+json.dumps(str(checkout / 'strategies/structural_v1_2.py'))+'\n')
+    run(["sudo", "install", "-m", "0644", config, "/home/ubuntu/qsys/config/deploy.local.toml"])
+    for table in ("live_equity", "live_fills", "live_rejects", "live_recon"):
+        run(["sudo", "install", "-d", "-m", "0755", "/data/qsys/warehouse/" + table])
+    run(["sudo", "install", "-d", "-m", "0755", "/data/qsys/var-deployments/github"])
+    helper = checkout / "scripts/prepare_live_core_release.py"
+    base = ["sudo", "env", "PYTHONDONTWRITEBYTECODE=1", "PYTHONPATH="+str(checkout)+":"+str(checkout/'src'),
+            python, "-B", helper, "--repo", "/home/ubuntu/qsys"]
+    run([*base, "--prepare-only"])
+    seed = live_fixture_command(checkout, python, "seed", legacy=True)
+    run(["sudo", "-u", "ubuntu", python, "-B", "-c", "import sqlite3; c=sqlite3.connect('/home/ubuntu/qsys/var/live-state.sqlite3'); c.execute('PRAGMA journal_mode=DELETE'); c.close()"], cwd=Path("/home/ubuntu/qsys"))
+    run([*base, "--bind", "--audit-root", "/data/qsys/var-deployments/github/live-fixture"])
+    current = live_fixture_command(checkout, python, "advance")
+    assert seed['counts']['live_runtime_fills'] == 1
+    assert current['counts']['live_runtime_fills'] == 3
+    assert current['remaining'] == {'pending-0':50,'pending-1':100}
+    assert current['original_fills'] == 1
+    return current
 
 def verify_component(repo, root, entrypoint, component, sha, evidence_dir):
     spec = entrypoint.COMPONENT_RELEASES[component]
@@ -178,6 +272,11 @@ def verify_component(repo, root, entrypoint, component, sha, evidence_dir):
 
     activate(True)
     assert_active_release("activate")
+    live_evidence = None
+    live_python = release_root / sha / "venv/bin/python"
+    if component == "live-core":
+        live_evidence = setup_live_fixture(checkout, live_python)
+        record["live_state_initial"] = live_evidence
     for directory in spec["state_directories"]:
         marker = Path(directory["path"]) / f".rollback-pilot-{component}"
         run(["sudo", "-u", directory["owner"], "sh", "-c", f"echo {component} > '{marker}'"])
@@ -187,6 +286,10 @@ def verify_component(repo, root, entrypoint, component, sha, evidence_dir):
         raise ValueError(f"{component}: entrypoint legacy switch reported failure")
     assert_legacy("legacy")
     assert_markers("legacy")
+    if live_evidence is not None:
+        observed = live_fixture_command(checkout, live_python, "read", legacy=True)
+        if observed != live_evidence:
+            raise ValueError("legacy compensation did not observe latest bound state")
 
     run(["sudo", "touch", SHIM_FLAG])
     try:
@@ -199,10 +302,23 @@ def verify_component(repo, root, entrypoint, component, sha, evidence_dir):
     assert_legacy("failed-activation-restored")
     record["phases"][-1]["installer_error"] = failed.stderr.strip()[-300:]
     assert_markers("failed-activation-restored")
+    if live_evidence is not None:
+        observed = live_fixture_command(checkout, live_python, "read", legacy=True)
+        if observed != live_evidence:
+            raise ValueError("installer failure compensation read stale state")
+        live_evidence = live_fixture_command(checkout, live_python, "legacy-advance", legacy=True)
+        if live_evidence['counts']['live_runtime_fills'] != 4 or live_evidence['original_fills'] != 1:
+            raise ValueError("legacy recovery did not preserve/append latest fills")
 
     activate(True)
     assert_active_release("reactivate")
     assert_markers("reactivate")
+    if live_evidence is not None:
+        observed = live_fixture_command(checkout, live_python, "read")
+        if observed != live_evidence:
+            raise ValueError("reactivated component did not retain recovery facts")
+        record["live_state_final"] = observed
+        record["live_state_continuity"] = "new facts survive real installer failure compensation; old DB retained; completed event not replayed"
     record["status"] = "success"
     (evidence_dir / f"{component}.json").write_text(json.dumps(record, indent=2) + "\n")
     return record

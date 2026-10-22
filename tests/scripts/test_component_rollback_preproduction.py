@@ -54,3 +54,23 @@ def test_workflow_is_manual_hosted_only_without_node_credentials():
     assert "secrets." not in text
     assert "\n    environment:" not in text
     assert "ref: main" in text
+
+
+def test_live_fixture_cannot_run_on_a_node_or_local_host(monkeypatch):
+    monkeypatch.delenv('GITHUB_ACTIONS', raising=False)
+    with pytest.raises(ValueError, match='GitHub-hosted'):
+        pilot.setup_live_fixture(None, None)
+    with pytest.raises(ValueError, match='GitHub-hosted'):
+        pilot.live_fixture_command(None, None, 'seed')
+
+
+def test_live_fixture_refuses_existing_layout_even_with_runner_flags(monkeypatch):
+    monkeypatch.setattr(pilot,'validate_host',lambda env:None)
+    monkeypatch.setattr(Path,'exists',lambda path:True)
+    monkeypatch.setattr(pilot,'run',lambda *a,**kw:pytest.fail('must refuse before filesystem mutation'))
+    with pytest.raises(ValueError,match='existing production layout'):
+        pilot.setup_live_fixture(None,None)
+
+
+def test_live_fixture_program_is_syntactically_valid():
+    compile(pilot.LIVE_FIXTURE,'live-fixture','exec')

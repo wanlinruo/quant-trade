@@ -103,12 +103,37 @@ Web每次读本地急停时重新解析绑定，预发布读取器不用等Live�
 1. 当前生产维护脚本与Web先具有该识别能力，并逐一核验实际版本；不因main已合入而假定生效。
 2. 在受控Live通道停旧并持有真实单实例锁后，最新一致性SQLite备份逐值校验到新私有根，保留
    原库、WAL及审计；原本地kill状态按事实保留，不解除/触发生产急停来验收。
-3. 安装一个独立于组件drop-in的持久continuity drop-in，旧入口绝对脚本/配置/warehouse，
-   WorkingDirectory为新私有根，显式state/workspace/lock；旧代码本地`var/KILL`自动落在同一
-   私有根。该旧代码失败补偿桥只服务安装器，不新增生产legacy回切命令。
-4. 在首次新Runtime运行前，失败补偿已能用同一私有最新库恢复旧代码；组件drop-in移除只改
-   代码入口，不删除marker/桥、不复制旧库覆盖新事实。必须用实际安装器N/N-1隔离夹具证明。
-5. 四类当前消费者的新状态可发现/只读/不重复与实际急停路径全部就绪后才激活绑定。状态旧入口
-   如采用只读兼容链接，须保留旧文件且在停旧后切换；KILL绝不采用文件链接。
+3. 先升级共享失败补偿入口：默认state/workspace/lock/kill在marker存在时选择同一私有根；
+   LiveStore每次连接重新解析默认路径，使预先发布的四类长驻读取器在激活后自动切读。
+   自定义路径和validation namespace不重定向。首次迁移控制面逐字核对共享关键入口和四类
+   实际消费者的已安装实现；后续独立升级不要求重新发布共享源码。
+4. 新生产者运行前，以真实单实例锁保护一致性备份并逐值验证；marker是唯一激活点，原数据库
+   不移动、不覆盖、不改为符号链接。组件drop-in/current失败补偿只切换代码，marker保留，
+   共享补偿入口也写同一最新库。无需额外持久legacy unit或生产回切命令。
+5. 新增GitHub-hosted一次性Live安装器/状态夹具：实际安装→移除drop-in→实际daemon-reload
+   失败补偿→重新激活；独立账号与共享入口身份交替读取/追加实际LiveStore订单、部分成交和
+   完成事件，证明读到最新事实、旧库不变及完成事件不重放。该夹具禁止节点/本地执行，
+   不运行策略或连接券商，不能冒充生产业务激活。
 6. 主Warehouse四张journal表保留既有事实与合法写者，以精确ACL限写这四表，其余市场表只读；
    如改journal目录，必须先联合发布全部实际读取器，不跳过历史。
+
+
+## 受控Live目标与发布顺序（实现待发布）
+
+manifest新增第15个目标live-core，原14个生产目标不受影响。入口v31/capability
+component-live-continuity-v1才允许选择该目标；只有此目标的PID/启动时间可以变化，Paper、
+Shadow、Web、worker、observer身份均受保护，原14组件Live身份不变校验保持。
+新Live启动后必须产生晚于停止旧进程时点的真实core心跳，不能只看systemd active。
+
+发布顺序：稳定test CI与测试部署→合入/CI workflow bootstrap证据→最终Live制品及托管
+安装器状态夹具→四类当前消费者先独立发布→15:40之后共享补偿入口基线发布→冻结最小配置
+与私有策略文件、实际账号/ACL复核→受控Live dry-run/正式发布→workflow/Deployment/实际
+record validator三方成功→实际订单/成交/心跳/消费者连续性验收。交易日08:45–15:40拒绝重启，
+不以“继续”推定紧急例外。首次迁移阶段可能有共享基线与独立化两次短暂停机，各自留记录。
+
+私有配置显式冻结当前解析的全部risk/fees以及stream/safety/strategy参数，不依赖下一版本默认值；
+file策略复制为root只读私有输入，工作台绝对路径保持，未改原配置。prepared-only没有marker，
+不能当作生产已经迁移。实际源配置生成已只读探针通过；当前Live内存约249MB、峰值318MB，
+进程VmHWM约324MB，拟定MemoryHigh1G/MemoryMax2G/Swap512M；自然策略事件另行观察。
+私有目录default ACL同时保留组件与合法补偿写者，覆盖对方创建的WAL/SHM/KILL；安装后文件
+access ACL单独核验，不用目录default ACL替代。

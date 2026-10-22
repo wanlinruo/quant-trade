@@ -16,6 +16,7 @@ on:
           - web
           - paper
           - shadow-core
+          - live-core
           - reboot-drill
           - limit-up-shadow
           - catalog-verify
@@ -101,7 +102,7 @@ jobs:
           printf '%s' "$RELEASE_ID" | grep -Eq '^[A-Za-z0-9._-]{1,100}$'
           printf '%s' "$TARGET_SHA" | grep -Eq '^[0-9a-f]{40}$'
           case "$COMPONENT" in
-            backtest-worker|web|paper|shadow-core|limit-up-shadow|reboot-drill|catalog-verify|service-checks|storage-report|daily-digest|health-observer|daily-archive|premarket-limits|tushare-sync) ;;
+            backtest-worker|web|paper|shadow-core|live-core|limit-up-shadow|reboot-drill|catalog-verify|service-checks|storage-report|daily-digest|health-observer|daily-archive|premarket-limits|tushare-sync) ;;
             *) exit 2 ;;
           esac
           git fetch --no-tags origin main test
@@ -139,6 +140,8 @@ jobs:
           if state["branch"] != "main" or state["dirty"] or not state["healthy"]:
               raise SystemExit(f"production node is not deployable: {state}")
           required = {"component-release-v15", "systemd-component-boundary-v1", "component-web-readiness-v1"}
+          if os.environ["COMPONENT"] == "live-core":
+              required.add("component-live-continuity-v1")
           if state.get("entrypoint_version", 0) < 27 or not required <= set(state.get("capabilities", [])):
               raise SystemExit("production entrypoint lacks component release capability")
           print(f'production_sha={state["sha"]}')
@@ -198,8 +201,19 @@ jobs:
             .source_sha == $sha and .status == "success"
             and .components == [$component]
             and .before.linux == .after.linux
-            and .before["live-core-pid"] == .after["live-core-pid"]
-            and .before["live-core-started"] == .after["live-core-started"]
+            and (if $component == "live-core" then
+              ((.before["live-core-pid"] != .after["live-core-pid"])
+                or (.before["live-core-started"] != .after["live-core-started"]))
+              and (.after["live-core-pid"] | test("^[1-9][0-9]*$"))
+              and ([.checks[] | select((.name == "live-state-binding" or .name == "live-core-transition")
+                and .status == "passed")] | length) == 2
+              else .before["live-core-pid"] == .after["live-core-pid"]
+                and .before["live-core-started"] == .after["live-core-started"] end)
+            and (if $component == "live-core" then . as $r |
+              all(["paper", "shadow-core", "web", "backtest-worker", "health-observer"][];
+                . as $name | $r.before[$name + "-identity"] != null
+                and $r.before[$name + "-identity"] == $r.after[$name + "-identity"])
+              else true end)
             and (if $component == "web" then
               .before["backtest-worker-identity"] == .after["backtest-worker-identity"]
               else true end)

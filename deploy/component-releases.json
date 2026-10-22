@@ -745,6 +745,55 @@
         "CPUWeight=50",
         "Environment=POLARS_MAX_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 PYTHONDONTWRITEBYTECODE=1"
       ]
+    },
+    "live-core": {
+      "entrypoint": {
+        "command": "qsys-live-core",
+        "target": "qsys.live.core_cli:main"
+      },
+      "scan_roots": [
+        "src/qsys/agent",
+        "src/qsys/backtest",
+        "src/qsys/core",
+        "src/qsys/data",
+        "src/qsys/live",
+        "src/qsys/markets",
+        "src/qsys/ops",
+        "src/qsys/paper",
+        "src/qsys/strategy",
+        "strategies/structural_v1_2.py"
+      ],
+      "release_root": "/opt/qsys/components/live-core/releases",
+      "current": "/opt/qsys/components/live-core/current",
+      "executable": "venv/bin/qsys-live-core",
+      "unit": "qsys-live-core.service",
+      "dropin": "/etc/systemd/system/qsys-live-core.service.d/zz-isolated-release.conf",
+      "state_directories": [],
+      "seed": null,
+      "dropin_lines": [
+        "[Service]",
+        "User=qsys-live-core",
+        "Group=qsys-live-core",
+        "SupplementaryGroups=",
+        "SupplementaryGroups=qsys-observers",
+        "UnsetEnvironment=PYTHONPATH PYTHONHOME VIRTUAL_ENV",
+        "UMask=0027",
+        "WorkingDirectory=/",
+        "ExecStartPre=",
+        "ExecStartPre=/opt/qsys/components/live-core/current/venv/bin/qsys-live-preflight --config /etc/qsys/components/live-core/deploy.toml --strategy /etc/qsys/components/live-core/strategy.py --warehouse /data/qsys/warehouse --require-live --require-kill-released",
+        "ExecStart=",
+        "ReadWritePaths=",
+        "ReadWritePaths=/home/ubuntu/qsys/var/live-core",
+        "ReadWritePaths=/data/qsys/warehouse/live_equity /data/qsys/warehouse/live_fills /data/qsys/warehouse/live_rejects /data/qsys/warehouse/live_recon",
+        "ReadOnlyPaths=/home/ubuntu/qsys/var/workbench /etc/qsys/components/live-core",
+        "InaccessiblePaths=/home/ubuntu/qsys/config",
+        "ExecStart=/opt/qsys/components/live-core/current/venv/bin/qsys-live-core --config /etc/qsys/components/live-core/deploy.toml --warehouse /data/qsys/warehouse --workspace /home/ubuntu/qsys/var/live-core/var/live --state /home/ubuntu/qsys/var/live-core/var/live-state.sqlite3 --lock /home/ubuntu/qsys/var/live-core/var/live-core.lock --kill-switch /home/ubuntu/qsys/var/live-core/var/KILL --journal-warehouse /data/qsys/warehouse --alert-ledger /home/ubuntu/qsys/var/live-core/alerts",
+        "MemoryHigh=1G",
+        "MemoryMax=2G",
+        "MemorySwapMax=512M",
+        "CPUWeight=100",
+        "Environment=POLARS_MAX_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 QSYS_QUERY_MEMORY_MB=256 QSYS_QUERY_MAX_TEMP_MB=512 QSYS_QUERY_THREADS=1 QSYS_QUERY_TEMP_ROOT=/tmp/qsys-live-query PYTHONDONTWRITEBYTECODE=1"
+      ]
     }
   }
 }

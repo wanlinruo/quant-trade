@@ -70,6 +70,8 @@ def main(argv: list[str] | None = None) -> int:
     if config.safety.mode != "live" or not config.safety.orders_enabled:
         raise RuntimeError("实盘核心只在 [safety] mode='live' 且 orders_enabled=true 时启动")
     _validate_isolated_paths(args, config, parser)
+    from qsys.live.state_binding import apply_entry_binding
+    apply_entry_binding(args)
     with single_instance(args.lock):
         transport = RedisTransport.from_config(config)
         if args.validation_namespace is not None:

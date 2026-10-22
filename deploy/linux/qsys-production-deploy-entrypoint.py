@@ -36,7 +36,7 @@ ALLOWED_WINDOWS_COMPONENTS = frozenset({
     "windows-agent", "windows-gateway", "windows-control",
 })
 WINDOWS_COORDINATOR_PATH = "deploy/linux/qsys-windows-deploy-coordinator.py"
-ENTRYPOINT_VERSION = 30
+ENTRYPOINT_VERSION = 31
 ENTRYPOINT_CAPABILITIES = (
     "systemd-apply-v1",
     "systemd-component-boundary-v1",
@@ -69,11 +69,17 @@ ENTRYPOINT_CAPABILITIES = (
     "component-release-v15",
     "component-web-readiness-v1",
     "component-sqlite-seed-v1",
+    "component-live-continuity-v1",
     "emergency-restart-authorization-v1",
 )
 FAILURE_POINTS = frozenset({"none", "linux-health", "windows-switch"})
 GENERIC_COMPONENT_INSTALLER = "scripts/install_component_release.py"
 COMPONENT_PROTECTED_PEERS = {
+    "live-core": {
+        "paper": "qsys-paper.service", "shadow-core": "qsys-shadow-core.service",
+        "web": "qsys-monitor.service", "backtest-worker": "qsys-backtest-worker.service",
+        "health-observer": "qsys-health-observer.service",
+    },
     "reboot-drill": {
         "paper": "qsys-paper.service",
         "shadow-core": "qsys-shadow-core.service",
@@ -287,17 +293,24 @@ def status(config: dict[str, object]) -> dict[str, object]:
 def _restart_window(repo: Path) -> dict[str, object]:
     """Use the local canonical calendar; never infer a holiday from weekdays."""
     code = """
-import json
+import json,sys
+from pathlib import Path
 from datetime import datetime, time
 from zoneinfo import ZoneInfo
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
+from qsys.data.query_budget import query_budget
 
 now = datetime.now(ZoneInfo("Asia/Shanghai"))
-rows = WarehouseQuery(Warehouse("warehouse")).trading_calendar(
-    now.date(), now.date(), market="SSE", open_only=True,
-)
-trading = rows.height > 0
+with query_budget(memory_limit_mb=128, temp_root=Path(sys.argv[2]), max_temp_directory_mb=128, threads=1):
+    rows = WarehouseQuery(Warehouse(sys.argv[1])).trading_calendar(
+        now.date(), now.date(), market="SSE", open_only=False,
+    )
+if rows.height != 1:
+    raise RuntimeError("restart calendar coverage is missing or ambiguous")
+trading = rows["is_open"][0]
+if not isinstance(trading, bool):
+    raise RuntimeError("restart calendar status is unknown")
 blocked = trading and time(8, 45) <= now.time() < time(15, 40)
 print(json.dumps({
     "checked_at": now.isoformat(), "trading_day": trading,
@@ -305,7 +318,9 @@ print(json.dumps({
 }))
 """
     python = repo / ".venv" / "bin" / "python"
-    result = _run([str(python), "-c", code], cwd=repo)
+    audit = Path("/data/qsys/var-deployments")
+    result = _run(["nice", "-n", "10", "ionice", "-c3", "timeout", "30s", str(python), "-B", "-c", code,
+                   str(repo / "warehouse"), str(audit / "query-temp")], cwd=audit)
     value = json.loads(result.stdout)
     if set(value) != {"checked_at", "trading_day", "restart_allowed"}:
         raise ValueError("restart-window probe returned an invalid contract")
@@ -1283,6 +1298,67 @@ def _require_idle_reboot_drill(repo: Path) -> None:
             raise ValueError(f"{unit} is running or unknown; pause timer and wait for the oneshot to finish")
 
 
+
+def _require_live_release_ready(repo: Path, sha: str, *, initial: bool) -> dict[str, str]:
+    # Only the explicit Live target may change Live identity. Bootstrap the
+    # shared compensation reader and every current consumer before this route.
+    if not _restart_window(repo)["restart_allowed"]:
+        raise ValueError("Live component release is outside the maintenance window")
+    if initial:
+        critical = (
+            "src/qsys/live/state_binding.py", "src/qsys/live/store.py",
+            "src/qsys/live/core_cli.py", "scripts/kill.py", "scripts/prepare_live_core_release.py",
+        )
+        for relative in critical:
+            expected = _run(["git", "show", f"{sha}:{relative}"], cwd=repo).stdout.encode()
+            if not (repo / relative).is_file() or _sha256(repo / relative) != hashlib.sha256(expected).hexdigest():
+                raise ValueError("shared compensation and maintenance entrypoints are not ready")
+        for component in ("web", "daily-digest", "health-observer", "service-checks"):
+            current = Path(str(COMPONENT_RELEASES[component]["current"]))
+            paths = ["live/state_binding.py", "live/store.py"]
+            if component == "web":
+                paths.append("web/live_kill_status.py")
+            for relative in paths:
+                files = list((current / "venv/lib").glob(f"python*/site-packages/qsys/{relative}"))
+                if len(files) != 1 or _sha256(files[0]) != _sha256(repo / "src/qsys" / relative):
+                    raise ValueError(f"current production consumer lacks stable binding: {component}")
+    result = _run([
+        str(repo / ".venv/bin/python"), "scripts/prepare_live_core_release.py",
+        "--repo", str(repo), "--check-only",
+    ], cwd=repo)
+    info = json.loads(result.stdout)
+    if set(info) != {"private_config_sha256", "private_strategy_sha256"}:
+        raise ValueError("private Live preparation returned invalid evidence")
+    return info
+
+
+def _wait_live_ready(repo: Path, after: float) -> bool:
+    code = """
+import json,sys
+from datetime import datetime
+from zoneinfo import ZoneInfo
+from qsys.live.config import load_deploy_config
+from qsys.live.redis_transport import RedisTransport
+from qsys.live.messages import Heartbeat
+cfg=load_deploy_config()
+t=RedisTransport.from_config(cfg)
+raw=t.get_key(cfg.streams.heartbeat+':core')
+b=Heartbeat.model_validate_json(raw) if raw else None
+now=datetime.now(ZoneInfo('Asia/Shanghai'))
+at=(b.at.replace(tzinfo=ZoneInfo('Asia/Shanghai')) if b and b.at.tzinfo is None else b.at if b else None)
+print(json.dumps({'ready':bool(b and b.source=='core' and at.timestamp()>=float(sys.argv[1]) and -1<=(now-at).total_seconds()<=5)}))
+"""
+    for attempt in range(20):
+        try:
+            value = json.loads(_run([str(repo / ".venv/bin/python"), "-B", "-c", code, str(after)], cwd=repo).stdout)
+            if value.get("ready") is True and _active("qsys-live-core.service", repo):
+                return True
+        except (OSError, ValueError, subprocess.CalledProcessError):
+            pass
+        if attempt < 19:
+            time.sleep(1)
+    return False
+
 def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int:
     if not RUN_ID_PATTERN.fullmatch(args.run_id):
         raise ValueError("run-id contains unsupported characters")
@@ -1310,6 +1386,11 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
     if args.component == "reboot-drill":
         _require_idle_reboot_drill(repo)
         before_component_active = False
+    live_info = {}
+    if args.component == "live-core":
+        if not before_component_active:
+            raise ValueError("Live target must already be active; no trading activation by deployment")
+        live_info = _require_live_release_ready(repo, args.sha, initial=before_component == "uninstalled")
     before_live = _live_identity(repo)
     protected_units = COMPONENT_PROTECTED_PEERS.get(args.component, {})
     before_protected = {
@@ -1318,6 +1399,7 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
     }
     _live_preflight(repo)
     fingerprints = _fingerprints(config, repo)
+    fingerprints.update({f"live_{name}": value for name, value in live_info.items()})
     preview = {
         "ok": True,
         "dry_run": args.dry_run,
@@ -1330,7 +1412,7 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
         "before_component_active": before_component_active,
         "live_identity": before_live,
         "protected_peer_identities": before_protected,
-        "live_restart": False,
+        "live_restart": args.component == "live-core",
     }
     if args.dry_run:
         print(json.dumps(preview, ensure_ascii=False))
@@ -1349,6 +1431,7 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
     activation_attempted = False
     component_stopped = False
     error = ""
+    live_ready_after = 0.0
     try:
         with tempfile.TemporaryDirectory(prefix="qsys-component-deploy-") as temporary:
             root = Path(temporary)
@@ -1371,9 +1454,26 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
                     _require_idle_limit_up_shadow(repo)
                 if args.component == "reboot-drill":
                     _require_idle_reboot_drill(repo)
+                if args.component == "live-core":
+                    if _require_live_release_ready(repo, args.sha, initial=before_component == "uninstalled") != live_info:
+                        raise ValueError("Live preparation changed while staging")
                 if before_component_active:
                     _run(["sudo", "-n", "systemctl", "stop", component_unit], cwd=repo)
                     component_stopped = True
+                    live_ready_after = time.time()
+                if args.component == "live-core":
+                    # Stop first, then capture committed WAL facts. The marker
+                    # survives code compensation; original database is retained.
+                    result = _run([
+                        str(repo / ".venv/bin/python"), "scripts/prepare_live_core_release.py",
+                        "--repo", str(repo), "--bind", "--audit-root",
+                        str(record_root.with_name(record_root.name + "-live-state")),
+                    ], cwd=repo)
+                    binding_evidence = json.loads(result.stdout)
+                    if binding_evidence.get("ok") is not True or not binding_evidence.get("original_state_retained"):
+                        raise ValueError("Live state binding did not return valid evidence")
+                    checks.append({"name": "live-state-binding", "status": "passed",
+                                   "detail": "latest stopped state verified; original retained; code compensation preserves binding"})
                 activation_attempted = True
                 installer = GENERIC_COMPONENT_INSTALLER
                 installer_environment = dict(os.environ)
@@ -1393,6 +1493,8 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
                     _run(["sudo", "-n", "systemctl", "start", component_unit], cwd=repo)
                     if not _active(component_unit, repo):
                         raise ValueError("component unit did not return to active state")
+                    if args.component == "live-core" and not _wait_live_ready(repo, live_ready_after):
+                        raise ValueError("new Live core did not publish a fresh post-stop heartbeat")
                     if args.component == "web" and not _wait_for_web_healthy(config):
                         raise ValueError("Web component did not return a healthy HTTP endpoint")
                 elif _active(component_unit, repo):
@@ -1408,8 +1510,10 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
         _live_preflight(repo)
         if args.component == "reboot-drill":
             _require_idle_reboot_drill(repo)
-        if after_live != before_live or _head(repo) != production_sha:
+        if _head(repo) != production_sha or (args.component != "live-core" and after_live != before_live):
             raise ValueError("component deployment changed the live core identity or checkout")
+        if args.component == "live-core" and after_live == before_live:
+            raise ValueError("Live target did not change its process identity")
         if _current_component_sha(args.component) != args.sha:
             raise ValueError("component current pointer does not match target SHA")
         if _active(component_unit, repo) != before_component_active:
@@ -1417,9 +1521,10 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
         if after_protected != before_protected:
             raise ValueError("component deployment changed a protected peer identity")
         checks.append({
-            "name": "live-core-continuity", "status": "passed",
+            "name": "live-core-transition" if args.component == "live-core" else "live-core-continuity", "status": "passed",
             "detail": (
                 f"pid={before_live['pid']}; started={before_live['started_monotonic']}; "
+                f"after_pid={after_live['pid']}; after_started={after_live['started_monotonic']}; "
                 f"repo_sha={production_sha}; heartbeat preflight passed before and after"
             ),
         })
@@ -1450,10 +1555,15 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
                 unit_quiesced
                 and _rollback_component(args.component, before_component, repo)
             )
+        if args.component == "live-core" and component_stopped and not activation_attempted:
+            rollback_ok = unit_quiesced  # no code switch occurred; binding is forward-only
         if component_stopped and before_component_active:
             try:
+                recovery_after = time.time()
                 _run(["sudo", "-n", "systemctl", "start", component_unit], cwd=repo)
                 rollback_ok = rollback_ok and _active(component_unit, repo)
+                if args.component == "live-core":
+                    rollback_ok = rollback_ok and _wait_live_ready(repo, recovery_after)
             except (OSError, subprocess.CalledProcessError):
                 rollback_ok = False
         checks.append({"name": "component-deploy", "status": "failed", "detail": error})
@@ -1486,7 +1596,8 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
     except (OSError, subprocess.CalledProcessError):
         after_protected = {name: "unavailable" for name in protected_units}
     fully_rolled_back = (
-        rollback_ok and current_component == before_component and after_live == before_live
+        rollback_ok and current_component == before_component
+        and (args.component == "live-core" or after_live == before_live)
         and _head(repo) == production_sha
         and after_component_active == before_component_active
         and after_protected == before_protected
@@ -1519,6 +1630,8 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
         "config_fingerprints": fingerprints, "checks": checks,
         "rollback_targets": {args.component: before_component},
         "migration_summary": (
+            "Live stable state binding; original retained; code compensation never restores stale state"
+            if args.component == "live-core" else
             "limit-up-shadow initial SQLite history seed; legacy database retained"
             if args.component == "limit-up-shadow" and before_component == "uninstalled"
             else "component release only; no data or state migration"
