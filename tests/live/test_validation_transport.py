@@ -120,3 +120,29 @@ def test_shadow_entry_passes_wrapped_or_legacy_transport_and_always_shadow(
         assert isinstance(transport, ValidationTransport) and transport.namespace == namespace
     else:
         assert transport is raw
+
+
+@pytest.mark.parametrize("namespace", [None, PREFIX])
+def test_shadow_held_instance_lock_prevents_initialization(tmp_path, monkeypatch, namespace):
+    import sys
+    from unittest.mock import Mock
+    from qsys.agent.locking import AlreadyRunning, single_instance
+    from qsys.live import shadow_cli
+    from qsys.live.config import DeployConfig, SafetyConfig
+
+    lock = tmp_path / "shadow-core.lock"
+    argv = ["shadow", "--lock", str(lock)]
+    if namespace:
+        argv += ["--validation-namespace", namespace]
+    monkeypatch.setattr(sys, "argv", argv)
+    monkeypatch.setattr(shadow_cli, "load_deploy_config", lambda _: DeployConfig(
+        safety=SafetyConfig(mode="shadow", orders_enabled=False)))
+    forbidden = Mock(side_effect=AssertionError("duplicate initialized before locking"))
+    monkeypatch.setattr(shadow_cli.RedisTransport, "from_config", forbidden)
+    for name in ("resolve_strategy", "LiveStore", "LiveRuntime", "ledger", "strategy_sinks"):
+        monkeypatch.setattr(shadow_cli, name, forbidden)
+    with single_instance(lock):
+        with pytest.raises(AlreadyRunning):
+            shadow_cli.main()
+    forbidden.assert_not_called()
+    assert not (tmp_path / "var").exists()
