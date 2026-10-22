@@ -64,7 +64,7 @@ def test_monitor_legacy_script_delegates_to_packaged_entrypoint():
     assert legacy.build_app is packaged.build_app
 
 
-@pytest.mark.parametrize("name", ["qsys.ops.service_checks_index", "qsys.data.price_limits_publisher", "qsys.ops.windows_reboot_baseline"])
+@pytest.mark.parametrize("name", ["qsys.ops.service_checks_index", "qsys.data.price_limits_publisher", "qsys.ops.windows_reboot_baseline", "qsys.live.core_cli"])
 def test_packaged_production_entrypoint_imports(name):
     importlib.import_module(name)
 
@@ -75,3 +75,9 @@ def test_fixed_windows_data_entrypoint_imports(path):
     spec = importlib.util.spec_from_file_location("qsys_windows_data_gateway", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+
+
+def test_live_legacy_script_uses_packaged_guarded_entrypoint():
+    legacy = importlib.import_module("scripts.run_live")
+    packaged = importlib.import_module("qsys.live.core_cli")
+    assert legacy.main is packaged.main
