@@ -53,52 +53,53 @@ def main() -> int:
         raise RuntimeError(
             "影子核心只在 [safety] mode='shadow' 且 orders_enabled=false 时启动"
         )
-    transport = RedisTransport.from_config(config)
-    if args.validation_namespace is not None:
-        from qsys.live.validation_transport import ValidationTransport
+    with single_instance(args.lock):
+        transport = RedisTransport.from_config(config)
+        if args.validation_namespace is not None:
+            from qsys.live.validation_transport import ValidationTransport
 
-        transport = ValidationTransport(transport, args.validation_namespace)
-    # 判断解析后的地址：只配了影子那个、没配 webhook_url 时也要能发。
-    # CRITICAL 同时进运维群——停机既是交易事件也是运维事故。
-    alerts = AlertBus(strategy_sinks(
-        config.alerts.strategy_url(shadow=True), config.alerts.ops_url,
-        timeout=config.alerts.timeout_seconds,
-    ), ledger(args.alert_ledger))
-    if args.strategy:
-        source = StrategySource(Path(args.strategy))
-    else:
-        source = resolve_strategy(config.strategy, Path(args.workspace))
-        if source.follows_paper:
-            log.info("shadow_core.follows_paper", account=source.paper_account_id,
-                     name=source.paper_account_name, status=source.paper_status,
-                     backtest=source.backtest_id, version=source.version_id,
-                     params=dict(source.params))
-    runtime = LiveRuntime(
-        source.path, Path(args.warehouse), load_trading_calendar(args.config),
-        QuoteClient(transport, config.streams, consumer="shadow-core",
-                    timeout=DECISION_TIMEOUT),
-        transport, config.streams, LiveStore(args.state),
-        local_kill_path=Path(args.kill_switch),
-        journal_warehouse=(
-            Path(args.journal_warehouse) if args.journal_warehouse else None
-        ),
-        alerts=alerts, risk=config.risk, shadow=True, params=dict(source.params),
-    )
-    guard = TickFailureGuard(alerts)
-    with single_instance(args.lock), runtime.heartbeats:
-        log.info("shadow_core.started", strategy=str(source.path),
-                 follows=source.paper_account_id or None)
-        while True:
-            try:
-                runtime.tick()
-            except Exception as exc:
-                # 每秒重复同一条错误会把日志淹掉（2026-09-18 刷了 2 万条）：
-                # 降频打印，持续失败由 guard 报一次告警。
-                if guard.failed(str(exc), now=datetime.now()):
-                    log.error("shadow_core.tick_failed", error=str(exc))
-            else:
-                guard.succeeded(now=datetime.now())
-            time.sleep(max(0.2, args.poll))
+            transport = ValidationTransport(transport, args.validation_namespace)
+        # 判断解析后的地址：只配了影子那个、没配 webhook_url 时也要能发。
+        # CRITICAL 同时进运维群——停机既是交易事件也是运维事故。
+        alerts = AlertBus(strategy_sinks(
+            config.alerts.strategy_url(shadow=True), config.alerts.ops_url,
+            timeout=config.alerts.timeout_seconds,
+        ), ledger(args.alert_ledger))
+        if args.strategy:
+            source = StrategySource(Path(args.strategy))
+        else:
+            source = resolve_strategy(config.strategy, Path(args.workspace))
+            if source.follows_paper:
+                log.info("shadow_core.follows_paper", account=source.paper_account_id,
+                         name=source.paper_account_name, status=source.paper_status,
+                         backtest=source.backtest_id, version=source.version_id,
+                         params=dict(source.params))
+        runtime = LiveRuntime(
+            source.path, Path(args.warehouse), load_trading_calendar(args.config),
+            QuoteClient(transport, config.streams, consumer="shadow-core",
+                        timeout=DECISION_TIMEOUT),
+            transport, config.streams, LiveStore(args.state),
+            local_kill_path=Path(args.kill_switch),
+            journal_warehouse=(
+                Path(args.journal_warehouse) if args.journal_warehouse else None
+            ),
+            alerts=alerts, risk=config.risk, shadow=True, params=dict(source.params),
+        )
+        guard = TickFailureGuard(alerts)
+        with runtime.heartbeats:
+            log.info("shadow_core.started", strategy=str(source.path),
+                     follows=source.paper_account_id or None)
+            while True:
+                try:
+                    runtime.tick()
+                except Exception as exc:
+                    # 每秒重复同一条错误会把日志淹掉（2026-09-18 刷了 2 万条）：
+                    # 降频打印，持续失败由 guard 报一次告警。
+                    if guard.failed(str(exc), now=datetime.now()):
+                        log.error("shadow_core.tick_failed", error=str(exc))
+                else:
+                    guard.succeeded(now=datetime.now())
+                time.sleep(max(0.2, args.poll))
 
 
 if __name__ == "__main__":
