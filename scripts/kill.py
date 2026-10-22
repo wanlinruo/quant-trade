@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import sys
+import os
 from pathlib import Path
 
 # 名称 -> (Redis 键, 本地标记)。取值与 runtime.py、run_shadow.py 必须一致，
@@ -53,7 +54,7 @@ def _transport():
         return MemoryTransport(), None
 
 
-def _switch(name: str, transport):
+def _switch(name: str, transport, *, require_local_write: bool = False):
     from qsys.live.kill_switch import KillSwitch
 
     key, path = TARGETS[name]
@@ -62,6 +63,8 @@ def _switch(name: str, transport):
         path = local_kill_path(path)
     if name == "shadow" and SHADOW_COMPONENT_DROPIN.is_file():
         path = SHADOW_COMPONENT_KILL
+    if require_local_write and (not path.parent.is_dir() or not os.access(path.parent, os.R_OK | os.W_OK | os.X_OK)):
+        raise PermissionError("本地停机目录不可读写，拒绝解除")
     return KillSwitch(transport, key=key, local_path=path)
 
 
@@ -109,9 +112,9 @@ def main() -> int:
             return 2
         transport, cfg = _transport()
         try:
-            switch = _switch(name, transport)
+            switch = _switch(name, transport, require_local_write=True)
         except (OSError, ValueError):
-            print("状态绑定异常，拒绝解除停机", file=sys.stderr)
+            print("状态绑定或本地目录权限异常，拒绝解除停机", file=sys.stderr)
             return 1
         switch.release()
         _announce(transport, cfg, "resume", "manual")

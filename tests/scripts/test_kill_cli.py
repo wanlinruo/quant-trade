@@ -162,3 +162,13 @@ def test_broken_live_binding_still_stops_both_known_paths_and_refuses_resume(at,
     assert _run(monkeypatch, "resume", "live") == 1
     assert transport.get_key("control:kill") is not None
     assert (root / "private/var/KILL").exists()
+
+
+def test_resume_checks_local_directory_access_before_clearing_remote(at, monkeypatch):
+    root, transport = at
+    (root / "KILL").write_text("keep stopped")
+    transport.set_key("control:kill", "keep stopped")
+    monkeypatch.setattr(kill.os, "access", lambda *args: False)
+    assert _run(monkeypatch, "resume", "live") == 1
+    assert transport.get_key("control:kill") == "keep stopped"
+    assert (root / "KILL").read_text() == "keep stopped"
