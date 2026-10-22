@@ -207,14 +207,15 @@ def setup_live_fixture(checkout, python):
     if missing.returncode == 0 or 'journal directory missing or unsafe before Live stop' not in missing.stderr:
         raise ValueError('missing journal must fail before Live stop or state binding')
     assert effective('qsys-live-core.service') == before
-    assert not Path('/etc/qsys/components/live-core/state-binding-v1').exists()
-    assert not Path('/home/ubuntu/qsys/var/live-core/var/live-state.sqlite3').exists()
+    for path in ('/etc/qsys/components/live-core/state-binding-v1',
+                 '/home/ubuntu/qsys/var/live-core/var/live-state.sqlite3'):
+        assert run(['sudo', 'test', '!', '-e', path], check=False).returncode == 0
     run(["sudo", "install", "-d", "-m", "0755", "/data/qsys/warehouse/live_rejects"])
     run([*base, "--prepare-only"])
     run(["sudo", "setfacl", "-m", "u:qsys-live-core:r-x", "/data/qsys/warehouse/live_recon"])
     denied = run([*base, "--check-only"], check=False)
     assert denied.returncode != 0 and effective('qsys-live-core.service') == before
-    assert not Path('/etc/qsys/components/live-core/state-binding-v1').exists()
+    assert run(['sudo', 'test', '!', '-e', '/etc/qsys/components/live-core/state-binding-v1'], check=False).returncode == 0
     run(["sudo", "setfacl", "-m", "u:qsys-live-core:rwx", "/data/qsys/warehouse/live_recon"])
     run([*base, "--check-only"])
     seed = live_fixture_command(checkout, python, "seed", legacy=True)
