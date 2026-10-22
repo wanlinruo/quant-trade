@@ -29,6 +29,55 @@ CONFIG_ROOT = Path('/etc/qsys/components/live-core')
 PRIVATE_CONFIG = CONFIG_ROOT / 'deploy.toml'
 PRIVATE_STRATEGY = CONFIG_ROOT / 'strategy.py'
 JOURNAL_TABLES = ('live_equity', 'live_fills', 'live_rejects', 'live_recon')
+JOURNAL_ROOT = Path('/data/qsys/warehouse')
+
+
+def journal_directories():
+    directories = tuple(JOURNAL_ROOT / name for name in JOURNAL_TABLES)
+    for directory in (JOURNAL_ROOT, *directories):
+        if directory.is_symlink() or not directory.is_dir():
+            raise ValueError(f'journal directory missing or unsafe before Live stop: {directory}')
+    def fail(error):
+        raise error
+    for directory in directories:
+        for current, dirs, files in os.walk(directory, onerror=fail):
+            for name in dirs + files:
+                path = Path(current) / name
+                if path.is_symlink() or not (path.is_dir() or path.is_file()):
+                    raise ValueError(f'journal entry type invalid before Live stop: {path}')
+    return directories
+
+
+def prepare_journals():
+    # Validate every root before any ACL mutation; empty tables are legitimate,
+    # but their directories must be prepared explicitly, without fake records.
+    for directory in journal_directories():
+        sudo('setfacl', '-R', '-m', 'u:qsys-live-core:rwX,g:qsys-observers:r-X', str(directory))
+        for child in (directory, *(p for p in directory.rglob('*') if p.is_dir())):
+            sudo('setfacl', '-d', '-m', 'u:qsys-live-core:rwx,u:ubuntu:rwx,g:qsys-observers:r-x', str(child))
+
+
+def check_journals():
+    directories = journal_directories()
+    # The real Unix identity checks every existing file and directory, without
+    # creating a probe file or changing a running producer's warehouse.
+    code = '''import os,sys
+from pathlib import Path
+def fail(error): raise error
+for root in map(Path,sys.argv[1:]):
+ for current,dirs,files in os.walk(root,onerror=fail):
+  directory=Path(current)
+  if not os.access(directory,os.R_OK|os.W_OK|os.X_OK):
+   raise SystemExit('Live journal directory permissions invalid: '+str(directory))
+  for name in dirs+files:
+   path=directory/name
+   if path.is_symlink() or not (path.is_dir() or path.is_file()):
+    raise SystemExit('Live journal entry type invalid: '+str(path))
+   if path.is_file() and not os.access(path,os.R_OK|os.W_OK):
+    raise SystemExit('Live journal file permissions invalid: '+str(path))
+'''
+    sudo('-u', 'qsys-live-core', '/usr/bin/python3', '-I', '-B', '-c', code,
+         *(str(directory) for directory in directories))
 
 
 def run(*args):
@@ -117,10 +166,12 @@ def prepare(repo):
     config, strategy = expected_config(repo)
     _install_bytes(config, PRIVATE_CONFIG)
     _install_bytes(strategy, PRIVATE_STRATEGY)
+    prepare_journals()
     return check(repo)
 
 
 def check(repo):
+    check_journals()
     expected, strategy = expected_config(repo)
     for path in (PRIVATE_CONFIG, PRIVATE_STRATEGY):
         info = path.lstat()
@@ -181,13 +232,6 @@ def bind(repo, audit_root):
         else:
             fingerprint = state_fingerprint(target.state)
         sudo('chown', 'qsys-live-core:qsys-live-core', str(target.lock))
-        for name in JOURNAL_TABLES:
-            directory = Path('/data/qsys/warehouse') / name
-            if not directory.is_dir() or directory.is_symlink():
-                raise ValueError('expected existing journal table directory')
-            sudo('setfacl', '-R', '-m', 'u:qsys-live-core:rwX,g:qsys-observers:r-X', str(directory))
-            for child in (directory, *(p for p in directory.rglob('*') if p.is_dir())):
-                sudo('setfacl', '-d', '-m', 'u:qsys-live-core:rwx,u:ubuntu:rwx,g:qsys-observers:r-x', str(child))
         result = {**info, 'ok': True, 'state_fingerprint': fingerprint,
                   'original_state_retained': True, 'binding_retained_on_code_compensation': True}
         (audit_root / 'binding.json').write_text(json.dumps(result, indent=2) + '\n')
