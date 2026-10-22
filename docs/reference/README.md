@@ -1,5 +1,10 @@
 # 参考资料
 
+## Redis5只读能力隔离（#488）
+
+见 `../plans/redis-readonly-production-isolation.md`：真实UID白名单GET入口、按账号端口门禁、
+四读取组件与无Redis依赖checks的分阶段切换及残余信任边界。
+
 ## Live Core最后独立迁移（#497）
 
 见 `../plans/live-core-production-isolation.md`：包内入口默认兼容、预生产传输/文件/通知

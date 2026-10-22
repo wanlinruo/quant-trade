@@ -407,7 +407,7 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
 
     from qsys.live.config import load_deploy_config
-    from qsys.live.redis_transport import RedisTransport
+    from qsys.live.readonly_transport import readonly_from_config
 
     deploy = load_deploy_config(args.config)
     bus = AlertBus(ops_sinks(deploy), ledger(args.alert_ledger))
@@ -420,7 +420,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     transport = None
     try:
-        transport = RedisTransport.from_config(deploy)
+        transport = readonly_from_config(deploy)
         heartbeat = _heartbeat_reader(transport, deploy.streams.heartbeat)
     except Exception as exc:
         # Redis 失联不应让 systemd/Windows 观测一起消失。

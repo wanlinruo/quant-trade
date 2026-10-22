@@ -71,12 +71,12 @@ def build_app(
     limits_prefix = "state:price_limits"
     try:
         from qsys.live.config import load_deploy_config
-        from qsys.live.redis_transport import RedisTransport
+        from qsys.live.readonly_transport import readonly_from_config
 
         deploy = load_deploy_config(config_path)
         strategy_cfg = deploy.strategy
         strategy_mode = deploy.safety.mode
-        transport = RedisTransport.from_config(deploy)
+        transport = readonly_from_config(deploy)
         market_snapshot_key = deploy.streams.market_snapshot
         market_schedule_key = deploy.streams.market_schedule
         limits_prefix = deploy.streams.price_limits
