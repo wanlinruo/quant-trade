@@ -89,8 +89,9 @@
       "dropin_lines": [
         "[Service]",
         "User=qsys-web",
-        "Group=qsys-workbench",
-        "SupplementaryGroups=qsys-web",
+        "Group=qsys-web",
+        "SupplementaryGroups=",
+        "SupplementaryGroups=qsys-observers",
         "WorkingDirectory=/",
         "Environment=QSYS_WINDOWS_SSH_KEY=/etc/qsys/web/windows-task-readonly",
         "Environment=QSYS_LIVE_KILL_PATH=/home/ubuntu/qsys/var/KILL",
