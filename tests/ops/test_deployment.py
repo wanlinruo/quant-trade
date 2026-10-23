@@ -515,7 +515,7 @@ def test_web_component_has_an_isolated_release_and_minimal_write_boundary() -> N
     # Workbench保留原owner/共享worker组；Web通过精确named ACL写入，
     # 不继承该共享组对回测结果的额外Unix写权限。私有配置仍由私有组读取。
     assert "WorkingDirectory=/" in dropin
-    assert "QSYS_WINDOWS_SSH_KEY=/etc/qsys/web/windows-task-readonly" in dropin
+    assert "QSYS_WINDOWS_SSH_KEY" not in dropin
     assert "ExecStart=/opt/qsys/components/web/current/venv/bin/qsys-web" in dropin
     assert "--strategies /home/ubuntu/qsys/var/workbench/strategies" in dropin
     assert dropin.count("ReadWritePaths=") == 2  # reset plus one explicit namespace

@@ -1,5 +1,15 @@
 # 运行单元分层验收矩阵
 
+## Web 的 Windows 状态读取契约（#511）
+
+Web 的 `build_app()` 始终配置 `HealthStoreReader`，服务页只读 observer 的持久化
+观测；Windows 看门狗也使用该协议，不由 Web 发起 SSH。无样本或过期显示未知，
+真实故障保留故障状态，不借其他组件凭据补探测。Windows 只读任务探测仍由
+health-observer 承担，其专属 key 不属于 Web。#511 移除 Web 无效的 SSH 回调与缺失
+key 环境声明；生产发布及实际 UID 读取证据以 Issue 最新记录为准。
+
+## 历史矩阵
+
 快照：2026-10-22 20:12（Asia/Shanghai）。当前生产与历史证据以 #330 和各子 Issue
 最新记录为准；写操作前重新核验。**15/15个manifest目标已独立生产部署，Live Core已迁移；Shadow保持停用、reboot-drill保持dry-run，#330尚未整体完成。**
 

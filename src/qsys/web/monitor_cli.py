@@ -32,7 +32,7 @@ from qsys.web.limit_up_research import (
     HistoricalSecurityNameLookup,
     LimitUpResearchReader,
 )
-from qsys.web.service_views import ServiceConsole, windows_task_show
+from qsys.web.service_views import ServiceConsole
 from qsys.web.research_jobs import ResearchJobConsole, ResearchSubmissionProfile
 from qsys.web.views import MonitorService
 from qsys.web.workbench import WorkbenchStore
@@ -137,12 +137,7 @@ def build_app(
             calendar=trading_calendar,
             # 没有 Redis 时不判心跳（显示未知），不能把「查不到」当成「进程已死」
             heartbeat=monitor.heartbeat_status if transport is not None else None,
-            windows_task=lambda task: windows_task_show(
-                task,
-                host=os.environ.get("QSYS_WINDOWS_SSH_HOST", "Administrator@118.25.42.149"),
-                key=Path(os.environ.get("QSYS_WINDOWS_SSH_KEY",
-                                        "/home/ubuntu/.ssh/id_ed25519_winnode")),
-            ),
+            # Web只读observer记录；缺失或过期显示未知，不回退SSH探测。
             health_store=(
                 HealthStoreReader(tuple(dict.fromkeys((
                     Path(health_state_path), workspace.parent / "service-health.sqlite3",
