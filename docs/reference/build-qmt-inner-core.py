@@ -10,7 +10,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 OUTPUT = ROOT / "docs/reference/qmt-inner-decision-core.py"
-SOURCES = ("params.py", "gate.py", "allocation.py", "exits.py")
+SOURCES = ("params.py", "gate.py", "allocation.py", "exits.py", "entry.py", "selection.py")
+HISTORY_INPUT = "qmt-inner-history-input.py"
 GATE_FUNCTIONS = frozenset({
     "three_or", "three_and", "_num", "classify", "_classify_low_main",
     "_classify_high_main", "_classify_high_chinext", "gate_allow",
@@ -81,11 +82,16 @@ def build_core(root: Path = ROOT) -> str:
                 if not (isinstance(node, ast.FunctionDef) and node.name in GATE_FUNCTIONS
                         or isinstance(node, ast.ClassDef) and node.name == "Classification"):
                     continue
+            elif filename == "selection.py":
+                if not (isinstance(node, ast.FunctionDef) and node.name == "_stock_factors"):
+                    continue
             elif isinstance(node, (ast.Import, ast.ImportFrom, ast.Expr)):
                 continue
             if not isinstance(node, (ast.Assign, ast.AnnAssign, ast.FunctionDef, ast.ClassDef)):
                 raise ValueError("unsupported top-level source construct")
             selected.append(node)
+    history_input = (root / "docs/reference" / HISTORY_INPUT).read_bytes()
+    hashes[HISTORY_INPUT] = hashlib.sha256(history_input).hexdigest()
     module = ast.Module(body=selected, type_ignores=[])
     module = PortableSyntax().visit(module)
     ast.fix_missing_locations(module)
@@ -99,7 +105,9 @@ def build_core(root: Path = ROOT) -> str:
         "from collections import namedtuple as _namedtuple\n\n"
         "SOURCE_SHA256 = {!r}\n\n".format(hashes)
     )
-    output = header + ast.unparse(module) + "\n"
+    # Keep the handwritten input container separate from the transformed
+    # production functions; its methods operate only on explicit finite data.
+    output = header + history_input.decode("utf-8") + "\n" + ast.unparse(module) + "\n"
     ast.parse(output, feature_version=(3, 6))
     return output
 

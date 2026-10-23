@@ -8,24 +8,47 @@
 
 ## 计算核心的范围
 
-`qmt-inner-decision-core.py` 仅包含当前 `params/gate/allocation/exits` 的纯计算函数和常量。
+`qmt-inner-decision-core.py` 包含当前 `params/gate/allocation/exits/entry` 的纯计算函数和常量，
+以及 `selection._stock_factors` 的10日收益/60日高点距离计算。
 本地生成器 `build-qmt-inner-core.py` 从源码 AST 提取，移除类型注解与说明文档，
 把冻结 dataclass 输出记录转成不可变 namedtuple；函数中的算术、比较、分支与默认值保留。
+入场函数体仍直接取自原AST，配合内存History对象替代其使用的少量Polars列/窗口操作。
 生成物只有标准库 collections 依赖，语法按 Python3.6 解析；这不是在 Python3.6 解释器或
-江海新版上的执行证据。每个原文件 SHA-256 写进生成物，避免手抄阈值和双份算法各自漂移。
+江海新版上的执行证据。6个原文件及历史输入容器的SHA-256写进生成物，避免手抄阈值和双份算法各自漂移。
 
 本机命令：
 
 ```bash
 uv run python docs/reference/build-qmt-inner-core.py
 uv run python docs/reference/build-qmt-inner-core.py --check
-uv run pytest tests/scripts/test_qmt_inner_decision_core.py tests/scripts/test_qmt_inner_readonly_probe.py -q
+uv run pytest tests/scripts/test_qmt_inner_entry_core.py tests/scripts/test_qmt_inner_decision_core.py tests/scripts/test_qmt_inner_readonly_probe.py -q
 ```
 
 生成器只在本地开发机运行，不能复制到 QMT 中。生成物没有 init/handlebar、行情接口、账户、
 timer、Store 或委托接口；不能独立承担策略，也没有实现初始化完整性门禁。
 allocate 的 `ORDER_SUBMITTED` 是原计算函数的结果标签，**不是发单或受理回报**。
-候选池、入场判定、生态计算、分支路由、逐lot记账、T+1和风控适配仍未移植。
+候选池、全市场生态计算、分支路由、逐lot记账、T+1和风控适配仍未移植。
+其中LOW_MAIN的0.020附加竞价量过滤仍在selection._route，不能将check_low_open为真
+直接当作整条入场路线已通过；LOW优先且不回落HIGH的路由顺序也仍由后续适配器承接。
+
+### 历史输入的有效范围
+
+`History(columns)` 来自本地材料 `qmt-inner-history-input.py`，生成器将其源码并入计算核心。
+它不连接QMT、不读取文件、不提供外部输入通道；未来仅由经过实测的沙箱原生适配器组装。
+当前测试中的手工数据全部是离线夹具，不是可以注入QMT运行时的盘前数据。
+
+- 必须明确提供open/high/low/close/volume/amount六列，长度相同；只接受有限的Python数值，
+  拒绝None、NaN、无穷、布尔和字符串。缺失报错，不填值，不做类型或单位兼容转换。
+- 数值序列复制为tuple，原列表后续修改不影响本次计算。tail只取指定尾部，不排序、不补行。
+  数据日期、升序、PIT、复权和单位仍须由后续原生适配器确认，容器不推断这些事实。
+- 入场差分限定上述完整有限输入域；现有Polars聚合可能接受的缺失输入不宣称等价。
+  拒绝缺失是输入完整性检查，不把其余数据改写成默认值。
+- HIGH的现有公式以规范日线volume为手、amount为元，市值为亿元；竞价量与昨日量须同单位。
+  合成夹具验证的是现有规范单位下算术一致，**没有证明QMT原生接口恰好使用这些单位**。
+  新版单位未实测前，不将其原始DataFrame直接交给该核心，也不通过股/100等兼容转换凑输入。
+- 60日相对位置、从倒数第3天寻找前高、放量严格大于0.9倍、HIGH竞价量严格模式及个股
+  10日/60日因子与原函数逐字段对照。测试覆盖的require_auction_volume=False仅用于
+  保留既有函数语义，不授权将当前生产的严格模式关闭。
 
 ## 生产基线与费用、额度的区别
 
@@ -88,7 +111,7 @@ QMT返回同名字段或相同单位。新版接口列名、单位和权限在�
 | 复权/竞价/单位 | 文档有除权因子、日线和tick | 新版实测因子锚点、09:25:10可见撮合事实及volume/amount单位；不为复现结果添加兼容性猜测 |
 
 这些是待验证缺口，不是已经断言QMT不支持。可用性要以江海新版正式接口实测为准；
-在确认前不实现依赖相应字段的选股适配，不把当日公开样本通过写成历史全覆盖。
+在确认前只移植已知纯计算，不实现依赖未确认字段的选股数据适配，不把公开样本通过写成历史全覆盖。
 
 ## 缺失与默认值的边界
 

@@ -1,0 +1,14 @@
+{
+  "ObservedAt": "2026-10-23T22:41:29.1533397+08:00",
+  "Scope": "read-only process and PE version inventory",
+  "Processes": [
+    {
+      "Name": "XtMiniQmt",
+      "PID": 3212,
+      "Path": "C:\\self\\江海证券QMT实盘_交易\\bin.x64\\XtMiniQmt.exe",
+      "FileVersion": "2,1,19,0",
+      "ReadError": null
+    }
+  ],
+  "transport_encoding": "gb18030"
+}

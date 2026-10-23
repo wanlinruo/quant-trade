@@ -40,7 +40,9 @@ def test_generation_is_reproducible_and_binds_exact_sources(core):
     source = (ROOT / "docs/reference/qmt-inner-decision-core.py").read_text()
     assert source == generator.build_core()
     for name, digest in core.SOURCE_SHA256.items():
-        assert digest == hashlib.sha256((ROOT / "src/qsys/strategy/structural" / name).read_bytes()).hexdigest()
+        path = (ROOT / "docs/reference" / name if name == generator.HISTORY_INPUT
+                else ROOT / "src/qsys/strategy/structural" / name)
+        assert digest == hashlib.sha256(path.read_bytes()).hexdigest()
     ast.parse(source, feature_version=(3, 6))
     tree = ast.parse(source)
     imports = [node.module for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)]
