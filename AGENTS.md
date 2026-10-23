@@ -217,6 +217,11 @@ manifest → `HANDOFF.md` → 其他历史文档。
   竞价时刻验证实际取源；迁移当天两库相同的历史快照不能证明动态绑定已生效（#525）。
   Redis 只读权限验收还须覆盖模拟账户详情与全局心跳页面的 market/paper 键（#526），
   不能仅以首页、服务页和 kill API 通过认定全部页面依赖已覆盖。
+- **SQLite只读验收覆盖辅助文件生命周期**（#529）：一次读取成功和当前WAL/SHM的ACL正确，
+  不代表生产者短连接被GC关闭后仍可读。最后一个连接关闭可能移除辅助文件；只读目录与
+  systemd只读挂载分别会报READONLY_DIRECTORY或CANTOPEN。由生产者保留不持有事务的连接，
+  用真实只读UID和相同unit沙箱验证GC后、新提交及关闭前后行为；不开放业务目录写权限，
+  不用immutable忽略WAL。状态库读取失败要明确告警，不能直接描述为已证实的交易事件失败。
 - 往节点同步代码**禁止整目录 rsync**（会毁掉 `warehouse` 软链接和 `.venv`）：逐个列文件，
   或带 `--exclude '.venv/' --exclude 'warehouse/' --exclude '.git/' --exclude 'var/'`。
   动节点前先 `ls -la` 看清目标是文件、目录还是软链接。

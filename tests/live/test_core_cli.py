@@ -62,6 +62,8 @@ def test_default_protocol_and_explicit_isolated_paths(monkeypatch, tmp_path, iso
     monkeypatch.setattr(core_cli, "ledger", lambda root: ledger_calls.append(root))
 
     def runtime(*args, **kwargs):
+        assert args[6]._reader_anchor is not None
+        assert not args[6]._reader_anchor.in_transaction
         seen.append((args, kwargs))
         return SimpleNamespace(heartbeats=nullcontext(), tick=lambda: (_ for _ in ()).throw(Stop()))
 
@@ -70,6 +72,7 @@ def test_default_protocol_and_explicit_isolated_paths(monkeypatch, tmp_path, iso
     with pytest.raises(Stop):
         core_cli.main(argv)
     args, options = seen[0]
+    assert args[6]._reader_anchor is None  # Stop异常退出也必须关闭生产者锚点。
     assert options["shadow"] is False and options["params"] == {"fixed": 7}
     if isolated:
         assert isinstance(args[4], ValidationTransport)

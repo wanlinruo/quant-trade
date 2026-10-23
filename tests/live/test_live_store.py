@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from pathlib import Path
 
 import pytest
 
@@ -6,6 +7,41 @@ from qsys.live.messages import AccountSnapshot, PositionSnapshot
 from qsys.live.store import LiveStore
 from qsys.core.trading import Order, OrderType, Side
 from qsys.core.types import Symbol
+
+
+def test_pinned_producer_keeps_sidecars_and_readers_see_new_commits(tmp_path):
+    import gc
+    import sqlite3
+
+    path = tmp_path / "state.sqlite3"
+    store = LiveStore(path)
+    store.pin_reader_sidecars()
+    anchor = store._reader_anchor
+    store.pin_reader_sidecars()
+    assert store._reader_anchor is anchor
+    assert not anchor.in_transaction
+    try:
+        for n in range(3):
+            assert store.begin_event(f"event-{n}", datetime.now(), "checkpoint")
+            gc.collect()
+            assert Path(str(path) + "-wal").is_file()
+            assert Path(str(path) + "-shm").is_file()
+            with sqlite3.connect(path.as_uri() + "?mode=ro", uri=True) as reader:
+                assert reader.execute("SELECT count(*) FROM live_events").fetchone()[0] == n + 1
+            assert not anchor.in_transaction
+    finally:
+        store.close()
+    assert store._reader_anchor is None
+    store.close()
+
+
+def test_read_only_store_cannot_pin_or_create_sidecars(tmp_path):
+    path = tmp_path / "absent.sqlite3"
+    reader = LiveStore(path, read_only=True)
+    with pytest.raises(RuntimeError, match="only a live state producer"):
+        reader.pin_reader_sidecars()
+    reader.close()
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_read_only_store_reads_committed_wal_and_rejects_writes(tmp_path):
