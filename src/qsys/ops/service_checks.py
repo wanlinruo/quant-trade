@@ -419,7 +419,9 @@ def _shadow_events(ctx: CheckContext) -> CheckResult:
     expected = "当日策略事件都已执行"
     if ctx.shadow_state is None:
         return CheckResult(SKIP, expected, "未配置影子盘状态库")
-    path = Path(ctx.shadow_state)
+    from qsys.live.state_binding import state_path
+
+    path = state_path(Path(ctx.shadow_state))
     if not path.exists():
         return CheckResult(BAD, expected, f"找不到状态库 {path}")
     with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as con:

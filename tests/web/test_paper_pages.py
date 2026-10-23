@@ -27,7 +27,7 @@ def _calendar():
 
 
 def make_client(warehouse, tmp_path: Path, paper_calendar=_calendar, config=None,
-                lineage=None):
+                lineage=None, transport=None):
     """lineage：返回承袭信息的无参函数（模拟 run_monitor 传进来的那个）。"""
     path = tmp_path / "workbench.sqlite3"
     workbench, paper = WorkbenchStore(path), PaperStore(path)
@@ -51,12 +51,35 @@ def make_client(warehouse, tmp_path: Path, paper_calendar=_calendar, config=None
     )
     cfg = WebConfig()
     app = create_app(
-        MonitorService(SessionJournal(warehouse), config=cfg), cfg,
+        MonitorService(SessionJournal(warehouse), config=cfg, transport=transport), cfg,
         backtests=BacktestService(tmp_path / "runs"), workbench=workbench,
         paper=paper, paper_calendar=paper_calendar,
         shadow_lineage=lineage,
     )
     return TestClient(app), job
+
+
+def test_paper_detail_and_live_page_under_precise_get_whitelist(warehouse, tmp_path):
+    import json
+    from qsys.live.redis_readonly_gateway import request_key
+    from qsys.live.transport import MemoryTransport
+
+    keys = [f"state:heartbeat:{s}" for s in ("agent", "core", "market", "paper")]
+    policy = {"readers": {"1001": {"keys": keys, "date_prefixes": []}}}
+    seen = set()
+
+    class GuardedTransport(MemoryTransport):
+        def get_key(self, key):
+            request_key((json.dumps({"protocol": 1, "key": key}) + "\n").encode(), 1001, policy)
+            seen.add(key)
+            return super().get_key(key)
+
+    client, job = make_client(warehouse, tmp_path, transport=GuardedTransport())
+    created = client.post("/api/paper-accounts", json={"backtest_id": job.id, "name": "GET只读验收", "cash": 100_000})
+    assert created.status_code == 201
+    assert client.get(f"/paper/{created.json()['id']}").status_code == 200
+    assert client.get("/live").status_code == 200
+    assert {"state:heartbeat:market", "state:heartbeat:paper"} <= seen
 
 
 def test_successful_backtest_can_create_and_control_paper_account(warehouse, tmp_path):

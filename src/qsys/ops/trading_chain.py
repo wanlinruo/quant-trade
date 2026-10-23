@@ -50,9 +50,10 @@ def recorded_auction_time(path: Path) -> time:
     live-state。事件键是运行时按真实 Schedule 生成的，因此比监控侧常量可靠。
     """
     from qsys.strategy.structural.strategy import auction_time
+    from qsys.live.state_binding import state_path
 
     try:
-        with sqlite3.connect(f"file:{Path(path)}?mode=ro", uri=True) as con:
+        with sqlite3.connect(f"file:{state_path(Path(path))}?mode=ro", uri=True) as con:
             row = con.execute(
                 "SELECT event_key FROM live_events "
                 "WHERE event_key LIKE '%:auction:%' ORDER BY event_key DESC LIMIT 1"
@@ -140,8 +141,10 @@ def assess_shadow(path: Path, now: datetime, *, grace_seconds: float = 30,
     expected = [("", _key(now.date(), phase, at), age) for phase, at, age in due]
     if not expected:
         return ChainAssessment(HEALTHY, "strategy_events_not_due", "首个事件尚未到时")
+    from qsys.live.state_binding import state_path
+
     try:
-        with sqlite3.connect(f"file:{Path(path)}?mode=ro", uri=True) as con:
+        with sqlite3.connect(f"file:{state_path(Path(path))}?mode=ro", uri=True) as con:
             con.row_factory = sqlite3.Row
             rows = con.execute(
                 "SELECT event_key,status,detail FROM live_events "
@@ -151,7 +154,7 @@ def assess_shadow(path: Path, now: datetime, *, grace_seconds: float = 30,
                 "SELECT event_key,error FROM live_strategy_runs WHERE session=?",
                 (now.date().isoformat(),),
             ).fetchall()
-    except (OSError, sqlite3.Error) as exc:
+    except (OSError, sqlite3.Error, ValueError) as exc:
         return ChainAssessment(DOWN, "strategy_state_unavailable", str(exc))
     events = {("", row["event_key"]): row for row in rows}
     errors = {("", row["event_key"]): str(row["error"] or "") for row in runs}

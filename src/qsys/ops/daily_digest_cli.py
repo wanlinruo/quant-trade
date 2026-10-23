@@ -41,6 +41,9 @@ RESIDENT_UNITS = (
 
 
 def _rows(path: Path, sql: str, args: tuple) -> list[dict]:
+    from qsys.live.state_binding import state_path
+
+    path = state_path(Path(path))
     if not path.exists():
         return []
     try:
