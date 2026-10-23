@@ -188,8 +188,8 @@ def ingest_index_daily(provider, warehouse: Warehouse, ts_codes: Sequence[str],
     return written
 
 
-def ingest_instruments(provider, warehouse: Warehouse, as_of: date) -> int:
-    """落库标的主表（覆盖写，只留最新一份）。
+def instrument_snapshot(provider, as_of: date) -> pl.DataFrame:
+    """当前主表的直取规范化快照，不写warehouse。
 
     `as_of` 是**取这份主表的那一天**，不是正在同步的交易日：`stock_basic`
     返回的是当前名称，只对取数当天成立。
@@ -201,9 +201,9 @@ def ingest_instruments(provider, warehouse: Warehouse, as_of: date) -> int:
     parts = [frame for status in ("L", "D")
              if (frame := provider.stock_basic(status)).height]
     if not parts:
-        return 0
+        return pl.from_arrow(schema.INSTRUMENTS.empty_table())
     frame = pl.concat(parts, how="diagonal_relaxed")
-    out = frame.select(
+    return frame.select(
         pl.col("ts_code").alias("symbol"), pl.col("name").cast(pl.Utf8),
         pl.col("ts_code").str.split(".").list.last().alias("market"),
         _date_expr("list_date").alias("list_date"),
@@ -213,6 +213,13 @@ def ingest_instruments(provider, warehouse: Warehouse, as_of: date) -> int:
         ).alias("board"),
         pl.lit(as_of, dtype=pl.Date).alias("as_of"),
     ).unique(subset=["symbol"], keep="last").sort("symbol")
+
+
+def ingest_instruments(provider, warehouse: Warehouse, as_of: date) -> int:
+    """落库当前直取主表快照（覆盖写，只留最新一份）。"""
+    out = instrument_snapshot(provider, as_of)
+    if not out.height:
+        return 0
     warehouse.write("instruments", out.to_arrow().cast(schema.INSTRUMENTS))
 
     log.info("instruments.ingested", rows=out.height, as_of=str(as_of))

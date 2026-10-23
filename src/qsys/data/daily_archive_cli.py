@@ -56,6 +56,7 @@ from qsys.data.pipeline.instruments import alive_on
 from qsys.data.pipeline.canonical_publish import publish_minutes
 from qsys.data.pipeline.minutes import ImportResult, import_minute_bars, missing_stock_days
 from qsys.data.pipeline.premarket_suspensions import sync_premarket_suspensions
+from qsys.data.pipeline.tushare_reference import instrument_snapshot
 from qsys.data.providers.tushare import TushareProvider
 from qsys.data.providers.tushare_client import TushareClient
 from qsys.data.quality.minute_rules import MinuteIssue, check_minute_bars
@@ -265,6 +266,24 @@ def _full_market_stock_days(
     if not frames:
         return pl.DataFrame(schema={"symbol": pl.Utf8, "dt": pl.Date})
     return pl.concat(frames).unique().sort(["dt", "symbol"])
+
+
+def _archive_instruments(config, observed_on: date) -> pl.DataFrame:
+    """归档先读当前主表，不等待稍晚的同步任务覆盖仓库快照。"""
+    provider = TushareProvider(TushareClient(load_tushare_config(config).token))
+    frame = instrument_snapshot(provider, observed_on)
+    if frame.is_empty():
+        raise RuntimeError("Tushare stock_basic 返回空主表，无法确定归档清单")
+    return frame
+
+
+def _before_delisting(days: pl.DataFrame, instruments: pl.DataFrame) -> pl.DataFrame:
+    """候选/持仓补充集合也遵守直取退市日期，不按无成交或名称猜测。"""
+    return (
+        days.join(instruments.select("symbol", "delist_date"), on="symbol", how="left")
+        .filter(pl.col("delist_date").is_null() | (pl.col("dt") < pl.col("delist_date")))
+        .drop("delist_date")
+    )
 
 
 def _minute_wanted(
@@ -523,13 +542,13 @@ def _archive(args, service_run: ServiceRun) -> int:
                 f"{type(exc).__name__}: {exc}"
             )
 
-    # --- 2. 标的主表与日线增量 ---
-    # instruments 已由 16:30 的 Tushare 同步维护（含退市股）。这里若继续调用
-    # AkShare，会在每天 15:40 把真值表覆盖回不含退市股的旧源。
-    instruments = WarehouseQuery(warehouse).instruments()
-    if instruments.height == 0:
-        raise RuntimeError("instruments 为空；先恢复 qsys-tushare-sync，不回退 AkShare")
-    print(f"标的主表 {instruments.height} 只（Tushare 已落库）")
+    # 15:40归档先于17:00主表同步，昨日warehouse快照可能遗漏当日退市/新上市。
+    # 复用同一个Tushare规范化入口，只取内存快照，不新增共享主表写权限。
+    with service_run.step("归档主表快照", interface="Tushare stock_basic") as step:
+        instruments = _archive_instruments(args.config, today)
+        step.rows = instruments.height
+        step.detail = f"当前直取主表，observed_on={today}，仅用于归档清单，不写warehouse"
+    print(f"标的主表 {instruments.height} 只（Tushare 当前直取快照）")
     boards = {b.strip() for b in args.boards.split(",") if b.strip()}
     alive = instruments.filter(
         pl.col("board").is_in(list(boards))
@@ -551,11 +570,11 @@ def _archive(args, service_run: ServiceRun) -> int:
             # 与分钟线同样扣掉全天停牌：停牌日本就没有竞价，QMT 仍会返回全零快照。
             auction_ok = _archive_auction(
                 args, warehouse,
-                drop_suspended(
+                _before_delisting(drop_suspended(
                     WarehouseQuery(warehouse),
                     candidate_stock_days(warehouse, start, complete_through,
                                          sessions=sessions),
-                ),
+                ), instruments),
                 ssh, key, stamp, service_run.run_id,
             )
             if not auction_ok:
@@ -574,7 +593,7 @@ def _archive(args, service_run: ServiceRun) -> int:
                            sessions)
     archive_sessions = [day for day in sessions if start <= day <= complete_through]
     full_market = _full_market_stock_days(instruments, archive_sessions, boards)
-    wanted = _minute_wanted(full_market, candidates, held)
+    wanted = _before_delisting(_minute_wanted(full_market, candidates, held), instruments)
     # 扣掉全天停牌：QMT 对停牌股会返回 241 根前收盘价、成交量全 0，整天是虚构的。
     # 下载侧先剔除已知停牌，避免 QMT 返回整日虚构数据；晚间服务质检另用
     # Tushare 当日实际有成交集合作独立期望，不能再让下载清单自证完整。

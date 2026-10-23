@@ -21,6 +21,98 @@ ARGS = Namespace(win_root="C:/qsys/daily", win_host="Administrator@win",
 WANTED = pl.DataFrame({"symbol": ["600036.SH"], "dt": [DAY]})
 
 
+def test_archive_uses_direct_current_instruments_without_overwriting_warehouse(monkeypatch, tmp_path):
+    from qsys.data.pipeline.tushare_reference import ingest_instruments
+    from qsys.data.storage import Warehouse
+
+    def basic(symbols, listed, delisted):
+        return pl.DataFrame({"ts_code": symbols, "name": symbols,
+                             "list_date": listed, "delist_date": delisted},
+                            schema_overrides={"delist_date": pl.Utf8})
+
+    old = basic(["000016.SZ"], ["19920327"], [None])
+    wh = Warehouse(tmp_path / "warehouse")
+    ingest_instruments(SimpleNamespace(stock_basic=lambda status: old if status == "L" else old.clear()),
+                       wh, date(2026, 10, 22))
+    original = wh.path_for("instruments").read_bytes()
+    listed = basic(["000001.SZ", "301999.SZ"], ["19910403", "20261023"], [None, None])
+    retired = basic(["000016.SZ"], ["19920327"], ["20261023"])
+    calls = []
+    def stock_basic(status):
+        calls.append(status)
+        return {"L": listed, "D": retired}[status]
+    monkeypatch.setattr(daily_archive, "load_tushare_config", lambda _: SimpleNamespace(token="test"))
+    monkeypatch.setattr(daily_archive, "TushareProvider", lambda _: SimpleNamespace(stock_basic=stock_basic))
+    current = daily_archive._archive_instruments("unused", date(2026, 10, 23))
+    assert calls == ["L", "D"]
+    assert current.filter(pl.col("symbol") == "000016.SZ")["delist_date"].item() == date(2026, 10, 23)
+    assert current["as_of"].unique().to_list() == [date(2026, 10, 23)]
+    assert wh.path_for("instruments").read_bytes() == original
+    wanted = daily_archive._full_market_stock_days(
+        current, [date(2026, 10, 22), date(2026, 10, 23)], {"main", "gem"},
+    )
+    assert wanted.filter(pl.col("symbol") == "000016.SZ")["dt"].to_list() == [date(2026, 10, 22)]
+    assert wanted.filter(pl.col("symbol") == "301999.SZ")["dt"].to_list() == [date(2026, 10, 23)]
+
+
+def test_candidate_and_held_supplements_do_not_reintroduce_retired_stock_days():
+    instruments = pl.DataFrame({"symbol": ["000016.SZ"], "delist_date": [date(2026, 10, 23)]})
+    days = pl.DataFrame({"symbol": ["000016.SZ", "000016.SZ", "600999.SH"],
+                         "dt": [date(2026, 10, 22), date(2026, 10, 23), date(2026, 10, 23)]})
+    result = daily_archive._before_delisting(days, instruments)
+    assert result.rows() == [("000016.SZ", date(2026, 10, 22)), ("600999.SH", date(2026, 10, 23))]
+
+
+def test_empty_current_master_is_not_replaced_by_stale_warehouse(monkeypatch):
+    monkeypatch.setattr(daily_archive, "load_tushare_config", lambda _: SimpleNamespace(token="test"))
+    monkeypatch.setattr(daily_archive, "TushareProvider", lambda _: SimpleNamespace(stock_basic=lambda _: pl.DataFrame()))
+    monkeypatch.setattr(daily_archive.WarehouseQuery, "instruments", lambda _: pytest.fail("stale fallback"))
+    with pytest.raises(RuntimeError, match="返回空主表"):
+        daily_archive._archive_instruments("unused", date(2026, 10, 23))
+
+
+def test_archive_uses_current_delisting_for_auction_full_market_and_supplements(monkeypatch, tmp_path):
+    from qsys.core.calendar import AShareCalendar
+    current_day = date(2026, 10, 23)
+    prior = date(2026, 10, 22)
+    monkeypatch.setattr(daily_archive, "datetime", SimpleNamespace(now=lambda: datetime(2026, 10, 23, 16)))
+    monkeypatch.setattr(daily_archive, "load_trading_calendar", lambda _: AShareCalendar([prior, current_day]))
+    monkeypatch.setattr(daily_archive, "load_tushare_config", lambda _: SimpleNamespace(token="test"))
+    monkeypatch.setattr(daily_archive, "sync_premarket_suspensions", lambda *a: SimpleNamespace(
+        row_count=0, detail="test", accepted=True))
+    snapshot = pl.DataFrame({"symbol": ["000016.SZ", "600036.SH"], "board": ["main", "main"],
+                             "list_date": [date(1992, 3, 27), date(2002, 4, 9)],
+                             "delist_date": [current_day, None]})
+    def fresh(config, observed_on):
+        assert observed_on == current_day
+        return snapshot
+    monkeypatch.setattr(daily_archive, "_archive_instruments", fresh)
+    monkeypatch.setattr(daily_archive.WarehouseQuery, "instruments", lambda _: pytest.fail("stale master"))
+    candidates = pl.DataFrame({"symbol": ["000016.SZ", "000016.SZ", "600036.SH"],
+                               "dt": [prior, current_day, current_day]})
+    monkeypatch.setattr(daily_archive, "candidate_stock_days", lambda *a, **k: candidates)
+    monkeypatch.setattr(daily_archive, "_paper_fills", lambda *a: pl.DataFrame())
+    monkeypatch.setattr(daily_archive, "held_stock_days", lambda *a, **k: candidates)
+    monkeypatch.setattr(daily_archive, "drop_suspended", lambda _, days: days)
+    captured = {}
+    def auction(args, wh, wanted, *a):
+        captured["auction"] = wanted
+        return True
+    def missing(wh, wanted):
+        captured["minute"] = wanted
+        return wanted.clear()
+    monkeypatch.setattr(daily_archive, "_archive_auction", auction)
+    monkeypatch.setattr(daily_archive, "missing_stock_days", missing)
+    monkeypatch.setattr(daily_archive, "_check_minute_days", lambda *a: 0)
+    monkeypatch.setattr(daily_archive, "_publish_canonical_minutes", lambda *a: None)
+    assert daily_archive.main(["--warehouse", str(tmp_path / "wh"), "--config", "unused",
+                               "--record-root", str(tmp_path / "records")]) == 0
+    for wanted in captured.values():
+        assert ("000016.SZ", current_day) not in wanted.rows()
+        assert ("000016.SZ", prior) in wanted.rows()
+        assert ("600036.SH", current_day) in wanted.rows()
+
+
 def _archive(monkeypatch, tmp_path, *, missing=WANTED, run=None, imported=ImportResult(1, 10, 0)):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(daily_archive, "missing_auction_days", lambda wh, wanted: missing)
@@ -282,6 +374,7 @@ def test_archive_only_requests_closed_sessions(monkeypatch, tmp_path, as_of, clo
     monkeypatch.setattr(daily_archive, "sync_premarket_suspensions",
                         lambda *a: SimpleNamespace(row_count=0, detail="test", accepted=True))
     monkeypatch.setattr(daily_archive.WarehouseQuery, "instruments", lambda _: instruments)
+    monkeypatch.setattr(daily_archive, "_archive_instruments", lambda *a: instruments)
     monkeypatch.setattr(daily_archive, "_paper_fills", lambda _: pl.DataFrame({
         "account_id": ["test"], "symbol": ["600002.SH"], "side": ["buy"],
         "qty": [100], "filled_at": ["2026-10-16T09:30:00"],
@@ -357,6 +450,7 @@ def test_gateway_minute_flow_keeps_progress_protocol_and_blocks_bad_transfer(
         'list_date':[date(2020,1,1)],'delist_date':pl.Series([None],dtype=pl.Date)})
     wanted=pl.DataFrame({'symbol':['600036.SH'],'dt':[day]})
     monkeypatch.setattr(daily_archive.WarehouseQuery,'instruments',lambda _:instruments)
+    monkeypatch.setattr(daily_archive,'_archive_instruments',lambda *a:instruments)
     monkeypatch.setattr(daily_archive,'candidate_stock_days',lambda *a,**k:wanted)
     monkeypatch.setattr(daily_archive,'_paper_fills',lambda _:pl.DataFrame())
     monkeypatch.setattr(daily_archive,'held_stock_days',lambda *a:wanted.clear())
