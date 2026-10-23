@@ -36,7 +36,7 @@ ALLOWED_WINDOWS_COMPONENTS = frozenset({
     "windows-agent", "windows-gateway", "windows-control",
 })
 WINDOWS_COORDINATOR_PATH = "deploy/linux/qsys-windows-deploy-coordinator.py"
-ENTRYPOINT_VERSION = 31
+ENTRYPOINT_VERSION = 32
 ENTRYPOINT_CAPABILITIES = (
     "systemd-apply-v1",
     "systemd-component-boundary-v1",
@@ -70,6 +70,7 @@ ENTRYPOINT_CAPABILITIES = (
     "component-web-readiness-v1",
     "component-sqlite-seed-v1",
     "component-live-continuity-v1",
+    "component-spec-fingerprint-v1",
     "emergency-restart-authorization-v1",
 )
 FAILURE_POINTS = frozenset({"none", "linux-health", "windows-switch"})
@@ -287,6 +288,12 @@ def status(config: dict[str, object]) -> dict[str, object]:
         "healthy": _active("qsys-monitor.service", repo) and _web_healthy(config),
         "entrypoint_version": ENTRYPOINT_VERSION,
         "capabilities": list(ENTRYPOINT_CAPABILITIES),
+        "component_spec_sha256": {
+            name: hashlib.sha256(json.dumps(
+                spec, sort_keys=True, separators=(",", ":"), ensure_ascii=True,
+            ).encode("utf-8")).hexdigest()
+            for name, spec in COMPONENT_RELEASES.items()
+        },
     }
 
 

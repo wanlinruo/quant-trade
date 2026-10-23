@@ -20,6 +20,18 @@
 校验目标来源；节点还会按 Git tree 查找测试环境的成功发布记录，避免 `test -> main`
 squash 后 SHA 改变导致证据断链。
 
+### 独立组件白名单预检（#523）
+
+`Deploy production component` 的 dry-run 与正式发布在下载制品前，均从节点 `status`
+读取逐组件 `component_spec_sha256`，比对精确目标 SHA 的 manifest。固定入口 v32
+声明 `component-spec-fingerprint-v1`；指纹仅覆盖公开组件规格，以 `sort_keys=True`、
+`separators=(",", ":")`、`ensure_ascii=True` 的 JSON UTF-8 字节计算 SHA-256，不含私有配置。
+只比对本次目标组件，其他组件规格差异不阻止它发布。
+
+旧入口缺少指纹或目标规格不一致时，预检失败并提示先审查差异、按精确已合并 main
+安装可信控制面。该流程不自动 bootstrap，不放宽正式安装时的完整规格校验。即使预检
+通过，正式 workflow、Deployment 与节点记录仍须成功一致后才能启动现场验收。
+
 ## 权限边界
 
 GitHub production environment 使用独立 Ed25519 密钥。公钥在 `ubuntu` 的

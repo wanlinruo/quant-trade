@@ -145,6 +145,11 @@ jobs:
               raise SystemExit("production entrypoint lacks component release capability")
           print(f'production_sha={state["sha"]}')
           PY
+          git show "$TARGET_SHA:deploy/component-releases.json" >target-component-releases.json
+          printf '%s' "$node_json" >node-state.json
+          python3 .github/scripts/component_spec_preflight.py \
+            --state node-state.json --manifest target-component-releases.json \
+            --component "$COMPONENT"
 
       - name: Download exact immutable artifact
         if: inputs.dry_run == false
