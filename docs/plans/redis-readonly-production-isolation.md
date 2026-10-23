@@ -12,7 +12,7 @@ Live/Paper/Shadow继续使用原协议；盘前精确SET入口保持。没有升
 
 | 消费者 | 允许GET（由现场最小配置复核） |
 |---|---|
-| Web | control:kill，state:account，state:heartbeat:agent/core，state:market_overview，state:market_schedule，state:price_limits_check:YYYYMMDD |
+| Web | control:kill，state:account，state:heartbeat:agent/core/market/paper，state:market_overview，state:market_schedule，state:price_limits_check:YYYYMMDD |
 | observer | control:kill，state:heartbeat:agent/core/market/paper |
 | digest | control:kill，state:heartbeat:agent |
 | reboot-drill | state:heartbeat:agent/market |
