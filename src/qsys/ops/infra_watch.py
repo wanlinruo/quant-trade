@@ -49,6 +49,16 @@ def survey(reading: dict) -> list[Finding]:
             out.append(Finding("disk", Severity.WARNING, "磁盘余量偏低",
                                f"剩余 {free / GIB:.1f} GiB，低于 {FREE_WARN_BYTES // GIB} GiB"))
 
+    system_free = reading.get("system_disk_free_bytes")
+    if system_free is not None and system_free < FREE_WARN_BYTES:
+        critical = system_free < FREE_FAIL_BYTES
+        out.append(Finding(
+            "disk:system", Severity.CRITICAL if critical else Severity.WARNING,
+            "系统盘即将写满" if critical else "系统盘余量偏低",
+            f"/ 剩余 {system_free / GIB:.1f} GiB，低于 "
+            f"{(FREE_FAIL_BYTES if critical else FREE_WARN_BYTES) // GIB} GiB",
+        ))
+
     days = reading.get("cert_days")
     if days is not None:
         if days < CERT_FAIL_DAYS:
@@ -84,7 +94,7 @@ class EdgeTracker:
     """只在状态变化时出声。
 
     `update` 吃「此刻仍然存在的问题」，吐「这一轮需要发出去的消息」：
-    新出现的报一次，消失的报一次恢复，一直在的闭嘴。
+    新出现的报一次，升级为CRITICAL再报一次，消失时报恢复；相同级别不重复。
     """
 
     def __init__(self) -> None:
@@ -95,7 +105,10 @@ class EdgeTracker:
         notices = [
             Notice(f.severity, f.title, f.detail)
             for key, f in current.items()
-            if key not in self._open
+            if key not in self._open or (
+                f.severity is Severity.CRITICAL
+                and self._open[key].severity is not Severity.CRITICAL
+            )
         ]
         notices += [
             Notice(Severity.INFO, f"{f.title}：已恢复", f.detail)

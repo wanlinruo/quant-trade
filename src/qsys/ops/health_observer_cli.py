@@ -351,6 +351,10 @@ class InfraAlerts:
             reading["disk_free_bytes"] = disk_status(self.storage_base).free
         except OSError as exc:
             log.info("infra_watch.disk_unavailable", error=str(exc))
+        try:
+            reading["system_disk_free_bytes"] = disk_status(Path("/")).free
+        except OSError as exc:
+            log.info("infra_watch.system_disk_unavailable", error=str(exc))
         reading["cert_days"] = _cert_days(self.tls_site, self.tls_port)
         reading.update(_redis_state(transport, self.config_path))
         return reading

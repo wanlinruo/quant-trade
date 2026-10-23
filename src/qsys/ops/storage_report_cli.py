@@ -92,10 +92,20 @@ def classified_usage(base: Path) -> list[dict[str, object]]:
 def build_payload(base: Path, scratch: Path | None, now: datetime) -> dict[str, object]:
     items = inventory(base, scratch, now)
     disk = disk_status(base)
+    try:
+        system_disk = disk_status(Path("/"))
+        system = {
+            "path": "/", "total": system_disk.total, "used": system_disk.used,
+            "free": system_disk.free, "level": system_disk.level,
+            "expansion_review_required": system_disk.free < EXPANSION_REVIEW_BYTES,
+        }
+    except OSError:
+        system = None
     return {
         "schema_version": 1,
         "generated_at": now.isoformat(timespec="seconds"),
         "base": str(base),
+        "system_disk": system,
         "disk": {
             "total": disk.total,
             "used": disk.used,
@@ -156,6 +166,12 @@ def main(argv: list[str] | None = None) -> int:
     print(f"盘点时间 {now:%F %T}；磁盘 共 {disk['total'] / GIB:.1f} GiB，"
           f"已用 {disk['used'] / GIB:.1f} GiB，剩余 {disk['free'] / GIB:.1f} GiB"
           f"（{disk['level']}）")
+    system = payload["system_disk"]
+    if system is None:
+        print("系统盘 /：容量不可读，快照记为null")
+    else:
+        print(f"系统盘 /：剩余 {system['free'] / GIB:.1f} GiB / "
+              f"共 {system['total'] / GIB:.1f} GiB（{system['level']}）")
     print(f"{'判定':<10}{'类别':<12}{'占用GiB':>8}{'可释放GiB':>10}  "
           f"{'最近修改':<11} 路径 / 说明")
     for item in sorted(items, key=lambda value: (

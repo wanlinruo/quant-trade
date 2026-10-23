@@ -301,6 +301,19 @@ def test_a_broken_survey_never_stops_the_sampling_loop(monkeypatch):
     assert watch.due(0.0) is False   # 仍然推进了下次时间，不会原地空转
 
 
+def test_infra_reads_system_disk_even_when_data_disk_probe_fails(monkeypatch):
+    from qsys.ops.storage import DiskStatus, GIB
+    def disk(path):
+        if path != Path("/"):
+            raise OSError("data unavailable")
+        return DiskStatus(120 * GIB, 112 * GIB, 8 * GIB)
+    monkeypatch.setattr("qsys.ops.storage.disk_status", disk)
+    monkeypatch.setattr("qsys.ops.infra.failed_units", lambda: ())
+    reading = _infra(RecordingAlertSink()).read(None)
+    assert reading["system_disk_free_bytes"] == 8 * GIB
+    assert "disk_free_bytes" not in reading
+
+
 # ---- 查询失败要快点重试，别把盲区拖满一个缓存周期（2026-10-04）----
 
 def _cached(answers):
