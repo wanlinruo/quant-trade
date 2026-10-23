@@ -266,24 +266,27 @@ class BusinessAlertTracker:
 
     def __init__(self, alerts: AlertBus) -> None:
         self.alerts = alerts
-        self.states: dict[str, str] = {}
+        self.states: dict[str, tuple[str, bool]] = {}
 
     def update(self, item: HealthObservation) -> None:
         if item.service_id not in ("paper", *CORE_SERVICE_IDS):
             return
-        previous = self.states.get(item.service_id)
+        previous, previous_unreadable = self.states.get(item.service_id, (None, False))
         current = item.business_state
-        self.states[item.service_id] = current
+        unreadable = item.reason_code == "strategy_state_unavailable"
+        self.states[item.service_id] = (current, unreadable)
         detail = (item.details or {}).get("trading_chain", {}).get("detail", "")
         name = {
             "paper": "模拟交易", "shadow-core": "影子盘", "live-core": "实盘",
         }[item.service_id]
-        if current == DOWN and previous != DOWN:
-            self.alerts.critical(f"{name}交易链路失败", detail)
+        if current == DOWN and (previous != DOWN or unreadable != previous_unreadable):
+            title = f"{name}状态库读取失败" if unreadable else f"{name}交易链路失败"
+            self.alerts.critical(title, detail)
         elif current == DEGRADED and previous not in (DEGRADED, DOWN):
             self.alerts.warning(f"{name}策略事件延迟", detail)
         elif current == HEALTHY and previous in (DEGRADED, DOWN):
-            self.alerts.info(f"{name}交易链路已恢复", detail)
+            title = f"{name}状态库读取已恢复" if previous_unreadable else f"{name}交易链路已恢复"
+            self.alerts.info(title, detail)
 
 
 class ProcessAlertTracker:

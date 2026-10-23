@@ -84,6 +84,25 @@ def test_live_business_failure_is_named_as_live_not_shadow():
     assert "实盘交易链路失败" in sink.alerts[-1].title
 
 
+def test_unreadable_state_alerts_and_recovers_without_claiming_event_failure():
+    sink = RecordingAlertSink()
+    tracker = BusinessAlertTracker(AlertBus([sink]))
+    now = datetime(2026, 10, 23, 13, 28)
+    def item(state, reason):
+        return observation(row("live-core"), now, MORNING, ChainAssessment(state, reason, "证据"))
+
+    unreadable = item(DOWN, "strategy_state_unavailable")
+    failed = item(DOWN, "strategy_event_failed")
+    healthy = item(HEALTHY, "strategy_events_current")
+    for value in (unreadable, unreadable, healthy, unreadable, failed, failed, unreadable, healthy):
+        tracker.update(value)
+    assert [a.title for a in sink.alerts] == [
+        "实盘状态库读取失败", "实盘状态库读取已恢复", "实盘状态库读取失败",
+        "实盘交易链路失败", "实盘状态库读取失败", "实盘状态库读取已恢复",
+    ]
+    assert all(a.severity == Severity.CRITICAL for a in sink.alerts if a.title.endswith("失败"))
+
+
 def _task(age_seconds=30, **over):
     now = datetime(2026, 9, 26, 23, 30)
     base = {"State": "Running", "LastTaskResult": 267009,

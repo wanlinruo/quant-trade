@@ -1,5 +1,24 @@
 # Live Core最后独立迁移（#497 / #330）
 
+## 2026-10-23状态库辅助文件生命周期（#529）
+
+13:28与13:30 observer两次短暂无法读取新私有库，约10秒后恢复；实盘进程持续运行，
+14:25前四个事件全部completed，不将监控读库异常等同于实际交易事件失败。
+在独立合成库、真实qsys-live-core/qsys-health-observer身份下，生产者最后一个连接关闭后
+WAL/SHM消失，普通只读UID报SQLITE_READONLY_DIRECTORY；相同ProtectSystem=strict、
+ProtectHome=read-only沙箱下复现现场SQLITE_CANTOPEN（unable to open database file）。
+生产者保持无事务的连接时读者正常，关闭后再次失败。原始基线证据位于
+`/data/qsys/var-deployments/issue529-20261023/baseline-sidecar-reproduction.json`。
+
+修复由Live入口在取得单实例锁后创建LiveStore并pin_reader_sidecars，生命周期覆盖Runtime，
+退出或初始化失败时关闭。锚点不持有事务/旧快照，不改SQLite schema、订单或事件，普通事务
+仍原样提交。只读LiveStore禁止pin，消费者的目录/库权限维持只读，不能用immutable绕过WAL。
+observer仍对读库失败发CRITICAL，文案明确“状态库读取失败”；同类去重、读通后恢复，若读通
+却发现实际事件失败则另报交易链路失败，不因两者同属DOWN而漏掉状态转换。
+
+该段记录设计与隔离归因；CI、最终制品、实际生产发布及后续自然观察证据分别以
+[#529](https://github.com/wanlinruo/quant-trade/issues/529)最新评论为准，不将代码合入视为现场生效。
+
 14个既有manifest目标组件已独立部署；Live Core另列且仍共享运行，不因14/14计数自动发布。
 本计划先提供包内入口与隔离前提，生产激活、消费者/状态切换与控制面扩展另分层验收。
 

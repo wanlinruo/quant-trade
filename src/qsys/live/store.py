@@ -22,6 +22,7 @@ class LiveStore:
     def __init__(self, path: str | Path, *, read_only: bool = False) -> None:
         self._configured_path = Path(path)
         self.read_only = read_only
+        self._reader_anchor: sqlite3.Connection | None = None
         if read_only:
             return
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -108,6 +109,28 @@ class LiveStore:
         con.row_factory = sqlite3.Row
         con.execute("PRAGMA query_only=ON" if self.read_only else "PRAGMA journal_mode=WAL")
         return con
+
+    def pin_reader_sidecars(self) -> None:
+        """生产者维持WAL/SHM生命周期，只读消费者不需要目录写权限。
+
+        普通事务连接可能被GC关闭；最后一个连接关闭时SQLite会移除辅助文件，
+        此时只读沙箱内的读者无法重建。此连接不持有事务或旧快照。
+        """
+        if self.read_only:
+            raise RuntimeError("only a live state producer can pin reader sidecars")
+        if self._reader_anchor is None:
+            connection = self._connect()
+            try:
+                connection.execute("SELECT name FROM sqlite_master LIMIT 1").fetchone()
+            except BaseException:
+                connection.close()
+                raise
+            self._reader_anchor = connection
+
+    def close(self) -> None:
+        if self._reader_anchor is not None:
+            self._reader_anchor.close()
+            self._reader_anchor = None
 
     def exists(self) -> bool:
         with self._connect() as con:

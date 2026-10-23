@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from contextlib import ExitStack, closing
 from pathlib import Path
 
 import structlog
@@ -72,7 +73,7 @@ def main(argv: list[str] | None = None) -> int:
     _validate_isolated_paths(args, config, parser)
     from qsys.live.state_binding import apply_entry_binding
     apply_entry_binding(args)
-    with single_instance(args.lock):
+    with single_instance(args.lock), ExitStack() as resources:
         transport = RedisTransport.from_config(config)
         if args.validation_namespace is not None:
             from qsys.live.validation_transport import ValidationTransport
@@ -85,11 +86,13 @@ def main(argv: list[str] | None = None) -> int:
         )
         source = (StrategySource(Path(args.strategy)) if args.strategy
                   else resolve_strategy(config.strategy, Path(args.workspace)))
+        store = resources.enter_context(closing(LiveStore(args.state)))
+        store.pin_reader_sidecars()
         runtime = LiveRuntime(
             source.path, Path(args.warehouse), load_trading_calendar(args.config),
             QuoteClient(transport, config.streams, consumer="live-core",
                         timeout=DECISION_TIMEOUT),
-            transport, config.streams, LiveStore(args.state),
+            transport, config.streams, store,
             local_kill_path=Path(args.kill_switch),
             journal_warehouse=Path(args.journal_warehouse) if args.journal_warehouse else None,
             alerts=AlertBus(sinks, ledger(args.alert_ledger)),
