@@ -61,10 +61,12 @@ def init(ContextInfo):
           probe_date=PROBE_DATE, history_end=HISTORY_END,
           python_version=tuple(sys.version_info[:3]))
     # Existence is not proof of permission, freshness, or successful execution.
-    names = ("is_last_bar", "get_full_tick", "get_market_data_ex", "run_time")
+    names = ("is_last_bar", "get_full_tick", "get_market_data_ex", "run_time",
+             "get_instrument_detail", "get_his_st_data", "get_raw_financial_data",
+             "get_stock_list_in_sector", "get_divid_factors", "get_trading_dates")
     _emit("context_methods", "presence_only",
           methods={name: callable(getattr(ContextInfo, name, None)) for name in names})
-    names = ("get_trade_detail_data", "get_history_trade_detail_data")
+    names = ("get_trade_detail_data", "get_history_trade_detail_data", "get_st_status")
     _emit("query_functions", "presence_only",
           functions={name: callable(globals().get(name)) for name in names})
 
@@ -118,6 +120,44 @@ def _history_sample(ContextInfo, period, count):
         _emit(period, "error", error_type=type(exc).__name__)
 
 
+def _native_fact_samples(ContextInfo):
+    # Raw observations only: no source mapping, unit conversion or ST inference.
+    for symbol in SYMBOLS:
+        try:
+            raw = ContextInfo.get_instrument_detail(symbol, iscomplete=True)
+            if not isinstance(raw, dict):
+                _emit("instrument_detail", "unexpected_type", symbol=symbol)
+            elif not raw:
+                _emit("instrument_detail", "empty_unverified", symbol=symbol)
+            else:
+                fields = ("OpenDate", "ExpireDate", "UpStopPrice", "DownStopPrice",
+                          "PreClose", "FloatVolume", "FloatVolumn", "TotalVolume",
+                          "TotalVolumn", "InstrumentStatus", "IsTrading", "PriceTick")
+                _emit("instrument_detail", "sample_only", symbol=symbol,
+                      keys=sorted(raw)[:32], field_count=len(raw),
+                      raw={key: raw[key] for key in fields if key in raw})
+        except Exception as exc:
+            # Do not guess old spellings, retry, or silently omit iscomplete.
+            _emit("instrument_detail", "error", symbol=symbol,
+                  error_type=type(exc).__name__)
+        try:
+            raw = ContextInfo.get_his_st_data(symbol)
+            if not isinstance(raw, dict):
+                _emit("st_history", "unexpected_type", symbol=symbol)
+            elif not raw:
+                # Empty history may also mean absent local coverage.
+                _emit("st_history", "empty_unverified", symbol=symbol)
+            else:
+                _emit("st_history", "sample_only", symbol=symbol,
+                      range_counts={key: len(value) if isinstance(value, list) else None
+                                    for key, value in raw.items()},
+                      raw={key: value[:2] for key, value in raw.items()
+                           if isinstance(value, list)})
+        except Exception as exc:
+            _emit("st_history", "error", symbol=symbol,
+                  error_type=type(exc).__name__)
+
+
 def handlebar(ContextInfo):
     global _RAN
     if not _CONFIG_OK or _RAN:
@@ -134,6 +174,7 @@ def handlebar(ContextInfo):
     _tick_sample(ContextInfo)
     _history_sample(ContextInfo, "1d", 101)
     _history_sample(ContextInfo, "1m", 2)
+    _native_fact_samples(ContextInfo)
     _emit("scope", "incomplete",
           not_verified=["broker_account", "orders", "callbacks", "timer_accuracy",
                         "truth_inputs", "persistence", "restart_recovery",

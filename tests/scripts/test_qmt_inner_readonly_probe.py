@@ -48,7 +48,8 @@ def test_probe_is_python36_and_only_imports_stdlib_metadata():
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
         and isinstance(node.func.value, ast.Name) and node.func.value.id == "ContextInfo"
     }
-    assert context_calls == {"is_last_bar", "get_full_tick", "get_market_data_ex"}
+    assert context_calls == {"is_last_bar", "get_full_tick", "get_market_data_ex",
+                             "get_instrument_detail", "get_his_st_data"}
 
 
 def test_unconfigured_probe_never_queries(capsys):
@@ -86,6 +87,8 @@ def test_only_bounded_public_queries_without_io_or_trade(monkeypatch, capsys):
         is_last_bar=lambda: True,
         get_full_tick=lambda symbols: {symbols[0]: {"time": 123, "volume": 7}},
         get_market_data_ex=history,
+        get_instrument_detail=lambda symbol, **kwargs: {"UpStopPrice": 11},
+        get_his_st_data=lambda symbol: {},
     )
     for name in ("passorder", "cancel", "get_trade_detail_data", "get_history_trade_detail_data"):
         setattr(probe, name, forbidden)
@@ -124,7 +127,8 @@ def test_history_signature_error_is_not_retried_or_silently_downgraded(capsys):
     probe.handlebar(context)
     assert len(calls) == 2  # Each independent period once; no fallback or retry.
     output = records(capsys)
-    assert len([row for row in output if row["status"] == "error"]) == 2
+    assert len([row for row in output if row["check"] in ("1d", "1m")
+                and row["status"] == "error"]) == 2
     assert "private account" not in repr(output)
 
 
@@ -145,3 +149,40 @@ def test_historical_callbacks_do_not_trigger_market_reads(capsys):
     capsys.readouterr()
     probe.handlebar(context)
     assert capsys.readouterr().out == ""
+
+
+def test_native_fields_are_not_normalised_and_empty_history_is_not_non_st(capsys):
+    probe = configured_probe()
+    calls = []
+
+    def detail(symbol, **kwargs):
+        calls.append((symbol, kwargs))
+        return {"FloatVolumn": 123.0, "TotalVolume": 456.0, "OpenDate": 19700101}
+
+    context = SimpleNamespace(get_instrument_detail=detail, get_his_st_data=lambda symbol: {})
+    probe._native_fact_samples(context)
+    output = records(capsys)
+    assert calls == [("600000.SH", {"iscomplete": True})]
+    assert output[0]["raw"] == {"FloatVolumn": 123.0, "TotalVolume": 456.0, "OpenDate": 19700101}
+    assert "FloatVolume" not in output[0]["raw"]
+    assert output[1]["status"] == "empty_unverified"
+    assert "is_st" not in output[1]
+
+
+def test_native_signature_error_is_not_retried_and_st_samples_are_bounded(capsys):
+    probe = configured_probe()
+    calls = []
+
+    def detail(*args, **kwargs):
+        calls.append(kwargs)
+        raise TypeError("not supported")
+
+    ranges = [["20200101", "20200201"]] * 20
+    context = SimpleNamespace(get_instrument_detail=detail,
+                              get_his_st_data=lambda symbol: {"ST": ranges})
+    probe._native_fact_samples(context)
+    output = records(capsys)
+    assert calls == [{"iscomplete": True}]
+    assert output[0]["status"] == "error"
+    assert output[1]["range_counts"] == {"ST": 20}
+    assert len(output[1]["raw"]["ST"]) == 2
