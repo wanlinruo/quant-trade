@@ -5,6 +5,8 @@
 见 `../plans/qmt-inner-strategy-migration.md`：当前生产策略基线、新版2.1.33.0官网下载核验、
 真值输入/状态恢复/运行控制门禁及无交易诊断步骤。`qmt-inner-readonly-probe.py`仅供新版
 编辑器人工诊断，不是生产交易入口；离线通过不代表新版现场或实盘验收完成。
+`qmt-inner-input-contract.md`补充输入/恢复验收要求；`qmt-inner-decision-core.py`为本地生成的
+纯计算材料，绑定源文件指纹，同输入对照不代表已移植完整选股、状态或交易链路。
 
 ## Redis5只读能力隔离（#488）
 

@@ -1,0 +1,104 @@
+# QMT 内置迁移：计算输入与恢复验收契约（#533）
+
+承接 [迁移方案](../plans/qmt-inner-strategy-migration.md) 与
+[Issue #533](https://github.com/wanlinruo/quant-trade/issues/533)。
+这是下一阶段适配器的输入和验收要求，不是已实现的数据通道。
+券商是否允许正式模型参数人工录入盘前真值、是否有跨重启正式状态机制，仍待答复/实测。
+
+## 计算核心的范围
+
+`qmt-inner-decision-core.py` 仅包含当前 `params/gate/allocation/exits` 的纯计算函数和常量。
+本地生成器 `build-qmt-inner-core.py` 从源码 AST 提取，移除类型注解与说明文档，
+把冻结 dataclass 输出记录转成不可变 namedtuple；函数中的算术、比较、分支与默认值保留。
+生成物只有标准库 collections 依赖，语法按 Python3.6 解析；这不是在 Python3.6 解释器或
+江海新版上的执行证据。每个原文件 SHA-256 写进生成物，避免手抄阈值和双份算法各自漂移。
+
+本机命令：
+
+```bash
+uv run python docs/reference/build-qmt-inner-core.py
+uv run python docs/reference/build-qmt-inner-core.py --check
+uv run pytest tests/scripts/test_qmt_inner_decision_core.py tests/scripts/test_qmt_inner_readonly_probe.py -q
+```
+
+生成器只在本地开发机运行，不能复制到 QMT 中。生成物没有 init/handlebar、行情接口、账户、
+timer、Store 或委托接口；不能独立承担策略，也没有实现初始化完整性门禁。
+allocate 的 `ORDER_SUBMITTED` 是原计算函数的结果标签，**不是发单或受理回报**。
+候选池、入场判定、生态计算、分支路由、逐lot记账、T+1和风控适配仍未移植。
+
+## 生产基线与费用、额度的区别
+
+2026-10-23 21:04 从实际 Live release `34c7b7b` 只读取样，13个关键模块逐文件SHA-256
+与当时开发树一致，见 [基线清单](qmt-inner-production-baseline.json)。它包含选股、策略、
+入场、Gate、分配、退出、阈值、feed/market_feed/query、runtime/store/fill_tracker。
+记录包含公开代码指纹与筛选后的策略/风控/费用值，不含真实账户、凭据或完整配置。
+这是历史采样，不能代替最终切换前的现场核验。
+
+以下值必须分开，不能为了“统一”而改动其中一套：
+
+| 项目 | 当前有效值或公式 | 对移植的要求 |
+|---|---|---|
+| 实际配置佣金模型 | commission_rate=0.000075，min_commission=5 | 真实费用/回报对账独立实现；配置模型不等于已取得首笔自然股票实收费验收 |
+| 定量准备金 | max(5, budget×0.0003)+budget×0.00001 | 原CASH-SAFE公式，不能改成实际配置佣金率 |
+| 委托保护价缓冲 | entry_price_buffer=0.03 | 原函数默认0.002不是当前有效参数，适配器须显式传入 |
+| 定量缓冲 | sizing_price_buffer=0.005 | 与委托保护价分开，不能合并成3% |
+| 资金上限 | enabled_capital=10000 | 独立于券商账户总资产与可用余额 |
+| 默认单标的预算 | runtime按 min(enabled_capital, day_start_value×0.05) 注入 | 不能因为纯allocate默认max_budget=None就给一只候选全部账户现金 |
+| 单笔委托上限/日损失 | max_order_value=10000，max_daily_loss=0.02 | 属于runtime/risk约束，不包含在纯allocate中 |
+
+## 输入对象与来源约束
+
+数值单位和可见时点必须在适配边界确认；下表描述的是现有计算函数的输入，不声称新版
+QMT返回同名字段或相同单位。新版接口列名、单位和权限在探针实测后才允许写映射代码。
+
+| 输入 | 形态/语义 | 必要证据 |
+|---|---|---|
+| tag | LOW_MAIN/HIGH_MAIN/LOW_CHINEXT/HIGH_CHINEXT | 来自现行分支路由；未知分支不由适配器猜测 |
+| env | dict，T-1五个生态字段 | 字段分别为index_ma20_slope_5d、prior_limitup_nextday_return_mean、market_median_return_1d、touched_limit_up_count、market_advance_ratio；全A与滚动窗口保持 |
+| stock_factors | dict，stock_return_10d、distance_to_60d_high | 同一已确认历史、复权、窗口和可见时点 |
+| candidates | 有序(symbol,tag)列表，已通过入场及Gate | 顺序和权重归一化范围保持；纯core不能自行构造候选 |
+| cash/max_budget | 策略可用现金及单标的预算，元 | 由等价runtime算出；保留资金冻结/持仓占用及风控，不能直接使用整账户余额 |
+| opens/limit_ups | symbol→价格，元 | 最终竞价成交价及当日stk_limit直取事实；QMT字段仅凭同名不能替代来源 |
+| recent_closes | 按日期升序的历史收盘序列 | 截至上一交易日，锚点一致；动态MA5在函数中取最后4根和当前价 |
+| last_price | 检查点当时可见价格 | 时间戳、新鲜度、停牌状态和缺失路径须验证，不能用未来收盘价补齐 |
+| entry_price/tag/acquired_on | 原策略lot的成交价/分支/取得日 | 来自真实成交与策略账本，不能仅凭券商聚合成本恢复 |
+
+首板候选、ST、限价、停牌、退市整理期、上市日期、估值与复权历史仍按迁移方案逐项取真值。
+不把历史纯派生指标的计算契约变成新源猜测许可，不改变冻结S6/S7阈值。
+
+## 缺失与默认值的边界
+
+1. 现有Gate的UNKNOWN_ALLOW与三值AND/OR是需保持的算法行为；同输入差分包含显式None、
+   NaN和无效字符串，不用“更保守”替换冻结逻辑。
+2. 数据通道是否真实接通、日期是否正确、所需字段是否存在，属于适配器启动完整性门禁。
+   全部传空dict也能计算出UNKNOWN_ALLOW，**并不证明允许启动交易**。
+3. 测试包含缺限价、未知tag和空历史等既有函数分支，用于发现移植差异；这些合成输入
+   不证明生产输入合法，更不是允许新源缺数据时用默认值放行。
+4. 接入层必须保留“未接通/字段缺失/源明确返回null”的区别，并按原调用方语义处置。
+   当前纯core不含该接入层，因此不能进入实盘。
+
+## 状态恢复验收矩阵
+
+当前 `strategy.on_fill` 用真实买入成交维护分支lots，卖出FIFO核销；适配器提交给券商的
+参数含qsys策略名与client_order_id，分支tag不作为独立参数传给券商。因此不能假定
+查询到持仓/备注就已经恢复tag、取得日和成交去重。新版正式接口是否能补足信息仍未验证。
+
+下表是必须完成的验收场景，**不是本轮已通过的测试**：
+
+| 场景 | 恢复后的要求 | 缺证据时的处理 |
+|---|---|---|
+| 空仓且无活动委托的首次切换 | 以最新柜台/客户端事实核实，无旧代理可重新发单 | 不以早先Linux空库作为当前券商空仓证明 |
+| HIGH/LOW持仓跨日 | tag、入场价、取得日、可卖数量逐lot保留 | 不能依据当前价格或盈利状态猜分支 |
+| 同一证券多批买入/部分卖出 | FIFO与原lot账本逐值一致 | 聚合持仓相等不能替代lot一致 |
+| 发送后、回报前崩溃 | 确认是已提交/未提交/未知；禁止重复补发 | 结果未知则暂停自动续跑并人工核对 |
+| 成交已到、记账前崩溃 | 按真实成交唯一标识只应用一次 | 无稳定标识/历史缺页则不自动补账 |
+| 同一成交重复推送/历史重查 | 状态和费用不重复累加 | 不把模块内set当跨进程去重证据 |
+| 一单多次部分成交 | 数量、冻结、累计费用增量与终态一致 | 原最低佣金按委托累计，不能逐回报重复收取 |
+| 撤单失败/拒单/未知状态 | 回报不足时明确未知，不虚构已撤/已成 | 保留未决，不重新占用同一预算下另一单 |
+| 人工成交/其他模型持仓 | 有明确归属，不挪入本策略lots | 不根据同一证券代码直接接管 |
+| 断线后缓存/客户端重启 | 客户端快照新鲜度及历史覆盖可证实 | 缓存可查询不等于柜台事实已完整同步 |
+| 双模型/重复启动 | 单一管理者，重复事件不发第二单 | 当前无共享持久锁证据，不宣称已解决 |
+| 持仓未知且控制链路不可用 | 客户端停止/人工处置路径已实测 | Linux kill/Redis开关不能充当内置模型急停 |
+
+首个只读探针不查账户和历史成交；上述项目需正式数据接口探针、允许的状态机制和新版
+真实运行证据后，再接入离线恢复夹具。当前不编造字段映射，也不为验证执行真实交易或重启。
