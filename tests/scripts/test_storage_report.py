@@ -83,3 +83,28 @@ def test_payload_exposes_capacity_thresholds_and_categories(tmp_path, monkeypatc
     assert payload["disk"]["expansion_review_required"] is True
     assert payload["thresholds"]["expansion_review_free_bytes"] == 15 * report.GIB
     assert payload["categories"][0]["category"] == "生产仓库"
+
+
+def test_snapshot_separates_system_disk_and_preserves_old_data_fields(tmp_path, monkeypatch):
+    from qsys.ops.storage import DiskStatus
+    base = tmp_path / "data"
+    base.mkdir()
+    def probe(path):
+        free = 8 if path == Path("/") else 30
+        return DiskStatus(120 * report.GIB, (120 - free) * report.GIB, free * report.GIB)
+    monkeypatch.setattr(report, "disk_status", probe)
+    payload = report.build_payload(base, None, NOW)
+    assert payload["schema_version"] == 1
+    assert payload["disk"]["free"] == 30 * report.GIB
+    assert payload["disk"]["level"] == "ok"
+    assert payload["system_disk"]["free"] == 8 * report.GIB
+    assert payload["system_disk"]["level"] == "fail"
+    assert payload["system_disk"]["expansion_review_required"] is True
+    def root_unavailable(path):
+        if path == Path("/"):
+            raise OSError("unavailable")
+        return probe(path)
+    monkeypatch.setattr(report, "disk_status", root_unavailable)
+    payload = report.build_payload(base, None, NOW)
+    assert payload["system_disk"] is None
+    assert payload["disk"]["free"] == 30 * report.GIB

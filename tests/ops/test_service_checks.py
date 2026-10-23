@@ -637,6 +637,18 @@ def test_disk_capacity_levels(tmp_path, monkeypatch):
         assert sc._disk_capacity(_storage_ctx(tmp_path)).status == status
 
 
+def test_system_disk_is_checked_without_data_base(monkeypatch):
+    from pathlib import Path
+    for free, expected in [(30, sc.OK), (15, sc.WARN), (5, sc.BAD)]:
+        def probe(path):
+            assert path == Path("/")
+            return sc_storage.DiskStatus(120 * sc.GIB, (120 - free) * sc.GIB, free * sc.GIB)
+        monkeypatch.setattr(sc, "disk_status", probe)
+        assert sc._system_disk_capacity(_storage_ctx(None)).status == expected
+    monkeypatch.setattr(sc, "disk_status", lambda _: (_ for _ in ()).throw(OSError("unavailable")))
+    assert sc._system_disk_capacity(_storage_ctx(None)).status == sc.BAD
+
+
 def test_retention_warns_on_expired_copies_and_unregistered_dirs(tmp_path):
     import os
     base = tmp_path / "qsys"

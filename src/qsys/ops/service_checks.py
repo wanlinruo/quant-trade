@@ -699,6 +699,16 @@ def _disk_capacity(ctx: CheckContext) -> CheckResult:
     return CheckResult(status, expected, actual)
 
 
+def _system_disk_capacity(ctx: CheckContext) -> CheckResult:
+    expected = f"/ 剩余 ≥ {_gib(FREE_WARN_BYTES)}（低于 {_gib(FREE_FAIL_BYTES)} 判失败）"
+    try:
+        disk = disk_status(Path("/"))
+    except OSError as exc:
+        return CheckResult(BAD, expected, f"无法读取系统盘：{exc}")
+    actual = f"/ 剩余 {_gib(disk.free)} / 共 {_gib(disk.total)}"
+    return CheckResult({"ok": OK, "warn": WARN, "fail": BAD}[disk.level], expected, actual)
+
+
 def _retention(ctx: CheckContext) -> CheckResult:
     expected = "无到期未处理的副本，无未登记目录"
     if ctx.storage_base is None or not ctx.storage_base.exists():
@@ -792,6 +802,7 @@ CHECKS: tuple[ServiceCheck, ...] = (
     ServiceCheck("catalog-verify", "阻断级规则全部通过", "metric_checks", _metric_checks),
     ServiceCheck("catalog-verify", "源别名对得上数据", "bar_minute_1m", _source_aliases_resolve),
     ServiceCheck("service-checks", "磁盘剩余容量", "/data/qsys", _disk_capacity),
+    ServiceCheck("service-checks", "系统盘剩余容量", "/", _system_disk_capacity),
     ServiceCheck("service-checks", "存储保留策略", "/data/qsys", _retention),
     ServiceCheck("service-checks", "站点证书有效期", "wanlinruo.cn:8443", _certificate),
 )

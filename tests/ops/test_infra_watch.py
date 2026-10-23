@@ -35,6 +35,27 @@ def test_disk_has_two_levels():
     assert _by_key(thin, "disk").severity is Severity.WARNING
 
 
+def test_system_disk_is_independent_and_escalates_without_repeating():
+    tracker = EdgeTracker()
+    def readings(free):
+        return survey({"disk_free_bytes": 30 * GIB, "system_disk_free_bytes": free * GIB})
+    warning = readings(15)
+    assert _keys(warning) == {"disk:system"}
+    assert tracker.update(warning)[0].severity is Severity.WARNING
+    assert tracker.update(readings(14)) == []
+    assert tracker.update(readings(9))[0].severity is Severity.CRITICAL
+    assert tracker.update(readings(8)) == []
+    assert tracker.update(readings(15)) == []  # 仍低于warning，不冒充恢复
+    recovered = tracker.update(readings(20))
+    assert len(recovered) == 1 and recovered[0].severity is Severity.INFO
+    assert "系统盘" in recovered[0].title and "已恢复" in recovered[0].title
+    assert _by_key(readings(10), "disk:system").severity is Severity.WARNING
+
+
+def test_missing_system_disk_does_not_fabricate_a_low_reading():
+    assert survey({"disk_free_bytes": 30 * GIB, "system_disk_free_bytes": None}) == []
+
+
 def test_the_certificate_warns_before_it_fails():
     assert _by_key(survey({"cert_days": 9}), "cert").severity is Severity.CRITICAL
     assert _by_key(survey({"cert_days": 20}), "cert").severity is Severity.WARNING
