@@ -1,5 +1,11 @@
 # 参考资料
 
+## 江海 QMT 内置策略迁移（#533）
+
+见 `../plans/qmt-inner-strategy-migration.md`：当前生产策略基线、新版2.1.33.0官网下载核验、
+真值输入/状态恢复/运行控制门禁及无交易诊断步骤。`qmt-inner-readonly-probe.py`仅供新版
+编辑器人工诊断，不是生产交易入口；离线通过不代表新版现场或实盘验收完成。
+
 ## Redis5只读能力隔离（#488）
 
 见 `../plans/redis-readonly-production-isolation.md`：真实UID白名单GET入口、按账号端口门禁、
