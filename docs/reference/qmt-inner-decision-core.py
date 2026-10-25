@@ -7,14 +7,16 @@ Regenerate locally with docs/reference/build-qmt-inner-core.py.
 
 from collections import namedtuple as _namedtuple
 
-SOURCE_SHA256 = {'params.py': 'f68097be4b43a146fe17d9200b70c3a8fa4c3062384e3782023e5d4c52d3eff9', 'gate.py': '63974cdaba1ad59c1883ed5906f8f28888b9c9eec0a40781fa7675bab198b1a0', 'allocation.py': 'c779cb2c5a8744aef9ec7538c1b378ab128d36be06f7b20301596484677d1812', 'exits.py': '3d6eb8e4ca787acf36b68225ca4054d38c40841ec12759d27be5e60333b08b13', 'entry.py': '63a2805f70e4c579709391c9eb011f0fb4205255e63b8139fb6f5965ea332506', 'selection.py': '412c1cfb18cb9b1864b9b7c3467d9c7830de01456411f1e57d6b337f90c9f1fe', 'qmt-inner-history-input.py': '38573f91bce5ae669c895096289deeace979df820e48e9211598e2f568982f45'}
+SOURCE_SHA256 = {'params.py': 'f68097be4b43a146fe17d9200b70c3a8fa4c3062384e3782023e5d4c52d3eff9', 'gate.py': '63974cdaba1ad59c1883ed5906f8f28888b9c9eec0a40781fa7675bab198b1a0', 'allocation.py': 'c779cb2c5a8744aef9ec7538c1b378ab128d36be06f7b20301596484677d1812', 'exits.py': '3d6eb8e4ca787acf36b68225ca4054d38c40841ec12759d27be5e60333b08b13', 'entry.py': '63a2805f70e4c579709391c9eb011f0fb4205255e63b8139fb6f5965ea332506', 'selection.py': '412c1cfb18cb9b1864b9b7c3467d9c7830de01456411f1e57d6b337f90c9f1fe', 'qmt-inner-history-input.py': '90ed7e27ccadbf80342b6ff7c1130d7b092f9ea5eb57db41f2209f32aa559625', 'src/qsys/data/feed.py': '04f19fe2eb3feb07064d7c28676007310ff40a7d71f9a4dbe402a97dc8544094'}
 
 # coding: utf-8
 """#533: in-memory calculation input; no QMT field mapping or data injection.
 
 The future native adapter must first prove dates, adjustment and units.
-This container copies already validated canonical columns without converting,
-filling, sorting or loading any data. It is also used by offline fixtures.
+The container copies already validated canonical columns. The forward adjustment
+helper below operates on explicit aligned canonical cumulative factors and close
+times, NOT native QMT ex-event payloads. Neither loads, fills, sorts or converts
+units; neither establishes native calendar/factor coverage or data visibility.
 """
 
 
@@ -56,6 +58,81 @@ class History:
             raise ValueError("tail requires a nonnegative integer")
         return History({name: values[-count:] if count else ()
                         for name, values in self._columns.items()})
+
+
+def _adjustment_value(value):
+    if value is not None and (
+            isinstance(value, bool) or not isinstance(value, (int, float))
+            or value != value or value in (float("inf"), -float("inf"))):
+        raise ValueError("adjustment values must be finite numbers or explicit None")
+    return value
+
+
+def _adjustment_factor(value):
+    value = _adjustment_value(value)
+    if value is not None and value <= 0:
+        raise ValueError("cumulative factors must be positive or explicit None")
+    return value
+
+
+def forward_adjusted_columns(columns, bar_close_times, *, as_of,
+                             cum_price_factors, cum_share_factors):
+    """Canonical in-memory counterpart of HistoricalFeed FORWARD (#538).
+
+    Close times and as_of are explicit comparable integer timestamps in the same
+    unit/time basis, supplied after calendar/visibility validation. The final
+    visible input bar is the anchor. Factors must align one-for-one with bars;
+    missing factors propagate None, including a missing anchor. The nullable
+    output cannot enter History until complete. No calendar/coverage is inferred.
+    """
+    if isinstance(as_of, bool) or not isinstance(as_of, int):
+        raise ValueError("as_of must be an explicit integer timestamp")
+    if set(History.COLUMNS) - set(columns):
+        raise ValueError("missing canonical history columns")
+    copied = {name: tuple(columns[name]) for name in History.COLUMNS}
+    times = tuple(bar_close_times)
+    price = tuple(cum_price_factors)
+    share = tuple(cum_share_factors)
+    lengths = {len(values) for values in copied.values()}
+    lengths.update((len(times), len(price), len(share)))
+    if len(lengths) != 1:
+        raise ValueError("bars, close times and cumulative factors must align")
+    if any(isinstance(t, bool) or not isinstance(t, int) for t in times):
+        raise ValueError("close times must be explicit integer timestamps")
+    if any(left >= right for left, right in zip(times, times[1:])):
+        raise ValueError("close times must be unique and strictly increasing")
+    count = sum(t <= as_of for t in times)
+    result = {name: [_adjustment_value(v) for v in values[:count]]
+              for name, values in copied.items()}
+    if not count:
+        return result
+    price = tuple(_adjustment_factor(v) for v in price[:count])
+    share = tuple(_adjustment_factor(v) for v in share[:count])
+    price_anchor, share_anchor = price[-1], share[-1]
+    for index in range(count):
+        price_ratio = (None if price[index] is None or price_anchor is None
+                       else _adjustment_value(price[index] / price_anchor))
+        share_ratio = (None if share[index] is None or share_anchor is None
+                       else _adjustment_value(share_anchor / share[index]))
+        if price_ratio == 0 or share_ratio == 0:
+            raise ValueError("cumulative factor ratio underflow")
+        for name in ("open", "high", "low", "close"):
+            value = result[name][index]
+            result[name][index] = (
+                None if value is None or price_ratio is None
+                else _adjustment_value(value * price_ratio)
+            )
+        value = result["volume"][index]
+        if value is None or share_ratio is None:
+            result["volume"][index] = None
+        else:
+            # Same float multiplication, half-to-even rounding and Int64 range
+            # as the locked Polars feed. Cash never enters this share ratio.
+            rounded = round(_adjustment_value(value * share_ratio))
+            if not -(2 ** 63) <= rounded < 2 ** 63:
+                raise ValueError("adjusted volume exceeds Int64 range")
+            result["volume"][index] = rounded
+    return result
 
 NEW_STOCK_DAYS = 50
 EXCLUDED_PREFIXES = ('4', '8')

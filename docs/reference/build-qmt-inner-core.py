@@ -12,6 +12,9 @@ ROOT = Path(__file__).resolve().parents[2]
 OUTPUT = ROOT / "docs/reference/qmt-inner-decision-core.py"
 SOURCES = ("params.py", "gate.py", "allocation.py", "exits.py", "entry.py", "selection.py")
 HISTORY_INPUT = "qmt-inner-history-input.py"
+# The adjustment helper is a handwritten translation of the Polars feed, not an
+# AST extraction. Bind its reference as well as the portable implementation.
+REFERENCE_SOURCES = ("src/qsys/data/feed.py",)
 GATE_FUNCTIONS = frozenset({
     "three_or", "three_and", "_num", "classify", "_classify_low_main",
     "_classify_high_main", "_classify_high_chinext", "gate_allow",
@@ -92,6 +95,8 @@ def build_core(root: Path = ROOT) -> str:
             selected.append(node)
     history_input = (root / "docs/reference" / HISTORY_INPUT).read_bytes()
     hashes[HISTORY_INPUT] = hashlib.sha256(history_input).hexdigest()
+    for path in REFERENCE_SOURCES:
+        hashes[path] = hashlib.sha256((root / path).read_bytes()).hexdigest()
     module = ast.Module(body=selected, type_ignores=[])
     module = PortableSyntax().visit(module)
     ast.fix_missing_locations(module)
