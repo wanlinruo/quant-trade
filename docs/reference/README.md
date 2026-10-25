@@ -17,6 +17,8 @@ History容器仅处理明确完整的内存数值；#538另增加规范前复权
 
 见 `../plans/qmt-inner-state-recovery.md`：原生ACCOUNT身份正对照、当前查询空结果的
 边界、历史接口NameError与跨运行持久化/lot/FIFO/去重的剩余条件。未验证可靠自动恢复。
+`qmt-inner-runtime-guard.py`是独立回调守卫准备件，显式证据/时效、同实例去重及未知副作用
+不重播均有离线验证；没有QMT入口、持久化或证据生产者，不作为可激活策略。
 
 ## QMT外部数据连续性（#540 / #533-F）
 

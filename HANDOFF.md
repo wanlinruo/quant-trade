@@ -59,6 +59,10 @@
   空查询不证明券商空仓/无委托或缓存完整；历史/持久化/lot与去重仍未通过，#535撤单结果不变。
   22:48检查点确认账号探针停止、原任务XML不变、临时辅助任务disabled。后续函数名枚举被
   前台守卫拒绝，未运行；详见docs/plans/qmt-inner-state-recovery.md，私有账号不入Git/Issue。
+- #537新增独立决策回调守卫准备：按session/run_id及证据有效期拒绝未恢复状态，显式
+  校验决策/行情时点；同实例非阻塞拒绝并发/重入，回调前消费检查点，异常或中断后不重播。
+  未接原生调度或生产入口，未提供实际持久化/共享锁/证据生产者，生产延迟阈值未设默认，
+  不能把离线测试或局部内存去重当跨重启验收，详见docs/plans/qmt-inner-state-recovery.md§6。
 - Linux停机审计在`/data/qsys/var-deployments/issue533-20261024-qmt-native-readonly/`；
   Windows源码、原始日志及缓存备份在`C:/qsys/var-deployments/issue533-20261024-qmt-install/`。
   账号、配置、截图和缓存不入Git；恢复/接管前须核对券商真实持仓、活动委托与pending，
