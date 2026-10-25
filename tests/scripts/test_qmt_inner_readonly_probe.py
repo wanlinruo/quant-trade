@@ -155,14 +155,14 @@ def test_native_fields_are_not_normalised_and_empty_history_is_not_non_st(capsys
     probe = configured_probe()
     calls = []
 
-    def detail(symbol, **kwargs):
-        calls.append((symbol, kwargs))
+    def detail(symbol):
+        calls.append(symbol)
         return {"FloatVolumn": 123.0, "TotalVolume": 456.0, "OpenDate": 19700101}
 
     context = SimpleNamespace(get_instrument_detail=detail, get_his_st_data=lambda symbol: {})
     probe._native_fact_samples(context)
     output = records(capsys)
-    assert calls == [("600000.SH", {"iscomplete": True})]
+    assert calls == ["600000.SH"]
     assert output[0]["raw"] == {"FloatVolumn": 123.0, "TotalVolume": 456.0, "OpenDate": 19700101}
     assert "FloatVolume" not in output[0]["raw"]
     assert output[1]["status"] == "empty_unverified"
@@ -182,7 +182,7 @@ def test_native_signature_error_is_not_retried_and_st_samples_are_bounded(capsys
                               get_his_st_data=lambda symbol: {"ST": ranges})
     probe._native_fact_samples(context)
     output = records(capsys)
-    assert calls == [{"iscomplete": True}]
+    assert calls == [{}]
     assert output[0]["status"] == "error"
     assert output[1]["range_counts"] == {"ST": 20}
     assert len(output[1]["raw"]["ST"]) == 2

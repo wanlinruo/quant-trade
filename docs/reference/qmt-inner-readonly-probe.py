@@ -124,7 +124,9 @@ def _native_fact_samples(ContextInfo):
     # Raw observations only: no source mapping, unit conversion or ST inference.
     for symbol in SYMBOLS:
         try:
-            raw = ContextInfo.get_instrument_detail(symbol, iscomplete=True)
+            # JiangHai 2.1.33.0: the one-argument signature was verified in-client.
+            # Both the iscomplete keyword and second positional argument failed.
+            raw = ContextInfo.get_instrument_detail(symbol)
             if not isinstance(raw, dict):
                 _emit("instrument_detail", "unexpected_type", symbol=symbol)
             elif not raw:
@@ -137,7 +139,7 @@ def _native_fact_samples(ContextInfo):
                       keys=sorted(raw)[:32], field_count=len(raw),
                       raw={key: raw[key] for key in fields if key in raw})
         except Exception as exc:
-            # Do not guess old spellings, retry, or silently omit iscomplete.
+            # Do not retry another signature or guess missing field spellings.
             _emit("instrument_detail", "error", symbol=symbol,
                   error_type=type(exc).__name__)
         try:
