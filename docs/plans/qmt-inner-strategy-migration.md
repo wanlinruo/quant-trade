@@ -298,6 +298,10 @@ FileVersion=`2,1,19,0`。本次未枚举到运行中的XtItClient，不据此认
 
 ### 状态恢复门禁
 
+独立承接[#541](https://github.com/wanlinruo/quant-trade/issues/541)。
+[原生账户查询与恢复评估](qmt-inner-state-recovery.md)记录22:29的ACCOUNT身份正对照、
+当前三类空结果与历史接口NameError；7次尝试/4次返回不代表完整状态恢复或柜台已同步。
+
 原策略以 tags 区分HIGH/LOW，以lots记录真实入场价、数量、取得日和分支，并按FIFO核销。
 这些状态决定T+1卖出资格与退出规则；券商聚合持仓和平均成本不足以证明可恢复。
 

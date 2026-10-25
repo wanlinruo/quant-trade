@@ -51,8 +51,14 @@
   只查footer/旧运行证据，未重做质量验收。corporate_actions用于累计股本量因子，价格因子
   可直取Tushare不代表全部派生独立。QMT补采失败后仍执行既有质检的代码修复尚未发布生产；
   不把整项任务改报成功、不恢复旧通道，详见docs/plans/qmt-data-continuity-migration.md。
-- 10-25 21:35复核新版进程变为5916，启动时刻20:54:12，未推断重启原因。旧窗口句柄
-  已弃用；确认主界面后，前台守卫拒绝输入，后续日历探针未运行，等待维护者可操作桌面。
+- 10-25 21:35新版进程变为5916，启动20:54:12，不推断原因；弃用旧句柄。维护者解锁后，
+  22:09实际调用get_trading_calendar三市场均NameError，ContextInfo同名方法不可调用，
+  股票/指数仍19/25日；未取得独立日历或停牌完整性，不以较早“等待桌面”记录作为最新结论。
+- #541承接状态恢复：原生只读ACCOUNT返回1条并与私有配置身份匹配，POSITION/ORDER/DEAL
+  均空，历史交易明细函数三类查询均NameError；7次尝试/4次返回，下载及交易0。
+  空查询不证明券商空仓/无委托或缓存完整；历史/持久化/lot与去重仍未通过，#535撤单结果不变。
+  22:48检查点确认账号探针停止、原任务XML不变、临时辅助任务disabled。后续函数名枚举被
+  前台守卫拒绝，未运行；详见docs/plans/qmt-inner-state-recovery.md，私有账号不入Git/Issue。
 - Linux停机审计在`/data/qsys/var-deployments/issue533-20261024-qmt-native-readonly/`；
   Windows源码、原始日志及缓存备份在`C:/qsys/var-deployments/issue533-20261024-qmt-install/`。
   账号、配置、截图和缓存不入Git；恢复/接管前须核对券商真实持仓、活动委托与pending，
