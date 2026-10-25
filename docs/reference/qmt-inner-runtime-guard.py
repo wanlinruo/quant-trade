@@ -5,6 +5,7 @@ No clock reads, QMT calls, persistence or scheduling. All dates are explicit
 naive UTC+8 client times. Evidence must come from a future verified native
 provider; constructing this record is not proof that recovery occurred.
 The consumed set protects one instance only, not multiple models or restarts.
+A callback exception halts this instance; no local reset is provided.
 Quote timestamps do not certify price/volume content or source coverage.
 """
 from collections import namedtuple as _GuardRecord
@@ -73,6 +74,7 @@ class CallbackGuard:
         self._checkpoints = selected
         self._consumed = set()
         self._lock = _GuardLock()
+        self._halted = False
 
     def _recovery_reason(self, evidence, now):
         if evidence is None:
@@ -111,6 +113,8 @@ class CallbackGuard:
             self._lock.release()
 
     def _dispatch(self, name, *, now, quote_at, recovery, callback):
+        if self._halted:
+            return DispatchResult(False, 'instance_halted', None)
         if not _guard_name(name) or name not in self._checkpoints:
             return DispatchResult(False, 'checkpoint_unknown', None)
         if name in self._consumed:
@@ -141,4 +145,11 @@ class CallbackGuard:
         if not callable(callback):
             raise ValueError('business callback must be callable')
         self._consumed.add(name)
-        return DispatchResult(True, 'callback_completed', callback())
+        try:
+            value = callback()
+        except BaseException:
+            # An unknown side effect invalidates this whole in-memory runtime,
+            # including other checkpoints. No local reset can prove recovery.
+            self._halted = True
+            raise
+        return DispatchResult(True, 'callback_completed', value)

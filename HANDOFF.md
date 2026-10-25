@@ -60,7 +60,7 @@
   22:48检查点确认账号探针停止、原任务XML不变、临时辅助任务disabled。后续函数名枚举被
   前台守卫拒绝，未运行；详见docs/plans/qmt-inner-state-recovery.md，私有账号不入Git/Issue。
 - #537新增独立决策回调守卫准备：按session/run_id及证据有效期拒绝未恢复状态，显式
-  校验决策/行情时点；同实例非阻塞拒绝并发/重入，回调前消费检查点，异常或中断后不重播。
+  校验决策/行情时点；同实例非阻塞拒绝并发/重入，回调前消费检查点，异常或中断后整个实例暂停，其他检查点也不续跑。
   未接原生调度或生产入口，未提供实际持久化/共享锁/证据生产者，生产延迟阈值未设默认，
   不能把离线测试或局部内存去重当跨重启验收，详见docs/plans/qmt-inner-state-recovery.md§6。
 - Linux停机审计在`/data/qsys/var-deployments/issue533-20261024-qmt-native-readonly/`；

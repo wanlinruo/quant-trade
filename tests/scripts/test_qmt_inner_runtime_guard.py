@@ -148,7 +148,11 @@ def test_unknown_callback_effect_is_not_replayed(api, guard, error):
     with pytest.raises(type(error)) as caught:
         guard.dispatch('auction', now=AT, quote_at=AT, recovery=evidence(api), callback=handler)
     assert caught.value is error
-    reject(guard, evidence(api), reason='checkpoint_consumed')
+    reject(guard, evidence(api), reason='instance_halted')
+    # A different checkpoint or freshly dated record cannot clear unknown effects.
+    now = AT.replace(hour=11, minute=25, second=0)
+    reject(guard, evidence(api, checked_at=now), reason='instance_halted',
+           name='exit', now=now, quote_at=None)
 
 
 def test_invalid_callback_does_not_consume_or_keep_lock(api, guard):
