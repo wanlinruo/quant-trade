@@ -64,18 +64,28 @@ def _adjustment_factor(value):
     return value
 
 
+def _adjustment_group_count(value):
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError("reference symbol count must be an explicit nonnegative integer")
+    return value
+
+
 def forward_adjusted_columns(columns, bar_close_times, *, as_of,
-                             cum_price_factors, cum_share_factors):
+                             cum_price_factors, cum_share_factors,
+                             reference_symbol_count):
     """Canonical in-memory counterpart of HistoricalFeed FORWARD (#538).
 
     Close times and as_of are explicit comparable integer timestamps in the same
     unit/time basis, supplied after calendar/visibility validation. The final
     visible input bar is the anchor. Factors must align one-for-one with bars;
     missing factors propagate None, including a missing anchor. The nullable
-    output cannot enter History until complete. No calendar/coverage is inferred.
+    output cannot enter History until complete. reference_symbol_count describes
+    the actual visible cohort of the reference feed call, not a strategy choice.
+    No calendar, coverage or cohort cardinality is inferred.
     """
     if isinstance(as_of, bool) or not isinstance(as_of, int):
         raise ValueError("as_of must be an explicit integer timestamp")
+    groups = _adjustment_group_count(reference_symbol_count)
     if set(History.COLUMNS) - set(columns):
         raise ValueError("missing canonical history columns")
     copied = {name: tuple(columns[name]) for name in History.COLUMNS}
@@ -95,12 +105,22 @@ def forward_adjusted_columns(columns, bar_close_times, *, as_of,
               for name, values in copied.items()}
     if not count:
         return result
+    if not groups:
+        raise ValueError("visible bars require a positive reference symbol count")
     price = tuple(_adjustment_factor(v) for v in price[:count])
     share = tuple(_adjustment_factor(v) for v in share[:count])
     price_anchor, share_anchor = price[-1], share[-1]
     for index in range(count):
-        price_ratio = (None if price[index] is None or price_anchor is None
-                       else _adjustment_value(price[index] / price_anchor))
+        if price[index] is None or price_anchor is None:
+            price_ratio = None
+        else:
+            # Locked Polars: a single-group anchor broadcasts as a scalar.
+            # For multiple rows it multiplies by a reciprocal; vector anchors
+            # and one-row scalar/scalar operations use direct division.
+            price_ratio = _adjustment_value(
+                price[index] * (1.0 / price_anchor) if groups == 1 and count > 1
+                else price[index] / price_anchor
+            )
         share_ratio = (None if share[index] is None or share_anchor is None
                        else _adjustment_value(share_anchor / share[index]))
         if price_ratio == 0 or share_ratio == 0:

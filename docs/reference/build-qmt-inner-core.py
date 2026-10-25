@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 OUTPUT = ROOT / "docs/reference/qmt-inner-decision-core.py"
 SOURCES = ("params.py", "gate.py", "allocation.py", "exits.py", "entry.py", "selection.py")
 HISTORY_INPUT = "qmt-inner-history-input.py"
+NATIVE_INPUT = "qmt-inner-native-history-input.py"
 # The adjustment helper is a handwritten translation of the Polars feed, not an
 # AST extraction. Bind its reference as well as the portable implementation.
 REFERENCE_SOURCES = ("src/qsys/data/feed.py",)
@@ -95,6 +96,8 @@ def build_core(root: Path = ROOT) -> str:
             selected.append(node)
     history_input = (root / "docs/reference" / HISTORY_INPUT).read_bytes()
     hashes[HISTORY_INPUT] = hashlib.sha256(history_input).hexdigest()
+    native_input = (root / "docs/reference" / NATIVE_INPUT).read_bytes()
+    hashes[NATIVE_INPUT] = hashlib.sha256(native_input).hexdigest()
     for path in REFERENCE_SOURCES:
         hashes[path] = hashlib.sha256((root / path).read_bytes()).hexdigest()
     module = ast.Module(body=selected, type_ignores=[])
@@ -112,7 +115,8 @@ def build_core(root: Path = ROOT) -> str:
     )
     # Keep the handwritten input container separate from the transformed
     # production functions; its methods operate only on explicit finite data.
-    output = header + history_input.decode("utf-8") + "\n" + ast.unparse(module) + "\n"
+    output = (header + history_input.decode("utf-8") + "\n"
+              + native_input.decode("utf-8") + "\n" + ast.unparse(module) + "\n")
     ast.parse(output, feature_version=(3, 6))
     return output
 
