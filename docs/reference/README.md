@@ -12,7 +12,8 @@
 三个接口的Panel迁移范围、当前py36实际运行证据和先GET后准备运行库切换的建议。
 `qmt-runtime-container-probe.py`为首轮原生环境/现有get_market_data_ex容器诊断准备件，
 只有一次有界只读历史查询；离线守卫测试不替代客户端执行或数值等价验收。
-运行库核验顺序与待确认的具体信息见`../plans/qmt-python312-runtime-verification.md`。
+运行库核验顺序、正式包指纹、实际独立路径和本轮授权/容量门禁见
+`../plans/qmt-python312-runtime-verification.md`；安装与实际加载/业务验收分开记录。
 
 ## 江海 QMT 内置策略迁移（#533）
 
