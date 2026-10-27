@@ -60,6 +60,9 @@ def _repo(tmp_path: Path) -> tuple[Path, str]:
     (repo / "scripts/unrelated.py").write_text(
         "UNRELATED = 1\n", encoding="utf-8",
     )
+    (repo / "src/qsys/ops/sqlite_reader_anchor.py").write_text("READER = 1\n")
+    (repo / "src/qsys/__init__.py").write_text("")
+    (repo / "src/qsys/ops/__init__.py").write_text("")
     (repo / "deploy").mkdir()
     (repo / "deploy/component-releases.json").write_text(
         Path("deploy/component-releases.json").read_text(encoding="utf-8"),
@@ -90,6 +93,21 @@ def _wheel(
         )
         archive.writestr("qsys/__init__.py", "")
     return path
+
+
+def test_state_reader_release_binds_only_its_stdlib_source(tmp_path: Path) -> None:
+    repo, sha = _repo(tmp_path)
+    wheel = _wheel(
+        tmp_path / "dist-reader" / "qsys-0.1.0-py3-none-any.whl",
+        command="qsys-live-state-reader", entrypoint="qsys.ops.sqlite_reader_anchor:main",
+    )
+    release = tmp_path / "reader-release"
+    value = build(repo, sha, "live-state-reader", wheel.parent, release,
+                  repository="owner/repo", run_id="544", run_attempt="1")
+    assert [record["path"] for record in value["scan_files"]] == [
+        "src/qsys/__init__.py", "src/qsys/ops/__init__.py", "src/qsys/ops/sqlite_reader_anchor.py",
+    ]
+    assert verify(repo, sha, "live-state-reader", release) == value
 
 
 def test_catalog_release_binds_entrypoint_wheel_and_tree(tmp_path: Path) -> None:

@@ -1306,7 +1306,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
 
     state = entrypoint.status({"production_repo": str(tmp_path)})
 
-    assert state["entrypoint_version"] == 32
+    assert state["entrypoint_version"] == 33
     assert set(state["capabilities"]) == {
         "systemd-apply-v1", "systemd-component-boundary-v1", "systemd-changed-artifacts-v1",
         "systemd-preview-v1", "systemd-runtime-paths-v1", "systemd-rollback-v1",
@@ -1336,6 +1336,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
         "component-sqlite-seed-v1",
         "component-live-continuity-v1",
         "component-spec-fingerprint-v1",
+        "component-state-reader-maintenance-v1",
         "emergency-restart-authorization-v1",
     }
 
@@ -1624,7 +1625,7 @@ def test_paper_and_shadow_protect_each_other_and_non_trading_peers() -> None:
 
 
 @pytest.mark.parametrize("component,active", [("health-observer", True), ("storage-report", False),
-                                            ("limit-up-shadow", False)])
+                                            ("limit-up-shadow", False), ("live-state-reader", False)])
 def test_component_record_preserves_state_and_matches_contract(
     monkeypatch, tmp_path, capsys, component, active,
 ) -> None:
@@ -1633,6 +1634,9 @@ def test_component_record_preserves_state_and_matches_contract(
     production = "b" * 40
     previous = "c" * 40 if active else "uninstalled"
     live = {"pid": "42", "started_monotonic": "99", "repo_sha": production}
+    if component == "live-state-reader":
+        live = {"pid": "0", "started_monotonic": "99", "repo_sha": production,
+                "maintenance_facts": "existing state and KILL"}
     state = {"active": active, "component": previous}
     records = []
     commands = []
@@ -1646,6 +1650,7 @@ def test_component_record_preserves_state_and_matches_contract(
     )
     monkeypatch.setattr(entrypoint, "_active", lambda unit, repo: state["active"])
     monkeypatch.setattr(entrypoint, "_live_identity", lambda repo: dict(live))
+    monkeypatch.setattr(entrypoint, "_state_reader_maintenance_identity", lambda repo: dict(live))
     monkeypatch.setattr(entrypoint, "_live_preflight", lambda repo: None)
     monkeypatch.setattr(entrypoint, "_fingerprints", lambda config, repo: {"linux": "f"})
     monkeypatch.setattr(entrypoint, "_unit_identity_token", lambda unit, repo: "unchanged")
@@ -2485,7 +2490,7 @@ def test_component_workflow_streams_only_a_verified_artifact() -> None:
     assert ".before.linux == .after.linux" in workflow
     assert "PRODUCTION_DEPLOY_SSH_KEY" in workflow
     assert "cancel-in-progress: false" in workflow
-    assert "backtest-worker|web|paper|shadow-core|live-core|limit-up-shadow|reboot-drill|catalog-verify|service-checks|storage-report|daily-digest|health-observer|daily-archive|premarket-limits|tushare-sync" in workflow
+    assert "backtest-worker|web|paper|shadow-core|live-core|live-state-reader|limit-up-shadow|reboot-drill|catalog-verify|service-checks|storage-report|daily-digest|health-observer|daily-archive|premarket-limits|tushare-sync" in workflow
     assert 'required = {"component-release-v15", "systemd-component-boundary-v1", "component-web-readiness-v1"}' in workflow
     assert 'entrypoint_version", 0) < 27' in workflow
     assert '.before["backtest-worker-identity"] == .after["backtest-worker-identity"]' in workflow

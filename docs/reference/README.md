@@ -1,5 +1,10 @@
 # 参考资料
 
+## 停机态历史状态读取（#544）
+
+见 `../plans/live-state-reader-maintenance.md`：标准库只读辅助连接、独立组件的停机安装
+门禁、真实UID/systemd合成验证和正式发布前置。准备完成不代表生产激活；临时服务期限保留。
+
 ## 江海 QMT 内置策略迁移（#533）
 
 见 `../plans/qmt-inner-strategy-migration.md`：当前生产策略基线、新版2.1.33.0官网下载核验、

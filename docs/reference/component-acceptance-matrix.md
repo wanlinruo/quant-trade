@@ -1,5 +1,12 @@
 # 运行单元分层验收矩阵
 
+## 10-27 停机态读库新增目标（#544）
+
+本轮 manifest 增加第16个准备目标 `live-state-reader`，尚未生产安装或激活；不能把下文
+15/15的历史部署计数直接扩大为16/16。独立源码、制品与停机守卫、真实UID合成沙箱证据
+见 [方案](../plans/live-state-reader-maintenance.md)。它不启动策略、不提供行情或账本恢复，
+也不把旧Live停机期间的事件改成已完成。旧临时锚点的今晚到期要求仍保留。
+
 ## Web 的 Windows 状态读取契约（#511）
 
 Web 的 `build_app()` 始终配置 `HealthStoreReader`，服务页只读 observer 的持久化

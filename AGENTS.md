@@ -249,6 +249,9 @@ manifest → `HANDOFF.md` → 其他历史文档。
   systemd只读挂载分别会报READONLY_DIRECTORY或CANTOPEN。由生产者保留不持有事务的连接，
   用真实只读UID和相同unit沙箱验证GC后、新提交及关闭前后行为；不开放业务目录写权限，
   不用immutable忽略WAL。状态库读取失败要明确告警，不能直接描述为已证实的交易事件失败。
+  生产者计划停机时另验冷库读取（#544），不为维持sidecar启动交易Runtime；独立只读辅助
+  服务须同时覆盖主库/KILL/锁保护、文件替换与真实读取UID。停机安装例外只限定具体非交易
+  组件，不扩展为其他组件跳过活动Live/preflight的通用入口；临时辅助服务的期限必须交接。
 - 往节点同步代码**禁止整目录 rsync**（会毁掉 `warehouse` 软链接和 `.venv`）：逐个列文件，
   或带 `--exclude '.venv/' --exclude 'warehouse/' --exclude '.git/' --exclude 'var/'`。
   动节点前先 `ls -la` 看清目标是文件、目录还是软链接。
