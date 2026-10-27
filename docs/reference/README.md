@@ -1,5 +1,36 @@
 # 参考资料
 
+## 停机态历史状态读取（#544）
+
+见 `../plans/live-state-reader-maintenance.md`：标准库只读辅助连接、独立组件的停机安装
+门禁、真实UID/systemd合成验证和正式发布前置。准备完成不代表生产激活；临时服务期限保留。
+
+## 江海 QMT 内置策略迁移（#533）
+
+见 `../plans/qmt-inner-strategy-migration.md`：当前生产策略基线、新版2.1.33.0官网下载核验、
+真值输入/状态恢复/运行控制门禁及无交易诊断步骤。`qmt-inner-readonly-probe.py`仅供新版
+编辑器人工诊断，不是生产交易入口；离线通过不代表新版现场或实盘验收完成。
+`qmt-inner-input-contract.md`补充输入/恢复验收要求；`qmt-inner-decision-core.py`为本地生成的
+纯计算材料，现含LOW/HIGH入场、个股因子、Gate、定量和退出，绑定源文件指纹。
+History容器仅处理明确完整的内存数值；#538另增加规范前复权纯算术及已观测原生内存包的
+事件/日历/时基映射，保留缺失null、独立股本量及half-to-even舍入。参考调用的可见证券
+组数须显式传入，以保持锁定Polars的标量/向量路径。现金/送转/配股三组原生样本已连接；
+配股股票日期列表比指数少6日，不能作为独立市场日历证明覆盖。完整单位、事件/停牌覆盖
+仍未通过；同输入对照不代表完整选股、状态或交易接管完成。
+
+## QMT内置状态恢复（#541 / #533-B）
+
+见 `../plans/qmt-inner-state-recovery.md`：原生ACCOUNT身份正对照、当前查询空结果的
+边界、历史接口NameError与跨运行持久化/lot/FIFO/去重的剩余条件。未验证可靠自动恢复。
+`qmt-inner-runtime-guard.py`是独立回调守卫准备件，显式证据/时效、同实例去重及未知副作用
+不重播均有离线验证；没有QMT入口、持久化或证据生产者，不作为可激活策略。
+
+## QMT外部数据连续性（#540 / #533-F）
+
+见 `../plans/qmt-data-continuity-migration.md`：分钟/竞价归档、Paper行情、送配事件、
+晚到新股补采与Tushare主链的实际依赖；21:51只读元数据与旧任务证据不等于未来供应恢复。
+补采失败后继续主数据质检的修复独立记录，生产发布与自然交易日验收仍待完成。
+
 ## Redis5只读能力隔离（#488）
 
 见 `../plans/redis-readonly-production-isolation.md`：真实UID白名单GET入口、按账号端口门禁、

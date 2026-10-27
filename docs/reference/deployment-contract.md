@@ -88,6 +88,15 @@ drop-in。该变更必须重启 monitor，且入口会检查 systemd 合并后�
 
 ## 组件级不可变发布
 
+### 停机态历史读库准备（#544）
+
+`live-state-reader` 是独立的第16个目标，准备版本固定入口v33声明
+`component-state-reader-maintenance-v1`。仅该无交易组件可以在旧Live为inactive/dead/PID0/
+disabled且既有本地KILL、主库和稳定绑定有效时安装，前后原始事实与peer身份必须保持；
+其他组件仍使用原活动Live身份及preflight。安装保持目标原active状态，不自动激活新服务。
+CI制品与测试证据、节点规格指纹和三方正式发布验收不放宽。当前代码准备不等于节点已安装
+v33或服务已启用，完整步骤及真实合成验证见[方案](../plans/live-state-reader-maintenance.md)。
+
 生产运行单元最终必须拥有各自的 release 目录、虚拟环境、当前版本指针和回滚目标；
 共享仓库只保存配置与运维入口，不再同时充当所有进程的代码发布目录。#137 约束实盘
 策略、Live Core 和资金风险，但不作为无关数据、Web、研究组件发布的总门禁。

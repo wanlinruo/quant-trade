@@ -1,0 +1,53 @@
+{
+  "explicit_fees": {
+    "commission_rate": 7.5e-05,
+    "min_commission": 5.0,
+    "stamp_duty_rate": 0.0005,
+    "transfer_fee_rate": 1e-05
+  },
+  "explicit_risk": {
+    "enabled_capital": 10000.0,
+    "max_account_asset": 0.0,
+    "max_daily_loss": 0.02,
+    "max_order_value": 10000.0,
+    "max_position_weight": 0.05
+  },
+  "module_manifest_sha256": "e5a127c214235083767bec736ac47be661894db8118bcf581a8027cfff605830",
+  "module_sha256": {
+    "agent/fill_tracker.py": "8f943773ba602b206d5c222472eabe37f09faf3d28a12da0c4fddd0696c6184f",
+    "data/feed.py": "04f19fe2eb3feb07064d7c28676007310ff40a7d71f9a4dbe402a97dc8544094",
+    "data/market_feed.py": "3ac59892547cc5b8ba4312608d02ff75625eac115ede21a9ffd9d27b12c3a424",
+    "data/query.py": "29957b9ff620006e85cb387c7320c7b4381b419436a15e3a4248b6c38271bca1",
+    "live/runtime.py": "2c1295aa907535b8585572828e3d2a23a6c1e897e36a69729e2227481f428ae0",
+    "live/store.py": "68aba14a5078ecbc3ed6688e897e5ca5e7320fd020cfff45f3d895c20e3fe474",
+    "strategy/structural/allocation.py": "c779cb2c5a8744aef9ec7538c1b378ab128d36be06f7b20301596484677d1812",
+    "strategy/structural/entry.py": "63a2805f70e4c579709391c9eb011f0fb4205255e63b8139fb6f5965ea332506",
+    "strategy/structural/exits.py": "3d6eb8e4ca787acf36b68225ca4054d38c40841ec12759d27be5e60333b08b13",
+    "strategy/structural/gate.py": "63974cdaba1ad59c1883ed5906f8f28888b9c9eec0a40781fa7675bab198b1a0",
+    "strategy/structural/params.py": "f68097be4b43a146fe17d9200b70c3a8fa4c3062384e3782023e5d4c52d3eff9",
+    "strategy/structural/selection.py": "412c1cfb18cb9b1864b9b7c3467d9c7830de01456411f1e57d6b337f90c9f1fe",
+    "strategy/structural/strategy.py": "3e476bb8e13637c0058f9bb6f167d4cc5be7d7a4ac384323f53b03071aef61be"
+  },
+  "observed_at": "2026-10-23T21:04:00.280151+08:00",
+  "parameter_keys": [
+    "auction_at",
+    "entry_price_buffer",
+    "require_auction_volume",
+    "sizing_price_buffer"
+  ],
+  "parameters_sha256": "a1730db59d23a6bc219d2dc0f1a44ee2a509cb828908d71a3ed48cefad84a05f",
+  "release_sha": "34c7b7b2937d9716d4972e5504726c00c3e2555a",
+  "schema_version": 1,
+  "scope": "read-only production baseline; not QMT migration acceptance",
+  "selected_parameters": {
+    "auction_at": "09:25:10",
+    "entry_price_buffer": 0.03,
+    "require_auction_volume": true,
+    "sizing_price_buffer": 0.005
+  },
+  "unit": [
+    "MainPID=3931099",
+    "NRestarts=0",
+    "ActiveState=active"
+  ]
+}

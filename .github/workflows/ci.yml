@@ -261,6 +261,19 @@ jobs:
           --dist dist --output live-core-release
           --repository "$SOURCE_REPOSITORY"
           --run-id "$SOURCE_RUN_ID" --run-attempt "$SOURCE_RUN_ATTEMPT"
+      - name: Build Live State Reader release manifest
+        if: github.event_name != 'pull_request'
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+          SOURCE_REPOSITORY: ${{ github.repository }}
+          SOURCE_RUN_ID: ${{ github.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: >-
+          python scripts/build_component_release.py build
+          --sha "$SOURCE_SHA" --component live-state-reader
+          --dist dist --output live-state-reader-release
+          --repository "$SOURCE_REPOSITORY"
+          --run-id "$SOURCE_RUN_ID" --run-attempt "$SOURCE_RUN_ATTEMPT"
       - name: Build Limit-up Shadow release manifest
         if: github.event_name != 'pull_request'
         env:
@@ -432,6 +445,14 @@ jobs:
         with:
           name: qsys-live-core-${{ github.sha }}
           path: live-core-release
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload immutable Live State Reader release
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: qsys-live-state-reader-${{ github.sha }}
+          path: live-state-reader-release
           if-no-files-found: error
           retention-days: 30
       - name: Upload immutable Limit-up Shadow release

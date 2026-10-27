@@ -1,0 +1,39 @@
+[Unit]
+Description=qsys historical Live state read-only SQLite sidecar keeper
+After=local-fs.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=qsys-live-core
+Group=qsys-live-core
+SupplementaryGroups=qsys-observers
+WorkingDirectory=/
+ExecStart=/opt/qsys/components/live-state-reader/current/venv/bin/qsys-live-state-reader --state /home/ubuntu/qsys/var/live-core/var/live-state.sqlite3 --identity-state /run/qsys-live-state-reader-source/live-state.sqlite3
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+UMask=0027
+Environment=PYTHONDONTWRITEBYTECODE=1
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+PrivateNetwork=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/ubuntu/qsys/var/live-core/var
+ReadOnlyPaths=/home/ubuntu/qsys/var/live-core/var/live-state.sqlite3
+ReadOnlyPaths=/home/ubuntu/qsys/var/live-core/var/KILL
+ReadOnlyPaths=-/home/ubuntu/qsys/var/live-core/var/live-core.lock
+BindReadOnlyPaths=/home/ubuntu/qsys/var/live-core/var:/run/qsys-live-state-reader-source:norbind
+InaccessiblePaths=/home/ubuntu/qsys/config /etc/qsys/components/live-core
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryMax=128M
+TasksMax=8
+
+[Install]
+WantedBy=multi-user.target

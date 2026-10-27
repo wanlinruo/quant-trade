@@ -36,7 +36,7 @@ ALLOWED_WINDOWS_COMPONENTS = frozenset({
     "windows-agent", "windows-gateway", "windows-control",
 })
 WINDOWS_COORDINATOR_PATH = "deploy/linux/qsys-windows-deploy-coordinator.py"
-ENTRYPOINT_VERSION = 32
+ENTRYPOINT_VERSION = 33
 ENTRYPOINT_CAPABILITIES = (
     "systemd-apply-v1",
     "systemd-component-boundary-v1",
@@ -71,11 +71,17 @@ ENTRYPOINT_CAPABILITIES = (
     "component-sqlite-seed-v1",
     "component-live-continuity-v1",
     "component-spec-fingerprint-v1",
+    "component-state-reader-maintenance-v1",
     "emergency-restart-authorization-v1",
 )
 FAILURE_POINTS = frozenset({"none", "linux-health", "windows-switch"})
 GENERIC_COMPONENT_INSTALLER = "scripts/install_component_release.py"
 COMPONENT_PROTECTED_PEERS = {
+    "live-state-reader": {
+        "paper": "qsys-paper.service", "shadow-core": "qsys-shadow-core.service",
+        "web": "qsys-monitor.service", "backtest-worker": "qsys-backtest-worker.service",
+        "health-observer": "qsys-health-observer.service",
+    },
     "live-core": {
         "paper": "qsys-paper.service", "shadow-core": "qsys-shadow-core.service",
         "web": "qsys-monitor.service", "backtest-worker": "qsys-backtest-worker.service",
@@ -684,6 +690,46 @@ def _live_preflight(repo: Path) -> None:
         str(repo / ".venv/bin/python"), "scripts/live_preflight.py",
         "--config", "config/deploy.local.toml", "--require-live",
     ], cwd=repo)
+
+
+LIVE_STATE_BINDING = Path("/etc/qsys/components/live-core/state-binding-v1")
+LIVE_STATE_ROOT = Path("/home/ubuntu/qsys/var/live-core/var")
+
+
+def _state_reader_maintenance_identity(repo: Path) -> dict[str, str]:
+    """Only the historical reader can be installed while trading is stopped.
+
+    This is deliberately not a general inactive-Live deployment exception.
+    Neither this guard nor the reader imports or initializes trading code.
+    """
+    result = _run([
+        "systemctl", "show", "qsys-live-core.service",
+        "--property=LoadState,ActiveState,SubState,MainPID,UnitFileState,"
+        "ExecMainStartTimestampMonotonic",
+    ], cwd=repo)
+    values = dict(line.split("=", 1) for line in result.stdout.splitlines() if "=" in line)
+    expected = {"LoadState": "loaded", "ActiveState": "inactive", "SubState": "dead",
+                "MainPID": "0", "UnitFileState": "disabled"}
+    if any(values.get(key) != value for key, value in expected.items()):
+        raise ValueError("state reader maintenance requires an inactive, disabled Live core")
+    info = LIVE_STATE_BINDING.lstat()
+    if (not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022
+            or LIVE_STATE_BINDING.read_bytes() != b"qsys-live-core-state-v1\n"):
+        raise ValueError("state reader maintenance requires the trusted existing state binding")
+    facts = {}
+    for name in ("KILL", "live-state.sqlite3"):
+        path = LIVE_STATE_ROOT / name
+        info = path.lstat()
+        if not stat.S_ISREG(info.st_mode) or not info.st_size:
+            raise ValueError("state reader maintenance requires existing state and local KILL")
+        facts[name] = {"sha256": _sha256(path), "dev": info.st_dev, "ino": info.st_ino,
+                       "mtime_ns": info.st_mtime_ns, "mode": info.st_mode,
+                       "uid": info.st_uid, "gid": info.st_gid}
+    return {
+        "pid": "0", "started_monotonic": values.get("ExecMainStartTimestampMonotonic", "0"),
+        "repo_sha": _head(repo),
+        "maintenance_facts": json.dumps(facts, sort_keys=True, separators=(",", ":")),
+    }
 
 
 def _extract_component_archive(
@@ -1398,14 +1444,25 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
         if not before_component_active:
             raise ValueError("Live target must already be active; no trading activation by deployment")
         live_info = _require_live_release_ready(repo, args.sha, initial=before_component == "uninstalled")
-    before_live = _live_identity(repo)
+    # A stopped-Live exception belongs only to this non-trading component.
+    # Every other component retains its existing active-Live and preflight gates.
+    maintenance = args.component == "live-state-reader"
+    live_identity = _state_reader_maintenance_identity if maintenance else _live_identity
+    preflight = _state_reader_maintenance_identity if maintenance else _live_preflight
+    before_live = live_identity(repo)
     protected_units = COMPONENT_PROTECTED_PEERS.get(args.component, {})
     before_protected = {
         name: _unit_identity_token(unit, repo)
         for name, unit in protected_units.items()
     }
-    _live_preflight(repo)
+    verified_live = preflight(repo)
+    if maintenance and verified_live != before_live:
+        raise ValueError("stopped Live state or KILL changed during reader preflight")
     fingerprints = _fingerprints(config, repo)
+    if maintenance:
+        fingerprints["live_state_maintenance"] = hashlib.sha256(
+            before_live["maintenance_facts"].encode(),
+        ).hexdigest()
     fingerprints.update({f"live_{name}": value for name, value in live_info.items()})
     preview = {
         "ok": True,
@@ -1420,6 +1477,7 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
         "live_identity": before_live,
         "protected_peer_identities": before_protected,
         "live_restart": args.component == "live-core",
+        "historical_reader_maintenance": maintenance,
     }
     if args.dry_run:
         print(json.dumps(preview, ensure_ascii=False))
@@ -1430,8 +1488,10 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
         "name": "test-tree-evidence", "status": "passed",
         "detail": f"successful test deployment run={test_run}",
     }, {
-        "name": "live-preflight-before", "status": "passed",
-        "detail": "live preflight and heartbeat checks passed before component switch",
+        "name": "stopped-live-maintenance-before" if maintenance else "live-preflight-before",
+        "status": "passed",
+        "detail": ("Live inactive/disabled, local KILL and historical state preserved" if maintenance
+                   else "live preflight and heartbeat checks passed before component switch"),
     }]
     success = False
     rollback_ok = False
@@ -1457,6 +1517,8 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
                     "name": "component-artifact", "status": "passed",
                     "detail": f"archive_sha256={args.artifact_sha256}; release={args.sha}",
                 })
+                if maintenance and live_identity(repo) != before_live:
+                    raise ValueError("stopped Live state or KILL changed during reader staging")
                 if args.component == "limit-up-shadow":
                     _require_idle_limit_up_shadow(repo)
                 if args.component == "reboot-drill":
@@ -1509,12 +1571,12 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
             finally:
                 _run(["git", "worktree", "remove", "--force", str(worktree)],
                      cwd=repo, check=False)
-        after_live = _live_identity(repo)
+        after_live = live_identity(repo)
         after_protected = {
             name: _unit_identity_token(unit, repo)
             for name, unit in protected_units.items()
         }
-        _live_preflight(repo)
+        preflight(repo)
         if args.component == "reboot-drill":
             _require_idle_reboot_drill(repo)
         if _head(repo) != production_sha or (args.component != "live-core" and after_live != before_live):
@@ -1532,7 +1594,9 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
             "detail": (
                 f"pid={before_live['pid']}; started={before_live['started_monotonic']}; "
                 f"after_pid={after_live['pid']}; after_started={after_live['started_monotonic']}; "
-                f"repo_sha={production_sha}; heartbeat preflight passed before and after"
+                f"repo_sha={production_sha}; "
+                + ("stopped-Live/state/KILL maintenance guard passed before and after" if maintenance
+                   else "heartbeat preflight passed before and after")
             ),
         })
         checks.append({
@@ -1576,7 +1640,12 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
         checks.append({"name": "component-deploy", "status": "failed", "detail": error})
 
     try:
-        after_live = _live_identity(repo)
+        after_live = live_identity(repo)
+        if maintenance and after_live != before_live:
+            success = False
+            error = "stopped Live state or KILL changed during reader deployment"
+            checks.append({"name": "stopped-live-maintenance-after", "status": "failed",
+                           "detail": error})
     except (OSError, ValueError, subprocess.CalledProcessError) as exc:
         after_live = {
             "pid": "unavailable", "started_monotonic": "unavailable",

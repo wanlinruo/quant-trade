@@ -163,7 +163,7 @@ def run_incremental_verification(warehouse: Warehouse, day: date, *,
 def after_sync(warehouse: Warehouse, day: date, *, ok: bool,
                run: ServiceRun | None = None,
                artifacts: Path | None = None) -> None:
-    """只在同步成功后验证；验证器故障不得改变同步任务退出码（运行记录里记为警告）。"""
+    """主同步成功后验证；QMT补采失败不跳过，验证器故障仍在运行记录中记为警告。"""
     if not ok:
         log.info("verify.skipped_after_failed_sync", day=str(day))
         return
@@ -268,28 +268,33 @@ def main() -> int:
         counts.update(publish_canonical_after_sync(
             provider, warehouse, day, run=run
         ))
-        if args.late_minute_convergence:
-            counts["late_listing_minutes"] = converge_late_listing_minutes(
-                warehouse,
-                day,
-                warehouse_path=args.warehouse,
-                config_path=args.config,
-                service_runs=args.service_runs,
-                limit=args.late_minute_limit,
-                timeout=args.late_minute_timeout,
-                paper_store=args.late_minute_paper_store,
-                record_root=args.late_minute_record_root,
-                work_root=args.late_minute_work_root,
-                win_key=args.late_minute_win_key,
-                win_script_source=args.late_minute_win_script_source,
-                win_transport=args.late_minute_win_transport,
-                win_known_hosts=args.late_minute_win_known_hosts,
-                run=run,
-            )
-        if args.artifacts is None:
-            after_sync(warehouse, day, ok=True, run=run)
-        else:
+        try:
+            if args.late_minute_convergence:
+                counts["late_listing_minutes"] = converge_late_listing_minutes(
+                    warehouse,
+                    day,
+                    warehouse_path=args.warehouse,
+                    config_path=args.config,
+                    service_runs=args.service_runs,
+                    limit=args.late_minute_limit,
+                    timeout=args.late_minute_timeout,
+                    paper_store=args.late_minute_paper_store,
+                    record_root=args.late_minute_record_root,
+                    work_root=args.late_minute_work_root,
+                    win_key=args.late_minute_win_key,
+                    win_script_source=args.late_minute_win_script_source,
+                    win_transport=args.late_minute_win_transport,
+                    win_known_hosts=args.late_minute_win_known_hosts,
+                    run=run,
+                )
+        except Exception:
+            # Raw facts, derived tables and canonical publication are complete.
+            # Keep quality evidence even when the separate QMT supplement fails;
+            # after_sync records verifier errors as warnings, then re-raise the
+            # original supplement failure so ServiceRun/systemd remain failed.
             after_sync(warehouse, day, ok=True, run=run, artifacts=args.artifacts)
+            raise
+        after_sync(warehouse, day, ok=True, run=run, artifacts=args.artifacts)
     print(f"=== {day} ===")
     for name, rows in counts.items():
         print(f"  {name:22s} {rows:>9,} 行")
