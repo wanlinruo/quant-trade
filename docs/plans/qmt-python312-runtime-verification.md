@@ -128,3 +128,26 @@ python312路径在确认前纠正为已验证根；确认设置未出现重启�
 20:53再次只读打开设置，界面仍显示py3.12及精确python312根路径，随后取消退出。
 当前进程运行却报3.6，设置展示与进程实际生效时点分开；后续重启须先重新满足容量与
 进程/任务守卫，不直接修改枚举或绕过版本校验。
+
+## 10-27 21:00 实际Python3.12首轮通过（覆盖20:53进程快照）
+
+20:55复核发现原PID1596已退出，新PID5932启动于20:54:13.3114919；本轮未发送第二次
+重启命令。既有watchdog于20:54运行结果0、四业务任务XML保持，20:50后对应Windows
+Application1000/1001崩溃事件查询为空，退出原因仍未知，不宣布长期稳定或崩溃已解决。
+此时持久化枚举为1，精确python312路径保持。新进程恢复登录后重新核对身份/桌面/前台，
+只关闭公告，不改恢复配置；在新进程中新增独立模型QSYS546_RUNTIME312_20261027_B。
+
+同一只读源码逐字核对后20:59:36仅运行一次，原生8条协议实际记录Python3.12.10、
+pandas3.0.2、NumPy2.4.4；五个受查方法callable。get_market_data_ex返回dict，600000.SH
+为2×4普通单层列DataFrame、索引20261022/20261023，open/close/volume/amount，无null或
+重复，索引dtype为str。000001.SZ仍空，未补值。history_attempts=1，download/KV/account/
+trading/Panel调用均0，numeric_equivalence_verified=false。21:00已停止/关闭诊断模型。
+
+源码核对审计readonly-observe-20261027-205811-835989，运行205936-297524、停止210014-980809、
+日志复制210029-017346/native-output.txt、关闭210046-718668（同日同根）。这只完成实际
+运行库和现有接口容器首轮，不替代三个Panel接口、多股多日期、算法/PIT事实或业务恢复。
+[Issue现场结论](https://github.com/wanlinruo/quant-trade/issues/546#issuecomment-6442527901)。
+
+21:01在同一PID5932的原QSYS533_READONLY_20261024模型，核对既有GET源码一致，
+单GET读回19字节合成值精确匹配、返回码0/消息空；save/account/trading均0。
+只证明该模型单key跨此次运行库切换保存，完整业务恢复仍未通过，详见#541。
