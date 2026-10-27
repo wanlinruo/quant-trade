@@ -3,7 +3,16 @@
 ## 停机态历史状态读取（#544）
 
 见 `../plans/live-state-reader-maintenance.md`：标准库只读辅助连接、独立组件的停机安装
-门禁、真实UID/systemd合成验证和正式发布前置。准备完成不代表生产激活；临时服务期限保留。
+门禁、真实UID/systemd合成验证和正式发布前置。10-27已完成独立组件正式发布及生产激活，
+临时服务已退出；自然晚间任务观察仍由#544跟踪，恢复读库不代表停机期间策略执行成功。
+
+## QMT持久化与Python3.12补充资料（#546）
+
+见 `qmt-python312-supplement-review.md`：两份维护者提供PDF的来源、页码、指纹与可信边界，
+三个接口的Panel迁移范围、当前py36实际运行证据和先GET后准备运行库切换的建议。
+`qmt-runtime-container-probe.py`为首轮原生环境/现有get_market_data_ex容器诊断准备件，
+只有一次有界只读历史查询；离线守卫测试不替代客户端执行或数值等价验收。
+运行库核验顺序与待确认的具体信息见`../plans/qmt-python312-runtime-verification.md`。
 
 ## 江海 QMT 内置策略迁移（#533）
 

@@ -1,5 +1,23 @@
 # 项目交接入口
 
+## 10-27 13:10 正式读库与QMT补充资料（覆盖下文对应快照）
+
+- #544已按明确授权完成PR#534合并、控制面升级、正式发布及`live-state-reader`激活。
+  main/test当时对齐`711fe0b0ddb2970675e72ccde69fa59ba33ad7ea`；正式workflow
+  `40447170350`、Deployment`7349968407`和节点record一致成功。永久服务active/enabled、
+  RuntimeMax=infinity，旧临时anchor已退出，原23:51期限已由永久组件接替。
+- 实际Web/digest/checks/observer身份及只读沙箱三轮共12次读取通过，主库/KILL指纹保持。
+  读回70条历史事件不代表停机期间事件已执行；#544保持monitoring，晚间自然任务仍待观察。
+  旧Live仍停止/disabled、本地KILL保留，Paper/Web等原进程与原五项failed记录保持。
+  详见[#544正式验收](https://github.com/wanlinruo/quant-trade/issues/544#issuecomment-6433684495)。
+- 维护者提供两份QMT补充PDF，评估见
+  [资料记录](docs/reference/qmt-python312-supplement-review.md)，#546跟踪运行库核验。
+  实测运行时仍为py3.6.8，未保存切换设置、下载py312或重启客户端。第一份为第三方线索；
+  第二份明确三个接口的Panel→MultiIndex DataFrame变化，不推广到get_market_data_ex。
+- Windows 12:43只读观察仍为10:17启动的PID5616、C盘4931551232字节；不视作长期稳定。
+  #541跨客户端GET尚未执行。13:03公告窗口无法成为前台，输入守卫拒绝，无点击或KV调用，
+  新辅助任务disabled；待维护者将QMT置于前台并关闭公告再继续原诊断模型，只做既有key的GET。
+
 ## 10-27 11:15 停机态读库准备（覆盖下文对应快照）
 
 - #544 新增独立 `live-state-reader` 准备件及仅限该组件的停机安装守卫，
