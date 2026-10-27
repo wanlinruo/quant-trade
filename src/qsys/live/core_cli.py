@@ -103,7 +103,12 @@ def main(argv: list[str] | None = None) -> int:
             log.info("live_core.started", strategy=str(source.path),
                      follows=source.paper_account_id or None)
             consecutive_errors = 0
+            fused = False
             while True:
+                # 熔断后保持进程和独立心跳，直到人工核验并重启；不自动重播撤单。
+                if fused:
+                    time.sleep(max(0.2, args.poll))
+                    continue
                 try:
                     runtime.tick()
                     consecutive_errors = 0
@@ -114,8 +119,22 @@ def main(argv: list[str] | None = None) -> int:
                     if consecutive_errors == 3:
                         reason = "three consecutive live-core loop failures"
                         runtime.kill_switch.engage(reason)
-                        runtime.broker.cancel_all()
-                        runtime.alerts.critical("实盘核心连续故障熔断", f"{reason}: {exc}")
+                        fused = True
+                        cancellation = "撤单请求调用已返回，券商结果仍待核验"
+                        try:
+                            runtime.broker.cancel_all()
+                        except Exception as cancel_exc:
+                            log.error("live_core.fuse_cancel_unknown",
+                                      error_type=type(cancel_exc).__name__)
+                            cancellation = (
+                                f"撤单请求结果未知（{type(cancel_exc).__name__}），"
+                                "不自动重播，须核对券商委托"
+                            )
+                        runtime.alerts.critical(
+                            "实盘核心连续故障熔断",
+                            f"{reason}: {exc}；{cancellation}；"
+                            "本进程已锁定停机，核验后须人工重启，不自动恢复策略",
+                        )
                 time.sleep(max(0.2, args.poll))
 
 

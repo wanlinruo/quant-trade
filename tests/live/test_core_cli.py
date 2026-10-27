@@ -98,16 +98,18 @@ def test_three_error_fuse_keeps_isolated_kill_and_existing_cancel_behavior(monke
     critical = Mock()
     local = tmp_path / "isolated/KILL"
 
+    tick = Mock(side_effect=RuntimeError("isolated failure"))
+    sleeps = 0
+
+    def sleep(_):
+        nonlocal sleeps
+        sleeps += 1
+        if sleeps == 6:
+            raise Stop()
+
+    monkeypatch.setattr(core_cli.time, "sleep", sleep)
+
     def runtime(*args, **kwargs):
-        calls = 0
-
-        def tick():
-            nonlocal calls
-            calls += 1
-            if calls == 4:
-                raise Stop()
-            raise RuntimeError("isolated failure")
-
         return SimpleNamespace(
             heartbeats=nullcontext(), tick=tick,
             kill_switch=KillSwitch(args[4], key="control:kill", local_path=kwargs["local_kill_path"]),
@@ -119,10 +121,73 @@ def test_three_error_fuse_keeps_isolated_kill_and_existing_cancel_behavior(monke
         core_cli.main(isolated_args(tmp_path))
     cancel.assert_called_once()
     critical.assert_called_once()
+    assert tick.call_count == 3
     assert local.is_file()
     assert raw.get_key("control:kill") == "production untouched"
     assert "three consecutive" in raw.get_key(PREFIX + ":control:kill")
     assert not (tmp_path / "var/KILL").exists()
+
+
+@pytest.mark.parametrize("accepted_before_timeout", [False, True])
+def test_fuse_survives_redis_outage_without_replaying_unknown_cancel(
+    monkeypatch, tmp_path, accepted_before_timeout,
+):
+    from qsys.live.live_broker import LiveBroker
+
+    setup_entry(monkeypatch, tmp_path)
+    local = tmp_path / "isolated/KILL"
+
+    class OutageTransport(MemoryTransport):
+        cancel_attempts = 0
+
+        def set_key(self, key, value):
+            raise TimeoutError("Redis SET unavailable")
+
+        def append(self, stream, payload):
+            assert local.is_file()  # 独立急停必须早于可能已送达的撤单。
+            self.cancel_attempts += 1
+            if accepted_before_timeout:
+                super().append(stream, payload)
+            raise TimeoutError("Redis acknowledgement unavailable")
+
+    raw = OutageTransport()
+    monkeypatch.setattr(core_cli.RedisTransport, "from_config", lambda _: raw)
+    critical = Mock()
+    tick = Mock(side_effect=TimeoutError("heartbeat unavailable"))
+    streams = []
+    sleeps = 0
+
+    def sleep(_):
+        nonlocal sleeps
+        sleeps += 1
+        if sleeps == 7:
+            raise Stop()
+
+    def runtime(*args, **kwargs):
+        streams.append(args[5])
+        return SimpleNamespace(
+            heartbeats=nullcontext(), tick=tick,
+            kill_switch=KillSwitch(args[4], local_path=local),
+            broker=LiveBroker(args[4], args[5], risk_gate=Mock(),
+                              risk_context_factory=lambda: None),
+            alerts=SimpleNamespace(critical=critical),
+        )
+
+    monkeypatch.setattr(core_cli.time, "sleep", sleep)
+    monkeypatch.setattr(core_cli, "LiveRuntime", runtime)
+    with pytest.raises(Stop):
+        core_cli.main(isolated_args(tmp_path))
+
+    assert tick.call_count == 3  # Redis恢复与否均不自动恢复策略调度。
+    assert local.is_file() and raw.cancel_attempts == 1
+    critical.assert_called_once()
+    assert "撤单请求结果未知" in critical.call_args.args[1]
+    assert "不自动重播" in critical.call_args.args[1]
+    control = PREFIX + ":" + streams[0].control
+    raw.ensure_group(control, "audit", "0")
+    assert len(raw.read_group(control, "audit", "audit")) == int(accepted_before_timeout)
+    raw.ensure_group(streams[0].control, "production", "0")
+    assert raw.read_group(streams[0].control, "production", "production") == []
 
 
 @pytest.mark.parametrize("kind", ["missing-root", "filesystem-root", "outside-journal", "symlink-escape", "live-notification", "ops-notification"])
