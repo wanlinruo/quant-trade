@@ -1,5 +1,12 @@
 # 参考资料
 
+## 跨日运行可靠性修复（#535 / #549）
+
+`live-core-failure-fuse.md`说明连续故障后的本进程锁定、单次撤单未知结果及告警边界。
+`paper-business-health.md`说明已生效error账户与进程心跳分别判定，不自动恢复模拟账户。
+两项先经隔离/CI/test及正常PR，生产发布单独验收，不解除#533/#541交易门禁。
+`windows-static-queue-capacity.md`记录#545静态旧队列的E盘备份及无损压缩验收，保留C原文件。
+
 ## 停机态历史状态读取（#544）
 
 见 `../plans/live-state-reader-maintenance.md`：标准库只读辅助连接、独立组件的停机安装
