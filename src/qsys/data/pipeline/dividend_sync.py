@@ -6,6 +6,7 @@ import hashlib
 import json
 import math
 import os
+import re
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -109,6 +110,29 @@ def import_window(day: date, initial_start: date, checkpoint: Path) -> date:
     return start
 
 
+def dividend_universe(instruments: pl.DataFrame, actions: pl.DataFrame,
+                      start: date) -> tuple[list[str], list[dict]]:
+    """原生身份保持；非原生历史身份只按直取退市日期排除，不做别名映射。"""
+    if instruments["symbol"].is_duplicated().any():
+        raise ValueError("duplicate dividend instrument identity")
+    metadata = {row["symbol"]: row for row in instruments.to_dicts()}
+    symbols, excluded = [], []
+    for symbol in set(metadata) | set(actions["symbol"].to_list()):
+        if not isinstance(symbol, str) or not symbol:
+            raise ValueError("invalid dividend identity")
+        if re.fullmatch(r"[0-9]{6}\.(SH|SZ|BJ)", symbol):
+            symbols.append(symbol)
+            continue
+        row = metadata.get(symbol)
+        if row is None or row["delist_date"] is None or row["delist_date"] >= start:
+            raise ValueError("non-native dividend identity requires explicit source verification")
+        excluded.append({"symbol": symbol, "delist_date": row["delist_date"].isoformat(),
+                         "as_of": row["as_of"].isoformat() if row["as_of"] is not None else None})
+    if not symbols:
+        raise ValueError("empty dividend universe")
+    return sorted(symbols), sorted(excluded, key=lambda row: row["symbol"])
+
+
 def sync_dividends(warehouse: Warehouse, day: date, *, initial_start: date,
                    work_root: Path, transport: WindowsDataTransport,
                    script: Path, run_id: str) -> int:
@@ -117,10 +141,7 @@ def sync_dividends(warehouse: Warehouse, day: date, *, initial_start: date,
     checkpoint = root / "last-imported.json"
     start = import_window(day, initial_start, checkpoint)
     query = WarehouseQuery(warehouse)
-    symbols = sorted(set(query.instruments()["symbol"].to_list())
-                     | set(query.corporate_actions()["symbol"].to_list()))
-    if not symbols:
-        raise ValueError("empty dividend universe")
+    symbols, excluded = dividend_universe(query.instruments(), query.corporate_actions(), start)
     digest = _sha(script)
     probe = transport.probe()
     if probe.get("scripts", {}).get("dividend") != digest:
@@ -128,6 +149,12 @@ def sync_dividends(warehouse: Warehouse, day: date, *, initial_start: date,
     job = f"dividend_{day:%Y%m%d}_{run_id}"
     work = root / job
     work.mkdir(parents=True, exist_ok=False)
+    scope = work / "scope.json"
+    with scope.open("x", encoding="utf-8") as handle:
+        json.dump({"start": start.isoformat(), "end": day.isoformat(),
+                   "symbols": symbols, "excluded_retired_catalog_identities": excluded}, handle)
+        handle.flush()
+        os.fsync(handle.fileno())
     manifest = work / "manifest.csv"
     with manifest.open("x", encoding="utf-8", newline="") as handle:
         writer = csv.writer(handle)
@@ -139,6 +166,7 @@ def sync_dividends(warehouse: Warehouse, day: date, *, initial_start: date,
     intent = {"run_id": run_id, "job": job, "start": start.isoformat(),
               "end": day.isoformat(), "script_sha256": digest,
               "manifest_sha256": _sha(manifest)}
+    intent["scope_sha256"] = _sha(scope)
     with (work / "requested.json").open("x", encoding="utf-8") as handle:
         json.dump(intent, handle)
         handle.flush()

@@ -1311,7 +1311,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
 
     state = entrypoint.status({"production_repo": str(tmp_path)})
 
-    assert state["entrypoint_version"] == 34
+    assert state["entrypoint_version"] == 35
     assert set(state["capabilities"]) == {
         "systemd-apply-v1", "systemd-component-boundary-v1", "systemd-changed-artifacts-v1",
         "systemd-preview-v1", "systemd-runtime-paths-v1", "systemd-rollback-v1",
@@ -1343,6 +1343,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
         "component-spec-fingerprint-v1",
         "component-state-reader-maintenance-v1",
         "component-tushare-maintenance-v1",
+        "component-tushare-failed-terminal-v1",
         "emergency-restart-authorization-v1",
     }
 
@@ -1658,7 +1659,9 @@ def test_component_record_preserves_state_and_matches_contract(
     monkeypatch.setattr(entrypoint, "_active", lambda unit, repo: state["active"])
     monkeypatch.setattr(entrypoint, "_live_identity", lambda repo: dict(live))
     monkeypatch.setattr(entrypoint, "_state_reader_maintenance_identity", lambda repo: dict(live))
-    monkeypatch.setattr(entrypoint, "_tushare_maintenance_identity", lambda repo: dict(live))
+    monkeypatch.setattr(entrypoint, "_tushare_maintenance_identity", lambda repo: {
+        **live, "tushare_terminal": "fixture-inactive",
+    })
     monkeypatch.setattr(entrypoint, "_backup_tushare_dropin", lambda *a: None)
     monkeypatch.setattr(entrypoint, "_live_preflight", lambda repo: None)
     monkeypatch.setattr(entrypoint, "_fingerprints", lambda config, repo: {"linux": "f"})
@@ -1763,6 +1766,7 @@ def test_component_health_and_peer_identity_gate(
     monkeypatch.setattr(entrypoint, "_live_identity", lambda repo: dict(live))
     monkeypatch.setattr(entrypoint, "_tushare_maintenance_identity", lambda repo: {
         **live, "pid": "0", "maintenance_facts": "unchanged stopped state and KILL",
+        "tushare_terminal": "fixture-inactive",
     })
     monkeypatch.setattr(entrypoint, "_backup_tushare_dropin", lambda *a: tmp_path / "old-dropin")
     restored_dropins = []

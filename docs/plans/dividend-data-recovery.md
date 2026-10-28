@@ -1,5 +1,33 @@
 # 送配事件与量因子恢复（#540）
 
+## 19点自然运行与历史目录身份修复（#555）
+
+首次正式组件workflow40675756482/Deployment7383415419/实际record成功，18:58:58恢复
+timer；19:01:57自然触发的ServiceRun190159-2153226仍于19:03:16 failed。送配清单PUT
+被严格证券标识门禁拒绝，未发QMT run。Tushare事实已写、事件/派生/canonical未执行，
+after_sync保留5阻断。不能以组件安装成功替代自然增量验收，不重放此run。
+
+5942行130736字节manifest SHA d44b00c87298674d058bbfdd0b35dd244fbc8aa1dbde44c34f30878716af0dd0，
+在同版本地validator同样失败；唯一非法协议标识T600018.SH。当前直取instruments记录：
+name上港集箱(退)、list_date2000-07-19、delist_date2006-10-20、as_of2026-10-28，旧事件0。
+Windows对应目录为空且run-requested不存在，排除误判为上传容量/执行超时。
+
+候选仅将有直取退市日期且早于窗口的**非原生目录身份**排除并记录scope.json/SHA；
+所有六位原生身份继续请求（包括退市与主表外历史代码），不扩大为所有已退市证券过滤。
+缺证据、窗口内或当前非原生身份显式报缺，保留全部旧事件；不去T、不映射为当前600018。
+5942原清单的正确原生请求范围应为5941，排除依据由真实元数据和窗口共同决定。
+
+本地最终全量4103 passed/7既有skipped/2既有依赖警告，包含未知/窗口内身份不丢弃、
+原生退市/主表外代码继续查询、scope SHA和failed终态/Invocation漂移拒绝。修复范围的
+真实完整5941行清单经采集UID正式key PUT验证；只在新审计作业写清单，不请求QMT run，
+不重放原失败或写Warehouse，具体大小/SHA与结果见#555及节点scope555-put/verified.json。
+
+失败后前进安装还须保留原systemd失败证据：controller v35候选仅对tushare精确接受
+loaded/failed/PID0、Result=exit-code、非零ExecMainStatus与32位InvocationID的已结束状态，
+timer仍须inactive。终态序列化加入前后身份与record，状态漂移拒绝；不reset-failed、
+不停止仍运行的任务、不扩展其他组件。修复后按正常CI/test/PR/精确main发布，再用
+新版本新run完成实际unit验证；原失败、请求和5项质量拒绝永久保留。
+
 ## 10-28 维护者确认后的发布控制面依赖（#553）
 
 维护者已明确确认PR#552合并、必要gateway控制文件和自动送配/精确事件表写权限启用。

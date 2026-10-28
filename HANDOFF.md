@@ -1,5 +1,26 @@
 # 项目交接入口
 
+## 10-28 19点首次自然业务失败，#555前进修复准备（覆盖下文状态）
+
+- PR#552/#554均已合并，main/test f09dcf7；controller v34和tushare-sync组件已正式安装。
+  dry-run40675599024、正式40675756482、Deployment7383415419、实际节点record三方
+  success，artifact digest与ZIP SHA一致，六peer及Live PID0保持。18:58:58恢复timer
+  active/enabled，19:01:57实际自然触发；详见#540/#553最新正式验收。#553已关闭。
+- 真实ServiceRun`190159-2153226`于19:03:16 failed，唯一invocation
+  `146edac390ab41fe9d399654432482fd`。Tushare事实完成，送配PUT清单被拒，未请求QMT run、
+  未写事件、未派生/canonical；原after_sync执行并报告5阻断。原failed/journal/目录保留，
+  未重放、未回切或reset-failed。timer仍active，下一自然10-29 17:02:53。
+- 根因已实测：5942行/130736字节清单唯一非原生标识T600018.SH，直取主表记录为
+  上港集箱、上市2000-07-19/退市2006-10-20/as_of2026-10-28，历史事件0条。
+  本地同版gateway也拒绝，Windows原作业目录为空且无run-requested，不是传输容量问题。
+- #555为#540直接依赖：候选保留全部原生代码/历史事件，仅按直取退市日期排除窗口外
+  非原生目录身份并存scope/SHA，未知或窗口内非原生身份显式报缺；不去T映射当前600018。
+  controller v35候选限定PID0/非零exit-code/唯一invocation的failed终态维护，前后绑定
+  原终态/KILL/主库/六peer；不清失败再安装。专项通过，全量/CI/test/PR与正式发布待记录。
+- 当前事件仍61085条/eab786c3...，Windows正式gateway/脚本与E盘根已实际切换、真实两key
+  正/负向验证通过。模拟/实盘未恢复；原自然失败与后续新版本新run验收须分开记录。
+  工作详情优先读#540/#555最新评论，不把安装success描述为自动送配业务已恢复。
+
 ## 10-28 18点维护者已确认发布，控制面直接依赖准备
 
 - 维护者明确“确认”PR#552合并与正式发布、必要gateway文件、E盘送配根和精确事件表

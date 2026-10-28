@@ -100,7 +100,7 @@ def test_only_reader_and_tushare_use_stopped_live_guard(monkeypatch, tmp_path, c
     def stopped(repo):
         calls.append("stopped")
         return {"pid": "0", "started_monotonic": "0", "repo_sha": "a" * 40,
-                "maintenance_facts": "existing state and KILL"}
+                "maintenance_facts": "existing state and KILL", "tushare_terminal": "fixture-inactive"}
 
     def active(repo):
         calls.append("active")
@@ -131,7 +131,7 @@ def test_reader_staging_drift_prevents_install_and_actual_record_is_valid(monkey
     entry = module()
     target = "c" * 40
     facts = {"pid": "0", "started_monotonic": "0", "repo_sha": "a" * 40,
-             "maintenance_facts": "initial facts"}
+             "maintenance_facts": "initial facts", "tushare_terminal": "fixture-inactive"}
     commands, records = [], []
     monkeypatch.setattr(entry, "_branch", lambda *a: "main")
     monkeypatch.setattr(entry, "_dirty", lambda *a: False)
@@ -196,6 +196,32 @@ def test_tushare_guard_keeps_actual_kill_and_state_binding_checks(monkeypatch, t
     fields["UnitFileState"] = "enabled"
     with pytest.raises(ValueError, match="inactive, disabled"):
         entry._tushare_maintenance_identity(tmp_path)
+
+
+@pytest.mark.parametrize("broken", [None, "pid", "invocation", "result", "status", "timer"])
+def test_tushare_failed_oneshot_requires_preserved_exit_and_invocation(monkeypatch, tmp_path, broken):
+    entry = module()
+    monkeypatch.setattr(entry, "_state_reader_maintenance_identity", lambda *_: {"pid": "0"})
+    timer = {"LoadState": "loaded", "ActiveState": "inactive", "MainPID": "0"}
+    service = {"LoadState": "loaded", "ActiveState": "failed", "MainPID": "0",
+               "Result": "exit-code", "ExecMainStatus": "1", "InvocationID": "a" * 32}
+    if broken == "pid": service["MainPID"] = "123"
+    if broken == "invocation": service["InvocationID"] = ""
+    if broken == "result": service["Result"] = "success"
+    if broken == "status": service["ExecMainStatus"] = "0"
+    if broken == "timer": timer["ActiveState"] = "failed"
+    def run(command, **_):
+        values = timer if command[2].endswith('.timer') else service
+        return subprocess.CompletedProcess(command, 0, "\n".join(f"{k}={v}" for k,v in values.items()), "")
+    monkeypatch.setattr(entry, "_run", run)
+    if broken is not None:
+        with pytest.raises(ValueError, match="inactive timer and idle oneshot"):
+            entry._tushare_maintenance_identity(tmp_path)
+    else:
+        before = entry._tushare_maintenance_identity(tmp_path)
+        assert json.loads(before['tushare_terminal']) == service
+        service['InvocationID'] = 'b' * 32
+        assert entry._tushare_maintenance_identity(tmp_path) != before
 
 
 def test_tushare_compensation_restores_previous_arguments_and_metadata(monkeypatch, tmp_path):

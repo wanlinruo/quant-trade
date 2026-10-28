@@ -10,7 +10,7 @@ import pytest
 from scripts.win_download_dividends import export, bundle_snapshot
 from qsys.data import schema
 from qsys.data.pipeline.dividend_sync import (
-    append_events, import_window, sync_dividends, validate_snapshot,
+    append_events, dividend_universe, import_window, sync_dividends, validate_snapshot,
 )
 from qsys.data.query import WarehouseQuery
 
@@ -141,6 +141,32 @@ def test_window_tracks_successful_response_not_last_event(tmp_path):
         import_window(date(2026, 12, 1), start, checkpoint)
 
 
+def test_native_scope_keeps_native_and_unknown_history_without_alias_mapping():
+    import pyarrow as pa
+    instruments = pl.from_arrow(pa.Table.from_pylist([
+        {"symbol": "T600018.SH", "delist_date": date(2006, 10, 20), "as_of": DAY},
+        {"symbol": "600018.SH", "delist_date": None, "as_of": DAY},
+        {"symbol": "000001.SZ", "delist_date": date(2026, 10, 27), "as_of": DAY},
+    ], schema=schema.INSTRUMENTS))
+    actions = pl.DataFrame({"symbol": ["600017.SH", "T600018.SH"]})
+    before = actions.clone()
+    symbols, excluded = dividend_universe(instruments, actions, DAY)
+    assert symbols == ["000001.SZ", "600017.SH", "600018.SH"]
+    assert excluded == [{"symbol": "T600018.SH", "delist_date": "2006-10-20", "as_of": "2026-10-28"}]
+    assert actions.equals(before)
+
+
+@pytest.mark.parametrize("delisted", [None, DAY, date(2026, 10, 29)])
+def test_non_native_identity_without_past_delisting_is_not_silently_dropped(delisted):
+    import pyarrow as pa
+    instruments = pl.from_arrow(pa.Table.from_pylist([
+        {"symbol": "T600018.SH", "delist_date": delisted, "as_of": DAY},
+        {"symbol": "600018.SH", "as_of": DAY},
+    ], schema=schema.INSTRUMENTS))
+    with pytest.raises(ValueError, match="explicit source verification"):
+        dividend_universe(instruments, pl.DataFrame({"symbol": ["600017.SH"]}), DAY)
+
+
 def test_real_export_bundle_import_checkpoint_and_unknown_delivery(warehouse, tmp_path):
     # Include a symbol absent from today's master via the existing event table.
     fresh = validate(make_bundle(tmp_path / "seed"))
@@ -182,6 +208,7 @@ def test_real_export_bundle_import_checkpoint_and_unknown_delivery(warehouse, tm
                           transport=transport, script=script, run_id="sync-1") == 0
     checkpoint = work / "dividends" / "last-imported.json"
     before = checkpoint.read_bytes()
+    assert json.loads(before)["scope_sha256"]
     transport.fail = True
     with pytest.raises(TimeoutError):
         sync_dividends(warehouse, DAY, initial_start=DAY, work_root=work,
