@@ -146,6 +146,37 @@ def sync_main(monkeypatch, tmp_path):
     return SimpleNamespace(events=events, argv=argv, record=run_record)
 
 
+@pytest.mark.parametrize("fails", [False, True])
+def test_dividend_snapshot_precedes_factors_and_failure_keeps_quality(
+    monkeypatch, sync_main, tmp_path, fails,
+):
+    from qsys.data.pipeline import dividend_sync
+    from qsys.data import windows_data_transport
+    monkeypatch.setattr(windows_data_transport.WindowsDataTransport, "__init__", lambda *a, **kw: None)
+    monkeypatch.setattr(windows_data_transport.WindowsDataTransport, "close", lambda *_: None)
+    sync_main.argv.extend([
+        "--dividend-sync", "--dividend-initial-start", str(D),
+        "--dividend-win-script-source", str(tmp_path / "approved.py"),
+        "--late-minute-win-transport", "gateway",
+        "--late-minute-win-known-hosts", str(tmp_path / "known_hosts"),
+    ])
+    def snapshot(*args, **kwargs):
+        sync_main.events.append("dividends")
+        if fails:
+            raise RuntimeError("incomplete event input")
+        return 0
+    monkeypatch.setattr(dividend_sync, "sync_dividends", snapshot)
+    monkeypatch.setattr(tushare_daily_sync, "converge_late_listing_minutes", lambda *a, **kw: 0)
+    if fails:
+        with pytest.raises(RuntimeError, match="incomplete event"):
+            tushare_daily_sync.main()
+        assert sync_main.events == ["facts", "dividends", "quality"]
+        assert sync_main.record()["status"] == "failed"
+    else:
+        assert tushare_daily_sync.main() == 0
+        assert sync_main.events == ["facts", "dividends", "derived", "canonical", "quality"]
+
+
 @pytest.mark.parametrize("error", [RuntimeError("QMT unavailable"),
                                    subprocess.TimeoutExpired("fixture-archive", 1)])
 @pytest.mark.parametrize("verifier_crashes", [False, True])

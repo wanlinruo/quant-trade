@@ -63,7 +63,15 @@ def import_dividends(
             missing = set(_COLUMNS) - set(frame.columns)
             if missing:
                 raise ValueError(f"missing columns: {sorted(missing)}")
-            frames.append(frame.select(_COLUMNS))
+            frame = frame.select(_COLUMNS)
+            if any(frame[name].null_count() for name in _COLUMNS):
+                raise ValueError("incomplete corporate action")
+            numeric = _COLUMNS[2:]
+            if frame.filter(pl.any_horizontal([~pl.col(name).is_finite() for name in numeric])).height:
+                raise ValueError("nonfinite corporate action")
+            if frame.select("symbol", "ex_date").is_duplicated().any():
+                raise ValueError("duplicate corporate action")
+            frames.append(frame)
             good.append(path)
         except Exception as exc:  # 单个坏文件不中断整批
             errors += 1

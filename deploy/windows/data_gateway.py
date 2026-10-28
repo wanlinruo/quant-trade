@@ -19,7 +19,7 @@ COMPONENTS = {"tushare-sync", "daily-archive"}
 MAX_MANIFEST = 32 * 1024 * 1024
 MAX_FILE = 256 * 1024 * 1024
 SHA = re.compile(r"[0-9a-f]{64}")
-JOB = re.compile(r"(?:minute|auction)_[0-9]{8}")
+JOB = re.compile(r"(?:(?:minute|auction)_[0-9]{8}|dividend_[0-9]{8}_[A-Za-z0-9_-]{1,100})")
 FILE = re.compile(r"(?:[A-Za-z0-9_.-]{1,100}\.(?:parquet|json)|(?:done|failed)\.csv)")
 FIELDS = {
     "probe": set(), "prepare": {"job"},
@@ -53,7 +53,8 @@ def request(command: str) -> dict:
     if "job" in value:
         if not isinstance(value["job"], str) or not JOB.fullmatch(value["job"]):
             raise ValueError("invalid job")
-        date.fromisoformat(value["job"][-8:-4]+"-"+value["job"][-4:-2]+"-"+value["job"][-2:])
+        stamp = value["job"].split("_")[1]
+        date.fromisoformat(stamp[:4]+"-"+stamp[4:6]+"-"+stamp[6:])
     return value
 
 
@@ -98,10 +99,22 @@ class Gateway:
                 or resolved[0] in resolved[1].parents or resolved[1] in resolved[0].parents):
             raise ValueError("component roots must be absolute and disjoint")
         self.root = Path(roots[component])
+        self.dividend_root = None
         self.python = Path(config["python"])
         self.scripts = config["scripts"]
-        if not self.python.is_absolute() or set(self.scripts) != {"minute", "auction"}:
+        if (not self.python.is_absolute()
+                or not {"minute", "auction"} <= set(self.scripts)
+                or set(self.scripts) - {"minute", "auction", "dividend"}):
             raise ValueError("fixed python and both approved downloaders required")
+        if "dividend" in self.scripts:
+            self.dividend_root = Path(config["dividend_root"])
+            candidate = self.dividend_root.resolve()
+            if (not self.dividend_root.is_absolute()
+                    or any(candidate == root or candidate in root.parents or root in candidate.parents
+                           for root in resolved)):
+                raise ValueError("dividend root must be absolute and disjoint")
+            regular(self.dividend_root)
+            resolved.append(candidate)
         for item in self.scripts.values():
             if set(item) != {"path", "sha256"} or not SHA.fullmatch(str(item["sha256"])):
                 raise ValueError("invalid downloader configuration")
@@ -118,9 +131,12 @@ class Gateway:
     def folder(self, job: str) -> Path:
         if not isinstance(job, str) or not JOB.fullmatch(job):
             raise ValueError("invalid job")
-        path = self.root / job
+        root = self.dividend_root if job.startswith("dividend_") else self.root
+        if root is None:
+            raise ValueError("dividend operation is not approved for this component")
+        path = root / job
         regular(path)
-        if path.resolve().parent != self.root.resolve():
+        if path.resolve().parent != root.resolve():
             raise ValueError("job outside component root")
         return path
 
@@ -130,8 +146,11 @@ class Gateway:
             return {"protocol": PROTOCOL, "component": self.component,
                     "scripts": {kind: item["sha256"] for kind, item in self.scripts.items()}}
         folder = self.folder(req["job"])
+        dividend = req["job"].startswith("dividend_")
+        if dividend and (self.component != "tushare-sync" or "dividend" not in self.scripts):
+            raise ValueError("dividend operation is not approved for this component")
         if op == "prepare":
-            folder.mkdir(parents=True, exist_ok=True)
+            folder.mkdir(parents=True, exist_ok=not dividend)
             return {"prepared": True}
         if not folder.is_dir():
             raise ValueError("prepare job first")
@@ -145,6 +164,8 @@ class Gateway:
             validate_manifest(data)
             target = folder / "manifest.csv"
             regular(target)
+            if dividend and target.exists():
+                raise ValueError("dividend manifest is immutable; use a new run identity")
             temporary = folder / f".manifest-{os.getpid()}.tmp"
             try:
                 with temporary.open("xb") as stream:
@@ -169,8 +190,26 @@ class Gateway:
             manifest = folder / "manifest.csv"
             regular(manifest)
             validate_manifest(manifest.read_bytes(), start=start, end=end)
-            command = [str(self.python), "-I", "-B", "-X", "utf8", "-u", str(script),
-                       "--manifest", str(manifest), "--out", str(folder), "--sleep", "0.1"]
+            command = [str(self.python), "-I", "-B", "-X", "utf8", "-u", str(script)]
+            if dividend:
+                if req["job"] != f"dividend_{end:%Y%m%d}_{req['run_id']}":
+                    raise ValueError("dividend job/run/window mismatch")
+                rows = list(csv.DictReader(io.StringIO(manifest.read_text(encoding="utf-8-sig"))))
+                if (len({r["symbol"] for r in rows}) != len(rows)
+                        or any(r["dt"] != end.isoformat() for r in rows)):
+                    raise ValueError("dividend manifest must contain one end-date row per symbol")
+                marker = folder / "run-requested.json"
+                regular(marker)
+                with marker.open("x", encoding="utf-8") as stream:
+                    json.dump(req, stream)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                command += ["--symbols", str(manifest), "--out", str(folder / "snapshot"),
+                            "--start-date", start.strftime("%Y%m%d"),
+                            "--end-date", end.strftime("%Y%m%d"),
+                            "--run-id", req["run_id"], "--bundle", str(folder / "bundle")]
+            else:
+                command += ["--manifest", str(manifest), "--out", str(folder), "--sleep", "0.1"]
             if kind == "minute":
                 command += ["--window-start", start.strftime("%Y%m%d"),
                             "--window-end", end.strftime("%Y%m%d"),
@@ -181,9 +220,18 @@ class Gateway:
             if result.returncode:
                 raise DownloaderExit(result.returncode)
             return None  # stdout is the unchanged downloader progress protocol.
+        if dividend:
+            folder = folder / "bundle"
+            regular(folder)
+            if not folder.is_dir():
+                raise ValueError("complete dividend bundle unavailable")
+            if op == "get" and req["file"] not in {"events.parquet", "result.json"}:
+                raise ValueError("unsupported dividend bundle file")
         if op == "list":
             files = []
             for path in sorted(folder.iterdir()):
+                if dividend and path.name not in {"events.parquet", "result.json"}:
+                    raise ValueError("unexpected dividend bundle file")
                 if not FILE.fullmatch(path.name) or ".." in path.name:
                     continue
                 regular(path)

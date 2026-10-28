@@ -807,6 +807,7 @@ def test_tushare_sync_component_owns_bounded_writer_and_convergence_paths() -> N
     assert sync["scan_roots"] == [
         "src/qsys/core", "src/qsys/data", "src/qsys/strategy", "src/qsys/live", "src/qsys/ops",
         "src/qsys/paper", "scripts/win_download_minutes.py", "scripts/win_download_auction_ticks.py",
+        "scripts/win_download_dividends.py",
     ]
     assert sync["release_root"] == "/opt/qsys/components/tushare-sync/releases"
     assert sync["current"] == "/opt/qsys/components/tushare-sync/current"
@@ -833,6 +834,10 @@ def test_tushare_sync_component_owns_bounded_writer_and_convergence_paths() -> N
     assert "ReadWritePaths=/home/ubuntu/qsys/var/service-runs/tushare-sync" in dropin
     assert dropin.count("ReadWritePaths=/home") == 3
     assert "--late-minute-convergence" in dropin
+    assert "--dividend-sync --dividend-initial-start 2026-10-28" in dropin
+    assert "--dividend-win-script-source /opt/qsys/components/tushare-sync/current/source/scripts/win_download_dividends.py" in dropin
+    assert any("/data/qsys/warehouse/corporate_actions" in line
+               for line in sync["dropin_lines"] if line.startswith("ReadWritePaths="))
     assert "--late-minute-work-root /home/ubuntu/qsys/var/tushare-sync" in dropin
     assert "--late-minute-record-root /home/ubuntu/qsys/var/service-runs/tushare-sync" in dropin
     assert "--late-minute-paper-store /home/ubuntu/qsys/var/workbench/workbench.sqlite3" in dropin
