@@ -1,5 +1,21 @@
 # 项目交接入口
 
+## 10-29 00:24：八条历史现金修复已执行并验收
+
+- 维护者已明确确认#558八项审阅包。00:22:21持真实写锁重核基线，00:22:54原子替换
+  唯一事件表，00:23:21复验通过。61085行仅八个cash_per_share变化，其他值/键/顺序/
+  Arrow schema+metadata及owner/group/mode/access ACL保持。生产SHA现df021519...，
+  原eab786c3...以独立inode完整备份保留；此批准范围已执行，不再重复请求确认或重放。
+- producer/backtest/Paper/Web/checks/digest六真实UID在替换前后均读取通过，替换后
+  实际WarehouseQuery全表与候选精确相等。两因子表、KILL、Live主库、checkpoint、组件
+  3facceb和共享checkout505d7e8及六peer/原timer完全保持。模拟/实盘未恢复。
+- 真实维护PID2250665/UID0/invocation2dbe79ef...，exit0/success；一次性任务已停止。
+  首次账号切换辅助失败在requested前退出，保留原记录，修复用新r2 run-id；没有回放。
+- 结果见[生产验收](docs/reference/cash-dividend-production-acceptance.md)及#558最新记录。
+  审计根/data/qsys/var-deployments/issue558-cash-approved-r2-20261029/，全部备份保留。
+- #558仍跟踪未来增量现金选源，另八条null/0保持源值。#540继续等10-29自然业务；
+  17:20只读采证timer保持active，脚本不绑定旧事件SHA，已核对无需修改。
+
 ## 10-29 零时：现金差异独立验真完成，历史覆盖未执行
 
 - #558 承接 #540 的八条非空现金差异：正式实施公告每10股金额明确除以10后，与留存
