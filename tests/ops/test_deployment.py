@@ -1311,7 +1311,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
 
     state = entrypoint.status({"production_repo": str(tmp_path)})
 
-    assert state["entrypoint_version"] == 35
+    assert state["entrypoint_version"] == 36
     assert set(state["capabilities"]) == {
         "systemd-apply-v1", "systemd-component-boundary-v1", "systemd-changed-artifacts-v1",
         "systemd-preview-v1", "systemd-runtime-paths-v1", "systemd-rollback-v1",
@@ -1344,6 +1344,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
         "component-state-reader-maintenance-v1",
         "component-tushare-maintenance-v1",
         "component-tushare-failed-terminal-v1",
+        "component-catalog-maintenance-v1",
         "emergency-restart-authorization-v1",
     }
 
@@ -1576,7 +1577,8 @@ def test_component_deploy_dry_run_proves_live_without_reading_artifact(
     monkeypatch.setattr(entrypoint, "_fetch_and_validate_target", lambda repo, value: "c" * 40)
     monkeypatch.setattr(entrypoint, "_successful_test_run", lambda config, tree: "test-1")
     monkeypatch.setattr(entrypoint, "_current_component_sha", lambda component: "uninstalled")
-    monkeypatch.setattr(entrypoint, "_active", lambda unit, repo: False)
+    monkeypatch.setattr(entrypoint, "_active", lambda unit, repo: unit == "qsys-live-core.service")
+    monkeypatch.setattr(entrypoint, "_unit_identity_token", lambda *a: "stable-peer")
     monkeypatch.setattr(entrypoint, "_live_identity", lambda repo: {
         "pid": "42", "started_monotonic": "99", "repo_sha": "b" * 40,
     })
@@ -1879,7 +1881,8 @@ def test_component_activation_failure_rolls_back_and_preserves_live_identity(
     monkeypatch.setattr(entrypoint, "_fetch_and_validate_target", lambda repo, sha: "d" * 40)
     monkeypatch.setattr(entrypoint, "_successful_test_run", lambda config, tree: "test-1")
     monkeypatch.setattr(entrypoint, "_current_component_sha", lambda component: previous)
-    monkeypatch.setattr(entrypoint, "_active", lambda unit, repo: False)
+    monkeypatch.setattr(entrypoint, "_active", lambda unit, repo: unit == "qsys-live-core.service")
+    monkeypatch.setattr(entrypoint, "_unit_identity_token", lambda *a: "stable-peer")
     monkeypatch.setattr(entrypoint, "_live_identity", lambda repo: dict(live))
     monkeypatch.setattr(entrypoint, "_live_preflight", lambda repo: None)
     monkeypatch.setattr(entrypoint, "_fingerprints", lambda config, repo: {"linux": "f"})

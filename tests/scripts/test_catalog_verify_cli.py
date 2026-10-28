@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from datetime import date, datetime
 
+import pytest
+
 from qsys.data import catalog_verify_cli as catalog_verify
 from qsys.data.catalog.verification import VerificationSummary
 from qsys.data.catalog.health import HealthStatus
@@ -44,11 +46,44 @@ def test_verification_is_recorded_as_its_own_run(monkeypatch, tmp_path, warehous
 
     record = _record(runs)
     assert record["service"] == "catalog-verify" and record["session"] == DAY.isoformat()
-    assert record["status"] == "succeeded"
+    assert record["status"] == "warning"
     step = record["steps"][1]
     assert step["name"] == "指标字典验证" and step["rows"] == 364
     assert "2026 年至今全量" in step["detail"] and "警告 7 条" in step["detail"]
     assert "C3.span_gaps" in step["detail"]
+    assert step["status"] == "warning"
+
+
+@pytest.mark.parametrize("blocking,warnings,health,exit_code,run_status,field_status,table_status", [
+    (1, 0, HealthStatus.GREEN, 1, "failed", "failed", "succeeded"),
+    (1, 1, HealthStatus.YELLOW, 1, "failed", "failed", "warning"),
+    (0, 0, HealthStatus.RED, 1, "failed", "succeeded", "failed"),
+    (0, 0, HealthStatus.GRAY, 1, "failed", "succeeded", "failed"),
+    (0, 1, HealthStatus.GREEN, 0, "warning", "warning", "succeeded"),
+    (0, 0, HealthStatus.YELLOW, 0, "warning", "succeeded", "warning"),
+    (0, 0, HealthStatus.GREEN, 0, "succeeded", "succeeded", "succeeded"),
+])
+def test_field_and_table_results_both_reach_real_record_and_exit_code(
+        monkeypatch, tmp_path, warehouse, blocking, warnings, health, exit_code,
+        run_status, field_status, table_status):
+    runs = tmp_path / "runs"
+    _argv(monkeypatch, warehouse, runs)
+    monkeypatch.setattr(catalog_verify, "verify_session", lambda *args, **kwargs:
+                        VerificationSummary(DAY, "r", 7, blocking, warnings, ()))
+    refreshed = []
+
+    def refresh(*args):
+        refreshed.append(args[1])
+        return {"bar_daily": health}
+
+    monkeypatch.setattr(catalog_verify, "refresh_session_health", refresh)
+    assert catalog_verify.main() == exit_code
+    record = _record(runs)
+    assert refreshed == [DAY]  # 字段阻断仍须留下独立的表级验证结果。
+    assert record["status"] == run_status
+    assert record["steps"][1]["status"] == field_status
+    assert record["steps"][2]["status"] == table_status
+    assert f"阻断 {blocking} 条，警告 {warnings} 条" in record["steps"][1]["detail"]
 
 
 def test_verification_is_skipped_while_the_sync_is_still_running(

@@ -1,5 +1,18 @@
 # 项目交接入口
 
+## 10-29 维护者全权授权继续#540，#562修复与必要控制面准备
+
+- 维护者最新明确“继续推进540，我全权授权给你”，无需重复询问已授权的数据恢复实施。
+  顺序仍为数据→模拟→实盘，保持原KILL/交易门禁，不把代码发布当交易恢复。
+- #562候选将字段blocking传播到步骤failed/任务failed/exit1，warning传播warning/exit0，
+  字段与表级检查独立继续；实际ServiceRun文件正反组合回归通过。
+- 必要controller v36只增加catalog-verify停机维护例外：Live loaded/inactive/dead/
+  disabled/PID0，原绑定/KILL/状态事实保持；catalog timer inactive、oneshot终态PID0。
+  保留精确failed/exit-code非零/Invocation，不reset-failed；保护八peer，其他组件不放宽。
+- 代码/CI/test/PR和正式发布证据以#562最新记录为准；此时尚未安装候选或暂停timer。
+  当前生产catalog仍80f7068，保留10-28原失败。#561在本组件完成后继续处理，
+  不通过修改历史证据或降低质量规则消除旧红灯。
+
 ## 10-29 00:24：八条历史现金修复已执行并验收
 
 - 维护者已明确确认#558八项审阅包。00:22:21持真实写锁重核基线，00:22:54原子替换

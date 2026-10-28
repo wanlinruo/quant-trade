@@ -82,7 +82,7 @@ def test_guard_rejects_invalid_binding(monkeypatch, tmp_path):
 
 
 @pytest.mark.parametrize("component", sorted(module().COMPONENT_RELEASES))
-def test_only_reader_and_tushare_use_stopped_live_guard(monkeypatch, tmp_path, component):
+def test_only_reader_and_exact_data_components_use_stopped_live_guard(monkeypatch, tmp_path, component):
     entry = module()
     monkeypatch.setattr(entry, "_branch", lambda repo: "main")
     monkeypatch.setattr(entry, "_dirty", lambda repo: False)
@@ -100,7 +100,7 @@ def test_only_reader_and_tushare_use_stopped_live_guard(monkeypatch, tmp_path, c
     def stopped(repo):
         calls.append("stopped")
         return {"pid": "0", "started_monotonic": "0", "repo_sha": "a" * 40,
-                "maintenance_facts": "existing state and KILL", "tushare_terminal": "fixture-inactive"}
+                "maintenance_facts": "existing state and KILL", "tushare_terminal": "fixture-inactive", "catalog_terminal": "fixture-inactive"}
 
     def active(repo):
         calls.append("active")
@@ -108,6 +108,7 @@ def test_only_reader_and_tushare_use_stopped_live_guard(monkeypatch, tmp_path, c
 
     monkeypatch.setattr(entry, "_state_reader_maintenance_identity", stopped)
     monkeypatch.setattr(entry, "_tushare_maintenance_identity", stopped)
+    monkeypatch.setattr(entry, "_catalog_maintenance_identity", stopped)
     monkeypatch.setattr(entry, "_live_identity", active)
     monkeypatch.setattr(entry, "_live_preflight", lambda *a: pytest.fail("no trading preflight"))
     args = argparse.Namespace(
@@ -115,7 +116,7 @@ def test_only_reader_and_tushare_use_stopped_live_guard(monkeypatch, tmp_path, c
         repository="owner/repo", pr_number=544, dry_run=True,
     )
     config = {"production_repo": str(tmp_path), "production_record_root": str(tmp_path / "records")}
-    if component in {"live-state-reader", "tushare-sync"}:
+    if component in {"live-state-reader", "tushare-sync", "catalog-verify"}:
         assert entry.component_deploy(args, config) == 0
         assert calls == ["stopped", "stopped"]
     else:
@@ -124,14 +125,14 @@ def test_only_reader_and_tushare_use_stopped_live_guard(monkeypatch, tmp_path, c
         assert "stopped" not in calls
 
 
-@pytest.mark.parametrize("component", ["live-state-reader", "tushare-sync"])
+@pytest.mark.parametrize("component", ["live-state-reader", "tushare-sync", "catalog-verify"])
 def test_reader_staging_drift_prevents_install_and_actual_record_is_valid(monkeypatch, tmp_path, component):
     from qsys.ops.deployment import validate_record
 
     entry = module()
     target = "c" * 40
     facts = {"pid": "0", "started_monotonic": "0", "repo_sha": "a" * 40,
-             "maintenance_facts": "initial facts", "tushare_terminal": "fixture-inactive"}
+             "maintenance_facts": "initial facts", "tushare_terminal": "fixture-inactive", "catalog_terminal": "fixture-inactive"}
     commands, records = [], []
     monkeypatch.setattr(entry, "_branch", lambda *a: "main")
     monkeypatch.setattr(entry, "_dirty", lambda *a: False)
@@ -144,6 +145,7 @@ def test_reader_staging_drift_prevents_install_and_actual_record_is_valid(monkey
     monkeypatch.setattr(entry, "_unit_identity_token", lambda *a: "unchanged")
     monkeypatch.setattr(entry, "_state_reader_maintenance_identity", lambda *a: dict(facts))
     monkeypatch.setattr(entry, "_tushare_maintenance_identity", lambda *a: dict(facts))
+    monkeypatch.setattr(entry, "_catalog_maintenance_identity", lambda *a: dict(facts))
     monkeypatch.setattr(entry, "_receive_component_archive", lambda digest, root: root / "artifact.zip")
     monkeypatch.setattr(entry, "_extract_component_archive", lambda *a: None)
     monkeypatch.setattr(entry, "_verify_component_release", lambda *a: None)
@@ -171,12 +173,13 @@ def test_reader_staging_drift_prevents_install_and_actual_record_is_valid(monkey
     assert not any("systemctl" in command for command in commands)
 
 
+@pytest.mark.parametrize("component,label", [("tushare-sync", "tushare"), ("catalog-verify", "catalog")])
 @pytest.mark.parametrize("unit,field,value", [
     ("timer", "ActiveState", "active"), ("timer", "ActiveState", "activating"),
     ("timer", "LoadState", "not-found"), ("service", "ActiveState", "active"),
     ("service", "ActiveState", "failed"), ("service", "MainPID", "12"),
 ])
-def test_tushare_guard_requires_quiescent_loaded_timer_and_oneshot(monkeypatch, tmp_path, unit, field, value):
+def test_data_guard_requires_quiescent_loaded_timer_and_oneshot(monkeypatch, tmp_path, component, label, unit, field, value):
     entry = module()
     monkeypatch.setattr(entry, "_state_reader_maintenance_identity", lambda *_: {"pid": "0"})
     states = {kind: {"LoadState": "loaded", "ActiveState": "inactive", "MainPID": "0"}
@@ -187,19 +190,21 @@ def test_tushare_guard_requires_quiescent_loaded_timer_and_oneshot(monkeypatch, 
         return subprocess.CompletedProcess(command, 0, "\n".join(f"{k}={v}" for k,v in fields.items()), "")
     monkeypatch.setattr(entry, "_run", run)
     with pytest.raises(ValueError, match="inactive timer and idle oneshot"):
-        entry._tushare_maintenance_identity(tmp_path)
+        entry._quiescent_data_maintenance_identity(tmp_path, component)
 
 
-def test_tushare_guard_keeps_actual_kill_and_state_binding_checks(monkeypatch, tmp_path):
+@pytest.mark.parametrize("component", ["tushare-sync", "catalog-verify"])
+def test_data_guard_keeps_actual_kill_and_state_binding_checks(monkeypatch, tmp_path, component):
     entry, fields, _ = fixture(monkeypatch, tmp_path)
-    assert entry._tushare_maintenance_identity(tmp_path)["pid"] == "0"
+    assert entry._quiescent_data_maintenance_identity(tmp_path, component)["pid"] == "0"
     fields["UnitFileState"] = "enabled"
     with pytest.raises(ValueError, match="inactive, disabled"):
-        entry._tushare_maintenance_identity(tmp_path)
+        entry._quiescent_data_maintenance_identity(tmp_path, component)
 
 
+@pytest.mark.parametrize("component,label", [("tushare-sync", "tushare"), ("catalog-verify", "catalog")])
 @pytest.mark.parametrize("broken", [None, "pid", "invocation", "result", "status", "timer"])
-def test_tushare_failed_oneshot_requires_preserved_exit_and_invocation(monkeypatch, tmp_path, broken):
+def test_failed_data_oneshot_requires_preserved_exit_and_invocation(monkeypatch, tmp_path, component, label, broken):
     entry = module()
     monkeypatch.setattr(entry, "_state_reader_maintenance_identity", lambda *_: {"pid": "0"})
     timer = {"LoadState": "loaded", "ActiveState": "inactive", "MainPID": "0"}
@@ -216,12 +221,12 @@ def test_tushare_failed_oneshot_requires_preserved_exit_and_invocation(monkeypat
     monkeypatch.setattr(entry, "_run", run)
     if broken is not None:
         with pytest.raises(ValueError, match="inactive timer and idle oneshot"):
-            entry._tushare_maintenance_identity(tmp_path)
+            entry._quiescent_data_maintenance_identity(tmp_path, component)
     else:
-        before = entry._tushare_maintenance_identity(tmp_path)
-        assert json.loads(before['tushare_terminal']) == service
+        before = entry._quiescent_data_maintenance_identity(tmp_path, component)
+        assert json.loads(before[f'{label}_terminal']) == service
         service['InvocationID'] = 'b' * 32
-        assert entry._tushare_maintenance_identity(tmp_path) != before
+        assert entry._quiescent_data_maintenance_identity(tmp_path, component) != before
 
 
 def test_tushare_compensation_restores_previous_arguments_and_metadata(monkeypatch, tmp_path):
@@ -251,3 +256,64 @@ def test_tushare_compensation_restores_previous_arguments_and_metadata(monkeypat
     assert any(c[-1] == "daemon-reload" for c in commands)
     with pytest.raises(ValueError, match="already exists"):
         entry._backup_tushare_dropin(tmp_path, tmp_path / "release", "a" * 40)
+
+
+def test_catalog_maintenance_records_preserved_failed_terminal_without_starting_any_unit(monkeypatch, tmp_path):
+    from qsys.ops.deployment import validate_record
+
+    entry = module()
+    target = "c" * 40
+    current = ["b" * 40]
+    facts = {"pid": "0", "started_monotonic": "0", "repo_sha": "a" * 40,
+             "maintenance_facts": "unchanged state and KILL",
+             "catalog_terminal": json.dumps({"ActiveState": "failed", "MainPID": "0",
+                                              "Result": "exit-code", "ExecMainStatus": "1",
+                                              "InvocationID": "d" * 32})}
+    records, commands = [], []
+    monkeypatch.setattr(entry, "_branch", lambda *a: "main")
+    monkeypatch.setattr(entry, "_dirty", lambda *a: False)
+    monkeypatch.setattr(entry, "_head", lambda *a: "a" * 40)
+    monkeypatch.setattr(entry, "_fetch_and_validate_target", lambda *a: "e" * 40)
+    monkeypatch.setattr(entry, "_successful_test_run", lambda *a: "validated-test")
+    monkeypatch.setattr(entry, "_current_component_sha", lambda *a: current[0])
+    monkeypatch.setattr(entry, "_active", lambda *a: False)
+    monkeypatch.setattr(entry, "_catalog_maintenance_identity", lambda *a: dict(facts))
+    monkeypatch.setattr(entry, "_live_preflight", lambda *a: pytest.fail("trading preflight"))
+    monkeypatch.setattr(entry, "_live_identity", lambda *a: pytest.fail("active Live identity"))
+    monkeypatch.setattr(entry, "_fingerprints", lambda *a: {})
+    monkeypatch.setattr(entry, "_unit_identity_token", lambda *a: "preserved-peer")
+    monkeypatch.setattr(entry, "_receive_component_archive", lambda digest, root: root / "artifact.zip")
+    monkeypatch.setattr(entry, "_extract_component_archive", lambda *a: None)
+    monkeypatch.setattr(entry, "_verify_component_release", lambda *a: None)
+    monkeypatch.setattr(entry, "_stage_component_release", lambda *a: None)
+
+    def run(command, **kwargs):
+        commands.append(command)
+        if entry.GENERIC_COMPONENT_INSTALLER in command:
+            current[0] = target
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    def write(config, run_id, record):
+        validate_record(record)
+        records.append(record)
+        return tmp_path / "record.json"
+
+    monkeypatch.setattr(entry, "_run", run)
+    monkeypatch.setattr(entry, "_write_record", write)
+    args = argparse.Namespace(component="catalog-verify", sha=target, run_id="catalog-maintenance",
+                              actor="maintainer", repository="owner/repo", pr_number=562,
+                              dry_run=False, artifact_sha256="f" * 64)
+    assert entry.component_deploy(args, {"production_repo": str(tmp_path),
+                                        "production_record_root": str(tmp_path / "records")}) == 0
+    assert records[0]["status"] == "success"
+    assert any(item["name"] == "catalog-terminal-preserved" and
+               item["detail"] == facts["catalog_terminal"] for item in records[0]["checks"])
+    assert not any("systemctl" in command for command in commands)
+    assert len(entry.COMPONENT_PROTECTED_PEERS["catalog-verify"]) == 8
+
+
+def test_quiescent_data_guard_rejects_other_component_before_inspecting_live(monkeypatch, tmp_path):
+    entry = module()
+    monkeypatch.setattr(entry, "_state_reader_maintenance_identity", lambda *a: pytest.fail("guard widened"))
+    with pytest.raises(ValueError, match="unsupported"):
+        entry._quiescent_data_maintenance_identity(tmp_path, "paper")
