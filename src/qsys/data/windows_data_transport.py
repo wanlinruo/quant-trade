@@ -126,6 +126,11 @@ class WindowsDataTransport:
         return self.command("run", job=job, sha256=digest, run_id=run_id,
                             start=start.isoformat(), end=end.isoformat())
 
+    def run_snapshot(self, job: str, script: Path, run_id: str, start, end,
+                     *, timeout: int) -> None:
+        self._run_ssh(self.download_command(job, script, run_id, start, end),
+                      capture_output=True, timeout=timeout, check=True)
+
     def receive(self, job: str, destination: Path) -> int:
         files = self._json("list", job=job).get("files")
         if not isinstance(files, list) or len(files) > 20000:

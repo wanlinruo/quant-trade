@@ -148,8 +148,10 @@ def export(symbols, out_dir, start, end, fetch):
             rows = normalize_frame(symbol, frame, start, end)
             table = pa.Table.from_pylist([dict(zip(COLUMNS, row)) for row in rows], schema=_arrow_schema())
             tmp = data_path.with_suffix(".parquet.tmp")
-            pq.write_table(table, tmp)
-            with tmp.open("rb") as handle:
+            # Windows FlushFileBuffers requires a writable descriptor.
+            with tmp.open("wb") as handle:
+                pq.write_table(table, handle)
+                handle.flush()
                 os.fsync(handle.fileno())
             os.replace(tmp, data_path)
             nulls = sum(table.column(name).null_count for name in COLUMNS[2:])
@@ -164,21 +166,73 @@ def export(symbols, out_dir, start, end, fetch):
     return counts
 
 
+def bundle_snapshot(out_dir, bundle_dir, symbols, start, end, run_id):
+    """汇总已验证的逐证券收据，只传输一个数据文件及其完整性记录。"""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    out, bundle = Path(out_dir), Path(bundle_dir)
+    expected = {"protocol": "qsys-dividends-v2", "symbols": symbols,
+                "start": start.strftime("%Y%m%d"), "end": end.strftime("%Y%m%d")}
+    if json.loads((out / "manifest.json").read_text(encoding="utf-8")) != expected:
+        raise ValueError("snapshot scope mismatch")
+    tables, receipts = [], []
+    for symbol in symbols:
+        receipt = json.loads((out / (symbol + ".json")).read_text(encoding="utf-8"))
+        path = out / (symbol + ".parquet")
+        if (receipt.get("symbol") != symbol or receipt.get("status") not in {"done", "empty"}
+                or receipt.get("null_cells") != 0 or receipt.get("sha256") != _sha(path)):
+            raise ValueError("snapshot is incomplete or changed")
+        table = pq.read_table(path)
+        if not table.schema.equals(_arrow_schema()) or receipt.get("rows") != table.num_rows:
+            raise ValueError("snapshot schema/rows mismatch")
+        if (receipt["status"] == "empty") != (table.num_rows == 0):
+            raise ValueError("snapshot status mismatch")
+        for row in table.to_pylist():
+            if (row["symbol"] != symbol or not start <= row["ex_date"] <= end
+                    or any(row[name] is None or not math.isfinite(row[name]) for name in COLUMNS[2:])):
+                raise ValueError("invalid snapshot event")
+        tables.append(table)
+        receipts.append(receipt)
+    combined = pa.concat_tables(tables)
+    keys = [(r["symbol"], r["ex_date"]) for r in combined.select(COLUMNS[:2]).to_pylist()]
+    if len(set(keys)) != len(keys):
+        raise ValueError("duplicate bundled event")
+    bundle.mkdir(parents=True, exist_ok=False)
+    path = bundle / "events.parquet"
+    with path.open("xb") as handle:
+        pq.write_table(combined, handle)
+        handle.flush()
+        os.fsync(handle.fileno())
+    result = {**expected, "run_id": run_id, "rows": combined.num_rows,
+              "sha256": _sha(path), "receipts": receipts}
+    _atomic_json(bundle / "result.json", result)
+    return result
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="导出固定窗口的原生分红送配快照（空值不填充）")
     parser.add_argument("--symbols", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--start-date", required=True, help="YYYYMMDD")
     parser.add_argument("--end-date", required=True, help="YYYYMMDD")
+    parser.add_argument("--bundle", type=Path, help="完整快照的独立传输目录，必须尚不存在")
+    parser.add_argument("--run-id", help="调用方唯一运行身份")
     args = parser.parse_args()
     start, end = _as_date(args.start_date), _as_date(args.end_date)
     if start > end:
         parser.error("start-date must not be after end-date")
+    if args.bundle is not None and not args.run_id:
+        parser.error("--bundle requires --run-id")
     symbols = read_symbols(args.symbols)
     from xtquant import xtdata
     counts = export(symbols, args.out, start, end, xtdata.get_divid_factors)
     print(json.dumps(counts, ensure_ascii=False))
-    return 1 if counts["incomplete"] or counts["failed"] else 0
+    if counts["incomplete"] or counts["failed"]:
+        return 1
+    if args.bundle is not None:
+        bundle_snapshot(args.out, args.bundle, symbols, start, end, args.run_id)
+    return 0
 
 
 if __name__ == "__main__":

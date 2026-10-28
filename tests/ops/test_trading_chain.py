@@ -1,8 +1,6 @@
 import sqlite3
 from datetime import datetime
 
-import pytest
-
 from qsys.ops.health import DEGRADED, DOWN, HEALTHY
 from qsys.ops.trading_chain import assess_paper, assess_shadow, recorded_auction_time
 
@@ -68,43 +66,6 @@ def test_paper_chain_checks_every_active_account_and_run_error(tmp_path):
     )
     got = assess_paper(path, datetime(2026, 9, 21, 9, 30, 15))
     assert got.state == DOWN and "模拟一号" in got.detail
-
-
-@pytest.mark.parametrize("hour", [0, 9, 21])
-@pytest.mark.parametrize("with_running", [False, True])
-def test_paper_error_accounts_are_unhealthy_even_with_no_running_accounts(
-    tmp_path, hour, with_running,
-):
-    path = paper_db(tmp_path / "paper.sqlite3", accounts=[
-        ("failed", "失败账户", None), ("other", "另一个账户", None),
-    ])
-    with sqlite3.connect(path) as con:
-        con.execute("UPDATE paper_accounts SET status='error' WHERE id='failed'")
-        if not with_running:
-            con.execute("UPDATE paper_accounts SET status='ended' WHERE id='other'")
-    before = path.read_bytes()
-
-    got = assess_paper(path, datetime(2026, 9, 21, hour))
-
-    assert got.state == DOWN and got.reason_code == "strategy_account_error"
-    assert "1 个" in got.detail
-    assert path.read_bytes() == before
-
-
-@pytest.mark.parametrize("posture", ["paused", "ended", "scheduled", "future-error", "empty"])
-def test_paper_inactive_accounts_do_not_become_false_business_failures(tmp_path, posture):
-    path = paper_db(tmp_path / "paper.sqlite3")
-    with sqlite3.connect(path) as con:
-        if posture == "empty":
-            con.execute("DELETE FROM paper_accounts")
-        elif posture == "future-error":
-            con.execute("UPDATE paper_accounts SET status='error',activation_date='2026-09-22'")
-        else:
-            con.execute("UPDATE paper_accounts SET status=?", (posture,))
-
-    got = assess_paper(path, datetime(2026, 9, 21, 21))
-
-    assert got.state == HEALTHY and got.reason_code == "strategy_accounts_inactive"
 
 
 

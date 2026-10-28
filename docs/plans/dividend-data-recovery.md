@@ -1,5 +1,78 @@
 # 送配事件与量因子恢复（#540）
 
+## 10-28 自动增量候选与发布前置
+
+候选最终本地全量4067通过、7既有跳过、2既有依赖警告。生产入口和配置未切换。
+Windows首轮真实隔离导出因只读句柄fsync抛OSError/errno9，三样本均记failed，未写生产。
+同批临时文件只读/可写句柄探针确认Windows差异后，改为Parquet写句柄flush/fsync，新增
+零字节写探针回归。首次失败、requested及临时文件全部保留，没有在原作业重放。
+
+R2新审计目录实测3只证券：001399.SZ与600017.SH共2条真实事件、600000.SH明确empty；
+完整bundle校验通过，重复run与daily-archive组件请求均拒绝。两个文件再经真实SSH
+probe/list/get传回Mac，实际WindowsDataTransport长度/SHA、客户端覆盖/schema/原值与
+隔离Warehouse导入通过。该轮使用维护账号和E盘独立gateway配置；正式组件专用key的
+配置切换与负向现场验收仍待发布。QMT PID3788、159个qsys任务文件SHA保持，下载/账户/
+交易调用0。Windows审计根`E:/qsys-private-audit/issue540-dividend-protocol-20261028-r2/`，
+Linux摘要`/data/qsys/var-deployments/issue540-dividend-auto-20261028/`；首次失败在无-r2目录。
+
+原生产17:00自然同步`170005-2111515`于17:03:22 succeeded，19步骤成功、11表canonical
+对账通过。实际采集UID预算内只读查得当日5570行价格因子与Tushare直取精确一致、规范
+因子逐键精确一致；获批修复的12只/336行历史样本与修复候选保持，事件仍61085条。
+这不代表新自动送配已激活。17:10原只读分钟替代源探针仅1次调用收到40203频次限制拒绝，
+响应提及2次但未标出时间窗口；不猜频率、不重试、不判为权限拒绝。19点及晚间任务待自然验收。
+
+历史修复后的下一项仍由#540承接：在`tushare-sync`事实同步后、因子派生前取得QMT完整
+送配快照。启用参数、首次起点`2026-10-28`、已批准下载器和gateway凭据必须显式给定。
+默认入口不启用新行为。新增事件只追加；同键同值不重写，无论差异大小，旧值冲突均整批
+拒绝并要求独立审阅。源失败/None/null/非有限数值、重复、窗口/身份/schema/收据/hash
+不符均停止派生和canonical发布；已完成Tushare事实仍执行原增量质检，整次运行保留失败。
+
+固定协议仍为v1，旧minute/auction配置继续有效；仅`tushare-sync`且控制配置包含已批准
+`dividend`脚本时开放`dividend_YYYYMMDD_<run-id>`。清单固定`symbol,dt`，每证券仅一行且
+dt为窗口结束日，窗口最长31天，实际源码SHA绑定，执行无shell。Windows落盘requested后
+拒绝重复run；Linux也先持久化requested，超时/未知送达不重发。逐证券保留done/empty/
+incomplete/failed及真实Parquet/SHA，全部完整后汇总`events.parquet`与`result.json`回传，
+避免数千次SSH。Linux逐证券核对覆盖、空响应、行数及事件范围，不以exit0替代验收。
+
+成功事件导入窗口记录在组件私有`dividends/last-imported.json`，不从最后事件日期推断
+采集进度。下次从上次成功结束日回看7天（不早于首次明确起点），长断流超过31天或回退
+日期显式拒绝。该收据只证明事件导入，不证明随后因子/质检成功；窗口外历史更正仍需另行
+核验，不宣称滚动窗口能发现所有历史源修订。事件导入后沿用原构建器与canonical对账。
+
+### 数据盘利用与最小权限
+
+维护者确认已扩容Windows数据盘，本轮只读实测E: NTFS 107339558912字节，空闲
+106077167616字节；C:空闲4586393600字节，QMT PID3788仍从C盘运行，userdata非链接。
+E盘已有私有审计备份，无需再建盘或格式化。新送配快照拟单独使用
+`E:/qsys-component-data/tushare-sync-dividends`，通过控制配置`dividend_root`显式指定，
+不得与两个旧组件工作根重叠；旧分钟/竞价目录和活动QMT数据不迁移。未生产创建此目录。
+
+Linux仅增加`corporate_actions`这一写表，保持原共享flock、私有组和observers读取边界；
+不加入Workbench写组。真实采集UID在隔离`/tmp/qsys-dividend-acl-0fdauflt`创建/原子替换
+新inode后，backtest/Paper/Web/checks/digest五UID与ubuntu均回读正确。正式准备仍须对
+精确生产目录应用采集账号/ubuntu写及observers读的access/default ACL，并验证实际unit
+沙箱、消费者和反向写拒绝；该探针不等于已开放生产权限或完成组件安装。
+
+### 发布清单（尚未执行）
+
+1. 冻结Live/Paper源代码保存在`fix/frozen-ops-recovery`（原PR#547 head f87babd），
+   数据候选已将相应5个运行时/测试文件恢复至main；原PR#547关闭且未合并，冻结分支保留。
+   正常数据发布不夹带这两项修复。
+2. 完成候选全量/源码扫描/可信main与目标planner分类、成功CI与测试部署、逐文件代行
+   自审和新的数据发布PR；原PR#547不合并。组件与测试环境的验收分别记录。
+3. 从已合并精确main安装版本化Windows gateway和送配下载器：保留两旧脚本SHA与工作根，
+   增加精确dividend脚本SHA和上述E盘目录；备份并精确替换两组件的forced-command入口，
+   原个人key、密码、任务、RDP/Autologon、QMT/Python路径全部保持。先准备文件/ACL，
+   后切入口，实际probe/list/get及非授权组件/重复请求负向验证；不重启sshd或QMT。
+4. 新增manifest规格与节点`/etc/qsys/component-releases.json`必须精确比对，审批后仅从
+   合并main安装可信规格并备份；准备精确corporate_actions ACL。旧组件不得提前套新参数。
+5. 隔离真实Windows读取及Linux新inode/消费者/沙箱验收，再按既有审批门禁发布
+   tushare-sync；workflow、Deployment、实际validate_record三方成功后验业务，最后观察
+   17/19自然任务。首次激活包含未来事件表写入，须明确批准，不沿用历史661事件批准。
+
+本候选没有生产安装、开放权限或采集新快照，没有恢复模拟/实盘、清KILL或删除备份。
+现金源差异、#550/#551和D-23历史约束保留。
+
 ## 2026-10-28 16:14 执行与验收结论
 
 维护者本会话明确确认[审阅包6463418320](https://github.com/wanlinruo/quant-trade/issues/540#issuecomment-6463418320)。

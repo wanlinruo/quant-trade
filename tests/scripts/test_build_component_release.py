@@ -57,6 +57,7 @@ def _repo(tmp_path: Path) -> tuple[Path, str]:
         "WINDOWS_DOWNLOADER = 1\n", encoding="utf-8",
     )
     (repo / "scripts/win_download_auction_ticks.py").write_text("AUCTION = 1\n")
+    (repo / "scripts/win_download_dividends.py").write_text("DIVIDENDS = 1\n")
     (repo / "scripts/unrelated.py").write_text(
         "UNRELATED = 1\n", encoding="utf-8",
     )
@@ -395,12 +396,15 @@ def test_tushare_sync_release_binds_writer_and_late_minute_downloader(
     }
     assert "scripts/win_download_minutes.py" in paths
     assert "scripts/win_download_auction_ticks.py" in paths
+    assert "scripts/win_download_dividends.py" in paths
     assert not any(
         path.startswith("scripts/") and path not in {"scripts/win_download_minutes.py",
-                                                       "scripts/win_download_auction_ticks.py"}
+                                                       "scripts/win_download_auction_ticks.py",
+                                                       "scripts/win_download_dividends.py"}
         for path in paths
     )
     assert (release / "source/scripts/win_download_minutes.py").is_file()
+    assert (release / "source/scripts/win_download_dividends.py").is_file()
     assert verify(repo, sha, "tushare-sync", release) == value
 
 

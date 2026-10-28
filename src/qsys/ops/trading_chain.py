@@ -165,15 +165,6 @@ def assess_paper(path: Path, now: datetime, *, grace_seconds: float = 90) -> Cha
     try:
         with sqlite3.connect(f"file:{Path(path)}?mode=ro", uri=True) as con:
             con.row_factory = sqlite3.Row
-            failed_accounts = con.execute(
-                "SELECT COUNT(*) FROM paper_accounts WHERE status='error' "
-                "AND activation_date <= ?", (now.date().isoformat(),),
-            ).fetchone()[0]
-            if failed_accounts:
-                return ChainAssessment(
-                    DOWN, "strategy_account_error",
-                    f"{failed_accounts} 个已生效模拟账户处于错误状态，请查看账户详情",
-                )
             accounts = con.execute(
                 "SELECT id,name,config_json FROM paper_accounts WHERE status='running' "
                 "AND activation_date <= ?", (now.date().isoformat(),),

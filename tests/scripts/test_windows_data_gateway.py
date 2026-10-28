@@ -138,3 +138,82 @@ def test_manifest_dates_cannot_escape_the_bounded_run_window():
     with pytest.raises(ValueError,match='outside'):
         gateway.validate_manifest(b'symbol,dt\n600000.SH,2026-10-20\n',
                                   start=date(2026,10,21),end=date(2026,10,21))
+
+
+def approve_dividends(server):
+    server.scripts["dividend"] = dict(server.scripts["minute"])
+    server.dividend_root = server.root
+
+
+def test_dividend_is_opt_in_and_refused_for_daily_archive(server):
+    job = "dividend_20261028_sync-1"
+    with pytest.raises(ValueError, match="not approved"):
+        execute(server, "prepare", job=job)
+    approve_dividends(server)
+    server.component = "daily-archive"
+    with pytest.raises(ValueError, match="not approved"):
+        execute(server, "prepare", job=job)
+    assert not (server.root / job).exists()
+
+
+def test_dividend_window_hash_run_and_no_replay(server, monkeypatch):
+    approve_dividends(server)
+    job = "dividend_20261028_sync-1"
+    execute(server, "prepare", job=job)
+    data = b"symbol,dt\n600017.SH,2026-10-28\n"
+    execute(server, "put", job=job, data=data, size=len(data), sha256=hashlib.sha256(data).hexdigest())
+    calls = []
+    monkeypatch.setattr(gateway.subprocess, "run", lambda args, **kw:
+                        calls.append((args, kw)) or subprocess.CompletedProcess(args, 0))
+    req = dict(job=job, sha256=server.scripts["dividend"]["sha256"], run_id="sync-1",
+               start="2026-10-28", end="2026-10-28")
+    with pytest.raises(ValueError, match="mismatch"):
+        execute(server, "run", **{**req, "run_id": "wrong"})
+    assert not calls
+    execute(server, "run", **req)
+    args, kw = calls[0]
+    assert "--symbols" in args and "--bundle" in args
+    assert args[args.index("--out") + 1] == str(server.root / job / "snapshot")
+    assert kw["shell"] is False
+    with pytest.raises(FileExistsError):
+        execute(server, "run", **req)
+    with pytest.raises(FileExistsError):
+        execute(server, "prepare", job=job)
+    with pytest.raises(ValueError, match="immutable"):
+        execute(server, "put", job=job, data=data, size=len(data), sha256=hashlib.sha256(data).hexdigest())
+    assert len(calls) == 1
+
+
+def test_dividend_exposes_only_completed_bundle(server):
+    approve_dividends(server)
+    job = "dividend_20261028_sync-1"
+    execute(server, "prepare", job=job)
+    folder = server.root / job
+    (folder / "manifest.csv").write_text("private request")
+    with pytest.raises(ValueError, match="unavailable"):
+        execute(server, "list", job=job)
+    bundle = folder / "bundle"
+    bundle.mkdir()
+    (bundle / "events.parquet").write_bytes(b"actual-bytes")
+    (bundle / "result.json").write_text("{}")
+    result, _ = execute(server, "list", job=job)
+    assert [f["name"] for f in result["files"]] == ["events.parquet", "result.json"]
+    assert execute(server, "get", job=job, file="events.parquet")[1] == b"actual-bytes"
+    with pytest.raises(ValueError, match="unsupported"):
+        execute(server, "get", job=job, file="manifest.json")
+
+
+def test_dividend_can_use_separate_data_volume_without_moving_existing_jobs(server, tmp_path):
+    config = {"protocol": 1, "python": str(server.python),
+              "roots": {name: str(tmp_path / name) for name in gateway.COMPONENTS},
+              "scripts": {**server.scripts, "dividend": dict(server.scripts["minute"])},
+              "dividend_root": str(tmp_path / "data-volume" / "dividends")}
+    updated = gateway.Gateway(config, "tushare-sync")
+    execute(updated, "prepare", job="dividend_20261028_sync-1")
+    assert (tmp_path / "data-volume/dividends/dividend_20261028_sync-1").is_dir()
+    assert not updated.root.exists()
+    execute(updated, "prepare", job="minute_20261028")
+    assert (updated.root / "minute_20261028").is_dir()
+    config["dividend_root"] = str(updated.root / "nested")
+    with pytest.raises(ValueError, match="disjoint"):
+        gateway.Gateway(config, "tushare-sync")

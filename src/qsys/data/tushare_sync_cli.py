@@ -239,11 +239,23 @@ def main() -> int:
     )
     parser.add_argument("--late-minute-win-known-hosts", type=Path, default=None)
     parser.add_argument("--late-minute-win-transport", choices=("legacy", "gateway"), default="legacy")
+    parser.add_argument("--dividend-sync", action="store_true",
+                        help="派生前取得完整QMT送配快照，仅追加无冲突事件")
+    parser.add_argument("--dividend-initial-start", type=date.fromisoformat,
+                        help="已验收历史后的首次采集起点；不从最后事件日期推断")
+    parser.add_argument("--dividend-win-script-source", type=Path,
+                        help="随制品携带且已获Windows gateway批准的送配下载器")
+    parser.add_argument("--dividend-win-host", default="Administrator@118.25.42.149")
     parser.add_argument(
         "--late-minute-convergence", action="store_true",
         help="同步成功后收敛当日晚到上市标的；生产定时任务显式启用",
     )
     args = parser.parse_args()
+    if args.dividend_sync and (args.dividend_initial_start is None
+                              or args.dividend_win_script_source is None
+                              or args.late_minute_win_known_hosts is None
+                              or args.late_minute_win_transport != "gateway"):
+        parser.error("--dividend-sync requires explicit initial start, script and gateway credentials")
 
     with ServiceRun.open(args.service_runs, "tushare-sync") as run:
         client = TushareClient(load_tushare_config(args.config).token)
@@ -262,6 +274,26 @@ def main() -> int:
         warehouse = Warehouse(args.warehouse)
         provider = TushareProvider(client)
         counts = sync(provider, warehouse, day, run=run)
+        if args.dividend_sync:
+            from qsys.data.pipeline.dividend_sync import sync_dividends
+            from qsys.data.windows_data_transport import WindowsDataTransport
+            try:
+                with record_step(run, "QMT送配完整快照", interface="QMT get_divid_factors",
+                                 table="corporate_actions") as step:
+                    with WindowsDataTransport(
+                        args.dividend_win_host, str(args.late_minute_win_key),
+                        component="tushare-sync", known_hosts=str(args.late_minute_win_known_hosts),
+                    ) as transport:
+                        counts["corporate_actions"] = step.rows = sync_dividends(
+                            warehouse, day, initial_start=args.dividend_initial_start,
+                            work_root=args.late_minute_work_root, transport=transport,
+                            script=args.dividend_win_script_source, run_id=run.run_id,
+                        )
+            except Exception:
+                # Preserve quality evidence for completed Tushare facts, but do
+                # not derive or publish factors from an unverified event input.
+                after_sync(warehouse, day, ok=True, run=run, artifacts=args.artifacts)
+                raise
         # 次日开盘前选股要用次日的退市整理期池，今晚一并建好
         next_session = next_open_day(client, day)
         counts.update(refresh_derived(warehouse, day, run=run, next_session=next_session))
