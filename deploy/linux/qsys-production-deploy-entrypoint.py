@@ -36,7 +36,7 @@ ALLOWED_WINDOWS_COMPONENTS = frozenset({
     "windows-agent", "windows-gateway", "windows-control",
 })
 WINDOWS_COORDINATOR_PATH = "deploy/linux/qsys-windows-deploy-coordinator.py"
-ENTRYPOINT_VERSION = 35
+ENTRYPOINT_VERSION = 36
 ENTRYPOINT_CAPABILITIES = (
     "systemd-apply-v1",
     "systemd-component-boundary-v1",
@@ -74,11 +74,20 @@ ENTRYPOINT_CAPABILITIES = (
     "component-state-reader-maintenance-v1",
     "component-tushare-maintenance-v1",
     "component-tushare-failed-terminal-v1",
+    "component-catalog-maintenance-v1",
     "emergency-restart-authorization-v1",
 )
 FAILURE_POINTS = frozenset({"none", "linux-health", "windows-switch"})
 GENERIC_COMPONENT_INSTALLER = "scripts/install_component_release.py"
 COMPONENT_PROTECTED_PEERS = {
+    "catalog-verify": {
+        "paper": "qsys-paper.service", "shadow-core": "qsys-shadow-core.service",
+        "web": "qsys-monitor.service", "backtest-worker": "qsys-backtest-worker.service",
+        "health-observer": "qsys-health-observer.service",
+        "live-state-reader": "qsys-live-state-reader.service",
+        "tushare-sync": "qsys-tushare-sync.service",
+        "daily-archive": "qsys-daily-archive.service",
+    },
     "tushare-sync": {
         "paper": "qsys-paper.service", "shadow-core": "qsys-shadow-core.service",
         "web": "qsys-monitor.service", "backtest-worker": "qsys-backtest-worker.service",
@@ -740,14 +749,13 @@ def _state_reader_maintenance_identity(repo: Path) -> dict[str, str]:
     }
 
 
-def _tushare_maintenance_identity(repo: Path) -> dict[str, str]:
-    """Only the data writer may additionally use the stopped-trading guard.
-
-    Its timer and oneshot must be quiescent throughout installation; the caller
-    restores the original timer only after the release record is verified.
-    """
+def _quiescent_data_maintenance_identity(repo: Path, component: str) -> dict[str, str]:
+    """Bind the exact idle writer/verifier and stopped trading facts."""
+    if component not in {"tushare-sync", "catalog-verify"}:
+        raise ValueError("unsupported stopped-Live data maintenance component")
     identity = _state_reader_maintenance_identity(repo)
-    for unit in ("qsys-tushare-sync.timer", "qsys-tushare-sync.service"):
+    label = "tushare" if component == "tushare-sync" else "catalog"
+    for unit in (f"qsys-{component}.timer", f"qsys-{component}.service"):
         result = _run([
             "systemctl", "show", unit,
             "--property=LoadState,ActiveState,MainPID,Result,ExecMainStatus,InvocationID",
@@ -761,10 +769,18 @@ def _tushare_maintenance_identity(repo: Path) -> dict[str, str]:
         if (values.get("LoadState") != "loaded"
                 or (values.get("ActiveState") != "inactive" and not failed_terminal)
                 or (unit.endswith(".service") and values.get("MainPID") != "0")):
-            raise ValueError("tushare maintenance requires inactive timer and idle oneshot")
+            raise ValueError(f"{label} maintenance requires inactive timer and idle oneshot")
         if unit.endswith(".service"):
-            identity["tushare_terminal"] = json.dumps(values, sort_keys=True, separators=(",", ":"))
+            identity[f"{label}_terminal"] = json.dumps(values, sort_keys=True, separators=(",", ":"))
     return identity
+
+
+def _tushare_maintenance_identity(repo: Path) -> dict[str, str]:
+    return _quiescent_data_maintenance_identity(repo, "tushare-sync")
+
+
+def _catalog_maintenance_identity(repo: Path) -> dict[str, str]:
+    return _quiescent_data_maintenance_identity(repo, "catalog-verify")
 
 
 def _extract_component_archive(
@@ -1514,11 +1530,14 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
             raise ValueError("Live target must already be active; no trading activation by deployment")
         live_info = _require_live_release_ready(repo, args.sha, initial=before_component == "uninstalled")
     # Keep the active-Live path for normal data releases. Stopped-Live maintenance
-    # is restricted to the reader and this exact, quiescent data writer.
+    # is restricted to the reader, exact idle data writer and readonly verifier.
     reader_maintenance = args.component == "live-state-reader"
     data_maintenance = args.component == "tushare-sync" and not _active("qsys-live-core.service", repo)
-    maintenance = reader_maintenance or data_maintenance
-    guard = _tushare_maintenance_identity if data_maintenance else _state_reader_maintenance_identity
+    catalog_maintenance = args.component == "catalog-verify" and not _active("qsys-live-core.service", repo)
+    maintenance = reader_maintenance or data_maintenance or catalog_maintenance
+    guard = (_tushare_maintenance_identity if data_maintenance else
+             _catalog_maintenance_identity if catalog_maintenance else
+             _state_reader_maintenance_identity)
     live_identity = guard if maintenance else _live_identity
     preflight = guard if maintenance else _live_preflight
     before_live = live_identity(repo)
@@ -1551,6 +1570,7 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
         "live_restart": args.component == "live-core",
         "historical_reader_maintenance": reader_maintenance,
         "tushare_data_maintenance": data_maintenance,
+        "catalog_readonly_maintenance": catalog_maintenance,
     }
     if args.dry_run:
         print(json.dumps(preview, ensure_ascii=False))
@@ -1569,6 +1589,9 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
     if data_maintenance:
         checks.append({"name": "tushare-terminal-preserved", "status": "passed",
                        "detail": before_live["tushare_terminal"]})
+    if catalog_maintenance:
+        checks.append({"name": "catalog-terminal-preserved", "status": "passed",
+                       "detail": before_live["catalog_terminal"]})
     success = False
     rollback_ok = False
     activation_attempted = False

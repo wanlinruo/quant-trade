@@ -69,6 +69,10 @@ def main(argv: list[str] | None = None) -> int:
             )
             if summary.failed_checks:
                 step.detail += "。未通过：" + "、".join(summary.failed_checks)
+            if summary.blocking:
+                step.fail(step.detail)
+            elif summary.warnings:
+                step.warn(step.detail)
         with run.step("表级五维健康", interface="规范表真实对账与 Tushare trade_cal",
                       table="dataset_checks,relation_checks") as step:
             with tempfile.TemporaryDirectory(prefix="qsys-table-health-") as temporary:
@@ -88,6 +92,7 @@ def main(argv: list[str] | None = None) -> int:
             f"{day} 指标字典验证：{summary.rows} 条结果，"
             f"阻断 {summary.blocking} 条，警告 {summary.warnings} 条"
         )
-        return 1 if any(status in (HealthStatus.RED, HealthStatus.GRAY)
-                        for status in health.values()) else 0
+        return int(summary.blocking > 0 or any(
+            status in (HealthStatus.RED, HealthStatus.GRAY) for status in health.values()
+        ))
 
