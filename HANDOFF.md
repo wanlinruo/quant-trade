@@ -1,5 +1,25 @@
 # 项目交接入口
 
+## 10-29 01:44：#562正式发布与人工验收完成，等自然采证
+
+- 维护者“继续推进540，我全权授权”下，PR#563正常合并，catalog current现为
+  `8d8307e9b2c6cb363facd9beb54dbf7a18d7fa4d`，可信controller v36已安装并留存v35。
+  正式workflow40737455712、Deployment7392827014、节点实际validate_record三方success；
+  审计根`/data/qsys/var-deployments/issue562-catalog-20261029/`，ZIP digest f965ba12...一致。
+- 正式人工批次`catalog-verify-014221-2279566`，UID984/PID2279566/Invocation0dc17780...，
+  真实unit契约绑定。session10-28，warning/exit0，字段636/阻断0/既有warning28，步骤warning；
+  表级10绿2黄、关系7绿；C1实际114源码文件通过。旧三类QA全部逐值/重复次数保留，
+  所有业务Parquet版本、配置/baseline/KILL/Live主库SHA保持。原19:40失败不改、不reset。
+- Web990/日报988均用实际current venv只读新记录与表级证据，当前valuation_daily聚合green。
+  这清除本次旧红灯现象，**不等于#561未来证据版本绑定/失效已修复**；旧red历史保留。
+- catalog timer恢复active/enabled，下一自然10-29 19:40；独立只读采证timer
+  `qsys-issue562-catalog-natural-20261029` active，19:50输出本审计根natural-output/report.json。
+  原#540的17:20自然采证仍active且未改。尚无自然结果，人工/隔离成功不冒充自然成功。
+- #562转monitoring，#540仍in-progress；共享checkout505d7e8、Tushare3facceb及八peer保持，
+  模拟/实盘未恢复。下一步#561输入版本绑定与受控刷新，保留TTL、历史失败与全部门禁。
+  详细验收及剩余规则见[catalog隔离计划](docs/plans/catalog-verify-production-isolation.md)
+  和[#562正式验收](https://github.com/wanlinruo/quant-trade/issues/562#issuecomment-6476359685)。
+
 ## 10-29 维护者全权授权继续#540，#562修复与必要控制面准备
 
 - 维护者最新明确“继续推进540，我全权授权给你”，无需重复询问已授权的数据恢复实施。
@@ -9,7 +29,7 @@
 - 必要controller v36只增加catalog-verify停机维护例外：Live loaded/inactive/dead/
   disabled/PID0，原绑定/KILL/状态事实保持；catalog timer inactive、oneshot终态PID0。
   保留精确failed/exit-code非零/Invocation，不reset-failed；保护八peer，其他组件不放宽。
-- 代码/CI/test/PR和正式发布证据以#562最新记录为准；此时尚未安装候选或暂停timer。
+- 代码/CI/test/PR和正式发布证据以#562最新记录为准；以下为当时准备快照，已由上文正式验收覆盖。
   当前生产catalog仍80f7068，保留10-28原失败。#561在本组件完成后继续处理，
   不通过修改历史证据或降低质量规则消除旧红灯。
 

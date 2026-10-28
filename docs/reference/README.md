@@ -1,5 +1,11 @@
 # 参考资料
 
+## 指标验证与健康证据（#562 / #561）
+
+[catalog隔离与正式验收](../plans/catalog-verify-production-isolation.md)记录字段状态传播修复、
+10-29人工质检和待自然采证的界限；[证据版本绑定方案](../plans/catalog-evidence-version-binding.md)
+记录旧红灯的已证实成因与下一步规则，尚非已实现功能。旧失败和市场事实均保留。
+
 ## 跨日运行可靠性修复（#535 / #549）
 
 `live-core-failure-fuse.md`说明连续故障后的本进程锁定、单次撤单未知结果及告警边界。

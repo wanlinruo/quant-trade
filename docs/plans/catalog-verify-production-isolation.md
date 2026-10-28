@@ -1,5 +1,24 @@
 # catalog-verify 生产隔离（#469 / #330）
 
+## 10-29 01:44正式验收（#562）
+
+PR#563/main8d8307e经CI/测试部署/代行逐文件自审合并，controller v36精确安装并备份旧版，
+节点组件规格与目标一致。正式workflow40737455712、Deployment7392827014、实际节点
+validate_record三方success，artifact12836717093的ZIP SHA与GitHub digest f965ba12...一致。
+current只切catalog，旧失败终态保持到新批次，不reset-failed。
+
+真实生产人工run catalog-verify-014221-2279566，session10-28，UID984/PID2279566，
+Invocation0dc1778071c744c3a07d791c7e687ab7绑定完整unit契约。结果warning/exit0：
+字段636/阻断0/既有warning28，步骤warning；表级10绿2黄；关系7绿。C1扫描114文件。
+MemoryPeak1872924672。市场事实Parquet版本、配置/baseline/KILL/Live主库SHA保持；
+三类旧QA所有行及重复次数完整保留，原19:40failed和valuation旧red不改。
+Web990/日报988以实际current venv读取新记录，valuation当前聚合green。
+
+审计根/data/qsys/var-deployments/issue562-catalog-20261029/，原失败、制品、controller备份、
+独立旧QA副本、运行契约与生产结果均留存。timer恢复active/enabled，10-29 19:40自然运行，
+19:50节点只读采证；原#540的17:20观察保留。当前尚无自然验收，#562为monitoring。
+此次新证据修复页面旧红灯现象，但#561输入版本绑定/失效仍单独推进。
+
 ## 10-29 字段失败传播与停机维护（#562 / #540）
 
 维护者全权授权继续数据恢复。候选使字段blocking进入真实步骤/任务/退出码，
