@@ -1311,7 +1311,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
 
     state = entrypoint.status({"production_repo": str(tmp_path)})
 
-    assert state["entrypoint_version"] == 33
+    assert state["entrypoint_version"] == 34
     assert set(state["capabilities"]) == {
         "systemd-apply-v1", "systemd-component-boundary-v1", "systemd-changed-artifacts-v1",
         "systemd-preview-v1", "systemd-runtime-paths-v1", "systemd-rollback-v1",
@@ -1342,6 +1342,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
         "component-live-continuity-v1",
         "component-spec-fingerprint-v1",
         "component-state-reader-maintenance-v1",
+        "component-tushare-maintenance-v1",
         "emergency-restart-authorization-v1",
     }
 
@@ -1630,7 +1631,8 @@ def test_paper_and_shadow_protect_each_other_and_non_trading_peers() -> None:
 
 
 @pytest.mark.parametrize("component,active", [("health-observer", True), ("storage-report", False),
-                                            ("limit-up-shadow", False), ("live-state-reader", False)])
+                                            ("limit-up-shadow", False), ("live-state-reader", False),
+                                            ("tushare-sync", False), ("tushare-sync", True)])
 def test_component_record_preserves_state_and_matches_contract(
     monkeypatch, tmp_path, capsys, component, active,
 ) -> None:
@@ -1639,7 +1641,7 @@ def test_component_record_preserves_state_and_matches_contract(
     production = "b" * 40
     previous = "c" * 40 if active else "uninstalled"
     live = {"pid": "42", "started_monotonic": "99", "repo_sha": production}
-    if component == "live-state-reader":
+    if component == "live-state-reader" or (component == "tushare-sync" and not active):
         live = {"pid": "0", "started_monotonic": "99", "repo_sha": production,
                 "maintenance_facts": "existing state and KILL"}
     state = {"active": active, "component": previous}
@@ -1656,6 +1658,8 @@ def test_component_record_preserves_state_and_matches_contract(
     monkeypatch.setattr(entrypoint, "_active", lambda unit, repo: state["active"])
     monkeypatch.setattr(entrypoint, "_live_identity", lambda repo: dict(live))
     monkeypatch.setattr(entrypoint, "_state_reader_maintenance_identity", lambda repo: dict(live))
+    monkeypatch.setattr(entrypoint, "_tushare_maintenance_identity", lambda repo: dict(live))
+    monkeypatch.setattr(entrypoint, "_backup_tushare_dropin", lambda *a: None)
     monkeypatch.setattr(entrypoint, "_live_preflight", lambda repo: None)
     monkeypatch.setattr(entrypoint, "_fingerprints", lambda config, repo: {"linux": "f"})
     monkeypatch.setattr(entrypoint, "_unit_identity_token", lambda unit, repo: "unchanged")
@@ -1722,6 +1726,8 @@ def test_component_record_preserves_state_and_matches_contract(
 
 
 @pytest.mark.parametrize("component,active,peer_drift,busy_after_stage", [
+    ("tushare-sync", False, False, False),
+    ("tushare-sync", False, True, False),
     ("web", True, False, False),
     ("limit-up-shadow", False, False, False),
     ("limit-up-shadow", False, True, False),
@@ -1755,6 +1761,13 @@ def test_component_health_and_peer_identity_gate(
     )
     monkeypatch.setattr(entrypoint, "_active", lambda unit, repo: state["active"])
     monkeypatch.setattr(entrypoint, "_live_identity", lambda repo: dict(live))
+    monkeypatch.setattr(entrypoint, "_tushare_maintenance_identity", lambda repo: {
+        **live, "pid": "0", "maintenance_facts": "unchanged stopped state and KILL",
+    })
+    monkeypatch.setattr(entrypoint, "_backup_tushare_dropin", lambda *a: tmp_path / "old-dropin")
+    restored_dropins = []
+    monkeypatch.setattr(entrypoint, "_restore_tushare_dropin", lambda *a:
+                        restored_dropins.append(a[-1]) is None)
     monkeypatch.setattr(entrypoint, "_live_preflight", lambda repo: None)
     monkeypatch.setattr(entrypoint, "_fingerprints", lambda config, repo: {"linux": "f"})
     monkeypatch.setattr(entrypoint, "_unit_identity_token", lambda unit, repo:
@@ -1824,11 +1837,15 @@ def test_component_health_and_peer_identity_gate(
         return
     if peer_drift:
         assert state["component"] == previous
+        if component == "tushare-sync":
+            assert restored_dropins == [tmp_path / "old-dropin"]
         assert json.loads(capsys.readouterr().out)["status"] == "rolled_back"
         return
     assert state["active"] == active
     assert set(entrypoint.COMPONENT_PROTECTED_PEERS[component]) == (
         {"backtest-worker"} if component == "web" else
+        {"paper", "shadow-core", "web", "backtest-worker", "health-observer", "live-state-reader"}
+        if component == "tushare-sync" else
         {"paper", "shadow-core", "web", "backtest-worker"}
     )
     for peer in entrypoint.COMPONENT_PROTECTED_PEERS[component]:

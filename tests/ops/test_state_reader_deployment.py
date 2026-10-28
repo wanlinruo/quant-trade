@@ -81,8 +81,8 @@ def test_guard_rejects_invalid_binding(monkeypatch, tmp_path):
         entry._state_reader_maintenance_identity(tmp_path)
 
 
-@pytest.mark.parametrize("component", ["live-state-reader", "web", "live-core"])
-def test_only_reader_uses_stopped_live_guard(monkeypatch, tmp_path, component):
+@pytest.mark.parametrize("component", sorted(module().COMPONENT_RELEASES))
+def test_only_reader_and_tushare_use_stopped_live_guard(monkeypatch, tmp_path, component):
     entry = module()
     monkeypatch.setattr(entry, "_branch", lambda repo: "main")
     monkeypatch.setattr(entry, "_dirty", lambda repo: False)
@@ -93,6 +93,8 @@ def test_only_reader_uses_stopped_live_guard(monkeypatch, tmp_path, component):
     monkeypatch.setattr(entry, "_active", lambda *a: False)
     monkeypatch.setattr(entry, "_fingerprints", lambda *a: {"linux": "unchanged"})
     monkeypatch.setattr(entry, "_unit_identity_token", lambda *a: "unchanged")
+    monkeypatch.setattr(entry, "_require_idle_limit_up_shadow", lambda *_: None)
+    monkeypatch.setattr(entry, "_require_idle_reboot_drill", lambda *_: None)
     calls = []
 
     def stopped(repo):
@@ -105,6 +107,7 @@ def test_only_reader_uses_stopped_live_guard(monkeypatch, tmp_path, component):
         raise ValueError("live core is not active")
 
     monkeypatch.setattr(entry, "_state_reader_maintenance_identity", stopped)
+    monkeypatch.setattr(entry, "_tushare_maintenance_identity", stopped)
     monkeypatch.setattr(entry, "_live_identity", active)
     monkeypatch.setattr(entry, "_live_preflight", lambda *a: pytest.fail("no trading preflight"))
     args = argparse.Namespace(
@@ -112,7 +115,7 @@ def test_only_reader_uses_stopped_live_guard(monkeypatch, tmp_path, component):
         repository="owner/repo", pr_number=544, dry_run=True,
     )
     config = {"production_repo": str(tmp_path), "production_record_root": str(tmp_path / "records")}
-    if component == "live-state-reader":
+    if component in {"live-state-reader", "tushare-sync"}:
         assert entry.component_deploy(args, config) == 0
         assert calls == ["stopped", "stopped"]
     else:
@@ -121,7 +124,8 @@ def test_only_reader_uses_stopped_live_guard(monkeypatch, tmp_path, component):
         assert "stopped" not in calls
 
 
-def test_reader_staging_drift_prevents_install_and_actual_record_is_valid(monkeypatch, tmp_path):
+@pytest.mark.parametrize("component", ["live-state-reader", "tushare-sync"])
+def test_reader_staging_drift_prevents_install_and_actual_record_is_valid(monkeypatch, tmp_path, component):
     from qsys.ops.deployment import validate_record
 
     entry = module()
@@ -139,6 +143,7 @@ def test_reader_staging_drift_prevents_install_and_actual_record_is_valid(monkey
     monkeypatch.setattr(entry, "_fingerprints", lambda *a: {"linux": "unchanged"})
     monkeypatch.setattr(entry, "_unit_identity_token", lambda *a: "unchanged")
     monkeypatch.setattr(entry, "_state_reader_maintenance_identity", lambda *a: dict(facts))
+    monkeypatch.setattr(entry, "_tushare_maintenance_identity", lambda *a: dict(facts))
     monkeypatch.setattr(entry, "_receive_component_archive", lambda digest, root: root / "artifact.zip")
     monkeypatch.setattr(entry, "_extract_component_archive", lambda *a: None)
     monkeypatch.setattr(entry, "_verify_component_release", lambda *a: None)
@@ -156,7 +161,7 @@ def test_reader_staging_drift_prevents_install_and_actual_record_is_valid(monkey
         return tmp_path / "record.json"
 
     monkeypatch.setattr(entry, "_write_record", write)
-    args = argparse.Namespace(component="live-state-reader", sha=target, run_id="reader-drift",
+    args = argparse.Namespace(component=component, sha=target, run_id="reader-drift",
                               actor="maintainer", repository="owner/repo", pr_number=544,
                               dry_run=False, artifact_sha256="e" * 64)
     assert entry.component_deploy(args, {"production_repo": str(tmp_path),
@@ -164,3 +169,59 @@ def test_reader_staging_drift_prevents_install_and_actual_record_is_valid(monkey
     assert records[0]["status"] == "failure"
     assert not any(entry.GENERIC_COMPONENT_INSTALLER in command for command in commands)
     assert not any("systemctl" in command for command in commands)
+
+
+@pytest.mark.parametrize("unit,field,value", [
+    ("timer", "ActiveState", "active"), ("timer", "ActiveState", "activating"),
+    ("timer", "LoadState", "not-found"), ("service", "ActiveState", "active"),
+    ("service", "ActiveState", "failed"), ("service", "MainPID", "12"),
+])
+def test_tushare_guard_requires_quiescent_loaded_timer_and_oneshot(monkeypatch, tmp_path, unit, field, value):
+    entry = module()
+    monkeypatch.setattr(entry, "_state_reader_maintenance_identity", lambda *_: {"pid": "0"})
+    states = {kind: {"LoadState": "loaded", "ActiveState": "inactive", "MainPID": "0"}
+              for kind in ["timer", "service"]}
+    states[unit][field] = value
+    def run(command, **_):
+        fields = states[command[2].rsplit(".", 1)[1]]
+        return subprocess.CompletedProcess(command, 0, "\n".join(f"{k}={v}" for k,v in fields.items()), "")
+    monkeypatch.setattr(entry, "_run", run)
+    with pytest.raises(ValueError, match="inactive timer and idle oneshot"):
+        entry._tushare_maintenance_identity(tmp_path)
+
+
+def test_tushare_guard_keeps_actual_kill_and_state_binding_checks(monkeypatch, tmp_path):
+    entry, fields, _ = fixture(monkeypatch, tmp_path)
+    assert entry._tushare_maintenance_identity(tmp_path)["pid"] == "0"
+    fields["UnitFileState"] = "enabled"
+    with pytest.raises(ValueError, match="inactive, disabled"):
+        entry._tushare_maintenance_identity(tmp_path)
+
+
+def test_tushare_compensation_restores_previous_arguments_and_metadata(monkeypatch, tmp_path):
+    import shutil
+    entry = module()
+    dropin = tmp_path / "unit.conf"
+    dropin.write_bytes(b"ExecStart=old-code --old-arguments\n")
+    dropin.chmod(0o640)
+    before = dropin.stat()
+    monkeypatch.setitem(entry.COMPONENT_RELEASES["tushare-sync"], "dropin", str(dropin))
+    commands = []
+    def run(command, **_):
+        commands.append(command)
+        if "cp" in command:
+            shutil.copy2(command[-2], command[-1])
+        elif "mv" in command:
+            Path(command[-2]).replace(command[-1])
+        return subprocess.CompletedProcess(command, 0, "user::rw-\n", "")
+    monkeypatch.setattr(entry, "_run", run)
+    backup = entry._backup_tushare_dropin(tmp_path, tmp_path / "release", "a" * 40)
+    dropin.write_bytes(b"ExecStart=new-code --new-arguments\n")
+    dropin.chmod(0o600)
+    assert entry._restore_tushare_dropin(tmp_path, backup)
+    assert dropin.read_bytes() == b"ExecStart=old-code --old-arguments\n"
+    assert (dropin.stat().st_mode, dropin.stat().st_mtime_ns) == (before.st_mode, before.st_mtime_ns)
+    assert backup.is_file()
+    assert any(c[-1] == "daemon-reload" for c in commands)
+    with pytest.raises(ValueError, match="already exists"):
+        entry._backup_tushare_dropin(tmp_path, tmp_path / "release", "a" * 40)

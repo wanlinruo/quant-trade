@@ -36,7 +36,7 @@ ALLOWED_WINDOWS_COMPONENTS = frozenset({
     "windows-agent", "windows-gateway", "windows-control",
 })
 WINDOWS_COORDINATOR_PATH = "deploy/linux/qsys-windows-deploy-coordinator.py"
-ENTRYPOINT_VERSION = 33
+ENTRYPOINT_VERSION = 34
 ENTRYPOINT_CAPABILITIES = (
     "systemd-apply-v1",
     "systemd-component-boundary-v1",
@@ -72,11 +72,18 @@ ENTRYPOINT_CAPABILITIES = (
     "component-live-continuity-v1",
     "component-spec-fingerprint-v1",
     "component-state-reader-maintenance-v1",
+    "component-tushare-maintenance-v1",
     "emergency-restart-authorization-v1",
 )
 FAILURE_POINTS = frozenset({"none", "linux-health", "windows-switch"})
 GENERIC_COMPONENT_INSTALLER = "scripts/install_component_release.py"
 COMPONENT_PROTECTED_PEERS = {
+    "tushare-sync": {
+        "paper": "qsys-paper.service", "shadow-core": "qsys-shadow-core.service",
+        "web": "qsys-monitor.service", "backtest-worker": "qsys-backtest-worker.service",
+        "health-observer": "qsys-health-observer.service",
+        "live-state-reader": "qsys-live-state-reader.service",
+    },
     "live-state-reader": {
         "paper": "qsys-paper.service", "shadow-core": "qsys-shadow-core.service",
         "web": "qsys-monitor.service", "backtest-worker": "qsys-backtest-worker.service",
@@ -697,10 +704,10 @@ LIVE_STATE_ROOT = Path("/home/ubuntu/qsys/var/live-core/var")
 
 
 def _state_reader_maintenance_identity(repo: Path) -> dict[str, str]:
-    """Only the historical reader can be installed while trading is stopped.
+    """Bind trusted stopped-trading facts without initializing trading code.
 
-    This is deliberately not a general inactive-Live deployment exception.
-    Neither this guard nor the reader imports or initializes trading code.
+    Selection is restricted at the caller. The data-writer guard additionally
+    requires its timer and oneshot to remain inactive.
     """
     result = _run([
         "systemctl", "show", "qsys-live-core.service",
@@ -730,6 +737,24 @@ def _state_reader_maintenance_identity(repo: Path) -> dict[str, str]:
         "repo_sha": _head(repo),
         "maintenance_facts": json.dumps(facts, sort_keys=True, separators=(",", ":")),
     }
+
+
+def _tushare_maintenance_identity(repo: Path) -> dict[str, str]:
+    """Only the data writer may additionally use the stopped-trading guard.
+
+    Its timer and oneshot must be quiescent throughout installation; the caller
+    restores the original timer only after the release record is verified.
+    """
+    identity = _state_reader_maintenance_identity(repo)
+    for unit in ("qsys-tushare-sync.timer", "qsys-tushare-sync.service"):
+        result = _run([
+            "systemctl", "show", unit, "--property=LoadState,ActiveState,MainPID",
+        ], cwd=repo)
+        values = dict(line.split("=", 1) for line in result.stdout.splitlines() if "=" in line)
+        if (values.get("LoadState") != "loaded" or values.get("ActiveState") != "inactive"
+                or (unit.endswith(".service") and values.get("MainPID") != "0")):
+            raise ValueError("tushare maintenance requires inactive timer and idle oneshot")
+    return identity
 
 
 def _extract_component_archive(
@@ -1331,6 +1356,40 @@ def _rollback_component(component: str, previous: str, repo: Path) -> bool:
         return False
 
 
+def _backup_tushare_dropin(repo: Path, record_root: Path, previous: str) -> Path | None:
+    if previous == "uninstalled":
+        return None
+    source = Path(str(COMPONENT_RELEASES["tushare-sync"]["dropin"]))
+    if not stat.S_ISREG(source.lstat().st_mode):
+        raise ValueError("tushare drop-in backup requires a regular file")
+    backup = record_root.with_name(record_root.name + "-tushare-dropin")
+    if backup.exists():
+        raise ValueError("tushare drop-in backup already exists")
+    _run(["sudo", "-n", "cp", "--archive", "--", str(source), str(backup)], cwd=repo)
+    return backup
+
+
+def _restore_tushare_dropin(repo: Path, backup: Path | None) -> bool:
+    if backup is None:
+        return True  # The uninstalled-component compensation removes its drop-in.
+    target = Path(str(COMPONENT_RELEASES["tushare-sync"]["dropin"]))
+    temporary = target.with_name(".restore-" + backup.name)
+    try:
+        if temporary.exists():
+            return False
+        _run(["sudo", "-n", "cp", "--archive", "--", str(backup), str(temporary)], cwd=repo)
+        _run(["sudo", "-n", "mv", "-Tf", "--", str(temporary), str(target)], cwd=repo)
+        _run(["sudo", "-n", "systemctl", "daemon-reload"], cwd=repo)
+        before, after = backup.stat(), target.stat()
+        return (_sha256(backup) == _sha256(target)
+                and (before.st_uid, before.st_gid, before.st_mode, before.st_mtime_ns)
+                == (after.st_uid, after.st_gid, after.st_mode, after.st_mtime_ns)
+                and _run(["getfacl", "-cp", "--", str(backup)], cwd=repo).stdout
+                == _run(["getfacl", "-cp", "--", str(target)], cwd=repo).stdout)
+    except (OSError, subprocess.CalledProcessError):
+        return False
+
+
 def _require_idle_limit_up_shadow(repo: Path) -> None:
     # Type=oneshot stays activating while its command runs. `is-active` alone
     # cannot establish that it is safe to switch its release.
@@ -1444,11 +1503,14 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
         if not before_component_active:
             raise ValueError("Live target must already be active; no trading activation by deployment")
         live_info = _require_live_release_ready(repo, args.sha, initial=before_component == "uninstalled")
-    # A stopped-Live exception belongs only to this non-trading component.
-    # Every other component retains its existing active-Live and preflight gates.
-    maintenance = args.component == "live-state-reader"
-    live_identity = _state_reader_maintenance_identity if maintenance else _live_identity
-    preflight = _state_reader_maintenance_identity if maintenance else _live_preflight
+    # Keep the active-Live path for normal data releases. Stopped-Live maintenance
+    # is restricted to the reader and this exact, quiescent data writer.
+    reader_maintenance = args.component == "live-state-reader"
+    data_maintenance = args.component == "tushare-sync" and not _active("qsys-live-core.service", repo)
+    maintenance = reader_maintenance or data_maintenance
+    guard = _tushare_maintenance_identity if data_maintenance else _state_reader_maintenance_identity
+    live_identity = guard if maintenance else _live_identity
+    preflight = guard if maintenance else _live_preflight
     before_live = live_identity(repo)
     protected_units = COMPONENT_PROTECTED_PEERS.get(args.component, {})
     before_protected = {
@@ -1457,7 +1519,7 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
     }
     verified_live = preflight(repo)
     if maintenance and verified_live != before_live:
-        raise ValueError("stopped Live state or KILL changed during reader preflight")
+        raise ValueError("stopped Live state or KILL changed during maintenance preflight")
     fingerprints = _fingerprints(config, repo)
     if maintenance:
         fingerprints["live_state_maintenance"] = hashlib.sha256(
@@ -1477,7 +1539,8 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
         "live_identity": before_live,
         "protected_peer_identities": before_protected,
         "live_restart": args.component == "live-core",
-        "historical_reader_maintenance": maintenance,
+        "historical_reader_maintenance": reader_maintenance,
+        "tushare_data_maintenance": data_maintenance,
     }
     if args.dry_run:
         print(json.dumps(preview, ensure_ascii=False))
@@ -1499,7 +1562,10 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
     component_stopped = False
     error = ""
     live_ready_after = 0.0
+    tushare_dropin_backup = None
     try:
+        if args.component == "tushare-sync":
+            tushare_dropin_backup = _backup_tushare_dropin(repo, record_root, before_component)
         with tempfile.TemporaryDirectory(prefix="qsys-component-deploy-") as temporary:
             root = Path(temporary)
             archive = _receive_component_archive(args.artifact_sha256, root)
@@ -1518,7 +1584,7 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
                     "detail": f"archive_sha256={args.artifact_sha256}; release={args.sha}",
                 })
                 if maintenance and live_identity(repo) != before_live:
-                    raise ValueError("stopped Live state or KILL changed during reader staging")
+                    raise ValueError("stopped Live state or KILL changed during maintenance staging")
                 if args.component == "limit-up-shadow":
                     _require_idle_limit_up_shadow(repo)
                 if args.component == "reboot-drill":
@@ -1626,6 +1692,8 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
                 unit_quiesced
                 and _rollback_component(args.component, before_component, repo)
             )
+            if rollback_ok and args.component == "tushare-sync":
+                rollback_ok = _restore_tushare_dropin(repo, tushare_dropin_backup)
         if args.component == "live-core" and component_stopped and not activation_attempted:
             rollback_ok = unit_quiesced  # no code switch occurred; binding is forward-only
         if component_stopped and before_component_active:
