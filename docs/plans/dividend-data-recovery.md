@@ -1,5 +1,26 @@
 # 送配事件与量因子恢复（#540）
 
+## 10-28 维护者确认后的发布控制面依赖（#553）
+
+维护者已明确确认PR#552合并、必要gateway控制文件和自动送配/精确事件表写权限启用。
+PR#552合并main d56c9ac655abf835e196c3e96597e9d89a626c06，自动对齐/审计及最终SHA
+CI40671319925成功。准备正式发布时发现当前controller除reader外要求Live active，
+tushare-sync受阻；#553为本数据主线直接依赖，仅准备精确非交易数据组件的停机维护。
+
+新守卫在Live未active时仅对tushare-sync选择：原Live须inactive/dead/disabled/PID0，
+可信稳定绑定、主库和非空KILL保持，tushare timer与oneshot均loaded/inactive、服务PID0；
+准备前/后、安装前/后复核，保护Paper/Shadow/Web/backtest/observer/reader六服务身份。
+Live active时仍走原心跳preflight，其他组件门禁保持。原reader边界保持。
+
+入口参数迁移还须补齐既有失败补偿：tushare更新前用GNU cp --archive留存原drop-in，
+失败时恢复代码指针后原子恢复原drop-in，核对字节/uid/gid/mode/mtime/access ACL后再
+判定补偿成功；备份永久保留，避免旧代码配新参数。候选专项实际调用validate_record。
+该控制器修复须按正常CI/test/PR和合并精确main准备，不手工绕过现有门禁。
+
+Windows已从GitHub取得d56c9ac精确源字节并核对SHA，准备版本化目录与E盘新根，
+原专用key入口尚未切换；此处为准备快照，实际执行以#540/#553最新评论为准。
+Tushare原timer保持active，19点自然运行若先到则保留原版本执行，待终态再进入维护窗口。
+
 ## 10-28 自动增量候选与发布前置
 
 候选最终本地全量4067通过、7既有跳过、2既有依赖警告。生产入口和配置未切换。

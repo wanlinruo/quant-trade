@@ -266,6 +266,9 @@ manifest → `HANDOFF.md` → 其他历史文档。
   生产者计划停机时另验冷库读取（#544），不为维持sidecar启动交易Runtime；独立只读辅助
   服务须同时覆盖主库/KILL/锁保护、文件替换与真实读取UID。停机安装例外只限定具体非交易
   组件，不扩展为其他组件跳过活动Live/preflight的通用入口；临时辅助服务的期限必须交接。
+  tushare-sync数据恢复的停机维护须另外确认timer与oneshot均inactive，前后绑定原KILL、
+  主库与所有受保护服务身份；参数迁移的失败补偿同时恢复原drop-in字节/身份/权限/ACL，
+  不能只恢复代码指针而留下新参数调用旧代码（#553）。
 - 往节点同步代码**禁止整目录 rsync**（会毁掉 `warehouse` 软链接和 `.venv`）：逐个列文件，
   或带 `--exclude '.venv/' --exclude 'warehouse/' --exclude '.git/' --exclude 'var/'`。
   动节点前先 `ls -la` 看清目标是文件、目录还是软链接。

@@ -1,5 +1,18 @@
 # 项目交接入口
 
+## 10-28 18点维护者已确认发布，控制面直接依赖准备
+
+- 维护者明确“确认”PR#552合并与正式发布、必要gateway文件、E盘送配根和精确事件表
+  写权限启用。PR已合并d56c9ac，自动对齐/审计及最终SHA CI40671319925成功。
+- 发布预检发现旧controller仅reader允许Live停止时安装，tushare-sync仍要求Live active。
+  #553作为#540直接依赖准备限定数据组件的停机守卫，不启动Live过门禁：Live严格停止/
+  disabled、原KILL/主库/绑定及六peer保持，Tushare timer/oneshot均inactive方可安装。
+  同时补齐该组件参数迁移的drop-in精确失败补偿，避免旧代码配新参数。
+- 此修复仍须正常CI/test/PR再准备精确main控制器。Windows从GitHub读取d56源字节并
+  创建版本化控制目录与E盘空根，准备快照时未切正式key、组件或生产事件写入；后续现场
+  以#540/#553最新评论为准。原Tushare timer保持active，19点先到则由原版本自然执行。
+- Live inactive/PID0、Paper634053/NRestarts1、Web3700671保持；模拟/实盘不恢复。
+
 ## 10-28 自动送配候选与17点自然验收（覆盖下文对应待办）
 
 - 维护者明确继续推进#540，并确认Windows数据盘此前已扩容。实测E: NTFS约100GiB、
