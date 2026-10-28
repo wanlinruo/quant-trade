@@ -1,5 +1,43 @@
 # 送配事件与量因子恢复（#540）
 
+## 最终实施与分层验收（2026-10-28）
+
+维护者明确批准后的PR#552、必要控制面#553/PR#554、清单修复#555/PR#556均完成正常
+CI/test/逐文件代行自审。最终生产source为3faccebeb9736486f801ce1c91861b95083d7f4b，
+controller v35；最终CI40682291567，dry-run40683731604，正式40683959984，GitHub
+Deployment7384688652及实际node record一致success。实际调用validate_record，source/
+components/status精确匹配、六peer与Live PID0保持。artifact12813541008 digest/节点ZIP：
+`4a84e0fc13a4c0acda03c7c7b23fa9008c3a9b565cd263d18403be25671e54df`。
+
+组件安装过程保持原failed/PID0/exit-code1/Invocation146edac...，未reset-failed；
+三方成功后恢复原timer active/enabled，再用新版本独立人工run验收。Run
+`tushare-sync-200201-2173949`于20:02:01–20:07:06完成20步骤，succeeded/exit0；
+invocation7d3812657e1d4dcb829919b1097448ff、实际业务PID2173949/UID983/parent2173945
+与完整生产unit资源/权限/查询环境/沙箱契约现场绑定，MemoryPeak3221487616字节。
+
+- 完整5941响应：5 done/5936 empty/failed与incomplete均0；5事件新增0（均已存在）。
+  scope排除仅T600018.SH及直取退市依据。bundle SHA
+  `03fd67a536436699d9eba5ec9fe6dd5b004edbbdeb2e68cc9027ff5234f5962b`，scope SHA
+  `40b7b09c535895e7bbeec600cddb44fb03eb4237c09994664057aec07d81ee70`；checkpoint
+  结束2026-10-28，身份/范围/覆盖/SHA全部验收。
+- 原61085事件文件SHA仍eab786c3...、逐字节保持。今日5570行因子与直取及规范表精确
+  一致，12只336行历史样本保持；原构建器/11表canonical对账通过，未改算法或阈值。
+- 20:06增量556项0阻断，19点原5失败仍保留。20:00原service-checks warning保留，
+  不能以20:07成功覆盖其当时结果；20:30自然日报汇总/邮件均succeeded。
+- Windows正式两个专用key、不同命令及真实字节/hash、shell/跨组件拒绝现场通过；
+  新快照实际在E盘，QMT3788/159个qsys任务SHA保持。C/E余量分开观察，未迁活动目录。
+
+最终审计根`/data/qsys/var-deployments/issue555-dividend-scope-20261028/`：
+three-party-verified.json、business-running-contract.json、snapshot-and-old-facts-verified.json、
+factor-quality-verified.json、final-business-and-boundaries.json及全部请求/原参数备份。
+生产record在`/data/qsys/var-deployments/github/issue555-dividend-scope-20261028-tushare-sync/`。
+首次失败及Windows空作业目录保留，不重放。人工验收不能冒充首次自然恢复完成。
+
+已在节点安排10-29 17:20只读timer qsys-issue540-next-natural-20261029，继承生产身份/
+资源/查询环境并将写路径收窄为审计输出；只读业务记录、scope/快照/检查结果，不调用
+API/启动业务/写Warehouse。此时仅scheduled，次日结果输出next-natural-output/report.json。
+原KILL、模拟/实盘门禁、8条非空现金/8条空值源差异、#550/#551、D-23保留，#540不关闭。
+
 ## 19点自然运行与历史目录身份修复（#555）
 
 首次正式组件workflow40675756482/Deployment7383415419/实际record成功，18:58:58恢复
