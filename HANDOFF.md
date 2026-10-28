@@ -1,5 +1,33 @@
 # 项目交接入口
 
+## 10-28 14:55 数据恢复主线（覆盖下文冲突的旧快照）
+
+- 维护者最新顺序为 **数据 → 模拟 → 实盘**。#540是唯一in-progress；其他开放Issue均
+  blocked，PR#547冻结。Paper存活不等于账户恢复，不推进旧Live/内置交易或清KILL。
+- 经维护者对#540审阅包明确“确认”，已完成10-26/27原正式QMT通道回补。分钟各5570只，
+  分别1342305/1342229行，合11140股日/2684534行；raw与canonical对账通过，覆盖、
+  null、重复及原质量门禁阻断均0。竞价72/44只新增8487/5334条，原275270条逐字段保持。
+  原年度文件、错误raw及失败记录保留；未改变源值、单位、阈值或D-23裁决。
+- 301139.SZ两日原RPC返回有量零价，被原质检拦截；正式get_local_data(fill_data=False)
+  返回真实482根，已按精确输入SHA及原分区备份受控替换，其他证券保持。长期采集器缺陷
+  由#550承接且blocked；本次维护没有修改生产下载器、gateway或部署新组件。
+- 归档timer恢复active/enabled；14:33:44的Persistent补跑14:42:24成功，真实记录
+  `daily-archive-143346-2047017`。7日38982股日无缺分钟，竞价无缺，质量0阻断，
+  canonical发布9393887行。补跑前后14个raw/canonical分区SHA完全保持。下一自然触发
+  15:41:18；今日收盘后的归档/Tushare/质检/日报尚未验收，不用补跑冒充自然增量成功。
+- Web/checks/digest三个真实UID和只读沙箱读取通过。14:55旧Live仍inactive/PID0，
+  KILL SHA保持；Paper634053/NRestarts1、Web3700671、observer3933655、reader1466393
+  均保持。Windows QMT3788/08:53:53启动及四业务任务SHA保持，C盘4872556544字节。
+- **数据阶段未完成**：corporate_actions仍止9-9，正式接口已证实001399.SZ/600017.SH
+  有10-27送配事件；缺口早于MiniQMT升级，不能归咎本轮升级。下一步核对送配原调度、
+  无填充字段映射及精确事件清单，独立准备事件/量因子恢复；不扩大本次分钟/竞价写授权。
+  Tushare价格factor与依赖送配的cum_share_factor分别验收。冻结表不算新断流。
+- 完整47表分类与来源/消费者矩阵及每次执行证据在
+  [#540](https://github.com/wanlinruo/quant-trade/issues/540)。节点审计根为
+  `/data/qsys/var-deployments/issue540-data-recovery-20261028/`，关键报告：
+  `minute-verification.json`、`consumers-verified.json`、`timer-restored-final-readback.json`。
+  不重放存在requested的脚本，不删备份、不清失败历史。
+
 ## 10-28 跨日排障与修复准备（覆盖下文对应快照）
 
 - 维护者本轮再次全权授权继续推进并休息。00:37旧Live仍inactive/PID0，reader1466393、

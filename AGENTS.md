@@ -162,6 +162,13 @@ manifest → `HANDOFF.md` → 其他历史文档。
   也必须位于验证目录。不能为验收改动生产停用门禁或启动原本inactive的Shadow。
   实盘预生产入口还须在网络/状态构造前检查专属文件根、所有可写路径和关闭通知；只映射Redis
   不能保护旧SQLite、主journal或本地急停。CLI/Memory测试不冒充真实Runtime隔离验收（#497）。
+- **临时维护任务完整继承生产执行契约**（2026-10-28，#540）：启动前逐项对照实际unit的
+  User/Group/补充组、UMask、Environment（尤其QSYS_QUERY_*）、CPU/内存/Nice/IO、只读
+  挂载和精确写路径，不能只复制部分资源限制。断连或超时先读节点requested、真实进程和
+  落盘结果，禁止未知送达时重放写操作；明确终止后用新run-id并复用已验证下载缓存。
+  transient unit被GC后的not-found及默认Result/UMask不构成运行证据；以实际运行时属性、
+  唯一invocation的journal、UID/PID和业务ServiceRun绑定验收。辅助unit成功不替代业务
+  成功；质量拒绝须保留，不降低门禁，不清失败历史。
 - **临时systemd辅助任务遵守同样的文件可见性**（2026-10-22，#493）：启用PrivateTmp时，
   脚本放在可读审计目录，不引用宿主/tmp；首启失败先保留日志、修复入口再重试，仅处理该临时
   unit，不清理生产失败历史，也不为辅助入口错误重复运行未变源码的CI。
