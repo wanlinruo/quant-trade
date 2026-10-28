@@ -1,5 +1,41 @@
 # 项目交接入口
 
+## 10-28 自动送配正式验收完成，20:30自然日报成功
+
+- 维护者已明确确认并继续推进。PR#552/#554/#556依次正常合并、CI/test/自审通过；
+  生产tushare-sync为`3faccebeb9736486f801ce1c91861b95083d7f4b`，controller v35。
+  最终CI40682291567、dry-run40683731604、正式workflow40683959984、Deployment7384688652
+  及实际节点record一致success，ZIP SHA与artifact12813541008 digest精确一致。
+- 19:01:57首次自然运行因历史目录身份T600018.SH在PUT阶段被拒，原Run190159-2153226/
+  invocation146edac390ab41fe9d399654432482fd与5条阻断保留。直取退市2006-10-20，
+  修复只排除窗口外非原生历史身份并存scope，不去T映射、不删旧事件；真实完整5941清单
+  PUT通过。本地最终4103 passed/7既有skipped/2既有依赖警告。#553控制依赖已验收关闭。
+- 新版本**人工验收**Run`200201-2173949`（20:02:01–20:07:06）20步骤全部succeeded/
+  exit0，invocation`7d3812657e1d4dcb829919b1097448ff`、实际业务PID2173949/UID983、
+  parent2173945与实际unit绑定。User/Group/UMask/查询环境/CPU内存/Nice/IO/沙箱/精确
+  写路径现场取证，MemoryPeak3221487616字节，未用辅助unit成功替代业务结果。
+- 5941证券完整响应：5真实事件、5936 empty、failed/incomplete0；5条均已入库故新增0，
+  事件表61085条SHA仍eab786c3...、全部旧字节保持。checkpoint结束2026-10-28，scope/
+  bundle SHA核验通过。今日5570行价格因子与Tushare直取及规范表逐键精确一致，12只/
+  336行修复历史样本保持；11张canonical写后对账通过。20:06最新556项质检0阻断，
+  原19:02的5项失败记录仍在。不能把本次人工成功称为19点原自然任务成功。
+- 正式Windows gateway及两组件key正/负向验证已通过，新增快照实际落E盘；旧分钟/竞价
+  C盘根、活动QMT目录/任务/个人key保持。20:22 QMT3788与159个qsys任务文件SHA保持；
+  C空闲4565495808字节、E空闲106036125696字节，#545仍需系统盘容量观察。
+- 20:30:02–05自然digest-203002-2182508汇总/邮件均succeeded。20:00原service-checks
+  为warning：旧Live无当日事件、修复前catalog阻断及存储保留警告，原记录不清、不重跑。
+- 原归档/Tushare timer active/enabled。20:53复核Live inactive/PID0、Paper634053/
+  NRestarts1、Web3700671、observer3933655、reader1466393保持，KILL未清、模拟/实盘未恢复。
+  新增只读timer`qsys-issue540-next-natural-20261029`定于10-29 17:20，在节点观察下一次
+  自然任务、scope/完整快照/质检/canonical；不启动业务、调用API或写Warehouse。
+  此时仅已安排，结果未发生；输出位于下列审计根next-natural-output/report.json。
+- #540继续in-progress：明日自然增量、8条非空现金/8条跨源空值差异、#550/#551和D-23
+  约束仍分别保留。下一步先读#540/#555最新验收及节点只读报告，再按数据→模拟→实盘推进。
+  Linux最终审计根`/data/qsys/var-deployments/issue555-dividend-scope-20261028/`，前次发布
+  `/data/qsys/var-deployments/issue540-auto-release-20261028/`；Windows
+  `E:/qsys-private-audit/issue540-auto-release-20261028/`。所有失败、requested和备份保留，
+  已成功发布/业务不得重放；本条仅交接文档更新，不需要重复部署未变业务制品。
+
 ## 10-28 19点首次自然业务失败，#555前进修复准备（覆盖下文状态）
 
 - PR#552/#554均已合并，main/test f09dcf7；controller v34和tushare-sync组件已正式安装。
