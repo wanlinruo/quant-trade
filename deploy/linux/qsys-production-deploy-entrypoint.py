@@ -36,7 +36,7 @@ ALLOWED_WINDOWS_COMPONENTS = frozenset({
     "windows-agent", "windows-gateway", "windows-control",
 })
 WINDOWS_COORDINATOR_PATH = "deploy/linux/qsys-windows-deploy-coordinator.py"
-ENTRYPOINT_VERSION = 34
+ENTRYPOINT_VERSION = 35
 ENTRYPOINT_CAPABILITIES = (
     "systemd-apply-v1",
     "systemd-component-boundary-v1",
@@ -73,6 +73,7 @@ ENTRYPOINT_CAPABILITIES = (
     "component-spec-fingerprint-v1",
     "component-state-reader-maintenance-v1",
     "component-tushare-maintenance-v1",
+    "component-tushare-failed-terminal-v1",
     "emergency-restart-authorization-v1",
 )
 FAILURE_POINTS = frozenset({"none", "linux-health", "windows-switch"})
@@ -748,12 +749,21 @@ def _tushare_maintenance_identity(repo: Path) -> dict[str, str]:
     identity = _state_reader_maintenance_identity(repo)
     for unit in ("qsys-tushare-sync.timer", "qsys-tushare-sync.service"):
         result = _run([
-            "systemctl", "show", unit, "--property=LoadState,ActiveState,MainPID",
+            "systemctl", "show", unit,
+            "--property=LoadState,ActiveState,MainPID,Result,ExecMainStatus,InvocationID",
         ], cwd=repo)
         values = dict(line.split("=", 1) for line in result.stdout.splitlines() if "=" in line)
-        if (values.get("LoadState") != "loaded" or values.get("ActiveState") != "inactive"
+        failed_terminal = (unit.endswith(".service") and values.get("ActiveState") == "failed"
+                           and values.get("Result") == "exit-code"
+                           and values.get("ExecMainStatus", "").isdigit()
+                           and int(values["ExecMainStatus"]) > 0
+                           and re.fullmatch(r"[0-9a-f]{32}", values.get("InvocationID", "")))
+        if (values.get("LoadState") != "loaded"
+                or (values.get("ActiveState") != "inactive" and not failed_terminal)
                 or (unit.endswith(".service") and values.get("MainPID") != "0")):
             raise ValueError("tushare maintenance requires inactive timer and idle oneshot")
+        if unit.endswith(".service"):
+            identity["tushare_terminal"] = json.dumps(values, sort_keys=True, separators=(",", ":"))
     return identity
 
 
@@ -1556,6 +1566,9 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
         "detail": ("Live inactive/disabled, local KILL and historical state preserved" if maintenance
                    else "live preflight and heartbeat checks passed before component switch"),
     }]
+    if data_maintenance:
+        checks.append({"name": "tushare-terminal-preserved", "status": "passed",
+                       "detail": before_live["tushare_terminal"]})
     success = False
     rollback_ok = False
     activation_attempted = False
