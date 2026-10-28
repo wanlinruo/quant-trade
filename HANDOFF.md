@@ -1,5 +1,37 @@
 # 项目交接入口
 
+## 10-28 16:14 送配历史修复已执行（覆盖下文准备/待确认状态）
+
+- 维护者本会话明确确认#540审阅包6463418320后，等待15:41自然归档终态，再持真实
+  warehouse-write.lock，于16:03:44–45完成三表修复；没有发布新组件或恢复模拟/实盘。
+  corporate_actions新增661条、合61085条，旧60424条逐字段保持；adj_factors全18368804行
+  与规范因子2026全1074139行均仅164个量因子值改变，其余键/列/物理顺序保持。
+- 16:07生产全量逐行验证通过，真实backtest/Paper/Web/checks/digest五UID只读沙箱通过，
+  全部读取61085事件、661新增及12只/336因子样本，旧/规范对账一致。SSH回执中断后只读
+  核对五份节点报告及readers-verified.json，没有重跑消费者验证或写操作。
+- 事件候选仅symbol的Arrow large_string与生产string不同：绑定原批准SHA后无损重编码，
+  61085行逐值不变，schema匹配。最终生产事件SHA为
+  `eab786c3a2de0a300c832a3b53749bcd33f6d7356f9b1ab6b47b28dce0b4dee5`；两因子SHA
+  仍为审阅包2773ca...及177557...。原批准文件、转换对应、完整备份和全部失败证据保留。
+  三表owner/group/mode/access ACL逐项保持；只收尾本次辅助timer/service，未reset-failed。
+- 今日自然归档daily-archive-154113-2086038于16:03:22结束：5570股日/1342297根分钟，
+  原质量0阻断/0已知差异，canonical逐键逐字段对账通过，竞价步骤成功。**整体warning**：
+  Tushare停牌响应7行少于已有8行，原保护保留8行；差异仅301139.SZ当天S/null记录。
+  当前直取退市日期为今天，该股已从今日分钟清单排除；不推断源删除原因、不删原快照。
+  [#551](https://github.com/wanlinruo/quant-trade/issues/551)记录口径待核验，排期blocked。
+- 16:14旧Live inactive/disabled/PID0、KILL保持；Paper634053/NRestarts1、Web3700671、
+  observer3933655、reader1466393保持。7日14个旧分钟分区SHA保持。归档/Tushare timer
+  active/enabled；下次Tushare17:00:02，归档10-29 15:41:08。16:12 Windows QMT仍3788，
+  四业务任务SHA保持，C盘4579663872字节；没有重启或清理。
+- **数据阶段仍未完**：本次仅恢复历史事件/量因子，未来自动送配入口/最小写权限/固定gateway
+  协议未接入；候选导出/导入代码虽4061通过、7ebe332的CI成功，未生产发布。8条非空现金
+  差异/8条跨源空值差异保留；今晚17/19主同步、17:10已排只读探针和质检/日报仍待自然验收。
+  #540唯一in-progress，其他开放Issue blocked，PR#547不合并；后续发布先隔离冻结变更。
+- 详细[修复记录](docs/plans/dividend-data-recovery.md)，节点审计根
+  `/data/qsys/var-deployments/issue540-data-recovery-20261028/dividend-review/`：apply-result.json、
+  applied-full-verification.json、readers-verified.json、final-boundaries.json。存在requested
+  的写操作不得重放。代码/备份/历史失败与KILL均保留，不把数据修复说成交易恢复。
+
 ## 10-28 送配恢复准备（#540，生产事件表尚未写入）
 
 - 5942只证券的20260910–20261028原生送配只读盘点完成：661条真实事件、5281只空表，

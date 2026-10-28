@@ -195,6 +195,13 @@ manifest → `HANDOFF.md` → 其他历史文档。
    重新标定是独立工作，不要夹带进数据层任务；等数据全部修完再标定一次。
    冻结阈值在 `src/qsys/strategy/structural/params.py`（S6_* 常量），聚宽策略文件里另有一份副本。
 
+- **修复候选同时核验物理schema与真实权限**（2026-10-28，#540）：Polars逐值相等与
+  Parquet SHA不能替代生产Arrow schema检查（如string/large_string）。若只需无损序列化，
+  必须绑定原批准输入SHA、逐值证明转换前后相同，并留存转换后SHA与schema记录，不放宽
+  schema门禁或夹带值变化。原子替换前先把所有临时目标的owner/group/mode/文件ACL准备
+  完整并实测；源文件的副本不能证明新inode会自动继承同样权限。遇自然采集持锁，节点侧
+  有界等待其终态，取得真实写锁后重核基线，不抢锁、不因维护重放采集。
+
 ### 3.1 ST、涨跌停、退市整理期
 
 - **ST 状态只认 Tushare `stock_st`**（仓库表 `stock_st_daily.is_st`），绝不从名称、价格或
