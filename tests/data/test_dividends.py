@@ -100,3 +100,19 @@ def test_a_bad_file_does_not_abort_the_batch(warehouse, tmp_path):
 def test_missing_directory_is_a_no_op(warehouse, tmp_path):
     result = import_dividends(warehouse, tmp_path / "nope")
     assert result.files == 0
+
+
+@pytest.mark.parametrize("value", [None, float("nan"), float("inf")])
+def test_incomplete_action_is_rejected_without_overwriting_old_facts(warehouse, tmp_path, value):
+    write_incoming(tmp_path / "old", "old.parquet")
+    import_dividends(warehouse, tmp_path / "old")
+    before = WarehouseQuery(warehouse).corporate_actions()
+    write_incoming(tmp_path / "new", "new.parquet")
+    path = tmp_path / "new" / "new.parquet"
+    table = pq.read_table(path)
+    column = table.schema.get_field_index("stock_per_share")
+    table = table.set_column(column, "stock_per_share", pa.array([value] * table.num_rows, type=pa.float64()))
+    pq.write_table(table, path)
+    result = import_dividends(warehouse, tmp_path / "new")
+    assert result.errors == 1 and result.rows == 0
+    assert WarehouseQuery(warehouse).corporate_actions().equals(before)

@@ -47,14 +47,14 @@
 只在冷启动脚本 `scripts/bootstrap_warehouse.py` 里用到），但不再是本表
 六列的血缘目标。
 
-**另一条发现，记录但不在本任务修**：`scripts/win_download_dividends.py`
+**历史发现（后续修复由 #540 承接）**：`scripts/win_download_dividends.py`
 的 `_num()`（第 66-74 行）把 `get_divid_factors` 返回的 `None`/`NaN` 一律
 折算成 `0.0` 才落 parquet；`scripts/win_download_capital.py` 对
 `total_capital` / `circulating_capital` 也用 `... or 0.0` 做了同样的事
 （第 136-137 行）。这与「有观测但取值恰好为 0」在下游无法区分，是「拿不到
 就记 null、不准填」红线的又一处违例——但它发生在 `scripts/`，不在
 `src/qsys/data/` 内，Task 15 的 `C1.no_fill` 静态扫描大概率扫不到。
-已在相关列的 `meaning` 里记明，不在此任务里改动脚本。
+已在相关列的 `meaning` 里记明。#540 的候选现已修复送配导出，生产发布与旧数据重验单独验收；股本冻结脚本不在本轮范围。
 """
 
 from __future__ import annotations
@@ -81,9 +81,9 @@ DATASETS = frozenset({
 # --- QMT 分红送配链路两处「空值归零」的填充问题，供多列复用一段说明 -------
 
 _QMT_NUM_FILL_NOTE = (
-    "scripts/win_download_dividends.py 的 _num()（第 66-74 行，其自身注释"
-    "「空值归零」）把 QMT 返回的 None 与 NaN 一律折算成 0.0 才写入 parquet——"
-    "这与「本次事件里这项真的是 0」无法区分。发现于本任务，不在本任务修复范围"
+    "历史导出器曾把 None/NaN 归零，旧数据无法据零值区分缺失。"
+    "#540修复候选保留null，缺失输入不标done，导入拒绝不完整事件；"
+    "候选通过不代表生产发布或旧数据重验已完成。"
 )
 
 _AKSHARE_BOOTSTRAP_FILL_NOTE = (
