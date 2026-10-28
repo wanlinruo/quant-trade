@@ -1,0 +1,558 @@
+{
+  "issue": 558,
+  "observed_at": "2026-10-28T16:01:28.819688+00:00",
+  "production_writes": 0,
+  "baseline_sha256": "eab786c3a2de0a300c832a3b53749bcd33f6d7356f9b1ab6b47b28dce0b4dee5",
+  "candidate_sha256": "df021519cad842db2cf1f5b470b9af3ce3ac1bf00498b76531fb13c177bcab43",
+  "baseline_rows": 61085,
+  "candidate_rows": 61085,
+  "arrow_schema": "symbol: string\nex_date: date32[day]\ncash_per_share: double\nstock_per_share: double\nrights_per_share: double\nrights_price: double",
+  "schema_and_metadata_exact": true,
+  "unchanged_keys_order_and_other_columns": true,
+  "changed_cells": [
+    {
+      "column": "cash_per_share",
+      "cells": 8
+    }
+  ],
+  "source_tushare_sha256": "0c456feeefe30f6b14c7ce0f816beacc9316ffeeb142f8b5657f46a3362e519f",
+  "source_qmt_sha256": "b7dff8d936d89f8b4fcced4510c1e292408176d443aa8036b770e9ff45d2a701",
+  "corrections": [
+    {
+      "symbol": "000099.SZ",
+      "name": "中信海直",
+      "title": "2026年半年度权益分派实施公告",
+      "url": "https://static.cninfo.com.cn/finalpage/2026-10-16/1225606353.PDF",
+      "sha256": "984c302adb1dd9b4cee425b3817257dc501b19f87ca78058840d3d77aac2ee05",
+      "bytes": 68890,
+      "metadata_sha256": "5794c3d040e0fb922dde2a84ea287a7be9f834bca92424ef4c45ab975281fac9",
+      "ex_date": "2026-10-23",
+      "old_cash_per_share": "0.064699",
+      "announcement_cash_per_10_shares": "0.647",
+      "announcement_pages_with_amount": [
+        1
+      ],
+      "tushare_cash_div_tax": "0.0647",
+      "candidate_cash_per_share": "0.0647",
+      "exact_agreement": true,
+      "hypothetical_cash_example": {
+        "hypothetical_shares": 5100,
+        "current_cash": 329.96,
+        "candidate_cash": 329.97
+      }
+    },
+    {
+      "symbol": "000403.SZ",
+      "name": "派林生物",
+      "title": "关于2026年中期利润分配实施的公告",
+      "url": "https://static.cninfo.com.cn/finalpage/2026-10-16/1225607500.PDF",
+      "sha256": "d756e75b6ff37e8b793adee3a4469ce390999e023b4be740a3f10ad931b79c67",
+      "bytes": 157765,
+      "metadata_sha256": "45b9f632e47ed85d0d7cf9bc1848cf32922c772f2d0d4889f56fb3f71e6653cc",
+      "ex_date": "2026-10-23",
+      "old_cash_per_share": "0.150069",
+      "announcement_cash_per_10_shares": "1.500687",
+      "announcement_pages_with_amount": [
+        1,
+        2
+      ],
+      "tushare_cash_div_tax": "0.1500687",
+      "candidate_cash_per_share": "0.1500687",
+      "exact_agreement": true,
+      "hypothetical_cash_example": {
+        "hypothetical_shares": 800,
+        "current_cash": 120.06,
+        "candidate_cash": 120.05
+      }
+    },
+    {
+      "symbol": "000498.SZ",
+      "name": "山东路桥",
+      "title": "2026年半年度权益分派实施公告",
+      "url": "https://static.cninfo.com.cn/finalpage/2026-10-15/1225605683.PDF",
+      "sha256": "056a1be1ddecd51d37ff398abf1f4c2fea66bcc7c9d3b911b5875c2e0f8882ce",
+      "bytes": 165175,
+      "metadata_sha256": "f31dca9ce483cacc6f93ab944fcab743e7ef1b786ec731f16209b95d957d2444",
+      "ex_date": "2026-10-22",
+      "old_cash_per_share": "0.02645",
+      "announcement_cash_per_10_shares": "0.264499",
+      "announcement_pages_with_amount": [
+        1,
+        3
+      ],
+      "tushare_cash_div_tax": "0.0264499",
+      "candidate_cash_per_share": "0.0264499",
+      "exact_agreement": true,
+      "hypothetical_cash_example": {
+        "hypothetical_shares": 100,
+        "current_cash": 2.65,
+        "candidate_cash": 2.64
+      }
+    },
+    {
+      "symbol": "000528.SZ",
+      "name": "柳工",
+      "title": "关于2026年中期权益分派实施公告",
+      "url": "https://static.cninfo.com.cn/finalpage/2026-10-14/1225604058.PDF",
+      "sha256": "ae76856db72190453fe165a8b9a8901a9caeb862e0186ba8267c0eb0c640d8ba",
+      "bytes": 157549,
+      "metadata_sha256": "a5191a94e51b1f526ca1eb85d183ce8f5c2d266538b29a5b280d240be9f4acd0",
+      "ex_date": "2026-10-22",
+      "old_cash_per_share": "0.054221",
+      "announcement_cash_per_10_shares": "0.542207",
+      "announcement_pages_with_amount": [
+        1,
+        2
+      ],
+      "tushare_cash_div_tax": "0.0542207",
+      "candidate_cash_per_share": "0.0542207",
+      "exact_agreement": true,
+      "hypothetical_cash_example": {
+        "hypothetical_shares": 1200,
+        "current_cash": 65.07,
+        "candidate_cash": 65.06
+      }
+    },
+    {
+      "symbol": "002056.SZ",
+      "name": "横店东磁",
+      "title": "2026年半年度权益分派实施公告",
+      "url": "https://static.cninfo.com.cn/finalpage/2026-09-28/1225581770.PDF",
+      "sha256": "261b0da928c45420dcde4436cffd9b4fa3b2f1dd308abd5bb7b43af11e8901a6",
+      "bytes": 146793,
+      "metadata_sha256": "93ca8541af6d647b1e477db399753f108069df904c0fc8a4d64c20657bc4e454",
+      "ex_date": "2026-10-12",
+      "old_cash_per_share": "0.229993",
+      "announcement_cash_per_10_shares": "2.299934",
+      "announcement_pages_with_amount": [
+        1,
+        2
+      ],
+      "tushare_cash_div_tax": "0.2299934",
+      "candidate_cash_per_share": "0.2299934",
+      "exact_agreement": true,
+      "hypothetical_cash_example": {
+        "hypothetical_shares": 2200,
+        "current_cash": 505.98,
+        "candidate_cash": 505.99
+      }
+    },
+    {
+      "symbol": "002475.SZ",
+      "name": "立讯精密",
+      "title": "2026年半年度权益分派实施公告",
+      "url": "https://static.cninfo.com.cn/finalpage/2026-10-15/1225605405.PDF",
+      "sha256": "966dbc0891bbc2e701fb15538c419c60dac96859186bdcaa676b771e8ac5bd11",
+      "bytes": 150246,
+      "metadata_sha256": "0a27a42b981240f8a68a28e9d3f072ba7271aa6ee190c7e693a1a65a76d87c33",
+      "ex_date": "2026-10-22",
+      "old_cash_per_share": "0.109923",
+      "announcement_cash_per_10_shares": "1.099231",
+      "announcement_pages_with_amount": [
+        1,
+        2,
+        3
+      ],
+      "tushare_cash_div_tax": "0.1099231",
+      "candidate_cash_per_share": "0.1099231",
+      "exact_agreement": true,
+      "hypothetical_cash_example": {
+        "hypothetical_shares": 6300,
+        "current_cash": 692.51,
+        "candidate_cash": 692.52
+      }
+    },
+    {
+      "symbol": "300453.SZ",
+      "name": "三鑫医疗",
+      "title": "2026年半年度权益分派实施公告",
+      "url": "https://static.cninfo.com.cn/finalpage/2026-09-17/1225568341.PDF",
+      "sha256": "d641a194bc02535c47102e04ee64335e3d2fc5a322c48cc7c30987a4a7525c65",
+      "bytes": 91821,
+      "metadata_sha256": "dd638cd34227255a42b2b6bc0327499c7adbc593460542e07639a2a1d6e63c46",
+      "ex_date": "2026-09-23",
+      "old_cash_per_share": "0.100238",
+      "announcement_cash_per_10_shares": "1.002381",
+      "announcement_pages_with_amount": [
+        1,
+        2,
+        3
+      ],
+      "tushare_cash_div_tax": "0.1002381",
+      "candidate_cash_per_share": "0.1002381",
+      "exact_agreement": true,
+      "hypothetical_cash_example": {
+        "hypothetical_shares": 2500,
+        "current_cash": 250.59,
+        "candidate_cash": 250.6
+      }
+    },
+    {
+      "symbol": "301232.SZ",
+      "name": "飞沃科技",
+      "title": "关于2026年半年度利润分配实施公告",
+      "url": "https://static.cninfo.com.cn/finalpage/2026-10-15/1225604870.PDF",
+      "sha256": "70b4762fc06719defd6c433032c596aef22373be37e4cc0941a27267258b4cdd",
+      "bytes": 126696,
+      "metadata_sha256": "368f0113f4826b463455ff0a6f490284ebe955cb5580e8b621cbb564fc7e7a15",
+      "ex_date": "2026-10-21",
+      "old_cash_per_share": "0.099884",
+      "announcement_cash_per_10_shares": "0.998841",
+      "announcement_pages_with_amount": [
+        1,
+        2
+      ],
+      "tushare_cash_div_tax": "0.0998841",
+      "candidate_cash_per_share": "0.0998841",
+      "exact_agreement": true,
+      "hypothetical_cash_example": {
+        "hypothetical_shares": 2200,
+        "current_cash": 219.74,
+        "candidate_cash": 219.75
+      }
+    }
+  ],
+  "null_observations": [
+    {
+      "symbol": "001225.SZ",
+      "title": "2026年半年度资本公积金转增股本实施公告",
+      "url": "https://static.cninfo.com.cn/finalpage/2026-09-17/1225567702.PDF",
+      "sha256": "4493106233f1363ed8ed2b26a8b912baab39c56c0eb04e7df96eb9ef53b866fd",
+      "bytes": 112699,
+      "metadata_rows": 22,
+      "ex_date": "2026-09-23",
+      "qmt_cash_per_share": "0.0",
+      "tushare_cash_div_tax": null,
+      "explicit_no_cash": false,
+      "conclusion": "本公告仅列转增；不从未列现金推定零，不补null"
+    },
+    {
+      "symbol": "001285.SZ",
+      "title": "2026年半年度资本公积金转增股本实施公告",
+      "url": "https://static.cninfo.com.cn/finalpage/2026-10-10/1225598674.PDF",
+      "sha256": "b986a7b61ca9beada8b38115e266a39adb6c0aba9c3adf4dafd9fea27bd5d5d2",
+      "bytes": 105946,
+      "metadata_rows": 13,
+      "ex_date": "2026-10-16",
+      "qmt_cash_per_share": "0.0",
+      "tushare_cash_div_tax": null,
+      "explicit_no_cash": true,
+      "conclusion": "公告明确不派发现金红利；保留两源原值，不补null"
+    },
+    {
+      "symbol": "300803.SZ",
+      "title": "2026年半年度权益分派实施公告",
+      "url": "https://static.cninfo.com.cn/finalpage/2026-09-15/1225562814.PDF",
+      "sha256": "2e2f092d2de68d692eab38ad232df3ba8d017ddd782c4001f595b123f6dee1c1",
+      "bytes": 105744,
+      "metadata_rows": 7,
+      "ex_date": "2026-09-22",
+      "qmt_cash_per_share": "0.0",
+      "tushare_cash_div_tax": null,
+      "explicit_no_cash": true,
+      "conclusion": "公告明确不派发现金红利；保留两源原值，不补null"
+    },
+    {
+      "symbol": "300908.SZ",
+      "title": "2026年半年度资本公积金转增股本实施公告",
+      "url": "https://static.cninfo.com.cn/finalpage/2026-09-04/1225548933.PDF",
+      "sha256": "4e5018e0ed1c5aae69f74160c25048c396b0afc6440e37b155cb19d0400ba8d4",
+      "bytes": 66518,
+      "metadata_rows": 12,
+      "ex_date": "2026-09-14",
+      "qmt_cash_per_share": "0.0",
+      "tushare_cash_div_tax": null,
+      "explicit_no_cash": false,
+      "conclusion": "本公告仅列转增；不从未列现金推定零，不补null"
+    },
+    {
+      "symbol": "300980.SZ",
+      "title": "关于2026年半年度资本公积金转增股本实施的公告",
+      "url": "https://static.cninfo.com.cn/finalpage/2026-09-22/1225576557.PDF",
+      "sha256": "385f5d11681739816d2791169ed44ffc193efdf29d45647d3dff4e519b3b5d1e",
+      "bytes": 126359,
+      "metadata_rows": 5,
+      "ex_date": "2026-09-30",
+      "qmt_cash_per_share": "0.0",
+      "tushare_cash_div_tax": null,
+      "explicit_no_cash": true,
+      "conclusion": "公告明确不派发现金红利；保留两源原值，不补null"
+    },
+    {
+      "symbol": "688300.SH",
+      "title": "联瑞新材关于2026年半年度权益分派实施公告",
+      "url": "https://static.cninfo.com.cn/finalpage/2026-10-09/1225597669.PDF",
+      "sha256": "e485e512701915adfb93f61005abb574fb766c9d387a43c8c738c4a6b9f6b561",
+      "bytes": 99691,
+      "metadata_rows": 17,
+      "ex_date": "2026-10-16",
+      "qmt_cash_per_share": "0.0",
+      "tushare_cash_div_tax": null,
+      "explicit_no_cash": false,
+      "conclusion": "本公告仅列转增；不从未列现金推定零，不补null"
+    },
+    {
+      "symbol": "688808.SH",
+      "title": "2026年半年度权益分派实施公告",
+      "url": "https://static.cninfo.com.cn/finalpage/2026-09-22/1225575286.PDF",
+      "sha256": "1db6edf0bebf621de67439aa538410060e5b20bd43acfcdef8faed37ae629b8c",
+      "bytes": 108904,
+      "metadata_rows": 47,
+      "ex_date": "2026-09-29",
+      "qmt_cash_per_share": "0.0",
+      "tushare_cash_div_tax": null,
+      "explicit_no_cash": false,
+      "conclusion": "本公告仅列转增；不从未列现金推定零，不补null"
+    },
+    {
+      "symbol": "688809.SH",
+      "title": "2026年半年度权益分派实施公告",
+      "url": "https://static.cninfo.com.cn/finalpage/2026-10-16/1225606306.PDF",
+      "sha256": "e561d133b981e7cbdb423d035907e683ce67b022bb3b0d9c2033212511af318b",
+      "bytes": 131585,
+      "metadata_rows": 26,
+      "ex_date": "2026-10-23",
+      "qmt_cash_per_share": "0.0",
+      "tushare_cash_div_tax": null,
+      "explicit_no_cash": false,
+      "conclusion": "本公告仅列转增；不从未列现金推定零，不补null"
+    }
+  ],
+  "scope": "本地待审候选；未更改源收据、生产数据或未来增量选源；示例股数是假设非真实持仓",
+  "actual_cash_consumer_probe": {
+    "function": "qsys.backtest.corporate.apply_corporate_actions",
+    "isolated_hypothetical_holdings": true,
+    "results": [
+      {
+        "symbol": "000099.SZ",
+        "hypothetical_shares": 5100,
+        "old": 329.96,
+        "candidate": 329.97
+      },
+      {
+        "symbol": "000403.SZ",
+        "hypothetical_shares": 800,
+        "old": 120.06,
+        "candidate": 120.05
+      },
+      {
+        "symbol": "000498.SZ",
+        "hypothetical_shares": 100,
+        "old": 2.65,
+        "candidate": 2.64
+      },
+      {
+        "symbol": "000528.SZ",
+        "hypothetical_shares": 1200,
+        "old": 65.07,
+        "candidate": 65.06
+      },
+      {
+        "symbol": "002056.SZ",
+        "hypothetical_shares": 2200,
+        "old": 505.98,
+        "candidate": 505.99
+      },
+      {
+        "symbol": "002475.SZ",
+        "hypothetical_shares": 6300,
+        "old": 692.51,
+        "candidate": 692.52
+      },
+      {
+        "symbol": "300453.SZ",
+        "hypothetical_shares": 2500,
+        "old": 250.59,
+        "candidate": 250.6
+      },
+      {
+        "symbol": "301232.SZ",
+        "hypothetical_shares": 2200,
+        "old": 219.74,
+        "candidate": 219.75
+      }
+    ],
+    "calls": 16,
+    "production_runtime_started": false
+  },
+  "complete_announcement_metadata": [
+    {
+      "code": "000099",
+      "announcement_count": 13,
+      "pages": [
+        {
+          "file": "000099-metadata.json",
+          "sha256": "5794c3d040e0fb922dde2a84ea287a7be9f834bca92424ef4c45ab975281fac9"
+        }
+      ]
+    },
+    {
+      "code": "000403",
+      "announcement_count": 21,
+      "pages": [
+        {
+          "file": "000403-metadata.json",
+          "sha256": "45b9f632e47ed85d0d7cf9bc1848cf32922c772f2d0d4889f56fb3f71e6653cc"
+        }
+      ]
+    },
+    {
+      "code": "000498",
+      "announcement_count": 18,
+      "pages": [
+        {
+          "file": "000498-metadata.json",
+          "sha256": "f31dca9ce483cacc6f93ab944fcab743e7ef1b786ec731f16209b95d957d2444"
+        }
+      ]
+    },
+    {
+      "code": "000528",
+      "announcement_count": 31,
+      "pages": [
+        {
+          "file": "000528-metadata.json",
+          "sha256": "a5191a94e51b1f526ca1eb85d183ce8f5c2d266538b29a5b280d240be9f4acd0"
+        },
+        {
+          "file": "000528-metadata-page2.json",
+          "sha256": "e8503306db04038d325c1dd595a7e4d39c161cfcd752bc973d0e8a9ab104e9ea"
+        }
+      ]
+    },
+    {
+      "code": "001225",
+      "announcement_count": 22,
+      "pages": [
+        {
+          "file": "001225-metadata.json",
+          "sha256": "8e5aa3c3ce08c09cad7e00c875437b24faef10ff634f5f70e508af7920ceef99"
+        }
+      ]
+    },
+    {
+      "code": "001285",
+      "announcement_count": 13,
+      "pages": [
+        {
+          "file": "001285-metadata.json",
+          "sha256": "b7b2101880a4788f7aee954c1dc028628f12959dc68361d1daa24504e2b7e6f3"
+        }
+      ]
+    },
+    {
+      "code": "002056",
+      "announcement_count": 13,
+      "pages": [
+        {
+          "file": "002056-metadata.json",
+          "sha256": "93ca8541af6d647b1e477db399753f108069df904c0fc8a4d64c20657bc4e454"
+        }
+      ]
+    },
+    {
+      "code": "002475",
+      "announcement_count": 23,
+      "pages": [
+        {
+          "file": "002475-metadata.json",
+          "sha256": "0a27a42b981240f8a68a28e9d3f072ba7271aa6ee190c7e693a1a65a76d87c33"
+        }
+      ]
+    },
+    {
+      "code": "300453",
+      "announcement_count": 34,
+      "pages": [
+        {
+          "file": "300453-metadata.json",
+          "sha256": "dd638cd34227255a42b2b6bc0327499c7adbc593460542e07639a2a1d6e63c46"
+        },
+        {
+          "file": "300453-metadata-page2.json",
+          "sha256": "853a12e8b9f1fb0a5d01d436d81c29aafb4c965d8fa2660d7cd8f4e16f0667a3"
+        }
+      ]
+    },
+    {
+      "code": "300803",
+      "announcement_count": 7,
+      "pages": [
+        {
+          "file": "300803-metadata.json",
+          "sha256": "338fda4f80c0129e875b042e5b0ab055972328d8687123a8a0b8e4d04d0fc9c4"
+        }
+      ]
+    },
+    {
+      "code": "300908",
+      "announcement_count": 12,
+      "pages": [
+        {
+          "file": "300908-metadata.json",
+          "sha256": "7e1e8d950f48c0ded965a904dfc9fd27ba67ded69696f8bf6fd86eafe9899a84"
+        }
+      ]
+    },
+    {
+      "code": "300980",
+      "announcement_count": 5,
+      "pages": [
+        {
+          "file": "300980-metadata.json",
+          "sha256": "c62a2806273301756fb9e3bbb8ae7f6153c3aedb930b323f5243736042e5b97d"
+        }
+      ]
+    },
+    {
+      "code": "301232",
+      "announcement_count": 18,
+      "pages": [
+        {
+          "file": "301232-metadata.json",
+          "sha256": "368f0113f4826b463455ff0a6f490284ebe955cb5580e8b621cbb564fc7e7a15"
+        }
+      ]
+    },
+    {
+      "code": "688300",
+      "announcement_count": 17,
+      "pages": [
+        {
+          "file": "688300-metadata.json",
+          "sha256": "60551748f87b44e8528e4377b7c7ecc0b1503a5ab2becce1f6cee375cc4a4164"
+        }
+      ]
+    },
+    {
+      "code": "688808",
+      "announcement_count": 47,
+      "pages": [
+        {
+          "file": "688808-metadata.json",
+          "sha256": "1306f244b5c095d6f6d11c13e3b27b75a925d66db790485b689c4417238693fb"
+        },
+        {
+          "file": "688808-metadata-page2.json",
+          "sha256": "4cc5312d838ede90ae51a843d5ce987c5b4b74bbe541ffc1e064666408b97e49"
+        }
+      ]
+    },
+    {
+      "code": "688809",
+      "announcement_count": 26,
+      "pages": [
+        {
+          "file": "688809-metadata.json",
+          "sha256": "34dff619e2d56e6cbbd388145427123b405954a7691bfb5f5b9f9990aaca3bcc"
+        }
+      ]
+    }
+  ],
+  "automatic_import_boundary": {
+    "initial_start": "2026-10-28",
+    "all_8_corrections_before_initial_start": true,
+    "historical_replay_conflicts_still_rejected": true,
+    "future_cash_source_policy_changed": false
+  }
+}

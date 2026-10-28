@@ -42,6 +42,12 @@ History容器仅处理明确完整的内存数值；#538另增加规范前复权
 `qmt-inner-runtime-guard.py`是独立回调守卫准备件，显式证据/时效、同实例去重及未知副作用
 不重播均有离线验证；没有QMT入口、持久化或证据生产者，不作为可激活策略。
 
+## 送配现金独立核验（#558 / #540）
+
+`cash-dividend-announcement-review.md`与同名JSON记录八条公告/Tushare精确一致、QMT原值
+不同的事实、八条null/0的公告观测及仅改八现金单元的本地候选。历史覆盖未执行，未来
+自动增量现金策略未切换，不能用最新质检0阻断替代现金字段独立验真。
+
 ## QMT外部数据连续性（#540 / #533-F）
 
 见 `../plans/qmt-data-continuity-migration.md`：分钟/竞价归档、Paper行情、送配事件、
