@@ -20,6 +20,20 @@ def test_a_healthy_reading_says_nothing():
                    "failed_units": (), "kill_switch": None}) == []
 
 
+def test_temporary_audit_and_production_task_failures_remain_critical_and_distinct():
+    tracker = EdgeTracker()
+    temporary = "qsys-issue561-catalog-validation-r3-20261029.service"
+    production = "qsys-catalog-verify.service"
+    notices = tracker.update(survey({"failed_units": [temporary, production]}))
+    assert [n.severity for n in notices] == [Severity.CRITICAL, Severity.CRITICAL]
+    assert notices[0].title == f"临时维护或验收任务失败：{temporary}"
+    assert notices[1].title == f"定时任务执行失败：{production}"
+    assert tracker.update(survey({"failed_units": [temporary, production]})) == []
+    cleared = tracker.update([])
+    assert all("已离开 failed 状态（业务结果待核对）" in n.title for n in cleared)
+    assert all("已恢复" not in n.title for n in cleared)
+
+
 def test_an_unknown_reading_stays_silent_rather_than_guessing():
     """实时通道只报确凿的坏消息；「问不出来」交给每晚质检和日报去说。"""
     assert survey({}) == []

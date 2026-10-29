@@ -269,6 +269,71 @@ def test_an_unobservable_service_is_not_called_down():
     assert sink.alerts == []
 
 
+def _scheduled_observation(timer="active", result="success", execution="inactive"):
+    from qsys.ops.services import SERVICE_BY_ID
+
+    value = row("catalog-verify", "ok" if timer == "active" and result == "success" else "bad")
+    value["spec"] = SERVICE_BY_ID["catalog-verify"]
+    value["systemd"] = {"ActiveState": timer, "SubState": "waiting"}
+    value["last_exit"] = {
+        "ActiveState": execution, "Result": result,
+        "ExecMainStatus": "1" if result != "success" else "0",
+        "ExecMainExitTimestamp": "Thu 2026-10-29 13:23:56 CST",
+    }
+    return observation(value, datetime(2026, 10, 29, 14), MORNING)
+
+
+def test_timer_pause_and_failed_execution_are_distinct_without_clearing_failure():
+    sink = RecordingAlertSink()
+    tracker = ProcessAlertTracker(AlertBus([sink]))
+    for item in (
+        _scheduled_observation(),
+        _scheduled_observation(timer="inactive"),
+        _scheduled_observation(timer="inactive"),
+        _scheduled_observation(result="exit-code"),
+        _scheduled_observation(result="exit-code"),
+    ):
+        tracker.update(item)
+    assert [a.title for a in sink.alerts] == [
+        "指标字典验证调度未启用", "指标字典验证最近执行失败",
+    ]
+    assert all(a.severity == Severity.CRITICAL for a in sink.alerts)
+    assert "ExecMainStatus=1" in sink.alerts[-1].detail
+    assert "13:23:56" in sink.alerts[-1].detail
+    assert item.process_state == DOWN
+
+
+def test_retry_start_does_not_claim_task_or_data_recovered():
+    sink = RecordingAlertSink()
+    tracker = ProcessAlertTracker(AlertBus([sink]))
+    tracker.update(_scheduled_observation())
+    tracker.update(_scheduled_observation(result="exit-code"))
+    tracker.update(_scheduled_observation(execution="activating"))
+    assert sink.alerts[-1].title == "指标字典验证调度可用，任务正在执行（结果待定）"
+    assert "已恢复" not in sink.alerts[-1].title
+
+
+def test_enabling_a_timer_without_a_completed_invocation_does_not_claim_success():
+    sink = RecordingAlertSink()
+    tracker = ProcessAlertTracker(AlertBus([sink]))
+    tracker.update(_scheduled_observation(timer="inactive"))
+    item = _scheduled_observation()
+    item.details["systemd_execution"].pop("ExecMainExitTimestamp")
+    tracker.update(item)
+    assert sink.alerts[-1].title == "指标字典验证调度可用（尚无成功执行证据）"
+
+
+def test_midnight_without_due_events_does_not_announce_trading_recovery():
+    sink = RecordingAlertSink()
+    tracker = BusinessAlertTracker(AlertBus([sink]))
+    now = datetime(2026, 10, 29)
+    tracker.update(observation(row("live-core"), now, MORNING,
+                               ChainAssessment(DOWN, "strategy_event_failed", "未落库")))
+    tracker.update(observation(row("live-core"), now, MORNING,
+                               ChainAssessment(HEALTHY, "strategy_events_not_due", "首个事件尚未到时")))
+    assert [a.title for a in sink.alerts] == ["实盘交易链路失败"]
+
+
 # ---- 基础设施巡检：按间隔跑，边沿触发 ----
 
 from qsys.ops.infra_watch import Finding  # noqa: E402

@@ -209,6 +209,17 @@ def observation(
         policy = HeartbeatPolicy(30, 60, 90)
         source = "systemd"
     process_state = state
+    schedule = row.get("systemd") or {}
+    execution = row.get("last_exit") or {}
+    if getattr(spec, "kind", None) == "timer" and schedule:
+        if schedule.get("ActiveState") in {"inactive", "failed", "deactivating"}:
+            reason = "schedule_inactive"
+        elif execution.get("ActiveState") in {"active", "activating", "reloading"}:
+            reason = "scheduled_task_running"
+        elif execution.get("Result") not in {None, "", "success"}:
+            reason = "scheduled_task_failed"
+        elif schedule.get("ActiveState") == "active":
+            reason = "schedule_ready"
     business_state = business.state if business is not None else UNKNOWN
     if business is not None:
         if business.state == DOWN or (
@@ -216,6 +227,10 @@ def observation(
         ):
             state, reason = business.state, business.reason_code
     details = {"host": spec.host}
+    if getattr(spec, "kind", None) == "timer" and schedule:
+        details["systemd_schedule"] = {
+            key: schedule[key] for key in ("ActiveState", "SubState") if key in schedule
+        }
     if row.get("last_exit"):
         details["systemd_execution"] = {
             key: value for key, value in row["last_exit"].items()
@@ -232,6 +247,7 @@ def observation(
         }
     if business is not None:
         details["trading_chain"] = {
+            "reason_code": business.reason_code,
             "detail": business.detail,
             "expected": business.expected,
             "completed": business.completed,
@@ -284,7 +300,9 @@ class BusinessAlertTracker:
             self.alerts.critical(title, detail)
         elif current == DEGRADED and previous not in (DEGRADED, DOWN):
             self.alerts.warning(f"{name}策略事件延迟", detail)
-        elif current == HEALTHY and previous in (DEGRADED, DOWN):
+        elif (current == HEALTHY and previous in (DEGRADED, DOWN)
+              and (item.details or {}).get("trading_chain", {}).get("reason_code")
+              != "strategy_events_not_due"):
             title = f"{name}状态库读取已恢复" if previous_unreadable else f"{name}交易链路已恢复"
             self.alerts.info(title, detail)
 
@@ -303,11 +321,18 @@ class ProcessAlertTracker:
     def __init__(self, alerts: AlertBus) -> None:
         self.alerts = alerts
         self.states: dict[str, str] = {}
+        self.schedule_states: dict[str, str] = {}
 
     def update(self, item: HealthObservation) -> None:
         previous = self.states.get(item.service_id)
         current = item.process_state
         if current == UNKNOWN:
+            return
+        spec = SERVICE_BY_ID.get(item.service_id)
+        if spec is not None and spec.kind == "timer" and item.reason_code in {
+            "schedule_inactive", "scheduled_task_running", "scheduled_task_failed", "schedule_ready",
+        }:
+            self._schedule_update(item, spec.name)
             return
         self.states[item.service_id] = current
         name = SERVICE_BY_ID[item.service_id].name if (
@@ -316,6 +341,34 @@ class ProcessAlertTracker:
             self.alerts.critical(f"{name}已停止", item.reason_code)
         elif current == HEALTHY and previous == DOWN:
             self.alerts.info(f"{name}已恢复", item.reason_code)
+
+    def _schedule_update(self, item: HealthObservation, name: str) -> None:
+        current = item.reason_code
+        previous = self.schedule_states.get(item.service_id)
+        self.schedule_states[item.service_id] = current
+        self.states[item.service_id] = item.process_state
+        if previous is None or previous == current:
+            return
+        execution = (item.details or {}).get("systemd_execution", {})
+        detail = "; ".join(
+            f"{key}={execution[key]}" for key in (
+                "Result", "ExecMainStatus", "ExecMainStartTimestamp", "ExecMainExitTimestamp",
+            ) if execution.get(key) not in (None, "")
+        )
+        if current == "schedule_inactive":
+            self.alerts.critical(f"{name}调度未启用", detail)
+        elif current == "scheduled_task_failed":
+            self.alerts.critical(f"{name}最近执行失败", detail)
+        elif previous in {"schedule_inactive", "scheduled_task_failed"}:
+            if current == "scheduled_task_running":
+                title = f"{name}调度可用，任务正在执行（结果待定）"
+            elif (execution.get("Result") == "success"
+                  and execution.get("ExecMainStatus") in (0, "0")
+                  and execution.get("ExecMainExitTimestamp")):
+                title = f"{name}调度可用，上次进程正常退出"
+            else:
+                title = f"{name}调度可用（尚无成功执行证据）"
+            self.alerts.info(title, detail)
 
 
 class InfraAlerts:
