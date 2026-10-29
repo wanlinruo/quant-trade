@@ -1,5 +1,27 @@
 # 项目交接入口
 
+## 10-30零时：#558兼容基线已生产安装，二阶段选源候选准备中
+
+- PR#573/main2d2d25b正常合并：本地4203 passed/7既有skipped，push CI40901320700、
+  test部署40901675631/Deployment7416547828/实际record、PR CI40901985965、Align/
+  审计40902213655/40902213646、最终CI40902285908全部通过。
+- Tushare current已2d2d25b。正式workflow40904678994、Deployment7417003176、实际
+  github/issue558-baseline-20261029-tushare-sync/record.json validate_record三方success。
+  ZIP artifact12909577877/digest b136c6fb...一致。规范/控制器v38完全不变，无白名单更新。
+- 实际UID983/PID2774543/Invocation6d2333f8...的受限探针捕获运行中MainPID、资源、
+  完整环境（含QSYS_CATALOG_SOURCE_ROOT）与UMask0027；真实文件0640、7事件全列相同/
+  Arrow schema及CLI守卫先于API/原始同步通过。只写独立审计shadow，真实API/生产写0。
+- 23:51验收4552个业务Parquet物理版本、全部受保护unit身份、生产检查点字节完全保持，
+  cash-source-policy生产文件不存在，unit仍QMT默认；未人工跑全日任务。timer恢复active/
+  enabled，下一自然10-30 17点。代码安装不等于新源已启用或新版本自然验收已发生。
+- 辅助准备首次Git archive缺Git元数据被verifier拒绝，改精确main worktree；环境复制白名单
+  初漏Catalog source-root在启动前拒绝。原记录/旧目录保留，不重跑CI/业务，不放松验证或
+  私有shadow权限。timer暂停后is-active exit3只是已inactive，已读真实属性核验，无重放。
+- 二阶段仅准备Tushare显式cash-source参数和Web增量血缘；运行代码/lock不变，N/N-1均为
+  已识别独立策略绑定的基线。实际节点unit/选源仍未改，启用前按AGENTS.md §4提交具体
+  未来现金范围确认；不再请求已完成八条历史修复授权。模拟/实盘及原KILL保持。
+  审计根/data/qsys/var-deployments/issue558-cash-baseline-20261029/。
+
 ## 10-29 22:57自然验收完成；#558未来现金候选准备中
 
 - 19:00 Tushare自然run190050-2691078 succeeded，19:40 catalog自然run194003-2702538

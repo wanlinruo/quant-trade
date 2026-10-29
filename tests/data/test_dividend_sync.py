@@ -421,3 +421,30 @@ def test_cli_cash_policy_cannot_be_silently_ignored(monkeypatch, capsys):
         tushare_sync_cli.main()
     assert exc.value.code == 2
     assert '--dividend-cash-source requires --dividend-sync' in capsys.readouterr().err
+
+
+def test_activation_unit_argument_is_supported_by_compatible_baseline_before_api(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from qsys.data import tushare_sync_cli
+    work = tmp_path / 'work'
+    marker = work / 'dividends' / 'cash-source-policy.json'
+    constructors = []
+    class StopBeforeAnyData:
+        def __init__(self, token, **kwargs):
+            constructors.append(kwargs)
+        def call(self, *args, **kwargs):
+            assert json.loads(marker.read_text())['cash_source'] == 'tushare'
+            raise RuntimeError('stop_before_any_market_data')
+    monkeypatch.setattr(tushare_sync_cli, 'load_tushare_config', lambda _: SimpleNamespace(token='synthetic'))
+    monkeypatch.setattr(tushare_sync_cli, 'TushareClient', StopBeforeAnyData)
+    warehouse = tmp_path / 'warehouse'
+    monkeypatch.setattr('sys.argv', ['qsys-tushare-sync', '--warehouse', str(warehouse),
+        '--service-runs', str(tmp_path / 'runs'), '--dividend-sync', '--dividend-initial-start', DAY.isoformat(),
+        '--late-minute-work-root', str(work), '--late-minute-win-transport', 'gateway',
+        '--late-minute-win-known-hosts', str(tmp_path / 'hosts'),
+        '--dividend-win-script-source', str(tmp_path / 'approved.py'), '--dividend-cash-source', 'tushare'])
+    with pytest.raises(RuntimeError, match='stop_before_any_market_data'):
+        tushare_sync_cli.main()
+    assert constructors == [{}, {'max_retries': 1, 'timeout': 10.0}]
+    assert marker.is_file() and not (marker.parent / 'last-imported.json').exists()
+    assert not warehouse.exists()

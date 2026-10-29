@@ -41,7 +41,7 @@ _ALL = [
     # ---- Tushare Pro（minute/auction permissions are capability-gated） ----
     _tushare("dividend", "当前账户已实测可用（#558）", "显式现金选源时逐事件查询",
              "cash_div_tax按证券/除权日/实施状态唯一匹配，原值不取整、不补0。"
-             "缺失或冲突保留审计并质量拒绝；候选可显式采用本字段，当前默认生产仍为QMT，旧批次保留。"
+             "缺失或冲突保留审计并质量拒绝；生产目标显式采用本字段，历史QMT批次仍按原始收据保留。"
              "#558公告核验与当前7事件窗口实测已留证，历史例外不扩展为全历史重写。"),
     _tushare("daily", "2000 积分", _WORKDAY_TWICE,
              "vol 单位是手且带小数（582305.98），取整会丢真实精度；"
@@ -161,7 +161,7 @@ _ALL = [
                "None/NaN折算成0，当前增量导出器保留null并拒绝不完整响应，旧值无法据零区分。"
                "显式现金选源与历史修复另按#558批次审计，QMT原始快照保留。build_corporate_actions"
                "（akshare 路径）仅在冷启动脚本 bootstrap_warehouse.py 用到，"
-               "标准增量链路走的是这个源",
+               "标准增量的送转与配股仍走此源，现金政策另见Tushare dividend与#558",
     ),
 
     # ---- 聚宽（JQData），按需补数，不进定时任务 ----

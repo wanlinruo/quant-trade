@@ -166,11 +166,14 @@ def test_limit_list_meanings_are_supported_by_official_field_definitions():
 
 # --- R14：corporate_actions 的真实源是 QMT，不是草案假定的 akshare -------
 
-def test_corporate_actions_default_lineage_stays_qmt_until_cash_activation():
-    """现金能力准备不改当前默认；启用政策另行审阅，历史批次仍按原始收据。"""
+def test_corporate_actions_cash_policy_and_qmt_stock_rights_have_separate_direct_sources():
+    """#558现金目标采用Tushare，送转/配股继续QMT，历史批次仍按原始收据。"""
     for m in METRICS:
         if m.dataset == "corporate_actions":
-            if isinstance(m.lineage, Direct):
+            if m.id == "corporate_actions.cash_per_share":
+                assert isinstance(m.lineage, Direct)
+                assert (m.lineage.source_id, m.lineage.field) == ("tushare.dividend", "cash_div_tax")
+            elif isinstance(m.lineage, Direct):
                 assert m.lineage.source_id == "qmt.dividends", m.id
             else:
                 assert (
