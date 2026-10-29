@@ -10,6 +10,7 @@ import pytest
 from qsys.data import catalog_verify_cli as catalog_verify
 from qsys.data.catalog.verification import VerificationSummary
 from qsys.data.catalog.health import HealthStatus
+from qsys.data.cutover_health import SessionHealth, canonical_required_relations
 
 DAY = date(2026, 9, 17)
 
@@ -22,10 +23,17 @@ class _Calendar:
         return [date(2026, 9, d) for d in (16, 17)]
 
 
+def _health(status, relation_status=HealthStatus.GREEN):
+    return SessionHealth({"bar_daily": status}, {
+        (edge.upstream, edge.downstream): relation_status
+        for edge in canonical_required_relations()
+    })
+
+
 def _argv(monkeypatch, warehouse, runs):
     monkeypatch.setattr(catalog_verify, "load_trading_calendar", lambda config: _Calendar())
     monkeypatch.setattr(catalog_verify, "refresh_session_health",
-                        lambda wh, day, config: {"bar_daily": HealthStatus.GREEN})
+                        lambda wh, day, config: _health(HealthStatus.GREEN))
     monkeypatch.setattr("sys.argv", [
         "catalog_verify.py", "--warehouse", str(warehouse.root),
         "--service-runs", str(runs), "--day", DAY.isoformat(),
@@ -74,7 +82,7 @@ def test_field_and_table_results_both_reach_real_record_and_exit_code(
 
     def refresh(*args):
         refreshed.append(args[1])
-        return {"bar_daily": health}
+        return _health(health)
 
     monkeypatch.setattr(catalog_verify, "refresh_session_health", refresh)
     assert catalog_verify.main() == exit_code
@@ -116,14 +124,14 @@ def test_table_health_is_a_separate_step_and_red_fails_the_task(monkeypatch, tmp
     monkeypatch.setattr(catalog_verify, 'verify_session',
                         lambda wh, day, **kw: VerificationSummary(DAY, 'r', 2, 0, 0, ()))
     monkeypatch.setattr(catalog_verify, 'refresh_session_health',
-                        lambda wh, day, config: {'bar_daily': HealthStatus.RED})
+                        lambda wh, day, config: _health(HealthStatus.RED))
     assert catalog_verify.main() == 1
     record = _record(runs)
     assert record['status'] == 'failed'
-    assert record['steps'][-1]['name'] == '表级五维健康'
-    assert record['steps'][-1]['status'] == 'failed'
-    assert record['steps'][-1]['rows'] == 1
-    assert '未覆盖表继续缺证据' in record['steps'][-1]['detail']
+    assert record['steps'][2]['name'] == '表级五维健康'
+    assert record['steps'][2]['status'] == 'failed'
+    assert record['steps'][2]['rows'] == 1
+    assert '未覆盖表继续缺证据' in record['steps'][2]['detail']
 
 
 def test_private_output_still_observes_sync_in_global_records(monkeypatch, tmp_path, warehouse):
@@ -176,3 +184,26 @@ def test_table_health_exception_is_recorded_without_refreshing_old_evidence(monk
         catalog_verify.main()
     assert _record(runs)['status'] == 'failed'
     assert not (warehouse.root / 'dataset_checks').exists()
+
+
+@pytest.mark.parametrize('relation_status,expected_exit,expected_run,expected_step', [
+    (HealthStatus.GREEN,0,'succeeded','succeeded'),
+    (HealthStatus.YELLOW,0,'warning','warning'),
+    (HealthStatus.RED,1,'failed','failed'),
+    (HealthStatus.GRAY,1,'failed','failed'),
+    (None,1,'failed','failed'),
+])
+def test_relations_have_independent_real_status_and_exit(monkeypatch,tmp_path,warehouse,
+        relation_status,expected_exit,expected_run,expected_step):
+    runs=tmp_path/'runs';_argv(monkeypatch,warehouse,runs)
+    monkeypatch.setattr(catalog_verify,'verify_session',lambda *a,**kw:
+                        VerificationSummary(DAY,'r',2,0,0,()))
+    health=_health(HealthStatus.GREEN,relation_status or HealthStatus.GREEN)
+    if relation_status is None:health.relations.clear()
+    monkeypatch.setattr(catalog_verify,'refresh_session_health',lambda *a:health)
+    assert catalog_verify.main()==expected_exit
+    record=_record(runs);assert record['status']==expected_run
+    assert record['steps'][1]['status']==record['steps'][2]['status']=='succeeded'
+    assert record['steps'][3]['name']=='关系完整性'
+    assert record['steps'][3]['status']==expected_step
+    assert record['steps'][3]['rows']==(0 if relation_status is None else 7)

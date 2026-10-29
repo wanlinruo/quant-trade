@@ -45,7 +45,16 @@ from qsys.data.query_budget import connect_warehouse_query
 from qsys.data.storage import Warehouse
 
 
-def refresh_session_health(warehouse: Warehouse, day: date, config: str) -> dict[str, HealthStatus]:
+class SessionHealth(dict[str, HealthStatus]):
+    """Keep table-mapping compatibility and expose the independent relations."""
+
+    def __init__(self, tables: dict[str, HealthStatus],
+                 relations: dict[tuple[str, str], HealthStatus]) -> None:
+        super().__init__(tables)
+        self.relations = relations
+
+
+def refresh_session_health(warehouse: Warehouse, day: date, config: str) -> SessionHealth:
     """Refresh the 12 supported canonical tables for one real trading day.
 
     Other tables retain missing evidence. This does not publish business data,
@@ -326,7 +335,7 @@ def generate_cutover_health(
     *,
     market: str = "SSE",
     now: datetime | None = None,
-) -> dict[str, HealthStatus]:
+) -> SessionHealth:
     """重算并持久化阶段 11 所需的 12 张规范表健康证据。"""
     if start > end:
         raise ValueError("start must not be after end")
@@ -430,7 +439,7 @@ def generate_cutover_health(
     )
     require_unchanged(warehouse, list(bindings.values()))
     write_dataset_checks(warehouse, pl.concat(frames, how="vertical"))
-    generate_cutover_relations(
+    relations = generate_cutover_relations(
         warehouse, start, end, now=now, run_id=run_id
     )
-    return summary
+    return SessionHealth(summary, relations)

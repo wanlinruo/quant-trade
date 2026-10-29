@@ -9,7 +9,7 @@ from pathlib import Path
 
 from qsys.core.calendar import last_closed_session
 from qsys.data.catalog.verification import verify_session
-from qsys.data.cutover_health import refresh_session_health
+from qsys.data.cutover_health import refresh_session_health, canonical_required_relations
 from qsys.data.catalog.health import HealthStatus
 from qsys.data.query_budget import query_budget
 from qsys.data.storage import Warehouse
@@ -88,11 +88,26 @@ def main(argv: list[str] | None = None) -> int:
                 step.fail(step.detail)
             elif HealthStatus.YELLOW in health.values():
                 step.warn(step.detail)
+        with run.step("关系完整性", interface="规范表真实Join与刷新顺序",
+                      table="relation_checks") as step:
+            required = {(edge.upstream, edge.downstream) for edge in canonical_required_relations()}
+            missing = required - health.relations.keys()
+            relation_counts = {status.value: sum(value == status for value in health.relations.values())
+                               for status in HealthStatus}
+            step.rows = len(health.relations)
+            step.detail = f"范围 {day}；关系 {len(health.relations)} 条；{relation_counts}；缺证据 {len(missing)} 条"
+            relations_blocked = bool(missing) or any(
+                value in (HealthStatus.RED, HealthStatus.GRAY) for value in health.relations.values()
+            )
+            if relations_blocked:
+                step.fail(step.detail)
+            elif HealthStatus.YELLOW in health.relations.values():
+                step.warn(step.detail)
         print(
             f"{day} 指标字典验证：{summary.rows} 条结果，"
             f"阻断 {summary.blocking} 条，警告 {summary.warnings} 条"
         )
-        return int(summary.blocking > 0 or any(
+        return int(summary.blocking > 0 or relations_blocked or any(
             status in (HealthStatus.RED, HealthStatus.GRAY) for status in health.values()
         ))
 
