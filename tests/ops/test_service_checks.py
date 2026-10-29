@@ -757,3 +757,29 @@ def test_certificate_check_fails_when_the_site_cannot_be_reached(tmp_path):
 
     assert result.status == sc.BAD
     assert "取不到证书" in result.actual
+
+
+@pytest.mark.parametrize('relation_failed', [False, True])
+def test_actual_catalog_warning_record_is_executed_and_keeps_real_task_failure(tmp_path, relation_failed):
+    import json
+    from qsys.ops.services import ServiceRun
+    with ServiceRun.open(tmp_path,'catalog-verify') as run:
+        run.session=DAY
+        with run.step('指标字典验证',table='metric_checks') as step:
+            step.rows=638;step.warn('阻断0，既有警告28')
+        with run.step('表级五维健康',table='dataset_checks') as step:step.rows=12
+        with run.step('关系完整性',table='relation_checks') as step:
+            step.rows=7
+            if relation_failed:step.fail('真实关系red1')
+    raw=json.loads(next(tmp_path.rglob('catalog-verify-*.json')).read_text())
+    got=sc._catalog_verify_ran(ctx(FakeQuery(),[raw]))
+    assert got.rows==638 and '已执行' in got.actual
+    assert got.status==(sc.BAD if relation_failed else sc.WARN)
+    if relation_failed:assert '关系完整性' in got.detail and 'red1' in got.detail
+    else:assert '有警告' in got.actual
+
+
+def test_interrupted_catalog_is_not_reported_healthy_after_field_completion():
+    run={**verify_run(), 'status':'interrupted'}
+    got=sc._catalog_verify_ran(ctx(FakeQuery(),[run]))
+    assert got.status==sc.BAD and got.rows==364 and 'interrupted' in got.actual

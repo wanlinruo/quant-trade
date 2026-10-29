@@ -1,5 +1,30 @@
 # 项目交接入口
 
+## 10-29 13:42：#561/#568已生产发布，保留一条批次红项；#570消费兼容候选中
+
+- 最终main/test ae29a7e经#565/#567/#569正常合并及全部CI/test/PR/Align/最终CI通过，
+  本地4158 passed/7既有skipped。catalog/Web current均ae29a7e；正式workflow分别
+  40822371810/40823805986、Deployment7404678256/7404883582及节点实际validate_record
+  三方success。controller v37、共享checkout505d7e8、Tushare3facceb及原KILL/Live主库保持。
+- 生产人工run catalog-verify-132210-2546373，UID984/PID2546373/Invocation4aa555b4...，
+  实际运行中完整unit契约绑定。字段638/0阻断/28既有warning、表10绿2黄、关系6绿1红；
+  关系独立failed，任务failed/exit1，MemoryPeak2147901440。60+7绑定有效，旧QA列和
+  重复次数全部保留；业务Parquet版本/配置/baseline/KILL/Live主库SHA保持。
+- 这验证软件正确拦截已知批次红项，**数据质量尚未全部通过**。限价09:24与昨天市场标记
+  20:06不同批次，旧代码同输入同red；不放宽约束、不伪造发布时间或重写业务仅为变绿。
+  HTTP估值green/关系red/服务精确Run独立失败步骤均核验；两次页面探针选错列表页已改用
+  真实Run URL，没有改产品或重复部署。#566已关闭；#561/#568转monitoring，#540仍in-progress。
+- catalog timer恢复active/enabled，19:40自然运行；原17:20 Tushare观察保持，19:55新增
+  精确版本/三层绑定/timer触发与invocation只读采证。原绑定8d的#562 19:50辅助timer明确
+  被替代，原脚本/请求/失败保留。尚未发生自然结果，不算自然成功。
+- 审计根/data/qsys/var-deployments/issue561-versions-r3-20261029/；前两候选失败/拒绝、
+  副本与旧制品全保留。r3隔离未捕获live/proc，已以仍loaded精确unit属性+唯一invocation
+  journal PID2530575/UID984绑定，无GC默认值或缺失MemoryPeak冒充，未重跑。
+- 旧日报UID988读取638/28/0正常。旧service-checks UID993覆盖454/字段读取均通过，但将
+  已完成warning误报未执行；#570作为必要数据消费者兼容项实施。候选区分已执行warning与
+  真正failed/中断/失败步骤，controller v38候选只允许已安装idle service-checks停用Live
+  升级，暂停自身timer并保护九peer；未安装生产。模拟/实盘不恢复，Paper问题仍冻结。
+
 ## 10-29 #568关系失败传播修复中，第二候选未激活
 
 - #567/main b215c39经全部CI/test/PR/Align/最终CI通过，复用未变controller v37；
