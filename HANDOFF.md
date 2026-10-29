@@ -1,5 +1,31 @@
 # 项目交接入口
 
+## 10-29 17:20自然采证通过；#482告警文案第一阶段候选
+
+- 今天自然Tushare run `tushare-sync-170041-2653775`于17:00:41–17:05:42
+  succeeded，20步骤全部成功。17:20只读报告accepted=true，真实UID983、业务Invocation
+  ebdd00e36f3d4bcaa481ff2f13385f00；5942证券完整响应、7事件/新增2，5935 empty/7 done。
+  报告`issue555-dividend-scope-20261028/next-natural-output/report.json`，business_starts/
+  warehouse_writes/api_calls均0。只证明本次自然数据链，19:40/20:00尚待各自验收。
+- service-checks已正式安装0a67a68，controller v38，workflow40833203866、Deployment
+  7406190491及节点实际validate_record三方成功；真实UID993兼容读取通过，未人工运行
+  全日检查。20:00业务/20:10只读观察保持。下文“候选未安装”均为较早快照。
+- catalog/Web仍ae29a7e，Tushare3facceb、共享checkout505d7e8保持；原13:23关系批次
+  red与failed历史保留。新自然数据改变输入后须重新取绑定证据，不拿17点增量替代三层
+  全量验收。19:40业务/19:55只读采证保持，不重跑或reset-failed。
+- 维护者认可全系统审计建议后，#482只先准备事实文案：区分timer未启用、任务执行失败、
+  临时维护/验收失败；重跑启动和failed列表消失不称业务恢复，午夜未到事件时间不称实盘
+  恢复。保持严重级别/边沿去重，未实现有界维护窗口或停用Live完整语义；本项不关闭。
+  本地全量4179 passed/7既有skipped/2既有依赖warnings；CI/发布以Issue最新记录为准。
+  生产observer尚未改动，先完成代码审查与正常集成，不干扰今晚观察中的实际进程基线。
+- #545只读目录扫描发现旧userdata_mini有两条75,497,752字节队列分别10-28/29 15:10
+  更新，不能再说目录完全静止；旧agent仍disabled/最后运行10-27，当前Python为现存
+  市场进程，具体文件使用者未证实，不因此重启或清理。QMT PID2512/10-29 08:53:54，
+  Responding=true；C约3.99GiB/E约98.75GiB，不能把逻辑长度作为可释放物理空间。
+- 全部40项Issue已审计更新，#475原迁移natural_acceptance_passed=true和#548安全措施
+  完成后关闭；余38项保留独立门禁。#482进入候选实施，其余排期详见#540审计矩阵。
+  #539/#549模拟问题和实盘原KILL/停用姿态保持，未清理备份或覆盖数据。
+
 ## 10-29 13:42：#561/#568已生产发布，保留一条批次红项；#570消费兼容候选中
 
 - 最终main/test ae29a7e经#565/#567/#569正常合并及全部CI/test/PR/Align/最终CI通过，

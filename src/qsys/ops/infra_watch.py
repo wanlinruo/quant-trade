@@ -17,9 +17,11 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+import re
 
 from qsys.ops.alerts import Severity
 from qsys.ops.storage import FREE_FAIL_BYTES, FREE_WARN_BYTES, GIB
+from qsys.ops.services import SERVICES
 
 CERT_WARN_DAYS, CERT_FAIL_DAYS = 21, 10
 
@@ -70,7 +72,14 @@ def survey(reading: dict) -> list[Finding]:
 
     # 一个单元一条：两个单元先后坏掉时，不能因为「已经报过了」而漏掉第二个
     for unit in reading.get("failed_units") or ():
-        out.append(Finding(f"unit:{unit}", Severity.CRITICAL, "系统单元失败", unit))
+        spec = next((s for s in SERVICES if s.unit and unit == f"{s.unit}.service"), None)
+        if re.fullmatch(r"qsys-issue[0-9]+(?:-[a-zA-Z0-9_-]+)?\.service", unit):
+            title = "临时维护或验收任务失败"
+        elif spec is not None and spec.kind == "timer":
+            title = "定时任务执行失败"
+        else:
+            title = "系统单元失败"
+        out.append(Finding(f"unit:{unit}", Severity.CRITICAL, f"{title}：{unit}", unit))
 
     kill = reading.get("kill_switch")
     if kill:
@@ -111,7 +120,9 @@ class EdgeTracker:
             )
         ]
         notices += [
-            Notice(Severity.INFO, f"{f.title}：已恢复", f.detail)
+            Notice(Severity.INFO,
+                   f"{f.title}：已离开 failed 状态（业务结果待核对）"
+                   if f.key.startswith("unit:") else f"{f.title}：已恢复", f.detail)
             for key, f in self._open.items()
             if key not in current
         ]
