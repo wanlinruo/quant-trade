@@ -39,6 +39,10 @@ def _akshare(api: str, caveat: str | None = None) -> Source:
 
 _ALL = [
     # ---- Tushare Pro（minute/auction permissions are capability-gated） ----
+    _tushare("dividend", "当前账户已实测可用（#558）", "显式现金选源时逐事件查询",
+             "cash_div_tax按证券/除权日/实施状态唯一匹配，原值不取整、不补0。"
+             "缺失或冲突保留审计并质量拒绝；候选可显式采用本字段，当前默认生产仍为QMT，旧批次保留。"
+             "#558公告核验与当前7事件窗口实测已留证，历史例外不扩展为全历史重写。"),
     _tushare("daily", "2000 积分", _WORKDAY_TWICE,
              "vol 单位是手且带小数（582305.98），取整会丢真实精度；"
              "amount 单位千元，入库 ×1000 转元"),
@@ -150,12 +154,12 @@ _ALL = [
         caveat="它**含配股**（allotNum/allotPrice），这正是它存在的原因——"
                "akshare 的 stock_fhps_detail_em 只有分红送转，做过配股的标的"
                "复权因子会偏差（spec §12 风险表，pipeline/dividends.py:1-11）。"
-               "字段对照：interest → cash_per_share，stockBonus+stockGift → "
+               "历史及兼容模式字段对照：interest → cash_per_share，stockBonus+stockGift → "
                "stock_per_share，allotNum → rights_per_share，allotPrice → "
                "rights_price；dr（单次复权因子）只用于交叉校验，不落库。"
-               "返回值以除权日为 DataFrame 索引，无具名日期列。脚本的 "
-               "_num() 把 None/NaN 一律折算成 0.0（见 "
-               "catalog/reference.py 的填充问题记录）。build_corporate_actions"
+               "返回值以除权日为 DataFrame 索引，无具名日期列。历史脚本曾将 "
+               "None/NaN折算成0，当前增量导出器保留null并拒绝不完整响应，旧值无法据零区分。"
+               "显式现金选源与历史修复另按#558批次审计，QMT原始快照保留。build_corporate_actions"
                "（akshare 路径）仅在冷启动脚本 bootstrap_warehouse.py 用到，"
                "标准增量链路走的是这个源",
     ),

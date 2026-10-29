@@ -1,5 +1,29 @@
 # 项目交接入口
 
+## 10-29 22:57自然验收完成；#558未来现金候选准备中
+
+- 19:00 Tushare自然run190050-2691078 succeeded，19:40 catalog自然run194003-2702538
+  warning/exit0：638字段/0阻断/28既有warning，表10绿2黄、关系7绿。19:55报告所有
+  版本/三层绑定/当前输入/真实timer及Invocation检查passed；原13:23失败与关系red保留。
+- 20:00 checks自然run200003-2708253 warning/exit0，正确识别638字段已执行且有warning；
+  20:10目标消费者报告passed。停用Live无事件及9项到期副本提醒仍存在，不称全业务健康。
+  20:30日报自然succeeded。22:57实际两个unit inactive/dead/Resultsuccess/exit0，HTTP
+  服务详情/精确自然Run页和关系页200，最新run可见、关系green。
+- #561/#562/#568/#570自然验收完成后关闭，开放34项；#540继续剩余数据工作，
+  #558现in-progress。#482第一阶段PR#572已合并main ab02992，本地4179/全部CI/test/
+  PR/Align/最终CI通过，但生产observer仍34c7b7b/PID3933655，未发布，完整维护语义未完。
+- #558新增现金选源候选：QMT原始快照/送转配股保持，Tushare唯一实施cash_div_tax直取；
+  缺证据/null/冲突/超时保留候选并拒绝发布。先发布独立策略守卫兼容基线，unit/QMT
+  默认保持；二阶段才准备显式flag与增量血缘，避免补偿回不认识新策略的3fac旧代码。
+  当前7事件全与Tushare相等；Mac真实收据复放全列相同、append0，原61087行/物理schema/
+  b99c9dff字节保持。候选尚未生产安装或启用，最新CI/审查及具体授权以#558记录为准。
+  稳定基线全量4203 passed/7既有skipped/2既有依赖warnings，真实installer失败补偿
+  控制流程+实际临时文件验证绑定保留（不冒充生产权限/补偿演练）。
+  详细候选边界与下一步门禁见docs/plans/dividend-data-recovery.md首节。
+- catalog/Web仍ae29a7e、checks0a67a68、Tushare3facceb、controller v38；当前#558候选
+  第一阶段节点规格保持；二阶段新增flag前须按精确main审查/备份白名单，不绕校验。
+  Paper PID2408585/NRestarts2、Live PID0/原KILL保持；不因软件或自然数据验收解除交易门禁。
+
 ## 10-29 17:20自然采证通过；#482告警文案第一阶段候选
 
 - 今天自然Tushare run `tushare-sync-170041-2653775`于17:00:41–17:05:42
