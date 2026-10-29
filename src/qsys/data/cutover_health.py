@@ -4,10 +4,14 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from dataclasses import dataclass
+import hashlib
 from pathlib import Path
 
 import polars as pl
 
+from qsys.data.catalog.input_versions import (
+    bind_inputs, dataset_binding, require_unchanged,
+)
 from qsys.data.catalog.health import (
     HealthDimension,
     HealthEvidence,
@@ -287,6 +291,12 @@ def generate_cutover_relations(
             cache[dataset] = _target_frame(query, dataset, start, end)
         return cache[dataset]
 
+    bindings = {
+        (edge.upstream, edge.downstream): bind_inputs(
+            warehouse, (edge.upstream, edge.downstream), start, end,
+            freshness=(edge.upstream, edge.downstream),
+        ) for edge in canonical_required_relations()
+    }
     for dependency in canonical_required_relations():
         result = _check_canonical_relation(
             dependency,
@@ -299,9 +309,11 @@ def generate_cutover_relations(
         frames.append(relation_check_frame(
             run_id, now, dependency, result,
             scope_start=start, scope_end=end,
+            input_version=bindings[(dependency.upstream, dependency.downstream)],
         ))
         summary[(dependency.upstream, dependency.downstream)] = result.evidence.status
     if frames:
+        require_unchanged(warehouse, list(bindings.values()))
         write_relation_checks(warehouse, pl.concat(frames, how="vertical"))
     return summary
 
@@ -319,6 +331,13 @@ def generate_cutover_health(
     if start > end:
         raise ValueError("start must not be after end")
     now = now or datetime.now()
+    bindings = {
+        dataset: dataset_binding(
+            warehouse, dataset, start, end,
+            external_digest=(hashlib.sha256(raw_calendar.write_json().encode()).hexdigest()
+                             if dataset == "trading_calendar" else None),
+        ) for dataset in CANONICAL_CUTOVER_DATASETS
+    }
     query = WarehouseQuery(warehouse)
     reconciliations = {
         **reference_reconciliation(warehouse),
@@ -357,7 +376,8 @@ def generate_cutover_health(
             ),
         )
         frames.append(dataset_check_frame(
-            run_id, now, dataset, evidence, scope_start=start, scope_end=end
+            run_id, now, dataset, evidence, scope_start=start, scope_end=end,
+            input_version=bindings[dataset],
         ))
         summary[dataset] = max(
             (item.status for item in evidence), key=_STATUS_ORDER.__getitem__
@@ -403,11 +423,12 @@ def generate_cutover_health(
     )
     frames.append(dataset_check_frame(
         run_id, now, "bar_minute_1m", minute_evidence,
-        scope_start=start, scope_end=end,
+        scope_start=start, scope_end=end, input_version=bindings["bar_minute_1m"],
     ))
     summary["bar_minute_1m"] = max(
         (item.status for item in minute_evidence), key=_STATUS_ORDER.__getitem__
     )
+    require_unchanged(warehouse, list(bindings.values()))
     write_dataset_checks(warehouse, pl.concat(frames, how="vertical"))
     generate_cutover_relations(
         warehouse, start, end, now=now, run_id=run_id

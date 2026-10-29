@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 import json
+from pathlib import Path
 from datetime import date, datetime, time, timedelta
 
 import polars as pl
@@ -68,6 +69,27 @@ _DUCKDB_TYPES = {
 # daily_bars() 与 legacy_daily_bars() 共用的 8 列投影——
 # 两者列名相同，差别只在读哪张表、volume 是不是带小数。
 _DAILY_BAR_COLUMNS = "symbol, dt, open, high, low, close, volume, amount"
+
+
+def minute_partition_files(base: Path, start: date | None, end: date | None) -> list[str]:
+    """Return the same effective QMT files used by reads and input binding."""
+    files: list[str] = []
+    for year_dir in sorted(base.glob("year=*")):
+        try:
+            year = int(year_dir.name.split("=", 1)[1])
+        except ValueError:
+            continue
+        if (start is not None and year < start.year) or (end is not None and year > end.year):
+            continue
+        days = sorted(year_dir.glob("date=*/part.parquet"))
+        if days:
+            for path in days:
+                day = datetime.strptime(path.parent.name.split("=", 1)[1], "%Y%m%d").date()
+                if (start is None or day >= start) and (end is None or day <= end):
+                    files.append(str(path))
+        elif (year_dir / "part.parquet").exists():
+            files.append(str(year_dir / "part.parquet"))
+    return files
 
 
 class WarehouseQuery:
@@ -425,25 +447,7 @@ class WarehouseQuery:
         )
 
     def _minute_files(self, start: date | None, end: date | None) -> list[str]:
-        """QMT 分钟线：日分区优先，尚未迁移的年份兼容旧整年文件。"""
-        base = self._wh.root / "minute_bars"
-        files: list[str] = []
-        for year_dir in sorted(base.glob("year=*")):
-            try:
-                year = int(year_dir.name.split("=", 1)[1])
-            except ValueError:
-                continue
-            if (start is not None and year < start.year) or (end is not None and year > end.year):
-                continue
-            days = sorted(year_dir.glob("date=*/part.parquet"))
-            if days:
-                for path in days:
-                    day = datetime.strptime(path.parent.name.split("=", 1)[1], "%Y%m%d").date()
-                    if (start is None or day >= start) and (end is None or day <= end):
-                        files.append(str(path))
-            elif (year_dir / "part.parquet").exists():
-                files.append(str(year_dir / "part.parquet"))
-        return files
+        return minute_partition_files(self._wh.root / "minute_bars", start, end)
 
     def _minute_days(self, dataset: str, start: date, end: date) -> set[date]:
         base = self._wh.root / dataset

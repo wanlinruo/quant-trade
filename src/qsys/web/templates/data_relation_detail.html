@@ -12,6 +12,7 @@
   <div class="metric"><div class="label">检查日期差</div><div class="value" style="font-size:14px">{% if d.latest %}{{ d.latest.scope_start or '—' }} ~ {{ d.latest.scope_end or '—' }}{% else %}—{% endif %}</div></div>
   <div class="metric"><div class="label">刷新状态</div><div>{% if d.latest %}<span class="pill {{ d.latest.status }}">{{ d.latest.status }}</span>{% else %}<span class="pill gray">gray</span>{% endif %}</div></div>
 </div>
+{% if d.latest %}<p class="muted">{{ d.latest.detail }}</p>{% endif %}
 <div class="card"><h2>结构建议</h2><p><span class="pill todo">{{ d.advice.kind.value }}</span></p><ul>{% for reason in d.advice.reasons %}<li>{{ reason }}</li>{% endfor %}</ul><p class="muted">确定性静态建议，仅供人工决策；不提供自动执行入口。</p></div>
 <div class="card"><h2>最近与历史结果</h2>{% if d.history %}<div class="table-wrap"><table><tr><th>检查时刻</th><th>规则</th><th>上游</th><th>下游</th><th>匹配</th><th>孤儿</th><th>详情</th></tr>{% for item in d.history %}<tr><td>{{ item.checked_at }}</td><td><a href="/data/quality/rules/{{ item.check_id }}">{{ item.check_id }}</a></td><td>{{ item.upstream_rows }}</td><td>{{ item.downstream_rows }}</td><td>{{ item.matched_rows }}</td><td>{{ item.orphan_rows }}</td><td>{{ item.detail }}</td></tr>{% endfor %}</table></div>{% else %}<div class="empty">尚无关系检查证据。</div>{% endif %}</div>
 {% endblock %}

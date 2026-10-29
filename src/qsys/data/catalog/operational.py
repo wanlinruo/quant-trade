@@ -32,6 +32,8 @@ DATASETS = frozenset({
 _SELF = "qsys.runtime"
 
 _MEANING = {
+    "dataset_checks.input_version": "质量验证读取的源/目标物理版本绑定；旧证据缺失为null，需重验",
+    "relation_checks.input_version": "关系验证双方输入的物理版本绑定；不代表逐值对账通过",
     "live_equity.dt": "交易日；同日重复记录时保留最后一次",
     "live_equity.cash": "可用资金（元），写入前按分取整",
     "live_equity.market_value": "持仓市值（元），写入前按分取整",

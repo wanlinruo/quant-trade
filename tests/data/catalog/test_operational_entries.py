@@ -31,10 +31,10 @@ def test_registers_all_runtime_columns():
         "live_rejects": 6,
         "metric_checks": 14,
         "metric_evidence": 10,
-        "dataset_checks": 14,
-        "relation_checks": 18,
+        "dataset_checks": 15,
+        "relation_checks": 19,
     }
-    assert len(METRICS) == 91
+    assert len(METRICS) == 93
 
 
 def test_all_are_operational_status():

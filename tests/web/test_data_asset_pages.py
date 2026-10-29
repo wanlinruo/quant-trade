@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 
 from fastapi.testclient import TestClient
 
+from qsys.data.catalog.input_versions import dataset_binding
 from qsys.data.catalog.health import (
     ALL_DIMENSIONS,
     HealthEvidence,
@@ -57,7 +58,9 @@ def test_blocking_evidence_is_rendered_red_with_reason(warehouse):
         )
         for dimension in ALL_DIMENSIONS
     )
-    frame = dataset_check_frame("web-test", now, "bar_daily", evidence)
+    frame = dataset_check_frame("web-test", now, "bar_daily", evidence,
+        scope_start=now.date(), scope_end=now.date(),
+        input_version=dataset_binding(warehouse, "bar_daily", now.date(), now.date()))
     write_dataset_checks(warehouse, frame)
     response = _client(warehouse).get("/data/tables/bar_daily")
     assert "红·阻断" in response.text
@@ -265,3 +268,36 @@ def test_changed_table_shows_timestamped_previous_count_while_refreshing(warehou
     page = client.get('/data/tables/bar_daily')
     assert '0 行' in page.text
     assert '上次统计' not in page.text
+
+
+def test_changed_input_is_gray_but_historical_red_is_still_visible(warehouse):
+    from qsys.data import schema
+    now=datetime.now()
+    evidence=tuple(HealthEvidence(
+        dim,HealthStatus.RED,'version.'+dim.value,now,now+timedelta(days=1),
+        HealthReason('test','historical failure retained',dim),checked_rows=1,
+    ) for dim in ALL_DIMENSIONS)
+    write_dataset_checks(warehouse,dataset_check_frame(
+        'version-web',now,'bar_daily',evidence,scope_start=now.date(),scope_end=now.date(),
+        input_version=dataset_binding(warehouse,'bar_daily',now.date(),now.date()),
+    ))
+    warehouse.write('tushare_daily',schema.TUSHARE_DAILY.empty_table(),year=now.year)
+    page=_client(warehouse).get('/data/tables/bar_daily')
+    assert page.status_code==200
+    assert '灰·缺证据' in page.text and '输入已变化，待重验' in page.text
+    assert 'historical failure retained' in page.text
+    assert 'pill red' in page.text
+
+
+def test_relation_page_reports_current_input_change_without_rewriting_history(warehouse):
+    from qsys.data import schema
+    from qsys.data.cutover_health import generate_cutover_relations
+    from qsys.data.query import WarehouseQuery
+    now=datetime.now()
+    generate_cutover_relations(warehouse,now.date(),now.date(),now=now)
+    old=WarehouseQuery(warehouse).relation_checks()
+    warehouse.write('bar_daily',schema.BAR_DAILY.empty_table(),year=now.year)
+    page=_client(warehouse).get('/data/relations/bar_daily/security_status_daily')
+    assert page.status_code==200
+    assert 'pill gray' in page.text and '输入已变化，待重验' in page.text
+    assert WarehouseQuery(warehouse).relation_checks().equals(old)
