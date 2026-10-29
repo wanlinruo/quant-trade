@@ -1,5 +1,23 @@
 # 项目交接入口
 
+## 10-29 #568关系失败传播修复中，第二候选未激活
+
+- #567/main b215c39经全部CI/test/PR/Align/最终CI通过，复用未变controller v37；
+  r2隔离run catalog-verify-115709-2509955字段638/阻断0/既有warning28，表10绿2黄，
+  但原始关系是6绿1红，整体仍warning/exit0，后置验收已拒绝激活。此前会话曾未核对原始
+  关系而报7绿，已明确更正，不作为证据。60+7版本绑定全部有效，三类旧QA列/重复次数
+  保留、生产全部Parquet物理版本保持。catalog timer恢复active/enabled。
+- 红项price_limit_daily→market_flags_daily为现有同批次约束：源文件10-29 09:24更新，
+  下游10-28 20:06；5653/5570行，matched5570/orphan0/重复0/null0，只有downstream_stale。
+  当前生产8d8307e实际函数只读同输入同样red，两函数源码与候选逐字相同，非本轮回归。
+  不放宽约束，不伪造按日发布时间，也不为变绿重写业务数据或采未收盘当日。
+- #568候选显式返回关系摘要，CLI独立关系步骤，red/gray/必需关系缺失均failed/exit1，
+  yellow warning；五类实际CLI/ServiceRun回归和全量4158 passed/7既有skipped通过。
+  新制品/新审计根/新run-id验证“正确拦截已知红项”，不把软件验收算数据全通过；正常
+  收盘批次仍需自然重验。生产仍catalog8d8307e/Web9727d80，Tushare3facceb、Live/KILL保持。
+- r2审计根/data/qsys/var-deployments/issue561-versions-r2-20261029/，candidate-rejected.json
+  和old-production-relation-baseline.json留存。#566结果推断已合入但未生产生效，原失败保留。
+
 ## 10-29 10:43：#561首次隔离失败，生产未激活，前进兼容修复中
 
 - PR#565/main b112c93经CI/test/PR/Align/最终CI全部success；controller v37已可信安装，
