@@ -556,12 +556,12 @@ def _corporate_actions() -> list[Metric]:
         Metric(
             id="corporate_actions.cash_per_share", kind=Kind.DIRECT, validity=Validity.SESSION,
             status=MetricStatus.ACTIVE,
-            meaning="每股现金红利（税前，元），当前默认增量直取QMT interest。"
-                    "#558八条历史现金已依公告与Tushare直取修复；可选现金候选按Tushare唯一实施"
-                    "记录cash_div_tax直取，缺证据拒绝、不回退QMT。各批实际来源以独立策略绑定、"
-                    "cash_source检查点与现金收据为准，不声明全历史单一来源。",
-            lineage=Direct("qmt.dividends", "interest",
-                           note="当前默认增量血缘；历史修复与未来显式现金选源按批次审计"),
+            meaning="每股现金红利（税前，元），生产目标增量直取Tushare dividend唯一实施记录"
+                    "cash_div_tax，缺证据拒绝，不回退QMT或补零。历史QMT interest原值、"
+                    "#558八条公告核验修复均保留；各批实际来源以独立策略绑定、cash_source"
+                    "检查点及现金收据为准。此血缘不声明全历史均来自Tushare。",
+            lineage=Direct("tushare.dividend", "cash_div_tax",
+                           note="目标增量血缘；历史QMT批次和已批准现金修复按原审计保留"),
             checks=_CORPORATE_ACTIONS_CHECKS,
         ),
         Metric(
