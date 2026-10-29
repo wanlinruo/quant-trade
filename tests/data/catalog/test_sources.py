@@ -20,7 +20,7 @@ def test_covers_every_tushare_api_the_pipeline_uses():
     assert {s.api for s in SOURCES.values() if s.provider == "Tushare Pro"} == {
         "daily", "daily_basic", "adj_factor", "stk_limit", "suspend_d",
         "limit_list_d", "index_daily", "stock_basic", "namechange", "trade_cal",
-        "stock_st",
+        "stock_st", "dividend",
         "moneyflow", "index_member_all", "stk_auction_o",
         "minute",
     }
@@ -41,7 +41,7 @@ def test_registers_every_known_source():
         "tushare.daily", "tushare.daily_basic", "tushare.adj_factor",
         "tushare.stk_limit", "tushare.suspend_d", "tushare.limit_list_d",
         "tushare.index_daily", "tushare.stock_basic", "tushare.namechange",
-        "tushare.trade_cal", "tushare.stock_st",
+        "tushare.trade_cal", "tushare.stock_st", "tushare.dividend",
         "tushare.moneyflow", "tushare.index_member_all", "tushare.stk_auction_o",
         "tushare.minute",
         "akshare.tool_trade_date_hist_sina", "akshare.stock_info_a_code_name",

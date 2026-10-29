@@ -82,8 +82,8 @@ DATASETS = frozenset({
 
 _QMT_NUM_FILL_NOTE = (
     "历史导出器曾把 None/NaN 归零，旧数据无法据零值区分缺失。"
-    "#540修复候选保留null，缺失输入不标done，导入拒绝不完整事件；"
-    "候选通过不代表生产发布或旧数据重验已完成。"
+    "#540当前增量导出器保留null，缺失输入不标done，导入拒绝不完整事件；"
+    "增量发布不代表旧数据已全量重验。"
 )
 
 _AKSHARE_BOOTSTRAP_FILL_NOTE = (
@@ -556,10 +556,12 @@ def _corporate_actions() -> list[Metric]:
         Metric(
             id="corporate_actions.cash_per_share", kind=Kind.DIRECT, validity=Validity.SESSION,
             status=MetricStatus.ACTIVE,
-            meaning="每股现金红利（税前，元）（schema.py 注释），直取 "
-                    "get_divid_factors 的 interest 列（"
-                    "scripts/win_download_dividends.py:11）。" + _QMT_NUM_FILL_NOTE,
-            lineage=Direct("qmt.dividends", "interest"),
+            meaning="每股现金红利（税前，元），当前默认增量直取QMT interest。"
+                    "#558八条历史现金已依公告与Tushare直取修复；可选现金候选按Tushare唯一实施"
+                    "记录cash_div_tax直取，缺证据拒绝、不回退QMT。各批实际来源以独立策略绑定、"
+                    "cash_source检查点与现金收据为准，不声明全历史单一来源。",
+            lineage=Direct("qmt.dividends", "interest",
+                           note="当前默认增量血缘；历史修复与未来显式现金选源按批次审计"),
             checks=_CORPORATE_ACTIONS_CHECKS,
         ),
         Metric(

@@ -453,3 +453,38 @@ def test_seeded_history_is_visible_to_the_existing_web_reader(monkeypatch,tmp_pa
     new=LimitUpShadowReader(target).view(date(2026,10,20),today=date(2026,10,21))
     assert new==old and new.available
     assert new.snapshot==snapshot
+
+
+def test_tushare_failed_activation_restores_code_but_preserves_cash_policy(monkeypatch, tmp_path):
+    from qsys.data.pipeline.dividend_sync import prepare_cash_source
+
+    sha = 'c' * 40
+    spec, _, current, dropin = _prepare(monkeypatch, tmp_path, sha)
+    state = tmp_path / 'tushare-state'
+    spec['state_directories'] = [
+        {'path': str(state), 'owner': 'qsys-tushare-sync', 'group': 'qsys-tushare-sync', 'mode': '0750'},
+    ]
+    monkeypatch.setattr(installer, 'load_component_releases', lambda repo: {'tushare-sync': spec})
+    previous = tmp_path / 'releases' / ('b' * 40)
+    previous.mkdir(parents=True)
+    current.parent.mkdir(parents=True)
+    current.symlink_to(previous)
+    dropin.parent.mkdir(parents=True)
+    old_unit = b'[Service]\nExecStart=/baseline/qsys-tushare-sync --dividend-sync\n'
+    dropin.write_bytes(old_unit)
+    # 首次导入还未成功，只有独立策略绑定，不能依赖成功checkpoint保护选源。
+    prepare_cash_source(state, cash_source='tushare', cash_client=object(), run_id='activated')
+    policy = state / 'dividends' / 'cash-source-policy.json'
+    original = policy.read_bytes()
+    def sudo(*command, check=True):
+        if command == ('systemctl', 'daemon-reload') and check:
+            raise subprocess.CalledProcessError(1, command)
+        return _fake_sudo(*command, check=check)
+    monkeypatch.setattr(installer, '_sudo', sudo)
+    with pytest.raises(subprocess.CalledProcessError):
+        installer.activate(tmp_path, sha, 'tushare-sync')
+    assert current.resolve() == previous and dropin.read_bytes() == old_unit
+    assert policy.read_bytes() == original
+    assert not (policy.parent / 'last-imported.json').exists()
+    with pytest.raises(ValueError, match='silently revert'):
+        prepare_cash_source(state, cash_source='qmt', cash_client=None, run_id='compensated-default')

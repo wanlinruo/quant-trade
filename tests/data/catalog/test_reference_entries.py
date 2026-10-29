@@ -166,9 +166,8 @@ def test_limit_list_meanings_are_supported_by_official_field_definitions():
 
 # --- R14：corporate_actions 的真实源是 QMT，不是草案假定的 akshare -------
 
-def test_corporate_actions_points_at_qmt_dividends_not_akshare():
-    """pipeline/dividends.py 明说数据来自 QMT get_divid_factors——
-    正是因为 akshare 的 stock_fhps_detail_em 不含配股。"""
+def test_corporate_actions_default_lineage_stays_qmt_until_cash_activation():
+    """现金能力准备不改当前默认；启用政策另行审阅，历史批次仍按原始收据。"""
     for m in METRICS:
         if m.dataset == "corporate_actions":
             if isinstance(m.lineage, Direct):

@@ -7,14 +7,16 @@ import json
 import math
 import os
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from time import monotonic
 
 import polars as pl
 import pyarrow.parquet as pq
 
 from qsys.data import schema
 from qsys.data.pipeline.dividends import DIVIDEND_SCHEMA
+from qsys.data.providers.tushare_client import TushareClient
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
 from qsys.data.windows_data_transport import WindowsDataTransport
@@ -92,6 +94,121 @@ def append_events(warehouse: Warehouse, fresh: pl.DataFrame) -> int:
     return added.height
 
 
+_CASH_FIELDS = ("ts_code", "ann_date", "div_proc", "cash_div_tax", "ex_date")
+
+
+def prepare_cash_source(work_root: Path, *, cash_source: str,
+                        cash_client: TushareClient | None, run_id: str) -> None:
+    """策略绑定独立于成功导入收据；兼容基线在任何外部调用前拒绝静默换回。"""
+    if cash_source not in {"qmt", "tushare"} or (cash_source == "tushare" and cash_client is None):
+        raise ValueError("explicit supported dividend cash source and client required")
+    root = work_root / "dividends"
+    policy = root / "cash-source-policy.json"
+    if policy.exists():
+        record = json.loads(policy.read_text(encoding="utf-8"))
+        if (record.get("protocol") != "qsys-dividend-cash-policy-v1"
+                or record.get("cash_source") != "tushare"):
+            raise ValueError("invalid dividend cash policy binding")
+        if cash_source != "tushare":
+            raise ValueError("dividend cash source cannot silently revert to QMT")
+    checkpoint = root / "last-imported.json"
+    if checkpoint.exists():
+        imported = json.loads(checkpoint.read_text(encoding="utf-8"))
+        if imported.get("protocol") != "qsys-dividend-import-v1":
+            raise ValueError("invalid dividend checkpoint")
+        # 已发布v1旧协议固定使用QMT；这是版本契约，不以缺失字段猜市场数据。
+        previous_source = imported.get("cash_source", "qmt")
+        if previous_source not in {"qmt", "tushare"}:
+            raise ValueError("invalid dividend cash checkpoint")
+        if previous_source == "tushare" and cash_source != "tushare":
+            raise ValueError("dividend cash source cannot silently revert to QMT")
+    if cash_source == "tushare" and not policy.exists():
+        root.mkdir(parents=True, exist_ok=True)
+        with policy.open("x", encoding="utf-8") as handle:
+            json.dump({"protocol": "qsys-dividend-cash-policy-v1", "cash_source": "tushare",
+                       "requested_at": datetime.now(timezone.utc).isoformat(), "run_id": run_id}, handle)
+            handle.flush()
+            os.fsync(handle.fileno())
+        for directory in (root, root.parent):
+            fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+
+
+def select_tushare_cash(fresh: pl.DataFrame, *, client: TushareClient,
+                        audit_dir: Path, run_id: str, qmt_sha256: str) -> pl.DataFrame:
+    """独立保存现金直取收据；缺证据候选保留null，质量拒绝前不触碰仓库。"""
+    if fresh.select("symbol", "ex_date").is_duplicated().any():
+        raise ValueError("duplicate incoming dividend event")
+    rows = fresh.to_dicts()
+    selected = [None] * len(rows)
+    issues = []
+    receipts = audit_dir / "cash-source.jsonl"
+    with receipts.open("x", encoding="utf-8") as handle:
+        def record(value: dict) -> None:
+            handle.write(json.dumps({"observed_at": datetime.now(timezone.utc).isoformat(), **value},
+                                    ensure_ascii=False, allow_nan=False) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+
+        record({"protocol": "qsys-dividend-cash-v1", "run_id": run_id,
+                "source": "tushare.dividend.cash_div_tax", "qmt_sha256": qmt_sha256,
+                "validation_scope": "cash_selection_only"})
+        deadline = monotonic() + 120
+        for index, row in enumerate(rows):
+            symbol, stamp = row["symbol"], row["ex_date"].strftime("%Y%m%d")
+            if monotonic() >= deadline:
+                record({"symbol": symbol, "ex_date": stamp, "error": "cash_source_deadline_exceeded"})
+                issues.append("cash_source_deadline_exceeded")
+                break
+            try:
+                response = client.call("dividend", {"ts_code": symbol, "ex_date": stamp},
+                                       ",".join(_CASH_FIELDS))
+                raw = [{key: value.get(key) for key in _CASH_FIELDS} for value in response]
+            except Exception as exc:
+                # 私有配置/HTTP异常可能包含输入或凭据，只保留类型，禁止外传原消息。
+                record({"symbol": symbol, "ex_date": stamp,
+                        "error_type": type(exc).__name__})
+                issues.append("cash_source_request_failed")
+                break
+            # 非有限数用带类型的审计表示保留，不能生成非标准JSON或写成业务0。
+            audited = [{key: {"nonfinite_float": repr(value)}
+                        if type(value) is float and not math.isfinite(value) else value
+                        for key, value in values.items()} for values in raw]
+            record({"symbol": symbol, "ex_date": stamp, "rows": audited})
+            matches = [value for value in raw if value["ts_code"] == symbol
+                       and value["ex_date"] == stamp and value["div_proc"] == "实施"]
+            if len(matches) != 1:
+                issues.append("cash_implementation_missing_or_ambiguous")
+                continue
+            cash = matches[0]["cash_div_tax"]
+            if cash is None:
+                issues.append("cash_value_missing")
+            else:
+                try:
+                    valid = (type(cash) in (int, float) and math.isfinite(cash)
+                             and cash >= 0 and float(cash) == cash)
+                except OverflowError:
+                    valid = False
+                if valid:
+                    selected[index] = cash
+                else:
+                    issues.append("cash_value_invalid")
+        candidate = fresh.with_columns(pl.Series("cash_per_share", selected, dtype=pl.Float64))
+        with (audit_dir / "cash-selected.parquet").open("xb") as output:
+            pq.write_table(candidate.to_arrow().cast(schema.CORPORATE_ACTIONS), output)
+            output.flush()
+            os.fsync(output.fileno())
+        record({"status": "rejected" if issues else "accepted", "rows": candidate.height,
+                "null_cash_cells": candidate["cash_per_share"].null_count(),
+                "issues": issues})
+    if issues:
+        raise ValueError("dividend cash quality rejected; inspect cash-source.jsonl")
+    return candidate
+
+
 def import_window(day: date, initial_start: date, checkpoint: Path) -> date:
     """以成功导入窗口而非最后事件日期续采，回看7天并拒绝超出协议窗口的断流。"""
     previous = initial_start
@@ -135,10 +252,12 @@ def dividend_universe(instruments: pl.DataFrame, actions: pl.DataFrame,
 
 def sync_dividends(warehouse: Warehouse, day: date, *, initial_start: date,
                    work_root: Path, transport: WindowsDataTransport,
-                   script: Path, run_id: str) -> int:
+                   script: Path, run_id: str, cash_source: str = "qmt",
+                   cash_client: TushareClient | None = None) -> int:
     """调用方持实际warehouse写锁；不重发run，不自动恢复未知送达请求。"""
     root = work_root / "dividends"
     checkpoint = root / "last-imported.json"
+    prepare_cash_source(work_root, cash_source=cash_source, cash_client=cash_client, run_id=run_id)
     start = import_window(day, initial_start, checkpoint)
     query = WarehouseQuery(warehouse)
     symbols, excluded = dividend_universe(query.instruments(), query.corporate_actions(), start)
@@ -165,6 +284,7 @@ def sync_dividends(warehouse: Warehouse, day: date, *, initial_start: date,
     # only the strictly identified preauthentication reset may be retried.
     intent = {"run_id": run_id, "job": job, "start": start.isoformat(),
               "end": day.isoformat(), "script_sha256": digest,
+              "cash_source": cash_source,
               "manifest_sha256": _sha(manifest)}
     intent["scope_sha256"] = _sha(scope)
     with (work / "requested.json").open("x", encoding="utf-8") as handle:
@@ -175,9 +295,16 @@ def sync_dividends(warehouse: Warehouse, day: date, *, initial_start: date,
     destination = work / "bundle"
     transport.receive(job, destination)
     fresh = validate_snapshot(destination, symbols=symbols, start=start, end=day, run_id=run_id)
+    cash_evidence = {}
+    if cash_source == "tushare":
+        fresh = select_tushare_cash(fresh, client=cash_client, audit_dir=work,
+                                    run_id=run_id, qmt_sha256=_sha(destination / "events.parquet"))
+        cash_evidence = {"cash_receipts_sha256": _sha(work / "cash-source.jsonl"),
+                         "cash_selected_sha256": _sha(work / "cash-selected.parquet")}
     rows = append_events(warehouse, fresh)
     record = {**intent, "protocol": "qsys-dividend-import-v1",
               "initial_start": initial_start.isoformat(), "added": rows,
+              "cash_source": cash_source, **cash_evidence,
               "bundle_sha256": _sha(destination / "events.parquet")}
     temporary = root / f".last-imported-{run_id}.tmp"
     with temporary.open("x", encoding="utf-8") as handle:

@@ -246,11 +246,15 @@ def main() -> int:
     parser.add_argument("--dividend-win-script-source", type=Path,
                         help="随制品携带且已获Windows gateway批准的送配下载器")
     parser.add_argument("--dividend-win-host", default="Administrator@118.25.42.149")
+    parser.add_argument("--dividend-cash-source", choices=("qmt", "tushare"), default="qmt",
+                        help="显式现金选源；tushare只认唯一实施记录，不回退或补空")
     parser.add_argument(
         "--late-minute-convergence", action="store_true",
         help="同步成功后收敛当日晚到上市标的；生产定时任务显式启用",
     )
     args = parser.parse_args()
+    if args.dividend_cash_source != "qmt" and not args.dividend_sync:
+        parser.error("--dividend-cash-source requires --dividend-sync")
     if args.dividend_sync and (args.dividend_initial_start is None
                               or args.dividend_win_script_source is None
                               or args.late_minute_win_known_hosts is None
@@ -258,7 +262,15 @@ def main() -> int:
         parser.error("--dividend-sync requires explicit initial start, script and gateway credentials")
 
     with ServiceRun.open(args.service_runs, "tushare-sync") as run:
-        client = TushareClient(load_tushare_config(args.config).token)
+        tushare_config = load_tushare_config(args.config)
+        client = TushareClient(tushare_config.token)
+        cash_client = (TushareClient(tushare_config.token, max_retries=1, timeout=10.0)
+                       if args.dividend_cash_source == "tushare" else None)
+        if args.dividend_sync:
+            from qsys.data.pipeline.dividend_sync import prepare_cash_source
+
+            prepare_cash_source(args.late_minute_work_root, cash_source=args.dividend_cash_source,
+                                cash_client=cash_client, run_id=run.run_id)
         now = datetime.now(ZoneInfo("Asia/Shanghai"))
         # 16:00 前当日数据可能尚未结算；默认只允许选到前一自然日。
         calendar_end = completed_calendar_end(now)
@@ -288,7 +300,10 @@ def main() -> int:
                             warehouse, day, initial_start=args.dividend_initial_start,
                             work_root=args.late_minute_work_root, transport=transport,
                             script=args.dividend_win_script_source, run_id=run.run_id,
+                            cash_source=args.dividend_cash_source,
+                            cash_client=cash_client,
                         )
+                        step.detail = f"现金选源 {args.dividend_cash_source}；原始QMT快照保留；仅追加无冲突事件"
             except Exception:
                 # Preserve quality evidence for completed Tushare facts, but do
                 # not derive or publish factors from an unverified event input.
