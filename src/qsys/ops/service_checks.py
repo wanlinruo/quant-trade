@@ -363,7 +363,7 @@ def _catalog_verify_ran(ctx: CheckContext) -> CheckResult:
                 CheckResult(BAD, "", "当日没有验证结果", rows=0))
         return _judge_data_without_run("当日跑过指标字典验证", data)
     step = next((s for s in run.get("steps", []) if s.get("table") == "metric_checks"), None)
-    if step is None or step.get("status") not in (SUCCEEDED, SKIPPED):
+    if step is None or step.get("status") not in (SUCCEEDED, WARNING, SKIPPED):
         return CheckResult(BAD, "当日跑过指标字典验证",
                            "未执行" if step is None else f"步骤 {step.get('status')}",
                            (step or {}).get("detail", "") or run.get("error", ""))
@@ -377,6 +377,16 @@ def _catalog_verify_ran(ctx: CheckContext) -> CheckResult:
             if results.height else CheckResult(BAD, "", "验证跳过且当日没有结果", rows=0),
         )
     rows = step.get("rows") or 0
+    failed = [item for item in run.get("steps", [])
+              if item.get("status") == FAILED and item.get("affects_run", True)]
+    if failed or run.get("status") in (FAILED, "interrupted"):
+        detail = "；".join(f"{item['name']}: {item.get('detail', '')}" for item in failed)
+        return CheckResult(BAD, "当日跑过指标字典验证",
+                           f"验证已执行，任务 {run.get('status', FAILED)}",
+                           detail or "任务未成功完成，详见运行记录", rows=rows)
+    if step.get("status") == WARNING or run.get("status") == WARNING:
+        return CheckResult(WARN, "当日跑过指标字典验证",
+                           f"验证已执行，{rows} 条结果，有警告", step.get("detail", ""), rows=rows)
     return CheckResult(OK, "当日跑过指标字典验证",
                        f"{step.get('finished_at', '')[11:]} 完成，{rows} 条结果", rows=rows)
 

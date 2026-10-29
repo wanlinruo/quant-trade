@@ -113,3 +113,21 @@ METRIC_CHECKS Arrow schema构造结果，新增120条通过后出现失败/样�
 #568候选保持表映射API兼容并显式返回关系摘要，CLI独立记录关系步骤及退出码；red/gray/
 必需关系缺失为failed/exit1，yellow为warning。后续真实输入验收须验证软件正确拦截既有
 红项，同时保留数据未通过事实；正常收盘自然批次后再验数据层，不能称全部恢复。
+
+
+## 10-29正式生产与实际消费者验收
+
+catalog/Web均已发布ae29a7e；workflow40822371810/40823805986、Deployment7404678256/
+7404883582、节点实际validate_record三方一致。人工生产run catalog-verify-132210-2546373
+完整unit/UID/PID/invocation绑定，638字段0阻断/28warning，表10绿2黄，关系6绿1红，
+关系步骤及整体failed/exit1正确。67绑定有效，原QA全部列/重复次数保留，业务Parquet/
+配置/baseline/KILL/Live主库SHA不变；软件验收通过不等于数据红项消失。
+
+HTTP估值绿、关系红、精确Run独立关系失败均已核验；catalog timer恢复，19:40运行/19:55
+节点只读采证，原17:20观察保持。新观察替代仅绑定旧8d的19:50辅助观察，原记录不删。
+审计根issue561-versions-r3-20261029及前两失败根全部保留，详见#561正式验收评论。
+
+真实旧日报988读取字段638/28/0正常；真实旧service-checks993能读取新QA和454覆盖，
+但把字段warning误报未执行。#570候选接受已完成warning同时保留真实任务/步骤失败，
+正常CI/test/PR后只升级service-checks；必要controller v38例外限定已安装idle组件，
+暂停自身timer、稳定Live/KILL/主库及九peer，安装不启动oneshot，不借机恢复交易。
