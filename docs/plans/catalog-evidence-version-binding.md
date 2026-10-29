@@ -84,3 +84,17 @@ ServiceRun，不因本项升级。其他未发布的cutover消费者不算现场
 回归覆盖物理替换（含值不变）、源/目标增删、无关表不失效、日分区覆盖年文件、旧schema
 与旧投影兼容、TTL、对象/范围防串用、关系双方绑定、真实验证过程漂移拒绝、页面当前灰与
 历史红并存，以及实际controller记录validate_record与仅Web重启。全量和生产证据以Issue为准。
+
+
+## 10-29首次真实输入隔离失败与前进修复
+
+PR#565/main b112c93所有发布前证据通过，controller v37与两个候选staging完成，两个dry-run
+成功；生产组件尚未切换。隔离run catalog-verify-104222-2470972在字段验证阶段失败：
+C6不识别旧QA schema缺新元数据列，runner结果首100条sample_path为null、之后出现真实路径
+导致Polars推断失败。失败/样本/真实unit证据保留于issue561-versions-20261029审计根。
+所有生产Parquet版本保持，catalog timer恢复原active/enabled；不能称为候选业务验收通过。
+
+兼容修复仅允许dataset_checks/relation_checks的精确旧Arrow schema缺input_version，
+未知元数据仍null且当前待重验；其他列/类型与所有市场表保持严格契约。runner依据明确
+METRIC_CHECKS Arrow schema构造结果，新增120条通过后出现失败/样本的真实落盘回归。
+正常CI/test/PR后使用新制品、审计根和run-id重验，保留全部首次失败与回退副本。

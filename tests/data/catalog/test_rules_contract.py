@@ -2,6 +2,7 @@ from datetime import date, datetime
 
 import pyarrow as pa
 import pyarrow.parquet as pq
+import pytest
 
 from qsys.data import schema
 from qsys.data.catalog import checks as C
@@ -57,3 +58,19 @@ def test_strategy_catalog_contract_checks_all_unlanded_metrics(warehouse):
     row = _run(warehouse, "C7.catalog_contract.strategy")
     assert row["passed"] is True
     assert row["checked_rows"] == 10
+
+
+@pytest.mark.parametrize('dataset', ['dataset_checks', 'relation_checks'])
+@pytest.mark.parametrize('change', ['legacy', 'missing_other', 'wrong_version_type'])
+def test_only_exact_legacy_quality_metadata_omission_is_compatible(warehouse, dataset, change):
+    current=schema.ALL[dataset]
+    old=current.remove(current.get_field_index('input_version'))
+    if change=='legacy':physical=old
+    elif change=='missing_other':physical=old.remove(old.get_field_index('status'))
+    else:physical=pa.schema([*old,pa.field('input_version',pa.int64())])
+    path=warehouse.path_for(dataset,2026);path.parent.mkdir(parents=True)
+    pq.write_table(pa.Table.from_pylist([],schema=physical),path)
+    row=_run(warehouse,'C6.storage_contract.'+dataset)
+    assert row['passed'] is (change=='legacy')
+    assert row['checked_rows']==1
+    if change!='legacy':assert row['severity']=='blocking'

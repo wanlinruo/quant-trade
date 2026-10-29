@@ -14,6 +14,7 @@ from enum import StrEnum
 from pathlib import Path
 
 import polars as pl
+import pyarrow as pa
 import structlog
 
 from qsys.data import schema
@@ -183,8 +184,7 @@ def run_checks(
     if not rows:
         return pl.from_arrow(schema.METRIC_CHECKS.empty_table())
     return pl.from_arrow(
-        pl.DataFrame(rows).select(schema.METRIC_CHECKS.names)
-        .to_arrow().cast(schema.METRIC_CHECKS)
+        pa.Table.from_pylist(rows, schema=schema.METRIC_CHECKS)
     )
 
 
