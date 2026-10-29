@@ -108,3 +108,16 @@ def test_register_rejects_unknown_metric():
     with pytest.raises(ValueError, match="未登记"):
         C.register(_check("test.unknown.metric", lambda _: C.CheckResult(0, 1),
                           metrics=("nope.nope",)))
+
+
+def test_late_failure_sample_does_not_depend_on_first_hundred_rows(ctx, tmp_path):
+    checks = [_check(f'X.ok{i}', lambda _: C.CheckResult(0, 10)) for i in range(120)]
+    checks.append(_check('X.late', lambda _: C.CheckResult(
+        1, 10, sample=pl.DataFrame({'symbol':['000001.SZ']}))))
+    out = C.run_checks(ctx, 'late-result', NOW, only=checks, artifacts=tmp_path)
+    assert out.height == 121
+    assert out['passed'].sum() == 120
+    late = out.filter(pl.col('check_id')=='X.late').row(0,named=True)
+    assert late['passed'] is False and late['severity']=='blocking'
+    assert pl.read_parquet(late['sample_path'])['symbol'].to_list()==['000001.SZ']
+    assert out['sample_path'].null_count()==120

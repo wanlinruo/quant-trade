@@ -1,5 +1,21 @@
 # 项目交接入口
 
+## 10-29 10:43：#561首次隔离失败，生产未激活，前进兼容修复中
+
+- PR#565/main b112c93经CI/test/PR/Align/最终CI全部success；controller v37已可信安装，
+  原v36完整备份、私有控制配置/dispatcher/节点catalog和Web规格未变。两个候选只staging，
+  catalog/web dry-run40807820654/40807992728通过，生产仍catalog8d8307e/Web9727d80。
+- 真实隔离run catalog-verify-104222-2470972，UID984/PID2470972/Invocationabb992f6...，
+  完整unit契约绑定，10:43:05 failed/exit1。旧QA缺新元数据列触发C6异常，随后runner在
+  第100行后首次样本路径字符串出现而Polars推断失败。原失败/样本/记录全部留存；生产
+  所有Parquet物理版本保持。catalog timer已恢复active/enabled，19:40正常旧版本运行。
+- 审计根/data/qsys/var-deployments/issue561-versions-20261029/。前进候选只兼容两QA表的
+  精确旧Arrow schema缺input_version，其他缺列/错类型及市场表契约不放宽；runner依据
+  显式Arrow schema落结果，增加晚出现样本回归。新制品/新run-id重验，不能重写旧失败。
+- 今晨08:58 Paper出现新自然SQLITE_CANTOPEN退出并由systemd自动拉起，当前PID2408585/
+  NRestarts2，证据已补#539/#549；发生在本轮生产动作之前，未恢复账户。后续peer核验使用
+  当前真实身份，不沿用昨晚634053。Tushare3facceb、Live PID0/KILL及自然观察计划保持。
+
 ## 10-29 #561证据版本绑定候选推进（生产尚未切换）
 
 - 维护者再次全权授权继续#540。#561本地候选为表/关系质量元数据加入input_version，

@@ -86,6 +86,10 @@ def _storage_contract(dataset: str, ctx: CheckContext) -> CheckResult:
     total_rows = 0
     keys = _KEYS.get(dataset, _default_keys(dataset, expected.names))
     seen_columns: set[str] = set()
+    # Only the exact historical quality schemas may omit this new metadata.
+    # Market schemas, other missing columns and wrong types remain blocking.
+    legacy_quality = dataset in {"dataset_checks", "relation_checks"}
+    legacy = expected.remove(expected.get_field_index("input_version")) if legacy_quality else None
     for path in paths:
         try:
             parquet = pq.ParquetFile(path)
@@ -96,6 +100,7 @@ def _storage_contract(dataset: str, ctx: CheckContext) -> CheckResult:
                 "file": str(path), "column": "*", "problem": f"不可读：{exc}"
             })
             continue
+        legacy_quality = legacy_quality and actual.equals(legacy, check_metadata=False)
         total_rows += metadata.num_rows
         seen_columns.update(actual.names)
         for field in actual:
@@ -125,7 +130,7 @@ def _storage_contract(dataset: str, ctx: CheckContext) -> CheckResult:
                 })
 
     for field in expected:
-        if field.name not in seen_columns:
+        if field.name not in seen_columns and not (field.name == "input_version" and legacy_quality):
             problems.append({
                 "file": "全部分区", "column": field.name, "problem": "列从未落盘"
             })
