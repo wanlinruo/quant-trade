@@ -393,6 +393,7 @@ DATASET_CHECKS = pa.schema(
         ("violations", pa.int64()),
         ("checked_rows", pa.int64()),
         ("detail", pa.string()),
+        ("input_version", pa.string()),
     ]
 )
 
@@ -416,6 +417,7 @@ RELATION_CHECKS = pa.schema(
         ("orphan_rows", pa.int64()),
         ("violations", pa.int64()),
         ("detail", pa.string()),
+        ("input_version", pa.string()),
     ]
 )
 

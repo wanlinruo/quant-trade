@@ -580,6 +580,7 @@ def dataset_check_frame(
     *,
     scope_start: date | None = None,
     scope_end: date | None = None,
+    input_version: str | None = None,
 ) -> pl.DataFrame:
     policy = policy_for(dataset_id)
     required = set(policy.required_dimensions) if policy else set()
@@ -590,7 +591,7 @@ def dataset_check_frame(
         "status": item.status.value, "evidence_at": item.observed_at,
         "expires_at": item.expires_at, "required": item.dimension in required,
         "violations": item.violations, "checked_rows": item.checked_rows,
-        "detail": item.reason.message,
+        "detail": item.reason.message, "input_version": input_version,
     } for item in evidence]
     return _rows(rows, schema.DATASET_CHECKS)
 
@@ -603,6 +604,7 @@ def relation_check_frame(
     *,
     scope_start: date | None = None,
     scope_end: date | None = None,
+    input_version: str | None = None,
 ) -> pl.DataFrame:
     item = result.evidence
     row = {
@@ -615,7 +617,7 @@ def relation_check_frame(
         "required": dependency.requirement is DependencyRequirement.REQUIRED,
         "upstream_rows": result.upstream_rows, "downstream_rows": result.downstream_rows,
         "matched_rows": result.matched_rows, "orphan_rows": result.orphan_rows,
-        "violations": item.violations, "detail": item.reason.message,
+        "violations": item.violations, "detail": item.reason.message, "input_version": input_version,
     }
     return _rows([row], schema.RELATION_CHECKS)
 

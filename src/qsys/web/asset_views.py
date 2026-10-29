@@ -17,6 +17,7 @@ from qsys.data.catalog.advisor import (
     advise_split,
 )
 from qsys.data.catalog.checks import CHECKS
+from qsys.data.catalog.input_versions import current_result
 from qsys.data.catalog.health import (
     HealthDimension,
     HealthEvidence,
@@ -192,7 +193,9 @@ class DataAssetService:
         return {row.dataset: row for row in (*previous, *ready)}, pending, failed
 
     def _assessment(self, dataset_id: str, now: datetime | None = None):
-        rows = _latest_rows(self._query.dataset_checks(dataset_id).to_dicts())
+        cache = {}
+        rows = [current_result(self._warehouse, row, cache=cache) for row in
+                _latest_rows(self._query.dataset_checks(dataset_id).to_dicts())]
         return aggregate_health(
             policy_for(dataset_id), _health_evidence(rows), now or datetime.now()
         )
@@ -294,7 +297,7 @@ class DataAssetService:
         relation_rows = self._query.relation_checks(
             edge.upstream, edge.downstream
         ).to_dicts()
-        latest = relation_rows[0] if relation_rows else None
+        latest = current_result(self._warehouse, relation_rows[0]) if relation_rows else None
         left_health = self._assessment(left.id).status
         right_health = self._assessment(right.id).status
 
@@ -306,7 +309,8 @@ class DataAssetService:
         complete = None
         if latest is not None:
             complete = (
-                edge.cardinality is JoinCardinality.ONE_TO_ONE
+                latest["status"] in (HealthStatus.GREEN, HealthStatus.YELLOW)
+                and edge.cardinality is JoinCardinality.ONE_TO_ONE
                 and latest["orphan_rows"] == 0
                 and latest["matched_rows"] == latest["downstream_rows"]
                 and latest["upstream_rows"] == latest["downstream_rows"]
@@ -353,7 +357,7 @@ class DataAssetService:
             return None
         history = self._query.relation_checks(upstream, downstream).to_dicts()
         return RelationDetail(
-            dependency, history[0] if history else None, tuple(history),
+            dependency, current_result(self._warehouse, history[0]) if history else None, tuple(history),
             self._pair_advice(dependency),
         )
 

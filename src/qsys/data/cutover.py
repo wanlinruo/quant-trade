@@ -17,6 +17,7 @@ import polars as pl
 
 from qsys.data import schema
 from qsys.data.access import facade_reconciliation
+from qsys.data.catalog.input_versions import current_result
 from qsys.data.catalog.health import (
     HealthDimension,
     HealthEvidence,
@@ -260,7 +261,9 @@ def _latest(rows: list[dict]) -> list[dict]:
 
 
 def _dataset_health(query: WarehouseQuery, dataset: str, now: datetime):
-    rows = _latest(query.dataset_checks(dataset).to_dicts())
+    cache = {}
+    rows = [current_result(query._wh, row, cache=cache)
+            for row in _latest(query.dataset_checks(dataset).to_dicts())]
     evidence = tuple(
         HealthEvidence(
             HealthDimension(row["dimension"]), HealthStatus(row["status"]),
@@ -302,7 +305,9 @@ def _required_relation_health(
         if rows.height == 0:
             failures.append(f"{edge.upstream}->{edge.downstream}=missing")
             continue
-        latest = rows.sort("checked_at", descending=True).row(0, named=True)
+        latest = current_result(
+            query._wh, rows.sort("checked_at", descending=True).row(0, named=True)
+        )
         expired = latest["expires_at"] is not None and latest["expires_at"] < now
         if latest["status"] in (HealthStatus.GRAY.value, HealthStatus.RED.value) or expired:
             suffix = "/expired" if expired else ""

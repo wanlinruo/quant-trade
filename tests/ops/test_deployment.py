@@ -1311,7 +1311,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
 
     state = entrypoint.status({"production_repo": str(tmp_path)})
 
-    assert state["entrypoint_version"] == 36
+    assert state["entrypoint_version"] == 37
     assert set(state["capabilities"]) == {
         "systemd-apply-v1", "systemd-component-boundary-v1", "systemd-changed-artifacts-v1",
         "systemd-preview-v1", "systemd-runtime-paths-v1", "systemd-rollback-v1",
@@ -1345,6 +1345,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
         "component-tushare-maintenance-v1",
         "component-tushare-failed-terminal-v1",
         "component-catalog-maintenance-v1",
+        "component-web-evidence-maintenance-v1",
         "emergency-restart-authorization-v1",
     }
 

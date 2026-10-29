@@ -3,6 +3,7 @@ from datetime import date, datetime, timedelta
 import polars as pl
 
 from qsys.data import schema
+from qsys.data.catalog.input_versions import dataset_binding
 from qsys.data.catalog.health import (
     ALL_DIMENSIONS,
     HealthEvidence,
@@ -78,7 +79,9 @@ def _green_health(warehouse, datasets):
             for dimension in ALL_DIMENSIONS
         )
         write_dataset_checks(
-            warehouse, dataset_check_frame("cutover-test", now, dataset, evidence)
+            warehouse, dataset_check_frame("cutover-test", now, dataset, evidence,
+                scope_start=DAY, scope_end=DAY,
+                input_version=dataset_binding(warehouse, dataset, DAY, DAY))
         )
 
 
