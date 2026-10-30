@@ -1,5 +1,34 @@
 # 项目交接入口
 
+## 10-30 23:43：数据自然同步通过；模拟已恢复待11-02生效
+
+- **当前生产**：归档/Tushare=a132，Web=d505，catalog=ae29，checks=0a67，observer=868b50a，
+  Paper=2e59dacef9e48a6dc432980a213a991e04cb71e1，可信controller v41；共享checkout505保持。
+  Live inactive/disabled/PID0、原KILL/主库保持，Shadow不启动。下文“候选/未安装”为历史快照。
+- #549经PR#576正式安装，workflow41073410855/Deployment7440999417/实际record三方success，
+  真实观察器已能将error账户判down；本项关闭不代表账户恢复。#482首阶段已生产，完整语义仍待。
+- #539经PR#577正式安装，稳定本地4269 passed/7既有skipped、CI/test/PR/Align/最终CI通过；
+  正式workflow41079514822/Deployment7441920545/实际validate_record三方success。
+  确定性关闭事务连接、无事务WAL/SHM锚点，真实UID/只读沙箱和完整执行契约下4次Runtime/
+  8次tick通过；禁用GC2万次现场FD保持8，仍不附会历史两次CANTOPEN的唯一触发原因。
+- 23:31使用既有resume接口，只恢复两个error为scheduled/2026-11-02（Tushare正式日历）；
+  原1 ended保持，原资金/配置/状态快照及八张历史表逐值保持，17订单/60成交/254事件/
+  249策略run/547945权益等不变，无pending/持仓，不重放旧事件。私有原始一致性备份0600保留。
+- 新supervisor3298434、workers3302390/3302391均2e59，FD8/11/11；23:43 HTTP页面2待生效/
+  1已结束，原十peer身份/KILL/主库保持。当前正常心跳仅证明未来生效准备，不是周一业务已通过。
+- 节点只读timer已安排11-02 09:20起盘、10:00竞价、16:00收盘；绑定精确Paper2e59、原254事件
+  指纹、实际事件状态及Live停用。节点重启或Paper版本变化须复核临时timer；Mac休眠不影响节点执行。
+  #539保持status:validation开放，原错误历史保留；#550/#478等新分钟自然实际下载，不能据无缺口跳过关闭。
+- 审计根 `/data/qsys/var-deployments/issue539-paper-release-20261030/`：
+  runtime-preproduction-verified、post-publication-verified、resume-final-verified、
+  natural-observers-scheduled.json；备份/原失败/恢复收据在私有resume-output各目录。
+  r1审计Row序列化、r2静态WAL冷读均拒绝于状态写前（transition=0），r3用tuple和SHA相同
+  私有可写缓存验证原备份后成功；原件/失败记录不动，无immutable/放宽权限/业务写重放。
+- 19点a132同步/19:25独立报告accepted；19:40字典638/0阻断/28警告、表11绿1黄/关系7绿，
+  20点checks warning含停用Live无事件、系统盘16.2GiB与9到期副本，均不清理或改历史转绿。
+- QMT22:14/22:21为PID704，自20:54更替、父字段5340，原因未定，C约3.64GiB；#543/#545仅
+  数据/模拟连续性支持。下一重点是自然模拟/分钟验收，不启动实盘、扩研究或大架构。
+
 ## 10-30 22:41后：观察器修复完成，继续Paper连接生命周期
 
 - #549已PR#576/main868b50a正式发布，workflow41073410855/Deployment7440999417/实际
