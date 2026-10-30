@@ -1,0 +1,88 @@
+{
+  "at": "2026-10-30T15:29:29.8752498+08:00",
+  "protocol": "qsys550-bounded-controller-v1",
+  "helper_pid": 4028,
+  "timed_out": false,
+  "helper_exit": 0,
+  "rows": [
+    {
+      "protocol": "qsys550-native-candidate-v1",
+      "download_calls": 0,
+      "subscribe_calls": 0,
+      "account_calls": 0,
+      "trading_calls": 0,
+      "production_writes": 0,
+      "pid": 3660,
+      "status": "passed",
+      "python": "3.11.9",
+      "candidate_sha256": "d5fb94b3c2fa4c824c557fad31835896135b9f1d0891d56d2c8fe7418eecc074",
+      "parquet_sha256": "42146f7949a2af5656ac96f34d2eef04795c54ca664296fe4531128b8efd7b04",
+      "rows": 2410,
+      "physical_schema": "symbol: string\ndt: timestamp[us]\nopen: double\nhigh: double\nlow: double\nclose: double\nvolume: int64\namount: double",
+      "native_values_exact": true,
+      "no_native_zero_volume_rows_dropped": true,
+      "cases": [
+        {
+          "symbol": "600000.SH",
+          "start": "20261026",
+          "end": "20261027",
+          "rows": 482,
+          "native_zero_volume_preserved": 4
+        },
+        {
+          "symbol": "000001.SZ",
+          "start": "20261026",
+          "end": "20261027",
+          "rows": 482,
+          "native_zero_volume_preserved": 2
+        },
+        {
+          "symbol": "920285.BJ",
+          "start": "20261026",
+          "end": "20261027",
+          "rows": 482,
+          "native_zero_volume_preserved": 3
+        },
+        {
+          "symbol": "301139.SZ",
+          "start": "20261026",
+          "end": "20261027",
+          "rows": 482,
+          "native_zero_volume_preserved": 80
+        },
+        {
+          "symbol": "301139.SZ",
+          "start": "20261028",
+          "end": "20261028",
+          "rows": 0,
+          "native_zero_volume_preserved": 0
+        },
+        {
+          "symbol": "513100.SH",
+          "start": "20260928",
+          "end": "20260929",
+          "rows": 0,
+          "native_zero_volume_preserved": 0
+        },
+        {
+          "symbol": "600000.SH",
+          "start": "20261025",
+          "end": "20261025",
+          "rows": 0,
+          "native_zero_volume_preserved": 0
+        },
+        {
+          "symbol": "688785.SH",
+          "start": "20261026",
+          "end": "20261027",
+          "rows": 482,
+          "native_zero_volume_preserved": 63
+        }
+      ]
+    }
+  ],
+  "stderr_present": false,
+  "client_pid_after": [
+    5340
+  ]
+}

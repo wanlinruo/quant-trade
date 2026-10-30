@@ -102,10 +102,18 @@ class Gateway:
         self.dividend_root = None
         self.python = Path(config["python"])
         self.scripts = config["scripts"]
+        # N/N-1 release compatibility: the client still requests one exact approved
+        # source hash. This is not a data/API fallback and never retries execution.
+        self.previous_minute = config.get("previous_minute")
         if (not self.python.is_absolute()
                 or not {"minute", "auction"} <= set(self.scripts)
                 or set(self.scripts) - {"minute", "auction", "dividend"}):
             raise ValueError("fixed python and both approved downloaders required")
+        if self.previous_minute is not None:
+            if (not isinstance(self.previous_minute, dict)
+                    or set(self.previous_minute) != {"path", "sha256"}
+                    or self.previous_minute["sha256"] == self.scripts["minute"]["sha256"]):
+                raise ValueError("previous minute must name one distinct approved script")
         if "dividend" in self.scripts:
             self.dividend_root = Path(config["dividend_root"])
             candidate = self.dividend_root.resolve()
@@ -115,7 +123,10 @@ class Gateway:
                 raise ValueError("dividend root must be absolute and disjoint")
             regular(self.dividend_root)
             resolved.append(candidate)
-        for item in self.scripts.values():
+        approved = [*self.scripts.values()]
+        if self.previous_minute is not None:
+            approved.append(self.previous_minute)
+        for item in approved:
             if set(item) != {"path", "sha256"} or not SHA.fullmatch(str(item["sha256"])):
                 raise ValueError("invalid downloader configuration")
             path = Path(item["path"])
@@ -176,7 +187,13 @@ class Gateway:
             return {"uploaded": size}
         if op == "run":
             kind = req["job"].split("_")[0]
-            info = self.scripts[kind]
+            approved = [self.scripts[kind]]
+            if kind == "minute" and self.previous_minute is not None:
+                approved.append(self.previous_minute)
+            matches = [item for item in approved if item["sha256"] == req["sha256"]]
+            if not SHA.fullmatch(str(req["sha256"])) or len(matches) != 1:
+                raise ValueError("downloader hash is not approved")
+            info = matches[0]
             script = Path(info["path"])
             regular(script)
             if (not SHA.fullmatch(str(req["sha256"])) or req["sha256"] != info["sha256"]

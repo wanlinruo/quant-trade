@@ -173,7 +173,7 @@ def test_reader_staging_drift_prevents_install_and_actual_record_is_valid(monkey
     assert not any("systemctl" in command for command in commands)
 
 
-@pytest.mark.parametrize("component,label", [("tushare-sync", "tushare"), ("catalog-verify", "catalog"), ("service-checks", "service_checks")])
+@pytest.mark.parametrize("component,label", [("tushare-sync", "tushare"), ("catalog-verify", "catalog"), ("service-checks", "service_checks"), ("daily-archive", "daily_archive")])
 @pytest.mark.parametrize("unit,field,value", [
     ("timer", "ActiveState", "active"), ("timer", "ActiveState", "activating"),
     ("timer", "LoadState", "not-found"), ("service", "ActiveState", "active"),
@@ -193,7 +193,7 @@ def test_data_guard_requires_quiescent_loaded_timer_and_oneshot(monkeypatch, tmp
         entry._quiescent_data_maintenance_identity(tmp_path, component)
 
 
-@pytest.mark.parametrize("component", ["tushare-sync", "catalog-verify"])
+@pytest.mark.parametrize("component", ["tushare-sync", "catalog-verify", "daily-archive"])
 def test_data_guard_keeps_actual_kill_and_state_binding_checks(monkeypatch, tmp_path, component):
     entry, fields, _ = fixture(monkeypatch, tmp_path)
     assert entry._quiescent_data_maintenance_identity(tmp_path, component)["pid"] == "0"
@@ -202,7 +202,7 @@ def test_data_guard_keeps_actual_kill_and_state_binding_checks(monkeypatch, tmp_
         entry._quiescent_data_maintenance_identity(tmp_path, component)
 
 
-@pytest.mark.parametrize("component,label", [("tushare-sync", "tushare"), ("catalog-verify", "catalog"), ("service-checks", "service_checks")])
+@pytest.mark.parametrize("component,label", [("tushare-sync", "tushare"), ("catalog-verify", "catalog"), ("service-checks", "service_checks"), ("daily-archive", "daily_archive")])
 @pytest.mark.parametrize("broken", [None, "pid", "invocation", "result", "status", "timer"])
 def test_failed_data_oneshot_requires_preserved_exit_and_invocation(monkeypatch, tmp_path, component, label, broken):
     entry = module()
@@ -380,15 +380,20 @@ def test_web_evidence_maintenance_is_upgrade_only_and_protects_eight_peers(monke
     assert records[0]['after']['live-core-pid']=='0'
 
 
-def test_service_checks_maintenance_preserves_terminal_and_never_starts_units(monkeypatch, tmp_path):
+@pytest.mark.parametrize("component,label,guard_name", [
+    ("service-checks", "service_checks", "_service_checks_maintenance_identity"),
+    ("daily-archive", "daily_archive", "_daily_archive_maintenance_identity"),
+])
+@pytest.mark.parametrize("installed", [True, False])
+def test_service_checks_maintenance_preserves_terminal_and_never_starts_units(monkeypatch, tmp_path, component, label, guard_name, installed):
     from qsys.ops.deployment import validate_record
 
     entry = module()
     target = "c" * 40
-    current = ["b" * 40]
+    current = ["b" * 40 if installed else "uninstalled"]
     facts = {"pid": "0", "started_monotonic": "0", "repo_sha": "a" * 40,
              "maintenance_facts": "unchanged state and KILL",
-             "service_checks_terminal": json.dumps({"ActiveState": "failed", "MainPID": "0",
+             f"{label}_terminal": json.dumps({"ActiveState": "failed", "MainPID": "0",
                                               "Result": "exit-code", "ExecMainStatus": "1",
                                               "InvocationID": "d" * 32})}
     records, commands = [], []
@@ -399,7 +404,7 @@ def test_service_checks_maintenance_preserves_terminal_and_never_starts_units(mo
     monkeypatch.setattr(entry, "_successful_test_run", lambda *a: "validated-test")
     monkeypatch.setattr(entry, "_current_component_sha", lambda *a: current[0])
     monkeypatch.setattr(entry, "_active", lambda *a: False)
-    monkeypatch.setattr(entry, "_service_checks_maintenance_identity", lambda *a: dict(facts))
+    monkeypatch.setattr(entry, guard_name, lambda *a: dict(facts))
     monkeypatch.setattr(entry, "_live_preflight", lambda *a: pytest.fail("trading preflight"))
     monkeypatch.setattr(entry, "_live_identity", lambda *a: pytest.fail("active Live identity"))
     monkeypatch.setattr(entry, "_fingerprints", lambda *a: {})
@@ -422,13 +427,19 @@ def test_service_checks_maintenance_preserves_terminal_and_never_starts_units(mo
 
     monkeypatch.setattr(entry, "_run", run)
     monkeypatch.setattr(entry, "_write_record", write)
-    args = argparse.Namespace(component="service-checks", sha=target, run_id="checks-maintenance",
+    args = argparse.Namespace(component=component, sha=target, run_id="checks-maintenance",
                               actor="maintainer", repository="owner/repo", pr_number=570,
                               dry_run=False, artifact_sha256="f" * 64)
+    if not installed:
+        with pytest.raises(ValueError, match="requires an already installed component"):
+            entry.component_deploy(args, {"production_repo": str(tmp_path),
+                                         "production_record_root": str(tmp_path / "records")})
+        assert commands == [] and records == []
+        return
     assert entry.component_deploy(args, {"production_repo": str(tmp_path),
                                         "production_record_root": str(tmp_path / "records")}) == 0
     assert records[0]["status"] == "success"
-    assert any(item["name"] == "service-checks-terminal-preserved" and
-               item["detail"] == facts["service_checks_terminal"] for item in records[0]["checks"])
+    assert any(item["name"] == f"{component}-terminal-preserved" and
+               item["detail"] == facts[f"{label}_terminal"] for item in records[0]["checks"])
     assert not any("systemctl" in command for command in commands)
     assert len([k for k in records[0]["before"] if k.endswith("-identity")]) == 9

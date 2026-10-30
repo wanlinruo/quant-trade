@@ -286,6 +286,8 @@ manifest → `HANDOFF.md` → 其他历史文档。
   唯一InvocationID证据且PID0的failed终态；不reset-failed，前后绑定原终态与KILL、
   主库与所有受保护服务身份；参数迁移的失败补偿同时恢复原drop-in字节/身份/权限/ACL，
   不能只恢复代码指针而留下新参数调用旧代码（#553）。
+  daily-archive的同类停机维护（#550）也仅允许已安装组件、timer inactive及oneshot终态/PID0，
+  前后保留真实退出/Invocation、KILL/主库和九peer身份，不扩展为其他组件绕过Live门禁。
   送配增量清单遇非原生目录身份时，先核对直取退市日期与请求窗口；只排除确在窗口外的
   历史目录身份并留scope证据，原生代码和缺生命周期证据的身份不得据格式静默丢弃。
   不去前缀映射到现有证券，不删历史事件以通过传输（#555）。

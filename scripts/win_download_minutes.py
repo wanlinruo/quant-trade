@@ -16,6 +16,9 @@
 导出的 parquet 直接符合 qsys 的 MINUTE_BARS，Linux 侧 import_minute_bars
 不做任何格式转换。
 
+2026-10-30（#550/#478）候选入口：下载后使用已实测的 get_local_data，显式
+fill_data=False/count=-1/dividend_type=none；本地原生零量和缺失值保留，不回退RPC。
+
 **dt 为该分钟的收盘时刻**，与 QMT 原生一致，不做换算。实测判据：
 11:30 存在而 13:00 不存在——若 QMT 按开盘时刻标注必然相反。
 当日 241 根 = 09:30 开盘竞价 1 根 + 上午 120 根 + 下午 120 根。
@@ -32,11 +35,12 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import os
 import sys
 import time
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 COLUMNS = ["symbol", "dt", "open", "high", "low", "close", "volume", "amount"]
 PROGRESS_PREFIX = "QSYS_PROGRESS "
@@ -115,7 +119,9 @@ def append_done(path: str, keys: list[tuple[str, str]]) -> None:
 
 
 def to_rows(symbol: str, data: dict, stamps: list[str]) -> list[tuple]:
-    """把 xtdata 的 {字段: DataFrame} 摊平成行。
+    """历史RPC响应复放：把 {字段: DataFrame} 摊平成行。
+
+    生产入口已改用 to_local_rows；不得把这段历史过滤器套在本地原生False返回值上。
 
     **丢弃每个交易日首笔成交之前的行。** `get_market_data` 按区间取数时，会把当日
     首笔成交之前的分钟用昨收价填满、`volume=0`；按单日取则不会。那些行是填充，
@@ -161,6 +167,65 @@ def to_rows(symbol: str, data: dict, stamps: list[str]) -> list[tuple]:
                 float(amounts.iloc[0][stamp]),
             )
         )
+    return rows
+
+
+def to_local_rows(symbol: str, data: dict, stamps: list[str]) -> list[tuple]:
+    """适配已实测的原生本地容器；不填值、不截断成交量、不按零量删行。"""
+    import pandas as pd
+
+    if not isinstance(data, dict) or set(data) != {symbol}:
+        raise ValueError("unexpected local minute response identity")
+    frame = data[symbol]
+    fields = ["time", *COLUMNS[2:]]
+    if (not isinstance(frame, pd.DataFrame) or frame.columns.duplicated().any()
+            or not set(fields) <= set(frame.columns) or frame.index.duplicated().any()):
+        raise ValueError("invalid local minute frame structure")
+
+    def number(value):
+        value = value.item() if hasattr(value, "item") else value
+        if value is None or pd.isna(value):
+            return None
+        if type(value) not in (int, float) or not math.isfinite(value):
+            raise ValueError("invalid local minute numeric value")
+        return value
+
+    def integer(value):
+        value = number(value)
+        if value is None:
+            return None
+        if int(value) != value or not -(2**63) <= value < 2**63:
+            raise ValueError("local minute integer would lose source precision")
+        return int(value)
+
+    def floating(value):
+        value = number(value)
+        if value is None:
+            return None
+        if float(value) != value:
+            raise ValueError("local minute float would lose source precision")
+        return float(value)
+
+    wanted = set(stamps)
+    epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
+    local_zone = timezone(timedelta(hours=8))
+    rows = []
+    # itertuples preserves integer scalar types; iterrows can coerce an entire row to float.
+    for row in frame.loc[:, fields].sort_index().itertuples(index=True, name=None):
+        stamp = str(row[0])
+        moment = datetime.strptime(stamp, "%Y%m%d%H%M%S")
+        if moment.strftime("%Y%m%d%H%M%S") != stamp:
+            raise ValueError("invalid local minute index")
+        if stamp[:8] not in wanted:
+            continue
+        source_time = integer(row[1])
+        if source_time is None:
+            raise ValueError("missing local minute source time")
+        native_moment = (epoch + timedelta(milliseconds=source_time)).astimezone(local_zone)
+        if native_moment.replace(tzinfo=None) != moment:
+            raise ValueError("local minute time/index mismatch")
+        prices = [floating(value) for value in row[2:6]]
+        rows.append((symbol, moment, *prices, integer(row[6]), floating(row[7])))
     return rows
 
 
@@ -248,6 +313,8 @@ def main() -> int:
         remaining = ((len(todo) - processed_symbols) / rate) if rate else None
         return {
             "schema_version": RESULT_SCHEMA_VERSION,
+            "source_api": "xtdata.get_local_data",
+            "fill_data": False,
             "run_id": args.run_id,
             "status": status,
             "total_symbols": len(todo),
@@ -298,22 +365,22 @@ def main() -> int:
                     xtdata.download_history_data(
                         symbol, period="1m", start_time=stamp, end_time=stamp
                     )
-            data = xtdata.get_market_data(
-                field_list=[], stock_list=[symbol], period="1m",
+            data = xtdata.get_local_data(
+                field_list=["time", *COLUMNS[2:]], stock_list=[symbol], period="1m",
                 start_time=min(stamps), end_time=max(stamps),
-                dividend_type="none",
+                count=-1, dividend_type="none", fill_data=False,
             )
-            rows = to_rows(symbol, data, stamps) if isinstance(data, dict) else []
+            rows = to_local_rows(symbol, data, stamps)
         except Exception as exc:  # 单只失败不中断整轮
             failed += 1
             attempted_days += len(stamps)
             failures.append({
                 "symbol": symbol,
-                "error": f"{type(exc).__name__}: {exc}"[:500],
+                "error": type(exc).__name__,
             })
             with open(failed_path, "a", encoding="utf-8") as handle:
-                handle.write(f"{symbol},{type(exc).__name__},{exc}\n")
-            print(f"  [失败] {symbol}: {type(exc).__name__}: {exc}", flush=True)
+                handle.write(f"{symbol},{type(exc).__name__}\n")
+            print(f"  [失败] {symbol}: {type(exc).__name__}", flush=True)
             processed_symbols = position
             publish_progress(progress_path, progress())
             continue

@@ -1,5 +1,30 @@
 # 项目交接入口
 
+## 10-30下午：#558已正式启用；#550/#478本地分钟读取修复推进中
+
+- 维护者明确要求尽快恢复数据链路和模拟链路，保持数据→模拟→实盘；允许本次修复在
+  非交易时段按正常门禁尝试生产发布。不开实盘、研究或其他扩展线，不清KILL或历史副本。
+- #558维护者具体确认后，Tushare/Web均已正式d50592a；workflow40987795073/40988038793、
+  Deployment7428619734/7428653987与节点实际record三方success。独立Tushare现金策略
+  绑定已生效，历史61087条和4552业务文件保持，原timer active/enabled；现金页面验收通过。
+  10-30 17:25精确d505/Tushare只读观察保留，结果未产生前不关闭或声称自然通过。
+  审计根issue558-cash-activation-20261030；早期下文“尚未启用”为历史快照。
+- 全部34开放Issue于10:04–10:14核验并更新11个关键项，矩阵在#540评论6513262104。
+  后续#550/#478作为直接数据依赖进入in-progress，不把blocked当成全部当前生产故障。
+- #550/#478固定已收盘样本只读探针：14:29/15:11在实际Python3.11.9、QMT5340/58610
+  完成；5组有缓存样本各482行，单日/区间一致，8组True/False相同，仅证明所查缓存。
+  301139.SZ RPC仍零价、本地真实；普通股两API存在精确Float64差别，volume逐值相同。
+  详见docs/reference/qmt-local-minute-reads.md及两份JSON，未把小差异舍入成相同。
+- 候选下载后只读get_local_data，显式count=-1/dividend_type=none/fill_data=False；
+  校验真实容器、双时间、整数精度，保留零量和null，不回退RPC。专项/全量、实际Windows
+  候选与正常CI/test/PR及生产证据以#550最新记录为准，尚不能当作生产已安装。
+- 可信controller v39候选仅增已安装daily-archive的停用Live维护路径：timer inactive、
+  任务终态/PID0、原KILL/状态绑定及九peer身份精确保持，不开放其他组件维护。
+- Windows Gateway单minute hash与两个消费者必须联合编排；不在自然归档/同步运行时
+  改白名单，不使旧消费者新旧hash失配。C盘约3.8–4 GiB，避免大备份/下载；不改QMT恢复。
+- 当前Paper2408585/NRestarts2，2 error/1 ended且旧observer仍误报healthy；Live仍停用。
+  数据阶段后联合#539/#549，不能因行情fresh或本次软件发布宣布模拟账户恢复。
+
 ## 10-30零时：#558兼容基线已生产安装，二阶段选源候选准备中
 
 - PR#573/main2d2d25b正常合并：本地4203 passed/7既有skipped，push CI40901320700、

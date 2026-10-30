@@ -217,3 +217,40 @@ def test_dividend_can_use_separate_data_volume_without_moving_existing_jobs(serv
     config["dividend_root"] = str(updated.root / "nested")
     with pytest.raises(ValueError, match="disjoint"):
         gateway.Gateway(config, "tushare-sync")
+
+
+@pytest.mark.parametrize('component', ['daily-archive', 'tushare-sync'])
+def test_minute_upgrade_executes_exact_current_or_previous_hash_only(server, tmp_path, monkeypatch, component):
+    newer = tmp_path / 'new-minute.py'; newer.write_text("print('new source')")
+    digest = hashlib.sha256(newer.read_bytes()).hexdigest()
+    config = {'protocol': 1, 'python': str(server.python),
+              'roots': {name: str(tmp_path / name) for name in gateway.COMPONENTS},
+              'scripts': {**server.scripts, 'minute': {'path': str(newer), 'sha256': digest}},
+              'previous_minute': dict(server.scripts['minute'])}
+    updated = gateway.Gateway(config, component)
+    execute(updated, 'prepare', job='minute_20261021')
+    data = b'symbol,dt\n600000.SH,2026-10-21\n'
+    execute(updated, 'put', data=data, job='minute_20261021', size=len(data), sha256=hashlib.sha256(data).hexdigest())
+    calls=[]
+    monkeypatch.setattr(gateway.subprocess, 'run', lambda args, **kw: calls.append(args) or subprocess.CompletedProcess(args, 0))
+    req = dict(job='minute_20261021', run_id='upgrade', start='2026-10-21', end='2026-10-21')
+    execute(updated, 'run', sha256=digest, **req)
+    execute(updated, 'run', sha256=server.scripts['minute']['sha256'], **req)
+    assert calls[0][6] == str(newer) and calls[1][6] == server.scripts['minute']['path']
+    with pytest.raises(ValueError, match='approved'):
+        execute(updated, 'run', sha256='f'*64, **req)
+    assert len(calls)==2
+    # Changing an already-approved N-1 file cannot bypass the byte hash gate.
+    Path(server.scripts['minute']['path']).write_text('modified after approval')
+    with pytest.raises(ValueError, match='approved'):
+        execute(updated, 'run', sha256=server.scripts['minute']['sha256'], **req)
+    assert len(calls)==2
+
+
+@pytest.mark.parametrize('previous', [[], {}, {'path': '/tmp/no', 'sha256': 'bad'}, {'path': 'relative', 'sha256': 'a'*64}])
+def test_previous_minute_config_remains_exactly_bounded(server, tmp_path, previous):
+    config = {'protocol': 1, 'python': str(server.python),
+              'roots': {name: str(tmp_path / name) for name in gateway.COMPONENTS},
+              'scripts': server.scripts, 'previous_minute': previous}
+    with pytest.raises(ValueError):
+        gateway.Gateway(config, 'tushare-sync')

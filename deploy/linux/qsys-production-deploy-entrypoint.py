@@ -36,7 +36,7 @@ ALLOWED_WINDOWS_COMPONENTS = frozenset({
     "windows-agent", "windows-gateway", "windows-control",
 })
 WINDOWS_COORDINATOR_PATH = "deploy/linux/qsys-windows-deploy-coordinator.py"
-ENTRYPOINT_VERSION = 38
+ENTRYPOINT_VERSION = 39
 ENTRYPOINT_CAPABILITIES = (
     "systemd-apply-v1",
     "systemd-component-boundary-v1",
@@ -77,6 +77,7 @@ ENTRYPOINT_CAPABILITIES = (
     "component-catalog-maintenance-v1",
     "component-web-evidence-maintenance-v1",
     "component-service-checks-maintenance-v1",
+    "component-daily-archive-maintenance-v1",
     "emergency-restart-authorization-v1",
 )
 FAILURE_POINTS = frozenset({"none", "linux-health", "windows-switch"})
@@ -753,11 +754,11 @@ def _state_reader_maintenance_identity(repo: Path) -> dict[str, str]:
 
 def _quiescent_data_maintenance_identity(repo: Path, component: str) -> dict[str, str]:
     """Bind the exact idle writer/verifier and stopped trading facts."""
-    if component not in {"tushare-sync", "catalog-verify", "service-checks"}:
+    if component not in {"tushare-sync", "catalog-verify", "service-checks", "daily-archive"}:
         raise ValueError("unsupported stopped-Live data maintenance component")
     identity = _state_reader_maintenance_identity(repo)
     label = {"tushare-sync": "tushare", "catalog-verify": "catalog",
-             "service-checks": "service_checks"}[component]
+             "service-checks": "service_checks", "daily-archive": "daily_archive"}[component]
     for unit in (f"qsys-{component}.timer", f"qsys-{component}.service"):
         result = _run([
             "systemctl", "show", unit,
@@ -788,6 +789,10 @@ def _catalog_maintenance_identity(repo: Path) -> dict[str, str]:
 
 def _service_checks_maintenance_identity(repo: Path) -> dict[str, str]:
     return _quiescent_data_maintenance_identity(repo, "service-checks")
+
+
+def _daily_archive_maintenance_identity(repo: Path) -> dict[str, str]:
+    return _quiescent_data_maintenance_identity(repo, "daily-archive")
 
 
 def _extract_component_archive(
@@ -1547,8 +1552,13 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
     checks_maintenance = args.component == "service-checks" and not _active("qsys-live-core.service", repo)
     if checks_maintenance and before_component == "uninstalled":
         raise ValueError("service-checks maintenance requires an already installed component")
-    maintenance = reader_maintenance or data_maintenance or catalog_maintenance or web_evidence_maintenance or checks_maintenance
-    guard = (_service_checks_maintenance_identity if checks_maintenance else
+    archive_maintenance = args.component == "daily-archive" and not _active("qsys-live-core.service", repo)
+    if archive_maintenance and before_component == "uninstalled":
+        raise ValueError("daily-archive maintenance requires an already installed component")
+    maintenance = (reader_maintenance or data_maintenance or catalog_maintenance
+                   or web_evidence_maintenance or checks_maintenance or archive_maintenance)
+    guard = (_daily_archive_maintenance_identity if archive_maintenance else
+             _service_checks_maintenance_identity if checks_maintenance else
              _tushare_maintenance_identity if data_maintenance else
              _catalog_maintenance_identity if catalog_maintenance else
              _state_reader_maintenance_identity)
@@ -1563,6 +1573,11 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
     if checks_maintenance:
         protected_units = {**COMPONENT_PROTECTED_PEERS["catalog-verify"],
                            "catalog-verify": "qsys-catalog-verify.service"}
+    if archive_maintenance:
+        protected_units = {name: unit for name, unit in COMPONENT_PROTECTED_PEERS["catalog-verify"].items()
+                           if name != "daily-archive"}
+        protected_units = {**protected_units, "catalog-verify": "qsys-catalog-verify.service",
+                           "service-checks": "qsys-service-checks.service"}
     before_protected = {
         name: _unit_identity_token(unit, repo)
         for name, unit in protected_units.items()
@@ -1594,6 +1609,7 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
         "catalog_readonly_maintenance": catalog_maintenance,
         "web_evidence_maintenance": web_evidence_maintenance,
         "service_checks_readonly_maintenance": checks_maintenance,
+        "daily_archive_data_maintenance": archive_maintenance,
     }
     if args.dry_run:
         print(json.dumps(preview, ensure_ascii=False))
@@ -1612,6 +1628,9 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
     if checks_maintenance:
         checks.append({"name": "service-checks-terminal-preserved", "status": "passed",
                        "detail": before_live["service_checks_terminal"]})
+    if archive_maintenance:
+        checks.append({"name": "daily-archive-terminal-preserved", "status": "passed",
+                       "detail": before_live["daily_archive_terminal"]})
     if web_evidence_maintenance:
         checks.append({"name": "web-evidence-maintenance", "status": "passed",
                        "detail": "active installed Web upgrade only; enforce stopped Live/state/KILL and eight-peer continuity"})

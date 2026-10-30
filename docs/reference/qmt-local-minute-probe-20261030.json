@@ -1,0 +1,739 @@
+{
+  "at": "2026-10-30T14:29:43.6688745+08:00",
+  "protocol": "qsys550-bounded-controller-v1",
+  "helper_pid": 1072,
+  "timed_out": false,
+  "helper_exit": 0,
+  "rows": [
+    {
+      "protocol": "qsys550-native-local-readonly-v1",
+      "python": "3.11.9",
+      "download_calls": 0,
+      "subscribe_calls": 0,
+      "account_calls": 0,
+      "trading_calls": 0,
+      "cases": [
+        {
+          "symbol": "600000.SH",
+          "start": "20261026",
+          "end": "20261027",
+          "local_fill_true": {
+            "rows": 482,
+            "columns": [
+              "time",
+              "open",
+              "high",
+              "low",
+              "close",
+              "volume",
+              "amount"
+            ],
+            "index_type": "Index",
+            "duplicate_index": 0,
+            "index_first": "20261026093000",
+            "index_last": "20261027150000",
+            "null_cells": 0,
+            "zero_volume": 4,
+            "positive_amount_zero_volume": 0,
+            "volume_sum": 1601291.0,
+            "amount_sum": 1547322015.0,
+            "first_rows": [
+              {
+                "index": "20261026093000",
+                "time": 1792978200000.0,
+                "open": 9.48,
+                "high": 9.48,
+                "low": 9.48,
+                "close": 9.48,
+                "volume": 3952.0,
+                "amount": 3746496.0
+              },
+              {
+                "index": "20261026093100",
+                "time": 1792978260000.0,
+                "open": 9.48,
+                "high": 9.56,
+                "low": 9.47,
+                "close": 9.55,
+                "volume": 15450.0,
+                "amount": 14722569.0
+              },
+              {
+                "index": "20261026093200",
+                "time": 1792978320000.0,
+                "open": 9.55,
+                "high": 9.56,
+                "low": 9.54,
+                "close": 9.55,
+                "volume": 7448.0,
+                "amount": 7112578.0
+              }
+            ],
+            "time_ms_matches_index_in_UTC8": true,
+            "pandas_value_hash_sha256": "b7a68ab40e6ed0c840b357c7c57dd1a9804a396e1b06061a005dc66b8a116299"
+          },
+          "local_fill_false": {
+            "rows": 482,
+            "columns": [
+              "time",
+              "open",
+              "high",
+              "low",
+              "close",
+              "volume",
+              "amount"
+            ],
+            "index_type": "Index",
+            "duplicate_index": 0,
+            "index_first": "20261026093000",
+            "index_last": "20261027150000",
+            "null_cells": 0,
+            "zero_volume": 4,
+            "positive_amount_zero_volume": 0,
+            "volume_sum": 1601291.0,
+            "amount_sum": 1547322015.0,
+            "first_rows": [
+              {
+                "index": "20261026093000",
+                "time": 1792978200000.0,
+                "open": 9.48,
+                "high": 9.48,
+                "low": 9.48,
+                "close": 9.48,
+                "volume": 3952.0,
+                "amount": 3746496.0
+              },
+              {
+                "index": "20261026093100",
+                "time": 1792978260000.0,
+                "open": 9.48,
+                "high": 9.56,
+                "low": 9.47,
+                "close": 9.55,
+                "volume": 15450.0,
+                "amount": 14722569.0
+              },
+              {
+                "index": "20261026093200",
+                "time": 1792978320000.0,
+                "open": 9.55,
+                "high": 9.56,
+                "low": 9.54,
+                "close": 9.55,
+                "volume": 7448.0,
+                "amount": 7112578.0
+              }
+            ],
+            "time_ms_matches_index_in_UTC8": true,
+            "pandas_value_hash_sha256": "b7a68ab40e6ed0c840b357c7c57dd1a9804a396e1b06061a005dc66b8a116299"
+          },
+          "local_fill_variants_equal": true,
+          "rpc_rows": 482,
+          "rpc_local_values_equal": false,
+          "rpc_all_prices_zero": false,
+          "single_day_concat_equals_range": true
+        },
+        {
+          "symbol": "000001.SZ",
+          "start": "20261026",
+          "end": "20261027",
+          "local_fill_true": {
+            "rows": 482,
+            "columns": [
+              "time",
+              "open",
+              "high",
+              "low",
+              "close",
+              "volume",
+              "amount"
+            ],
+            "index_type": "Index",
+            "duplicate_index": 0,
+            "index_first": "20261026093000",
+            "index_last": "20261027150000",
+            "null_cells": 0,
+            "zero_volume": 2,
+            "positive_amount_zero_volume": 0,
+            "volume_sum": 2852405.0,
+            "amount_sum": 3236403606.0,
+            "first_rows": [
+              {
+                "index": "20261026093000",
+                "time": 1792978200000.0,
+                "open": 11.15,
+                "high": 11.15,
+                "low": 11.15,
+                "close": 11.15,
+                "volume": 27526.0,
+                "amount": 30691490.0
+              },
+              {
+                "index": "20261026093100",
+                "time": 1792978260000.0,
+                "open": 11.15,
+                "high": 11.22,
+                "low": 11.13,
+                "close": 11.21,
+                "volume": 47163.0,
+                "amount": 52702653.0
+              },
+              {
+                "index": "20261026093200",
+                "time": 1792978320000.0,
+                "open": 11.19,
+                "high": 11.25,
+                "low": 11.19,
+                "close": 11.23,
+                "volume": 41159.0,
+                "amount": 46226095.0
+              }
+            ],
+            "time_ms_matches_index_in_UTC8": true,
+            "pandas_value_hash_sha256": "4780a9502df582c7cfa656bc9cb26382e554f1c28c87a2a607ca0035b371d641"
+          },
+          "local_fill_false": {
+            "rows": 482,
+            "columns": [
+              "time",
+              "open",
+              "high",
+              "low",
+              "close",
+              "volume",
+              "amount"
+            ],
+            "index_type": "Index",
+            "duplicate_index": 0,
+            "index_first": "20261026093000",
+            "index_last": "20261027150000",
+            "null_cells": 0,
+            "zero_volume": 2,
+            "positive_amount_zero_volume": 0,
+            "volume_sum": 2852405.0,
+            "amount_sum": 3236403606.0,
+            "first_rows": [
+              {
+                "index": "20261026093000",
+                "time": 1792978200000.0,
+                "open": 11.15,
+                "high": 11.15,
+                "low": 11.15,
+                "close": 11.15,
+                "volume": 27526.0,
+                "amount": 30691490.0
+              },
+              {
+                "index": "20261026093100",
+                "time": 1792978260000.0,
+                "open": 11.15,
+                "high": 11.22,
+                "low": 11.13,
+                "close": 11.21,
+                "volume": 47163.0,
+                "amount": 52702653.0
+              },
+              {
+                "index": "20261026093200",
+                "time": 1792978320000.0,
+                "open": 11.19,
+                "high": 11.25,
+                "low": 11.19,
+                "close": 11.23,
+                "volume": 41159.0,
+                "amount": 46226095.0
+              }
+            ],
+            "time_ms_matches_index_in_UTC8": true,
+            "pandas_value_hash_sha256": "4780a9502df582c7cfa656bc9cb26382e554f1c28c87a2a607ca0035b371d641"
+          },
+          "local_fill_variants_equal": true,
+          "rpc_rows": 482,
+          "rpc_local_values_equal": false,
+          "rpc_all_prices_zero": false,
+          "single_day_concat_equals_range": true
+        },
+        {
+          "symbol": "920285.BJ",
+          "start": "20261026",
+          "end": "20261027",
+          "local_fill_true": {
+            "rows": 482,
+            "columns": [
+              "time",
+              "open",
+              "high",
+              "low",
+              "close",
+              "volume",
+              "amount"
+            ],
+            "index_type": "Index",
+            "duplicate_index": 0,
+            "index_first": "20261026093000",
+            "index_last": "20261027150000",
+            "null_cells": 0,
+            "zero_volume": 3,
+            "positive_amount_zero_volume": 0,
+            "volume_sum": 171043.0,
+            "amount_sum": 444330658.0,
+            "first_rows": [
+              {
+                "index": "20261026093000",
+                "time": 1792978200000.0,
+                "open": 28.13,
+                "high": 28.13,
+                "low": 28.13,
+                "close": 28.13,
+                "volume": 3429.0,
+                "amount": 9646030.0
+              },
+              {
+                "index": "20261026093100",
+                "time": 1792978260000.0,
+                "open": 28.5,
+                "high": 29.0,
+                "low": 27.01,
+                "close": 27.15,
+                "volume": 9723.0,
+                "amount": 27112111.0
+              },
+              {
+                "index": "20261026093200",
+                "time": 1792978320000.0,
+                "open": 27.09,
+                "high": 28.73,
+                "low": 26.85,
+                "close": 28.73,
+                "volume": 3812.0,
+                "amount": 10445631.0
+              }
+            ],
+            "time_ms_matches_index_in_UTC8": true,
+            "pandas_value_hash_sha256": "4a7153031a123326a22fc27ccf5fd18860e48b70ac3bd2547b194ee24e43b904"
+          },
+          "local_fill_false": {
+            "rows": 482,
+            "columns": [
+              "time",
+              "open",
+              "high",
+              "low",
+              "close",
+              "volume",
+              "amount"
+            ],
+            "index_type": "Index",
+            "duplicate_index": 0,
+            "index_first": "20261026093000",
+            "index_last": "20261027150000",
+            "null_cells": 0,
+            "zero_volume": 3,
+            "positive_amount_zero_volume": 0,
+            "volume_sum": 171043.0,
+            "amount_sum": 444330658.0,
+            "first_rows": [
+              {
+                "index": "20261026093000",
+                "time": 1792978200000.0,
+                "open": 28.13,
+                "high": 28.13,
+                "low": 28.13,
+                "close": 28.13,
+                "volume": 3429.0,
+                "amount": 9646030.0
+              },
+              {
+                "index": "20261026093100",
+                "time": 1792978260000.0,
+                "open": 28.5,
+                "high": 29.0,
+                "low": 27.01,
+                "close": 27.15,
+                "volume": 9723.0,
+                "amount": 27112111.0
+              },
+              {
+                "index": "20261026093200",
+                "time": 1792978320000.0,
+                "open": 27.09,
+                "high": 28.73,
+                "low": 26.85,
+                "close": 28.73,
+                "volume": 3812.0,
+                "amount": 10445631.0
+              }
+            ],
+            "time_ms_matches_index_in_UTC8": true,
+            "pandas_value_hash_sha256": "4a7153031a123326a22fc27ccf5fd18860e48b70ac3bd2547b194ee24e43b904"
+          },
+          "local_fill_variants_equal": true,
+          "rpc_rows": 482,
+          "rpc_local_values_equal": false,
+          "rpc_all_prices_zero": false,
+          "single_day_concat_equals_range": true
+        },
+        {
+          "symbol": "301139.SZ",
+          "start": "20261026",
+          "end": "20261027",
+          "local_fill_true": {
+            "rows": 482,
+            "columns": [
+              "time",
+              "open",
+              "high",
+              "low",
+              "close",
+              "volume",
+              "amount"
+            ],
+            "index_type": "Index",
+            "duplicate_index": 0,
+            "index_first": "20261026093000",
+            "index_last": "20261027150000",
+            "null_cells": 0,
+            "zero_volume": 80,
+            "positive_amount_zero_volume": 0,
+            "volume_sum": 219770.0,
+            "amount_sum": 14768240.0,
+            "first_rows": [
+              {
+                "index": "20261026093000",
+                "time": 1792978200000.0,
+                "open": 0.68,
+                "high": 0.68,
+                "low": 0.68,
+                "close": 0.68,
+                "volume": 6719.0,
+                "amount": 456892.0
+              },
+              {
+                "index": "20261026093100",
+                "time": 1792978260000.0,
+                "open": 0.67,
+                "high": 0.67,
+                "low": 0.66,
+                "close": 0.66,
+                "volume": 1469.0,
+                "amount": 98256.0
+              },
+              {
+                "index": "20261026093200",
+                "time": 1792978320000.0,
+                "open": 0.66,
+                "high": 0.67,
+                "low": 0.65,
+                "close": 0.65,
+                "volume": 2893.0,
+                "amount": 190267.0
+              }
+            ],
+            "time_ms_matches_index_in_UTC8": true,
+            "pandas_value_hash_sha256": "97cb5039904619327078cd5cfd64f565cbdbe1927db1869e3f3a6ae663f106ab"
+          },
+          "local_fill_false": {
+            "rows": 482,
+            "columns": [
+              "time",
+              "open",
+              "high",
+              "low",
+              "close",
+              "volume",
+              "amount"
+            ],
+            "index_type": "Index",
+            "duplicate_index": 0,
+            "index_first": "20261026093000",
+            "index_last": "20261027150000",
+            "null_cells": 0,
+            "zero_volume": 80,
+            "positive_amount_zero_volume": 0,
+            "volume_sum": 219770.0,
+            "amount_sum": 14768240.0,
+            "first_rows": [
+              {
+                "index": "20261026093000",
+                "time": 1792978200000.0,
+                "open": 0.68,
+                "high": 0.68,
+                "low": 0.68,
+                "close": 0.68,
+                "volume": 6719.0,
+                "amount": 456892.0
+              },
+              {
+                "index": "20261026093100",
+                "time": 1792978260000.0,
+                "open": 0.67,
+                "high": 0.67,
+                "low": 0.66,
+                "close": 0.66,
+                "volume": 1469.0,
+                "amount": 98256.0
+              },
+              {
+                "index": "20261026093200",
+                "time": 1792978320000.0,
+                "open": 0.66,
+                "high": 0.67,
+                "low": 0.65,
+                "close": 0.65,
+                "volume": 2893.0,
+                "amount": 190267.0
+              }
+            ],
+            "time_ms_matches_index_in_UTC8": true,
+            "pandas_value_hash_sha256": "97cb5039904619327078cd5cfd64f565cbdbe1927db1869e3f3a6ae663f106ab"
+          },
+          "local_fill_variants_equal": true,
+          "rpc_rows": 482,
+          "rpc_local_values_equal": false,
+          "rpc_all_prices_zero": true,
+          "single_day_concat_equals_range": true
+        },
+        {
+          "symbol": "301139.SZ",
+          "start": "20261028",
+          "end": "20261028",
+          "local_fill_true": {
+            "rows": 0,
+            "columns": [
+              "time",
+              "open",
+              "high",
+              "low",
+              "close",
+              "volume",
+              "amount"
+            ],
+            "index_type": "Index",
+            "duplicate_index": 0
+          },
+          "local_fill_false": {
+            "rows": 0,
+            "columns": [
+              "time",
+              "open",
+              "high",
+              "low",
+              "close",
+              "volume",
+              "amount"
+            ],
+            "index_type": "Index",
+            "duplicate_index": 0
+          },
+          "local_fill_variants_equal": true,
+          "rpc_rows": 0,
+          "rpc_local_values_equal": false,
+          "rpc_all_prices_zero": false,
+          "single_day_concat_equals_range": true
+        },
+        {
+          "symbol": "513100.SH",
+          "start": "20260928",
+          "end": "20260929",
+          "local_fill_true": {
+            "rows": 0,
+            "columns": [
+              "time",
+              "open",
+              "high",
+              "low",
+              "close",
+              "volume",
+              "amount"
+            ],
+            "index_type": "Index",
+            "duplicate_index": 0
+          },
+          "local_fill_false": {
+            "rows": 0,
+            "columns": [
+              "time",
+              "open",
+              "high",
+              "low",
+              "close",
+              "volume",
+              "amount"
+            ],
+            "index_type": "Index",
+            "duplicate_index": 0
+          },
+          "local_fill_variants_equal": true,
+          "rpc_rows": 0,
+          "rpc_local_values_equal": false,
+          "rpc_all_prices_zero": false,
+          "single_day_concat_equals_range": true
+        },
+        {
+          "symbol": "600000.SH",
+          "start": "20261025",
+          "end": "20261025",
+          "local_fill_true": {
+            "rows": 0,
+            "columns": [
+              "time",
+              "open",
+              "high",
+              "low",
+              "close",
+              "volume",
+              "amount"
+            ],
+            "index_type": "Index",
+            "duplicate_index": 0
+          },
+          "local_fill_false": {
+            "rows": 0,
+            "columns": [
+              "time",
+              "open",
+              "high",
+              "low",
+              "close",
+              "volume",
+              "amount"
+            ],
+            "index_type": "Index",
+            "duplicate_index": 0
+          },
+          "local_fill_variants_equal": true,
+          "rpc_rows": 0,
+          "rpc_local_values_equal": false,
+          "rpc_all_prices_zero": false,
+          "single_day_concat_equals_range": true
+        },
+        {
+          "symbol": "688785.SH",
+          "start": "20261026",
+          "end": "20261027",
+          "local_fill_true": {
+            "rows": 482,
+            "columns": [
+              "time",
+              "open",
+              "high",
+              "low",
+              "close",
+              "volume",
+              "amount"
+            ],
+            "index_type": "Index",
+            "duplicate_index": 0,
+            "index_first": "20261026093000",
+            "index_last": "20261027150000",
+            "null_cells": 0,
+            "zero_volume": 63,
+            "positive_amount_zero_volume": 0,
+            "volume_sum": 9666.0,
+            "amount_sum": 256820880.0,
+            "first_rows": [
+              {
+                "index": "20261026093000",
+                "time": 1792978200000.0,
+                "open": 281.12,
+                "high": 281.12,
+                "low": 281.12,
+                "close": 281.12,
+                "volume": 11.0,
+                "amount": 308951.0
+              },
+              {
+                "index": "20261026093100",
+                "time": 1792978260000.0,
+                "open": 281.11,
+                "high": 281.13,
+                "low": 276.06,
+                "close": 279.76,
+                "volume": 40.0,
+                "amount": 1106101.0
+              },
+              {
+                "index": "20261026093200",
+                "time": 1792978320000.0,
+                "open": 277.19,
+                "high": 279.72,
+                "low": 277.19,
+                "close": 279.72,
+                "volume": 35.0,
+                "amount": 973066.0
+              }
+            ],
+            "time_ms_matches_index_in_UTC8": true,
+            "pandas_value_hash_sha256": "09b3cda5471bf7011ec42987b78734f6e2912e3379aea867a520472d54efb2a1"
+          },
+          "local_fill_false": {
+            "rows": 482,
+            "columns": [
+              "time",
+              "open",
+              "high",
+              "low",
+              "close",
+              "volume",
+              "amount"
+            ],
+            "index_type": "Index",
+            "duplicate_index": 0,
+            "index_first": "20261026093000",
+            "index_last": "20261027150000",
+            "null_cells": 0,
+            "zero_volume": 63,
+            "positive_amount_zero_volume": 0,
+            "volume_sum": 9666.0,
+            "amount_sum": 256820880.0,
+            "first_rows": [
+              {
+                "index": "20261026093000",
+                "time": 1792978200000.0,
+                "open": 281.12,
+                "high": 281.12,
+                "low": 281.12,
+                "close": 281.12,
+                "volume": 11.0,
+                "amount": 308951.0
+              },
+              {
+                "index": "20261026093100",
+                "time": 1792978260000.0,
+                "open": 281.11,
+                "high": 281.13,
+                "low": 276.06,
+                "close": 279.76,
+                "volume": 40.0,
+                "amount": 1106101.0
+              },
+              {
+                "index": "20261026093200",
+                "time": 1792978320000.0,
+                "open": 277.19,
+                "high": 279.72,
+                "low": 277.19,
+                "close": 279.72,
+                "volume": 35.0,
+                "amount": 973066.0
+              }
+            ],
+            "time_ms_matches_index_in_UTC8": true,
+            "pandas_value_hash_sha256": "09b3cda5471bf7011ec42987b78734f6e2912e3379aea867a520472d54efb2a1"
+          },
+          "local_fill_variants_equal": true,
+          "rpc_rows": 482,
+          "rpc_local_values_equal": false,
+          "rpc_all_prices_zero": false,
+          "single_day_concat_equals_range": true
+        }
+      ],
+      "status": "completed",
+      "elapsed_seconds": 4.141
+    }
+  ],
+  "stderr_present": false,
+  "client_pid_after": [
+    5340
+  ]
+}
