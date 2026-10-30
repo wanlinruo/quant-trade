@@ -52,7 +52,13 @@ History容器仅处理明确完整的内存数值；#538另增加规范前复权
 
 `cash-dividend-announcement-review.md`与同名JSON记录八条公告/Tushare精确一致、QMT原值
 不同的事实、八条null/0的公告观测及仅改八现金单元的本地候选。历史覆盖已按确认完成，见
-`cash-dividend-production-acceptance.md`的全表/真实身份验收；未来增量现金策略未切换，不能用最新质检0阻断替代现金字段独立验真。
+`cash-dividend-production-acceptance.md`的全表/真实身份验收；未来增量现金策略已按10-30明确确认启用Tushare，首次新源自然采证待#558验收；不能用最新质检0阻断替代现金字段独立验真。
+
+## 本地分钟读取与填充（#550 / #478）
+
+[qmt-local-minute-reads.md](qmt-local-minute-reads.md)与两份10-30实测JSON记录当前SDK
+真实容器/时间、单日与区间、fill_data True/False及RPC的逐值差异。候选不按零量形状
+删本地False返回值，不回退或猜单位；生产联合发布与自然验收以#550最新记录为准。
 
 ## QMT外部数据连续性（#540 / #533-F）
 
