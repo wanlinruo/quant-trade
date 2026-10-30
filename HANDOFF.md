@@ -18,6 +18,8 @@
 - 候选下载后只读get_local_data，显式count=-1/dividend_type=none/fill_data=False；
   校验真实容器、双时间、整数精度，保留零量和null，不回退RPC。专项/全量、实际Windows
   候选与正常CI/test/PR及生产证据以#550最新记录为准，尚不能当作生产已安装。
+- 可信controller v39候选仅增已安装daily-archive的停用Live维护路径：timer inactive、
+  任务终态/PID0、原KILL/状态绑定及九peer身份精确保持，不开放其他组件维护。
 - Windows Gateway单minute hash与两个消费者必须联合编排；不在自然归档/同步运行时
   改白名单，不使旧消费者新旧hash失配。C盘约3.8–4 GiB，避免大备份/下载；不改QMT恢复。
 - 当前Paper2408585/NRestarts2，2 error/1 ended且旧observer仍误报healthy；Live仍停用。

@@ -60,7 +60,9 @@ schema为string/timestamp[us]/double/int64，与既有MINUTE_BARS一致，Parque
 历史分区、不改回测分钟源或冻结阈值，AGENTS.md中D-23约束保持。
 
 生产下载器由daily-archive和Tushare晚到补采两者携带，Windows固定Gateway校验实际hash。
-单一Gateway当前仅批准一个minute hash，正式升级须在两个生产者空闲且timer暂停的窗口
-联合编排，保留旧源码/配置与ACL，不能先改白名单使尚未升级消费者自然任务失败。
+现有Gateway仅批准一个minute hash；候选只增加可选的一个精确previous_minute路径/hash，
+客户端仍须显式请求已批准SHA，不是行情/API回退，也不自动重试。新旧脚本逐次核hash、
+禁止写命名空间/reparse路径，先安装兼容入口再更新配置和两个消费者。正式升级仍在
+两个生产者空闲且timer暂停的窗口联合编排，保留旧源码/配置与ACL。
 minute导入器同键keep-last；即使只改读取API，也须实际比较原值差异并明确可能的重读窗口，
 不能把新读取器安装成功等同于自然全量质量已通过。模拟/实盘恢复另守阶段门禁。
