@@ -258,6 +258,10 @@ manifest → `HANDOFF.md` → 其他历史文档。
   触发 `dry_run=false`、生产故障注入演练。"继续""按建议处理"不算对这类操作的确认。
   其余流程（开分支、测试、squash、建 PR、代做自审）可以一路推进；代做自审必须在 PR 正文
   如实写明是代行，并且要真查。
+- **停用Live期间的observer维护仅限已有活动实例**（#549）：只升级已安装且active的
+  health-observer，核验原可信绑定、KILL与主库，前后精确保留九个业务/数据peer身份；
+  不首次启动inactive观察器，不扩展至Paper或其他组件的Live门禁豁免。修正健康误报
+  不恢复账户，不把新告警视为新发生错误；三方发布证据后再用实际UID核验只读判断。
 - **独立组件只前进不回退**（维护者 2026-10-20 裁决，#453）：组件出现异常直接修复并正常发布，
   不把 legacy 回切当作生产回滚手段，也不为此新增 gateway 命令或控制面能力。回切只作一次性
   预生产验证（`Verify component rollback preproduction`）；`component-deploy` 自带的失败补偿保留。
