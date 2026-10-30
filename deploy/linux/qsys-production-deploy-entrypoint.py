@@ -36,7 +36,7 @@ ALLOWED_WINDOWS_COMPONENTS = frozenset({
     "windows-agent", "windows-gateway", "windows-control",
 })
 WINDOWS_COORDINATOR_PATH = "deploy/linux/qsys-windows-deploy-coordinator.py"
-ENTRYPOINT_VERSION = 39
+ENTRYPOINT_VERSION = 40
 ENTRYPOINT_CAPABILITIES = (
     "systemd-apply-v1",
     "systemd-component-boundary-v1",
@@ -78,6 +78,7 @@ ENTRYPOINT_CAPABILITIES = (
     "component-web-evidence-maintenance-v1",
     "component-service-checks-maintenance-v1",
     "component-daily-archive-maintenance-v1",
+    "component-observer-maintenance-v1",
     "emergency-restart-authorization-v1",
 )
 FAILURE_POINTS = frozenset({"none", "linux-health", "windows-switch"})
@@ -1542,7 +1543,7 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
             raise ValueError("Live target must already be active; no trading activation by deployment")
         live_info = _require_live_release_ready(repo, args.sha, initial=before_component == "uninstalled")
     # Keep the active-Live path for normal data releases. Stopped-Live maintenance
-    # is restricted to the reader, idle data tasks and an already-active Web upgrade.
+    # is restricted to the reader, idle data tasks and already-active Web/observer upgrades.
     reader_maintenance = args.component == "live-state-reader"
     data_maintenance = args.component == "tushare-sync" and not _active("qsys-live-core.service", repo)
     catalog_maintenance = args.component == "catalog-verify" and not _active("qsys-live-core.service", repo)
@@ -1555,8 +1556,12 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
     archive_maintenance = args.component == "daily-archive" and not _active("qsys-live-core.service", repo)
     if archive_maintenance and before_component == "uninstalled":
         raise ValueError("daily-archive maintenance requires an already installed component")
+    observer_maintenance = args.component == "health-observer" and not _active("qsys-live-core.service", repo)
+    if observer_maintenance and (not before_component_active or before_component == "uninstalled"):
+        raise ValueError("observer maintenance only upgrades an already active installed observer")
     maintenance = (reader_maintenance or data_maintenance or catalog_maintenance
-                   or web_evidence_maintenance or checks_maintenance or archive_maintenance)
+                   or web_evidence_maintenance or checks_maintenance or archive_maintenance
+                   or observer_maintenance)
     guard = (_daily_archive_maintenance_identity if archive_maintenance else
              _service_checks_maintenance_identity if checks_maintenance else
              _tushare_maintenance_identity if data_maintenance else
@@ -1576,6 +1581,11 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
     if archive_maintenance:
         protected_units = {name: unit for name, unit in COMPONENT_PROTECTED_PEERS["catalog-verify"].items()
                            if name != "daily-archive"}
+        protected_units = {**protected_units, "catalog-verify": "qsys-catalog-verify.service",
+                           "service-checks": "qsys-service-checks.service"}
+    if observer_maintenance:
+        protected_units = {name: unit for name, unit in COMPONENT_PROTECTED_PEERS["catalog-verify"].items()
+                           if name != "health-observer"}
         protected_units = {**protected_units, "catalog-verify": "qsys-catalog-verify.service",
                            "service-checks": "qsys-service-checks.service"}
     before_protected = {
@@ -1610,6 +1620,7 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
         "web_evidence_maintenance": web_evidence_maintenance,
         "service_checks_readonly_maintenance": checks_maintenance,
         "daily_archive_data_maintenance": archive_maintenance,
+        "observer_readonly_maintenance": observer_maintenance,
     }
     if args.dry_run:
         print(json.dumps(preview, ensure_ascii=False))
@@ -1634,6 +1645,9 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
     if web_evidence_maintenance:
         checks.append({"name": "web-evidence-maintenance", "status": "passed",
                        "detail": "active installed Web upgrade only; enforce stopped Live/state/KILL and eight-peer continuity"})
+    if observer_maintenance:
+        checks.append({"name": "observer-readonly-maintenance", "status": "passed",
+                       "detail": "active installed observer upgrade only; preserve stopped Live/state/KILL and nine peers"})
     if data_maintenance:
         checks.append({"name": "tushare-terminal-preserved", "status": "passed",
                        "detail": before_live["tushare_terminal"]})

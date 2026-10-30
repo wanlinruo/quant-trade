@@ -18,3 +18,23 @@ healthy、业务为down、告警一次且不改变账户。该测试不发送外
 
 本修复只纠正健康判断，不能将两个实际error账户恢复为running，也不恢复QMT行情。
 CI/test通过、生产消费者发布和现场生效分别验收；本轮准备不代表生产已安装。
+
+
+## 10-30承接与发布边界
+
+旧候选`bce8d70`仅留在本地`fix/paper-account-health`，并未进入a132生产main；
+历史Issue中“已CI/PR”不能替代当前源码核验。本轮从最新test只承接三份运行/回归文件，
+保留已合入文档及现有#482调度文案，不带入旧分支其他工作。真实SQLite回归覆盖
+error与running并存、跨时段、未生效error、主动暂停/结束，组合验证进程健康而业务失败
+仅告警一次，账户与数据库字节不改写。
+
+生产Live停用时，可信v39仍拒绝普通observer发布。本轮v40仅允许已安装且active的
+health-observer升级，复用可信原KILL/主库/绑定守卫，并精确保留Paper、Shadow、Web、
+worker、reader、两个数据生产者、catalog和checks九peer身份。不能首次安装/启动
+inactive observer，不豁免Paper或其他组件，不启动/恢复账户或Live。真实record必须调用
+validate_record；正式发布仍等workflow、Deployment、节点记录三方成功，再验当前生产
+UID对真实账户的只读判断。首次业务告警是纠正旧健康误报，不代表新发生账户错误。
+
+#539两次自然SQLITE_CANTOPEN已确认，当前父目录、主库与WAL/SHM有Paper精确ACL。
+当前可读写不证明故障时辅助文件/挂载生命周期正常；根因未定位前不改库、不放宽权限、
+不以重复重启或恢复账户掩盖。#543的20:54进程更替单独取证，不混作SQLite根因。

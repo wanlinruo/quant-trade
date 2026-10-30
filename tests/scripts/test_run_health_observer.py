@@ -1,10 +1,11 @@
 from datetime import datetime, timedelta, timezone
+import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
 
 from qsys.ops.alerts import AlertBus, RecordingAlertSink, Severity
-from qsys.ops.health import DEGRADED, DOWN, HEALTHY, MORNING
-from qsys.ops.trading_chain import ChainAssessment
+from qsys.ops.health import DEGRADED, DOWN, HEALTHY, MORNING, assess_heartbeat
+from qsys.ops.trading_chain import ChainAssessment, assess_paper
 from qsys.ops.health_observer_cli import BusinessAlertTracker, observation
 
 
@@ -28,6 +29,29 @@ def test_business_failure_overrides_a_healthy_process():
     assert item.business_state == DOWN
     assert item.reason_code == "strategy_event_failed"
     assert item.details["trading_chain"]["completed"] == 1
+
+
+def test_error_paper_account_overrides_fresh_heartbeat_and_alerts_once(tmp_path):
+    path = tmp_path / "paper.sqlite3"
+    with sqlite3.connect(path) as con:
+        con.execute("CREATE TABLE paper_accounts(status TEXT, activation_date TEXT)")
+        con.execute("INSERT INTO paper_accounts VALUES('error','2026-09-20')")
+    now = datetime(2026, 9, 21, 21)
+    process = row("paper")
+    process["heartbeat"] = {"last_beat": now}
+    process["heartbeat_assessment"] = assess_heartbeat("paper", now, now, {now.date()})
+    item = observation(process, now, "off_hours", assess_paper(path, now))
+
+    assert item.state == DOWN and item.business_state == DOWN
+    assert item.process_state == HEALTHY
+    assert item.reason_code == "strategy_account_error"
+    sink = RecordingAlertSink()
+    tracker = BusinessAlertTracker(AlertBus([sink]))
+    tracker.update(item)
+    tracker.update(item)
+    assert len(sink.alerts) == 1 and sink.alerts[0].severity == Severity.CRITICAL
+    with sqlite3.connect(path) as con:
+        assert con.execute("SELECT status FROM paper_accounts").fetchone()[0] == "error"
 
 
 def test_event_timeout_is_business_failure_not_process_stopped():
