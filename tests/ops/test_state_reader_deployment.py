@@ -505,3 +505,98 @@ def test_observer_maintenance_is_upgrade_only_and_protects_nine_peers(monkeypatc
     unit_commands=[c for c in commands if 'systemctl' in c]
     assert [c[-2:] for c in unit_commands]==[['stop','qsys-health-observer.service'],['start','qsys-health-observer.service']]
     assert records[0]['after']['live-core-pid']=='0'
+
+
+@pytest.mark.parametrize('installed,active', [(False, False), (False, True), (True, False), (True, True)])
+def test_idle_paper_maintenance_is_upgrade_only_and_protects_nine_peers(monkeypatch, tmp_path, installed, active):
+    from qsys.ops.deployment import validate_record
+    entry = module()
+    old = 'b'*40
+    target = 'c'*40
+    current = [old if installed else 'uninstalled']
+    commands, records, protected = [], [], []
+    facts = {'pid':'0','started_monotonic':'0','repo_sha':'a'*40,
+             'maintenance_facts':'existing immutable KILL/state'}
+    monkeypatch.setattr(entry,'_branch',lambda *a:'main')
+    monkeypatch.setattr(entry,'_dirty',lambda *a:False)
+    monkeypatch.setattr(entry,'_head',lambda *a:'a'*40)
+    monkeypatch.setattr(entry,'_fetch_and_validate_target',lambda *a:'e'*40)
+    monkeypatch.setattr(entry,'_successful_test_run',lambda *a:'validated-test')
+    monkeypatch.setattr(entry,'_current_component_sha',lambda *a:current[0])
+    monkeypatch.setattr(entry,'_active',lambda unit,*a: active if unit=='qsys-paper.service' else False)
+    monkeypatch.setattr(entry,'_idle_paper_maintenance_identity',lambda *a:dict(facts))
+    monkeypatch.setattr(entry,'_live_identity',lambda *a:pytest.fail('trading identity'))
+    monkeypatch.setattr(entry,'_live_preflight',lambda *a:pytest.fail('trading preflight'))
+    monkeypatch.setattr(entry,'_fingerprints',lambda *a:{})
+    monkeypatch.setattr(entry,'_wait_for_web_healthy',lambda *a:True)
+    def identity(unit,*a):
+        protected.append(unit)
+        return 'unchanged-peer'
+    monkeypatch.setattr(entry,'_unit_identity_token',identity)
+    monkeypatch.setattr(entry,'_receive_component_archive',lambda digest,root:root/'artifact.zip')
+    monkeypatch.setattr(entry,'_extract_component_archive',lambda *a:None)
+    monkeypatch.setattr(entry,'_verify_component_release',lambda *a:None)
+    monkeypatch.setattr(entry,'_stage_component_release',lambda *a:None)
+    def run(cmd,**kw):
+        commands.append(cmd)
+        if entry.GENERIC_COMPONENT_INSTALLER in cmd:current[0]=target
+        return subprocess.CompletedProcess(cmd,0,'','')
+    monkeypatch.setattr(entry,'_run',run)
+    def write(config,run_id,record):
+        validate_record(record)
+        records.append(record)
+        return tmp_path/'record.json'
+    monkeypatch.setattr(entry,'_write_record',write)
+    args=argparse.Namespace(component='paper',sha=target,run_id='web-evidence',actor='maintainer',
+        repository='owner/repo',pr_number=561,dry_run=False,artifact_sha256='f'*64)
+    config={'production_repo':str(tmp_path),'production_record_root':str(tmp_path/'records')}
+    if not installed or not active:
+        with pytest.raises(ValueError,match='already active installed'):
+            entry.component_deploy(args,config)
+        assert commands==[]
+        return
+    assert entry.component_deploy(args,config)==0
+    assert records[0]['status']=='success'
+    assert any(c['name']=='paper-idle-maintenance' for c in records[0]['checks'])
+    assert set(protected)=={
+        'qsys-health-observer.service','qsys-shadow-core.service','qsys-backtest-worker.service',
+        'qsys-monitor.service','qsys-live-state-reader.service',
+        'qsys-tushare-sync.service','qsys-daily-archive.service','qsys-catalog-verify.service',
+        'qsys-service-checks.service',
+    }
+    unit_commands=[c for c in commands if 'systemctl' in c]
+    assert [c[-2:] for c in unit_commands]==[['stop','qsys-paper.service'],['start','qsys-paper.service']]
+    assert records[0]['after']['live-core-pid']=='0'
+
+
+@pytest.mark.parametrize('posture', ['idle', 'running', 'scheduled', 'worker', 'changed'])
+def test_idle_paper_guard_binds_real_table_facts_and_rejects_armed_accounts(monkeypatch, tmp_path, posture):
+    import sqlite3
+    entry = module()
+    p = tmp_path / 'var/workbench/workbench.sqlite3'
+    p.parent.mkdir(parents=True)
+    with sqlite3.connect(p) as con:
+        for name in entry.PAPER_MAINTENANCE_TABLES:
+            con.execute(f'CREATE TABLE {name}(id TEXT PRIMARY KEY, status TEXT)')
+        con.execute("INSERT INTO paper_accounts VALUES('a','error')")
+        if posture in ['running', 'scheduled']:
+            con.execute('UPDATE paper_accounts SET status=?', (posture,))
+    procs = tmp_path / 'cgroup.procs'
+    procs.write_text('123\n456\n' if posture == 'worker' else '123\n')
+    monkeypatch.setattr(entry, 'PAPER_CGROUP_PROCS', procs)
+    monkeypatch.setattr(entry, '_state_reader_maintenance_identity', lambda *_: {
+        'pid': '0', 'maintenance_facts': 'original Live/KILL'})
+    monkeypatch.setattr(entry, '_run', lambda command, **kw: subprocess.CompletedProcess(command, 0,
+        'LoadState=loaded\nActiveState=active\nMainPID=123\nControlGroup=/system.slice/qsys-paper.service\nUser=qsys-paper\nGroup=qsys-paper\n', ''))
+    if posture in ['running', 'scheduled', 'worker']:
+        with pytest.raises(ValueError, match='supervisor|forbids'):
+            entry._idle_paper_maintenance_identity(tmp_path)
+        return
+    first = entry._idle_paper_maintenance_identity(tmp_path)
+    assert len(json.loads(first['paper_idle_facts'])['tables']) == 9
+    if posture == 'changed':
+        with sqlite3.connect(p) as con:
+            con.execute("INSERT INTO paper_fills VALUES('f','filled')")
+        assert entry._idle_paper_maintenance_identity(tmp_path) != first
+    else:
+        assert entry._idle_paper_maintenance_identity(tmp_path) == first

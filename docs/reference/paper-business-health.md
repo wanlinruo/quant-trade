@@ -38,3 +38,26 @@ UID对真实账户的只读判断。首次业务告警是纠正旧健康误报�
 #539两次自然SQLITE_CANTOPEN已确认，当前父目录、主库与WAL/SHM有Paper精确ACL。
 当前可读写不证明故障时辅助文件/挂载生命周期正常；根因未定位前不改库、不放宽权限、
 不以重复重启或恢复账户掩盖。#543的20:54进程更替单独取证，不混作SQLite根因。
+
+
+## #539确定性连接释放候选
+
+#549已由PR#576正式868b50a安装，实际observer记录process healthy/business down，
+误报修复已关闭；2 error/1 ended账户继续保持，不把该关闭当模拟恢复。
+
+实际Paper的NOFILE soft1024、数百个Workbench描述符；正常GC下Mac/Linux的2万次
+隔离读取未失败，不能直接判历史两次CANTOPEN的底层原因。禁用GC的离线对照中旧代码
+第509次达到1024并报SQLITE_CANTOPEN，显式GC后回到3；不是生产故障注入。
+候选用事务context内部提交/回滚、finally关闭连接，PRAGMA初始化失败同样关闭。
+同一禁用GC对照完成2万次且FD保持7。官方语义依据见
+[Python sqlite3连接context](https://docs.python.org/3.12/library/sqlite3.html#how-to-use-the-connection-context-manager)。
+
+单个无事务reader锚点保持WAL/SHM，不持有旧快照；对象释放或显式close会释放，
+check_same_thread=False仅用于无事务锚点可由对象finalizer关闭，不共享业务事务连接。
+连接关闭、提交/回滚、初始化失败和GC后只读新提交均有回归；真实UID/只读unit沙箱另验。
+
+可信v41候选仅为已安装active Paper的无账户运行维护：任何running/scheduled（即使未来
+激活）拒绝，cgroup须只有原隔离supervisor，九张Paper表主键排序流式逐值指纹、九peer及
+原可信KILL/Live主库前后保持；不首次启动Paper、不暂停/恢复账户、不重放旧事件。
+候选发布前先核对真实身份/权限与只读辅助文件生命周期。当前修复并不证明历史故障
+唯一根因，生产安装后还须自然稳定性证据，#539不能仅凭CI或一次重启关闭。

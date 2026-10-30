@@ -269,3 +269,96 @@ def test_the_first_day_has_no_yesterday(tmp_path):
     account = store.create(job.id, "模拟一号", 100_000, date(2026, 9, 17))
 
     assert store.previous_total_value(account.id, date(2026, 9, 28)) is None
+
+
+def test_connections_close_without_gc_and_keep_transactions_atomic(tmp_path):
+    import gc
+    import sqlite3
+
+    store = PaperStore(tmp_path / 'lifetime.sqlite3')
+    enabled = gc.isenabled()
+    gc.disable()
+    try:
+        connections = []
+        for _ in range(100):
+            with store._connect() as con:
+                assert con.execute('SELECT count(*) FROM paper_accounts').fetchone()[0] == 0
+            connections.append(con)  # Even a retained Python object must be closed.
+        for con in connections:
+            with pytest.raises(sqlite3.ProgrammingError, match='closed'):
+                con.execute('SELECT 1')
+        with store._connect() as con:
+            con.execute('CREATE TABLE lifetime_test(value TEXT)')
+            con.execute("INSERT INTO lifetime_test VALUES('committed')")
+        with pytest.raises(RuntimeError, match='abort'):
+            with store._connect() as con:
+                con.execute("INSERT INTO lifetime_test VALUES('rolled back')")
+                raise RuntimeError('abort')
+        with store._connect() as con:
+            assert con.execute('SELECT value FROM lifetime_test').fetchall()[0][0] == 'committed'
+            assert con.execute('SELECT count(*) FROM lifetime_test').fetchone()[0] == 1
+    finally:
+        store.close()
+        if enabled:
+            gc.enable()
+
+
+def test_reader_anchor_survives_gc_sees_new_commits_and_closes(tmp_path):
+    import gc
+    import sqlite3
+    from contextlib import closing
+
+    path = tmp_path / 'sidecars.sqlite3'
+    store = PaperStore(path)
+    anchor = store._reader_anchor
+    assert anchor is not None and not anchor.in_transaction
+    gc.collect()
+    for _ in range(2):
+        with closing(sqlite3.connect(path.as_uri() + '?mode=ro', uri=True)) as reader:
+            assert reader.execute('SELECT count(*) FROM paper_accounts').fetchone()[0] == 0
+        with store._connect() as con:
+            con.execute('CREATE TABLE IF NOT EXISTS anchor_test(value INTEGER)')
+            con.execute('INSERT INTO anchor_test VALUES(1)')
+        gc.collect()
+        assert path.with_name(path.name + '-wal').exists()
+        assert path.with_name(path.name + '-shm').exists()
+    with closing(sqlite3.connect(path.as_uri() + '?mode=ro', uri=True)) as reader:
+        assert reader.execute('SELECT count(*) FROM anchor_test').fetchone()[0] == 2
+    store.close()
+    store.close()
+    with pytest.raises(sqlite3.ProgrammingError, match='closed'):
+        anchor.execute('SELECT 1')
+
+
+def test_setup_failure_closes_connection_and_store_finalizer_closes_anchor(tmp_path, monkeypatch):
+    import gc
+    import sqlite3
+    import weakref
+
+    store = PaperStore(tmp_path / 'failure.sqlite3')
+    anchor = store._reader_anchor
+    real_connect = sqlite3.connect
+    opened = []
+
+    class SetupFailure(sqlite3.Connection):
+        def execute(self, sql, *args, **kwargs):
+            if sql == 'PRAGMA foreign_keys=ON':
+                raise sqlite3.OperationalError('setup failed')
+            return super().execute(sql, *args, **kwargs)
+
+    def connect(*args, **kwargs):
+        con = real_connect(*args, **kwargs, factory=SetupFailure)
+        opened.append(con)
+        return con
+
+    monkeypatch.setattr(sqlite3, 'connect', connect)
+    with pytest.raises(sqlite3.OperationalError, match='setup failed'):
+        store.accounts()
+    with pytest.raises(sqlite3.ProgrammingError, match='closed'):
+        opened[0].execute('SELECT 1')
+    ref = weakref.ref(store)
+    del store
+    gc.collect()
+    assert ref() is None
+    with pytest.raises(sqlite3.ProgrammingError, match='closed'):
+        anchor.execute('SELECT 1')
