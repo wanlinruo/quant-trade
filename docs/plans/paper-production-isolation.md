@@ -1,5 +1,14 @@
 # Paper 独立生产迁移（#490 / #330）
 
+## 10-30连接生命周期修复（#539）
+
+当前Paper已独立987175e/UID979，2 error/1 ended；下文迁移前快照为历史。
+#549观察器已868b50a正式修复误报；本轮只修事务连接close和无事务WAL/SHM锚点。
+新增可信v41候选维护仅允许已安装active且无running/scheduled账户、无worker的
+Paper supervisor升级；绑定九表逐值事实/九peer/KILL/Live主库，不恢复账户。
+具体实验、历史归因边界及真实现场验收见#539和reference/paper-business-health.md。
+
+
 ## 当前事实与边界
 
 生产Paper仍从共享checkout/venv以Ubuntu运行；2026-10-22凌晨只读快照为两个running、

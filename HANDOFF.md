@@ -1,5 +1,17 @@
 # 项目交接入口
 
+## 10-30 22:41后：观察器修复完成，继续Paper连接生命周期
+
+- #549已PR#576/main868b50a正式发布，workflow41073410855/Deployment7440999417/实际
+  record三方success；新observer3282489记录Paper process healthy/business down、
+  strategy_account_error。#549已关闭，#482仅首阶段已安装，完整维护语义仍未完成。
+- 全部模拟表逐值/数量、其他十服务身份与原KILL/Live主库保持；两个error账户未恢复。
+- #539候选确定性关闭事务连接，单个无事务锚点保持只读WAL/SHM。关闭GC/1024描述符
+  离线对照旧代码509次CANTOPEN、候选2万次FD稳定7；正常GC2万次未复现，不能判历史唯一根因。
+- v41候选仅允许已安装active且无running/scheduled账户、cgroup只有supervisor的Paper
+  升级；九表逐值指纹/九peer/KILL/主库保持。不恢复账户或实盘，不放宽其他组件门禁。
+  生产仍v40/Paper987175e；候选不是已安装，最新CI/发布进展以#539最新评论为准。
+
 ## 10-30晚：数据自然同步通过，推进模拟健康修复
 
 - a132两个数据组件已17:43正式发布，三方证据及原timer恢复见#550最新评论；

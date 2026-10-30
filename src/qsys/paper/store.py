@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
+import weakref
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime, time
 from pathlib import Path
@@ -44,14 +46,38 @@ class PaperStore:
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._reader_anchor: sqlite3.Connection | None = None
+        self._anchor_finalizer: weakref.finalize | None = None
         self._init()
+        # Keep sidecars available to directory-read-only observers even after GC
+        # closes all short transactions. This connection never holds a snapshot.
+        anchor = sqlite3.connect(self.path, timeout=30, check_same_thread=False)
+        try:
+            anchor.execute("PRAGMA journal_mode=WAL").fetchall()
+            anchor.execute("SELECT name FROM sqlite_master LIMIT 1").fetchall()
+        except BaseException:
+            anchor.close()
+            raise
+        self._reader_anchor = anchor
+        self._anchor_finalizer = weakref.finalize(self, anchor.close)
 
+    def close(self) -> None:
+        if self._anchor_finalizer is not None:
+            self._anchor_finalizer()
+            self._anchor_finalizer = None
+        self._reader_anchor = None
+
+    @contextmanager
     def _connect(self):
         con = sqlite3.connect(self.path, timeout=30)
-        con.row_factory = sqlite3.Row
-        con.execute("PRAGMA journal_mode=WAL")
-        con.execute("PRAGMA foreign_keys=ON")
-        return con
+        try:
+            con.row_factory = sqlite3.Row
+            con.execute("PRAGMA journal_mode=WAL")
+            con.execute("PRAGMA foreign_keys=ON")
+            with con:
+                yield con
+        finally:
+            con.close()
 
     def _init(self) -> None:
         with self._connect() as con:

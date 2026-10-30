@@ -9,6 +9,8 @@ import json
 import os
 import re
 import shlex
+import sqlite3
+from contextlib import closing
 import shutil
 import stat
 import subprocess
@@ -36,7 +38,7 @@ ALLOWED_WINDOWS_COMPONENTS = frozenset({
     "windows-agent", "windows-gateway", "windows-control",
 })
 WINDOWS_COORDINATOR_PATH = "deploy/linux/qsys-windows-deploy-coordinator.py"
-ENTRYPOINT_VERSION = 40
+ENTRYPOINT_VERSION = 41
 ENTRYPOINT_CAPABILITIES = (
     "systemd-apply-v1",
     "systemd-component-boundary-v1",
@@ -79,6 +81,7 @@ ENTRYPOINT_CAPABILITIES = (
     "component-service-checks-maintenance-v1",
     "component-daily-archive-maintenance-v1",
     "component-observer-maintenance-v1",
+    "component-idle-paper-maintenance-v1",
     "emergency-restart-authorization-v1",
 )
 FAILURE_POINTS = frozenset({"none", "linux-health", "windows-switch"})
@@ -794,6 +797,52 @@ def _service_checks_maintenance_identity(repo: Path) -> dict[str, str]:
 
 def _daily_archive_maintenance_identity(repo: Path) -> dict[str, str]:
     return _quiescent_data_maintenance_identity(repo, "daily-archive")
+
+
+PAPER_CGROUP_PROCS = Path("/sys/fs/cgroup/system.slice/qsys-paper.service/cgroup.procs")
+PAPER_MAINTENANCE_TABLES = (
+    "paper_accounts", "paper_positions", "paper_orders", "paper_fills", "paper_rejects",
+    "paper_events", "paper_strategy_runs", "paper_equity", "paper_logs",
+)
+
+
+def _idle_paper_maintenance_identity(repo: Path) -> dict[str, str]:
+    """Upgrade only an unarmed supervisor; never pause/resume an account here."""
+    identity = _state_reader_maintenance_identity(repo)
+    result = _run([
+        "systemctl", "show", "qsys-paper.service",
+        "--property=LoadState,ActiveState,MainPID,ControlGroup,User,Group",
+    ], cwd=repo)
+    unit = dict(line.split("=", 1) for line in result.stdout.splitlines() if "=" in line)
+    expected = {"LoadState": "loaded", "ActiveState": "active", "User": "qsys-paper",
+                "Group": "qsys-paper", "ControlGroup": "/system.slice/qsys-paper.service"}
+    pid = unit.get("MainPID", "")
+    if (any(unit.get(k) != v for k, v in expected.items()) or not pid.isdigit()
+            or int(pid) <= 0 or set(PAPER_CGROUP_PROCS.read_text().split()) != {pid}):
+        raise ValueError("Paper maintenance requires only the existing isolated supervisor")
+    path = repo / "var/workbench/workbench.sqlite3"
+    info = path.lstat()
+    if not stat.S_ISREG(info.st_mode):
+        raise ValueError("Paper maintenance requires an existing regular Workbench database")
+    facts = {"identity": [info.st_dev, info.st_ino, info.st_uid, info.st_gid, info.st_mode],
+             "tables": {}}
+    with closing(sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=10)) as con:
+        con.execute("BEGIN")
+        if con.execute("SELECT count(*) FROM paper_accounts WHERE status IN ('running','scheduled')").fetchone()[0]:
+            raise ValueError("Paper maintenance forbids running or scheduled accounts")
+        for table in PAPER_MAINTENANCE_TABLES:
+            columns = con.execute(f'PRAGMA table_info("{table}")').fetchall()
+            keys = [row[1] for row in sorted(columns, key=lambda row: row[5]) if row[5]]
+            if not keys or any(not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", k) for k in keys):
+                raise ValueError("Paper maintenance requires known primary-key ordering")
+            ordering = ",".join(f'"{k}"' for k in keys)
+            digest, count = hashlib.sha256(), 0
+            for row in con.execute(f'SELECT * FROM "{table}" ORDER BY {ordering}'):
+                digest.update(json.dumps(row, ensure_ascii=True, separators=(",", ":")).encode() + b"\n")
+                count += 1
+            facts["tables"][table] = {"rows": count, "sha256": digest.hexdigest()}
+    identity["paper_idle_facts"] = json.dumps(facts, sort_keys=True, separators=(",", ":"))
+    return identity
 
 
 def _extract_component_archive(
@@ -1559,10 +1608,14 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
     observer_maintenance = args.component == "health-observer" and not _active("qsys-live-core.service", repo)
     if observer_maintenance and (not before_component_active or before_component == "uninstalled"):
         raise ValueError("observer maintenance only upgrades an already active installed observer")
+    paper_maintenance = args.component == "paper" and not _active("qsys-live-core.service", repo)
+    if paper_maintenance and (not before_component_active or before_component == "uninstalled"):
+        raise ValueError("Paper maintenance only upgrades an already active installed supervisor")
     maintenance = (reader_maintenance or data_maintenance or catalog_maintenance
                    or web_evidence_maintenance or checks_maintenance or archive_maintenance
-                   or observer_maintenance)
-    guard = (_daily_archive_maintenance_identity if archive_maintenance else
+                   or observer_maintenance or paper_maintenance)
+    guard = (_idle_paper_maintenance_identity if paper_maintenance else
+             _daily_archive_maintenance_identity if archive_maintenance else
              _service_checks_maintenance_identity if checks_maintenance else
              _tushare_maintenance_identity if data_maintenance else
              _catalog_maintenance_identity if catalog_maintenance else
@@ -1586,6 +1639,11 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
     if observer_maintenance:
         protected_units = {name: unit for name, unit in COMPONENT_PROTECTED_PEERS["catalog-verify"].items()
                            if name != "health-observer"}
+        protected_units = {**protected_units, "catalog-verify": "qsys-catalog-verify.service",
+                           "service-checks": "qsys-service-checks.service"}
+    if paper_maintenance:
+        protected_units = {name: unit for name, unit in COMPONENT_PROTECTED_PEERS["catalog-verify"].items()
+                           if name != "paper"}
         protected_units = {**protected_units, "catalog-verify": "qsys-catalog-verify.service",
                            "service-checks": "qsys-service-checks.service"}
     before_protected = {
@@ -1621,6 +1679,7 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
         "service_checks_readonly_maintenance": checks_maintenance,
         "daily_archive_data_maintenance": archive_maintenance,
         "observer_readonly_maintenance": observer_maintenance,
+        "paper_idle_maintenance": paper_maintenance,
     }
     if args.dry_run:
         print(json.dumps(preview, ensure_ascii=False))
@@ -1645,6 +1704,9 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
     if web_evidence_maintenance:
         checks.append({"name": "web-evidence-maintenance", "status": "passed",
                        "detail": "active installed Web upgrade only; enforce stopped Live/state/KILL and eight-peer continuity"})
+    if paper_maintenance:
+        checks.append({"name": "paper-idle-maintenance", "status": "passed",
+                       "detail": "unarmed supervisor only; nine peer identities and all Paper table facts preserved"})
     if observer_maintenance:
         checks.append({"name": "observer-readonly-maintenance", "status": "passed",
                        "detail": "active installed observer upgrade only; preserve stopped Live/state/KILL and nine peers"})

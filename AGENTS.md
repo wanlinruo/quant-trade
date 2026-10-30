@@ -260,8 +260,14 @@ manifest → `HANDOFF.md` → 其他历史文档。
   如实写明是代行，并且要真查。
 - **停用Live期间的observer维护仅限已有活动实例**（#549）：只升级已安装且active的
   health-observer，核验原可信绑定、KILL与主库，前后精确保留九个业务/数据peer身份；
-  不首次启动inactive观察器，不扩展至Paper或其他组件的Live门禁豁免。修正健康误报
+  不首次启动inactive观察器，此观察器路径不豁免Paper或其他组件的Live门禁。修正健康误报
   不恢复账户，不把新告警视为新发生错误；三方发布证据后再用实际UID核验只读判断。
+- **Paper连接释放与停用态维护**（#539）：事务context不等于关闭SQLite连接，事务成功、
+  回滚、PRAGMA失败均须确定性close；生产者保留单个无事务锚点维持只读WAL/SHM，退出释放，
+  不依赖GC或调高NOFILE。停用Live期间仅允许已安装active且cgroup只有supervisor的Paper
+  升级；任何running/scheduled账户（含未来生效）均拒绝，九张Paper表逐值指纹和九peer、
+  KILL/主库前后保持。安装不恢复账户或重放事件，不放宽其他组件门禁。历史CANTOPEN的
+  具体触发未捕获时，如实区分已复现的连接缺陷与历史归因，后续自然稳定性另验收。
 - **独立组件只前进不回退**（维护者 2026-10-20 裁决，#453）：组件出现异常直接修复并正常发布，
   不把 legacy 回切当作生产回滚手段，也不为此新增 gateway 命令或控制面能力。回切只作一次性
   预生产验证（`Verify component rollback preproduction`）；`component-deploy` 自带的失败补偿保留。
