@@ -1,5 +1,34 @@
 # 项目交接入口
 
+## 11-01晚：#580三组件正式发布，周一自然验收待执行
+
+- 维护者明确确认后，按service-checks → daily-archive → tushare-sync串行发布到
+  `7d5e2c41c0eca38c4d8ac3f2815c8674c028a6e0`。正式workflow分别41308083182 /
+  41308382815 / 41308602922，Deployment7473199470 / 7473240749 / 7473271210，
+  节点`issue580-production-20261101-r1-<组件>/record.json`均经实际validate_record，
+  三方success后才推进下一项；安装UID993读取新warning夹具正确，UID982/983模块读取通过。
+- 本项增加停复牌写前完整旧新观测/物理版本、写后独立收据、跨入口未决差异与warning传播，
+  不裁定#551的历史8/7行哪版正确，不恢复/删除市场行。归档前拒绝较小响应与主同步整日
+  替换的既有策略保持；accepted仅指本入口本次接受，后次成功不自动消除历史差异。
+- premarket-limits仍`37bb3c4313dbebabe6e2f486eca99b00cce74561`。停用Live时没有其维护
+  例外，本轮不发布、不扩门禁；不能称全部生产者均已启用审计。#580仍validation，#551仍blocked。
+- 三个业务timer已恢复原active/enabled，oneshot终态、12个业务/数据peer身份、4554个
+  Parquet物理版本、原KILL/Live主库保持。Live inactive/disabled/PID0、Paper3298434保持；
+  未人工运行采集、恢复账户、启动Shadow/Live或改变QMT恢复配置。未用物理版本冒充逐值质检。
+- 11-02数据自然只读观察迁到`issue550-natural-download-20261101-r4`，16:30/19:20两timer
+  active；绑定SHA `5e9bb87125c2cef411d2a202b1597482f8e5133a8bb93e87543bb784a0c2e530`，
+  verifier仍`0543aff6b68860aa660da0c775907758e0b6be161e647ad56544501c1c372dac`。
+  新生产current venv/UID982/实际执行契约的只读预检通过；accepted=false明确不是自然通过。
+  旧r3两个timer inactive，定义/绑定/失败证据保留；#579的09:20/10:00/16:00三个Paper
+  timer不改。模拟账户快照以#579最新绑定与节点事实为准，不按历史“两账户恢复”记录重启账户。
+- 准备时四个真实身份unit夹具通过，当前Web/日报读取器兼容warning/progress及去重；
+  三个正式dry-run全部success。首次只读workflow GET断连与timer最终审计过严失败均保留，
+  后者因既有2/3分钟随机延迟重算NextElapse导致；独立对账、不重放start。规则已补入AGENTS。
+- 发布审计`/data/qsys/var-deployments/issue580-production-20261101-r1/`；候选与unit沙箱
+  `issue580-sandbox-20261101-r1/`。原制品/审计/市场事实保持，不清失败历史。
+  下一步等周一实际分钟下载与新观测、模拟起盘/竞价/收盘；代码/安装成功不能替代自然验收。
+
+
 ## 10-30 23:43：数据自然同步通过；模拟已恢复待11-02生效
 
 - **当前生产**：归档/Tushare=a132，Web=d505，catalog=ae29，checks=0a67，observer=868b50a，
