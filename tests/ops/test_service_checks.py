@@ -783,3 +783,17 @@ def test_interrupted_catalog_is_not_reported_healthy_after_field_completion():
     run={**verify_run(), 'status':'interrupted'}
     got=sc._catalog_verify_ran(ctx(FakeQuery(),[run]))
     assert got.status==sc.BAD and got.rows==364 and 'interrupted' in got.actual
+
+
+@pytest.mark.parametrize('status,expected', [('warning', sc.WARN), ('failed', sc.BAD),
+                                             ('running', sc.BAD), ('succeeded', sc.OK)])
+def test_suspension_observation_status_is_not_lost(status, expected):
+    run = {'service': 'tushare-sync', 'started_at': f'{DAY}T17:00:00',
+           'session': DAY.isoformat(), 'status': status,
+           'steps': [{'table': 'suspend_daily', 'status': status,
+                      'detail': 'unresolved_observations=1'}]}
+    result = sc._suspend_receipt(ctx(FakeQuery(), [run]))
+    assert result.status == expected
+    if status == 'warning':
+        assert '已执行' in result.actual
+        assert result.detail == 'unresolved_observations=1'

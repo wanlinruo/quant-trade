@@ -291,3 +291,27 @@ def test_failed_daily_is_recorded_before_raising(warehouse, monkeypatch, tmp_pat
         with ServiceRun.open(tmp_path / "runs", "tushare-sync") as run:
             sync(FakeProvider(daily_rows=0), warehouse, DAY, run=run)
     assert run.status == "failed" and run.steps[0].status == "failed"
+
+
+def test_suspension_unresolved_warning_reaches_service_run_and_survives_next_sync(
+    warehouse, tmp_path, monkeypatch,
+):
+    from qsys.data.pipeline.tushare_reference import ingest_suspensions
+    from qsys.ops.services import ServiceRun, WARNING
+    from types import SimpleNamespace
+
+    raw = lambda symbols: pl.DataFrame({
+        'ts_code': symbols, 'trade_date': ['20260911'] * len(symbols),
+        'suspend_type': ['S'] * len(symbols),
+    })
+    ingest_suspensions(SimpleNamespace(suspend_d=lambda day: raw(['a', 'b'])), warehouse, [DAY])
+    monkeypatch.setattr(tushare_sync, '_REFERENCE_STEPS', [('suspend_daily', ingest_suspensions)])
+    provider = FakeProvider()
+    provider.suspend_d = lambda day: raw(['a'])
+    for _ in range(2):
+        with ServiceRun.open(tmp_path / 'runs', 'tushare-sync') as run:
+            sync(provider, warehouse, DAY, run=run)
+        step = next(s for s in run.steps if s.table == 'suspend_daily')
+        assert step.status == WARNING and run.status == WARNING
+        assert step.progress['unresolved_observation_ids']
+        assert 'accepted_scope=current_entry_only' in step.detail

@@ -81,8 +81,10 @@ def main() -> int:
                 )
                 step.rows = snapshot.row_count
                 step.detail = snapshot.detail
-                if not snapshot.accepted:
-                    step.warn("接口响应少于已有快照，已保留已有数据；" + snapshot.detail)
+                step.progress = {"observation_id": snapshot.observation_id,
+                                 "unresolved_observation_ids": list(snapshot.unresolved_ids)}
+                if not snapshot.accepted or snapshot.unresolved_ids:
+                    step.warn("停复牌观测存在未决差异，本次接受范围仅限当前入口；" + snapshot.detail)
             except Exception as exc:
                 suspension_code = 1
                 step.fail(

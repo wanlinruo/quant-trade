@@ -182,7 +182,17 @@ def sync(provider, warehouse: Warehouse, day: date, *,
     for name, ingest in _REFERENCE_STEPS:
         label, interface, table = STEP_SOURCES.get(name, (name, None, name))
         with record_step(run, label, interface=interface, table=table) as step:
-            counts[name] = step.rows = ingest(provider, warehouse, [day])
+            if ingest is reference.ingest_suspensions:
+                def observed(audit):
+                    step.progress = audit.progress
+                    step.detail = audit.detail
+                    if audit.unresolved_ids:
+                        step.warn("停复牌观测存在未决差异；" + audit.detail)
+                counts[name] = step.rows = ingest(
+                    provider, warehouse, [day], on_observation=observed,
+                )
+            else:
+                counts[name] = step.rows = ingest(provider, warehouse, [day])
 
     # Only the full production wiring contains moneyflow.  Unit tests and
     # deliberately reduced callers may replace _REFERENCE_STEPS; do not turn

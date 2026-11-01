@@ -182,10 +182,14 @@ def _suspend_receipt(ctx: CheckContext) -> CheckResult:
     if step is None:
         return CheckResult(BAD, "当日同步记录里「停牌」成功", "同步未执行到停牌这一步",
                            run.get("error", ""))
-    if step.get("status") != SUCCEEDED:
+    if step.get("status") not in (SUCCEEDED, WARNING):
         return CheckResult(BAD, "当日同步记录里「停牌」成功", f"停牌步骤 {step.get('status')}",
                            step.get("error") or step.get("detail", ""))
     rows = ctx.query.suspensions(None, ctx.day, ctx.day).height
+    if step.get("status") == WARNING:
+        return CheckResult(WARN, "停牌采集已执行，未决观测须保留",
+                           f"已执行且有警告，当日停牌 {rows} 只",
+                           step.get("detail", ""), rows=rows)
     return CheckResult(OK, "当日同步记录里「停牌」成功", f"成功，当日停牌 {rows} 只",
                        "停牌可以真的为 0 只，所以以采集成功为准", rows=rows)
 
