@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import date
 
 import polars as pl
@@ -14,6 +14,9 @@ import structlog
 
 from qsys.data import schema
 from qsys.data.storage import Warehouse
+from qsys.data.pipeline.suspension_audit import (
+    SuspensionAudit, apply_observed_suspensions,
+)
 from qsys.markets.ashare import board_of
 
 log = structlog.get_logger(__name__)
@@ -94,13 +97,18 @@ def ingest_price_limits(provider, warehouse: Warehouse, days: Sequence[date]) ->
     return written
 
 
-def ingest_suspensions(provider, warehouse: Warehouse, days: Sequence[date]) -> int:
+def ingest_suspensions(
+    provider, warehouse: Warehouse, days: Sequence[date], *,
+    on_observation: Callable[[SuspensionAudit], None] | None = None,
+) -> int:
     from qsys.data.query import WarehouseQuery
 
+    # 所有请求先成功，才开始该批次的写入；调用失败不当作成功空响应。
     frames = []
     for day in days:
         raw = provider.suspend_d(day)
         if not raw.height:
+            frames.append(pl.from_arrow(schema.SUSPEND_DAILY.empty_table()))
             continue
         timing = (pl.col("suspend_timing").cast(pl.Utf8)
                   if "suspend_timing" in raw.columns else pl.lit(None, dtype=pl.Utf8))
@@ -110,12 +118,21 @@ def ingest_suspensions(provider, warehouse: Warehouse, days: Sequence[date]) -> 
             pl.col("suspend_type").cast(pl.Utf8), timing.alias("suspend_timing"),
         ))
     query = WarehouseQuery(warehouse)
-    incoming = (pl.concat(frames) if frames
-                else pl.from_arrow(schema.SUSPEND_DAILY.empty_table()))
-    written = _replace_days(
-        warehouse, "suspend_daily", incoming, schema.SUSPEND_DAILY, days,
-        lambda lo, hi: query.suspensions(None, lo, hi),
-    )
+    written = 0
+    for day, frame in zip(days, frames, strict=True):
+        previous = query.suspensions(None, day, day)
+        audit = apply_observed_suspensions(
+            warehouse, day, previous, frame, entry="tushare_sync", accepted=True,
+            write=lambda day=day, frame=frame: _replace_days(
+                warehouse, "suspend_daily", frame, schema.SUSPEND_DAILY, [day],
+                lambda lo, hi: query.suspensions(None, lo, hi),
+            ),
+        )
+        written += frame.height
+        if on_observation is not None:
+            on_observation(audit)
+        logger = log.warning if audit.unresolved_ids else log.info
+        logger("suspensions.observed", day=str(day), **audit.progress)
     log.info("suspensions.ingested", rows=written, days=len(days))
     return written
 

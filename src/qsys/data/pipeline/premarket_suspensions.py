@@ -12,6 +12,7 @@ import structlog
 from qsys.data import schema
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
+from qsys.data.pipeline.suspension_audit import apply_observed_suspensions
 
 log = structlog.get_logger(__name__)
 
@@ -25,6 +26,8 @@ class SuspensionSnapshot:
     content_hash: str
     accepted: bool = True
     previous_rows: int = 0
+    observation_id: str | None = None
+    unresolved_ids: tuple[str, ...] = ()
 
     @property
     def detail(self) -> str:
@@ -33,7 +36,9 @@ class SuspensionSnapshot:
             f"query_status=success; snapshot_status={status}; "
             f"observed_at={self.observed_at.isoformat(timespec='seconds')}; "
             f"rows={self.row_count}; previous_rows={self.previous_rows}; "
-            f"content_hash={self.content_hash}"
+            f"content_hash={self.content_hash}; observation_id={self.observation_id}; "
+            f"unresolved_observations={len(self.unresolved_ids)}; "
+            "accepted_scope=current_entry_only"
         )
 
 
@@ -70,6 +75,7 @@ def _snapshot_hash(frame: pl.DataFrame) -> str:
 
 def sync_premarket_suspensions(
     provider, warehouse: Warehouse, day: date, *, observed_at: datetime | None = None,
+    entry: str = "premarket",
 ) -> SuspensionSnapshot:
     """采集并按交易日幂等替换 ``suspend_daily``。
 
@@ -83,7 +89,7 @@ def sync_premarket_suspensions(
     existing_day = query.suspensions(None, day, day)
     accepted = frame.height >= existing_day.height
     digest = _snapshot_hash(frame)
-    if accepted:
+    def write():
         year_start, year_end = date(day.year, 1, 1), date(day.year, 12, 31)
         existing_year = query.suspensions(None, year_start, year_end)
         merged = (
@@ -98,13 +104,18 @@ def sync_premarket_suspensions(
         warehouse.write(
             "suspend_daily", merged.to_arrow().cast(schema.SUSPEND_DAILY), year=day.year
         )
-    else:
+    audit = apply_observed_suspensions(
+        warehouse, day, existing_day, frame, entry=entry,
+        accepted=accepted, write=write, observed_at=observed_at,
+    )
+    if not accepted:
         log.warning(
             "premarket_suspensions.regressed", day=str(day), rows=frame.height,
             previous_rows=existing_day.height, content_hash=digest,
         )
     snapshot = SuspensionSnapshot(
-        observed_at, frame.height, digest, accepted, existing_day.height
+        observed_at, frame.height, digest, accepted, existing_day.height,
+        audit.observation_id, audit.unresolved_ids,
     )
     log.info("premarket_suspensions.observed", day=str(day), **{
         "rows": snapshot.row_count,

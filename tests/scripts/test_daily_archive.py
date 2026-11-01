@@ -78,8 +78,8 @@ def test_archive_uses_current_delisting_for_auction_full_market_and_supplements(
     monkeypatch.setattr(daily_archive, "datetime", SimpleNamespace(now=lambda: datetime(2026, 10, 23, 16)))
     monkeypatch.setattr(daily_archive, "load_trading_calendar", lambda _: AShareCalendar([prior, current_day]))
     monkeypatch.setattr(daily_archive, "load_tushare_config", lambda _: SimpleNamespace(token="test"))
-    monkeypatch.setattr(daily_archive, "sync_premarket_suspensions", lambda *a: SimpleNamespace(
-        row_count=0, detail="test", accepted=True))
+    monkeypatch.setattr(daily_archive, "sync_premarket_suspensions", lambda *a, **kw: SimpleNamespace(
+        row_count=0, detail="test", accepted=True, unresolved_ids=(), observation_id="fixture"))
     snapshot = pl.DataFrame({"symbol": ["000016.SZ", "600036.SH"], "board": ["main", "main"],
                              "list_date": [date(1992, 3, 27), date(2002, 4, 9)],
                              "delist_date": [current_day, None]})
@@ -372,7 +372,7 @@ def test_archive_only_requests_closed_sessions(monkeypatch, tmp_path, as_of, clo
     monkeypatch.setattr(daily_archive, "load_tushare_config",
                         lambda _: SimpleNamespace(token="test"))
     monkeypatch.setattr(daily_archive, "sync_premarket_suspensions",
-                        lambda *a: SimpleNamespace(row_count=0, detail="test", accepted=True))
+                        lambda *a, **kw: SimpleNamespace(row_count=0, detail="test", accepted=True, unresolved_ids=(), observation_id="fixture"))
     monkeypatch.setattr(daily_archive.WarehouseQuery, "instruments", lambda _: instruments)
     monkeypatch.setattr(daily_archive, "_archive_instruments", lambda *a: instruments)
     monkeypatch.setattr(daily_archive, "_paper_fills", lambda _: pl.DataFrame({
@@ -445,7 +445,7 @@ def test_gateway_minute_flow_keeps_progress_protocol_and_blocks_bad_transfer(
     monkeypatch.setattr(daily_archive,'load_trading_calendar',lambda _:AShareCalendar([day]))
     monkeypatch.setattr(daily_archive,'load_tushare_config',lambda _:SimpleNamespace(token='test'))
     monkeypatch.setattr(daily_archive,'sync_premarket_suspensions',
-                        lambda *a:SimpleNamespace(row_count=0,detail='test',accepted=True))
+                        lambda *a,**kw:SimpleNamespace(row_count=0,detail='test',accepted=True,unresolved_ids=(),observation_id='fixture'))
     instruments=pl.DataFrame({'symbol':['600036.SH'],'board':['main'],
         'list_date':[date(2020,1,1)],'delist_date':pl.Series([None],dtype=pl.Date)})
     wanted=pl.DataFrame({'symbol':['600036.SH'],'dt':[day]})

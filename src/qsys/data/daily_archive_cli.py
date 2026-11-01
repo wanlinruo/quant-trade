@@ -529,12 +529,15 @@ def _archive(args, service_run: ServiceRun) -> int:
         try:
             token = load_tushare_config(args.config).token
             snapshot = sync_premarket_suspensions(
-                TushareProvider(TushareClient(token)), warehouse, complete_through
+                TushareProvider(TushareClient(token)), warehouse, complete_through,
+                entry="daily_archive",
             )
             step.rows = snapshot.row_count
             step.detail = snapshot.detail
-            if not snapshot.accepted:
-                step.warn("接口响应少于已有快照，已保留已有数据；" + snapshot.detail)
+            step.progress = {"observation_id": snapshot.observation_id,
+                             "unresolved_observation_ids": list(snapshot.unresolved_ids)}
+            if not snapshot.accepted or snapshot.unresolved_ids:
+                step.warn("停复牌观测存在未决差异，本次接受范围仅限当前入口；" + snapshot.detail)
         except Exception as exc:
             suspension_refresh_ok = False
             step.fail(
