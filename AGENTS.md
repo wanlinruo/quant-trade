@@ -124,6 +124,12 @@ manifest → `HANDOFF.md` → 其他历史文档。
   Windows 计划任务 WMI 查询已有故障，维护守卫不能依赖 `Get-ScheduledTask` 枚举成功；
   使用原生 `schtasks` 或精确任务文件检查，并预先准备节点侧恢复保护。
 
+- **随机延迟timer恢复核对配置与终态**（2026-11-01，#580）：先记录原active/enabled、
+  timer定义指纹、随机延迟配置及oneshot真实终态。`FixedRandomDelay=no`时，重新启动timer
+  会重新计算`NextElapseUSecRealtime`；不能把原先随机出的绝对时间当固定身份精确比较。
+  若恢复命令已完成而最终审计失败，先读实际状态/逐项结果并独立对账，不重复start；
+  原失败保留，另记对账收据。临时维护先在节点设置有界恢复保护，正式收尾停用该保护。
+
 ### 2.2 组件迁移发布耗时复盘（2026-10-21，#463 / #470）
 
 - **正式发布前实测 Linux 权限链**：在隔离临时目录使用真实 GNU `install`、目标 owner/group、
