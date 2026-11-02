@@ -1,0 +1,539 @@
+{
+  "issue": 583,
+  "protocol": "qsys583-native-zero-summary-v1",
+  "observed_at": "2026-11-02T23:47:35.111597+08:00",
+  "controller_at": "2026-11-02T23:47:34.1042981+08:00",
+  "python": "3.11.9",
+  "actual_probe_pid": 5612,
+  "launcher_pid": 5804,
+  "source_sha256": "123791c717e25feb3d747d6527f5de3adc0a74a50f2f499e908e7a3056e09435",
+  "controller_result_sha256": "1dec4951e01eed6281b6604ef40558bface31e5b4867f0e644ad42ead3d0c30c",
+  "qmt_pid": 2044,
+  "qmt_identity_preserved": true,
+  "read_calls": 12,
+  "download_calls": 0,
+  "subscribe_calls": 0,
+  "account_calls": 0,
+  "trade_calls": 0,
+  "independent_market_truth_verified": false,
+  "minute_cases": [
+    {
+      "symbol": "603828.SH",
+      "rows": 241,
+      "fill_variants_equal": true,
+      "leading_rows": 4,
+      "first_positive_index": "20261102093400",
+      "zero_volume_rows": 114,
+      "native_dtypes": {
+        "time": "int64",
+        "open": "float64",
+        "high": "float64",
+        "low": "float64",
+        "close": "float64",
+        "volume": "int64",
+        "amount": "float64"
+      },
+      "native_values_sha256": "c3fa37650e774202d098a2a7a39e998f9bfcd9ad06d28f8def7ecf35257e6766",
+      "first_rows": [
+        {
+          "index": "20261102093000",
+          "time": 1793583000000.0,
+          "open": 4.62,
+          "high": 4.62,
+          "low": 4.62,
+          "close": 4.62,
+          "volume": 0.0,
+          "amount": 0.0
+        },
+        {
+          "index": "20261102093100",
+          "time": 1793583060000.0,
+          "open": 4.62,
+          "high": 4.62,
+          "low": 4.62,
+          "close": 4.62,
+          "volume": 0.0,
+          "amount": 0.0
+        },
+        {
+          "index": "20261102093200",
+          "time": 1793583120000.0,
+          "open": 4.62,
+          "high": 4.62,
+          "low": 4.62,
+          "close": 4.62,
+          "volume": 0.0,
+          "amount": 0.0
+        },
+        {
+          "index": "20261102093300",
+          "time": 1793583180000.0,
+          "open": 4.62,
+          "high": 4.62,
+          "low": 4.62,
+          "close": 4.62,
+          "volume": 0.0,
+          "amount": 0.0
+        },
+        {
+          "index": "20261102093400",
+          "time": 1793583240000.0,
+          "open": 4.53,
+          "high": 4.58,
+          "low": 4.53,
+          "close": 4.53,
+          "volume": 107.0,
+          "amount": 48476.0
+        },
+        {
+          "index": "20261102093500",
+          "time": 1793583300000.0,
+          "open": 4.53,
+          "high": 4.53,
+          "low": 4.5,
+          "close": 4.52,
+          "volume": 561.0,
+          "amount": 253374.0
+        }
+      ]
+    },
+    {
+      "symbol": "001228.SZ",
+      "rows": 241,
+      "fill_variants_equal": true,
+      "leading_rows": 1,
+      "first_positive_index": "20261102093100",
+      "zero_volume_rows": 7,
+      "native_dtypes": {
+        "time": "int64",
+        "open": "float64",
+        "high": "float64",
+        "low": "float64",
+        "close": "float64",
+        "volume": "int64",
+        "amount": "float64"
+      },
+      "native_values_sha256": "b91576bce1127527148ab24454fcf9303e8b795a48f2ee001aa51e3d42c8c307",
+      "first_rows": [
+        {
+          "index": "20261102093000",
+          "time": 1793583000000.0,
+          "open": 31.55,
+          "high": 31.55,
+          "low": 31.55,
+          "close": 31.55,
+          "volume": 0.0,
+          "amount": 0.0
+        },
+        {
+          "index": "20261102093100",
+          "time": 1793583060000.0,
+          "open": 31.55,
+          "high": 31.88,
+          "low": 31.2,
+          "close": 31.2,
+          "volume": 462.0,
+          "amount": 1456823.0
+        },
+        {
+          "index": "20261102093200",
+          "time": 1793583120000.0,
+          "open": 31.2,
+          "high": 31.27,
+          "low": 31.1,
+          "close": 31.26,
+          "volume": 320.0,
+          "amount": 998360.0
+        },
+        {
+          "index": "20261102093300",
+          "time": 1793583180000.0,
+          "open": 31.27,
+          "high": 31.27,
+          "low": 30.81,
+          "close": 31.0,
+          "volume": 732.0,
+          "amount": 2273472.0
+        },
+        {
+          "index": "20261102093400",
+          "time": 1793583240000.0,
+          "open": 31.0,
+          "high": 31.09,
+          "low": 30.93,
+          "close": 30.94,
+          "volume": 153.0,
+          "amount": 474189.0
+        },
+        {
+          "index": "20261102093500",
+          "time": 1793583300000.0,
+          "open": 31.01,
+          "high": 31.01,
+          "low": 30.55,
+          "close": 30.68,
+          "volume": 389.0,
+          "amount": 1196045.0
+        }
+      ]
+    },
+    {
+      "symbol": "920009.BJ",
+      "rows": 241,
+      "fill_variants_equal": true,
+      "leading_rows": 1,
+      "first_positive_index": "20261102093100",
+      "zero_volume_rows": 64,
+      "native_dtypes": {
+        "time": "int64",
+        "open": "float64",
+        "high": "float64",
+        "low": "float64",
+        "close": "float64",
+        "volume": "int64",
+        "amount": "float64"
+      },
+      "native_values_sha256": "339a763298495d2bcc21c0919907b7af2fd771053ce3efe63ef2d98e3290366d",
+      "first_rows": [
+        {
+          "index": "20261102093000",
+          "time": 1793583000000.0,
+          "open": 30.02,
+          "high": 30.02,
+          "low": 30.02,
+          "close": 30.02,
+          "volume": 0.0,
+          "amount": 0.0
+        },
+        {
+          "index": "20261102093100",
+          "time": 1793583060000.0,
+          "open": 30.12,
+          "high": 30.45,
+          "low": 29.86,
+          "close": 30.16,
+          "volume": 39.0,
+          "amount": 118221.0
+        },
+        {
+          "index": "20261102093200",
+          "time": 1793583120000.0,
+          "open": 30.16,
+          "high": 30.16,
+          "low": 29.64,
+          "close": 29.66,
+          "volume": 52.0,
+          "amount": 154099.0
+        },
+        {
+          "index": "20261102093300",
+          "time": 1793583180000.0,
+          "open": 29.5,
+          "high": 30.55,
+          "low": 29.45,
+          "close": 30.07,
+          "volume": 323.0,
+          "amount": 965466.0
+        },
+        {
+          "index": "20261102093400",
+          "time": 1793583240000.0,
+          "open": 30.1,
+          "high": 30.1,
+          "low": 30.01,
+          "close": 30.01,
+          "volume": 109.0,
+          "amount": 328226.0
+        },
+        {
+          "index": "20261102093500",
+          "time": 1793583300000.0,
+          "open": 29.85,
+          "high": 30.01,
+          "low": 29.65,
+          "close": 29.65,
+          "volume": 51.0,
+          "amount": 150328.0
+        }
+      ]
+    },
+    {
+      "symbol": "688197.SH",
+      "rows": 241,
+      "fill_variants_equal": true,
+      "leading_rows": 1,
+      "first_positive_index": "20261102093100",
+      "zero_volume_rows": 5,
+      "native_dtypes": {
+        "time": "int64",
+        "open": "float64",
+        "high": "float64",
+        "low": "float64",
+        "close": "float64",
+        "volume": "int64",
+        "amount": "float64"
+      },
+      "native_values_sha256": "7b7aefc1301eecd0e70c12209c23d3a0b328a654f372a9bd264d410f938d8374",
+      "first_rows": [
+        {
+          "index": "20261102093000",
+          "time": 1793583000000.0,
+          "open": 32.4,
+          "high": 32.4,
+          "low": 32.4,
+          "close": 32.4,
+          "volume": 0.0,
+          "amount": 0.0
+        },
+        {
+          "index": "20261102093100",
+          "time": 1793583060000.0,
+          "open": 33.22,
+          "high": 33.24,
+          "low": 32.2,
+          "close": 32.2,
+          "volume": 326.0,
+          "amount": 1058120.0
+        },
+        {
+          "index": "20261102093200",
+          "time": 1793583120000.0,
+          "open": 32.08,
+          "high": 32.17,
+          "low": 32.01,
+          "close": 32.13,
+          "volume": 364.0,
+          "amount": 1167627.0
+        },
+        {
+          "index": "20261102093300",
+          "time": 1793583180000.0,
+          "open": 32.12,
+          "high": 32.12,
+          "low": 31.88,
+          "close": 31.96,
+          "volume": 219.0,
+          "amount": 701794.0
+        },
+        {
+          "index": "20261102093400",
+          "time": 1793583240000.0,
+          "open": 31.97,
+          "high": 32.04,
+          "low": 31.94,
+          "close": 32.04,
+          "volume": 175.0,
+          "amount": 560029.0
+        },
+        {
+          "index": "20261102093500",
+          "time": 1793583300000.0,
+          "open": 32.0,
+          "high": 32.04,
+          "low": 31.68,
+          "close": 31.84,
+          "volume": 501.0,
+          "amount": 1597617.0
+        }
+      ]
+    },
+    {
+      "symbol": "600000.SH",
+      "rows": 241,
+      "fill_variants_equal": true,
+      "leading_rows": 0,
+      "first_positive_index": "20261102093000",
+      "zero_volume_rows": 2,
+      "native_dtypes": {
+        "time": "int64",
+        "open": "float64",
+        "high": "float64",
+        "low": "float64",
+        "close": "float64",
+        "volume": "int64",
+        "amount": "float64"
+      },
+      "native_values_sha256": "b6047cb6bf3626911e5a2a11c87b747b3d67736eb52a5d994a9846e50a8316c5",
+      "first_rows": [
+        {
+          "index": "20261102093000",
+          "time": 1793583000000.0,
+          "open": 9.98,
+          "high": 9.98,
+          "low": 9.98,
+          "close": 9.98,
+          "volume": 4089.0,
+          "amount": 4081301.0
+        },
+        {
+          "index": "20261102093100",
+          "time": 1793583060000.0,
+          "open": 9.99,
+          "high": 10.01,
+          "low": 9.93,
+          "close": 9.96,
+          "volume": 33683.0,
+          "amount": 33596284.0
+        },
+        {
+          "index": "20261102093200",
+          "time": 1793583120000.0,
+          "open": 9.98,
+          "high": 10.02,
+          "low": 9.97,
+          "close": 10.02,
+          "volume": 17815.0,
+          "amount": 17807184.0
+        },
+        {
+          "index": "20261102093300",
+          "time": 1793583180000.0,
+          "open": 10.01,
+          "high": 10.03,
+          "low": 9.99,
+          "close": 10.02,
+          "volume": 10367.0,
+          "amount": 10374219.0
+        },
+        {
+          "index": "20261102093400",
+          "time": 1793583240000.0,
+          "open": 10.02,
+          "high": 10.04,
+          "low": 10.02,
+          "close": 10.04,
+          "volume": 17014.0,
+          "amount": 17056675.0
+        },
+        {
+          "index": "20261102093500",
+          "time": 1793583300000.0,
+          "open": 10.04,
+          "high": 10.05,
+          "low": 10.03,
+          "close": 10.05,
+          "volume": 12305.0,
+          "amount": 12351633.0
+        }
+      ]
+    }
+  ],
+  "tick_cases": [
+    {
+      "symbol": "603828.SH",
+      "rows": 0,
+      "status": "empty_cache_not_market_absence"
+    },
+    {
+      "symbol": "600000.SH",
+      "rows": 0,
+      "status": "empty_cache_not_market_absence"
+    }
+  ],
+  "warehouse_comparison": [
+    {
+      "dataset": "minute_bars",
+      "symbol": "603828.SH",
+      "rows": 241,
+      "different_fields": [],
+      "equal": true,
+      "partition_sha256": "8069904c3d360ffc184c3ee8ef13181cf2cd4b15918633fff56aa377a78a5e34",
+      "partition_stable": true
+    },
+    {
+      "dataset": "minute_bars",
+      "symbol": "001228.SZ",
+      "rows": 241,
+      "different_fields": [],
+      "equal": true,
+      "partition_sha256": "8069904c3d360ffc184c3ee8ef13181cf2cd4b15918633fff56aa377a78a5e34",
+      "partition_stable": true
+    },
+    {
+      "dataset": "minute_bars",
+      "symbol": "920009.BJ",
+      "rows": 241,
+      "different_fields": [],
+      "equal": true,
+      "partition_sha256": "8069904c3d360ffc184c3ee8ef13181cf2cd4b15918633fff56aa377a78a5e34",
+      "partition_stable": true
+    },
+    {
+      "dataset": "minute_bars",
+      "symbol": "688197.SH",
+      "rows": 241,
+      "different_fields": [],
+      "equal": true,
+      "partition_sha256": "8069904c3d360ffc184c3ee8ef13181cf2cd4b15918633fff56aa377a78a5e34",
+      "partition_stable": true
+    },
+    {
+      "dataset": "minute_bars",
+      "symbol": "600000.SH",
+      "rows": 241,
+      "different_fields": [],
+      "equal": true,
+      "partition_sha256": "8069904c3d360ffc184c3ee8ef13181cf2cd4b15918633fff56aa377a78a5e34",
+      "partition_stable": true
+    },
+    {
+      "dataset": "bar_minute_1m",
+      "symbol": "603828.SH",
+      "rows": 241,
+      "different_fields": [],
+      "equal": true,
+      "partition_sha256": "0b9bc7913bfb5bfa01381ba8aebf211f18407685128b30397f4a783561664e93",
+      "partition_stable": true
+    },
+    {
+      "dataset": "bar_minute_1m",
+      "symbol": "001228.SZ",
+      "rows": 241,
+      "different_fields": [],
+      "equal": true,
+      "partition_sha256": "0b9bc7913bfb5bfa01381ba8aebf211f18407685128b30397f4a783561664e93",
+      "partition_stable": true
+    },
+    {
+      "dataset": "bar_minute_1m",
+      "symbol": "920009.BJ",
+      "rows": 241,
+      "different_fields": [],
+      "equal": true,
+      "partition_sha256": "0b9bc7913bfb5bfa01381ba8aebf211f18407685128b30397f4a783561664e93",
+      "partition_stable": true
+    },
+    {
+      "dataset": "bar_minute_1m",
+      "symbol": "688197.SH",
+      "rows": 241,
+      "different_fields": [],
+      "equal": true,
+      "partition_sha256": "0b9bc7913bfb5bfa01381ba8aebf211f18407685128b30397f4a783561664e93",
+      "partition_stable": true
+    },
+    {
+      "dataset": "bar_minute_1m",
+      "symbol": "600000.SH",
+      "rows": 241,
+      "different_fields": [],
+      "equal": true,
+      "partition_sha256": "0b9bc7913bfb5bfa01381ba8aebf211f18407685128b30397f4a783561664e93",
+      "partition_stable": true
+    }
+  ],
+  "tushare_auction_access_probe": {
+    "at": "2026-11-02T23:53:56.895799+08:00",
+    "api": "stk_auction_o",
+    "params": {
+      "ts_code": "603828.SH",
+      "trade_date": "20261102"
+    },
+    "fields": "ts_code,trade_date,open,close,high,low,vol,amount,vwap",
+    "status": "permission_denied",
+    "market_writes": 0,
+    "api_attempts": 1,
+    "code": 40203
+  },
+  "native_time_ms_matches_index_UTC8": true
+}

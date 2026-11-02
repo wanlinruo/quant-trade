@@ -54,6 +54,11 @@ History容器仅处理明确完整的内存数值；#538另增加规范前复权
 不同的事实、八条null/0的公告观测及仅改八现金单元的本地候选。历史覆盖已按确认完成，见
 `cash-dividend-production-acceptance.md`的全表/真实身份验收；未来增量现金策略已按10-30明确确认启用Tushare，首次新源自然采证待#558验收；不能用最新质检0阻断替代现金字段独立验真。
 
+## 原生零量与质检契约（#583）
+
+[native-minute-zero-review.md](native-minute-zero-review.md)记录五组False/True及raw/canonical
+逐值对照、tick缺证据与保留阻断的诊断修复；同源一致不代表市场真值或已证实填充。
+
 ## 本地分钟读取与填充（#550 / #478）
 
 [qmt-local-minute-reads.md](qmt-local-minute-reads.md)与两份10-30实测JSON记录当前SDK

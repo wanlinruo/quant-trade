@@ -611,14 +611,11 @@ def _minute_bar_rows(ctx: CheckContext) -> pl.DataFrame:
 
 
 def _minutes_first_bar_traded(ctx: CheckContext) -> CheckResult:
-    """每个标的当日的首根必须有成交。
+    """保留首根非正成交量的复核门禁，不从形状断言填充。
 
-    首根 volume=0 意味着那是 QMT 区间查询的昨收价填充残留，不是行情。
-
-    取代原先的「每只 241 根」。那条判据对这个缺陷是完全盲的——**填充正是满足它的
-    手段**：填充的作用恰恰是把不足 241 根的日子补齐到 241。它还会反过来误报：
-    首笔成交晚的标的（如 513100.SH，首笔 10:31）在正确数据下本来就不足 241 根。
-    见 docs/reference/qmt-range-query-padding.md。
+    旧 RPC 曾在查询时填充前导行；get_local_data(fill_data=False) 也会直接返回
+    零量时间格（#583）。没有独立事实前不能把这些原值描述为已证实伪造，也不能
+    自动删除或放行。原非正成交量判据、失败状态与样本范围保持。
     """
     rows = _minute_bar_rows(ctx)
     if rows.height == 0:
@@ -628,7 +625,7 @@ def _minutes_first_bar_traded(ctx: CheckContext) -> CheckResult:
     first = rows.group_by("symbol").agg(pl.col("volume").sort_by("dt").first())
     bad = first.filter(pl.col("volume") <= 0)
     return CheckResult(BAD if bad.height else OK, "首根有成交",
-                       f"{bad.height} 只首根无成交（填充残留）",
+                       f"{bad.height} 只首根成交量非正（成因待核验，不据形状认定填充）",
                        _samples(set(bad["symbol"].to_list())),
                        rows=first.height)
 

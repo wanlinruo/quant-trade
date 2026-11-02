@@ -94,10 +94,11 @@ def override_inclusion(ctx: CheckContext) -> CheckResult:
 
 
 def qmt_leading_padding(ctx: CheckContext) -> CheckResult:
-    """只拦截已由 QMT 源表修复证实的多根前导填充。
+    """保留 QMT 多根前导零量的阻断复核，不将形状冒充成因。
 
-    paid 同形案例尚未归因，单根零成交很可能是竞价无成交；两者都不能仅凭
-    形状判错，因此不进入这条日常规则。
+    历史 RPC 填充已有独立处置证据，但新本地缓存接口也直接返回多根零量（#583）。
+    本规则未验证每次读取契约与市场事实，因此只描述命中形状；原规则 ID、判据、
+    样本和 blocking 传播保持，paid 与单根范围也保持。
     """
     checked = 0
     samples: list[pl.DataFrame] = []
@@ -121,7 +122,7 @@ def qmt_leading_padding(ctx: CheckContext) -> CheckResult:
     return CheckResult(
         violations,
         checked,
-        f"检查 {checked:,} 个标的日，发现 {violations:,} 个 QMT 多根前导零填充",
+        f"检查 {checked:,} 个标的日，发现 {violations:,} 个 QMT 多根前导零成交量（成因待核验）",
         sample.head(100) if sample is not None else None,
     )
 
@@ -136,6 +137,6 @@ register(Check(
 register(Check(
     "B2.canonical_qmt_leading_padding", Category.COMPLETENESS, Scope.INCREMENTAL,
     tuple(f"bar_minute_1m.{name}" for name in schema.BAR_MINUTE_1M.names), (),
-    "canonical 只能拦截已有来源证据的 QMT 多根前导填充；paid 与单根不按形状判错",
+    "QMT 多根前导零成交量保持阻断复核，不据形状裁定填充；paid 与单根范围保持",
     qmt_leading_padding,
 ))
