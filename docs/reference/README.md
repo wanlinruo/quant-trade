@@ -54,6 +54,12 @@ History容器仅处理明确完整的内存数值；#538另增加规范前复权
 不同的事实、八条null/0的公告观测及仅改八现金单元的本地候选。历史覆盖已按确认完成，见
 `cash-dividend-production-acceptance.md`的全表/真实身份验收；未来增量现金策略已按10-30明确确认启用Tushare，首次新源自然采证待#558验收；不能用最新质检0阻断替代现金字段独立验真。
 
+## 公开分钟观察与正对照（#583）
+
+[public-minute-prefix-review.md](public-minute-prefix-review.md)记录29例首笔标签一致、
+三只正对照09:30/09:31不一致及严格离线重放。不同发布方的标签一致不代表竞价分钟
+覆盖等价；当前重放明确requires_review，不接入生产放行。
+
 ## 原生零量与质检契约（#583）
 
 [native-minute-zero-review.md](native-minute-zero-review.md)记录五组False/True及raw/canonical
