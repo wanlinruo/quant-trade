@@ -1,0 +1,679 @@
+{
+  "protocol": "qsys583-public-prefix-replay-v2",
+  "day": "2026-11-02",
+  "input_manifest_sha256": "7972f1b52b1fe750d2f85cb6043997fcd474d6687a25e2ef5ce1de18cf42570d",
+  "bound_partition_sha256": "8069904c3d360ffc184c3ee8ef13181cf2cd4b15918633fff56aa377a78a5e34",
+  "case_count": 29,
+  "supported_count": 29,
+  "cases": [
+    {
+      "symbol": "001228.SZ",
+      "day": "2026-11-02",
+      "supported": true,
+      "errors": [],
+      "leading_rows": 1,
+      "warehouse_first_positive": "2026-11-02T09:31:00",
+      "tencent_first_positive": "2026-11-02T09:31:00",
+      "sina_first_positive": "2026-11-02T09:31:00"
+    },
+    {
+      "symbol": "002168.SZ",
+      "day": "2026-11-02",
+      "supported": true,
+      "errors": [],
+      "leading_rows": 1,
+      "warehouse_first_positive": "2026-11-02T09:31:00",
+      "tencent_first_positive": "2026-11-02T09:31:00",
+      "sina_first_positive": "2026-11-02T09:31:00"
+    },
+    {
+      "symbol": "002569.SZ",
+      "day": "2026-11-02",
+      "supported": true,
+      "errors": [],
+      "leading_rows": 1,
+      "warehouse_first_positive": "2026-11-02T09:31:00",
+      "tencent_first_positive": "2026-11-02T09:31:00",
+      "sina_first_positive": "2026-11-02T09:31:00"
+    },
+    {
+      "symbol": "002650.SZ",
+      "day": "2026-11-02",
+      "supported": true,
+      "errors": [],
+      "leading_rows": 1,
+      "warehouse_first_positive": "2026-11-02T09:31:00",
+      "tencent_first_positive": "2026-11-02T09:31:00",
+      "sina_first_positive": "2026-11-02T09:31:00"
+    },
+    {
+      "symbol": "300318.SZ",
+      "day": "2026-11-02",
+      "supported": true,
+      "errors": [],
+      "leading_rows": 1,
+      "warehouse_first_positive": "2026-11-02T09:31:00",
+      "tencent_first_positive": "2026-11-02T09:31:00",
+      "sina_first_positive": "2026-11-02T09:31:00"
+    },
+    {
+      "symbol": "300321.SZ",
+      "day": "2026-11-02",
+      "supported": true,
+      "errors": [],
+      "leading_rows": 1,
+      "warehouse_first_positive": "2026-11-02T09:31:00",
+      "tencent_first_positive": "2026-11-02T09:31:00",
+      "sina_first_positive": "2026-11-02T09:31:00"
+    },
+    {
+      "symbol": "300462.SZ",
+      "day": "2026-11-02",
+      "supported": true,
+      "errors": [],
+      "leading_rows": 1,
+      "warehouse_first_positive": "2026-11-02T09:31:00",
+      "tencent_first_positive": "2026-11-02T09:31:00",
+      "sina_first_positive": "2026-11-02T09:31:00"
+    },
+    {
+      "symbol": "300826.SZ",
+      "day": "2026-11-02",
+      "supported": true,
+      "errors": [],
+      "leading_rows": 1,
+      "warehouse_first_positive": "2026-11-02T09:31:00",
+      "tencent_first_positive": "2026-11-02T09:31:00",
+      "sina_first_positive": "2026-11-02T09:31:00"
+    },
+    {
+      "symbol": "300983.SZ",
+      "day": "2026-11-02",
+      "supported": true,
+      "errors": [],
+      "leading_rows": 1,
+      "warehouse_first_positive": "2026-11-02T09:31:00",
+      "tencent_first_positive": "2026-11-02T09:31:00",
+      "sina_first_positive": "2026-11-02T09:31:00"
+    },
+    {
+      "symbol": "600243.SH",
+      "day": "2026-11-02",
+      "supported": true,
+      "errors": [],
+      "leading_rows": 1,
+      "warehouse_first_positive": "2026-11-02T09:31:00",
+      "tencent_first_positive": "2026-11-02T09:31:00",
+      "sina_first_positive": "2026-11-02T09:31:00"
+    },
+    {
+      "symbol": "603048.SH",
+      "day": "2026-11-02",
+      "supported": true,
+      "errors": [],
+      "leading_rows": 1,
+      "warehouse_first_positive": "2026-11-02T09:31:00",
+      "tencent_first_positive": "2026-11-02T09:31:00",
+      "sina_first_positive": "2026-11-02T09:31:00"
+    },
+    {
+      "symbol": "603828.SH",
+      "day": "2026-11-02",
+      "supported": true,
+      "errors": [],
+      "leading_rows": 4,
+      "warehouse_first_positive": "2026-11-02T09:34:00",
+      "tencent_first_positive": "2026-11-02T09:34:00",
+      "sina_first_positive": "2026-11-02T09:34:00"
+    },
+    {
+      "symbol": "688197.SH",
+      "day": "2026-11-02",
+      "supported": true,
+      "errors": [],
+      "leading_rows": 1,
+      "warehouse_first_positive": "2026-11-02T09:31:00",
+      "tencent_first_positive": "2026-11-02T09:31:00",
+      "sina_first_positive": "2026-11-02T09:31:00"
+    },
+    {
+      "symbol": "688767.SH",
+      "day": "2026-11-02",
+      "supported": true,
+      "errors": [],
+      "leading_rows": 1,
+      "warehouse_first_positive": "2026-11-02T09:31:00",
+      "tencent_first_positive": "2026-11-02T09:31:00",
+      "sina_first_positive": "2026-11-02T09:31:00"
+    },
+    {
+      "symbol": "688768.SH",
+      "day": "2026-11-02",
+      "supported": true,
+      "errors": [],
+      "leading_rows": 1,
+      "warehouse_first_positive": "2026-11-02T09:31:00",
+      "tencent_first_positive": "2026-11-02T09:31:00",
+      "sina_first_positive": "2026-11-02T09:31:00"
+    },
+    {
+      "symbol": "688799.SH",
+      "day": "2026-11-02",
+      "supported": true,
+      "errors": [],
+      "leading_rows": 1,
+      "warehouse_first_positive": "2026-11-02T09:31:00",
+      "tencent_first_positive": "2026-11-02T09:31:00",
+      "sina_first_positive": "2026-11-02T09:31:00"
+    },
+    {
+      "symbol": "920009.BJ",
+      "day": "2026-11-02",
+      "supported": true,
+      "errors": [],
+      "leading_rows": 1,
+      "warehouse_first_positive": "2026-11-02T09:31:00",
+      "tencent_first_positive": "2026-11-02T09:31:00",
+      "sina_first_positive": "2026-11-02T09:31:00"
+    },
+    {
+      "symbol": "920026.BJ",
+      "day": "2026-11-02",
+      "supported": true,
+      "errors": [],
+      "leading_rows": 1,
+      "warehouse_first_positive": "2026-11-02T09:31:00",
+      "tencent_first_positive": "2026-11-02T09:31:00",
+      "sina_first_positive": "2026-11-02T09:31:00"
+    },
+    {
+      "symbol": "920119.BJ",
+      "day": "2026-11-02",
+      "supported": true,
+      "errors": [],
+      "leading_rows": 1,
+      "warehouse_first_positive": "2026-11-02T09:31:00",
+      "tencent_first_positive": "2026-11-02T09:31:00",
+      "sina_first_positive": "2026-11-02T09:31:00"
+    },
+    {
+      "symbol": "920126.BJ",
+      "day": "2026-11-02",
+      "supported": true,
+      "errors": [],
+      "leading_rows": 1,
+      "warehouse_first_positive": "2026-11-02T09:31:00",
+      "tencent_first_positive": "2026-11-02T09:31:00",
+      "sina_first_positive": "2026-11-02T09:31:00"
+    },
+    {
+      "symbol": "920266.BJ",
+      "day": "2026-11-02",
+      "supported": true,
+      "errors": [],
+      "leading_rows": 1,
+      "warehouse_first_positive": "2026-11-02T09:31:00",
+      "tencent_first_positive": "2026-11-02T09:31:00",
+      "sina_first_positive": "2026-11-02T09:31:00"
+    },
+    {
+      "symbol": "920395.BJ",
+      "day": "2026-11-02",
+      "supported": true,
+      "errors": [],
+      "leading_rows": 1,
+      "warehouse_first_positive": "2026-11-02T09:31:00",
+      "tencent_first_positive": "2026-11-02T09:31:00",
+      "sina_first_positive": "2026-11-02T09:31:00"
+    },
+    {
+      "symbol": "920436.BJ",
+      "day": "2026-11-02",
+      "supported": true,
+      "errors": [],
+      "leading_rows": 1,
+      "warehouse_first_positive": "2026-11-02T09:31:00",
+      "tencent_first_positive": "2026-11-02T09:31:00",
+      "sina_first_positive": "2026-11-02T09:31:00"
+    },
+    {
+      "symbol": "920445.BJ",
+      "day": "2026-11-02",
+      "supported": true,
+      "errors": [],
+      "leading_rows": 1,
+      "warehouse_first_positive": "2026-11-02T09:31:00",
+      "tencent_first_positive": "2026-11-02T09:31:00",
+      "sina_first_positive": "2026-11-02T09:31:00"
+    },
+    {
+      "symbol": "920471.BJ",
+      "day": "2026-11-02",
+      "supported": true,
+      "errors": [],
+      "leading_rows": 1,
+      "warehouse_first_positive": "2026-11-02T09:31:00",
+      "tencent_first_positive": "2026-11-02T09:31:00",
+      "sina_first_positive": "2026-11-02T09:31:00"
+    },
+    {
+      "symbol": "920670.BJ",
+      "day": "2026-11-02",
+      "supported": true,
+      "errors": [],
+      "leading_rows": 1,
+      "warehouse_first_positive": "2026-11-02T09:31:00",
+      "tencent_first_positive": "2026-11-02T09:31:00",
+      "sina_first_positive": "2026-11-02T09:31:00"
+    },
+    {
+      "symbol": "920957.BJ",
+      "day": "2026-11-02",
+      "supported": true,
+      "errors": [],
+      "leading_rows": 1,
+      "warehouse_first_positive": "2026-11-02T09:31:00",
+      "tencent_first_positive": "2026-11-02T09:31:00",
+      "sina_first_positive": "2026-11-02T09:31:00"
+    },
+    {
+      "symbol": "920964.BJ",
+      "day": "2026-11-02",
+      "supported": true,
+      "errors": [],
+      "leading_rows": 1,
+      "warehouse_first_positive": "2026-11-02T09:31:00",
+      "tencent_first_positive": "2026-11-02T09:31:00",
+      "sina_first_positive": "2026-11-02T09:31:00"
+    },
+    {
+      "symbol": "920992.BJ",
+      "day": "2026-11-02",
+      "supported": true,
+      "errors": [],
+      "leading_rows": 1,
+      "warehouse_first_positive": "2026-11-02T09:31:00",
+      "tencent_first_positive": "2026-11-02T09:31:00",
+      "sina_first_positive": "2026-11-02T09:31:00"
+    }
+  ],
+  "first_positive_timing_only": true,
+  "full_ohlcv_equality_verified": false,
+  "upstream_feed_independence_verified": false,
+  "controls": [
+    {
+      "symbol": "600000.SH",
+      "labels_agree": false,
+      "errors": [
+        "control_first_positive_label_mismatch"
+      ],
+      "tencent_first_positive": "2026-11-02T09:30:00",
+      "sina_first_positive": "2026-11-02T09:31:00"
+    },
+    {
+      "symbol": "000001.SZ",
+      "labels_agree": false,
+      "errors": [
+        "control_first_positive_label_mismatch"
+      ],
+      "tencent_first_positive": "2026-11-02T09:30:00",
+      "sina_first_positive": "2026-11-02T09:31:00"
+    },
+    {
+      "symbol": "920285.BJ",
+      "labels_agree": false,
+      "errors": [
+        "control_first_positive_label_mismatch"
+      ],
+      "tencent_first_positive": "2026-11-02T09:30:00",
+      "sina_first_positive": "2026-11-02T09:31:00"
+    }
+  ],
+  "control_errors": [],
+  "first_positive_label_contract_consistent": false,
+  "requires_review": true,
+  "production_quality_pass": false,
+  "warehouse_writes": 0,
+  "network_calls": 0,
+  "observations_are_not_production_health_evidence": true,
+  "raw_snapshots_committed": false,
+  "source_urls": [
+    "https://gu.qq.com/sh603828",
+    "https://finance.sina.com.cn/realstock/company/sh603828/nc.shtml"
+  ],
+  "chart_source_sha256": "b9f50cf4593472e5082ca14ee23867563154250e1fbc8c0386135693bb5f9ad6",
+  "raw_snapshot_bindings": {
+    "001228.SZ": {
+      "tencent": {
+        "sha256": "92f206268bc03adf770fff124475aeae62a1c5d8f30d0bf8dea81469cd8611ab",
+        "url": "https://web.ifzq.gtimg.cn/appstock/app/day/query?code=sz001228"
+      },
+      "sina": {
+        "sha256": "dc77ea17da76e8a4d9b595028e9fad7c923e673edf852e7d2b0ac1fdc2f12516",
+        "url": "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_data=/CN_MarketDataService.getKLineData?symbol=sz001228&scale=1&ma=no&datalen=300"
+      }
+    },
+    "002168.SZ": {
+      "tencent": {
+        "sha256": "35d99baf582f668c05199f6ae7fa12689294a534b3e6ea61ec58e064f8c13615",
+        "url": "https://web.ifzq.gtimg.cn/appstock/app/day/query?code=sz002168"
+      },
+      "sina": {
+        "sha256": "ad1d00fbd871970fa50c854e4323128d65e0f8da4031a220774ee31d2a54ceb7",
+        "url": "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_data=/CN_MarketDataService.getKLineData?symbol=sz002168&scale=1&ma=no&datalen=300"
+      }
+    },
+    "002569.SZ": {
+      "tencent": {
+        "sha256": "f12d156323c37dd549261802262229177605e26d03abb5579fb7080425a78670",
+        "url": "https://web.ifzq.gtimg.cn/appstock/app/day/query?code=sz002569"
+      },
+      "sina": {
+        "sha256": "a443461f733d3b8e64d5ff5b44683a8894dcdc74ac61393ae90392e5162d54e2",
+        "url": "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_data=/CN_MarketDataService.getKLineData?symbol=sz002569&scale=1&ma=no&datalen=300"
+      }
+    },
+    "002650.SZ": {
+      "tencent": {
+        "sha256": "e2d57975e2347e9e75fce7ab799a4e888351329adbf31c907c1ade401c4c104b",
+        "url": "https://web.ifzq.gtimg.cn/appstock/app/day/query?code=sz002650"
+      },
+      "sina": {
+        "sha256": "2faae4ea1b0422f97673fde1c9db38fe0ff8d1e52f386e08fc921cec9c4f98b1",
+        "url": "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_data=/CN_MarketDataService.getKLineData?symbol=sz002650&scale=1&ma=no&datalen=300"
+      }
+    },
+    "300318.SZ": {
+      "tencent": {
+        "sha256": "86315670d6bde95446ef06a95fa99bece5d3d59828839c382960605833ca935c",
+        "url": "https://web.ifzq.gtimg.cn/appstock/app/day/query?code=sz300318"
+      },
+      "sina": {
+        "sha256": "d6ec1236f9b042cf44a8d04fc24ab143ced5ff6a76ceda3bfdee094461c5ab23",
+        "url": "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_data=/CN_MarketDataService.getKLineData?symbol=sz300318&scale=1&ma=no&datalen=300"
+      }
+    },
+    "300321.SZ": {
+      "tencent": {
+        "sha256": "0ae941b1c9904c6c5b30c2902894c799ab244da10f33306639154068aa19b5bf",
+        "url": "https://web.ifzq.gtimg.cn/appstock/app/day/query?code=sz300321"
+      },
+      "sina": {
+        "sha256": "478d9e73a5f21874ee5b971c46123abbcd60470374e93f5749588371e93a3287",
+        "url": "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_data=/CN_MarketDataService.getKLineData?symbol=sz300321&scale=1&ma=no&datalen=300"
+      }
+    },
+    "300462.SZ": {
+      "tencent": {
+        "sha256": "ff4715cdeca83f3d3c24d8f3e2d69e43d6785d4a2cd123b6011ac1847140c771",
+        "url": "https://web.ifzq.gtimg.cn/appstock/app/day/query?code=sz300462"
+      },
+      "sina": {
+        "sha256": "8019641c937686de7b53aa297b0e66e847b0cbcc35abf3c5ff4f82a36ad88360",
+        "url": "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_data=/CN_MarketDataService.getKLineData?symbol=sz300462&scale=1&ma=no&datalen=300"
+      }
+    },
+    "300826.SZ": {
+      "tencent": {
+        "sha256": "2adb8d1a9ba49ad395dcb3ee3e6e196bf9b4184dc033f4cab847015ed2a4f995",
+        "url": "https://web.ifzq.gtimg.cn/appstock/app/day/query?code=sz300826"
+      },
+      "sina": {
+        "sha256": "4c6edf054fc2bd5454ce1c80317e5b8fd33490c7b45733a46c549bac92de3e17",
+        "url": "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_data=/CN_MarketDataService.getKLineData?symbol=sz300826&scale=1&ma=no&datalen=300"
+      }
+    },
+    "300983.SZ": {
+      "tencent": {
+        "sha256": "b8a853d87eac2220562674bb635570a3204cfa97f27679a573ee448fbc01e55d",
+        "url": "https://web.ifzq.gtimg.cn/appstock/app/day/query?code=sz300983"
+      },
+      "sina": {
+        "sha256": "6b4ee798a4b04833d75b9c1796ea681e2423faab4befae58c2b1e2e482cd7383",
+        "url": "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_data=/CN_MarketDataService.getKLineData?symbol=sz300983&scale=1&ma=no&datalen=300"
+      }
+    },
+    "600243.SH": {
+      "tencent": {
+        "sha256": "b3ac75f4d4fa0769e95abf6af0de4e9522e8b224c16b7bce2a3dcb2d6588299a",
+        "url": "https://web.ifzq.gtimg.cn/appstock/app/day/query?code=sh600243"
+      },
+      "sina": {
+        "sha256": "3f53475cb90a1ba930ef37a3345a9d442fe7526471ebf8eb36b4988f1655095a",
+        "url": "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_data=/CN_MarketDataService.getKLineData?symbol=sh600243&scale=1&ma=no&datalen=300"
+      }
+    },
+    "603048.SH": {
+      "tencent": {
+        "sha256": "e6a8ea529b471b5fab5bb6646ed64f4c7cfb54a1db19b38c6b9ed84940f1d702",
+        "url": "https://web.ifzq.gtimg.cn/appstock/app/day/query?code=sh603048"
+      },
+      "sina": {
+        "sha256": "43d051364b4f8935ba1906f3160180d77ef793da2f18f5329b4878ea5b05688f",
+        "url": "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_data=/CN_MarketDataService.getKLineData?symbol=sh603048&scale=1&ma=no&datalen=300"
+      }
+    },
+    "603828.SH": {
+      "tencent": {
+        "sha256": "dd73669e28bce9a6b668a8b20f306a4891d1763c49e451e67d3e9efd1401b135",
+        "url": "https://web.ifzq.gtimg.cn/appstock/app/day/query?code=sh603828"
+      },
+      "sina": {
+        "sha256": "faffe4e2dfd5e33b33bf3bb38d09e78c46db0bcebc45d3df83d9e71e04f1c941",
+        "url": "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_data=/CN_MarketDataService.getKLineData?symbol=sh603828&scale=1&ma=no&datalen=300"
+      }
+    },
+    "688197.SH": {
+      "tencent": {
+        "sha256": "2419f7dcb41a1809826d684eac51f8ee2937a6bcf5af459770c586798f92133f",
+        "url": "https://web.ifzq.gtimg.cn/appstock/app/day/query?code=sh688197"
+      },
+      "sina": {
+        "sha256": "5e65590e840a4f8edfe9a92cbfc3deb67680b633bf0c93fb7e8e9e05837f658a",
+        "url": "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_data=/CN_MarketDataService.getKLineData?symbol=sh688197&scale=1&ma=no&datalen=300"
+      }
+    },
+    "688767.SH": {
+      "tencent": {
+        "sha256": "2c392244a0960aa8c433dbf45b55199d56d3d7d5f89ca489baf723b53ef16d4e",
+        "url": "https://web.ifzq.gtimg.cn/appstock/app/day/query?code=sh688767"
+      },
+      "sina": {
+        "sha256": "73c4210fceb124c2ac9d3d73f5ec53cd9d3a71ac974d468c894fd60a4b087318",
+        "url": "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_data=/CN_MarketDataService.getKLineData?symbol=sh688767&scale=1&ma=no&datalen=300"
+      }
+    },
+    "688768.SH": {
+      "tencent": {
+        "sha256": "3d84ce7d2ab47cbb4abaee418a01034f3dac1314e67f235067dd7eb83b79b8b3",
+        "url": "https://web.ifzq.gtimg.cn/appstock/app/day/query?code=sh688768"
+      },
+      "sina": {
+        "sha256": "0b6afad15d1e7b76d6ad4d6ed3abb1ea330feda61b93052e8023f3a28ed27a73",
+        "url": "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_data=/CN_MarketDataService.getKLineData?symbol=sh688768&scale=1&ma=no&datalen=300"
+      }
+    },
+    "688799.SH": {
+      "tencent": {
+        "sha256": "9dff8d0ffea59e924e246e47d41b96a03b509adca93742569985bf11f2b02e95",
+        "url": "https://web.ifzq.gtimg.cn/appstock/app/day/query?code=sh688799"
+      },
+      "sina": {
+        "sha256": "a96ed973a3fa47de0b65cfb307fca98cd0cfce35cf9757e72d46a887c6830847",
+        "url": "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_data=/CN_MarketDataService.getKLineData?symbol=sh688799&scale=1&ma=no&datalen=300"
+      }
+    },
+    "920009.BJ": {
+      "tencent": {
+        "sha256": "ec8bbcfc0f427488c637b98a40a720b5801a8547e6a8058986e5ef7c268c9c95",
+        "url": "https://web.ifzq.gtimg.cn/appstock/app/day/query?code=bj920009"
+      },
+      "sina": {
+        "sha256": "da3a064272a947e480063d0fd67dfc9c0f926ce5c046eb2828fb8170b9a5d363",
+        "url": "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_data=/CN_MarketDataService.getKLineData?symbol=bj920009&scale=1&ma=no&datalen=300"
+      }
+    },
+    "920026.BJ": {
+      "tencent": {
+        "sha256": "92b1c51af2c078720f5d2dadddd0097a28ec5ee56916d4dc2c8ab16e01945cbc",
+        "url": "https://web.ifzq.gtimg.cn/appstock/app/day/query?code=bj920026"
+      },
+      "sina": {
+        "sha256": "05cd96c46ab4feef0623c98d9d2b071662062df6ac481ae85507e838d4b6136a",
+        "url": "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_data=/CN_MarketDataService.getKLineData?symbol=bj920026&scale=1&ma=no&datalen=300"
+      }
+    },
+    "920119.BJ": {
+      "tencent": {
+        "sha256": "9a1883b7a81af83dbdd76ae871d5bba93fac9abc3f56932c56ff5aa5fb04e77f",
+        "url": "https://web.ifzq.gtimg.cn/appstock/app/day/query?code=bj920119"
+      },
+      "sina": {
+        "sha256": "b2fbcbd6c9d3ad7eb6de919c7f20f8e93c12fb322839ad89aba12f48353d5f45",
+        "url": "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_data=/CN_MarketDataService.getKLineData?symbol=bj920119&scale=1&ma=no&datalen=300"
+      }
+    },
+    "920126.BJ": {
+      "tencent": {
+        "sha256": "ef943c17418525ed3158ac44a7432e399dcd50dd0b32ca33def4cb8d27d1a44e",
+        "url": "https://web.ifzq.gtimg.cn/appstock/app/day/query?code=bj920126"
+      },
+      "sina": {
+        "sha256": "f939997cc492482d669fa2d9992f290a0ec96ac5df40ece7fb81b094ffd14221",
+        "url": "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_data=/CN_MarketDataService.getKLineData?symbol=bj920126&scale=1&ma=no&datalen=300"
+      }
+    },
+    "920266.BJ": {
+      "tencent": {
+        "sha256": "dbcfd579b8017b229f3a4624a7b9b9f8cc03a27323848fc10dcbdfae4f5b8602",
+        "url": "https://web.ifzq.gtimg.cn/appstock/app/day/query?code=bj920266"
+      },
+      "sina": {
+        "sha256": "18965210d7de80d261985b27adaf6b861e67cd2cfb4e0faec5f06bbc50fec7e4",
+        "url": "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_data=/CN_MarketDataService.getKLineData?symbol=bj920266&scale=1&ma=no&datalen=300"
+      }
+    },
+    "920395.BJ": {
+      "tencent": {
+        "sha256": "ffba48af6827a6910da855f0c0aa32a3468fe84a20a410f3250b36d93fe70b33",
+        "url": "https://web.ifzq.gtimg.cn/appstock/app/day/query?code=bj920395"
+      },
+      "sina": {
+        "sha256": "3c751d5728705ed24fdf22c0d0920c9e43ecfcc08e3d880d6bfa512688cf7005",
+        "url": "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_data=/CN_MarketDataService.getKLineData?symbol=bj920395&scale=1&ma=no&datalen=300"
+      }
+    },
+    "920436.BJ": {
+      "tencent": {
+        "sha256": "ae8303e4d02c3230f4d89be5acae3c98136a478bea9c91d72aeed5f06c6be99f",
+        "url": "https://web.ifzq.gtimg.cn/appstock/app/day/query?code=bj920436"
+      },
+      "sina": {
+        "sha256": "d5dc112d0a32f5546f0f039bb6dac72a619f0f65f36ae974b41e8b68854b1463",
+        "url": "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_data=/CN_MarketDataService.getKLineData?symbol=bj920436&scale=1&ma=no&datalen=300"
+      }
+    },
+    "920445.BJ": {
+      "tencent": {
+        "sha256": "a42d8ae25117804440e76b76355bc68290021269c29bd02149ec7851785cbbb2",
+        "url": "https://web.ifzq.gtimg.cn/appstock/app/day/query?code=bj920445"
+      },
+      "sina": {
+        "sha256": "85957723e3f816a4594d1a9b00e01028ce6703103a73fd251971a2d36e32dd2b",
+        "url": "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_data=/CN_MarketDataService.getKLineData?symbol=bj920445&scale=1&ma=no&datalen=300"
+      }
+    },
+    "920471.BJ": {
+      "tencent": {
+        "sha256": "816cf42580166c2bb4fcff14f306972ba3484f5591bf38a437f7f879abbe2a2c",
+        "url": "https://web.ifzq.gtimg.cn/appstock/app/day/query?code=bj920471"
+      },
+      "sina": {
+        "sha256": "6a607328c01e1745b047c7b8fe28e97b6734a162ff51309aceda01b0ced822fc",
+        "url": "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_data=/CN_MarketDataService.getKLineData?symbol=bj920471&scale=1&ma=no&datalen=300"
+      }
+    },
+    "920670.BJ": {
+      "tencent": {
+        "sha256": "7e4ae91dad9bb7c8a8383927dc69cf3f9ca6164846a98b698be040d84ce61e57",
+        "url": "https://web.ifzq.gtimg.cn/appstock/app/day/query?code=bj920670"
+      },
+      "sina": {
+        "sha256": "ae78048015e70dcbd1605aa573e77452d0ea4c0c600666c06f6597bdef1ff160",
+        "url": "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_data=/CN_MarketDataService.getKLineData?symbol=bj920670&scale=1&ma=no&datalen=300"
+      }
+    },
+    "920957.BJ": {
+      "tencent": {
+        "sha256": "0d1aa33e1db864e2482f430ed2d71073e6e6287ad1d7633bbfdada2d172f99ad",
+        "url": "https://web.ifzq.gtimg.cn/appstock/app/day/query?code=bj920957"
+      },
+      "sina": {
+        "sha256": "eace861c42cf8ca7374af34b00ea170573028f34b1372fd96ac78b0150d51baa",
+        "url": "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_data=/CN_MarketDataService.getKLineData?symbol=bj920957&scale=1&ma=no&datalen=300"
+      }
+    },
+    "920964.BJ": {
+      "tencent": {
+        "sha256": "e1d14aea52fa4e75ea32f647e926e8f38d740e16dc72705a64938f7e890b52b8",
+        "url": "https://web.ifzq.gtimg.cn/appstock/app/day/query?code=bj920964"
+      },
+      "sina": {
+        "sha256": "eca17549029cd72538b90536f78487101758a2389573ab94ba885830b1330304",
+        "url": "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_data=/CN_MarketDataService.getKLineData?symbol=bj920964&scale=1&ma=no&datalen=300"
+      }
+    },
+    "920992.BJ": {
+      "tencent": {
+        "sha256": "fdad6b975e205ff7e299f97942ad6cd84c1e0093dff7548bdf2831d7366247cd",
+        "url": "https://web.ifzq.gtimg.cn/appstock/app/day/query?code=bj920992"
+      },
+      "sina": {
+        "sha256": "e9577c295aaaec49f086b0cf2549f9a5a99e18fbf7cbdf41774268e5830e7254",
+        "url": "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_data=/CN_MarketDataService.getKLineData?symbol=bj920992&scale=1&ma=no&datalen=300"
+      }
+    },
+    "600000.SH": {
+      "tencent": {
+        "sha256": "c33e1df6c89951cfb8809c818a22395c262819a33652f463b358f3e9912e4d5e",
+        "url": "https://web.ifzq.gtimg.cn/appstock/app/day/query?code=sh600000"
+      },
+      "sina": {
+        "sha256": "f0a6aeceee2d00d1dfe51bf265b3e5afc337b82abf3d28b31cdef7a77eb94bfa",
+        "url": "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_data=/CN_MarketDataService.getKLineData?symbol=sh600000&scale=1&ma=no&datalen=300"
+      }
+    },
+    "000001.SZ": {
+      "tencent": {
+        "sha256": "d2d6c539b54d025caecf67b4b8157d4ce868f1417359f32bec5efbd8b30e848d",
+        "url": "https://web.ifzq.gtimg.cn/appstock/app/day/query?code=sz000001"
+      },
+      "sina": {
+        "sha256": "6e2a329875c5334a758cf012925091978e6b29ce088d83188ead379c186a0137",
+        "url": "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_data=/CN_MarketDataService.getKLineData?symbol=sz000001&scale=1&ma=no&datalen=300"
+      }
+    },
+    "920285.BJ": {
+      "tencent": {
+        "sha256": "84f2aa235f14f1eb32298bf589199b99cf0635dea60fd999569a6427cb8d64aa",
+        "url": "https://web.ifzq.gtimg.cn/appstock/app/day/query?code=bj920285"
+      },
+      "sina": {
+        "sha256": "d6179ed5db635f8f57280f441daaaf0db904aed175571ac13d6c58480cb52972",
+        "url": "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_data=/CN_MarketDataService.getKLineData?symbol=bj920285&scale=1&ma=no&datalen=300"
+      }
+    }
+  },
+  "known_value_difference": {
+    "symbol": "603828.SH",
+    "timestamp_label": "2026-11-02T09:35:00",
+    "sina_close_native": "4.480",
+    "qmt_close_native": "4.52",
+    "cause_not_determined": true,
+    "no_rounding_or_unit_conversion_applied": true
+  },
+  "snapshot_archive": "~/.local/share/qsys-audits/issue583-public-prefix-20261103-r2/",
+  "replay_exit_code": 1,
+  "replay_script_sha256": "12ffa412c35621d941bd43de583f9e38825fd96567fbdbe5f54a35400ccff376",
+  "evaluator_module_sha256": "1d3a64215b37a2425d2a3e2e2bf573f4e8ab50db63270cec13ad60f024985fc4"
+}
