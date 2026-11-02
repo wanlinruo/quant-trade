@@ -1,5 +1,24 @@
 # 项目交接入口
 
+## 11-02晚：全天模拟通过，数据新质量阻断由#583承接
+
+- #579/#539/#508已按各自精确范围关闭：自然模拟起盘/竞价/收盘7事件及旧254事件保持、
+  连接释放修复与有限重试的自然传输证据通过；历史CANTOPEN唯一触发与10-26认证前
+  断开仍未直接归因，不因关闭抹去。当前1 running/3 ended，不恢复旧账户。
+- 自然归档5571股日/1342611行及canonical逐键对账成功；但17/19点主同步warning、
+  19:40 catalog/20:00 checks真实failed。29只首根零量中28只单根，603828.SH四根；
+  10个blocking字段结果均来自同一B2规则/该一个标的日。新#583是#540直接依赖，
+  不按形状删除市场行，不用协议accepted覆盖质量失败。
+- #583五组原生False/True结果及raw/canonical逐值相等；tick缓存为空，既有Tushare
+  stk_auction_o单次实测code40203/permission_denied，尚缺独立市场事实。参考
+  docs/reference/native-minute-zero-review.md及同目录结构化摘要。候选只修正诊断断言、
+  保留全部判据/阻断/失败传播；代码/CI合入与生产安装分别记，以Issue最新记录为准。
+- #580两轮自然审计协议通过但premarket未覆盖，#550/#478受#583质量门禁仍validation。
+  当前32开放（5推进/3验收/24依赖或阶段冻结）。Live inactive/disabled/PID0、Shadow
+  inactive，KILL/主库原绑定保持；数据三组件仍7d5，Paper2e59。QMT23:17为2044、
+  20:54新更替后响应正常，本次退出状态未取证。没有新发布、业务重放或删除副本。
+
+
 ## 11-01晚：#580三组件正式发布，周一自然验收待执行
 
 - 维护者明确确认后，按service-checks → daily-archive → tushare-sync串行发布到

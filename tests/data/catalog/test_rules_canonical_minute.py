@@ -103,6 +103,8 @@ def test_qmt_multiple_leading_zeros_block(warehouse):
     assert row["passed"] is False
     assert row["severity"] == "blocking"
     assert row["violations"] == 1
+    assert "成因待核验" in row["detail"]
+    assert "前导零填充" not in row["detail"]
 
 
 def test_single_or_paid_leading_zeros_do_not_create_noise(warehouse):

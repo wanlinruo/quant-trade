@@ -236,13 +236,15 @@ def _one_candidate(monkeypatch, symbol="000001.SZ"):
                         lambda *a, **k: pl.DataFrame({"symbol": [symbol], "dt": [DAY]}))
 
 
-def test_first_bar_without_volume_is_padding_residue(monkeypatch):
-    """首根 volume=0 是 QMT 区间查询的昨收价填充残留，不是行情。"""
+@pytest.mark.parametrize("volumes", [[0, 500], [0, 0, 0, 0, 500]])
+def test_first_bar_without_volume_blocks_without_claiming_padding(monkeypatch, volumes):
+    """单根/多根仍阻断；没有市场真值时不把原生零量描述为已证实填充。"""
     _one_candidate(monkeypatch)
     result = sc._minutes_first_bar_traded(ctx(FakeQuery(
         daily=daily(DAY, ["000001.SZ"]),
-        minutes=minute_series("000001.SZ", [0, 0, 500]))))
+        minutes=minute_series("000001.SZ", volumes))))
     assert result.status == sc.BAD and "000001.SZ" in result.detail
+    assert "成因待核验" in result.actual and "填充残留" not in result.actual
 
 
 def test_late_first_trade_is_not_an_error(monkeypatch):
