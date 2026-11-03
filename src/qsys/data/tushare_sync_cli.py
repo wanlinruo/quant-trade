@@ -29,7 +29,7 @@ from qsys.data.providers.tushare_client import TushareClient
 from qsys.data.storage import Warehouse
 from qsys.data.query import WarehouseQuery
 from qsys.live.config import load_tushare_config
-from qsys.ops.services import ServiceRun, record_step
+from qsys.ops.services import ServiceRun, Step, record_step
 
 log = structlog.get_logger(__name__)
 
@@ -137,8 +137,26 @@ def converge_late_listing_minutes(
         return len(missing)
 
 
+def incremental_verification_summary(frame: pl.DataFrame) -> dict[str, object]:
+    """按规则归并字段结果；不同规则的违规数不相加冒充独立市场问题数。"""
+    blocking = frame.filter((~pl.col("passed")) & (pl.col("severity") == "blocking"))
+    rules = []
+    for check_id in sorted(blocking["check_id"].unique().to_list()):
+        group = blocking.filter(pl.col("check_id") == check_id)
+        # 同规则字段可能有不同责任范围，保留原计数组合，不取最大值或求和。
+        counts = group.select("violations", "checked_rows").unique().sort(
+            ["violations", "checked_rows"]
+        ).to_dicts()
+        rules.append({"check_id": check_id, "field_results": group.height,
+                      "counts": counts,
+                      "sample_paths": sorted(group["sample_path"].drop_nulls().unique().to_list())})
+    return {"field_results": frame.height, "blocking_field_results": blocking.height,
+            "blocking_rule_count": len(rules), "blocking_rules": rules}
+
+
 def run_incremental_verification(warehouse: Warehouse, day: date, *,
-                                 artifacts: Path | None = None) -> int:
+                                 artifacts: Path | None = None,
+                                 step: Step | None = None) -> int:
     """执行当日增量规则、落盘结果并返回 blocking 指标结果数。"""
     from qsys.data.catalog import checks as catalog_checks
     from qsys.data.query import WarehouseQuery
@@ -155,6 +173,9 @@ def run_incremental_verification(warehouse: Warehouse, day: date, *,
         artifacts=artifacts,
     )
     catalog_checks.write_results(warehouse, frame)
+    if step is not None:
+        step.progress = incremental_verification_summary(frame)
+        step.progress["verification_run_id"] = frame["run_id"][0] if frame.height else None
     return frame.filter(
         (~pl.col("passed")) & (pl.col("severity") == "blocking")
     ).height
@@ -169,8 +190,8 @@ def after_sync(warehouse: Warehouse, day: date, *, ok: bool,
         return
     with record_step(run, "增量质检", interface="仓库内规则", table="metric_checks") as step:
         try:
-            blocking = (run_incremental_verification(warehouse, day, artifacts=artifacts)
-                        if artifacts is not None else run_incremental_verification(warehouse, day))
+            blocking = (run_incremental_verification(warehouse, day, artifacts=artifacts, step=step)
+                        if artifacts is not None else run_incremental_verification(warehouse, day, step=step))
         except Exception as exc:
             # 数据已经落盘。把同步改报失败会误导 systemd/Persistent 重补已完成数据。
             log.warning("verify.hook_crashed", day=str(day), error=str(exc))
@@ -178,7 +199,17 @@ def after_sync(warehouse: Warehouse, day: date, *, ok: bool,
             return
         log.info("verify.after_sync_done", day=str(day), blocking=blocking)
         if blocking:
-            step.warn(f"阻断级指标结果未通过 {blocking} 条，详见服务质检与数据管理 → 指标字典")
+            detail = f"阻断级字段结果未通过 {blocking} 条"
+            rules = step.progress.get("blocking_rules", [])
+            if rules:
+                detail += f"，涉及 {len(rules)} 条规则"
+                for rule in rules[:5]:
+                    counts = "、".join(
+                        f"违规数 {count['violations']} / 检查数 {count['checked_rows']}"
+                        for count in rule["counts"]
+                    )
+                    detail += f"；{rule['check_id']}：{counts}"
+            step.warn(detail + "；详见服务质检与数据管理 → 指标字典（各规则计数不代表独立问题总数）")
 
 
 def publish_canonical_after_sync(

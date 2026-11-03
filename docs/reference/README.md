@@ -62,6 +62,10 @@ History容器仅处理明确完整的内存数值；#538另增加规范前复权
 
 ## 原生零量与质检契约（#583）
 
+[11-03成交快照核验](native-minute-trades-review-20261103.md)记录当天15组原生False/True、
+30组分钟片段入库对照、沪深成交观察和688089.SH量差（#586）。北交所成交证据仍不足，
+候选仅改善同步警告的规则/字段/案例计数说明，不接入质量放行。
+
 [native-minute-zero-review.md](native-minute-zero-review.md)记录五组False/True及raw/canonical
 逐值对照、tick缺证据与保留阻断的诊断修复；同源一致不代表市场真值或已证实填充。
 
