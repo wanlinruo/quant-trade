@@ -1,0 +1,226 @@
+{
+  "observed_at": "2026-11-03T20:02:18.958984",
+  "day": "2026-11-03",
+  "source_versions": {
+    "/data/qsys/warehouse/bar_minute_1m/year=2026/date=20261103/part.parquet": "e7db28d3e528fd8b10b3ee1832c0f4fb68fd0ac483da672959eb85bda36ea447",
+    "/data/qsys/warehouse/tushare_daily/year=2026/part.parquet": "da07819ccb6d6fa2da2a3fc8bed9d3298ad32b7dad3a814b5926881b015b07ae"
+  },
+  "stable": true,
+  "cases": [
+    {
+      "symbol": "300205.SZ",
+      "prefix_rows": 3,
+      "prefix_flat_positive": true,
+      "zero_volume": true,
+      "zero_amount": true,
+      "prefix_prices": [
+        4.51
+      ],
+      "tushare_pre_close": 4.51,
+      "first_positive_at": "2026-11-03T09:33:00",
+      "native_first_open": 4.52,
+      "tushare_open": 4.52,
+      "first_open_exact_equal": true,
+      "daily_volume": 5421.0
+    },
+    {
+      "symbol": "300555.SZ",
+      "prefix_rows": 2,
+      "prefix_flat_positive": true,
+      "zero_volume": true,
+      "zero_amount": true,
+      "prefix_prices": [
+        10.75
+      ],
+      "tushare_pre_close": 10.75,
+      "first_positive_at": "2026-11-03T09:32:00",
+      "native_first_open": 10.55,
+      "tushare_open": 10.55,
+      "first_open_exact_equal": true,
+      "daily_volume": 5996.0
+    },
+    {
+      "symbol": "600107.SH",
+      "prefix_rows": 2,
+      "prefix_flat_positive": true,
+      "zero_volume": true,
+      "zero_amount": true,
+      "prefix_prices": [
+        5.23
+      ],
+      "tushare_pre_close": 5.23,
+      "first_positive_at": "2026-11-03T09:32:00",
+      "native_first_open": 5.23,
+      "tushare_open": 5.23,
+      "first_open_exact_equal": true,
+      "daily_volume": 28824.01
+    },
+    {
+      "symbol": "688089.SH",
+      "prefix_rows": 2,
+      "prefix_flat_positive": true,
+      "zero_volume": true,
+      "zero_amount": true,
+      "prefix_prices": [
+        7.71
+      ],
+      "tushare_pre_close": 7.71,
+      "first_positive_at": "2026-11-03T09:32:00",
+      "native_first_open": 7.65,
+      "tushare_open": 7.65,
+      "first_open_exact_equal": true,
+      "daily_volume": 12723.56
+    },
+    {
+      "symbol": "920008.BJ",
+      "prefix_rows": 3,
+      "prefix_flat_positive": true,
+      "zero_volume": true,
+      "zero_amount": true,
+      "prefix_prices": [
+        17.3
+      ],
+      "tushare_pre_close": 17.3,
+      "first_positive_at": "2026-11-03T09:33:00",
+      "native_first_open": 17.42,
+      "tushare_open": 17.42,
+      "first_open_exact_equal": true,
+      "daily_volume": 9113.59
+    },
+    {
+      "symbol": "920030.BJ",
+      "prefix_rows": 2,
+      "prefix_flat_positive": true,
+      "zero_volume": true,
+      "zero_amount": true,
+      "prefix_prices": [
+        4.16
+      ],
+      "tushare_pre_close": 4.16,
+      "first_positive_at": "2026-11-03T09:32:00",
+      "native_first_open": 4.14,
+      "tushare_open": 4.14,
+      "first_open_exact_equal": true,
+      "daily_volume": 11215.15
+    },
+    {
+      "symbol": "920055.BJ",
+      "prefix_rows": 3,
+      "prefix_flat_positive": true,
+      "zero_volume": true,
+      "zero_amount": true,
+      "prefix_prices": [
+        24.1
+      ],
+      "tushare_pre_close": 24.1,
+      "first_positive_at": "2026-11-03T09:33:00",
+      "native_first_open": 23.95,
+      "tushare_open": 23.95,
+      "first_open_exact_equal": true,
+      "daily_volume": 1068.89
+    },
+    {
+      "symbol": "920066.BJ",
+      "prefix_rows": 2,
+      "prefix_flat_positive": true,
+      "zero_volume": true,
+      "zero_amount": true,
+      "prefix_prices": [
+        17.16
+      ],
+      "tushare_pre_close": 17.16,
+      "first_positive_at": "2026-11-03T09:32:00",
+      "native_first_open": 17.02,
+      "tushare_open": 17.02,
+      "first_open_exact_equal": true,
+      "daily_volume": 4502.33
+    },
+    {
+      "symbol": "920204.BJ",
+      "prefix_rows": 3,
+      "prefix_flat_positive": true,
+      "zero_volume": true,
+      "zero_amount": true,
+      "prefix_prices": [
+        11.36
+      ],
+      "tushare_pre_close": 11.36,
+      "first_positive_at": "2026-11-03T09:33:00",
+      "native_first_open": 11.26,
+      "tushare_open": 11.26,
+      "first_open_exact_equal": true,
+      "daily_volume": 3173.83
+    },
+    {
+      "symbol": "920405.BJ",
+      "prefix_rows": 2,
+      "prefix_flat_positive": true,
+      "zero_volume": true,
+      "zero_amount": true,
+      "prefix_prices": [
+        13.77
+      ],
+      "tushare_pre_close": 13.77,
+      "first_positive_at": "2026-11-03T09:32:00",
+      "native_first_open": 13.8,
+      "tushare_open": 13.8,
+      "first_open_exact_equal": true,
+      "daily_volume": 4259.69
+    },
+    {
+      "symbol": "920931.BJ",
+      "prefix_rows": 5,
+      "prefix_flat_positive": true,
+      "zero_volume": true,
+      "zero_amount": true,
+      "prefix_prices": [
+        8.9
+      ],
+      "tushare_pre_close": 8.9,
+      "first_positive_at": "2026-11-03T09:35:00",
+      "native_first_open": 8.78,
+      "tushare_open": 8.78,
+      "first_open_exact_equal": true,
+      "daily_volume": 3714.94
+    },
+    {
+      "symbol": "920950.BJ",
+      "prefix_rows": 2,
+      "prefix_flat_positive": true,
+      "zero_volume": true,
+      "zero_amount": true,
+      "prefix_prices": [
+        12.25
+      ],
+      "tushare_pre_close": 12.25,
+      "first_positive_at": "2026-11-03T09:32:00",
+      "native_first_open": 12.01,
+      "tushare_open": 12.01,
+      "first_open_exact_equal": true,
+      "daily_volume": 2861.92
+    }
+  ],
+  "local_replay": {
+    "audit_root": "/Users/wanlinruo/.local/share/qsys-audits/issue583-zero-consistency-20261103-r1",
+    "receipt_sha256": "08c313698b6389a1e47ab82fd16761535bf0a306808fdc443ab94acbd0179131",
+    "daily_sha256": "da07819ccb6d6fa2da2a3fc8bed9d3298ad32b7dad3a814b5926881b015b07ae",
+    "datasets": [
+      {
+        "dataset": "bar_minute_1m",
+        "time_column": "ts",
+        "partition_sha256": "e7db28d3e528fd8b10b3ee1832c0f4fb68fd0ac483da672959eb85bda36ea447",
+        "checked_symbol_days": 5570,
+        "prefix_symbols": 73,
+        "inconsistencies": 0
+      },
+      {
+        "dataset": "minute_bars",
+        "time_column": "dt",
+        "partition_sha256": "44b13793f396f217b877d29564c5a34ed211e7517f5b7b1cfc1ca10b7fb18c71",
+        "checked_symbol_days": 5570,
+        "prefix_symbols": 73,
+        "inconsistencies": 0
+      }
+    ]
+  }
+}

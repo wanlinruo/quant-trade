@@ -74,7 +74,8 @@ class FakeQuery:
 
 def daily(day, symbols, volume=100.0):
     return pl.DataFrame({"symbol": symbols, "dt": [day] * len(symbols),
-                         "volume": [volume] * len(symbols)})
+                         "volume": [volume] * len(symbols),
+                         "open": [10.0] * len(symbols), "pre_close": [10.0] * len(symbols)})
 
 
 def ctx(query, runs=(), *, shadow_state=None, workbench=None):
@@ -228,7 +229,8 @@ def minute_series(symbol, volumes, first="09:30"):
     base = datetime.combine(DAY, time(hh, mm))
     return pl.DataFrame({"symbol": [symbol] * len(volumes),
                          "dt": [base + timedelta(minutes=i) for i in range(len(volumes))],
-                         "volume": list(volumes)})
+                         "volume": list(volumes), "amount": [float(v) * 1000 for v in volumes],
+                         **{name: [10.0] * len(volumes) for name in ("open", "high", "low", "close")}})
 
 
 def _one_candidate(monkeypatch, symbol="000001.SZ"):
@@ -237,14 +239,19 @@ def _one_candidate(monkeypatch, symbol="000001.SZ"):
 
 
 @pytest.mark.parametrize("volumes", [[0, 500], [0, 0, 0, 0, 500]])
-def test_first_bar_without_volume_blocks_without_claiming_padding(monkeypatch, volumes):
-    """单根/多根仍阻断；没有市场真值时不把原生零量描述为已证实填充。"""
+def test_first_zero_volume_prefix_must_reconcile_instead_of_fail_on_shape(monkeypatch, volumes):
     _one_candidate(monkeypatch)
     result = sc._minutes_first_bar_traded(ctx(FakeQuery(
         daily=daily(DAY, ["000001.SZ"]),
         minutes=minute_series("000001.SZ", volumes))))
+    assert result.status == sc.OK
+
+
+def test_inconsistent_prefix_still_fails_service_check(monkeypatch):
+    _one_candidate(monkeypatch)
+    bad = minute_series("000001.SZ", [0, 500]).with_columns(pl.lit(1.0).alias("amount"))
+    result = sc._minutes_first_bar_traded(ctx(FakeQuery(daily=daily(DAY, ["000001.SZ"]), minutes=bad)))
     assert result.status == sc.BAD and "000001.SZ" in result.detail
-    assert "成因待核验" in result.actual and "填充残留" not in result.actual
 
 
 def test_late_first_trade_is_not_an_error(monkeypatch):
@@ -261,7 +268,7 @@ def test_first_bar_is_found_regardless_of_row_order(monkeypatch):
     shuffled = (minute_series("000001.SZ", [0, 500, 300, 700])
                 .sample(fraction=1.0, shuffle=True, seed=7))
     assert sc._minutes_first_bar_traded(ctx(FakeQuery(
-        daily=daily(DAY, ["000001.SZ"]), minutes=shuffled))).status == sc.BAD
+        daily=daily(DAY, ["000001.SZ"]), minutes=shuffled))).status == sc.OK
 
 
 def test_first_bar_check_skips_without_candidates(monkeypatch):
@@ -302,7 +309,7 @@ def test_bj_closing_bar_volume_explains_daily_difference():
     query = FakeQuery(
         daily=daily(DAY, ["920161.BJ"], volume=44_619.3),
         minutes=pl.concat([
-            minute_series("920161.BJ", [44_619], first="09:30"),
+            minute_series("920161.BJ", [44_619], first="09:30").select("symbol", "dt", "volume"),
             pl.DataFrame({"symbol": ["920161.BJ"],
                           "dt": [datetime.combine(DAY, time(15, 0))],
                           "volume": [8_000]}),
@@ -315,7 +322,7 @@ def test_bj_volume_outside_closing_bar_band_still_fails():
     query = FakeQuery(
         daily=daily(DAY, ["920161.BJ"], volume=20_000.0),
         minutes=pl.concat([
-            minute_series("920161.BJ", [44_619], first="09:30"),
+            minute_series("920161.BJ", [44_619], first="09:30").select("symbol", "dt", "volume"),
             pl.DataFrame({"symbol": ["920161.BJ"],
                           "dt": [datetime.combine(DAY, time(15, 0))],
                           "volume": [8_000]}),
@@ -382,7 +389,7 @@ def test_d18_service_checks_own_minutes_and_suspend_receipt():
     owned = {(check.table, check.name) for check in sc.CHECKS}
     assert {
         ("minute_bars", "分钟线到货"),
-        ("minute_bars", "分钟线首根有成交"),
+        ("minute_bars", "前导零量与真实开盘一致"),
         ("minute_bars", "分钟线成交量对日线"),
         ("suspend_daily", "停牌采集成功"),
     } <= owned

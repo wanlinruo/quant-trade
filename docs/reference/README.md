@@ -302,3 +302,5 @@ qsys 的策略 API 参考：一个策略 = 一个 `.py` 文件。生命周期钩
 
 **V1.2 已整体移除 WEAK 家族**（`_v12_keep_non_weak`），故只需移植
 HIGH 与 LOW 两个分支。
+
+- [前导零成交量一致性契约与11-03只读实测](minute-zero-consistency.md)（#583，直取参考与反例门禁）

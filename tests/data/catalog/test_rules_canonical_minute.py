@@ -57,6 +57,10 @@ def _canonical_bars(warehouse, source, volumes, day=DAY):
             "source": source, "visible_at": ts,
         })
     _write(warehouse, "bar_minute_1m", rows, day)
+    target = warehouse.root / "tushare_daily" / f"year={day.year}"
+    target.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame({"symbol": ["600000.SH"], "dt": [day], "open": [10.0],
+                  "pre_close": [10.0], "volume": [float(sum(volumes))]}).write_parquet(target / "part.parquet")
 
 
 def test_override_symbol_days_in_canonical_pass(warehouse):
@@ -97,14 +101,21 @@ def test_no_overrides_is_not_applicable(warehouse):
     assert row["checked_rows"] == 0
 
 
-def test_qmt_multiple_leading_zeros_block(warehouse):
+def test_multiple_leading_zeros_reconcile_with_direct_reference(warehouse):
     _canonical_bars(warehouse, "qmt", [0, 0, 10])
     row = _run_padding(warehouse)
-    assert row["passed"] is False
-    assert row["severity"] == "blocking"
-    assert row["violations"] == 1
-    assert "成因待核验" in row["detail"]
-    assert "前导零填充" not in row["detail"]
+    assert row["passed"] is True
+    assert row["violations"] == 0
+
+
+def test_inconsistent_zero_amount_remains_blocking_for_every_source(warehouse):
+    for source in ("qmt", "paid", "tushare", "joinquant"):
+        _canonical_bars(warehouse, source, [0, 0, 10])
+        p = warehouse.root / "bar_minute_1m" / f"year={DAY.year}" / f"date={DAY:%Y%m%d}" / "part.parquet"
+        pl.read_parquet(p).with_columns(pl.lit(1.0).alias("amount")).write_parquet(p)
+        row = _run_padding(warehouse)
+        assert row["passed"] is False and row["severity"] == "blocking"
+        assert row["violations"] == 1
 
 
 def test_single_or_paid_leading_zeros_do_not_create_noise(warehouse):

@@ -611,23 +611,20 @@ def _minute_bar_rows(ctx: CheckContext) -> pl.DataFrame:
 
 
 def _minutes_first_bar_traded(ctx: CheckContext) -> CheckResult:
-    """保留首根非正成交量的复核门禁，不从形状断言填充。
-
-    旧 RPC 曾在查询时填充前导行；get_local_data(fill_data=False) 也会直接返回
-    零量时间格（#583）。没有独立事实前不能把这些原值描述为已证实伪造，也不能
-    自动删除或放行。原非正成交量判据、失败状态与样本范围保持。
-    """
+    """真实首个成交与日线开盘一致；零量前导行不按根数判错（#583）。"""
+    from qsys.data.quality.minute_padding import zero_prefix_issues
     rows = _minute_bar_rows(ctx)
     if rows.height == 0:
-        return CheckResult(SKIP, "首根有成交", "没有分钟线可核对")
-    # 组内按 dt 显式排序后取首个，而不是 `sort(...).group_by(...).first()`——
-    # 后者依赖 group_by 组内保持帧顺序这个隐式行为，不是 API 契约。
-    first = rows.group_by("symbol").agg(pl.col("volume").sort_by("dt").first())
-    bad = first.filter(pl.col("volume") <= 0)
-    return CheckResult(BAD if bad.height else OK, "首根有成交",
-                       f"{bad.height} 只首根成交量非正（成因待核验，不据形状认定填充）",
+        return CheckResult(SKIP, "前导零量与直取日线一致", "没有分钟线可核对")
+    daily = ctx.query.tushare_daily(
+        rows["symbol"].unique().to_list(), ctx.day, ctx.day,
+        columns=["symbol", "dt", "open", "pre_close", "volume"],
+    )
+    bad = zero_prefix_issues(rows, daily, time_column="dt")
+    return CheckResult(BAD if bad.height else OK, "前导零量与直取日线一致",
+                       f"{bad.height} 只前导零量值或首个成交开盘不一致",
                        _samples(set(bad["symbol"].to_list())),
-                       rows=first.height)
+                       rows=rows["symbol"].n_unique())
 
 
 def _minutes_volume(ctx: CheckContext) -> CheckResult:
@@ -788,7 +785,7 @@ CHECKS: tuple[ServiceCheck, ...] = (
     ServiceCheck("premarket-limits", "盘前停复牌查询成功", "suspend_daily", _premarket_suspensions),
     ServiceCheck("daily-archive", "竞价逐笔到货", "auction_ticks", _auction_arrived),
     ServiceCheck("daily-archive", "分钟线到货", "minute_bars", _minutes_arrived),
-    ServiceCheck("daily-archive", "分钟线首根有成交", "minute_bars", _minutes_first_bar_traded),
+    ServiceCheck("daily-archive", "前导零量与真实开盘一致", "minute_bars", _minutes_first_bar_traded),
     ServiceCheck("daily-archive", "分钟线成交量对日线", "minute_bars", _minutes_volume),
     ServiceCheck("tushare-sync", "日线到货", "tushare_daily", _daily_arrived),
     ServiceCheck("tushare-sync", "涨跌停价覆盖日线", "price_limits_daily", _limits_cover_daily),

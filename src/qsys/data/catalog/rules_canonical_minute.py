@@ -26,7 +26,7 @@ from qsys.data.catalog.checks import (
     Scope,
     register,
 )
-from qsys.data.quality.minute_padding import leading_zero_cases
+from qsys.data.quality.minute_padding import zero_prefix_issues
 
 # 覆盖数据集 -> 规范表 source 取值中允许出现的来源（覆盖本身及更高优先级）
 OVERRIDES = {
@@ -94,12 +94,7 @@ def override_inclusion(ctx: CheckContext) -> CheckResult:
 
 
 def qmt_leading_padding(ctx: CheckContext) -> CheckResult:
-    """保留 QMT 多根前导零量的阻断复核，不将形状冒充成因。
-
-    历史 RPC 填充已有独立处置证据，但新本地缓存接口也直接返回多根零量（#583）。
-    本规则未验证每次读取契约与市场事实，因此只描述命中形状；原规则 ID、判据、
-    样本和 blocking 传播保持，paid 与单根范围也保持。
-    """
+    """前导零量须与直取参考价/真实开盘一致；不以根数或来源判错（#583）。"""
     checked = 0
     samples: list[pl.DataFrame] = []
     day = ctx.start
@@ -107,11 +102,15 @@ def qmt_leading_padding(ctx: CheckContext) -> CheckResult:
         path = ctx.warehouse.root / "bar_minute_1m" / f"year={day.year}" \
             / f"date={day:%Y%m%d}" / "part.parquet"
         if path.exists():
-            frame = pl.read_parquet(path, columns=["symbol", "ts", "volume", "source"])
+            frame = pl.read_parquet(path, columns=[
+                "symbol", "ts", "open", "high", "low", "close", "volume", "amount",
+            ])
             checked += frame["symbol"].n_unique()
-            bad = leading_zero_cases(frame).filter(
-                (pl.col("source") == "qmt") & (pl.col("leading_rows") >= 2)
+            daily = ctx.query.tushare_daily(
+                frame["symbol"].unique().to_list(), day, day,
+                columns=["symbol", "dt", "open", "pre_close", "volume"],
             )
+            bad = zero_prefix_issues(frame, daily)
             if bad.height:
                 samples.append(bad)
         day += timedelta(days=1)
@@ -122,7 +121,7 @@ def qmt_leading_padding(ctx: CheckContext) -> CheckResult:
     return CheckResult(
         violations,
         checked,
-        f"检查 {checked:,} 个标的日，发现 {violations:,} 个 QMT 多根前导零成交量（成因待核验）",
+        f"检查 {checked:,} 个标的日，前导零量与直取日线不一致 {violations:,} 个",
         sample.head(100) if sample is not None else None,
     )
 
@@ -137,6 +136,6 @@ register(Check(
 register(Check(
     "B2.canonical_qmt_leading_padding", Category.COMPLETENESS, Scope.INCREMENTAL,
     tuple(f"bar_minute_1m.{name}" for name in schema.BAR_MINUTE_1M.names), (),
-    "QMT 多根前导零成交量保持阻断复核，不据形状裁定填充；paid 与单根范围保持",
+    "前导零量/零额/平价必须与直取参考价及首个成交开盘一致，缺证据或矛盾阻断",
     qmt_leading_padding,
 ))
