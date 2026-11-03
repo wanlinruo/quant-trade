@@ -53,3 +53,26 @@ Mac持久审计目录`~/.local/share/qsys-audits/issue583-zero-production-202611
 安装后只读探针首版误用`/opt/qsys-data/tushare-sync/current`，二进制未启动；首版空输出保留。
 按节点正式record定位`/opt/qsys/components/tushare-sync/releases/5c2037f...`后r2探针通过，
 未重放发布或业务。r2模块SHA与git源码精确相同，UID983、仓库写入0、业务启动0。
+
+
+## 服务管理页面闭环（23:25）
+
+上轮只重跑catalog，20点旧service-checks仍把归档/catalog显示为质检未过，且其实际
+质量拒绝exit1被页面统一显示启动/执行失败。本轮先处理真实系统盘8GiB失败（#126），
+再运行实际service-checks，新记录`service-checks-232553-967304`完成29项，数据失败0、
+exit0，ServiceRun仍warning。生产HTML实测归档成功、catalog/checks有警告，三项进程
+正常，当前日启动/执行失败提示消失；旧失败及28字段警告保持。Live主动停用对应的
+策略域失败不影响数据任务退出，也不被伪造为交易健康；其语义继续由#482承接。
+
+容量处理只迁移空闲uv/pip/npm缓存、旧scratch与节点同步副本，原路径保留可恢复软链接；
+85518条基线逐项SHA/ACL/owner/mode/mtime、11工作树HEAD/status保持，系统盘实际
+回收2469306368 bytes后余11061198848 bytes，仍处warning。源活动浏览器缓存被守卫
+排除，r1失败与r2独立收据保留。Ubuntu真实离线cache安装探针通过，未改任何制品或数据。
+
+人工服务质检仅用临时只读配置绑定关闭通知，其他配置逐项相同，原件SHA保持；节点恢复
+保护提前设置，结束后绑定移除、原通知恢复，业务timer保持active/enabled，辅助unit已停止。
+4558个仓库/QA文件物理版本及其他peer/KILL/主库保持。实际UID993/PID967304/Invocation
+`fb0bcaa6005e4449a69fe2bee6e551c8`绑定journal，收据分别在节点
+`issue126-system-space-20261103-r2/verified.json`和
+`issue583-service-management-20261103-r1/verified.json`（均位于var-deployments）。
+展示名称历史关联及启动/执行失败细分另由#592承接，不为本次验收扩大业务发布范围。

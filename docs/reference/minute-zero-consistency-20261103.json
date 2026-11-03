@@ -282,5 +282,43 @@
         "validate_record_passed": true
       }
     }
+  },
+  "service_management_revalidation": {
+    "service_run_id": "service-checks-232553-967304",
+    "checks": 29,
+    "data_failed": 0,
+    "strategy_failed": 1,
+    "strategy_failure_affects_data_run": false,
+    "unit_exit_status": 0,
+    "service_run_status": "warning",
+    "invocation_id": "fb0bcaa6005e4449a69fe2bee6e551c8",
+    "actual_uid": 993,
+    "actual_pid": 967304,
+    "page_today": {
+      "daily-archive": "成功",
+      "catalog-verify": "有警告",
+      "service-checks": "有警告"
+    },
+    "page_processes": {
+      "daily-archive": "正常",
+      "catalog-verify": "正常",
+      "service-checks": "正常"
+    },
+    "warehouse_and_quality_files_unchanged": 4558,
+    "system_space_recovery": {
+      "root_free_before": 8591892480,
+      "root_free_after": 11061198848,
+      "actual_recovered": 2469306368,
+      "data_free_after": 17035988992,
+      "manifest_entries": 85518,
+      "git_worktrees_preserved": 11,
+      "active_source_refs": 0,
+      "original_paths_retained": true,
+      "no_installed_releases_removed": true
+    },
+    "manual_notification_overlay_restored": true,
+    "other_config_values_unchanged": true,
+    "old_failure_records_preserved": true,
+    "followup_issue": 592
   }
 }

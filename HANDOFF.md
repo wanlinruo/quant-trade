@@ -1,5 +1,38 @@
 # 项目交接入口
 
+## 11-03 23:25：服务管理实际复验通过，容量失败解除
+
+- 维护者复核发现看板仍“质检未过”和“启动/执行失败”。实际20点服务质检已执行29项，
+  因旧前导零量/旧catalog结果返回1；不是没有启动。上轮只重跑catalog，旧20点质检仍会
+  覆盖新catalog页面状态，遗漏了整条用户页面验收。本轮已补齐，旧记录保持。
+- 同时发现/opt系统盘实际约8.0 GiB、低于既有10 GiB失败线；三组件新制品占用预算不足。
+  不降阈值、不删除旧制品/回退副本。#126按#540直接依赖恢复最小容量处理。
+- 仅将`/home/ubuntu/.cache/uv`、`.cache/pip`、`.npm`、`scratch`、`node-sync-backup`
+  可恢复迁至`/data/qsys/var-prod/host-maintenance-20261103-r2/retained/`，原路径保留软链接。
+  85518条文件/目录基线及字节SHA、owner/group/mode/ACL/mtime逐项核验，11个旧Git工作树
+  HEAD/status保持；安装制品/current/补偿目标、4558个仓库Parquet版本及KILL/主库/12peer保持。
+  root空闲8591892480→11061198848 bytes，实际回收2469306368 bytes；数据盘余
+  17035988992 bytes。Ubuntu真实uv cache/pip list及离线idna安装探针通过，无业务启动。
+- r1因浏览器正在使用`.cache/ms-playwright`被引用守卫拒绝、零迁移；r2缩小到明确空闲路径，
+  新Invocation成功，未重放r1/停其他应用。审计`issue126-system-space-20261103-r2`的
+  requested/actual-running/terminal/journal/verified齐全，辅助unit已停止，旧失败保留。
+- 实际`qsys-service-checks.service`重跑新记录`service-checks-232553-967304`：29检查、
+  数据失败0、unit success/exit0/PID0，ServiceRun warning；实际UID993/PID967304与
+  Invocation=`fb0bcaa6005e4449a69fe2bee6e551c8`的journal绑定核验。4558个仓库/QA文件、
+  其他11peer、KILL/主库与旧ServiceRun字节保持，未重放采集或恢复交易。
+- 本次人工验收用临时只读配置绑定仅关闭对外通知；逐项证明其他配置值与原件相同、原件SHA
+  不变，并提前设置节点恢复保护。运行结束已移除临时绑定、恢复原通知，保护timer inactive；
+  三个业务timer仍active/enabled。原始私有配置/副本不入Git/Issue/公开日志。
+- 真实生产`/services`页面：今日归档“成功”，catalog与service-checks“有警告×2”，
+  三项进程均“正常”，本日启动/执行失败提示消失。28既有字段warning、两盘容量warning及
+  留存策略warning保留；Live事件1条failed属于策略域/affects_run=false，主动停用告警
+  语义由#482承接，不伪报交易恢复或全部全绿。Live/Shadow保持停用。
+- 系统盘仅约10.3 GiB，下一次独立制品安装前必须先核算新增物理空间；不得再连续发布使其
+  跌破10 GiB。缓存/工作区新绑定属于永久保留运行资产，不按旧路径/目录名删除。
+  展示名称的历史修复关联和启动/执行失败精度另由[#592](https://github.com/wanlinruo/quant-trade/issues/592)
+  承接，不夹带新组件发布。#583继续等待自然任务验收；#588/#589候选仍独立保存。
+  服务验收收据`/data/qsys/var-deployments/issue583-service-management-20261103-r1/verified.json`。
+
 ## 11-03 22点：指标字典修复已发布并实际通过，既有warning保留
 
 - PR [#590](https://github.com/wanlinruo/quant-trade/pull/590)合入`5c2037fdd4afd427e7d43594d2f09026177c68fa`，
