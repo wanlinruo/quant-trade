@@ -1,0 +1,868 @@
+{
+  "issue": 583,
+  "related_volume_issue": 586,
+  "day": "2026-11-03",
+  "protocol": "qsys583-native-public-trades-summary-v1",
+  "requires_review": true,
+  "production_quality_pass": false,
+  "audit_root": "/Users/wanlinruo/.local/share/qsys-audits/issue583-trades-20261103-r1",
+  "native": {
+    "source_sha256": "fec825af3f5011c03d6b9149f8ae8fdd1cd1dd74b9428b00b27d5a52ceb8c9e4",
+    "receipt_sha256": "76d02a7a3b44bff63f376c38f38d7caa80db7e277e71cd7e21a7ff2c671f0c1f",
+    "client_pid": 288,
+    "client_identity_preserved": true,
+    "calls": 45,
+    "download_calls": 0,
+    "subscribe_calls": 0,
+    "account_calls": 0,
+    "trade_calls": 0,
+    "cases": [
+      {
+        "symbol": "300205.SZ",
+        "rows": 241,
+        "fill_variants_equal": true
+      },
+      {
+        "symbol": "300555.SZ",
+        "rows": 241,
+        "fill_variants_equal": true
+      },
+      {
+        "symbol": "600107.SH",
+        "rows": 241,
+        "fill_variants_equal": true
+      },
+      {
+        "symbol": "688089.SH",
+        "rows": 241,
+        "fill_variants_equal": true
+      },
+      {
+        "symbol": "920008.BJ",
+        "rows": 241,
+        "fill_variants_equal": true
+      },
+      {
+        "symbol": "920030.BJ",
+        "rows": 241,
+        "fill_variants_equal": true
+      },
+      {
+        "symbol": "920055.BJ",
+        "rows": 241,
+        "fill_variants_equal": true
+      },
+      {
+        "symbol": "920066.BJ",
+        "rows": 241,
+        "fill_variants_equal": true
+      },
+      {
+        "symbol": "920204.BJ",
+        "rows": 241,
+        "fill_variants_equal": true
+      },
+      {
+        "symbol": "920405.BJ",
+        "rows": 241,
+        "fill_variants_equal": true
+      },
+      {
+        "symbol": "920931.BJ",
+        "rows": 241,
+        "fill_variants_equal": true
+      },
+      {
+        "symbol": "920950.BJ",
+        "rows": 241,
+        "fill_variants_equal": true
+      },
+      {
+        "symbol": "600000.SH",
+        "rows": 241,
+        "fill_variants_equal": true
+      },
+      {
+        "symbol": "000001.SZ",
+        "rows": 241,
+        "fill_variants_equal": true
+      },
+      {
+        "symbol": "920285.BJ",
+        "rows": 241,
+        "fill_variants_equal": true
+      }
+    ],
+    "tick_rows": [
+      {
+        "symbol": "300205.SZ",
+        "rows": 0
+      },
+      {
+        "symbol": "300555.SZ",
+        "rows": 0
+      },
+      {
+        "symbol": "600107.SH",
+        "rows": 0
+      },
+      {
+        "symbol": "688089.SH",
+        "rows": 0
+      },
+      {
+        "symbol": "920008.BJ",
+        "rows": 0
+      },
+      {
+        "symbol": "920030.BJ",
+        "rows": 0
+      },
+      {
+        "symbol": "920055.BJ",
+        "rows": 0
+      },
+      {
+        "symbol": "920066.BJ",
+        "rows": 0
+      },
+      {
+        "symbol": "920204.BJ",
+        "rows": 0
+      },
+      {
+        "symbol": "920405.BJ",
+        "rows": 0
+      },
+      {
+        "symbol": "920931.BJ",
+        "rows": 0
+      },
+      {
+        "symbol": "920950.BJ",
+        "rows": 0
+      },
+      {
+        "symbol": "600000.SH",
+        "rows": 0
+      },
+      {
+        "symbol": "000001.SZ",
+        "rows": 0
+      },
+      {
+        "symbol": "920285.BJ",
+        "rows": 0
+      }
+    ]
+  },
+  "partitions": {
+    "minute_bars": "44b13793f396f217b877d29564c5a34ed211e7517f5b7b1cfc1ca10b7fb18c71",
+    "bar_minute_1m": "e7db28d3e528fd8b10b3ee1832c0f4fb68fd0ac483da672959eb85bda36ea447"
+  },
+  "native_warehouse_prefix_comparisons": [
+    {
+      "dataset": "minute_bars",
+      "symbol": "300205.SZ",
+      "selected_rows": 11,
+      "equal": true,
+      "different_fields": []
+    },
+    {
+      "dataset": "minute_bars",
+      "symbol": "300555.SZ",
+      "selected_rows": 11,
+      "equal": true,
+      "different_fields": []
+    },
+    {
+      "dataset": "minute_bars",
+      "symbol": "600107.SH",
+      "selected_rows": 11,
+      "equal": true,
+      "different_fields": []
+    },
+    {
+      "dataset": "minute_bars",
+      "symbol": "688089.SH",
+      "selected_rows": 11,
+      "equal": true,
+      "different_fields": []
+    },
+    {
+      "dataset": "minute_bars",
+      "symbol": "920008.BJ",
+      "selected_rows": 11,
+      "equal": true,
+      "different_fields": []
+    },
+    {
+      "dataset": "minute_bars",
+      "symbol": "920030.BJ",
+      "selected_rows": 11,
+      "equal": true,
+      "different_fields": []
+    },
+    {
+      "dataset": "minute_bars",
+      "symbol": "920055.BJ",
+      "selected_rows": 11,
+      "equal": true,
+      "different_fields": []
+    },
+    {
+      "dataset": "minute_bars",
+      "symbol": "920066.BJ",
+      "selected_rows": 11,
+      "equal": true,
+      "different_fields": []
+    },
+    {
+      "dataset": "minute_bars",
+      "symbol": "920204.BJ",
+      "selected_rows": 11,
+      "equal": true,
+      "different_fields": []
+    },
+    {
+      "dataset": "minute_bars",
+      "symbol": "920405.BJ",
+      "selected_rows": 11,
+      "equal": true,
+      "different_fields": []
+    },
+    {
+      "dataset": "minute_bars",
+      "symbol": "920931.BJ",
+      "selected_rows": 11,
+      "equal": true,
+      "different_fields": []
+    },
+    {
+      "dataset": "minute_bars",
+      "symbol": "920950.BJ",
+      "selected_rows": 11,
+      "equal": true,
+      "different_fields": []
+    },
+    {
+      "dataset": "minute_bars",
+      "symbol": "600000.SH",
+      "selected_rows": 11,
+      "equal": true,
+      "different_fields": []
+    },
+    {
+      "dataset": "minute_bars",
+      "symbol": "000001.SZ",
+      "selected_rows": 11,
+      "equal": true,
+      "different_fields": []
+    },
+    {
+      "dataset": "minute_bars",
+      "symbol": "920285.BJ",
+      "selected_rows": 11,
+      "equal": true,
+      "different_fields": []
+    },
+    {
+      "dataset": "bar_minute_1m",
+      "symbol": "300205.SZ",
+      "selected_rows": 11,
+      "equal": true,
+      "different_fields": []
+    },
+    {
+      "dataset": "bar_minute_1m",
+      "symbol": "300555.SZ",
+      "selected_rows": 11,
+      "equal": true,
+      "different_fields": []
+    },
+    {
+      "dataset": "bar_minute_1m",
+      "symbol": "600107.SH",
+      "selected_rows": 11,
+      "equal": true,
+      "different_fields": []
+    },
+    {
+      "dataset": "bar_minute_1m",
+      "symbol": "688089.SH",
+      "selected_rows": 11,
+      "equal": true,
+      "different_fields": []
+    },
+    {
+      "dataset": "bar_minute_1m",
+      "symbol": "920008.BJ",
+      "selected_rows": 11,
+      "equal": true,
+      "different_fields": []
+    },
+    {
+      "dataset": "bar_minute_1m",
+      "symbol": "920030.BJ",
+      "selected_rows": 11,
+      "equal": true,
+      "different_fields": []
+    },
+    {
+      "dataset": "bar_minute_1m",
+      "symbol": "920055.BJ",
+      "selected_rows": 11,
+      "equal": true,
+      "different_fields": []
+    },
+    {
+      "dataset": "bar_minute_1m",
+      "symbol": "920066.BJ",
+      "selected_rows": 11,
+      "equal": true,
+      "different_fields": []
+    },
+    {
+      "dataset": "bar_minute_1m",
+      "symbol": "920204.BJ",
+      "selected_rows": 11,
+      "equal": true,
+      "different_fields": []
+    },
+    {
+      "dataset": "bar_minute_1m",
+      "symbol": "920405.BJ",
+      "selected_rows": 11,
+      "equal": true,
+      "different_fields": []
+    },
+    {
+      "dataset": "bar_minute_1m",
+      "symbol": "920931.BJ",
+      "selected_rows": 11,
+      "equal": true,
+      "different_fields": []
+    },
+    {
+      "dataset": "bar_minute_1m",
+      "symbol": "920950.BJ",
+      "selected_rows": 11,
+      "equal": true,
+      "different_fields": []
+    },
+    {
+      "dataset": "bar_minute_1m",
+      "symbol": "600000.SH",
+      "selected_rows": 11,
+      "equal": true,
+      "different_fields": []
+    },
+    {
+      "dataset": "bar_minute_1m",
+      "symbol": "000001.SZ",
+      "selected_rows": 11,
+      "equal": true,
+      "different_fields": []
+    },
+    {
+      "dataset": "bar_minute_1m",
+      "symbol": "920285.BJ",
+      "selected_rows": 11,
+      "equal": true,
+      "different_fields": []
+    }
+  ],
+  "tencent_first_positive_candidates": [
+    {
+      "symbol": "300205.SZ",
+      "first_observed_trade": "09:32:06",
+      "warehouse_first_positive_label": "09:33:00",
+      "observation_window_start": "09:32:00",
+      "observation_window_end": "09:33:00",
+      "observation_rows": 4,
+      "native_volume_sum": "79",
+      "warehouse_volume": 79,
+      "volume_equal_without_conversion": true,
+      "native_amount_sum": "35817",
+      "warehouse_amount": 35817.0,
+      "amount_equal_without_rounding": true,
+      "last_page_observation": "10:17:57"
+    },
+    {
+      "symbol": "300555.SZ",
+      "first_observed_trade": "09:31:36",
+      "warehouse_first_positive_label": "09:32:00",
+      "observation_window_start": "09:31:00",
+      "observation_window_end": "09:32:00",
+      "observation_rows": 3,
+      "native_volume_sum": "1009",
+      "warehouse_volume": 1009,
+      "volume_equal_without_conversion": true,
+      "native_amount_sum": "1062940",
+      "warehouse_amount": 1062940.0,
+      "amount_equal_without_rounding": true,
+      "last_page_observation": "11:24:06"
+    },
+    {
+      "symbol": "600107.SH",
+      "first_observed_trade": "09:31:15",
+      "warehouse_first_positive_label": "09:32:00",
+      "observation_window_start": "09:31:00",
+      "observation_window_end": "09:32:00",
+      "observation_rows": 2,
+      "native_volume_sum": "5",
+      "warehouse_volume": 5,
+      "volume_equal_without_conversion": true,
+      "native_amount_sum": "2621",
+      "warehouse_amount": 2621.0,
+      "amount_equal_without_rounding": true,
+      "last_page_observation": "13:02:33"
+    },
+    {
+      "symbol": "688089.SH",
+      "first_observed_trade": "09:31:01",
+      "warehouse_first_positive_label": "09:32:00",
+      "observation_window_start": "09:31:00",
+      "observation_window_end": "09:32:00",
+      "observation_rows": 2,
+      "native_volume_sum": "152",
+      "warehouse_volume": 151,
+      "volume_equal_without_conversion": false,
+      "native_amount_sum": "115795",
+      "warehouse_amount": 115795.0,
+      "amount_equal_without_rounding": true,
+      "last_page_observation": "09:59:40"
+    },
+    {
+      "symbol": "600000.SH",
+      "first_observed_trade": "09:25:00",
+      "warehouse_first_positive_label": "09:30:00",
+      "observation_window_start": "09:25:00",
+      "observation_window_end": "09:30:00",
+      "observation_rows": 1,
+      "native_volume_sum": "3816",
+      "warehouse_volume": 3816,
+      "volume_equal_without_conversion": true,
+      "native_amount_sum": "3838896",
+      "warehouse_amount": 3838896.0,
+      "amount_equal_without_rounding": true,
+      "last_page_observation": "09:33:24"
+    },
+    {
+      "symbol": "000001.SZ",
+      "first_observed_trade": "09:25:00",
+      "warehouse_first_positive_label": "09:30:00",
+      "observation_window_start": "09:25:00",
+      "observation_window_end": "09:30:00",
+      "observation_rows": 1,
+      "native_volume_sum": "8705",
+      "warehouse_volume": 8705,
+      "volume_equal_without_conversion": true,
+      "native_amount_sum": "10062980",
+      "warehouse_amount": 10062980.0,
+      "amount_equal_without_rounding": true,
+      "last_page_observation": "09:33:24",
+      "observation_window_end_exclusive": true
+    }
+  ],
+  "tencent_requests": [
+    {
+      "code": "sz300205",
+      "kind": "timeline",
+      "url": "https://stock.gtimg.cn/data/index.php?appn=detail&action=timeline&c=sz300205",
+      "requested_at": "2026-11-03T17:42:43.032302+08:00",
+      "attempts": 1,
+      "http_status": 200,
+      "path": "sz300205-timeline.raw",
+      "size": 89,
+      "sha256": "54da419d4aa06db6e6ef9e1f280aed8c3640b0818db1f5ed906cb4e365123ede",
+      "returned_day": 20261103,
+      "first_range": "09:32:06~10:17:57"
+    },
+    {
+      "code": "sz300205",
+      "kind": "firstpage",
+      "url": "https://stock.gtimg.cn/data/index.php?appn=detail&action=data&c=sz300205&p=0",
+      "requested_at": "2026-11-03T17:42:43.394750+08:00",
+      "attempts": 1,
+      "http_status": 200,
+      "path": "sz300205-firstpage.raw",
+      "size": 2248,
+      "sha256": "18beacf69f9f7ae67cd4d8d7e3a62f4acc22d0d9d6827a25e58ea684ad2e0f39",
+      "page_index": 0,
+      "first_record": "0/09:32:06/4.52/0.01/51/23052/S",
+      "records": 70
+    },
+    {
+      "code": "sz300555",
+      "kind": "timeline",
+      "url": "https://stock.gtimg.cn/data/index.php?appn=detail&action=timeline&c=sz300555",
+      "requested_at": "2026-11-03T17:42:43.755199+08:00",
+      "attempts": 1,
+      "http_status": 200,
+      "path": "sz300555-timeline.raw",
+      "size": 89,
+      "sha256": "28656d93410298cbb0b704dddcea2efcecba50fc0dc0652612e8736767febbdf",
+      "returned_day": 20261103,
+      "first_range": "09:31:36~11:24:06"
+    },
+    {
+      "code": "sz300555",
+      "kind": "firstpage",
+      "url": "https://stock.gtimg.cn/data/index.php?appn=detail&action=data&c=sz300555&p=0",
+      "requested_at": "2026-11-03T17:42:44.095719+08:00",
+      "attempts": 1,
+      "http_status": 200,
+      "path": "sz300555-firstpage.raw",
+      "size": 2369,
+      "sha256": "edf3cfaa2492f9b4b5807b880cadc78275d64020ae91d3f82ea6fa4729092a73",
+      "page_index": 0,
+      "first_record": "0/09:31:36/10.55/-0.20/71/74905/S",
+      "records": 70
+    },
+    {
+      "code": "sh600107",
+      "kind": "timeline",
+      "url": "https://stock.gtimg.cn/data/index.php?appn=detail&action=timeline&c=sh600107",
+      "requested_at": "2026-11-03T17:42:44.446725+08:00",
+      "attempts": 1,
+      "http_status": 200,
+      "path": "sh600107-timeline.raw",
+      "size": 107,
+      "sha256": "0a37104c64cb493ec52572ac83a28d8615540579b2f05c24bd0e0a6537ab3901",
+      "returned_day": 20261103,
+      "first_range": "09:31:15~13:02:33"
+    },
+    {
+      "code": "sh600107",
+      "kind": "firstpage",
+      "url": "https://stock.gtimg.cn/data/index.php?appn=detail&action=data&c=sh600107&p=0",
+      "requested_at": "2026-11-03T17:42:44.805341+08:00",
+      "attempts": 1,
+      "http_status": 200,
+      "path": "sh600107-firstpage.raw",
+      "size": 2328,
+      "sha256": "b3dcdcbf6323ab6f0607bc21c1917b93d0db84bf65830e3c3f80cdfd7186b628",
+      "page_index": 0,
+      "first_record": "0/09:31:15/5.23/0.00/2/1046/B",
+      "records": 70
+    },
+    {
+      "code": "sh688089",
+      "kind": "timeline",
+      "url": "https://stock.gtimg.cn/data/index.php?appn=detail&action=timeline&c=sh688089",
+      "requested_at": "2026-11-03T17:42:45.155596+08:00",
+      "attempts": 1,
+      "http_status": 200,
+      "path": "sh688089-timeline.raw",
+      "size": 107,
+      "sha256": "7bd416de4948eb1f27d7d0e2bf47c7d9156b1940b667ca5667b591b4b892ee4c",
+      "returned_day": 20261103,
+      "first_range": "09:31:01~09:59:40"
+    },
+    {
+      "code": "sh688089",
+      "kind": "firstpage",
+      "url": "https://stock.gtimg.cn/data/index.php?appn=detail&action=data&c=sh688089&p=0",
+      "requested_at": "2026-11-03T17:42:45.510257+08:00",
+      "attempts": 1,
+      "http_status": 200,
+      "path": "sh688089-firstpage.raw",
+      "size": 2297,
+      "sha256": "7c136b10b1f0a87384edc117a24809c6fbcd524d36ff92185f32890fc9405cbf",
+      "page_index": 0,
+      "first_record": "0/09:31:01/7.64/-0.07/115/87535/S",
+      "records": 70
+    },
+    {
+      "code": "bj920008",
+      "kind": "timeline",
+      "url": "https://stock.gtimg.cn/data/index.php?appn=detail&action=timeline&c=bj920008",
+      "requested_at": "2026-11-03T17:42:45.859126+08:00",
+      "attempts": 1,
+      "http_status": 200,
+      "path": "bj920008-timeline.raw",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error_type": "IndexError"
+    },
+    {
+      "code": "bj920008",
+      "kind": "firstpage",
+      "url": "https://stock.gtimg.cn/data/index.php?appn=detail&action=data&c=bj920008&p=0",
+      "requested_at": "2026-11-03T17:42:46.191778+08:00",
+      "attempts": 1,
+      "http_status": 200,
+      "path": "bj920008-firstpage.raw",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error_type": "IndexError"
+    },
+    {
+      "code": "bj920030",
+      "kind": "timeline",
+      "url": "https://stock.gtimg.cn/data/index.php?appn=detail&action=timeline&c=bj920030",
+      "requested_at": "2026-11-03T17:42:46.535266+08:00",
+      "attempts": 1,
+      "http_status": 200,
+      "path": "bj920030-timeline.raw",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error_type": "IndexError"
+    },
+    {
+      "code": "bj920030",
+      "kind": "firstpage",
+      "url": "https://stock.gtimg.cn/data/index.php?appn=detail&action=data&c=bj920030&p=0",
+      "requested_at": "2026-11-03T17:42:46.902291+08:00",
+      "attempts": 1,
+      "http_status": 200,
+      "path": "bj920030-firstpage.raw",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error_type": "IndexError"
+    },
+    {
+      "code": "bj920055",
+      "kind": "timeline",
+      "url": "https://stock.gtimg.cn/data/index.php?appn=detail&action=timeline&c=bj920055",
+      "requested_at": "2026-11-03T17:42:47.238912+08:00",
+      "attempts": 1,
+      "http_status": 200,
+      "path": "bj920055-timeline.raw",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error_type": "IndexError"
+    },
+    {
+      "code": "bj920055",
+      "kind": "firstpage",
+      "url": "https://stock.gtimg.cn/data/index.php?appn=detail&action=data&c=bj920055&p=0",
+      "requested_at": "2026-11-03T17:42:47.573228+08:00",
+      "attempts": 1,
+      "http_status": 200,
+      "path": "bj920055-firstpage.raw",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error_type": "IndexError"
+    },
+    {
+      "code": "bj920066",
+      "kind": "timeline",
+      "url": "https://stock.gtimg.cn/data/index.php?appn=detail&action=timeline&c=bj920066",
+      "requested_at": "2026-11-03T17:42:47.951704+08:00",
+      "attempts": 1,
+      "http_status": 200,
+      "path": "bj920066-timeline.raw",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error_type": "IndexError"
+    },
+    {
+      "code": "bj920066",
+      "kind": "firstpage",
+      "url": "https://stock.gtimg.cn/data/index.php?appn=detail&action=data&c=bj920066&p=0",
+      "requested_at": "2026-11-03T17:42:48.302046+08:00",
+      "attempts": 1,
+      "http_status": 200,
+      "path": "bj920066-firstpage.raw",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error_type": "IndexError"
+    },
+    {
+      "code": "bj920204",
+      "kind": "timeline",
+      "url": "https://stock.gtimg.cn/data/index.php?appn=detail&action=timeline&c=bj920204",
+      "requested_at": "2026-11-03T17:42:48.647975+08:00",
+      "attempts": 1,
+      "http_status": 200,
+      "path": "bj920204-timeline.raw",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error_type": "IndexError"
+    },
+    {
+      "code": "bj920204",
+      "kind": "firstpage",
+      "url": "https://stock.gtimg.cn/data/index.php?appn=detail&action=data&c=bj920204&p=0",
+      "requested_at": "2026-11-03T17:42:48.999814+08:00",
+      "attempts": 1,
+      "http_status": 200,
+      "path": "bj920204-firstpage.raw",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error_type": "IndexError"
+    },
+    {
+      "code": "bj920405",
+      "kind": "timeline",
+      "url": "https://stock.gtimg.cn/data/index.php?appn=detail&action=timeline&c=bj920405",
+      "requested_at": "2026-11-03T17:42:49.326715+08:00",
+      "attempts": 1,
+      "http_status": 200,
+      "path": "bj920405-timeline.raw",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error_type": "IndexError"
+    },
+    {
+      "code": "bj920405",
+      "kind": "firstpage",
+      "url": "https://stock.gtimg.cn/data/index.php?appn=detail&action=data&c=bj920405&p=0",
+      "requested_at": "2026-11-03T17:42:49.665893+08:00",
+      "attempts": 1,
+      "http_status": 200,
+      "path": "bj920405-firstpage.raw",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error_type": "IndexError"
+    },
+    {
+      "code": "bj920931",
+      "kind": "timeline",
+      "url": "https://stock.gtimg.cn/data/index.php?appn=detail&action=timeline&c=bj920931",
+      "requested_at": "2026-11-03T17:42:50.051245+08:00",
+      "attempts": 1,
+      "http_status": 200,
+      "path": "bj920931-timeline.raw",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error_type": "IndexError"
+    },
+    {
+      "code": "bj920931",
+      "kind": "firstpage",
+      "url": "https://stock.gtimg.cn/data/index.php?appn=detail&action=data&c=bj920931&p=0",
+      "requested_at": "2026-11-03T17:42:50.385357+08:00",
+      "attempts": 1,
+      "http_status": 200,
+      "path": "bj920931-firstpage.raw",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error_type": "IndexError"
+    },
+    {
+      "code": "bj920950",
+      "kind": "timeline",
+      "url": "https://stock.gtimg.cn/data/index.php?appn=detail&action=timeline&c=bj920950",
+      "requested_at": "2026-11-03T17:42:50.732513+08:00",
+      "attempts": 1,
+      "http_status": 200,
+      "path": "bj920950-timeline.raw",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error_type": "IndexError"
+    },
+    {
+      "code": "bj920950",
+      "kind": "firstpage",
+      "url": "https://stock.gtimg.cn/data/index.php?appn=detail&action=data&c=bj920950&p=0",
+      "requested_at": "2026-11-03T17:42:51.097993+08:00",
+      "attempts": 1,
+      "http_status": 200,
+      "path": "bj920950-firstpage.raw",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error_type": "IndexError"
+    },
+    {
+      "code": "sh600000",
+      "kind": "timeline",
+      "url": "https://stock.gtimg.cn/data/index.php?appn=detail&action=timeline&c=sh600000",
+      "requested_at": "2026-11-03T17:42:51.428517+08:00",
+      "attempts": 1,
+      "http_status": 200,
+      "path": "sh600000-timeline.raw",
+      "size": 1187,
+      "sha256": "d499df373231a183d0937a449a54ad6413793fb25445db7015d189a1058bbbcf",
+      "returned_day": 20261103,
+      "first_range": "09:25:00~09:33:24"
+    },
+    {
+      "code": "sh600000",
+      "kind": "firstpage",
+      "url": "https://stock.gtimg.cn/data/index.php?appn=detail&action=data&c=sh600000&p=0",
+      "requested_at": "2026-11-03T17:42:51.767959+08:00",
+      "attempts": 1,
+      "http_status": 200,
+      "path": "sh600000-firstpage.raw",
+      "size": 2577,
+      "sha256": "6e04f9f214c8f287bc4673cc4f6c01cee8f27ee7308cee02bb68fad80fcfabba",
+      "page_index": 0,
+      "first_record": "0/09:25:00/10.06/0.03/3816/3838896/B",
+      "records": 70
+    },
+    {
+      "code": "sz000001",
+      "kind": "timeline",
+      "url": "https://stock.gtimg.cn/data/index.php?appn=detail&action=timeline&c=sz000001",
+      "requested_at": "2026-11-03T17:42:52.146276+08:00",
+      "attempts": 1,
+      "http_status": 200,
+      "path": "sz000001-timeline.raw",
+      "size": 1259,
+      "sha256": "3b683e31db864c180dd87f9b864d43492d344a4a66974e370918dabf2dcada7c",
+      "returned_day": 20261103,
+      "first_range": "09:25:00~09:33:24"
+    },
+    {
+      "code": "sz000001",
+      "kind": "firstpage",
+      "url": "https://stock.gtimg.cn/data/index.php?appn=detail&action=data&c=sz000001&p=0",
+      "requested_at": "2026-11-03T17:42:52.499778+08:00",
+      "attempts": 1,
+      "http_status": 200,
+      "path": "sz000001-firstpage.raw",
+      "size": 2658,
+      "sha256": "deb0238f67b9287f00d57c1c5ba861a0ac9b4ac39a1f0317080cd7492c25b356",
+      "page_index": 0,
+      "first_record": "0/09:25:00/11.56/0.03/8705/10062980/B",
+      "records": 70
+    },
+    {
+      "code": "bj920285",
+      "kind": "timeline",
+      "url": "https://stock.gtimg.cn/data/index.php?appn=detail&action=timeline&c=bj920285",
+      "requested_at": "2026-11-03T17:42:52.854873+08:00",
+      "attempts": 1,
+      "http_status": 200,
+      "path": "bj920285-timeline.raw",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error_type": "IndexError"
+    },
+    {
+      "code": "bj920285",
+      "kind": "firstpage",
+      "url": "https://stock.gtimg.cn/data/index.php?appn=detail&action=data&c=bj920285&p=0",
+      "requested_at": "2026-11-03T17:42:53.198141+08:00",
+      "attempts": 1,
+      "http_status": 200,
+      "path": "bj920285-firstpage.raw",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "error_type": "IndexError"
+    }
+  ],
+  "eastmoney_request_summary": {
+    "attempts": 30,
+    "http_responses": 8,
+    "errors": 22,
+    "market_day_bound_for_all_cases": false
+  },
+  "limits": [
+    "Raw/canonical comparison is limited to 09:30 through 09:40; no full-day equality claim.",
+    "Candidate first-minute windows do not establish a universal exchange/vendor minute-boundary contract.",
+    "Public transaction records can aggregate several executions; their last price cannot reconstruct minute OHLC.",
+    "Tencent BJ transaction responses did not deliver usable evidence.",
+    "Eastmoney partial responses and missing date binding cannot qualify BJ cases.",
+    "Empty native tick caches are not evidence of no executions.",
+    "688089.SH quantity discrepancy is preserved; no unit conversion, rounding, or tolerance."
+  ],
+  "audit_notes": [
+    "Native probe completed once; SCP timed out. The existing result was read through gzip and its exact prior SHA256 was verified; no probe replay.",
+    "An old temporary Windows metadata helper overwrote /tmp/qsys583-audit/windows-before.json with this run metadata. That temporary metadata file is no longer an original historical receipt; original native r2 result receipts and persistent public r1/r2 evidence were not modified.",
+    "First candidate aggregation included 09:30:00 in the 000001.SZ auction window and failed; first-attempt comparison retained. Explicit exclusion matches the warehouse auction bar, without shifting any stored timestamp."
+  ]
+}

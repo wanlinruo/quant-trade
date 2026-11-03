@@ -17,7 +17,7 @@ D = date(2026, 9, 15)
 def test_verification_runs_after_successful_sync(monkeypatch, warehouse):
     called = {}
 
-    def fake_verify(actual_warehouse, day):
+    def fake_verify(actual_warehouse, day, *, step=None):
         called["warehouse"] = actual_warehouse
         called["day"] = day
         return 0
@@ -41,7 +41,7 @@ def test_verification_is_skipped_after_failed_sync(monkeypatch, warehouse):
 
 
 def test_crashing_verifier_does_not_fail_sync(monkeypatch, warehouse):
-    def boom(actual_warehouse, day):
+    def boom(actual_warehouse, day, *, step=None):
         raise RuntimeError("验证器炸了")
 
     monkeypatch.setattr(tushare_daily_sync, "run_incremental_verification", boom)
@@ -103,6 +103,65 @@ def test_explicit_samples_work_from_unwritable_service_cwd(monkeypatch, warehous
     assert pl.read_parquet(path).equals(sample)
 
 
+def test_actual_verification_records_one_rule_without_multiplying_its_cases(
+    monkeypatch, warehouse, tmp_path,
+):
+    import polars as pl
+    from qsys.data import schema
+    from qsys.data.catalog import checks as C
+    from qsys.data.query import WarehouseQuery
+    from qsys.ops.services import ServiceRun
+
+    metrics = tuple(f"bar_minute_1m.{name}" for name in schema.BAR_MINUTE_1M.names)
+    check = C.Check(
+        "X.leading_zero", C.Category.COMPLETENESS, C.Scope.INCREMENTAL,
+        metrics, (), "固定规则结果",
+        lambda _: C.CheckResult(12, 5570, "成因待核验"),
+    )
+    monkeypatch.setattr(C, "CHECKS", {check.id: check})
+    with ServiceRun.open(tmp_path / "runs", "tushare-sync") as run:
+        tushare_daily_sync.after_sync(warehouse, D, ok=True, run=run)
+    saved = json.loads(run.path.read_text())
+    step = saved["steps"][0]
+    assert saved["status"] == step["status"] == "warning"
+    assert "字段结果未通过 10 条，涉及 1 条规则" in step["detail"]
+    assert "违规数 12 / 检查数 5570" in step["detail"]
+    assert "独立问题总数" in step["detail"]
+    progress = step["progress"]
+    assert progress["blocking_field_results"] == 10
+    assert progress["blocking_rules"] == [{
+        "check_id": "X.leading_zero", "field_results": 10,
+        "counts": [{"violations": 12, "checked_rows": 5570}], "sample_paths": [],
+    }]
+    frame = WarehouseQuery(warehouse).metric_checks()
+    assert frame.height == 10
+    assert not frame["passed"].any()
+    assert set(frame["severity"]) == {"blocking"}
+    assert set(frame["violations"]) == {12}
+    assert set(frame["run_id"]) == {progress["verification_run_id"]}
+
+
+def test_rule_summary_keeps_different_responsibility_counts_and_excludes_passed_rows():
+    import polars as pl
+    frame = pl.DataFrame({
+        "check_id": ["X.a", "X.a", "X.a", "X.b", "X.c"],
+        "passed": [False, False, False, False, True],
+        "severity": ["blocking", "blocking", "blocking", "warning", "warning"],
+        "violations": [12, 12, None, 7, 0],
+        "checked_rows": [5570, 5570, None, 9, 4],
+        "sample_path": ["samples/a.parquet", "samples/a.parquet", None, None, None],
+    })
+    result = tushare_daily_sync.incremental_verification_summary(frame)
+    assert result["field_results"] == 5
+    assert result["blocking_field_results"] == 3
+    assert result["blocking_rule_count"] == 1
+    assert result["blocking_rules"][0]["counts"] == [
+        {"violations": None, "checked_rows": None},
+        {"violations": 12, "checked_rows": 5570},
+    ]
+    assert result["blocking_rules"][0]["sample_paths"] == ["samples/a.parquet"]
+
+
 @pytest.fixture
 def sync_main(monkeypatch, tmp_path):
     """Exercise the real CLI and ServiceRun without data providers or Windows."""
@@ -127,7 +186,7 @@ def sync_main(monkeypatch, tmp_path):
 
     artifacts = tmp_path / "quality-samples"
 
-    def verify(warehouse, day, *, artifacts):
+    def verify(warehouse, day, *, artifacts, step=None):
         assert day == D and artifacts == tmp_path / "quality-samples"
         events.append("quality")
         return 0
