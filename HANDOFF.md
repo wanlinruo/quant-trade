@@ -1,5 +1,44 @@
 # 项目交接入口
 
+## 11-03 17点：收盘同步完成，增量质检命中12个前导零量标的日
+
+- 本节覆盖下文“catalog/checks尚未发布”和“模拟待11-02验收”的历史状态。
+  当前主线仍是[数据→模拟→实盘 #540](https://github.com/wanlinruo/quant-trade/issues/540)，
+  分钟质量裁决由[#583](https://github.com/wanlinruo/quant-trade/issues/583)承接。
+- 今天17点自然运行`tushare-sync-170128-843932`：17:01:28–17:06:41，
+  ServiceRun为warning，20步骤中19成功、仅“增量质检”warning；实际unit于17:06:45
+  结束，Result=success/exit0。日线5570、限价5655、停牌9、ST记录5570、送配4，
+  派生刷新及canonical 11张表写后对账通过，晚到新股分钟收敛步骤成功。
+  停牌本入口未决观测0；不外推消除#551历史差异。涨停列表本次返回0行，步骤成功
+  仅代表执行完成，不在本次只读排查中判定该空响应的市场完整性。
+- 精确增量批次`20261103T170558441444`共558条字段结果：548 passed、10 blocking。
+  10条都是`B2.canonical_qmt_leading_padding`映射到canonical分钟表的10列，
+  共用同一份12行样本；不是10个独立问题，也不是沿用昨天603828.SH的一个案例。
+  本次检查5570个标的日：300205.SZ、300555.SZ、600107.SH、688089.SH、
+  920008.BJ、920030.BJ、920055.BJ、920066.BJ、920204.BJ、920405.BJ、
+  920931.BJ、920950.BJ在09:30起连续2–5根零量，首根正量标签09:32–09:35。
+  样本`artifacts/metric_checks/20261103T170558441444/B2.canonical_qmt_leading_padding.parquet`，
+  SHA256=`98264372edecc8b3c3752f5dc070d42e78cfb993f67be6847a3f3d17bd6e3833`。
+- Tushare当前仍7d5e2c4，内置旧诊断写“前导零填充”；这不是市场成因已证实。
+  今早发布仅升级catalog/checks，未升级数据写入器。同步exit0只证明采集发布完成，
+  ServiceRun warning明确保留质量未通过；不把548条passed称为全历史或表级/关系级健康。
+  未重跑同步、改数据、清失败或放宽规则。19点同步及19:40/20:00自然检查尚待发生。
+- 11-03早已将catalog-verify/service-checks正式安装到main/test基线
+  `072240f22c94cf327eb60ccf2f2b611b2c2c1a19`：workflow41548559796/41548722964、
+  Deployment7506459175/7506479664及实际节点record/validate_record三方success；
+  原timer已恢复active/enabled。正式发布详见[#583记录](https://github.com/wanlinruo/quant-trade/issues/583#issuecomment-6592017562)。
+  新代码仅纠正未经证实的填充诊断，质量判据仍保持；本轮17点增量运行由旧Tushare组件执行。
+- #539/#579已按精确范围关闭：11-02起盘/竞价/收盘自然报告全部accepted，
+  7个要求事件completed、旧254事件保持，20点Paper步骤succeeded，账户1 running/3 ended。
+  全天模拟通过不替代独立行情质量与实盘验收，也不证明历史CANTOPEN唯一成因。
+- 本次17:35后只读现场：Paper3298434/Web2975679/observer3282489均active/NRestarts0，
+  Live inactive/PID0；没有账户恢复或业务重放。Shadow停用、原KILL/主库保持的最近
+  精确审计为今早#583发布收尾，本次未重新计算其字节指纹，不能以进程状态代替该证据。
+- #550/#478继续validation，#580仍缺premarket覆盖；#543/#545继续QMT更替与容量
+  长期观察，#482继续维护/停用告警语义。#541/#542/#535等实盘门禁未解除，
+  不启动Live/Shadow或扩研究。下一步核验当日竞价/分钟边界事实，并读取后续自然质量
+  记录；不依据零量形状删行、不平移分钟标签、不以诊断发布或同源一致自动放行。
+
 ## 11-03：公开分钟观察已取得，正对照不支持直接放行
 
 - #583恢复in-progress：腾讯五日分钟与新浪1分钟共64份重放响应，29例首笔正量
