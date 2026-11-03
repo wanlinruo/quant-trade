@@ -222,5 +222,65 @@
         "inconsistencies": 0
       }
     ]
+  },
+  "production_validation": {
+    "source_sha": "5c2037fdd4afd427e7d43594d2f09026177c68fa",
+    "pr": 590,
+    "service_run_id": "catalog-verify-221822-942857",
+    "service_run_status": "warning",
+    "unit_exit_status": 0,
+    "invocation_id": "53d635ca136d413c82bf416f197c7995",
+    "field_results": 638,
+    "passed": 610,
+    "blocking": 0,
+    "warnings": 28,
+    "dataset_statuses": {
+      "green": 11,
+      "yellow": 1,
+      "red": 0,
+      "gray": 0
+    },
+    "relation_statuses": {
+      "green": 7,
+      "red": 0,
+      "gray": 0
+    },
+    "B2_checked_symbol_days": 5570,
+    "B2_violations": 0,
+    "market_files_unchanged": 4555,
+    "old_qa_rows_preserved": {
+      "metric_checks": 65773,
+      "dataset_checks": 1140,
+      "relation_checks": 126
+    },
+    "components": {
+      "catalog-verify": {
+        "component": "catalog-verify",
+        "workflow": 41651261215,
+        "deployment": 7521021097,
+        "node_run_id": "issue583-zero-consistency-20261103-r1-catalog-verify",
+        "status": "success",
+        "target_sha": "5c2037fdd4afd427e7d43594d2f09026177c68fa",
+        "validate_record_passed": true
+      },
+      "service-checks": {
+        "component": "service-checks",
+        "workflow": 41651795823,
+        "deployment": 7521102439,
+        "node_run_id": "issue583-zero-consistency-20261103-r1-service-checks",
+        "status": "success",
+        "target_sha": "5c2037fdd4afd427e7d43594d2f09026177c68fa",
+        "validate_record_passed": true
+      },
+      "tushare-sync": {
+        "component": "tushare-sync",
+        "workflow": 41653138392,
+        "deployment": 7521307183,
+        "node_run_id": "issue583-zero-sync-20261103-r1-tushare-sync",
+        "status": "success",
+        "target_sha": "5c2037fdd4afd427e7d43594d2f09026177c68fa",
+        "validate_record_passed": true
+      }
+    }
   }
 }

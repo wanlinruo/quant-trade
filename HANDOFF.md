@@ -1,17 +1,29 @@
 # 项目交接入口
 
-## 11-03晚：指标字典前导零量规则修复，等待正式发布与重跑
+## 11-03 22点：指标字典修复已发布并实际通过，既有warning保留
 
-- 维护者明确要求先修复再重跑指标字典。19:40真实记录`catalog-verify-194004-892634`
-  为600 passed/28 warning/10 blocking；表11绿1黄、关系7绿。10阻断仍是同一规则的12案例。
-- 当前raw/canonical各5570标的日、73前导非正量案例只读重放均无值矛盾；新规则以零量/
-  零额/平价/直取pre_close及首个成交分钟open与当日直取open精确一致为准，缺证据仍失败。
-  不按来源/北交所豁免，不改变blocking，不删行/补值/舍入，不重写旧红与既有28警告。
-- 事实、输入版本与反例见[一致性契约](docs/reference/minute-zero-consistency.md)，由
-  [#583](https://github.com/wanlinruo/quant-trade/issues/583)承接；#586量差与D-23历史禁令保持。
-  本地专项112通过、全量通过，生产发布与实际任务证据后续追加，当前不能称已转绿。
-- #588/#589候选与未推送集成提交单独保留，本次只发布catalog-verify/service-checks修复；
-  不启动Live/Shadow、恢复账户或重放采集。
+- PR [#590](https://github.com/wanlinruo/quant-trade/pull/590)合入`5c2037fdd4afd427e7d43594d2f09026177c68fa`，
+  原始CI41634877096、测试部署41635091913/Deployment7518565556/节点github-41635091913-1、
+  PR CI41650280489、Align41650433043、审计41650432974、最终CI41650505269均success；
+  测试节点实际validate_record及SHA/tree/run-id核验，Codex代行自审已如实记PR正文。
+- catalog-verify/service-checks正式安装同一5c2037f：workflow41651261215/41651795823、
+  Deployment7521021097/7521102439及节点record实际validate_record三方success。
+  两timer恢复active/enabled，节点侧恢复保护收尾；未启动/恢复交易或重放采集。
+- 按维护者明确要求启动实际`qsys-catalog-verify.service`，新ServiceRun
+  `catalog-verify-221822-942857`：638结果，610 passed/0 blocking/28既有warning；
+  B2的10字段全部passed、检查5570标的日、违规0。表11绿1黄、关系7绿且缺证据0；
+  实际unit Result=success/exit0/PID0，InvocationID=`53d635ca136d413c82bf416f197c7995`。
+  ServiceRun如实warning，不能宣称全历史或整个页面全绿，也未重跑20点service-checks任务。
+- QA三表原65773/1140/126行逐值保持，分别新增638/60/7行；旧ServiceRun字节保持。
+  4555个市场Parquet物理版本、KILL/Live主库、其他11个peer及current绑定保持。
+  事实与反例见[一致性契约](docs/reference/minute-zero-consistency.md)，实测回执在
+  `/data/qsys/var-deployments/issue583-zero-consistency-20261103-r1/task-verified.json`。
+- 必要消费者tushare-sync也正式安装5c2037f：workflow41653138392/Deployment7521307183/
+  节点record实际validate_record三方success。原timer恢复active/enabled，原19点unit终态、
+  12peer、全部4558个Parquet版本及KILL/主库保持；未运行收盘采集。实际UID983的
+  安装模块正反夹具及增量摘要探针通过（仅内存，不代表自然同步完成）。
+  #583等待自然任务采证，#586数量差异、D-23历史禁令及28警告保持。
+  #588/#589未发布候选单独保留，不夹带本次修复；Live/Shadow继续停用。
 
 ## 11-03晚：当日原生对照通过，成交快照量差由#586承接
 

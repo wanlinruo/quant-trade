@@ -27,5 +27,29 @@ volume=0、amount=0、四价一致且精确等于Tushare直取pre_close；首个
 前导行不会被删除、补齐或重写；原B2规则ID与blocking严重度保留，旧红项不修改。
 
 该规则检查值一致性，不声称已经证明每根历史数据的上游生成过程；D-23既有历史事实与
-回测源禁令保持，#586数量差异继续保留。生产激活与实际任务结果后续另记，代码候选不等于
-生产质量已通过，28项既有警告不得清除来制造全绿。
+回测源禁令保持，#586数量差异继续保留。实际生产验证见下文，28项既有警告不得清除来制造全绿。
+
+
+## 生产发布与实际重跑
+
+PR #590对应5c2037f，catalog/checks的正式workflow41651261215/41651795823、Deployment
+7521021097/7521102439及节点实际validate_record三方success。维护前节点恢复保护已设置，
+两timer已恢复。按维护者要求启动实际catalog unit，新记录`catalog-verify-221822-942857`
+638字段结果：610 passed、0 blocking、28 warning；B2十字段均passed，5570标的日0矛盾。
+表11绿1黄、关系7绿/缺证据0，unit success/exit0，ServiceRun仍warning。
+
+旧QA三表65773/1140/126行逐值保持，新增638/60/7行；旧ServiceRun字节、4555个市场文件
+物理版本、KILL/主库与其他peer保持。正式收据在节点
+`/data/qsys/var-deployments/issue583-zero-consistency-20261103-r1/task-verified.json`，
+Mac持久审计目录`~/.local/share/qsys-audits/issue583-zero-production-20261103-r1/`保存副本。
+这不是改写旧红转绿；同期17/19点同步与19:40/20点旧任务记录保留。
+
+必要消费者tushare-sync亦独立正常发布同一5c2037f：workflow41653138392、Deployment
+7521307183及实际节点record三方success；timer恢复，原终态/12peer/4558个Parquet版本
+与KILL/主库保持，未重跑采集。实际UID983的安装模块内存正反夹具、增量摘要和源码SHA
+核验通过；不能替代下一次自然同步的业务验收。审计在
+`/data/qsys/var-deployments/issue583-zero-sync-20261103-r1/`。
+
+安装后只读探针首版误用`/opt/qsys-data/tushare-sync/current`，二进制未启动；首版空输出保留。
+按节点正式record定位`/opt/qsys/components/tushare-sync/releases/5c2037f...`后r2探针通过，
+未重放发布或业务。r2模块SHA与git源码精确相同，UID983、仓库写入0、业务启动0。
