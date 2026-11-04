@@ -1,5 +1,28 @@
 # 项目交接入口
 
+## 11-04 12:40：获批21个旧制品已清理，根盘恢复至约27.30GiB
+
+- 维护者本轮明确回复“确认”，授权固定清单21目录；清单SHA256保持
+  `55294c7694c5a6e262786081accfaf42db06ab64d88e9f0fad0994491b4ddf3f`。
+  执行前重盘59版本：21候选、38保护、扫描错误0，21项manifest/元数据均无漂移。
+- 正式清理21项全部成功、跳过0；逐项保留requested/deleted收据；使用防符号链接攻击的
+  fd相对删除，业务路径只读，38个保护版本额外只读挂载。UID0/PID1244297、
+  Invocation `3bdcffef96a5407491553958e18baf4b`与journal/实际资源及终态success绑定。
+- 根盘可用11064283136→29318385664 bytes，实际增加18254102528 bytes（17.000458GiB）；
+  数据盘可用17033863168 bytes（约15.86GiB），其容量warning继续保留。不外推耗尽时间。
+- 保留38个release完整元数据（nlink允许获批unlink自然变化）及manifest，全部current、
+  最近成功补偿目标、12peer、Live主库/KILL/锁绑定前后保持。Paper/Web/observer仍为
+  3298434/2975679/3282489、NRestarts0；Live/Shadow inactive/PID0，/services HTTP200。
+  四个数据timer active/enabled，未停timer、未启动交易/采集、未安装新生产组件。
+- 额外并行只读引用检查未取得有效证据，保留其exit1/journal/失败记录，不用于验收；
+  清理执行器完整后验成功，另一次独立只读对账确认剩余38版本、获批剩余0、扫描错误0。
+  全部辅助unit已停止，未reset-failed或清旧失败；详见[执行方案及验收](docs/plans/component-release-storage-review-20261104.md)。
+- 永久节点审计`/data/qsys/var-deployments/issue126-release-cleanup-20261104-r1/acceptance.json`。
+  容量这一直接障碍已解除，#126长期趋势治理仍开放。#588/#589源码已随PR#595合入
+  ca3ca96，原始CI/测试部署/PR CI/Align/审计/最终CI均成功，生产尚未激活。
+  后续仍独立满足组件维护门禁；Paper有运行账户，不能使用仅supervisor升级例外。
+  28历史质量warning及今天收盘自然验收仍保留，不因清理判全系统全绿。
+
 ## 11-04：北交所边界与行情覆盖完成本地集成，容量清理待明确审批
 
 - #589：订单、Paper/Shadow/Live及Windows执行边界统一禁止北交所新开仓；合法历史

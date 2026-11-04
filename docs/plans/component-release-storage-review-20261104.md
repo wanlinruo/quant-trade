@@ -1,7 +1,8 @@
 # 2026-11-04 组件旧制品清理审批方案（#126）
 
-**状态：待维护者明确确认，尚未删除。** 维护者“继续推进”仅用于准备此方案及独立代码工作，
-不作为生产目录删除许可。本方案只覆盖下面21个明确目录，不扩展到数据盘留存资产或新发现项。
+**状态：维护者明确回复“确认”后，21目录已全部清理并验收（11-04 12:40）。**
+本次授权只覆盖下面21个明确目录，不扩展到数据盘留存资产或新发现项。
+下文盘点与容量预算保留审批时的事实，执行结果见末节；机器清单字节及SHA保持。
 
 依据AGENTS.md §4、§2.1以及[存储规则](../reference/storage-retention.md)。
 
@@ -72,3 +73,31 @@ requested/actual-running/terminal/journal、inventory、release-ledger、cleanup
    发布与实际任务验收仍分开执行；清理成功不会自动解除任何Live/Shadow或Paper维护门禁。
 
 此方案不包含自动删除脚本或定时清理规则；审批前只读准备和本地集成可继续。
+
+## 11-04 执行与验收
+
+- 授权原文“确认”，绑定本页21目录及机器清单SHA；节点approval.json留存确认语境和路径。
+  执行前59版本重盘，21项manifest/元数据全部相同、无新增保护、扫描错误0。
+- 21项全部删除、跳过0，逐项requested/deleted收据齐全。执行器以精确父目录fd配合
+  防符号链接攻击的rmtree操作；只放开六个release父目录，38保护版本额外只读挂载，
+  不跟随符号链接或扩大到数据盘留存资产。每项前复核current/成功发布记录/peer/进程引用。
+- 根盘free：11064283136→29318385664 bytes，实际增加18254102528 bytes
+  （17.000458GiB），与原inode预算差约396KiB，报告实际df净增，不把预估冒充实测。
+  根盘约27.30GiB，数据盘17033863168 bytes（15.86GiB），数据盘warning未解除。
+- 38保留版本逐项元数据/manifest保持；元数据比较排除获批unlink会自然改变的nlink，
+  不豁免内容、inode、模式、owner/group、mtime或文件大小变化。current、最近成功
+  补偿目标、12peer、Live主库/KILL/锁绑定保持。未安装新制品、停timer或启动业务。
+- 实际UID0/PID1244297/Invocation 3bdcffef96a5407491553958e18baf4b，
+  CPU50%/Memory1536MiB/Swap0/Nice15/IO idle、禁网/生产路径只读；实际资源、
+  requested、业务收据、journal与成功终态绑定，随后辅助unit停止。
+- 额外并行只读引用检查exit1，原始failed.json、terminal和journal保留，不作为验收依据。
+  独立的清理后只读引用对账成功：38版本保留、获批剩余0、扫描错误0；对应Invocation
+  2803bfc2029348c4b452ff6069f3e3fb与UID/PID/journal验证，辅助unit已停止。
+  清理执行器自身的完整前后元数据/控制绑定/业务身份复核同样成功；不改写首次辅助失败。
+- 现场Web/Paper/observer PID保持且NRestarts0，/services HTTP200；四个数据timer仍
+  active/enabled，Live/Shadow仍inactive。28历史质量warning及自然任务验收独立保留。
+
+全部审计永久保存于`/data/qsys/var-deployments/issue126-release-cleanup-20261104-r1/`，
+最终汇总`acceptance.json`，含原审批/清单/脚本哈希、前置盘点、逐项收据、完整后验、
+独立对账、实际unit属性/journal/终态及辅助服务停止记录。失败记录保留，无自动重放。
+本次清理不构成自动保留规则，不授权后续新增目录删除；#126趋势治理仍开放。
