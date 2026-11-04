@@ -33,7 +33,7 @@ from qsys.live.messages import (
     OrderCommand,
     RejectEvent,
 )
-from qsys.live.safety import SafetyPolicy
+from qsys.live.safety import SafetyPolicy, check_order_market
 from qsys.live.safety import TradingMode
 from qsys.live.transport import Transport
 
@@ -148,6 +148,17 @@ class ExecutionAgent:
         return handled
 
     def _execute(self, command: OrderCommand) -> None:
+        market = check_order_market(command.symbol, command.side)
+        if not market.allowed:
+            # 已受理历史命令的重传不是新开仓，不能改写成拒单或重播券商调用。
+            if self._guard.seen(command.client_order_id) \
+                    or self._ledger.broker_order_id(command.client_order_id) is not None \
+                    or command.client_order_id in self._ledger.closed_order_ids():
+                log.info("agent.market_restricted_history_ignored",
+                         client_order_id=command.client_order_id)
+                return
+            self._reject(command, market.reason)
+            return
         lease = read_commissioning_lease(self._t)
         if command.strategy_id == "commissioning":
             if lease is None:

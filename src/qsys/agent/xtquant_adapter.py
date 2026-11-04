@@ -18,6 +18,7 @@ from qsys.agent.adapter import BrokerAccount
 from qsys.agent.fill_tracker import BrokerOrder, BrokerTrade
 from qsys.live.commissioning import is_commissioning_order_id
 from qsys.live.messages import PositionSnapshot
+from qsys.live.safety import check_order_market
 
 _SIDE_TO_XT = {"buy": 23, "sell": 24}  # xtquant 委托方向常量，接入时以官方文档为准
 _STRATEGY_ORDER_ID = re.compile(r"q\d{9}[0-9a-f]{12}")
@@ -57,6 +58,9 @@ class XtQuantAdapter:
         self, symbol: str, side: str, qty: int, order_type: str,
         limit_price: float | None, client_order_id: str = "",
     ) -> str:
+        market = check_order_market(symbol, side)
+        if not market.allowed:
+            raise ValueError(market.reason)
         from xtquant import xtconstant
 
         price_type = (
