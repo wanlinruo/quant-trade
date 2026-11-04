@@ -1,0 +1,217 @@
+{
+  "schema_version": 1,
+  "operation": "approval_required_read_only_plan",
+  "generated_at": "2026-11-04T03:34:01.029229+00:00",
+  "candidates": [
+    {
+      "component": "web",
+      "path": "/opt/qsys/components/web/releases/1dac3edb73b335911af253cd9310d47290b89dc8",
+      "release": "1dac3edb73b335911af253cd9310d47290b89dc8",
+      "release_manifest_sha256": "32fc7ce13e7c0d2f38947cc634a56a6143e3736d9051159f998cb7ff60a7ea27",
+      "tree_metadata_sha256": "534b0092e45e64dc1a7988ac2823e7e7d4d713239af9049c51701b74f837ef35",
+      "allocated_bytes": 869625856
+    },
+    {
+      "component": "web",
+      "path": "/opt/qsys/components/web/releases/9727d803989ac0e9bff344298de84d260842e08f",
+      "release": "9727d803989ac0e9bff344298de84d260842e08f",
+      "release_manifest_sha256": "2c95cea3c31bb9e3061199e50349aba7b2f891229fbe46b49e4f6818045586d7",
+      "tree_metadata_sha256": "6d5403199bff24bc611c09d0ce8f95a172336d8fe8dc92c0fe2279e694406d31",
+      "allocated_bytes": 869625856
+    },
+    {
+      "component": "web",
+      "path": "/opt/qsys/components/web/releases/b215c39b42df0758562c51e25aaadd86ee432eff",
+      "release": "b215c39b42df0758562c51e25aaadd86ee432eff",
+      "release_manifest_sha256": "b999606ef6366226e25b95381c0019b69e465a45bcc8ce5bf03e60f63f910355",
+      "tree_metadata_sha256": "d94404d0a8b06ac711d72ee8565997f3982d9e3a42b767b72e9e33863ee05dd9",
+      "allocated_bytes": 869675008
+    },
+    {
+      "component": "catalog-verify",
+      "path": "/opt/qsys-data/releases/catalog-verify/3e40c218d266ed00706952fef4c66711412119ef",
+      "release": "3e40c218d266ed00706952fef4c66711412119ef",
+      "release_manifest_sha256": "bf0bbc69b74d03bf7130cc0ed938af72a25cc09876ff6d5bcdc79116ad320c3b",
+      "tree_metadata_sha256": "9fce847c16d532fedad8abbe3e92d02a24736b60f5f0b5cb41baf825392a2ab9",
+      "allocated_bytes": 872943616
+    },
+    {
+      "component": "catalog-verify",
+      "path": "/opt/qsys-data/releases/catalog-verify/80f7068d622c3109cef59bf382cedb629a639116",
+      "release": "80f7068d622c3109cef59bf382cedb629a639116",
+      "release_manifest_sha256": "f9ed0f3753274c76f3a355b20f6b59a1a0ad0db217a4fb153bde0056ddde71f9",
+      "tree_metadata_sha256": "43648594b8c142748750a8dfa28ce5a30dfd415337941e4aafdf40c99b36772f",
+      "allocated_bytes": 872972288
+    },
+    {
+      "component": "catalog-verify",
+      "path": "/opt/qsys-data/releases/catalog-verify/8d8307e9b2c6cb363facd9beb54dbf7a18d7fa4d",
+      "release": "8d8307e9b2c6cb363facd9beb54dbf7a18d7fa4d",
+      "release_manifest_sha256": "c7823febd16e59d64d23ca43b271e8acdfd33b6370f3842df278692105ca15ac",
+      "tree_metadata_sha256": "85f38d2bb8d3085a7d306d2cfbf4ce2f32a8ceb48978d4792417c53c55ebc2e2",
+      "allocated_bytes": 868114432
+    },
+    {
+      "component": "catalog-verify",
+      "path": "/opt/qsys-data/releases/catalog-verify/b215c39b42df0758562c51e25aaadd86ee432eff",
+      "release": "b215c39b42df0758562c51e25aaadd86ee432eff",
+      "release_manifest_sha256": "e402a000b0f018f8edda484a56a9b1c351b4aa1142e1ab3a6296293ee6b2c0ae",
+      "tree_metadata_sha256": "5d78771b907cb1c3c6cc30501b0099aada857fb3f8e1b1b991b5b8e910c52603",
+      "allocated_bytes": 868155392
+    },
+    {
+      "component": "service-checks",
+      "path": "/opt/qsys/components/service-checks/releases/0a67a683b6f58527ae220ba54d6ce684af5c6550",
+      "release": "0a67a683b6f58527ae220ba54d6ce684af5c6550",
+      "release_manifest_sha256": "a3258c505ffb18c5224824703502ea492e8f7e30c9aea797757300f42c195e3f",
+      "tree_metadata_sha256": "2e92cc38bb3767e681a02c5b10058bc8ca393ae02a5b84a0f13bfc7d25d22daf",
+      "allocated_bytes": 868683776
+    },
+    {
+      "component": "service-checks",
+      "path": "/opt/qsys/components/service-checks/releases/1dac3edb73b335911af253cd9310d47290b89dc8",
+      "release": "1dac3edb73b335911af253cd9310d47290b89dc8",
+      "release_manifest_sha256": "62078e634730f1af99457dcda91a75f34d57c3c280c779865089975fcde5b11c",
+      "tree_metadata_sha256": "a76501d38c62efdc7b2ca1876217f9d7e44c3c75048c5a69fdad3d1c66ff18da",
+      "allocated_bytes": 868630528
+    },
+    {
+      "component": "service-checks",
+      "path": "/opt/qsys/components/service-checks/releases/7d5e2c41c0eca38c4d8ac3f2815c8674c028a6e0",
+      "release": "7d5e2c41c0eca38c4d8ac3f2815c8674c028a6e0",
+      "release_manifest_sha256": "15a6ddaa83badfa12e2f626f95a93799d500e033fc83e880a939f02b08ed5595",
+      "tree_metadata_sha256": "e278ec91d0a13e738fe7347df9e1bd2e6b32a1436d5bcff4e06419e839bbd067",
+      "allocated_bytes": 868753408
+    },
+    {
+      "component": "service-checks",
+      "path": "/opt/qsys/components/service-checks/releases/a6bc982f927c542b049e885019eb99e0fd615aa0",
+      "release": "a6bc982f927c542b049e885019eb99e0fd615aa0",
+      "release_manifest_sha256": "3a1118d16e2813ff47f387187f11eba2a5f541b8063e8305c78402f48fb4dd1b",
+      "tree_metadata_sha256": "776b405f21289034b3b1386583e6da50b57cb94fa398793e48e8e7b9c0281fbb",
+      "allocated_bytes": 868651008
+    },
+    {
+      "component": "service-checks",
+      "path": "/opt/qsys/components/service-checks/releases/eb6e9186d1038afea3beb5f71f0f7cb6c299ac39",
+      "release": "eb6e9186d1038afea3beb5f71f0f7cb6c299ac39",
+      "release_manifest_sha256": "83a02492bb3f07b6adebf1a572f818a2a2fd006f7d1d2633b3dfd8d394838a1a",
+      "tree_metadata_sha256": "1498fdf76d7f8bdebcc57267f08335a05a9a96730c3f9e726a025182665b99f8",
+      "allocated_bytes": 868630528
+    },
+    {
+      "component": "daily-archive",
+      "path": "/opt/qsys/components/daily-archive/releases/b760b5f91eb0ff00e8737ed90e627c2a1f4557da",
+      "release": "b760b5f91eb0ff00e8737ed90e627c2a1f4557da",
+      "release_manifest_sha256": "7d460cfbaabe0c693b0ba7f239505a9d30d9cc6611b112044ed1852c58a4c2ed",
+      "tree_metadata_sha256": "0e8e1aa05cd156fa81a29270ab5261b2be52c99dfb9d25c60be0fe16f0b97c20",
+      "allocated_bytes": 868667392
+    },
+    {
+      "component": "tushare-sync",
+      "path": "/opt/qsys/components/tushare-sync/releases/2d2d25ba6d24b1eab9c2599b489daa4d07950bb8",
+      "release": "2d2d25ba6d24b1eab9c2599b489daa4d07950bb8",
+      "release_manifest_sha256": "f761f068ea76fb79ecc76389ad373aa1811852052ee502f8319be5e3beb11f76",
+      "tree_metadata_sha256": "1a0327fb684a65c81342610fc6c752a2f8cab1b6dbbed1ed3629a48333fc464b",
+      "allocated_bytes": 868962304
+    },
+    {
+      "component": "tushare-sync",
+      "path": "/opt/qsys/components/tushare-sync/releases/a132291534295e853cd0a7815829d0ffa4f88f17",
+      "release": "a132291534295e853cd0a7815829d0ffa4f88f17",
+      "release_manifest_sha256": "ec08c301d970853a432a89106a93fc811246fcd5f60db9b910217bb9aedd58c0",
+      "tree_metadata_sha256": "ea7eb77738143f72805b22cf236f99d52f50b999ebf438838960d97ec0e1c621",
+      "allocated_bytes": 868962304
+    },
+    {
+      "component": "tushare-sync",
+      "path": "/opt/qsys/components/tushare-sync/releases/b760b5f91eb0ff00e8737ed90e627c2a1f4557da",
+      "release": "b760b5f91eb0ff00e8737ed90e627c2a1f4557da",
+      "release_manifest_sha256": "6947e038ff6e6794c51e42b4c04acf949b049d0e8c7adbec12f0a78dba2bab3e",
+      "tree_metadata_sha256": "d260569181e9f242c7aad273b64e0014970e57e30feb231ef3b5f9fdb7af955f",
+      "allocated_bytes": 868823040
+    },
+    {
+      "component": "tushare-sync",
+      "path": "/opt/qsys/components/tushare-sync/releases/d50592a3b75cfe81458b90773793c8aeea8f97a2",
+      "release": "d50592a3b75cfe81458b90773793c8aeea8f97a2",
+      "release_manifest_sha256": "52a1b87d70947dcccf5007df8fe1888d9577c5766a5fcf99b3b936997b2302ef",
+      "tree_metadata_sha256": "f4b5fec128e42246af8941af3e4ae80ca223ef4740fac387ba65d8d0b1ce37e3",
+      "allocated_bytes": 868962304
+    },
+    {
+      "component": "tushare-sync",
+      "path": "/opt/qsys/components/tushare-sync/releases/f09dcf785c9ced7b4bb94ff3afab88b147b9de32",
+      "release": "f09dcf785c9ced7b4bb94ff3afab88b147b9de32",
+      "release_manifest_sha256": "35fdb1ee7aaf9b067e80eb7fc66363b0b963639b96b3afb0f8e448a572e605de",
+      "tree_metadata_sha256": "a521336c940671a33dcfac9d9885227b9aec9794e7f1c56c2248f2af34f97715",
+      "allocated_bytes": 868872192
+    },
+    {
+      "component": "health-observer",
+      "path": "/opt/qsys/components/health-observer/releases/1dac3edb73b335911af253cd9310d47290b89dc8",
+      "release": "1dac3edb73b335911af253cd9310d47290b89dc8",
+      "release_manifest_sha256": "f92144da5ce4af55018ccfc145f3251bafeedda52cf6b425b078a62aa1d08167",
+      "tree_metadata_sha256": "d3fd63a61e7348a48af2bed690b0fcf07582adbacae89745fb70ae101fb47872",
+      "allocated_bytes": 868904960
+    },
+    {
+      "component": "health-observer",
+      "path": "/opt/qsys/components/health-observer/releases/a6bc982f927c542b049e885019eb99e0fd615aa0",
+      "release": "a6bc982f927c542b049e885019eb99e0fd615aa0",
+      "release_manifest_sha256": "aa61a04302dfee42b88ebb233b1647eed5106ce995d9add914ebea701d247f3e",
+      "tree_metadata_sha256": "a9ca7ca6783dd36b9b0543f11c1f0a16b7a4d396d2dec811d668c679bc3bc192",
+      "allocated_bytes": 868954112
+    },
+    {
+      "component": "health-observer",
+      "path": "/opt/qsys/components/health-observer/releases/eb6e9186d1038afea3beb5f71f0f7cb6c299ac39",
+      "release": "eb6e9186d1038afea3beb5f71f0f7cb6c299ac39",
+      "release_manifest_sha256": "88736382487ed2e8e0a9f9c4475e62b30613bbb9d9cd3e90151b052db1b17444",
+      "tree_metadata_sha256": "4e3a8b380a3e684032c11d492829f18d3654315fd3c9def19dbb679009333349",
+      "allocated_bytes": 868937728
+    }
+  ],
+  "exclusive_bytes": 18254508032,
+  "protected_paths": [
+    "/opt/qsys/components/backtest-worker/releases/3c182a7763f9399d3884d246b2b4ebc37cf18fae",
+    "/opt/qsys/components/web/releases/ae29a7e93e328965586b4079b834d7d89a75f950",
+    "/opt/qsys/components/web/releases/b112c9349fe5d31d88d88273135ccf8c56da2938",
+    "/opt/qsys/components/web/releases/d50592a3b75cfe81458b90773793c8aeea8f97a2",
+    "/opt/qsys/components/paper/releases/2e59dacef9e48a6dc432980a213a991e04cb71e1",
+    "/opt/qsys/components/paper/releases/987175e2937de8590f7e24d01e69e64a3fc3f08d",
+    "/opt/qsys/components/shadow-core/releases/1e7fd0e8774bbb199720a2f2a343f4dcfb4e8fa1",
+    "/opt/qsys/components/shadow-core/releases/6e4393a52a54002022998afafc983144693af579",
+    "/opt/qsys-data/releases/catalog-verify/072240f22c94cf327eb60ccf2f2b611b2c2c1a19",
+    "/opt/qsys-data/releases/catalog-verify/5c2037fdd4afd427e7d43594d2f09026177c68fa",
+    "/opt/qsys-data/releases/catalog-verify/ae29a7e93e328965586b4079b834d7d89a75f950",
+    "/opt/qsys-data/releases/catalog-verify/b112c9349fe5d31d88d88273135ccf8c56da2938",
+    "/opt/qsys/components/service-checks/releases/072240f22c94cf327eb60ccf2f2b611b2c2c1a19",
+    "/opt/qsys/components/service-checks/releases/5c2037fdd4afd427e7d43594d2f09026177c68fa",
+    "/opt/qsys/components/daily-archive/releases/58716b4ef986d30f92214014b298330636375794",
+    "/opt/qsys/components/daily-archive/releases/7d5e2c41c0eca38c4d8ac3f2815c8674c028a6e0",
+    "/opt/qsys/components/daily-archive/releases/a132291534295e853cd0a7815829d0ffa4f88f17",
+    "/opt/qsys/components/daily-archive/releases/ad131c10f674fa40eff8619f3aa1cacb7a91cf7d",
+    "/opt/qsys/components/premarket-limits/releases/37bb3c4313dbebabe6e2f486eca99b00cce74561",
+    "/opt/qsys/components/tushare-sync/releases/2e89e66b0251091342ab00a7c30b096eaaa3487a",
+    "/opt/qsys/components/tushare-sync/releases/3faccebeb9736486f801ce1c91861b95083d7f4b",
+    "/opt/qsys/components/tushare-sync/releases/58716b4ef986d30f92214014b298330636375794",
+    "/opt/qsys/components/tushare-sync/releases/5c2037fdd4afd427e7d43594d2f09026177c68fa",
+    "/opt/qsys/components/tushare-sync/releases/7d5e2c41c0eca38c4d8ac3f2815c8674c028a6e0",
+    "/opt/qsys/components/daily-digest/releases/1dac3edb73b335911af253cd9310d47290b89dc8",
+    "/opt/qsys/components/daily-digest/releases/eb6e9186d1038afea3beb5f71f0f7cb6c299ac39",
+    "/opt/qsys/components/health-observer/releases/34c7b7b2937d9716d4972e5504726c00c3e2555a",
+    "/opt/qsys/components/health-observer/releases/868b50a95d9a0b4ee0ee8371b49b5ee9172c2f0d",
+    "/opt/qsys/components/storage-report/releases/5a54901c12c90dbc09c4abcf8fd699855ab22414",
+    "/opt/qsys/components/storage-report/releases/a6bc982f927c542b049e885019eb99e0fd615aa0",
+    "/opt/qsys/components/storage-report/releases/b48e84bd1c17804aae89550b605b9a0de9ec358b",
+    "/opt/qsys/components/limit-up-shadow/releases/34f9cf647926153982178de69fddb803c93653ac",
+    "/opt/qsys/components/limit-up-shadow/releases/80f7068d622c3109cef59bf382cedb629a639116",
+    "/opt/qsys/components/reboot-drill/releases/1dac3edb73b335911af253cd9310d47290b89dc8",
+    "/opt/qsys/components/reboot-drill/releases/57562f4bc60be15410dad8af79dfffd57f0bceee",
+    "/opt/qsys/components/live-core/releases/34c7b7b2937d9716d4972e5504726c00c3e2555a",
+    "/opt/qsys/components/live-core/releases/c741c5f7871eef01ab4a01bbce9325ec84ee085d",
+    "/opt/qsys/components/live-state-reader/releases/711fe0b0ddb2970675e72ccde69fa59ba33ad7ea"
+  ],
+  "proposed_policy": "preserve current, latest-success compensation and all actual references; no automatic deletion"
+}
