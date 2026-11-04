@@ -1,10 +1,23 @@
 {% extends "base.html" %}
 {% block content %}
 {% set snap = live.snapshot %}
+
 <div class="page-head">
   <div><h2>行情总览</h2><p class="muted">指数与全市场温度，盘中每 15 秒刷新。</p></div>
   <div><span id="market-status" class="pill {{ 'todo' if schedule and not schedule.is_open else 'warn' if live.stale else 'ok' if live.available else 'todo' }}">{{ '休市 · 最近快照' if schedule and not schedule.is_open and live.available else '已过期' if live.stale and live.available else '实时' if live.available else '无实时快照' }}</span><span id="market-time" class="muted market-time">{{ snap.published_at.strftime('%Y-%m-%d %H:%M:%S') if snap else '最近收盘 ' ~ (latest or '—') }}</span></div>
 </div>
+
+<section class="panel market-section" aria-label="全市场行情覆盖">
+  <div class="panel-title">全市场行情覆盖（含北交所）</div>
+  <div id="market-coverage">
+  {% if snap and snap.coverage %}
+    <p class="{{ 'muted' if snap.coverage.status == 'complete' else 'warn' }}">{{ '请求集合已覆盖；完整数据质量仍须独立验收。' if snap.coverage.status == 'complete' else '覆盖不完整或范围待核验，以下温度仅是已返回有效报价的统计。' }}</p>
+    {% for row in snap.coverage.by_market %}
+    <p>{{ {'SH':'沪市','SZ':'深市','BJ':'北交所'}[row.market] }}：请求 {{ row.expected }} / 有效 {{ row.valid }} / 缺失 {{ row.missing }} / 待核验 {{ row.invalid + row.other_session + row.suspended }}<br><span class="muted">源时间 {{ row.source_at_min.strftime('%Y-%m-%d %H:%M:%S') if row.source_at_min else '未知' }} 至 {{ row.source_at_max.strftime('%Y-%m-%d %H:%M:%S') if row.source_at_max else '未知' }}</span></p>
+    {% endfor %}
+  {% else %}<p class="warn">尚无绑定股票池的覆盖记录，当前快照不代表已完成全市场验收。</p>{% endif %}
+  </div>
+</section>
 
 <section class="panel shadow-teaser market-section">
   <div class="panel-title"><span>AI 涨停观察</span><span class="pill todo">只读影子</span><a href="/market/limit-up-shadow">查看完整榜单 →</a></div>
@@ -76,6 +89,7 @@
 </details>
 
 <style>
+#market-coverage{padding:0 16px 10px;overflow-wrap:anywhere}
 .market-time{margin-left:10px}.market-section{margin-bottom:16px}.index-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line)}.index-card{background:#fff;padding:16px;display:grid;gap:7px}.index-card span{color:var(--muted);font-size:12px}.index-card strong{font-size:23px}.index-card em{font-style:normal;font-weight:600}.market-metrics{margin-bottom:16px}.market-charts{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.market-charts .card{margin:0}.market-charts svg{width:100%;height:150px}.history-panel{margin-top:16px}.history-panel summary{cursor:pointer;padding:16px;font-weight:600}.history-panel .table-wrap{padding:0 16px 16px}.shadow-teaser .panel-title a{margin-left:auto;color:var(--primary);text-decoration:none;font-weight:500}.shadow-teaser-body{padding:14px 16px}.shadow-top3{display:flex;gap:18px;flex-wrap:wrap;margin-top:12px}.shadow-top3 span{background:var(--primary-soft);border-radius:6px;padding:8px 10px}.shadow-top3 b{color:var(--primary);margin-right:4px}.shadow-top3 em{font-style:normal;color:var(--primary);font-weight:650;margin-left:5px}
 @media(max-width:900px){.index-grid,.market-charts{grid-template-columns:repeat(2,1fr)}}@media(max-width:600px){.index-grid,.market-charts{grid-template-columns:1fr}}
 </style>
@@ -84,6 +98,11 @@
   function render(data){
     const badge=document.getElementById('market-status'),time=document.getElementById('market-time'),snap=data.snapshot;
     badge.className='pill '+(data.market_open?(data.available?(data.stale?'warn':'ok'):'todo'):'todo');badge.textContent=data.market_open?(data.available?(data.stale?'已过期':'实时'):'无实时快照'):(data.available?'休市 · 最近快照':'休市');
+    const coverageBox=document.getElementById('market-coverage');coverageBox.replaceChildren();
+    const coverage=snap&&snap.coverage,notice=document.createElement('p');
+    notice.className=coverage&&coverage.status==='complete'?'muted':'warn';
+    notice.textContent=!coverage?'尚无绑定股票池的覆盖记录，当前快照不代表已完成全市场验收。':coverage.status==='complete'?'请求集合已覆盖；完整数据质量仍须独立验收。':'覆盖不完整或范围待核验，以下温度仅是已返回有效报价的统计。';coverageBox.append(notice);
+    if(coverage)coverage.by_market.forEach(row=>{const p=document.createElement('p'),stamp=document.createElement('span'),fmt=v=>v?v.replace('T',' ').slice(0,19):'未知';p.textContent=({SH:'沪市',SZ:'深市',BJ:'北交所'}[row.market])+`：请求 ${row.expected} / 有效 ${row.valid} / 缺失 ${row.missing} / 待核验 ${row.invalid+row.other_session+row.suspended}`;stamp.className='muted';stamp.textContent=`源时间 ${fmt(row.source_at_min)} 至 ${fmt(row.source_at_max)}`;p.append(document.createElement('br'),stamp);coverageBox.append(p)});
     if(!snap)return;time.textContent=snap.published_at.replace('T',' ').slice(0,19);
     document.querySelectorAll('[data-field]').forEach(el=>el.textContent=snap[el.dataset.field]);
     document.querySelectorAll('[data-pct]').forEach(el=>el.textContent=(snap[el.dataset.pct]*100).toFixed(el.dataset.pct==='market_median_return_1d'?2:1)+'%');

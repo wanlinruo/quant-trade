@@ -204,11 +204,16 @@ class MarketGateway:
 
     def publish_overview(
         self, quotes: dict[str, MarketQuote], *, now: datetime | None = None,
+        expected_symbols: Sequence[str] | None = None,
+        universe_source: str | None = None, universe_session: date | None = None,
     ) -> MarketOverviewSnapshot:
         moment = now or datetime.now()
         raw = self._t.get_key(f"{self._s.price_limits}:{moment:%Y%m%d}")
         limits = json.loads(raw) if raw else {}
-        snapshot = build_market_overview(quotes, limits=limits, now=moment)
+        snapshot = build_market_overview(
+            quotes, limits=limits, now=moment, expected_symbols=expected_symbols,
+            universe_source=universe_source, universe_session=universe_session,
+        )
         self._t.set_key(self._s.market_snapshot, snapshot.model_dump_json())
         return snapshot
 
@@ -266,6 +271,8 @@ def build_market_overview(
     quotes: dict[str, MarketQuote], *,
     limits: Mapping[str, Sequence[float]] | None = None,
     now: datetime | None = None,
+    expected_symbols: Sequence[str] | None = None,
+    universe_source: str | None = None, universe_session: date | None = None,
 ) -> MarketOverviewSnapshot:
     """Aggregate one QMT full-market tick without persisting intraday facts.
 
@@ -274,6 +281,11 @@ def build_market_overview(
     只计入 `limit_price_missing_count`，不按板块档位自算。
     """
     published_at = now or datetime.now()
+    from qsys.data.quality.market_coverage import equity_market, market_coverage, quote_state
+    coverage = market_coverage(
+        quotes, expected_symbols, universe_source=universe_source,
+        universe_session=universe_session, now=published_at,
+    )
     limits = limits or {}
     indices: list[MarketIndexQuote] = []
     for symbol, name in MARKET_INDICES.items():
@@ -287,12 +299,22 @@ def build_market_overview(
         ))
 
     stocks = []
+    expected_set = set(expected_symbols) if expected_symbols is not None else None
     for symbol, quote in quotes.items():
         if symbol in MARKET_INDICES or quote.suspended:
+            continue
+        if expected_set is not None and (
+            symbol not in expected_set or equity_market(symbol) is None
+            or quote_state(symbol, quote, published_at) != "valid"
+        ):
             continue
         if quote.price <= 0 or quote.prev_close <= 0:
             continue
         stocks.append(quote)
+
+    if not stocks:
+        # 缺行情不能发布为全零市场事实；保留旧快照及其真实时刻。
+        raise QuoteUnavailable("本次请求没有有效股票报价，保留上一概览")
 
     returns = [q.price / q.prev_close - 1.0 for q in stocks]
     advance = sum(value > 0 for value in returns)
@@ -326,4 +348,5 @@ def build_market_overview(
         market_median_return_1d=median(returns) if returns else 0.0,
         market_total_money=sum(q.amount for q in stocks),
         limit_price_missing_count=len(stocks) - len(priced),
+        coverage=coverage,
     )
