@@ -217,6 +217,32 @@ class MarketIndexQuote(BaseModel):
     amount: float = 0.0
 
 
+class ExchangeCoverage(BaseModel):
+    market: Literal["SH", "SZ", "BJ"]
+    expected: int
+    received: int
+    valid: int
+    suspended: int
+    missing: int
+    invalid: int
+    other_session: int
+    missing_samples: list[str]
+    source_at_min: datetime | None
+    source_at_max: datetime | None
+
+
+class MarketCoverage(BaseModel):
+    status: Literal["complete", "incomplete", "unknown"]
+    universe_source: str | None
+    universe_session: date | None
+    universe_sha256: str | None
+    expected: int | None
+    excluded_non_a: int | None
+    invalid_identity_count: int | None
+    unexpected_count: int | None
+    by_market: list[ExchangeCoverage]
+
+
 class MarketOverviewSnapshot(Message):
     """Atomic market-wide snapshot published by the read-only QMT gateway."""
 
@@ -237,6 +263,8 @@ class MarketOverviewSnapshot(Message):
     market_total_money: float
     # 缺当日直取涨跌停价、未计入涨停类统计的标的数（D-19）
     limit_price_missing_count: int = 0
+    # 旧生产者没有绑定覆盖信息时保持None，不能由当前状态补写历史。
+    coverage: MarketCoverage | None = None
 
 
 class MarketSchedule(Message):

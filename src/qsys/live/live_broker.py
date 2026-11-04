@@ -31,6 +31,7 @@ from qsys.live.messages import (
 )
 from qsys.live.risk import RiskContext, RiskGate
 from qsys.live.transport import Transport
+from qsys.live.safety import check_order_market
 
 log = structlog.get_logger(__name__)
 
@@ -87,6 +88,16 @@ class LiveBroker(Broker):
             self._t.ensure_group(stream, group, start_id="0-0")
 
     def submit(self, order: Order) -> None:
+        market = check_order_market(str(order.symbol), order.side.value)
+        if not market.allowed:
+            if order.order_id in self._pending:
+                # 保留恢复的券商既有挂单；不发新命令、不伪造拒单或撤单。
+                return
+            self._rejects.append(Reject(
+                order.order_id, order.symbol, order.side, order.qty,
+                market.reason, order.created_at,
+            ))
+            return
         intent = OrderIntent(order.symbol, order.side, order.qty, order.order_type,
                              order.limit_price)
         risk_ctx = (

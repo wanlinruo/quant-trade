@@ -1,9 +1,38 @@
 import sys
+import pytest
 from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 
 from scripts import run_market_gateway
 from scripts.run_market_gateway import TradingSessionCache
+
+
+@pytest.mark.parametrize("missing", ["time", "lastPrice", "lastClose", "high", "volume", "amount"])
+def test_provider_does_not_invent_missing_native_fields(monkeypatch, missing):
+    tick = {"time": 1793671200000, "lastPrice": 10, "open": 10, "high": 11,
+            "low": 9, "lastClose": 9.8, "volume": 100, "amount": 10000}
+    tick.pop(missing)
+    api = SimpleNamespace(get_full_tick=lambda symbols: {"920026.BJ": tick})
+    monkeypatch.setitem(sys.modules, "xtquant", SimpleNamespace(xtdata=api))
+    assert run_market_gateway.qmt_provider(["920026.BJ"]) == {}
+
+
+@pytest.mark.parametrize("volume", [None, True, -1, 1.5, float("nan")])
+def test_provider_does_not_truncate_or_fill_native_volume(monkeypatch, volume):
+    tick = {"time": 1793671200000, "lastPrice": 10, "open": 10, "high": 11,
+            "low": 9, "lastClose": 9.8, "volume": volume, "amount": 10000}
+    api = SimpleNamespace(get_full_tick=lambda symbols: {"920026.BJ": tick})
+    monkeypatch.setitem(sys.modules, "xtquant", SimpleNamespace(xtdata=api))
+    assert run_market_gateway.qmt_provider(["920026.BJ"]) == {}
+
+
+def test_provider_preserves_native_zero_instead_of_substituting_another_price(monkeypatch):
+    tick = {"time": 1793671200000, "lastPrice": 10, "open": 0, "high": 0,
+            "low": 0, "lastClose": 9.8, "volume": 0, "amount": 0}
+    api = SimpleNamespace(get_full_tick=lambda symbols: {"920026.BJ": tick})
+    monkeypatch.setitem(sys.modules, "xtquant", SimpleNamespace(xtdata=api))
+    q = run_market_gateway.qmt_provider(["920026.BJ"])["920026.BJ"]
+    assert (q.open, q.high, q.low, q.volume, q.amount) == (0, 0, 0, 0, 0)
 
 
 def test_calendar_retries_an_empty_midnight_result_and_recovers_before_open():

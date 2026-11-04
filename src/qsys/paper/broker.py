@@ -17,6 +17,7 @@ from qsys.core.events import MarketSnapshot, Reject
 from qsys.core.portfolio import Portfolio
 from qsys.core.trading import Fill, Order, OrderIntent, OrderType, Side, to_cents
 from qsys.live.messages import MarketQuote
+from qsys.live.safety import check_order_market
 
 
 class PaperBroker(Broker):
@@ -54,6 +55,15 @@ class PaperBroker(Broker):
         self._last_volume.clear()
 
     def submit(self, order: Order) -> None:
+        market = check_order_market(str(order.symbol), order.side.value)
+        if not market.allowed:
+            existing = self._pending.pop(order.order_id, None)
+            remaining = existing[1] if existing else order.qty
+            self._rejects.append(Reject(
+                order.order_id, order.symbol, order.side, remaining,
+                market.reason, order.created_at,
+            ))
+            return
         self._pending[order.order_id] = (order, order.qty)
 
     def restore(self, order: Order, remaining: int) -> None:
@@ -111,6 +121,14 @@ class PaperBroker(Broker):
 
         for order_id, (order, remaining) in list(self._pending.items()):
             if str(order.symbol) != quote.symbol or quote.at <= order.created_at:
+                continue
+            market = check_order_market(str(order.symbol), order.side.value)
+            if not market.allowed:
+                self._rejects.append(Reject(
+                    order.order_id, order.symbol, order.side, remaining,
+                    market.reason, quote.at,
+                ))
+                self._pending.pop(order_id, None)
                 continue
             if quote.suspended or quote.price <= 0:
                 continue

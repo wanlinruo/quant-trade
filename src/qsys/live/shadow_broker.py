@@ -24,6 +24,7 @@ from qsys.live.config import StreamConfig
 from qsys.live.messages import OrderCommand, OrderStatusEvent
 from qsys.live.risk import RiskContext, RiskGate
 from qsys.live.transport import Transport
+from qsys.live.safety import check_order_market
 
 log = structlog.get_logger(__name__)
 
@@ -63,6 +64,13 @@ class ShadowBroker(Broker):
         return tuple(self._intents)
 
     def submit(self, order: Order) -> None:
+        market = check_order_market(str(order.symbol), order.side.value)
+        if not market.allowed:
+            self._rejects.append(Reject(
+                order.order_id, order.symbol, order.side, order.qty,
+                market.reason, order.created_at,
+            ))
+            return
         intent = OrderIntent(order.symbol, order.side, order.qty, order.order_type,
                              order.limit_price)
         risk_ctx = (

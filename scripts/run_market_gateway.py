@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 import time
 from dataclasses import dataclass, field
@@ -86,17 +87,33 @@ def qmt_provider(symbols):
     out = {}
     for symbol in symbols:
         item = raw.get(symbol) or {}
-        stamp = item.get("time") or item.get("timetag")
-        at = datetime.fromtimestamp(float(stamp) / 1000) if stamp else datetime.now()
-        price = float(item.get("lastPrice") or item.get("last_price") or 0)
+        def direct(*names):
+            for name in names:
+                if name in item and item[name] is not None:
+                    return item[name]
+            raise KeyError("missing native quote field")
+        try:
+            stamp = float(direct("time", "timetag"))
+            if stamp <= 0:
+                continue
+            at = datetime.fromtimestamp(stamp / 1000)
+            price = float(direct("lastPrice", "last_price"))
+            opening, high, low = (float(direct(name)) for name in ("open", "high", "low"))
+            previous = float(direct("lastClose", "preClose"))
+            volume, amount = direct("volume"), float(direct("amount"))
+            if not all(math.isfinite(v) for v in (price, opening, high, low, previous, amount)) \
+                    or isinstance(volume, bool) or not math.isfinite(float(volume)) \
+                    or float(volume) != int(volume) or volume < 0 or amount < 0:
+                continue
+        except (KeyError, TypeError, ValueError, OverflowError, OSError):
+            # 缺原生字段就留缺口；不以当前时间、其他价格或0伪造返回。
+            continue
         out[symbol] = MarketQuote(
             symbol=symbol, at=at, price=price,
-            open=float(item.get("open") or 0), high=float(item.get("high") or price),
-            low=float(item.get("low") or price),
-            prev_close=float(item.get("lastClose") or item.get("preClose") or 0),
+            open=opening, high=high, low=low, prev_close=previous,
             # QMT tick volume is lots (手); the cross-machine contract uses shares.
-            volume=int(item.get("volume") or 0) * 100,
-            amount=float(item.get("amount") or 0),
+            volume=int(volume) * 100,
+            amount=amount,
             upper_limit=_optional_float(item, "upStopPrice", "upperLimit"),
             lower_limit=_optional_float(item, "downStopPrice", "lowerLimit"),
             suspended=price <= 0,
@@ -122,8 +139,8 @@ def qmt_limit_detail(symbols):
     return out
 
 
-def qmt_market_overview(extra_symbols: Sequence[str] = ()):
-    """Fetch the live A-share breadth universe plus the four headline indices."""
+def qmt_market_overview_symbols(extra_symbols: Sequence[str] = ()):
+    """原样取得本次请求集合，不用返回报价反推应有覆盖。"""
     from xtquant import xtdata
 
     # QMT 的全 A 股权威集合名是「沪深京A股」；「沪深A股」不含北交所，
@@ -134,8 +151,13 @@ def qmt_market_overview(extra_symbols: Sequence[str] = ()):
     symbols = list(extra_symbols)
     if not symbols:
         symbols = list(xtdata.get_stock_list_in_sector("沪深京A股") or [])
-    symbols.extend(("000001.SH", "399001.SZ", "399006.SZ", "000300.SH"))
-    return qmt_provider(sorted(set(symbols)))
+    return sorted(set(symbols))
+
+
+def qmt_market_overview(extra_symbols: Sequence[str] = ()):
+    """Fetch the live A-share breadth universe plus the four headline indices."""
+    symbols = qmt_market_overview_symbols(extra_symbols)
+    return qmt_provider(sorted(set(symbols) | {"000001.SH", "399001.SZ", "399006.SZ", "000300.SH"}))
 
 
 def published_limit_symbols(transport, streams, day: date) -> list[str]:
@@ -227,11 +249,17 @@ def main() -> int:
                 gateway.publish_schedule(schedule)
             if schedule.is_open and monotonic >= next_overview:
                 next_overview = monotonic + max(5.0, args.overview_interval)
-                quotes = qmt_market_overview(
-                    published_limit_symbols(transport, cfg.streams, wall.date())
-                )
+                published = published_limit_symbols(transport, cfg.streams, wall.date())
+                expected = qmt_market_overview_symbols(published)
+                quotes = qmt_provider(sorted(set(expected) | {
+                    "000001.SH", "399001.SZ", "399006.SZ", "000300.SH",
+                }))
                 gateway.publish_latest_quotes(quotes, now=wall)
-                gateway.publish_overview(quotes, now=wall)
+                gateway.publish_overview(
+                    quotes, now=wall, expected_symbols=expected,
+                    universe_source="tushare.stk_limit" if published else "qmt.沪深京A股",
+                    universe_session=wall.date() if published else None,
+                )
                 gateway.run_once()
         except Exception as exc:
             log.error("market_gateway.loop_error", error=str(exc))

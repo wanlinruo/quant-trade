@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+import re
 
 
 class TradingMode(StrEnum):
@@ -17,6 +18,24 @@ class TradingMode(StrEnum):
 class SafetyVerdict:
     allowed: bool
     reason: str = ""
+
+
+def check_order_market(symbol: str, side: str) -> SafetyVerdict:
+    """当前策略禁止北交所新开仓；行情可见性不构成交易许可（#589）。
+
+    本函数不访问券商，也不改变已有持仓/撤单。规范北交所身份及已知北交所
+    号段均拒绝买入，避免改错后缀绕过；无法识别的身份不默认当主板。
+    合法卖单继续由持仓、可卖量、停牌等既有约束验证，保留风险处置路径。
+    """
+    if side not in {"buy", "sell"} or not isinstance(symbol, str):
+        return SafetyVerdict(False, "market_access: invalid order identity")
+    match = re.fullmatch(r"([0-9]{6})\.(SH|SZ|BJ)", symbol)
+    if match is None:
+        return SafetyVerdict(False, "market_access: unknown security identity")
+    code, market = match.groups()
+    if side == "buy" and (market == "BJ" or code.startswith(("4", "8", "92"))):
+        return SafetyVerdict(False, "market_access: BSE opening orders are disabled")
+    return SafetyVerdict(True)
 
 
 class SafetyPolicy:

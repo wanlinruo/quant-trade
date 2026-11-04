@@ -49,6 +49,52 @@ def test_market_page_and_json_render_live_snapshot(warehouse):
     assert payload["stale"] is False
     assert payload["market_open"] is True
     assert payload["snapshot"]["limit_up_count"] == 55
+    assert payload["snapshot"]["coverage"] is None
+    assert "尚无绑定股票池的覆盖记录" in body
+
+
+def test_failed_overview_refresh_stays_stale_in_the_actual_market_reader(warehouse):
+    import pytest
+    from qsys.live.config import StreamConfig
+    from qsys.live.messages import MarketQuote
+    from qsys.paper.quotes import MarketGateway, QuoteUnavailable
+
+    transport, streams = MemoryTransport(), StreamConfig()
+    gateway = MarketGateway(transport, streams, lambda symbols: {})
+    previous = datetime.now() - timedelta(minutes=2)
+    quote = MarketQuote(symbol="600001.SH", at=previous, price=11, open=10,
+                        high=11, low=10, prev_close=10)
+    gateway.publish_overview({quote.symbol: quote}, now=previous,
+                             expected_symbols=[quote.symbol], universe_source="test-fixture",
+                             universe_session=previous.date())
+    with pytest.raises(QuoteUnavailable):
+        gateway.publish_overview({}, now=datetime.now(), expected_symbols=[quote.symbol],
+                                 universe_source="test-fixture", universe_session=previous.date())
+    client, market = _client(warehouse, transport)
+    assert market.live().stale is True
+    payload = client.get("/api/market/overview").json()
+    assert payload["stale"] is True
+    assert payload["snapshot"]["published_at"] == previous.isoformat()
+    assert payload["snapshot"]["valid_stock_count"] == 1
+    assert "已过期" in client.get("/market").text
+
+
+def test_market_page_discloses_missing_beijing_coverage(warehouse):
+    from qsys.live.messages import MarketQuote
+    from qsys.paper.quotes import build_market_overview
+    now = datetime.now()
+    snapshot = build_market_overview({
+        "600001.SH": MarketQuote(symbol="600001.SH", at=now, price=11, open=10,
+                                  high=11, low=10, prev_close=10),
+    }, now=now, expected_symbols=["600001.SH", "920026.BJ"],
+       universe_source="tushare.stk_limit", universe_session=now.date())
+    transport = MemoryTransport()
+    transport.set_key("state:market_overview", snapshot.model_dump_json())
+    client, _ = _client(warehouse, transport)
+    body = client.get("/market").text
+    assert "覆盖不完整或范围待核验" in body
+    assert "北交所：请求 1 / 有效 0 / 缺失 1" in body
+    assert client.get("/api/market/overview").json()["snapshot"]["coverage"]["status"] == "incomplete"
 
 
 def test_market_service_marks_old_snapshot_stale(warehouse):
