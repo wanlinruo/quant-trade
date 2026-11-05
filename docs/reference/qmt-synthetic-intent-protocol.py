@@ -3,7 +3,7 @@
 This standard-library receiver has no account, broker or I/O capability.
 The public test key is not production authentication. No callback can be supplied.
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
 import json
@@ -16,6 +16,12 @@ COMMAND_FIELDS = {'schema_version','session_id','strategy_id','client_order_id',
                   'side','qty','order_type','limit_price','created_at','expires_at'}
 FIELDS = {'protocol','scope','kind','run_id','seq','attempt_id','session_nonce',
           'command_sha256','command_json','issued_at_ms','expires_at_ms','mac'}
+RUN_ID = ''
+PROBE_DATE = ''
+CLIENT_BUILD = ''
+PACKET_LIMIT = 1
+_STATE = None
+_RAN = False
 
 
 def canonical(value):
@@ -143,3 +149,138 @@ class Receiver:
         response = self.reply(obj, 'ok')
         self.seen[cmd['client_order_id']] = (normalized, response)
         return response
+
+
+def now_ms():
+    return int(datetime.now(timezone.utc).timestamp() * 1000)
+
+
+def emit(status, **facts):
+    row = dict(protocol=PROTOCOL, run_id=RUN_ID if valid_id(RUN_ID) else None,
+               status=status, account_calls=0, market_calls=0, trading_calls=0,
+               executed=False, authorizes_trading=False)
+    row.update(facts)
+    print(repr(row))
+
+
+def finish(C, reason):
+    state = _STATE
+    if state is None or state['stopped']:
+        return
+    state['stopped'] = True
+    cancelled = None
+    try:
+        cancelled = C.cancel_schedule_run('qsys602_' + RUN_ID)
+    except Exception as exc:
+        emit('cancel_failed', error_type=type(exc).__name__)
+    finally:
+        try:
+            state['memory'].close()
+        except Exception as exc:
+            emit('close_failed', error_type=type(exc).__name__)
+    emit('finished', reason=reason, ticks=state['ticks'], packets=state['packets'],
+         accepted_count=state['receiver'].accepted, cache_entries=len(state['receiver'].seen),
+         max_callback_ms=state['max_ms'], cancel_result=cancelled)
+
+
+def on_timer(C):
+    state = _STATE
+    if state is None or state['stopped']:
+        return
+    started = state['clock']()
+    state['ticks'] += 1
+    try:
+        if state['ticks'] > 24 or now_ms() >= state['deadline_ms']:
+            finish(C, 'bound')
+            return
+        memory = state['memory']
+        memory.seek(0)
+        generation = int.from_bytes(memory.read(4), 'little')
+        if generation == 0 or generation == state['last_generation']:
+            return
+        size = int.from_bytes(memory.read(4), 'little')
+        if not 1 <= size <= 4000:
+            raise ValueError('request frame size')
+        raw = memory.read(size)
+        memory.seek(0)
+        if int.from_bytes(memory.read(4), 'little') != generation:
+            return
+        reply = state['receiver'].receive(raw, now_ms())
+        if len(reply) > 2000:
+            raise ValueError('response frame size')
+        memory.seek(4096)
+        memory.write(bytes(4))
+        memory.seek(4104)
+        memory.write(reply)
+        memory.seek(4100)
+        memory.write(len(reply).to_bytes(4, 'little'))
+        memory.seek(4096)
+        memory.write(generation.to_bytes(4, 'little'))
+        state['last_generation'] = generation
+        state['packets'] += 1
+        summary = decode(reply.decode('ascii'))
+        emit('packet', generation=generation, result=summary['reason'],
+             accepted_count=state['receiver'].accepted,
+             command_sha256=summary['command_sha256'])
+        if state['packets'] >= PACKET_LIMIT:
+            finish(C, 'diagnostic_packet_limit')
+    except Exception as exc:
+        emit('callback_failed', error_type=type(exc).__name__)
+        finish(C, 'error')
+    finally:
+        elapsed = (state['clock']() - started) * 1000
+        state['max_ms'] = max(state['max_ms'], elapsed)
+        if state['stopped']:
+            emit('callback_bound', max_callback_ms=state['max_ms'])
+        elif state['ticks'] >= 24:
+            finish(C, 'finite_tick_limit')
+
+
+def init(C):
+    global _STATE, _RAN
+    if _RAN:
+        return
+    _RAN = True
+    memory = None
+    stage = 'configuration'
+    try:
+        if (not valid_id(RUN_ID) or CLIENT_BUILD != '2.1.33.0'
+                or PROBE_DATE != datetime.now().strftime('%Y%m%d')):
+            raise ValueError('diagnostic binding')
+        if PACKET_LIMIT != 1:
+            raise ValueError('single diagnostic packet required')
+        if (not callable(getattr(C, 'schedule_run', None))
+                or not callable(getattr(C, 'cancel_schedule_run', None))):
+            raise ValueError('finite cancellable scheduler required')
+        stage = 'imports'
+        import mmap
+        from time import perf_counter
+        stage = 'open_named_memory'
+        memory = mmap.mmap(-1, 8192, tagname='Local\\qsys_synthetic_intent_' + RUN_ID,
+                           access=mmap.ACCESS_WRITE)
+        memory.seek(6144)
+        marker = b'QSYS_SYNTHETIC_INTENT_ONLY:' + RUN_ID.encode('ascii')
+        if memory.read(len(marker)) != marker:
+            raise ValueError('existing synthetic coordinator marker required')
+        _STATE = dict(memory=memory, receiver=Receiver(RUN_ID), ticks=0, packets=0,
+                      last_generation=0, max_ms=0.0, stopped=False,
+                      deadline_ms=now_ms()+35000, clock=perf_counter)
+        stage = 'schedule_run'
+        task_id = C.schedule_run(on_timer, datetime.now()+timedelta(seconds=2),
+                                 24, timedelta(seconds=1), 'qsys602_' + RUN_ID)
+        emit('scheduled', task_id=task_id, finite_repeat_argument=24,
+             packet_limit=PACKET_LIMIT)
+    except Exception as exc:
+        emit('init_failed', stage=stage, error_type=type(exc).__name__)
+        if _STATE is not None:
+            finish(C, 'init_failed')
+        elif memory is not None:
+            memory.close()
+
+
+def stop(C):
+    finish(C, 'model_stop')
+
+
+def handlebar(C):
+    pass

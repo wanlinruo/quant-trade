@@ -1,5 +1,23 @@
 # 项目交接入口
 
+## 11-05 14:19：完整合成指令QMT调度候选完成，现场因会话断开暂未执行（#602）
+
+- `qmt-synthetic-intent-protocol.py`在既有完整固定OrderCommand校验器上补齐QMT模型入口：
+  只打开协调器预先创建的`Local\\qsys_synthetic_intent_<run-id>`，使用正式`schedule_run`
+  最多24次有界回调、只处理1包并主动cancel；回执继续固定`executed=false`、
+  `authorizes_trading=false`。入口不含账户、行情、网络或交易API，日期、客户端版本、run-id、
+  单包上限及协调器marker任一不符均在调度前失败。
+- 新增内存双端集成回归，实际`SyntheticIntentPort`发送完整规范意图，QMT包装器校验并返回
+  绑定原attempt/nonce/SHA的非执行ACK；同时覆盖marker缺失拒绝和源码禁用接口扫描。
+  协议/异步账本/Core流联合专项通过；全量4624通过、7项Linux凭据条件跳过、3项既有弃用警告，
+  `py_compile`与`git diff --check`通过。
+- 14:18对Windows只读预检：QMT 2.1.33.0为PID2764/session1、Responding=true，但session1
+  当前Disconnected，交互console在session3；不满足既有前台UI安装/编译守卫，因此没有复制源码、
+  创建辅助任务、点击编译/运行或重放旧操作。C盘只余约5.2GiB，本轮未清理或修改任何文件。
+- 当前仍缺Windows/QMT源码回读、编译、正式schedule_run和完整指令响应收据；待session1恢复
+  可交互后使用新run-id取得独立证据。此候选不是正式模式/账户许可、券商受理或生产激活证明，
+  未接真实意图/账户/委托，未清KILL或启动Live/Shadow。
+
 ## 11-05 13:17：测试部署发现N-1私有配置兼容缺陷并前进修复（#603）
 
 - #602集成SHA`025f5e9`的CI 41972799066全绿；测试部署41972979833以可信main控制器运行，
