@@ -1,5 +1,33 @@
 # 项目交接入口
 
+## 11-05 17点后：正式采用外部决策与大QMT薄执行器，停止完整内置迁移
+
+- 维护者再次确认江海新版停用外部`xtquant`/独立交易入口：唯一主线不是让Windows进程直接
+  使用仓库旧`XtQuantAdapter`，而是Linux外部决策→Windows持久执行网关→受控本机IPC→
+  **QMT内置薄执行器**→`passorder`/原生回报。编辑器只用于薄执行器安装、编译和正式运行配置，
+  最终运行不得依赖RDP或编辑器模拟模式。完整职责、状态机和验收顺序见
+  [唯一主线方案](docs/reference/qmt-external-execution-mainline.md)。
+- 已有QMT内标准共享内存双向通信、
+  正式`schedule_run`有界回调、有效期内跨接收会话零重发、Windows私有NTFS账本及默认关闭
+  应用接线证据，足以完成架构裁决；#599按评估完成关闭，#601成为唯一实现主线。
+- 原完整内置策略迁移#533及仅服务该路线的#536/#537/#538/#541/#542/#546均按不再计划关闭；
+  历史原生接口、差异和失败事实保持，不改市场值。#535故障安全、#589执行边界、#137真实
+  激活门禁仍保留，关闭旧Issue不代表实盘恢复。
+- #602已关闭，不再作为独立路线；其完整固定合成指令QMT非执行收据已并入#601并于17:46完成。
+  新批次源码回读、17:44:21编译成功，正式`schedule_run`实际消费完整固定OrderCommand并返回
+  `validated_synthetic`；`executed=false`、`authorizes_trading=false`、券商调用0、账户绑定false。
+  冷恢复保持`unknown`且旧意图重发0；映射释放，四个辅助任务均disabled/idle、last_result=0，
+  QMT原身份保持并Responding。脱敏摘要见
+  [主线合成证据](docs/reference/qmt-mainline-synthetic-probe-20261105.json)。
+- 首次runtime-r1因PowerShell 5写出的fixture带BOM、Python按普通UTF-8读取，在创建IPC/发送前
+  退出；原失败保留且未重放。另一次准备因沿用旧paste-r2目录名在路径守卫处停止，随后使用
+  #601独立新目录和run-id完成，不覆盖历史记录。
+- 上述结果仍是编辑器模拟环境，不是正式策略运行模式、券商许可、无RDP启动或真实回报证明。
+  当前下一门禁只推进正式运行模式与券商许可，不扩大其他事项。
+- 本轮未重启客户端、接真实账户/意图/委托，未清KILL或
+  启动Live/Shadow。PR#605已合入main 340636e；其原CI/测试部署成功，自动Align的inactive
+  证据误判作为非阻断旁支#606保留事实后关闭，不再分散当前路线。
+
 ## 11-05 14:19：完整合成指令QMT调度候选完成，现场因会话断开暂未执行（#602）
 
 - `qmt-synthetic-intent-protocol.py`在既有完整固定OrderCommand校验器上补齐QMT模型入口：

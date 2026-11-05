@@ -1,0 +1,39 @@
+{
+  "protocol": "qsys-mainline-synthetic-probe-summary.v1",
+  "issue": 601,
+  "at": "2026-11-05T17:46:17+08:00",
+  "route": "linux-decision -> windows-durable-gateway -> local-ipc -> qmt-built-in-thin-executor",
+  "source_main_sha": "340636ef442967402eb9183a5fb8ada30db02d3c",
+  "qmt": {
+    "build": "2.1.33.0",
+    "session": 1,
+    "identity_preserved": true,
+    "responding_after": true
+  },
+  "synthetic_intent": {
+    "protocol": "qsys.synthetic-intent-validation.v1",
+    "command_sha256": "23c2e555306c6c7154a1df6b59afc53cc970d4374861c0c92fc1603b0c8624e7",
+    "response_status": "validated_synthetic",
+    "executed": false,
+    "authorizes_trading": false,
+    "broker_calls": 0,
+    "account_binding": false
+  },
+  "recovery": {
+    "restored_state": "unknown",
+    "old_intent_republished": 0,
+    "mapping_released": true
+  },
+  "cleanup": {
+    "new_tasks_disabled_idle": 4,
+    "new_task_failures": 0
+  },
+  "boundaries": {
+    "editor_simulation_only": true,
+    "formal_strategy_mode_verified": false,
+    "broker_permission_verified": false,
+    "unattended_restart_verified": false,
+    "native_order_reports_verified": false,
+    "live_or_shadow_activated": false
+  }
+}
