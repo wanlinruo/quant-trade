@@ -1,0 +1,732 @@
+{
+  "issue": 599,
+  "date": "2026-11-05",
+  "runtime_mode": "Windows gateway + QMT editor simulation, not live strategy mode",
+  "binding": {
+    "exercise_id": "a16230a9f714473bad38bbbd4df09b83",
+    "sessions": [
+      "0a6f7b7a07144db7a52ba949824e7562",
+      "64d21bff6aa441f68660b18808013b29"
+    ],
+    "messages": {
+      "a": "48a00a18816d4b6d84dbca4f705e2cf4",
+      "b": "786cd160065d444e90826156017c977b",
+      "c": "3fda9df56d1746fd8c48dfaf2ff745f1",
+      "d": "75c895d3a1a64f008d4c4bdd0570fc7b",
+      "e": "c1e1dabd738d46c59ea51d769f8e89c1"
+    },
+    "sources": {
+      "qmt-external-dispatch-ledger.py": {
+        "sha256": "4816b0684555df4526ec0aeb067df4f25f688a5551cbc775300efc28f3834c1b",
+        "remote": "C:/qsys/var-deployments/issue599-private-20261105/artifact-4816b0684555df4526ec0aeb067df4f25f688a5551cbc775300efc28f3834c1b.py"
+      },
+      "qmt-external-recovery-gateway.py": {
+        "sha256": "c82f0763d378d6ff2a0b22953ee0b84ad9117b09979e82ffa32f70d443c12906",
+        "remote": "C:/qsys/var-deployments/issue599-private-20261105/artifact-c82f0763d378d6ff2a0b22953ee0b84ad9117b09979e82ffa32f70d443c12906.py"
+      }
+    },
+    "first": {
+      "session_id": "0a6f7b7a07144db7a52ba949824e7562",
+      "source_sha256": "875c6dd9933aca0314e4f18e85fabdfeaf09b1cd5b13bc698c33a7276c100a36",
+      "packet_limit": 3
+    },
+    "second": {
+      "session_id": "64d21bff6aa441f68660b18808013b29",
+      "source_sha256": "def3e20303b48b6458025eb34ee46981192cee545646219d07a1ebd201346508",
+      "packet_limit": 1
+    }
+  },
+  "source_bindings": {
+    "final_task": {
+      "exit_code": 0,
+      "enabled": false,
+      "state": 1
+    },
+    "q1": {
+      "source_sha256": "875c6dd9933aca0314e4f18e85fabdfeaf09b1cd5b13bc698c33a7276c100a36",
+      "trading_calls": 0,
+      "run_id": "0a6f7b7a07144db7a52ba949824e7562",
+      "editor_source_matches": true,
+      "at": "2026-11-05T00:52:57.7101686+08:00"
+    },
+    "q6": {
+      "source_sha256": "def3e20303b48b6458025eb34ee46981192cee545646219d07a1ebd201346508",
+      "trading_calls": 0,
+      "run_id": "64d21bff6aa441f68660b18808013b29",
+      "editor_source_matches": true,
+      "at": "2026-11-05T00:57:24.1549845+08:00"
+    }
+  },
+  "native_receipts": {
+    "first": [
+      {
+        "protocol": "qsys.external-queue-diagnostic.v1",
+        "run_id": "0a6f7b7a07144db7a52ba949824e7562",
+        "status": "scheduled",
+        "account_calls": 0,
+        "trading_calls": 0,
+        "authorizes_trading": false,
+        "durable_dedup_verified": false,
+        "task_id": 6722,
+        "finite_repeat_argument": 24,
+        "packet_limit": 3
+      },
+      {
+        "protocol": "qsys.external-queue-diagnostic.v1",
+        "run_id": "0a6f7b7a07144db7a52ba949824e7562",
+        "status": "packet",
+        "account_calls": 0,
+        "trading_calls": 0,
+        "authorizes_trading": false,
+        "durable_dedup_verified": false,
+        "generation": 1,
+        "result": "ok",
+        "accepted_count": 1
+      },
+      {
+        "protocol": "qsys.external-queue-diagnostic.v1",
+        "run_id": "0a6f7b7a07144db7a52ba949824e7562",
+        "status": "packet",
+        "account_calls": 0,
+        "trading_calls": 0,
+        "authorizes_trading": false,
+        "durable_dedup_verified": false,
+        "generation": 2,
+        "result": "ok",
+        "accepted_count": 2
+      },
+      {
+        "protocol": "qsys.external-queue-diagnostic.v1",
+        "run_id": "0a6f7b7a07144db7a52ba949824e7562",
+        "status": "packet",
+        "account_calls": 0,
+        "trading_calls": 0,
+        "authorizes_trading": false,
+        "durable_dedup_verified": false,
+        "generation": 3,
+        "result": "ok",
+        "accepted_count": 3
+      },
+      {
+        "protocol": "qsys.external-queue-diagnostic.v1",
+        "run_id": "0a6f7b7a07144db7a52ba949824e7562",
+        "status": "finished",
+        "account_calls": 0,
+        "trading_calls": 0,
+        "authorizes_trading": false,
+        "durable_dedup_verified": false,
+        "reason": "diagnostic_packet_limit",
+        "ticks": 6,
+        "packets": 3,
+        "accepted_count": 3,
+        "cache_entries": 3,
+        "max_callback_ms": 1.295500434935093,
+        "cancel_result": true
+      },
+      {
+        "protocol": "qsys.external-queue-diagnostic.v1",
+        "run_id": "0a6f7b7a07144db7a52ba949824e7562",
+        "status": "callback_bound",
+        "account_calls": 0,
+        "trading_calls": 0,
+        "authorizes_trading": false,
+        "durable_dedup_verified": false,
+        "max_callback_ms": 1.295500434935093
+      }
+    ],
+    "second": [
+      {
+        "protocol": "qsys.external-queue-diagnostic.v1",
+        "run_id": "64d21bff6aa441f68660b18808013b29",
+        "status": "scheduled",
+        "account_calls": 0,
+        "trading_calls": 0,
+        "authorizes_trading": false,
+        "durable_dedup_verified": false,
+        "task_id": 6839,
+        "finite_repeat_argument": 24,
+        "packet_limit": 1
+      },
+      {
+        "protocol": "qsys.external-queue-diagnostic.v1",
+        "run_id": "64d21bff6aa441f68660b18808013b29",
+        "status": "packet",
+        "account_calls": 0,
+        "trading_calls": 0,
+        "authorizes_trading": false,
+        "durable_dedup_verified": false,
+        "generation": 1,
+        "result": "ok",
+        "accepted_count": 1
+      },
+      {
+        "protocol": "qsys.external-queue-diagnostic.v1",
+        "run_id": "64d21bff6aa441f68660b18808013b29",
+        "status": "finished",
+        "account_calls": 0,
+        "trading_calls": 0,
+        "authorizes_trading": false,
+        "durable_dedup_verified": false,
+        "reason": "diagnostic_packet_limit",
+        "ticks": 1,
+        "packets": 1,
+        "accepted_count": 1,
+        "cache_entries": 1,
+        "max_callback_ms": 0.0,
+        "cancel_result": true
+      },
+      {
+        "protocol": "qsys.external-queue-diagnostic.v1",
+        "run_id": "64d21bff6aa441f68660b18808013b29",
+        "status": "callback_bound",
+        "account_calls": 0,
+        "trading_calls": 0,
+        "authorizes_trading": false,
+        "durable_dedup_verified": false,
+        "max_callback_ms": 2.561999950557947
+      }
+    ]
+  },
+  "phase_results": {
+    "first": {
+      "status": "success",
+      "phase": "first",
+      "exercise_id": "a16230a9f714473bad38bbbd4df09b83",
+      "session_id": "0a6f7b7a07144db7a52ba949824e7562",
+      "at_ms": 1793811315779,
+      "results": [
+        {
+          "message": "a",
+          "child_exit": 0,
+          "result": {
+            "status": "diagnostic_echoed",
+            "message": "a",
+            "published": 1,
+            "response_sha256": "71c1e0c532d04116b78548254ecf85792add6635c5d02df15f62fd0b43bac527",
+            "accepted_count": 1,
+            "response_bytes": 297
+          }
+        },
+        {
+          "message": "b",
+          "child_exit": 23,
+          "result": null
+        },
+        {
+          "message": "b",
+          "child_exit": 0,
+          "result": {
+            "status": "blocked",
+            "message": "b",
+            "state": "unknown",
+            "published": 0,
+            "before_expiry": true
+          }
+        },
+        {
+          "message": "c",
+          "child_exit": 23,
+          "result": null
+        },
+        {
+          "message": "c",
+          "child_exit": 0,
+          "result": {
+            "status": "blocked",
+            "message": "c",
+            "state": "unknown",
+            "published": 0,
+            "before_expiry": true
+          }
+        },
+        {
+          "message": "e",
+          "child_exit": 24,
+          "result": {
+            "status": "worker_failed",
+            "stage": "wait_reply",
+            "error_type": "TimeoutError",
+            "message": "e"
+          }
+        },
+        {
+          "message": "e",
+          "child_exit": 0,
+          "result": {
+            "status": "blocked",
+            "message": "e",
+            "state": "unknown",
+            "published": 0,
+            "before_expiry": true
+          }
+        }
+      ],
+      "observations": [
+        {
+          "message": "b",
+          "response_sha256": "d82cfe34aef80a61dc7a69856c192ed0b57415ce59d9689eb4cfb7ee23ead038",
+          "accepted_count": 2,
+          "response_bytes": 297
+        }
+      ],
+      "states": {
+        "a": {
+          "message_id": "48a00a18816d4b6d84dbca4f705e2cf4",
+          "payload_sha256": "fe311e4374df575d07d738939b453fde5a67d61da6f312920a91ad506e8bdefc",
+          "issued_ms": 1793811272820,
+          "expires_ms": 1793811392820,
+          "state": "diagnostic_echoed",
+          "attempt_id": "03a0ba910f0544ffb2d2433a9717553b",
+          "session_nonce": "0a6f7b7a07144db7a52ba949824e7562",
+          "transport_ack_sha256": "71c1e0c532d04116b78548254ecf85792add6635c5d02df15f62fd0b43bac527"
+        },
+        "b": {
+          "message_id": "786cd160065d444e90826156017c977b",
+          "payload_sha256": "cb1aca00d3470545a0f5b10bbe5b2cf66739af3c2f05ae93c0f41c14abf195a7",
+          "issued_ms": 1793811272820,
+          "expires_ms": 1793811392820,
+          "state": "unknown",
+          "attempt_id": "d7cfe16eb2564ae5b269c19fdf086cc7",
+          "session_nonce": "0a6f7b7a07144db7a52ba949824e7562",
+          "transport_ack_sha256": null
+        },
+        "c": {
+          "message_id": "3fda9df56d1746fd8c48dfaf2ff745f1",
+          "payload_sha256": "fef536f613de71c19ee478e35558a3559220af7f83ef730591ed991ffbb39b81",
+          "issued_ms": 1793811272820,
+          "expires_ms": 1793811392820,
+          "state": "unknown",
+          "attempt_id": "ed6547bca00843edbfa9380c33fb3282",
+          "session_nonce": "0a6f7b7a07144db7a52ba949824e7562",
+          "transport_ack_sha256": "7159c0e0631a4dc1431c199e7a479c780bf3a3ed7ad0183c6b9b9e55bb633a99"
+        },
+        "d": null,
+        "e": {
+          "message_id": "c1e1dabd738d46c59ea51d769f8e89c1",
+          "payload_sha256": "548d7feb63864a3b356faff28435b546b8e86e5c984045598e1edfa274bae63e",
+          "issued_ms": 1793811272820,
+          "expires_ms": 1793811392820,
+          "state": "unknown",
+          "attempt_id": "a330566d3da547ad972e87a2a1f1d6f1",
+          "session_nonce": "0a6f7b7a07144db7a52ba949824e7562",
+          "transport_ack_sha256": null
+        }
+      },
+      "publications": [
+        {
+          "event": "published",
+          "generation": 1,
+          "message": "a",
+          "message_id": "48a00a18816d4b6d84dbca4f705e2cf4",
+          "request_sha256": "082f9484997839b4a7426357cb66621ec2f299a5eececdc20ee08a6165b86fe3",
+          "session_id": "0a6f7b7a07144db7a52ba949824e7562"
+        },
+        {
+          "event": "published",
+          "generation": 2,
+          "message": "b",
+          "message_id": "786cd160065d444e90826156017c977b",
+          "request_sha256": "e33ea1f03bf0e9e7d366da64a2fa9dac354bd83e3a0f5a9f9cea39b3ab3e90dc",
+          "session_id": "0a6f7b7a07144db7a52ba949824e7562"
+        },
+        {
+          "event": "published",
+          "generation": 3,
+          "message": "c",
+          "message_id": "3fda9df56d1746fd8c48dfaf2ff745f1",
+          "request_sha256": "8a9a84aa9df3d077bc8551bd8b55132a04b73777bc1428647353de7d1b5f1dad",
+          "session_id": "0a6f7b7a07144db7a52ba949824e7562"
+        },
+        {
+          "event": "published",
+          "generation": 4,
+          "message": "e",
+          "message_id": "c1e1dabd738d46c59ea51d769f8e89c1",
+          "request_sha256": "4828653446202fece5b5adf280d2dd580b953e3574c4fe1f57bfea9a88ebe442",
+          "session_id": "0a6f7b7a07144db7a52ba949824e7562"
+        }
+      ],
+      "public_fixture_key": true,
+      "real_trading_authorized": false,
+      "account_calls": 0,
+      "trading_calls": 0
+    },
+    "second": {
+      "status": "success",
+      "phase": "second",
+      "exercise_id": "a16230a9f714473bad38bbbd4df09b83",
+      "session_id": "64d21bff6aa441f68660b18808013b29",
+      "at_ms": 1793811582706,
+      "results": [
+        {
+          "message": "a",
+          "child_exit": 0,
+          "result": {
+            "status": "blocked",
+            "message": "a",
+            "state": "diagnostic_echoed",
+            "published": 0,
+            "before_expiry": false
+          }
+        },
+        {
+          "message": "b",
+          "child_exit": 0,
+          "result": {
+            "status": "blocked",
+            "message": "b",
+            "state": "unknown",
+            "published": 0,
+            "before_expiry": false
+          }
+        },
+        {
+          "message": "c",
+          "child_exit": 0,
+          "result": {
+            "status": "blocked",
+            "message": "c",
+            "state": "unknown",
+            "published": 0,
+            "before_expiry": false
+          }
+        },
+        {
+          "message": "e",
+          "child_exit": 0,
+          "result": {
+            "status": "blocked",
+            "message": "e",
+            "state": "unknown",
+            "published": 0,
+            "before_expiry": false
+          }
+        },
+        {
+          "message": "d",
+          "child_exit": 0,
+          "result": {
+            "status": "diagnostic_echoed",
+            "message": "d",
+            "published": 1,
+            "response_sha256": "ac4481128c8d5c9ec32edc28d164f7ef806e2309f8d7c8acdc71935482bd15e5",
+            "accepted_count": 1,
+            "response_bytes": 297
+          }
+        }
+      ],
+      "observations": [],
+      "states": {
+        "a": {
+          "message_id": "48a00a18816d4b6d84dbca4f705e2cf4",
+          "payload_sha256": "fe311e4374df575d07d738939b453fde5a67d61da6f312920a91ad506e8bdefc",
+          "issued_ms": 1793811272820,
+          "expires_ms": 1793811392820,
+          "state": "diagnostic_echoed",
+          "attempt_id": "03a0ba910f0544ffb2d2433a9717553b",
+          "session_nonce": "0a6f7b7a07144db7a52ba949824e7562",
+          "transport_ack_sha256": "71c1e0c532d04116b78548254ecf85792add6635c5d02df15f62fd0b43bac527"
+        },
+        "b": {
+          "message_id": "786cd160065d444e90826156017c977b",
+          "payload_sha256": "cb1aca00d3470545a0f5b10bbe5b2cf66739af3c2f05ae93c0f41c14abf195a7",
+          "issued_ms": 1793811272820,
+          "expires_ms": 1793811392820,
+          "state": "unknown",
+          "attempt_id": "d7cfe16eb2564ae5b269c19fdf086cc7",
+          "session_nonce": "0a6f7b7a07144db7a52ba949824e7562",
+          "transport_ack_sha256": null
+        },
+        "c": {
+          "message_id": "3fda9df56d1746fd8c48dfaf2ff745f1",
+          "payload_sha256": "fef536f613de71c19ee478e35558a3559220af7f83ef730591ed991ffbb39b81",
+          "issued_ms": 1793811272820,
+          "expires_ms": 1793811392820,
+          "state": "unknown",
+          "attempt_id": "ed6547bca00843edbfa9380c33fb3282",
+          "session_nonce": "0a6f7b7a07144db7a52ba949824e7562",
+          "transport_ack_sha256": "7159c0e0631a4dc1431c199e7a479c780bf3a3ed7ad0183c6b9b9e55bb633a99"
+        },
+        "d": {
+          "message_id": "75c895d3a1a64f008d4c4bdd0570fc7b",
+          "payload_sha256": "4bac11cc5a639c85119b69bb5823bb36f81a174a5e120f33d786c111ac857ca3",
+          "issued_ms": 1793811552703,
+          "expires_ms": 1793811672703,
+          "state": "diagnostic_echoed",
+          "attempt_id": "299cf309a6864793bf67197355674edd",
+          "session_nonce": "64d21bff6aa441f68660b18808013b29",
+          "transport_ack_sha256": "ac4481128c8d5c9ec32edc28d164f7ef806e2309f8d7c8acdc71935482bd15e5"
+        },
+        "e": {
+          "message_id": "c1e1dabd738d46c59ea51d769f8e89c1",
+          "payload_sha256": "548d7feb63864a3b356faff28435b546b8e86e5c984045598e1edfa274bae63e",
+          "issued_ms": 1793811272820,
+          "expires_ms": 1793811392820,
+          "state": "unknown",
+          "attempt_id": "a330566d3da547ad972e87a2a1f1d6f1",
+          "session_nonce": "0a6f7b7a07144db7a52ba949824e7562",
+          "transport_ack_sha256": null
+        }
+      },
+      "publications": [
+        {
+          "event": "published",
+          "generation": 1,
+          "message": "d",
+          "message_id": "75c895d3a1a64f008d4c4bdd0570fc7b",
+          "request_sha256": "068b032cd80e2eaba56ed16c73cb2c9110618093991e7dc1c899385afe698b9e",
+          "session_id": "64d21bff6aa441f68660b18808013b29"
+        }
+      ],
+      "public_fixture_key": true,
+      "real_trading_authorized": false,
+      "account_calls": 0,
+      "trading_calls": 0
+    }
+  },
+  "prior_rows_unchanged": true,
+  "independent_four_response_sha_verified": [
+    {
+      "message": "a",
+      "response_sha256": "71c1e0c532d04116b78548254ecf85792add6635c5d02df15f62fd0b43bac527"
+    },
+    {
+      "message": "b",
+      "response_sha256": "d82cfe34aef80a61dc7a69856c192ed0b57415ce59d9689eb4cfb7ee23ead038"
+    },
+    {
+      "message": "c",
+      "response_sha256": "7159c0e0631a4dc1431c199e7a479c780bf3a3ed7ad0183c6b9b9e55bb633a99"
+    },
+    {
+      "message": "d",
+      "response_sha256": "ac4481128c8d5c9ec32edc28d164f7ef806e2309f8d7c8acdc71935482bd15e5"
+    }
+  ],
+  "cold_sqlite": {
+    "quick_check": "ok",
+    "journal_mode": "delete",
+    "sha256": "20d1f9f944692b95436eb0a31d2e45f83eb491fbfd38a0fbfb144b5290b7dfc6",
+    "readonly_unchanged": true
+  },
+  "acceptance": {
+    "diagnostics": [
+      {
+        "state": 1,
+        "last_result": 0,
+        "tag": "q0",
+        "enabled": false
+      },
+      {
+        "state": 1,
+        "last_result": 0,
+        "tag": "q1",
+        "enabled": false
+      },
+      {
+        "state": 1,
+        "last_result": 0,
+        "tag": "q2",
+        "enabled": false
+      },
+      {
+        "state": 1,
+        "last_result": 0,
+        "tag": "q3",
+        "enabled": false
+      },
+      {
+        "state": 1,
+        "last_result": 0,
+        "tag": "q4",
+        "enabled": false
+      },
+      {
+        "state": 1,
+        "last_result": 0,
+        "tag": "q5",
+        "enabled": false
+      },
+      {
+        "state": 1,
+        "last_result": 0,
+        "tag": "q6",
+        "enabled": false
+      },
+      {
+        "state": 1,
+        "last_result": 0,
+        "tag": "q7",
+        "enabled": false
+      },
+      {
+        "state": 1,
+        "last_result": 0,
+        "tag": "q8",
+        "enabled": false
+      },
+      {
+        "state": 1,
+        "last_result": 0,
+        "tag": "q9",
+        "enabled": false
+      },
+      {
+        "state": 1,
+        "last_result": 0,
+        "tag": "q10",
+        "enabled": false
+      }
+    ],
+    "run_id": "a16230a9f714473bad38bbbd4df09b83",
+    "source_verified": {
+      "source_sha256": "875c6dd9933aca0314e4f18e85fabdfeaf09b1cd5b13bc698c33a7276c100a36",
+      "trading_calls": 0,
+      "run_id": "0a6f7b7a07144db7a52ba949824e7562",
+      "editor_source_matches": true,
+      "at": "2026-11-05T00:52:57.7101686+08:00"
+    },
+    "audit_acl": [
+      {
+        "unexpected_file_allow_rules": 0,
+        "files": 5,
+        "tag": "q0",
+        "protected": true
+      },
+      {
+        "unexpected_file_allow_rules": 0,
+        "files": 6,
+        "tag": "q1",
+        "protected": true
+      },
+      {
+        "unexpected_file_allow_rules": 0,
+        "files": 7,
+        "tag": "q2",
+        "protected": true
+      },
+      {
+        "unexpected_file_allow_rules": 0,
+        "files": 22,
+        "tag": "q3",
+        "protected": true
+      },
+      {
+        "unexpected_file_allow_rules": 0,
+        "files": 7,
+        "tag": "q4",
+        "protected": true
+      },
+      {
+        "unexpected_file_allow_rules": 0,
+        "files": 8,
+        "tag": "q5",
+        "protected": true
+      },
+      {
+        "unexpected_file_allow_rules": 0,
+        "files": 6,
+        "tag": "q6",
+        "protected": true
+      },
+      {
+        "unexpected_file_allow_rules": 0,
+        "files": 7,
+        "tag": "q7",
+        "protected": true
+      },
+      {
+        "unexpected_file_allow_rules": 0,
+        "files": 20,
+        "tag": "q8",
+        "protected": true
+      },
+      {
+        "unexpected_file_allow_rules": 0,
+        "files": 7,
+        "tag": "q9",
+        "protected": true
+      },
+      {
+        "unexpected_file_allow_rules": 0,
+        "files": 8,
+        "tag": "q10",
+        "protected": true
+      }
+    ],
+    "exclusive_lock_released": true,
+    "mappings": [
+      {
+        "session_id": "0a6f7b7a07144db7a52ba949824e7562",
+        "absent": true
+      },
+      {
+        "session_id": "64d21bff6aa441f68660b18808013b29",
+        "absent": true
+      }
+    ],
+    "client_start": "2026-11-04T20:54:17.9225309+08:00",
+    "client_responding": true,
+    "client_pid": 5480,
+    "drivers": [
+      {
+        "exit_code": 0,
+        "driver_pid": 3440,
+        "has_exited": true,
+        "at": "2026-11-05T00:55:15.8611658+08:00"
+      },
+      {
+        "exit_code": 0,
+        "driver_pid": 5612,
+        "has_exited": true,
+        "at": "2026-11-05T00:59:42.7405071+08:00"
+      }
+    ],
+    "at": "2026-11-05T01:20:17.1068601+08:00",
+    "business_tasks": [
+      {
+        "xml_preserved": true,
+        "name": "qsys-qmt"
+      },
+      {
+        "xml_preserved": true,
+        "name": "qsys-agent-shadow"
+      },
+      {
+        "xml_preserved": true,
+        "name": "qsys-market-gateway"
+      },
+      {
+        "xml_preserved": true,
+        "name": "qsys-watchdog"
+      }
+    ],
+    "original_ui_disabled": true,
+    "session": 1
+  },
+  "exclusive_lock_negative_test": {
+    "blocked": true,
+    "win32_error": 32
+  },
+  "limits": {
+    "production_identity_verified": false,
+    "broker_permission_verified": false,
+    "live_runtime_verified": false,
+    "qmt_process_restart_verified": false,
+    "node_restart_verified": false,
+    "unexpired_cross_receiver_session_isolated": false,
+    "second_phase_old_messages_expired": true,
+    "first_phase_unexpired_unknown_block_verified": true,
+    "power_loss_durability_verified": false,
+    "real_trading_authorized": false
+  },
+  "preserved_auxiliary_failure": {
+    "operation": "Windows ledger smoke wrapper",
+    "business_stdout": "success/prepared",
+    "wrapper_status": "failed/CommandNotFoundException",
+    "replayed": false,
+    "independent_cold_readback": true
+  },
+  "coordinator_template_sha256_utf8_lf": "9e8ec2a6b6a52902eead8773f65df32cae6c90c2d6c8afca169abf00a5ef51db",
+  "executed_coordinator_template_matches_candidate": true
+}

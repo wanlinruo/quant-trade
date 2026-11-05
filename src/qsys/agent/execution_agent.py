@@ -15,6 +15,7 @@ from datetime import datetime
 import structlog
 
 from qsys.agent.adapter import BrokerAdapter
+from qsys.agent.async_dispatch import AsyncOrderDispatcher, PreDispatchRejection
 from qsys.agent.fill_tracker import FillTracker
 from qsys.agent.report_ledger import MemoryReportLedger, ReportLedger
 from qsys.backtest.fees import AShareFeeModel, FeeModel
@@ -53,6 +54,7 @@ class ExecutionAgent:
         ledger: ReportLedger | None = None,
         fee_model: FeeModel | None = None,
         safety: SafetyPolicy | None = None,
+        async_dispatcher: AsyncOrderDispatcher | None = None,
     ) -> None:
         self._t = transport
         self._adapter = adapter
@@ -63,6 +65,9 @@ class ExecutionAgent:
         self._ledger = ledger or MemoryReportLedger()
         self._tracker = FillTracker(fee_model or AShareFeeModel())
         self._safety = safety
+        self._async_dispatcher = async_dispatcher
+        if async_dispatcher is not None and not async_dispatcher.matches(transport, streams):
+            raise ValueError("async dispatcher transport/streams must match the agent")
         self._remote_kill_seen = False
         self._core_timeout_event_seen: str | None = None
         self._started_at = datetime.now()
@@ -148,6 +153,9 @@ class ExecutionAgent:
         return handled
 
     def _execute(self, command: OrderCommand) -> None:
+        # 历史尝试先于新单门禁：到期/急停不能把已发送未知结果伪装成拒单。
+        if self._async_dispatcher is not None and self._async_dispatcher.replay_existing(command):
+            return
         market = check_order_market(command.symbol, command.side)
         if not market.allowed:
             # 已受理历史命令的重传不是新开仓，不能改写成拒单或重播券商调用。
@@ -191,6 +199,13 @@ class ExecutionAgent:
                 self._reject(command, f"safety: {verdict.reason}")
                 return
 
+        if self._async_dispatcher is not None:
+            try:
+                self._async_dispatcher.dispatch(command)
+            except PreDispatchRejection as exc:
+                self._reject(command, str(exc))
+            return
+
         def place() -> str:
             existing = self._adapter.find_order(command.client_order_id)
             if existing is not None:
@@ -227,6 +242,9 @@ class ExecutionAgent:
                  broker_order_id=broker_order_id)
 
     def _reject(self, command: OrderCommand, reason: str) -> None:
+        if self._async_dispatcher is not None:
+            self._async_dispatcher.reject_before_send(command, reason)
+            return
         self._t.append(
             self._s.rejects,
             RejectEvent(

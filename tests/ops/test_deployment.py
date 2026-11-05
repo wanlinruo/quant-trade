@@ -213,7 +213,7 @@ def _production_key_installer_module():
 
 def _test_config(path: Path, *, password: str = "test-secret") -> Path:
     streams = (
-        "orders", "control", "fills", "rejects", "order_status", "account",
+        "orders", "control", "fills", "rejects", "order_status", "dispatch_status", "account",
         "heartbeat", "quote_requests", "quote_snapshots", "quote_latest",
         "market_snapshot", "market_schedule", "price_limits",
     )

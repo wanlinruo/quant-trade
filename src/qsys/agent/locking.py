@@ -16,11 +16,12 @@ def single_instance(path: str | Path):
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     handle = target.open("a+b")
+    acquired = False
     try:
         try:
             if os.name == "nt":
                 import msvcrt
-                handle.seek(0)
+                handle.seek(0, os.SEEK_END)
                 if handle.tell() == 0:
                     handle.write(b"0")
                     handle.flush()
@@ -29,12 +30,15 @@ def single_instance(path: str | Path):
             else:
                 import fcntl
                 fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            acquired = True
         except OSError as exc:
             raise AlreadyRunning(f"execution agent already holds {target}") from exc
         yield
     finally:
         try:
-            if os.name == "nt":
+            if not acquired:
+                pass
+            elif os.name == "nt":
                 import msvcrt
                 handle.seek(0)
                 msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)

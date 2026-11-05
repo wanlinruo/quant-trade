@@ -26,6 +26,7 @@ control = "cmd:control"     # 核心 -> Windows：启停 / 撤单 / 查询
 fills = "evt:fills"         # Windows -> 核心：成交回报
 rejects = "evt:rejects"     # Windows -> 核心：拒单回报
 order_status = "evt:order_status" # Windows -> 核心：委托状态变化
+dispatch_status = "evt:dispatch_status" # 隔离异步接线预留；默认入口不消费
 account = "state:account"   # Windows -> 核心：持仓资金快照
 heartbeat = "state:heartbeat"
 quote_requests = "cmd:quote_requests"   # Linux -> Windows：只读行情请求

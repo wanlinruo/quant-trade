@@ -1,0 +1,186 @@
+{
+  "status": "success",
+  "scope": "QMT editor simulation, actual AsyncOrderDispatcher and synthetic ping only",
+  "at": "2026-11-05T11:00:33.1916916+08:00",
+  "callback_max_ms": {
+    "first": 5.744599737226963,
+    "second": 1.06819998472929
+  },
+  "old_replay_at": "2026-11-05T10:58:24.670060",
+  "intent_expires_at": "2026-11-05T11:04:07.762052",
+  "old_intent_republished": 0,
+  "old_attempt_nonce_ack_preserved": true,
+  "first_packets": 1,
+  "second_packets": 1,
+  "second_only_new_control": true,
+  "reply_sha_hmac_reconstructed": true,
+  "source_roundtrip_verified": true,
+  "client_preserved": true,
+  "business_tasks_preserved": true,
+  "mappings_released": true,
+  "locks_released": true,
+  "runtime_statuses": {
+    "first": [
+      "scheduled",
+      "packet",
+      "finished",
+      "callback_bound"
+    ],
+    "second": [
+      "scheduled",
+      "packet",
+      "finished",
+      "callback_bound"
+    ]
+  },
+  "helpers": [
+    {
+      "state": 1,
+      "exit": 0,
+      "tag": "r1",
+      "enabled": false
+    },
+    {
+      "state": 1,
+      "exit": 0,
+      "tag": "r2",
+      "enabled": false
+    },
+    {
+      "state": 1,
+      "exit": 0,
+      "tag": "r3",
+      "enabled": false
+    },
+    {
+      "state": 1,
+      "exit": 1,
+      "tag": "r4",
+      "enabled": false
+    },
+    {
+      "state": 1,
+      "exit": 0,
+      "tag": "r5",
+      "enabled": false
+    },
+    {
+      "state": 1,
+      "exit": 0,
+      "tag": "r6",
+      "enabled": false
+    },
+    {
+      "state": 1,
+      "exit": 1,
+      "tag": "r7",
+      "enabled": false
+    },
+    {
+      "state": 1,
+      "exit": 0,
+      "tag": "r8",
+      "enabled": false
+    },
+    {
+      "state": 1,
+      "exit": 0,
+      "tag": "r10",
+      "enabled": false
+    },
+    {
+      "state": 1,
+      "exit": 0,
+      "tag": "r11",
+      "enabled": false
+    },
+    {
+      "state": 1,
+      "exit": 1,
+      "tag": "r12",
+      "enabled": false
+    },
+    {
+      "state": 1,
+      "exit": 0,
+      "tag": "r13",
+      "enabled": false
+    },
+    {
+      "state": 1,
+      "exit": 0,
+      "tag": "r14",
+      "enabled": false
+    },
+    {
+      "state": 1,
+      "exit": 0,
+      "tag": "r15",
+      "enabled": false
+    },
+    {
+      "state": 1,
+      "exit": 0,
+      "tag": "r16",
+      "enabled": false
+    },
+    {
+      "state": 1,
+      "exit": 0,
+      "tag": "r17",
+      "enabled": false
+    },
+    {
+      "state": 1,
+      "exit": 1,
+      "tag": "first",
+      "enabled": false
+    },
+    {
+      "state": 1,
+      "exit": 0,
+      "tag": "first-r2",
+      "enabled": false
+    },
+    {
+      "state": 1,
+      "exit": 0,
+      "tag": "second",
+      "enabled": false
+    }
+  ],
+  "qmt_order_calls": 0,
+  "client_restarted": false,
+  "bindings": {
+    "receiver_run_ids": {
+      "first": "e79a7b2e765a460da049ee016c4cf9ab",
+      "second": "79917acaa36346c2baada9b070e97897"
+    },
+    "probe_date": "20261105",
+    "client_build": "2.1.33.0",
+    "packet_limit": 1,
+    "public_hmac_fixture_octet": 17,
+    "port_source_sha256": "c11f2b7943052ad7a4f8f3d23b2e40acb1a8ef0bde4f96f288f93a11637040b7",
+    "receiver_source_sha256": "ceac75344f43c4698e401be79ec07ac11d6d35a7aad768727b9c3590ddf92d2d",
+    "prepared_receiver_sha256": {
+      "first": "963e6643a9aeb935b3c23597fb4e7c8d936da79c4566c30ce4bb965d1f819d03",
+      "second": "52a5bb2277145c233e16d22ad9d1510658055a8484517387e55d6732e411dd48"
+    },
+    "driver_sha256": "90877accec3417f7d18395e08e250a44e8ef1b8ae7c6b43a32e84c484e5ce533",
+    "candidate_zip_sha256": "5f4ecb36c714f9ba599a4ffeece4591f4966fcd029bc47c74955b171c1b57ae7"
+  },
+  "protocol": "qsys.async-qmt-ping-validation.v1",
+  "limitations": [
+    "synthetic ping ACK only; command/market/account fields never sent to QMT",
+    "public HMAC fixture is not production identity or authorization",
+    "cross-receiver unexpired recovery covers post-ACK case; QMT process not restarted",
+    "editor simulation is not formal live strategy mode or broker permission",
+    "not production deploy, native order reports or unknown reconciliation"
+  ],
+  "auxiliary_failures_preserved": [
+    "r4/r7 UI guard refusals",
+    "r9 oversized remote command: audit/task/source receipt all absent; new r10 file staging",
+    "first coordinator ACL rule constructor failed before driver; new first-r2 uses verified factory",
+    "r12 post-run screenshot failed due helper variable collision; business succeeded independently, no replay"
+  ]
+}

@@ -1,0 +1,367 @@
+{
+  "issue": 599,
+  "date": "2026-11-04",
+  "runtime_mode": "QMT editor simulation; official schedule_run callback, not live strategy mode",
+  "client_build": "2.1.33.0",
+  "client_pid": 5480,
+  "client_started_at": "2026-11-04T20:54:17.9225309+08:00",
+  "binding": {
+    "run_id": "52319956b36845cc84f7bf0d824f3eef",
+    "source_sha256": "a51ebe7ec1f7042115d04b253634af1f2ffaa9a6de6fc2babfc976bbb66814d7",
+    "public_fixture_key": true
+  },
+  "public_fixture_key_description": "32 bytes of decimal 17; deliberately public, NOT production identity",
+  "native_receipts": [
+    {
+      "protocol": "qsys.external-queue-diagnostic.v1",
+      "run_id": "52319956b36845cc84f7bf0d824f3eef",
+      "status": "scheduled",
+      "account_calls": 0,
+      "trading_calls": 0,
+      "authorizes_trading": false,
+      "durable_dedup_verified": false,
+      "task_id": 4123,
+      "finite_repeat_argument": 24
+    },
+    {
+      "protocol": "qsys.external-queue-diagnostic.v1",
+      "run_id": "52319956b36845cc84f7bf0d824f3eef",
+      "status": "packet",
+      "account_calls": 0,
+      "trading_calls": 0,
+      "authorizes_trading": false,
+      "durable_dedup_verified": false,
+      "generation": 1,
+      "result": "ok",
+      "accepted_count": 1
+    },
+    {
+      "protocol": "qsys.external-queue-diagnostic.v1",
+      "run_id": "52319956b36845cc84f7bf0d824f3eef",
+      "status": "packet",
+      "account_calls": 0,
+      "trading_calls": 0,
+      "authorizes_trading": false,
+      "durable_dedup_verified": false,
+      "generation": 2,
+      "result": "ok",
+      "accepted_count": 1
+    },
+    {
+      "protocol": "qsys.external-queue-diagnostic.v1",
+      "run_id": "52319956b36845cc84f7bf0d824f3eef",
+      "status": "packet",
+      "account_calls": 0,
+      "trading_calls": 0,
+      "authorizes_trading": false,
+      "durable_dedup_verified": false,
+      "generation": 3,
+      "result": "authentication",
+      "accepted_count": 1
+    },
+    {
+      "protocol": "qsys.external-queue-diagnostic.v1",
+      "run_id": "52319956b36845cc84f7bf0d824f3eef",
+      "status": "packet",
+      "account_calls": 0,
+      "trading_calls": 0,
+      "authorizes_trading": false,
+      "durable_dedup_verified": false,
+      "generation": 4,
+      "result": "sequence",
+      "accepted_count": 1
+    },
+    {
+      "protocol": "qsys.external-queue-diagnostic.v1",
+      "run_id": "52319956b36845cc84f7bf0d824f3eef",
+      "status": "packet",
+      "account_calls": 0,
+      "trading_calls": 0,
+      "authorizes_trading": false,
+      "durable_dedup_verified": false,
+      "generation": 5,
+      "result": "expired",
+      "accepted_count": 1
+    },
+    {
+      "protocol": "qsys.external-queue-diagnostic.v1",
+      "run_id": "52319956b36845cc84f7bf0d824f3eef",
+      "status": "packet",
+      "account_calls": 0,
+      "trading_calls": 0,
+      "authorizes_trading": false,
+      "durable_dedup_verified": false,
+      "generation": 6,
+      "result": "ok",
+      "accepted_count": 2
+    },
+    {
+      "protocol": "qsys.external-queue-diagnostic.v1",
+      "run_id": "52319956b36845cc84f7bf0d824f3eef",
+      "status": "packet",
+      "account_calls": 0,
+      "trading_calls": 0,
+      "authorizes_trading": false,
+      "durable_dedup_verified": false,
+      "generation": 7,
+      "result": "request_conflict",
+      "accepted_count": 2
+    },
+    {
+      "protocol": "qsys.external-queue-diagnostic.v1",
+      "run_id": "52319956b36845cc84f7bf0d824f3eef",
+      "status": "packet",
+      "account_calls": 0,
+      "trading_calls": 0,
+      "authorizes_trading": false,
+      "durable_dedup_verified": false,
+      "generation": 8,
+      "result": "ok",
+      "accepted_count": 3
+    },
+    {
+      "protocol": "qsys.external-queue-diagnostic.v1",
+      "run_id": "52319956b36845cc84f7bf0d824f3eef",
+      "status": "finished",
+      "account_calls": 0,
+      "trading_calls": 0,
+      "authorizes_trading": false,
+      "durable_dedup_verified": false,
+      "reason": "eight_diagnostic_packets",
+      "ticks": 8,
+      "packets": 8,
+      "accepted_count": 3,
+      "cache_entries": 3,
+      "max_callback_ms": 3.511900082230568,
+      "cancel_result": true
+    },
+    {
+      "protocol": "qsys.external-queue-diagnostic.v1",
+      "run_id": "52319956b36845cc84f7bf0d824f3eef",
+      "status": "callback_bound",
+      "account_calls": 0,
+      "trading_calls": 0,
+      "authorizes_trading": false,
+      "durable_dedup_verified": false,
+      "max_callback_ms": 3.511900082230568
+    }
+  ],
+  "external_receipt": {
+    "account_calls": 0,
+    "run_id": "52319956b36845cc84f7bf0d824f3eef",
+    "public_fixture_key": true,
+    "authorizes_trading": false,
+    "production_identity_verified": false,
+    "broker_permission_verified": false,
+    "server_pid": 5740,
+    "duplicate_reply_identical": true,
+    "frames": [
+      {
+        "generation": 1,
+        "response_bytes": 297,
+        "request_bytes": 330,
+        "seq": 1,
+        "response_mac_verified": true,
+        "accepted_count": 1,
+        "response_sha256": "0c1adb9094423f7e43042e92fe28ff9b87a60bc19fd7b25e8792425b2ad97973",
+        "reason": "ok",
+        "request_id": "5991d24209ef4fd8a084b09a4e19e475"
+      },
+      {
+        "generation": 2,
+        "response_bytes": 297,
+        "request_bytes": 330,
+        "seq": 1,
+        "response_mac_verified": true,
+        "accepted_count": 1,
+        "response_sha256": "0c1adb9094423f7e43042e92fe28ff9b87a60bc19fd7b25e8792425b2ad97973",
+        "reason": "ok",
+        "request_id": "5991d24209ef4fd8a084b09a4e19e475"
+      },
+      {
+        "generation": 3,
+        "response_bytes": 313,
+        "request_bytes": 330,
+        "seq": 2,
+        "response_mac_verified": true,
+        "accepted_count": 1,
+        "response_sha256": "e24ee4bfb21ab1a3f0f0b9c403de235217e8a94550b9d894a8e2022a0811e23d",
+        "reason": "authentication",
+        "request_id": "f862bad5cd5c4dffba67441c87001673"
+      },
+      {
+        "generation": 4,
+        "response_bytes": 307,
+        "request_bytes": 330,
+        "seq": 3,
+        "response_mac_verified": true,
+        "accepted_count": 1,
+        "response_sha256": "71949706d8d6eadd9d61d2305fcb019b4d61a2767460e7f46d0f06de59c7b14f",
+        "reason": "sequence",
+        "request_id": "5cd9d7e3faca429d82e3cb0becf929b3"
+      },
+      {
+        "generation": 5,
+        "response_bytes": 306,
+        "request_bytes": 330,
+        "seq": 2,
+        "response_mac_verified": true,
+        "accepted_count": 1,
+        "response_sha256": "42981499d10cd5867df33e5db6bd0368193521d102a937f33a04b89364f242a7",
+        "reason": "expired",
+        "request_id": "f862bad5cd5c4dffba67441c87001673"
+      },
+      {
+        "generation": 6,
+        "response_bytes": 297,
+        "request_bytes": 330,
+        "seq": 2,
+        "response_mac_verified": true,
+        "accepted_count": 2,
+        "response_sha256": "48406b90639efa3de7dffe6db4323519286b42a6d342aab242ff215148b0fb93",
+        "reason": "ok",
+        "request_id": "f862bad5cd5c4dffba67441c87001673"
+      },
+      {
+        "generation": 7,
+        "response_bytes": 315,
+        "request_bytes": 330,
+        "seq": 2,
+        "response_mac_verified": true,
+        "accepted_count": 2,
+        "response_sha256": "869aa44ad26250bd012098a56047e113277ffb0baf589a76db1db8c5133c37ba",
+        "reason": "request_conflict",
+        "request_id": "f862bad5cd5c4dffba67441c87001673"
+      },
+      {
+        "generation": 8,
+        "response_bytes": 297,
+        "request_bytes": 330,
+        "seq": 3,
+        "response_mac_verified": true,
+        "accepted_count": 3,
+        "response_sha256": "af51a46739c5fedf159e48ae825bfc9d777235dac8cb74cea8676353a8f55aba",
+        "reason": "ok",
+        "request_id": "29fa424a4f4f4967be6e8d27dceff3c6"
+      }
+    ],
+    "status": "success",
+    "durable_dedup_verified": false,
+    "at": "2026-11-04T23:20:18.1174095+08:00",
+    "trading_calls": 0,
+    "accepted_unique": 3,
+    "session": 1
+  },
+  "independent_eight_response_sha_verified": true,
+  "acceptance": {
+    "mapping_absent": true,
+    "server_pid_exited": true,
+    "run_id": "52319956b36845cc84f7bf0d824f3eef",
+    "source_verified": {
+      "source_sha256": "a51ebe7ec1f7042115d04b253634af1f2ffaa9a6de6fc2babfc976bbb66814d7",
+      "trading_calls": 0,
+      "run_id": "52319956b36845cc84f7bf0d824f3eef",
+      "editor_source_matches": true,
+      "at": "2026-11-04T23:19:03.8722721+08:00"
+    },
+    "audit_acl": [
+      {
+        "unexpected_file_allow_rules": 0,
+        "files": 6,
+        "tag": "q1",
+        "protected": true
+      },
+      {
+        "unexpected_file_allow_rules": 0,
+        "files": 7,
+        "tag": "q2",
+        "protected": true
+      },
+      {
+        "unexpected_file_allow_rules": 0,
+        "files": 7,
+        "tag": "q3",
+        "protected": true
+      },
+      {
+        "unexpected_file_allow_rules": 0,
+        "files": 7,
+        "tag": "q4",
+        "protected": true
+      },
+      {
+        "unexpected_file_allow_rules": 0,
+        "files": 8,
+        "tag": "q5",
+        "protected": true
+      }
+    ],
+    "business_tasks": [
+      {
+        "xml_preserved": true,
+        "name": "qsys-qmt"
+      },
+      {
+        "xml_preserved": true,
+        "name": "qsys-agent-shadow"
+      },
+      {
+        "xml_preserved": true,
+        "name": "qsys-market-gateway"
+      },
+      {
+        "xml_preserved": true,
+        "name": "qsys-watchdog"
+      }
+    ],
+    "client_start": "2026-11-04T20:54:17.9225309+08:00",
+    "client_responding": true,
+    "client_pid": 5480,
+    "at": "2026-11-04T23:25:12.5866921+08:00",
+    "diagnostics": [
+      {
+        "state": 1,
+        "last_result": 0,
+        "tag": "q1",
+        "enabled": false
+      },
+      {
+        "state": 1,
+        "last_result": 0,
+        "tag": "q2",
+        "enabled": false
+      },
+      {
+        "state": 1,
+        "last_result": 0,
+        "tag": "q3",
+        "enabled": false
+      },
+      {
+        "state": 1,
+        "last_result": 0,
+        "tag": "q4",
+        "enabled": false
+      },
+      {
+        "state": 1,
+        "last_result": 0,
+        "tag": "q5",
+        "enabled": false
+      }
+    ],
+    "original_ui_disabled": true,
+    "session": 1
+  },
+  "limits": {
+    "production_identity_verified": false,
+    "broker_permission_verified": false,
+    "live_runtime_mode_verified": false,
+    "native_cache_durable": false,
+    "offline_sqlite_diagnostic_only": true,
+    "real_trading_authorized": false,
+    "formal_memory_synchronization_verified": false,
+    "long_running_queue_verified": false,
+    "diagnostic_interval_seconds": 1
+  }
+}

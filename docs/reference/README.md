@@ -1,5 +1,27 @@
 # 参考资料
 
+## 外部策略与大QMT薄执行器（#599）
+
+[11-05可行性分析报告](qmt-external-signal-feasibility-report-20261105.md)给出有条件采用建议、
+现场证据、异步执行契约、剩余门禁与推进顺序；不是实盘启用证明。
+
+[可行性与分层证据](qmt-external-signal-feasibility.md)记录Windows回环、独立诊断模型、
+离线协议和异步受理设计。22:24单次共享内存、23:20编辑器内正式调度API的8条消息组合验证通过；
+[持久发送与恢复接线](qmt-external-dispatch-recovery.md)11-05已在Windows私有SQLite与
+编辑器接收器完成两阶段诊断；原型当轮未隔离有效期条件，后续应用ACK恢复补验见下方。
+正式实盘运行模式、生产身份、完整重启恢复与账户许可仍待验，不恢复交易。
+
+[异步发送隔离接线（#601）](qmt-async-dispatch.md)记录默认关闭的应用契约、持久防重、
+Core预留保持和提交后ACK；Windows私有夹具准备/隔离工厂已实测，
+尚无正式QMT交易端口或生产执行身份安装验收。
+
+[11-05实际应用接线](qmt-async-qmt-probe-20261105.json)已在QMT编辑器补验ACK后、
+有效期内跨接收会话恢复：原意图零重发，新对照ping成功；未重启客户端或接交易接口。
+
+[#602完整合成指令协议](qmt-synthetic-intent-protocol.py)与
+[外部校验端口](qmt-synthetic-intent-port.py)是默认关闭的本地诊断候选：只允许固定测试
+OrderCommand，回执明确非执行且不授权交易；尚未取得Windows/QMT现场运行证据。
+
 ## 指标验证与健康证据（#562 / #561）
 
 [catalog隔离与正式验收](../plans/catalog-verify-production-isolation.md)记录字段状态传播修复、

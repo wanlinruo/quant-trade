@@ -1,0 +1,128 @@
+{
+  "issue": 599,
+  "date": "2026-11-04",
+  "runtime_mode": "QMT editor simulation; not live strategy mode",
+  "client_build": "2.1.33.0",
+  "python_version": [
+    3,
+    12,
+    10
+  ],
+  "client_pid": 5480,
+  "client_started_at": "2026-11-04T20:54:17.9225309+08:00",
+  "capability_run_id": "c5e3e71061d24b45a813d28d0e621a46",
+  "capability_bound_source_sha256": "0ff9c769795972781daf91eff614abfa3ada0a9ad3babac6fe0ea695c606a3e1",
+  "modules": [
+    {
+      "protocol": "qsys-qmt-external-capabilities-v1",
+      "run_id": "c5e3e71061d24b45a813d28d0e621a46",
+      "check": "module",
+      "status": "imported",
+      "name": "json",
+      "win32_loader_present": false
+    },
+    {
+      "protocol": "qsys-qmt-external-capabilities-v1",
+      "run_id": "c5e3e71061d24b45a813d28d0e621a46",
+      "check": "module",
+      "status": "imported",
+      "name": "socket",
+      "win32_loader_present": false
+    },
+    {
+      "protocol": "qsys-qmt-external-capabilities-v1",
+      "run_id": "c5e3e71061d24b45a813d28d0e621a46",
+      "check": "module",
+      "status": "imported",
+      "name": "ctypes",
+      "win32_loader_present": true
+    },
+    {
+      "protocol": "qsys-qmt-external-capabilities-v1",
+      "run_id": "c5e3e71061d24b45a813d28d0e621a46",
+      "check": "module",
+      "status": "imported",
+      "name": "mmap",
+      "win32_loader_present": false
+    },
+    {
+      "protocol": "qsys-qmt-external-capabilities-v1",
+      "run_id": "c5e3e71061d24b45a813d28d0e621a46",
+      "check": "module",
+      "status": "unavailable",
+      "name": "win32pipe",
+      "error_type": "ModuleNotFoundError"
+    },
+    {
+      "protocol": "qsys-qmt-external-capabilities-v1",
+      "run_id": "c5e3e71061d24b45a813d28d0e621a46",
+      "check": "module",
+      "status": "unavailable",
+      "name": "win32file",
+      "error_type": "ModuleNotFoundError"
+    }
+  ],
+  "mmap_binding": {
+    "run_id": "b716169a5e8b4ccdb809046b819e2f2a",
+    "request_id": "39e08161d8a5426c974870ff356baf9e",
+    "source_sha256": "af333d47858c49ba5710ae19b9236f089d0a2c674b9aa75d96078b876a6b268e"
+  },
+  "editor_source_comparison": "normalize CRLF and trim trailing newlines; compare exact text",
+  "qmt_receipt": {
+    "protocol": "qsys.external-mmap-diagnostic.v1",
+    "run_id": "b716169a5e8b4ccdb809046b819e2f2a",
+    "status": "echo_written",
+    "authorizes_trading": false,
+    "trading_calls": 0,
+    "account_calls": 0,
+    "native_dll_calls": 0,
+    "stage": "complete",
+    "request_bytes": 248,
+    "response_bytes": 216,
+    "request_id": "39e08161d8a5426c974870ff356baf9e"
+  },
+  "external_receipt": {
+    "elapsed_ms": 18363,
+    "application_auth_verified": false,
+    "account_calls": 0,
+    "payload_exact": true,
+    "response_sha256": "983dff4c97142055857d36a00eb3ee13c6dd91e7f2b68dd02cf10203dd6d6b7d",
+    "broker_permission_verified": false,
+    "protocol": "qsys.external-mmap-diagnostic.v1",
+    "at": "2026-11-04T22:24:01.2393726+08:00",
+    "run_id": "b716169a5e8b4ccdb809046b819e2f2a",
+    "trading_calls": 0,
+    "runtime_peer_identity_verified": false,
+    "request_id": "39e08161d8a5426c974870ff356baf9e",
+    "request_bytes": 248,
+    "response_bytes": 216,
+    "status": "success",
+    "server_pid": 2792,
+    "authorizes_trading": false,
+    "session": 1
+  },
+  "independent_response_sha_verified": true,
+  "acceptance": {
+    "at": "2026-11-04T22:26:44.7007854+08:00",
+    "mapping_absent_in_session_1": true,
+    "server_pid_exited": true,
+    "business_task_xml_preserved": true,
+    "diagnostic_tasks_disabled": true,
+    "client_identity_preserved": true,
+    "client_responding": true
+  },
+  "limits": {
+    "samples": 1,
+    "native_runtime_peer_identity_verified": false,
+    "application_auth_verified": false,
+    "broker_permission_verified": false,
+    "live_runtime_callbacks_verified": false,
+    "restart_dedup_verified": false,
+    "live_trading_authorized": false
+  },
+  "preserved_failures": [
+    "m1: nonexistent .NET access rule type; failed before mapping creation",
+    "a21: external-ready guard rejected; run button not sent",
+    "prior a10: exact failure stage unknown; not replayed; distinct new capability batch used"
+  ]
+}

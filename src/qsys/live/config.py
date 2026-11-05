@@ -46,6 +46,7 @@ class StreamConfig:
     market_schedule: str = "state:market_schedule"
     # 盘前发布的当日 stk_limit，键后缀 YYYYMMDD（data.pipeline.premarket）
     price_limits: str = "state:price_limits"
+    dispatch_status: str = "evt:dispatch_status"
 
 
 @dataclass(frozen=True, slots=True)

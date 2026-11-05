@@ -1,0 +1,77 @@
+{
+  "issue": 601,
+  "protocol": "qsys.async-ntfs-validation.v1",
+  "observed_at": "2026-11-05T10:17:45.0040556+08:00",
+  "scope": "private isolated Windows fixture; no QMT/broker/account calls",
+  "candidate_zip_sha256": "5f4ecb36c714f9ba599a4ffeece4591f4966fcd029bc47c74955b171c1b57ae7",
+  "probe_sha256": "258579096853de97c6325cf37149a51c616f5898ad4ebca16075488c81f408af",
+  "source_sha256": {
+    "src/qsys/agent/windows_validation.py": "d5766217b7c28a08f44e3489b1589700980388490b4eda4dc0dc8166d6b6db1c",
+    "src/qsys/agent/async_dispatch.py": "826d3363bac1d9ee962fe2ef2be919c7ac725f22600e4c27de000af1a5a7b1fa"
+  },
+  "acceptance": {
+    "account_binding": false,
+    "actual_broker_calls": 0,
+    "hardlink_rejected": true,
+    "negative_fixture_acl_restored": true,
+    "original_attempt_preserved": true,
+    "python": "3.11.9",
+    "qmt_interfaces_called": 0,
+    "recovered": "unknown",
+    "session_scope": "external Windows fixture only",
+    "status": "success",
+    "synthetic_send_calls": 1,
+    "users_read_rejected": true
+  },
+  "exit_code": 0,
+  "qmt_identity_preserved": true,
+  "business_tasks": [
+    {
+      "name": "qsys-qmt",
+      "preserved": true
+    },
+    {
+      "name": "qsys-agent-shadow",
+      "preserved": true
+    },
+    {
+      "name": "qsys-market-gateway",
+      "preserved": true
+    },
+    {
+      "name": "qsys-watchdog",
+      "preserved": true
+    }
+  ],
+  "private_roots": [
+    {
+      "fixture": "qsys-async-validation-positive",
+      "unexpected_trustees": 0,
+      "protected": true
+    },
+    {
+      "fixture": "qsys-async-validation-users",
+      "unexpected_trustees": 0,
+      "protected": true
+    },
+    {
+      "fixture": "qsys-async-validation-hardlink",
+      "unexpected_trustees": 0,
+      "protected": true
+    }
+  ],
+  "r1": {
+    "started_marker_absent": true,
+    "process_exited": true,
+    "stdout_bytes": 0,
+    "stderr_bytes": 0,
+    "cause": "not captured",
+    "disposition": "preserved; new r2 synchronous run, no replay"
+  },
+  "limitations": [
+    "external Python3.11.9 maintenance identity only",
+    "not QMT Python3.12 application or desktop-session integration",
+    "not production execution identity/installer/unattended activation",
+    "no native order or broker reconciliation implementation"
+  ]
+}
