@@ -1,5 +1,187 @@
 # 项目交接入口
 
+## 11-05 13:17：测试部署发现N-1私有配置兼容缺陷并前进修复（#603）
+
+- #602集成SHA`025f5e9`的CI 41972799066全绿；测试部署41972979833以可信main控制器运行，
+  目标SHA核对正确，但节点N-1 `deploy.local.toml`缺少新`dispatch_status`字段，加载后的生产
+  默认`evt:dispatch_status`触发测试前缀门禁。run-id`github-41972979833-1`已rolled_back，
+  GitHub Deployment标失败；未重跑或修改节点私有配置，原失败记录保留。
+- #603修复只把未显式出现的默认关闭`dispatch_status`排除出配置契约；显式配置后仍完整
+  检查测试前缀、唯一性和跨环境碰撞，其他既有流不放宽。新增N-1正例及未加前缀/碰撞负例。
+- 全量4621通过、7项Linux凭据条件跳过、3项既有弃用警告；secret scan、策略和diff检查通过。
+  集成SHA`8e2754a`的CI 41973969725全绿；测试部署41974151636使用新run-id
+  `github-41974151636-1`成功，节点record绑定source tree`bc962a4c`且实际`validate_record()`通过；
+  GitHub Deployment 7566032206为success，三方一致。#603已关闭。
+- 原失败workflow/Deployment/run-id及rolled_back记录保持；本项不启用异步通道，不接账户/
+  委托，不改变Live/Shadow、KILL或生产配置。此测试部署不等于QMT现场或生产组件激活。
+
+## 11-05 13:12：GitHub test对齐恢复，#598完成
+
+- 写操作前重新核验远端`main=b82bd88`、`test=a2ffd4a`且tree同为`50ad9c4`，PR#597直接记录
+  `merged=true/merge_commit_sha=b82bd88`，原push/PR CI与测试部署成功；随后只对test执行一次
+  exact `--force-with-lease`，expected a2ffd4a、target b82bd88，main未写入或force-push。
+- 后验main/test均为b82bd88；新test push CI 41972310297绑定该SHA，policy、secret scan、
+  package与full suite全部成功。`commits/b82bd88/pulls`仍空，未补生成历史Align/Direct push
+  audit；以PR直接绑定、exact lease收据、双ref一致和新SHA CI作为明确人工对账，不冒称自动事件。
+- #598已按completed关闭；当前功能分支已从同树旧基线重放到最新test，尚未集成或取得候选CI。
+  此恢复不授权生产部署、交易激活、真实账户/委托、清KILL或Live/Shadow启动。
+
+## 11-05：完整合成指令校验与非执行回执本地候选（#602）
+
+- 新增独立固定协议与共享内存端口，只接受`synthetic-session/diagnostic-only`、固定测试证券/
+  方向/数量/价格和`synthetic-qsys-*`身份；逐项绑定规范意图、SHA、attempt、nonce、run、
+  sequence与双层有效期。错签、乱序、过期、字段/类型变化、真实身份形状及北交所样本均拒绝。
+- QMT侧标准库Receiver没有账户、Broker、交易函数或可注入codec/authenticator；回执固定
+  `executed=false`、`authorizes_trading=false`，外部端口同时核对回执签名及原尝试绑定。
+  回执只表示固定合成内容通过校验，不是券商受理、成交或交易授权。
+- 实际`AsyncOrderDispatcher`账本专项确认：诊断ACK保存后冷启动转unknown，保留原收据且
+  不再次发送；现有pending/预留和真实回报边界不变。相关专项86项通过；全量4618通过、
+  7项Linux凭据条件跳过、3项既有弃用警告；secret scan、提交策略和diff检查通过。
+- 当前仅为本地候选，尚未取得Windows/QMT现场源码回读、编译、正式schedule_run与响应收据，
+  也没有客户端重启、正式身份/模式、券商许可或原生回报证据。未接真实意图/账户/委托，
+  未清KILL或恢复Live/Shadow；#598已完成，但本候选尚无CI、测试部署或发布证据。
+
+## 11-05 11:00：实际应用账本接通QMT诊断端口，补齐有效期内ACK恢复（#601 / #599）
+
+- 新诊断端口仅允许固定合成意图，向QMT只发固定ping文本与关联ID，不发证券/价格/数量/
+  账户或意图JSON。ping ACK不代表收到交易信号；无生产CLI或正式交易接口，公开HMAC
+  fixture不作生产身份。实际运行是Windows工厂直调，Core/Agent消费集成仍是本地测试证据。
+- QMT编辑器模拟环境两段源码回读/SHA一致并编译成功：A接收1条后提交ACK；B新wire
+  会话及新Receiver空缓存，10:58:24恢复旧意图（11:04:07才到期）转unknown且帧头零发布，
+  原attempt/nonce/ACK保持。另起独立账本的新对照ping成功，B仅收到该对照1条。
+- 两段正式schedule_run组均主动cancel=true，最终callback_bound最大约5.7446/1.0682ms，
+  不是性能承诺；两组响应SHA/HMAC独立重建一致。11:00在session1查两映射已释放，
+  两账本锁可独占打开；所有新辅助任务disabled/idle，四业务任务XML/客户端身份保持。
+- 辅助失败保留：r4/r7界面守卫拒绝；r9长命令未送达（目录/任务/源码收据均无），新r10
+  改文件载入；首次协调器ACL构造失败且驱动未启动，新first-r2使用既有AccessRuleFactory；
+  r12在业务成功后截图辅助变量冲突失败，独立收据/日志复核且未重跑业务。无清失败历史。
+- 新增15项端口测试，全量4580通过、7项Linux凭据条件跳过、3项既有弃用警告。
+  [接线说明](docs/reference/qmt-async-dispatch.md)与
+  [机器摘要](docs/reference/qmt-async-qmt-probe-20261105.json)记录源码绑定和实际验收层级。
+- 本轮仅补齐ACK后的有效期内跨会话组合，未重启QMT/Windows、未接真实意图/账户/委托、
+  未清KILL或恢复Live/Shadow。正式执行身份、运行模式/券商许可、客户端重启、原生交易
+  回报及unknown对账仍待验；#598关联API仍空，整体Issue不关闭，不将本地/诊断通过冒称CI/发布完成。
+
+## 11-05 10:18：Windows NTFS私有根与异步隔离工厂实测通过（#601）
+
+- 新增`windows_validation.py`：默认关闭，只在已私有父目录新建夹具；不覆盖已有根或改父ACL。
+  核验当前SID/root owner、受保护DACL及SID/SYSTEM精确权限、本地固定NTFS、祖先reparse、
+  状态文件硬链接和文件白名单。Windows工厂改为检查真实NTFS后允许隔离使用，仍无生产CLI。
+- 使用现有外部Python3.11.9和绑定SHA的候选ZIP，在新私有目录运行实际异步工厂。
+  合成意图仅发送一次，重开SQLite后unknown保持原attempt/nonce/收据；没有调用QMT接口。
+  Users可读负例在状态/端口初始化前被拒、空库SHA保持；硬链接拒绝。负例临时Users权限
+  已恢复，独立复核三根均protected且无额外受托人，四业务任务XML/本轮QMT进程身份保持。
+- r1后台启动返回PID后未产出启动标记、状态目录或输出，进程已退出，具体原因未捕获；
+  保留该记录。确认现场后，r2使用新根同步执行，真实exit0和验收收据齐全，不重放r1。
+  维护SID/外部会话夹具通过不证明正式执行身份、QMT桌面会话或无人值守启动通过。
+- 本地专项初轮51项通过；补充既有目录/不可信父目录零变更测试后，全量4565通过、
+  7项Linux凭据条件跳过、3项既有弃用警告。secret scan、提交规范与可信main/候选路径分类通过。
+  [设计与实测范围](docs/reference/qmt-async-dispatch.md)及
+  [机器摘要](docs/reference/qmt-async-ntfs-probe-20261105.json)已落盘。
+- 仍未接真实意图/账户、下单/撤单、清KILL或启动Live/Shadow；#598关联API仍空，远端
+  main=b82bd88/test=a2ffd4a保持，本地候选不冒称CI/测试部署/生产发布。下一步为无账户
+  QMT诊断端口接线、有效期内跨会话与客户端重启，正式回报/unknown对账和执行身份另验。
+
+## 11-05：外部决策路线首阶段异步应用接线（#601）
+
+- 按维护者“按照这个方向继续进行改造与推进”的新指示，实现默认关闭的隔离候选，
+  [设计与边界](docs/reference/qmt-async-dispatch.md)。ExecutionAgent增加异步发送端口，
+  首次发送前持久领取；真实传输ACK独立于券商受理，无券商单号时不伪造OrderStatusEvent。
+- SQLite独立账本保存原意图/attempt/nonce/收据；重投先查历史，超时及恢复unknown不重发，
+  不因后来过期/急停改判拒单；发送前拒绝也持久化防重。unknown阻止本作用域新开仓。
+  Core同事务保存发送事实后才ACK，提交/ACK失败保留证据；unknown和撤单请求不释放预留，
+  冷启动保留pending。保留北交所禁止新开仓，数据源和冻结阈值不变。
+- 工厂仅接受ValidationTransport、显式validation作用域及专属私有状态根，先锁后初始化。
+  没有生产CLI开关或正式QMT下单实现；Windows应用工厂仍拒绝激活，待真实NTFS安装契约。
+  Windows仅完成精确临时锁专项：同进程/子进程抢锁均拒绝，释放后可重获，锁文件1字节。
+  r1辅助探针引号失败保留，确认零执行/无锁后，r2独立文件探针通过；未调用业务Runtime。
+- 全量4546通过、7项Linux凭据条件跳过；随后补充两项真实子进程退出测试，最终专项36项通过。
+  实际在发送标记提交后/ACK提交后退出，重开均保留原尝试并转unknown且零重发。首次全量仅
+  旧测试配置缺新流前缀失败，已同时补齐模板、夹具和演练流，保持配置隔离校验。
+  未接真实意图/账户、下单/撤单、清KILL或启动Live/Shadow。
+- 可信main和候选manifest均覆盖新增路径，无unknown路径；#598的main提交关联API仍为空，
+  本地候选尚未完成CI、测试部署或生产发布，不绕过该前置，不关闭#599/#533等接入任务。
+  下一阶段：Windows身份/ACL安装、无账户端口接入QMT诊断、有效期内跨会话与完整重启，
+  再补正式回报关联和unknown对账；当前代码没有解除unknown的生产入口。
+
+## 11-05：外部决策与大QMT薄执行器可行性报告已完成（#599）
+
+- 维护者授权继续完成分析并要求报告，已形成[完整报告](docs/reference/qmt-external-signal-feasibility-report-20261105.md)：
+  建议有条件采用外部决策+薄执行器作为下一阶段主线，暂缓扩大完整原生移植；不代表实盘可恢复。
+- 新审查明确两个接入缺口：passorder不返回券商单号，不能直接接同步BrokerAdapter；
+  尚无单号的发送unknown不能伪造OrderStatusEvent.broker_order_id，也不能变成会释放pending的拒单。
+  建议增加异步发送状态事件，保留unknown的资金/数量预留，依真实回报对账。
+- 报告区分session1/Local对象、前台诊断控制面与无人值守运行，给出Issue范围调整建议及
+  正式模式/账户许可、生产身份、完整重启/回报和正常发布的剩余门禁。未联系券商或替用户确认权限。
+  #599报告里程碑完成，整体接入尚未验收；其他Issue不据此关闭，真实账户/委托/交易姿态保持。
+
+## 11-05：Windows持久账本与QMT接收器两阶段恢复接线（#599）
+
+- 使用已有Python3.12.10/SQLite3.49.1，Windows私有NTFS夹具持久库与编辑器诊断接收器
+  已接通。真实fixture独占锁被第二次打开拒绝（错误32），结束后释放；不是生产全局锁验收。
+- 第一阶段：A正常诊断完成；B发布后子进程退出、C提交传输ACK后退出、E在接收器结束后
+  未获回报，冷打开均保留unknown。三次有效期内重领被阻止；ACK不当柜台受理。
+- 第二阶段重建独立接收模型/新wire会话，内存缓存为空，原账本A/B/C/E逐行保持且未重发，
+  只处理新D；最终A/D诊断完成、B/C/E unknown。旧消息第二阶段已过期，不单独证明
+  有效期内跨接收会话防重；这一组合仍待补验。未重启QMT/Windows或生产故障注入。
+- Qt两段处理3/1条，主动取消均true，最终回调最大约1.2955/2.5620ms；独立重建4组
+  响应HMAC/SHA一致。签名仅公开fixture key，生产身份及正式实盘模式/券商许可仍待验。
+- 01:20两映射不存在、锁释放、驱动exit0、q0~q10全exit0/disabled/idle；q11审计随后同样
+  禁用。四业务任务XML、QMT5480同启动身份/Responding=true保持。103新文件权限符合私有
+  DACL；冷库quick_check=ok/delete模式、5行与收据一致，核验前后SHA保持。#600旧权限仍开放。
+- [恢复接线](docs/reference/qmt-external-dispatch-recovery.md)与[机器证据](docs/reference/qmt-external-recovery-probe-20261105.json)
+  已更新，专项65项通过。首次建库辅助汇总失败保留，独立冷读核对且未重跑；两阶段新记录成功。
+  未接真实意图、绑定账户、下单/撤单、清KILL或启动Live/Shadow；#533/#541/#542未关闭。
+  候选仍本地，#598关联/对齐前置未恢复，不能宣称CI/测试部署或生产发布完成。
+
+## 11-04 23:20：有界回调、多消息守卫与离线恢复原型（#599）
+
+- 新独立QUEUE模型在编辑器模拟环境调用正式schedule_run：实际8次回调处理8条固定
+  合成消息，3条不同有效消息被接受；重复返回原字节，错签/乱序/过期/ID冲突拒绝。
+  主动取消本组成功，最大回调约3.5119ms；只是一轮样本，不是实盘运行或性能承诺。
+- 外部5740/session1核验8组响应签名，维护端独立重建HMAC/SHA一致。测试key公开固定，
+  不代表生产身份认证。原生内存去重非持久；无账户/交易/市场数据输入，Live未恢复。
+  [机器证据](docs/reference/qmt-external-queue-probe-20261104.json)。
+- [发送状态原型](docs/reference/qmt-external-dispatch-recovery.md)以私有临时SQLite验证
+  原子单次领取、两处提交后进程退出→unknown、保留尝试/ACK且禁止重领；尚未接QMT
+  或生产网关，transport ACK不当券商受理。三项新增准备件无生产入口。专项共62项通过。
+- 23:25映射释放/外部退出，q1~q5全exit0/disabled/idle，审计q6随后同样正常禁用；
+  四业务任务XML、QMT5480同启动身份/Responding=true保持。新目录35文件仅当前SID/
+  SYSTEM允许访问，旧审计继承Users读取的问题新开#600，未递归改旧权限或删历史。
+- 下一步仍是隔离双端恢复接线、实际身份/租约与正式运行模式/券商许可。#533/#541/#542
+  不关闭，未接真实意图流、绑定账户、下单/撤单或清KILL。候选仍本地，#598前置未解除。
+
+## 11-04 22:24：QMT内标准共享内存双向诊断通过（#599）
+
+- 实际2.1.33.0编辑器模拟运行Python3.12.10；json/socket/ctypes/mmap导入成功，
+  WinDLL属性存在，win32pipe/win32file未安装。未调用DLL、文件或网络。旧批次编译
+  日志已确认成功；旧运行辅助失败保留，新批次独立采证，不重放送达未知操作。
+- 外部session1进程2792与QMT独立模型QSYS599_MMAP_20261104_A，经标准mmap命名
+  共享内存完成固定合成文本ping/echo：QMT读取248字节、写回216字节；双方编号、
+  字段及独立重建响应SHA一致。[分层机器证据](docs/reference/qmt-external-signal-probe-20261104.json)。
+- 可继续推进外部策略+大QMT薄执行器原型；这不是正式运行回调、账户许可、应用认证
+  或持久去重/重连验收。未传市场数据/订单/账户，未启动Live/Shadow、清KILL或真实交易。
+- 22:26同session1只读确认映射释放、2792退出、14辅助任务disabled/idle、四业务任务
+  XML保持、QMT5480同启动身份/Responding=true；审计a24随后也正常禁用。m1的.NET
+  规则类错误及a21就绪拒绝保留，修正AccessRuleFactory后用m2成功，未降低DACL要求。
+- 两组专项共41项通过。下一步是无交易正式回调/有界队列与恢复协议原型，再独立确认
+  券商许可和真实受理回报；#533/#541/#542仍开放，候选本地准备不等于已发布。
+
+## 11-04晚间：外部决策与大QMT执行可行性（#599）
+
+- 维护者授权继续评估新路线；AGENTS§3.3.1精确记录诊断范围，原内置策略规则保留。
+  [分层证据与下一步](docs/reference/qmt-external-signal-feasibility.md)区分OS、QMT与账户许可。
+- Windows两独立外部进程命名管道5帧/5181字节逐字节双向通过、对端PID互证；
+  外层汇总失败保留，另取独立收据对账成功，原因未证实，不重发已完成消息。
+  这不是QMT内通道验证。离线诊断协议28项专项通过，无交易/账户调用。
+- QMT20:54自然换新PID5480，按新身份重验桌面，正常关闭公告并新建独立模型
+  QSYS599_CAP_20261104_A，源码回读一致且已保存。未取得编译/运行输出；运行辅助任务
+  failed且精确步骤不明，送达未知先查本批次输出，不盲目再次点击运行。最新前台句柄0，
+  已请维护者保持活跃RDP后继续采证；模型不含任何账户/交易/I/O调用。
+- 尚未证明模块能力、QMT内IPC、当前账户许可或异步回报闭环；#533/#541/#542不关闭，
+  Live/Shadow、KILL、真实委托流及账户保持。#598的GitHub合并关联/写入故障独立保留，
+  本地候选不能宣称CI/测试部署/生产发布成功。
+
 ## 11-04傍晚：Issue收口与实盘恢复评估
 
 - 全量37项逐一复核后，按实际已完成范围关闭#550（正式本地分钟读取）和#478（显式参数

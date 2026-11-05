@@ -648,6 +648,10 @@ class LiveRuntime:
         return len(orders)
 
     def _record_results(self) -> int:
+        dispatches = (
+            self.broker.poll_dispatch_statuses()
+            if isinstance(self.broker, LiveBroker) else ()
+        )
         statuses = self.broker.poll_statuses()
         received_fills = self.broker.poll_fills()
         fills = tuple(fill for fill in received_fills if not self.store.fill_recorded(fill))
@@ -671,6 +675,7 @@ class LiveRuntime:
         self.store.commit_reports(
             self.portfolio, self.state, self.last_prices, fills, rejects, statuses,
             remaining, at=datetime.now(),
+            **({'dispatches': dispatches} if dispatches else {}),
         )
         self.broker.commit_reports()
         self.journal.record_fills(datetime.now().date(), fills)

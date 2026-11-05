@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Literal, Self
 
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class Message(BaseModel):
@@ -89,6 +89,23 @@ class OrderStatusEvent(Message):
         if self.remaining_qty != self.ordered_qty - self.filled_qty:
             raise ValueError("remaining_qty must equal ordered_qty - filled_qty")
         return self
+
+
+class DispatchStatusEvent(Message):
+    """发送尝试的事实；不包含券商单号，不推进成交或释放预留。"""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    client_order_id: str = Field(min_length=1)
+    strategy_id: str = Field(min_length=1)
+    session_id: str = Field(min_length=1)
+    attempt_id: str = Field(pattern=r"^[0-9a-f]{32}$")
+    session_nonce: str = Field(pattern=r"^[0-9a-f]{32}$")
+    command_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    state: Literal["dispatching", "transport_received", "unknown"]
+    at: datetime
+    reason: str = ""
+    transport_ack_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
 
 class RejectEvent(Message):

@@ -81,6 +81,7 @@ class Drills:
             fills=f"{self.streams.fills}:{name}",
             rejects=f"{self.streams.rejects}:{name}",
             order_status=f"{self.streams.order_status}:{name}",
+            dispatch_status=f"{self.streams.dispatch_status}:{name}",
             control=f"{self.streams.control}:{name}",
         )
 

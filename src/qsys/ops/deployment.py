@@ -243,7 +243,18 @@ def config_fingerprints(
     return out
 
 
-def _validate_common(config: DeployConfig) -> list[str]:
+def _configured_stream_values(raw: dict[str, Any], config: DeployConfig) -> dict[str, Any]:
+    values = _field_values(config.streams)
+    # dispatch_status was added by #601 as a default-disabled validation-only
+    # channel. Existing private configs do not name it, so its production
+    # dataclass default is not part of their deployment contract. Once a
+    # config opts in explicitly, all normal isolation checks apply.
+    if "dispatch_status" not in raw.get("streams", {}):
+        values.pop("dispatch_status")
+    return values
+
+
+def _validate_common(config: DeployConfig, stream_values: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     redis = config.redis
     if not redis.host:
@@ -256,7 +267,6 @@ def _validate_common(config: DeployConfig) -> list[str]:
     ):
         if not math.isfinite(value) or value <= 0:
             errors.append(f"redis.{name} must be a finite positive number")
-    stream_values = _field_values(config.streams)
     if len(stream_values.values()) != len(set(stream_values.values())):
         errors.append("stream names must be unique")
     return errors
@@ -271,7 +281,8 @@ def validate_config(
         raise ContractError("environment must be production or test")
     target = Path(path)
     raw, config = _load_contract_config(target)
-    errors = _validate_common(config)
+    stream_values = _configured_stream_values(raw, config)
+    errors = _validate_common(config, stream_values)
     if environment == "test":
         if config.safety.mode != "disabled" or config.safety.orders_enabled:
             errors.append("test safety must be disabled with orders_enabled=false")
@@ -280,7 +291,7 @@ def validate_config(
         if config.redis.db == 0:
             errors.append("test Redis db must not use production default db 0")
         unprefixed = [
-            name for name, value in _field_values(config.streams).items()
+            name for name, value in stream_values.items()
             if not value.startswith("test:")
         ]
         if unprefixed:
@@ -288,14 +299,14 @@ def validate_config(
         if "test" not in config.strategy.workbench.lower():
             errors.append("test strategy workbench path must be test-specific")
     if against is not None:
-        _, other = _load_contract_config(Path(against))
+        other_raw, other = _load_contract_config(Path(against))
         if (config.redis.host, config.redis.port, config.redis.db) == (
             other.redis.host, other.redis.port, other.redis.db,
         ):
             errors.append("environments must not share the same Redis endpoint and db")
         collisions = (
-            set(_field_values(config.streams).values())
-            & set(_field_values(other.streams).values())
+            set(stream_values.values())
+            & set(_configured_stream_values(other_raw, other).values())
         )
         if collisions:
             errors.append("environments must not share stream names")

@@ -24,6 +24,7 @@ from qsys.live.config import StreamConfig
 from qsys.live.messages import (
     AccountSnapshot,
     ControlCommand,
+    DispatchStatusEvent,
     FillEvent,
     OrderStatusEvent,
     OrderCommand,
@@ -32,6 +33,7 @@ from qsys.live.messages import (
 from qsys.live.risk import RiskContext, RiskGate
 from qsys.live.transport import Transport
 from qsys.live.safety import check_order_market
+from qsys.live.validation_transport import ValidationTransport
 
 log = structlog.get_logger(__name__)
 
@@ -59,7 +61,10 @@ class LiveBroker(Broker):
         constraint_context_factory: Callable[[], ConstraintContext] | None = None,
         strategy_id: str = "",
         command_ttl_seconds: float | None = None,
+        receive_dispatch_status: bool = False,
     ) -> None:
+        if receive_dispatch_status and (not isinstance(transport, ValidationTransport) or not strategy_id):
+            raise ValueError("dispatch tracking requires isolated transport and explicit strategy")
         self._t = transport
         self._s = streams
         self._gate = risk_gate
@@ -70,6 +75,7 @@ class LiveBroker(Broker):
         self._constraints = constraints
         self._strategy_id = strategy_id
         self._command_ttl_seconds = command_ttl_seconds
+        self._receive_dispatch_status = receive_dispatch_status
         self._constraint_ctx = constraint_context_factory
         self._constraint_ctx_accepts_intent = (
             constraint_context_factory is not None
@@ -84,7 +90,13 @@ class LiveBroker(Broker):
             streams.fills: set(), streams.rejects: set(), streams.order_status: set(),
         }
         self._rejects: list[Reject] = []
-        for stream in (streams.fills, streams.rejects, streams.order_status):
+        self._dispatch_uncommitted: dict[str, DispatchStatusEvent] = {}
+        report_streams = [streams.fills, streams.rejects, streams.order_status]
+        if receive_dispatch_status:
+            report_streams.append(streams.dispatch_status)
+            self._delivered[streams.dispatch_status] = set()
+            self._uncommitted[streams.dispatch_status] = set()
+        for stream in report_streams:
             self._t.ensure_group(stream, group, start_id="0-0")
 
     def submit(self, order: Order) -> None:
@@ -287,6 +299,23 @@ class LiveBroker(Broker):
             out.append(event)
         return tuple(out)
 
+    def poll_dispatch_statuses(self) -> tuple[DispatchStatusEvent, ...]:
+        if not self._receive_dispatch_status:
+            return ()
+        for msg in self._reports(self._s.dispatch_status):
+            try:
+                event = DispatchStatusEvent.from_payload(msg.payload)
+                if event.strategy_id != self._strategy_id:
+                    raise ValueError("dispatch event strategy mismatch")
+            except Exception:
+                # 未成功解析的消息不能被下一轮commit顺手ACK掉。
+                self._delivered[self._s.dispatch_status].discard(msg.id)
+                self._uncommitted[self._s.dispatch_status].discard(msg.id)
+                raise
+            # 不改pending、reserved_cash、remaining_qty或券商单号。
+            self._dispatch_uncommitted[msg.id] = event
+        return tuple(self._dispatch_uncommitted.values())
+
     def _reports(self, stream: str):
         """先恢复 PEL，再读新消息；同一进程内未提交的消息不重复交付。"""
         messages = self._t.pending(stream, self._group)
@@ -307,13 +336,16 @@ class LiveBroker(Broker):
                 self._t.ack(stream, self._group, message_id)
                 ids.remove(message_id)
                 self._delivered[stream].discard(message_id)
+                if stream == self._s.dispatch_status:
+                    self._dispatch_uncommitted.pop(message_id, None)
 
     def cancel_all(self) -> None:
         self._t.append(
             self._s.control,
             ControlCommand(action="cancel_all", at=datetime.now()).to_payload(),
         )
-        self._pending.clear()
+        if not self._receive_dispatch_status:
+            self._pending.clear()
         log.warning("live_broker.cancel_all")
 
     def account_snapshot(self) -> AccountSnapshot | None:

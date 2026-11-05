@@ -12,7 +12,7 @@ from qsys.core.events import Reject
 from qsys.core.portfolio import Portfolio, Position
 from qsys.core.trading import Fill, Order
 from qsys.core.types import Symbol
-from qsys.live.messages import AccountSnapshot, OrderStatusEvent
+from qsys.live.messages import AccountSnapshot, DispatchStatusEvent, OrderStatusEvent
 from qsys.live.reconcile import is_cash_equivalent, unusable_market_values
 from qsys.ops.strategy_log import RUN_COLUMNS, RunRecord, decode_run, run_values
 from qsys.paper.store import _decode, _encode
@@ -394,6 +394,7 @@ class LiveStore:
         prices: Mapping[Symbol, float], fills: Sequence[Fill],
         rejects: Sequence[Reject], statuses: Sequence[OrderStatusEvent],
         remaining: Mapping[str, int], *, at: datetime,
+        dispatches: Sequence[DispatchStatusEvent] = (),
     ) -> None:
         """将成交去重记录与其导致的组合状态放在同一 SQLite 事务。"""
         encoded = json.dumps(_encode(dict(state)), ensure_ascii=False)
@@ -463,6 +464,16 @@ class LiveStore:
                     "INSERT OR IGNORE INTO live_order_transitions"
                     "(order_id,state,detail,at) VALUES (?,?,?,?)",
                     (reject.order_id, "rejected", reject.reason, reject.at.isoformat()),
+                )
+            for dispatch in dispatches:
+                if con.execute("SELECT 1 FROM live_orders WHERE order_id=?",
+                               (dispatch.client_order_id,)).fetchone() is None:
+                    raise ValueError("dispatch status has no persisted order")
+                con.execute(
+                    "INSERT OR IGNORE INTO live_order_transitions"
+                    "(order_id,state,detail,at) VALUES (?,?,?,?)",
+                    (dispatch.client_order_id, "dispatch:" + dispatch.state,
+                     dispatch.model_dump_json(), dispatch.at.isoformat()),
                 )
 
     def order_transitions(self, order_id: str) -> tuple[str, ...]:
