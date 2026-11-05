@@ -83,6 +83,14 @@ unknown/未完成dispatching阻止本作用域新开仓；本阶段尚无券商�
   且零重发。此结果没有Windows/QMT源码回读、编译、schedule_run或响应收据，不能替代
   #601既有ping现场证据，更不能视为完整意图现场送达或交易能力。
 
+- #602后续为同一标准库接收器补齐QMT模型调度入口：必须先存在协调器marker，绑定当日、
+  2.1.33.0客户端和新run-id，最多24次正式`schedule_run`回调且只处理1包，结束后主动cancel。
+  内存双端回归使用实际`SyntheticIntentPort`发送完整规范OrderCommand并取得绑定原尝试的
+  非执行ACK；marker缺失在调度前拒绝。全量4624项通过、7项条件跳过、3项既有警告。
+  11-05 14:18现场只读预检确认QMT仍Responding，但其session1为Disconnected、console在
+  session3，不满足既有前台UI守卫，因此本轮没有安装、编译或运行现场模型。待session1恢复
+  可交互后另取源码回读、编译、正式调度和响应收据；本地包装器通过不替代这些证据。
+
 - 11-05 11:00：实际异步工厂、NTFS账本与QMT编辑器模拟环境完成两段接线。
   A收到固定ping，提交ACK；B使用新wire会话和新Receiver空缓存，10:58:24重投旧意图，
   当时其11:04:07有效期尚未结束，保留原attempt/nonce/ACK并转unknown，发送帧头仍为零。

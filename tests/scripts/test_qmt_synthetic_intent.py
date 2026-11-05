@@ -5,7 +5,9 @@ import importlib.util
 import io
 import json
 from pathlib import Path
+import sys
 import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -131,9 +133,102 @@ class Memory(io.BytesIO):
         return result
 
 
+class QmtMemory(io.BytesIO):
+    def __init__(self):
+        super().__init__(bytes(8192))
+        self.callback = None
+        self.close_calls = 0
+        self.seek(6144)
+        super().write(b'QSYS_SYNTHETIC_INTENT_ONLY:'+RUN.encode())
+
+    def write(self, raw):
+        pos = self.tell()
+        result = super().write(raw)
+        if pos == 0 and raw != bytes(4) and self.callback is not None:
+            self.callback()
+        return result
+
+    def close(self):
+        # QMT and the external port have separate handles to the same named
+        # mapping. Closing either handle must not invalidate the other view.
+        self.close_calls += 1
+
+
+class Context:
+    def __init__(self):
+        self.scheduled = []
+        self.cancelled = []
+
+    def schedule_run(self, *args):
+        self.scheduled.append(args)
+        return 'synthetic-task'
+
+    def cancel_schedule_run(self, group):
+        self.cancelled.append(group)
+        return True
+
+
 def fresh():
     now=datetime.now(timezone.utc)
     return env(command(created_at=now,expires_at=now+timedelta(minutes=5)))
+
+
+def test_qmt_schedule_receiver_validates_full_intent_without_trading(monkeypatch, capsys):
+    memory = QmtMemory()
+    context = Context()
+    fake_mmap = SimpleNamespace(ACCESS_WRITE=1, mmap=lambda *args, **kwargs: memory)
+    monkeypatch.setitem(sys.modules, 'mmap', fake_mmap)
+    monkeypatch.setattr(Q, 'RUN_ID', RUN)
+    monkeypatch.setattr(Q, 'PROBE_DATE', datetime.now().strftime('%Y%m%d'))
+    monkeypatch.setattr(Q, 'CLIENT_BUILD', '2.1.33.0')
+    monkeypatch.setattr(Q, '_STATE', None)
+    monkeypatch.setattr(Q, '_RAN', False)
+
+    Q.init(context)
+    assert len(context.scheduled) == 1
+    assert context.scheduled[0][-1] == 'qsys602_' + RUN
+    memory.callback = lambda: Q.on_timer(context)
+    port = P.SyntheticIntentPort(memory, RUN, enabled=True)
+    envelope = fresh()
+
+    ack = port.send(envelope)
+
+    assert ack.command_sha256 == envelope.command_sha256
+    assert Q._STATE['receiver'].accepted == 1
+    assert Q._STATE['packets'] == 1 and Q._STATE['stopped'] is True
+    assert context.cancelled == ['qsys602_' + RUN]
+    output = capsys.readouterr().out
+    assert "'trading_calls': 0" in output
+    assert "'account_calls': 0" in output
+    assert "'executed': False" in output
+    assert "'authorizes_trading': False" in output
+
+
+def test_qmt_schedule_receiver_requires_existing_marker(monkeypatch, capsys):
+    memory = QmtMemory()
+    memory.seek(6144)
+    memory.write(bytes(64))
+    context = Context()
+    monkeypatch.setitem(sys.modules, 'mmap', SimpleNamespace(
+        ACCESS_WRITE=1, mmap=lambda *args, **kwargs: memory))
+    monkeypatch.setattr(Q, 'RUN_ID', RUN)
+    monkeypatch.setattr(Q, 'PROBE_DATE', datetime.now().strftime('%Y%m%d'))
+    monkeypatch.setattr(Q, 'CLIENT_BUILD', '2.1.33.0')
+    monkeypatch.setattr(Q, '_STATE', None)
+    monkeypatch.setattr(Q, '_RAN', False)
+
+    Q.init(context)
+
+    assert context.scheduled == []
+    assert Q._STATE is None
+    assert "'status': 'init_failed'" in capsys.readouterr().out
+
+
+def test_qmt_receiver_source_has_no_account_market_or_order_interfaces():
+    source = (ROOT/'qmt-synthetic-intent-protocol.py').read_text(encoding='utf-8')
+    for forbidden in ('passorder', 'get_trade_detail_data', 'get_history_trade_detail_data',
+                      'socket', 'requests', 'win32pipe', 'win32file'):
+        assert forbidden not in source
 
 
 def test_port_transmits_complete_canonical_command_and_binds_native_ack():
