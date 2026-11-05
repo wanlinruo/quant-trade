@@ -12,9 +12,19 @@ ACK后恢复旧意图时仍在有效期内，原attempt/nonce/ACK保持、旧意
 实盘建议保持不变。详见[应用接线](qmt-async-dispatch.md)及
 [独立复核摘要](qmt-async-qmt-probe-20261105.json)。
 
+**11-05 17:46主线里程碑：** 当前QMT实际消费完整固定合成OrderCommand并返回
+`validated_synthetic`，明确`executed=false`、`authorizes_trading=false`，券商调用0、账户
+绑定false；冷恢复保持`unknown`且旧意图重发0。该结果仍来自编辑器模拟环境，不能替代正式
+策略模式、券商许可、无人值守恢复或真实回报。见[脱敏摘要](qmt-mainline-synthetic-probe-20261105.json)。
+
 ## 1. 结论与建议
 
-**建议有条件采用“Linux外部决策 → Windows专用执行网关 → 大QMT薄执行器”作为下一阶段主线。**
+**维护者已正式采用“Linux外部决策 → Windows专用执行网关 → 大QMT内置薄执行器”作为唯一主线。**
+
+这里的Windows网关不通过旧`XtQuantTrader`直接交易。江海新版已停用外部`xtquant`/独立交易
+入口；网关只经获准且验证的本机IPC把意图交给QMT内置薄执行器，后者调用`passorder`及原生
+查询/回报接口。编辑器只用于薄执行器安装、编译和正式运行配置，最终运行不得依赖RDP。
+完整实施约束见[唯一主线方案](qmt-external-execution-mainline.md)。
 
 核心依据已经超过“理论上可能”：当前江海QMT 2.1.33.0的编辑器模拟环境，实际完成了
 外部消息双向收发、正式调度API消费、错误消息拒绝，以及Windows持久账本与接收器的恢复接线。

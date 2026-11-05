@@ -1,9 +1,14 @@
 # 参考资料
 
-## 外部策略与大QMT薄执行器（#599）
+## 外部策略与大QMT薄执行器（#601，2026-11-05正式采用）
 
-[11-05可行性分析报告](qmt-external-signal-feasibility-report-20261105.md)给出有条件采用建议、
-现场证据、异步执行契约、剩余门禁与推进顺序；不是实盘启用证明。
+[唯一主线实施方案](qmt-external-execution-mainline.md)记录江海新版停用外部`xtquant`后的最终
+架构、三端职责、事实状态机、分层验收顺序及暂停范围。Windows网关不直接调用旧
+`XtQuantAdapter`；只有QMT内置薄执行器调用正式交易接口，生产运行不得依赖RDP。
+
+[11-05可行性分析报告](qmt-external-signal-feasibility-report-20261105.md)给出现场证据、异步执行
+契约与剩余门禁；维护者已据此采用外部Linux决策→Windows执行网关→大QMT薄执行器，停止扩大
+完整内置策略移植。路线采用不是实盘启用证明。
 
 [可行性与分层证据](qmt-external-signal-feasibility.md)记录Windows回环、独立诊断模型、
 离线协议和异步受理设计。22:24单次共享内存、23:20编辑器内正式调度API的8条消息组合验证通过；
@@ -18,9 +23,13 @@ Core预留保持和提交后ACK；Windows私有夹具准备/隔离工厂已实�
 [11-05实际应用接线](qmt-async-qmt-probe-20261105.json)已在QMT编辑器补验ACK后、
 有效期内跨接收会话恢复：原意图零重发，新对照ping成功；未重启客户端或接交易接口。
 
+[唯一主线完整合成意图现场证据](qmt-mainline-synthetic-probe-20261105.json)记录17:46的逐字段
+验证、明确非执行回执、冷恢复`unknown`零重发和辅助任务收尾。它完成第1阶段，不证明正式策略
+运行模式、券商许可、无人值守恢复或真实委托回报。
+
 [#602完整合成指令协议](qmt-synthetic-intent-protocol.py)与
 [外部校验端口](qmt-synthetic-intent-port.py)是默认关闭的本地诊断候选：只允许固定测试
-OrderCommand，回执明确非执行且不授权交易；尚未取得Windows/QMT现场运行证据。
+OrderCommand，回执明确非执行且不授权交易；现场运行证据已并入上述#601主线摘要。
 
 ## 指标验证与健康证据（#562 / #561）
 
