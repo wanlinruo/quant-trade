@@ -2674,6 +2674,40 @@ def test_test_config_is_isolated_and_fingerprinted(tmp_path) -> None:
     assert "test-secret" not in json.dumps(result)
 
 
+def test_test_config_accepts_n_minus_one_optional_dispatch_stream(tmp_path) -> None:
+    test = _test_config(tmp_path / "test.toml")
+    test.write_text(
+        test.read_text(encoding="utf-8").replace(
+            'dispatch_status = "test:dispatch_status"\n', ""
+        ),
+        encoding="utf-8",
+    )
+    production = _production_config(tmp_path / "production.toml")
+
+    result = validate_config(test, "test", against=production)
+
+    assert result["ok"] is True
+    assert result["errors"] == []
+
+
+@pytest.mark.parametrize("value", ["evt:dispatch_status", "test:orders"])
+def test_explicit_dispatch_stream_keeps_isolation_rules(tmp_path, value: str) -> None:
+    path = _test_config(tmp_path / "test.toml")
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            'dispatch_status = "test:dispatch_status"',
+            f'dispatch_status = "{value}"',
+        ),
+        encoding="utf-8",
+    )
+
+    result = validate_config(path, "test")
+
+    assert result["ok"] is False
+    expected = "test: prefix" if value.startswith("evt:") else "must be unique"
+    assert any(expected in error for error in result["errors"])
+
+
 def test_test_config_rejects_a_production_stream_and_order_mode(tmp_path) -> None:
     path = _test_config(tmp_path / "test.toml")
     text = path.read_text(encoding="utf-8")
