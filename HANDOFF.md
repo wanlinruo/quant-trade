@@ -6,10 +6,14 @@
   目标SHA核对正确，但节点N-1 `deploy.local.toml`缺少新`dispatch_status`字段，加载后的生产
   默认`evt:dispatch_status`触发测试前缀门禁。run-id`github-41972979833-1`已rolled_back，
   GitHub Deployment标失败；未重跑或修改节点私有配置，原失败记录保留。
-- #603修复候选只把未显式出现的默认关闭`dispatch_status`排除出配置契约；显式配置后仍完整
+- #603修复只把未显式出现的默认关闭`dispatch_status`排除出配置契约；显式配置后仍完整
   检查测试前缀、唯一性和跨环境碰撞，其他既有流不放宽。新增N-1正例及未加前缀/碰撞负例。
-- 部署契约专项181项、异步链路相关71项通过，diff检查通过；全量与正常fix分支集成仍待。
-  本项不启用异步通道，不接账户/委托，不改变Live/Shadow、KILL或生产配置。
+- 全量4621通过、7项Linux凭据条件跳过、3项既有弃用警告；secret scan、策略和diff检查通过。
+  集成SHA`8e2754a`的CI 41973969725全绿；测试部署41974151636使用新run-id
+  `github-41974151636-1`成功，节点record绑定source tree`bc962a4c`且实际`validate_record()`通过；
+  GitHub Deployment 7566032206为success，三方一致。#603已关闭。
+- 原失败workflow/Deployment/run-id及rolled_back记录保持；本项不启用异步通道，不接账户/
+  委托，不改变Live/Shadow、KILL或生产配置。此测试部署不等于QMT现场或生产组件激活。
 
 ## 11-05 13:12：GitHub test对齐恢复，#598完成
 
