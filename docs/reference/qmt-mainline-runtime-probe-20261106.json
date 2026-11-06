@@ -1,0 +1,62 @@
+{
+  "protocol": "qsys-mainline-runtime-probe-summary.v1",
+  "issue": 601,
+  "at": "2026-11-06T14:11:24+08:00",
+  "route": "linux-decision -> windows-durable-gateway -> local-ipc -> qmt-built-in-thin-executor",
+  "source_main_sha": "89017b5c5ded86c0081118cdf732bea32ed6e08b",
+  "qmt": {
+    "build": "2.1.33.0",
+    "session": 1,
+    "process_identity_preserved": true,
+    "responding_after": true,
+    "window_restored": "1024x728"
+  },
+  "model": {
+    "name": "QSYS601_THIN_VALIDATION",
+    "instance_mode": "validation-only",
+    "formal_container": "simulated",
+    "auto_run_configured": true,
+    "post_save_editor_matches_candidate": true,
+    "account_calls": 0,
+    "market_calls": 0,
+    "trading_calls": 0
+  },
+  "vnc_disconnect": {
+    "vnc_connected": false,
+    "windows_logged_off": false,
+    "windows_locked": false,
+    "console_session_preserved": true,
+    "qmt_client_restarted": false
+  },
+  "synthetic_intent": {
+    "protocol": "qsys.synthetic-intent-validation.v1",
+    "command_sha256": "50cae36a9b24bf383a9e6b3ed6226d98040cec7cf6ec6efd5f4e21b2dedb2274",
+    "response_sha256": "4335bd6e2a7c780895a00901f49a313176a59208cd354b6f3efc81556f915ce4",
+    "response_status": "validated_synthetic",
+    "reason": "ok",
+    "accepted_count": 1,
+    "executed": false,
+    "authorizes_trading": false,
+    "broker_calls": 0,
+    "account_binding": false
+  },
+  "recovery": {
+    "restored_state": "unknown",
+    "restored_reason": "gateway_restart_requires_reconciliation",
+    "old_intent_republished": 0
+  },
+  "cleanup": {
+    "strategy_stopped": true,
+    "interactive_tasks_disabled": true,
+    "coordinator_task_disabled": true
+  },
+  "boundaries": {
+    "vnc_disconnect_verified": true,
+    "production_ui_automation_allowed": false,
+    "qmt_client_restart_auto_run_verified": false,
+    "windows_restart_verified": false,
+    "native_order_reports_verified": false,
+    "real_order_authorized": false,
+    "live_or_shadow_activated": false
+  }
+}

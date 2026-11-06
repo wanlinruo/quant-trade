@@ -1,5 +1,25 @@
 # 项目交接入口
 
+## 11-06 14:13：#601正式模拟薄执行器完成VNC断开运行验收
+
+- PR#609已合入`main` `89017b5`。`QSYS601_THIN_VALIDATION`在QMT 2.1.33.0编辑器完成源码
+  粘贴后回读、编译、保存后再次回读；两次明文均与绑定候选逐字相同。QMT磁盘文件是其自身
+  opaque封装，只记录SHA，不再错误地与明文源码按字节比较。
+- 正式“模型交易”实例绑定维护者已授权的当前股票账户，运行模式核验为“模拟”，已勾选
+  “终端启动后自动运行”。本轮没有调用账户、行情或交易API，没有`passorder`、撤单或真实意图。
+- 13:25前台现场先完成一轮固定合成意图：QMT返回`validated_synthetic/reason=ok`，明确
+  `executed=false`、`authorizes_trading=false`、`broker_calls=0`；外部发送器重建后原意图
+  保持`unknown`且重发0。策略随后人工停止，执行中策略回到0。
+- 维护者14点后关闭VNC但不注销/锁屏；`console`仍为Administrator/session1，QMT原PID4936、
+  start=08:53:51及Responding保持。14:11在VNC断开状态使用全新状态根和新合成意图重复正式
+  模拟闭环，结果再次为`validated_synthetic`，旧意图重发0；随后停止实例、恢复1024×728，
+  辅助任务禁用。该证据证明本机交互session保持时无需打开VNC窗口，不等于客户端/Windows
+  重启后自动恢复已经通过。
+- 脱敏摘要见
+  [qmt-mainline-runtime-probe-20261106.json](docs/reference/qmt-mainline-runtime-probe-20261106.json)。
+  第3阶段下一安全门禁是QMT客户端重建后自动运行；Windows整机重启仍属生产故障注入，必须
+  另行取得维护者明确确认。只读账户/原生回报、真实委托和Live/Shadow继续未授权。
+
 ## 11-06 09:50：#601进入无人值守门禁，默认关闭候选完成本地验证
 
 - 数据侧新发现的大宗交易/竞价OHLC口径假阻断已单独登记#608，明确不改11-05市场值、后续用
