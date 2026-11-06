@@ -15,6 +15,7 @@ PROBE_DATE = ""
 RUN_ID = ""
 ACCOUNT_TYPE = "STOCK"
 READ_ONLY_ACK = ""
+QUERIES_ENABLED = False
 CALLBACKS_ENABLED = False
 CALLBACK_ACK = ""
 
@@ -78,15 +79,22 @@ def _validate_config():
         raise ValueError("explicit run id required")
     if ACCOUNT_TYPE != "STOCK":
         raise ValueError("stock account type required")
-    if READ_ONLY_ACK != _EXPECTED_ACK:
-        raise ValueError("explicit real-account read acknowledgement required")
+    if type(QUERIES_ENABLED) is not bool:
+        raise ValueError("explicit query mode required")
     if type(CALLBACKS_ENABLED) is not bool:
         raise ValueError("explicit callback mode required")
-    if CALLBACKS_ENABLED is True:
+    if QUERIES_ENABLED == CALLBACKS_ENABLED:
+        raise ValueError("exactly one probe mode required")
+    if QUERIES_ENABLED is True:
+        if READ_ONLY_ACK != _EXPECTED_ACK:
+            raise ValueError("explicit real-account read acknowledgement required")
+        if CALLBACK_ACK:
+            raise ValueError("callback acknowledgement present in query mode")
+    else:
+        if READ_ONLY_ACK:
+            raise ValueError("query acknowledgement present in callback mode")
         if CALLBACK_ACK != _EXPECTED_CALLBACK_ACK:
             raise ValueError("explicit native callback acknowledgement required")
-    elif CALLBACK_ACK:
-        raise ValueError("callback acknowledgement present while callbacks disabled")
 
 
 def _bound_account():
@@ -185,9 +193,10 @@ def init(ContextInfo):
     _CONFIG_OK = True
     _emit("configuration", "accepted", client_build=CLIENT_BUILD,
           probe_date=PROBE_DATE, account_type=ACCOUNT_TYPE,
+          current_queries_requested=QUERIES_ENABLED,
           callback_subscription_requested=CALLBACKS_ENABLED,
           account_value_emitted=False)
-    query_calls = _query_once(bound_account)
+    query_calls = _query_once(bound_account) if QUERIES_ENABLED is True else 0
     _emit("scope", "incomplete", query_calls=query_calls, account_reads=query_calls,
           callback_observations=0, trading_calls=0, cancel_calls=0,
           history_reads=0, raw_values_emitted=False,
