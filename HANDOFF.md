@@ -1,5 +1,20 @@
 # 项目交接入口
 
+## 11-06 15:48：#601第4阶段只读账户/原生回报候选完成离线准备
+
+- 官方接口复核确认当前查询入口为`get_trade_detail_data(account,type,datatype)`；原生账户、委托、
+  成交和持仓回调只在实盘运行模式且`ContextInfo.set_account(account)`后生效。模拟实例或函数存在
+  不能替代回调证据，因此现场验收拆为“当前查询”和“无交易函数实盘回调”两个独立授权层级。
+- 新增默认关闭的`qmt-native-report-readonly-probe.py`，只准备一次性查询`ACCOUNT/POSITION/ORDER/
+  DEAL`和有界回调形状。输出仅含字段覆盖状态、Python类型和账号匹配布尔值，不输出行数、账号、证券、
+  委托/成交号、备注、金额、价格、数量或状态值；空值/缺字段不补、不推断，三种手续费拼写分别
+  保留。异常不换签名、不重试，发生过的查询尝试仍计入account_reads。
+- 离线专项覆盖默认关闭零调用、精确查询、脱敏、缺字段、回调上限、异常计数和源码禁用交易调用。
+  本轮未复制候选到Windows、未安装/运行QMT模型、未读取真实账户，也未重启Windows或调用任何
+  下单/撤单接口。边界与下一门禁见
+  [qmt-native-report-readonly-probe.md](docs/reference/qmt-native-report-readonly-probe.md)：现场查询须维护者
+  明确授权；回调的实盘模式探针还需单独明确授权。
+
 ## 11-06 15:27：#601完成QMT客户端重建与自动运行验收
 
 - 收盘后、VNC保持断开且执行中委托/任务/策略均为0时，对QMT客户端做优雅重建；未重启Windows、
