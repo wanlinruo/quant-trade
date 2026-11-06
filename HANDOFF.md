@@ -1,5 +1,24 @@
 # 项目交接入口
 
+## 11-06 16:56：#601真实账户当前查询完成，模拟实例意外触发账户回调
+
+- 维护者明确授权只读真实账户查询，并明确排除实盘回调、下单、撤单和Windows重启。默认关闭候选
+  以独立`QSYS601_REPORT_READONLY`模型安装编译，源码回读SHA一致；正式实例为模拟模式、自动运行
+  关闭，启动前执行中策略为0。
+- `get_trade_detail_data`对`ACCOUNT/POSITION/ORDER/DEAL`各调用一次：ACCOUNT取得非空
+  `AccountDetail`脱敏形状且账号匹配；其余三类均为`empty_unverified`，不解释成柜台完整空仓或无
+  委托/成交。`account_reads=4`，历史读取、交易、撤单调用均为0，未输出账户或交易原值。
+- 查询scope之后模拟实例自然收到1次`account_callback`。它没有由委托触发，但超出本次授权，不能
+  作为回调层通过。模型已在有界窗口停止；现场候选缺陷是查询模式无条件`set_account`，现修正为
+  查询模式不绑定/不处理回调，回调模式须独立开关及`OBSERVE_NATIVE_CALLBACKS_WITHOUT_TRADING`确认。
+- 收尾时QMT仍为PID3272且Responding，模型停止、窗口恢复1024×728，辅助任务disabled/idle；未重启
+  Windows、未启动Live/Shadow、未改KILL。脱敏证据见
+  [qmt-native-report-readonly-probe-20261106.json](docs/reference/qmt-native-report-readonly-probe-20261106.json)。
+  本次查询授权已消费；再次查询或原生回调均须维护者分别重新明确授权。
+- 修正候选严格要求`CALLBACKS_ENABLED`为布尔值，关闭时拒绝残留回调确认串；本地QMT/异步执行
+  专项及全量测试通过（4639 passed、7项Linux凭据条件跳过、3项既有弃用警告），`py_compile`与
+  `git diff --check`通过。当前仅为本地修复，不冒称已安装到QMT或取得新的现场证据。
+
 ## 11-06 15:48：#601第4阶段只读账户/原生回报候选完成离线准备
 
 - 官方接口复核确认当前查询入口为`get_trade_detail_data(account,type,datatype)`；原生账户、委托、
