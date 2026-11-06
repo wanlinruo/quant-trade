@@ -1,5 +1,21 @@
 # 项目交接入口
 
+## 11-06 15:27：#601完成QMT客户端重建与自动运行验收
+
+- 收盘后、VNC保持断开且执行中委托/任务/策略均为0时，对QMT客户端做优雅重建；未重启Windows、
+  未强杀进程。首次r5在退出确认与协调器时限衔接处失败：旧客户端正常退出，但恢复脚本错误地在
+  退出后读取已失效的`Process.Path`，随后协调器到期；三段失败记录原样保留，发送门从未创建、
+  合成意图发送0。客户端使用先前核验的固定路径恢复为PID4692，未复用r5。
+- 全新r6先建立私有IPC和新合成意图，再将PID4692优雅退出并重建为PID3272。没有人工点击模型
+  启动，已配置的“终端启动后自动运行”实际生效；正式模拟实例返回`validated_synthetic/ok`，
+  `executed=false`、`authorizes_trading=false`、券商调用0、账户绑定false。发送器重建后原意图
+  转`unknown/gateway_restart_requires_reconciliation`且重发0。
+- 验收后验证实例已停止，窗口恢复1024×728；委托/任务/策略均为0，IPC释放，两个辅助任务
+  disabled/idle且last result 0，新QMT进程保持Responding。脱敏摘要更新在
+  [qmt-mainline-runtime-probe-20261106.json](docs/reference/qmt-mainline-runtime-probe-20261106.json)。
+  第3阶段仅剩Windows整机重启；这仍是生产故障注入，必须另行取得维护者明确确认。只读账户/
+  原生回报、真实委托及Live/Shadow仍未授权。
+
 ## 11-06 14:13：#601正式模拟薄执行器完成VNC断开运行验收
 
 - PR#609已合入`main` `89017b5`。`QSYS601_THIN_VALIDATION`在QMT 2.1.33.0编辑器完成源码

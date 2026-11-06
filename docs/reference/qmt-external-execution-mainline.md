@@ -68,8 +68,8 @@ transport_received → broker_accepted → partial/fill
 2. **正式运行模式与许可（已完成）**：确认IPC在正式策略模式中可用，并取得券商对“外部意图
    进入内置薄执行策略”的明确许可；编辑器模拟结果不能替代这一层。
 3. **无人值守运行（部分完成）**：已配置正式模拟实例自动启动，并验证VNC断开、交互session
-   保持时仍可接收完整合成意图；尚须分别验证QMT客户端重启和Windows重启。生产运行不得依赖
-   界面点击，失败保持停止交易姿态。
+   保持及QMT客户端重建后均可自动运行并接收完整合成意图；尚须另行授权并验证Windows整机重启。
+   生产运行不得依赖界面点击，失败保持停止交易姿态。
 4. **只读账户与回报**：在明确授权后验证账户身份、委托/成交查询和回调字段，不发送委托，
    建立真实唯一标识和状态映射。
 5. **隔离故障组合**：验证丢ACK、回报延迟、进程退出、重复/冲突消息和`unknown`查询对账；
@@ -97,9 +97,16 @@ transport_received → broker_accepted → partial/fill
   `validated_synthetic`，`executed=false`、`authorizes_trading=false`、券商调用0，发送器重建
   后旧意图保持`unknown`且重发0。实例随后停止、窗口恢复、辅助任务禁用。脱敏证据见
   [qmt-mainline-runtime-probe-20261106.json](qmt-mainline-runtime-probe-20261106.json)。
-- VNC断开通过只证明已登录交互session保持时不需要打开VNC窗口；本次诊断启动仍使用受控UI任务，
-  不得作为生产启动机制。正式实例已勾选终端启动后自动运行，但QMT客户端重建后的自动恢复尚未
-  验收。Windows整机重启仍属生产故障注入，必须另行取得明确确认。
+- 11月6日15:13后的r6先建立私有IPC，再将QMT从PID4692优雅重建为PID3272；VNC全程断开，
+  没有人工点击模型启动。“终端启动后自动运行”实际启动正式模拟实例并返回新合成意图收据：
+  `validated_synthetic/ok`、`executed=false`、`authorizes_trading=false`、券商调用0、账户绑定
+  false；发送器重建后原意图转`unknown/gateway_restart_requires_reconciliation`且重发0。
+  r5在退出确认和协调器时限衔接处失败，发送门未创建且发送0；原失败保留，未用r5冒充成功。
+  r6完成后实例停止、窗口恢复、IPC释放，辅助任务disabled/idle。脱敏证据见
+  [qmt-mainline-runtime-probe-20261106.json](qmt-mainline-runtime-probe-20261106.json)。
+- VNC断开和QMT客户端重建均已通过，证明已登录交互session保持时不需要打开VNC窗口，且正式
+  实例可由客户端配置自动恢复；受控UI仅用于本次停止和取证，不得作为生产启动机制。Windows
+  整机重启仍属生产故障注入，必须另行取得明确确认。
 - 当前不授权真实意图、下单、撤单、清KILL或Live/Shadow激活。只读账户/回报及真实闭环仍未完成。
 - #601是唯一实现主线。#602历史候选作为第1阶段子里程碑并入#601，不建立第二条路线。
 - 完整内置策略迁移及其专属数据、复权、调度和状态任务停止；其他不阻断本闭环的问题暂缓。
