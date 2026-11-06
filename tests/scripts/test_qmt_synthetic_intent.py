@@ -178,15 +178,15 @@ def test_qmt_schedule_receiver_validates_full_intent_without_trading(monkeypatch
     context = Context()
     fake_mmap = SimpleNamespace(ACCESS_WRITE=1, mmap=lambda *args, **kwargs: memory)
     monkeypatch.setitem(sys.modules, 'mmap', fake_mmap)
+    monkeypatch.setattr(Q, 'ENABLED', True)
     monkeypatch.setattr(Q, 'RUN_ID', RUN)
-    monkeypatch.setattr(Q, 'PROBE_DATE', datetime.now().strftime('%Y%m%d'))
     monkeypatch.setattr(Q, 'CLIENT_BUILD', '2.1.33.0')
     monkeypatch.setattr(Q, '_STATE', None)
     monkeypatch.setattr(Q, '_RAN', False)
 
     Q.init(context)
     assert len(context.scheduled) == 1
-    assert context.scheduled[0][-1] == 'qsys602_' + RUN
+    assert context.scheduled[0][-1] == 'qsys601_' + RUN
     memory.callback = lambda: Q.on_timer(context)
     port = P.SyntheticIntentPort(memory, RUN, enabled=True)
     envelope = fresh()
@@ -196,7 +196,7 @@ def test_qmt_schedule_receiver_validates_full_intent_without_trading(monkeypatch
     assert ack.command_sha256 == envelope.command_sha256
     assert Q._STATE['receiver'].accepted == 1
     assert Q._STATE['packets'] == 1 and Q._STATE['stopped'] is True
-    assert context.cancelled == ['qsys602_' + RUN]
+    assert context.cancelled == ['qsys601_' + RUN]
     output = capsys.readouterr().out
     assert "'trading_calls': 0" in output
     assert "'account_calls': 0" in output
@@ -211,8 +211,8 @@ def test_qmt_schedule_receiver_requires_existing_marker(monkeypatch, capsys):
     context = Context()
     monkeypatch.setitem(sys.modules, 'mmap', SimpleNamespace(
         ACCESS_WRITE=1, mmap=lambda *args, **kwargs: memory))
+    monkeypatch.setattr(Q, 'ENABLED', True)
     monkeypatch.setattr(Q, 'RUN_ID', RUN)
-    monkeypatch.setattr(Q, 'PROBE_DATE', datetime.now().strftime('%Y%m%d'))
     monkeypatch.setattr(Q, 'CLIENT_BUILD', '2.1.33.0')
     monkeypatch.setattr(Q, '_STATE', None)
     monkeypatch.setattr(Q, '_RAN', False)
@@ -222,6 +222,38 @@ def test_qmt_schedule_receiver_requires_existing_marker(monkeypatch, capsys):
     assert context.scheduled == []
     assert Q._STATE is None
     assert "'status': 'init_failed'" in capsys.readouterr().out
+
+
+def test_qmt_candidate_is_inert_by_default_without_runtime_initialization(monkeypatch, capsys):
+    context = Context()
+    monkeypatch.setattr(Q, 'ENABLED', False)
+    monkeypatch.setattr(Q, 'RUN_ID', '')
+    monkeypatch.setattr(Q, 'CLIENT_BUILD', '')
+    monkeypatch.setattr(Q, '_STATE', None)
+    monkeypatch.setattr(Q, '_RAN', False)
+    monkeypatch.delitem(sys.modules, 'mmap', raising=False)
+
+    Q.init(context)
+
+    assert context.scheduled == []
+    assert Q._STATE is None
+    output = capsys.readouterr().out
+    assert "'status': 'disabled'" in output
+    assert "'trading_calls': 0" in output
+
+
+@pytest.mark.parametrize('enabled', [1, 'true', None])
+def test_qmt_candidate_requires_literal_true_to_enable(monkeypatch, enabled, capsys):
+    context = Context()
+    monkeypatch.setattr(Q, 'ENABLED', enabled)
+    monkeypatch.setattr(Q, '_STATE', None)
+    monkeypatch.setattr(Q, '_RAN', False)
+
+    Q.init(context)
+
+    assert context.scheduled == []
+    assert Q._STATE is None
+    assert "'status': 'disabled'" in capsys.readouterr().out
 
 
 def test_qmt_receiver_source_has_no_account_market_or_order_interfaces():

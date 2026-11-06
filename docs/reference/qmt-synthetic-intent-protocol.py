@@ -1,7 +1,14 @@
-"""Full SYNTHETIC intent validation, never execution; #602.
+"""Default-off QMT thin-executor validation candidate; #601.
 
 This standard-library receiver has no account, broker or I/O capability.
 The public test key is not production authentication. No callback can be supplied.
+
+The checked-in source is inert.  A reviewed installation must set ``ENABLED``
+to the literal boolean ``True`` and bind an unpredictable ``RUN_ID`` plus the
+exact client build.  Unlike the one-day probe, the candidate is not tied to an
+installation date, so the same reviewed model can be exercised after a UI
+session disconnect or client restart.  It still only validates the fixed
+synthetic command and can never trade.
 """
 from datetime import datetime, timedelta, timezone
 import hashlib
@@ -17,8 +24,9 @@ COMMAND_FIELDS = {'schema_version','session_id','strategy_id','client_order_id',
 FIELDS = {'protocol','scope','kind','run_id','seq','attempt_id','session_nonce',
           'command_sha256','command_json','issued_at_ms','expires_at_ms','mac'}
 RUN_ID = ''
-PROBE_DATE = ''
 CLIENT_BUILD = ''
+ENABLED = False
+INSTANCE_MODE = 'validation-only'
 PACKET_LIMIT = 1
 _STATE = None
 _RAN = False
@@ -157,6 +165,7 @@ def now_ms():
 
 def emit(status, **facts):
     row = dict(protocol=PROTOCOL, run_id=RUN_ID if valid_id(RUN_ID) else None,
+               instance_mode=INSTANCE_MODE,
                status=status, account_calls=0, market_calls=0, trading_calls=0,
                executed=False, authorizes_trading=False)
     row.update(facts)
@@ -170,7 +179,7 @@ def finish(C, reason):
     state['stopped'] = True
     cancelled = None
     try:
-        cancelled = C.cancel_schedule_run('qsys602_' + RUN_ID)
+        cancelled = C.cancel_schedule_run('qsys601_' + RUN_ID)
     except Exception as exc:
         emit('cancel_failed', error_type=type(exc).__name__)
     finally:
@@ -244,9 +253,12 @@ def init(C):
     memory = None
     stage = 'configuration'
     try:
-        if (not valid_id(RUN_ID) or CLIENT_BUILD != '2.1.33.0'
-                or PROBE_DATE != datetime.now().strftime('%Y%m%d')):
-            raise ValueError('diagnostic binding')
+        if ENABLED is not True:
+            emit('disabled')
+            return
+        if (INSTANCE_MODE != 'validation-only' or not valid_id(RUN_ID)
+                or CLIENT_BUILD != '2.1.33.0'):
+            raise ValueError('validation binding')
         if PACKET_LIMIT != 1:
             raise ValueError('single diagnostic packet required')
         if (not callable(getattr(C, 'schedule_run', None))
@@ -267,7 +279,7 @@ def init(C):
                       deadline_ms=now_ms()+35000, clock=perf_counter)
         stage = 'schedule_run'
         task_id = C.schedule_run(on_timer, datetime.now()+timedelta(seconds=2),
-                                 24, timedelta(seconds=1), 'qsys602_' + RUN_ID)
+                                 24, timedelta(seconds=1), 'qsys601_' + RUN_ID)
         emit('scheduled', task_id=task_id, finite_repeat_argument=24,
              packet_limit=PACKET_LIMIT)
     except Exception as exc:
