@@ -107,6 +107,13 @@ transport_received → broker_accepted → partial/fill
 - VNC断开和QMT客户端重建均已通过，证明已登录交互session保持时不需要打开VNC窗口，且正式
   实例可由客户端配置自动恢复；受控UI仅用于本次停止和取证，不得作为生产启动机制。Windows
   整机重启仍属生产故障注入，必须另行取得明确确认。
+- 第4阶段离线候选已准备：
+  [qmt-native-report-readonly-probe.py](qmt-native-report-readonly-probe.py)默认关闭，仅为正式
+  `get_trade_detail_data`的`ACCOUNT/POSITION/ORDER/DEAL`和四类原生回调观察字段形状；只输出
+  字段存在性/类型和账号匹配布尔值，不输出账户或交易值，不做状态映射。正式文档明确原生回调
+  只在实盘运行模式且`set_account`后生效，因此当前查询与回调现场验收分成两级授权；本轮没有
+  复制到Windows、绑定新实例或读取真实账户。完整边界见
+  [只读探针准备](qmt-native-report-readonly-probe.md)。
 - 当前不授权真实意图、下单、撤单、清KILL或Live/Shadow激活。只读账户/回报及真实闭环仍未完成。
 - #601是唯一实现主线。#602历史候选作为第1阶段子里程碑并入#601，不建立第二条路线。
 - 完整内置策略迁移及其专属数据、复权、调度和状态任务停止；其他不阻断本闭环的问题暂缓。
