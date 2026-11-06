@@ -1,13 +1,15 @@
 {
   "protocol": "qsys-mainline-runtime-probe-summary.v1",
   "issue": 601,
-  "at": "2026-11-06T14:11:24+08:00",
+  "at": "2026-11-06T15:27:21+08:00",
   "route": "linux-decision -> windows-durable-gateway -> local-ipc -> qmt-built-in-thin-executor",
   "source_main_sha": "89017b5c5ded86c0081118cdf732bea32ed6e08b",
   "qmt": {
     "build": "2.1.33.0",
     "session": 1,
-    "process_identity_preserved": true,
+    "process_reconstructed": true,
+    "final_pid": 3272,
+    "final_started_at": "2026-11-06T15:13:48.2898827+08:00",
     "responding_after": true,
     "window_restored": "1024x728"
   },
@@ -26,12 +28,25 @@
     "windows_logged_off": false,
     "windows_locked": false,
     "console_session_preserved": true,
-    "qmt_client_restarted": false
+    "qmt_client_restarted": true
+  },
+  "client_restart": {
+    "vnc_connected": false,
+    "windows_restarted": false,
+    "force_termination_used": false,
+    "old_pid": 4692,
+    "new_pid": 3272,
+    "automatic_start_only": true,
+    "manual_start_fallback": false,
+    "r5_failure_preserved": true,
+    "r5_send_gate_created": false,
+    "r5_intents_sent": 0,
+    "r6_ipc_prepared_before_restart": true
   },
   "synthetic_intent": {
     "protocol": "qsys.synthetic-intent-validation.v1",
-    "command_sha256": "50cae36a9b24bf383a9e6b3ed6226d98040cec7cf6ec6efd5f4e21b2dedb2274",
-    "response_sha256": "4335bd6e2a7c780895a00901f49a313176a59208cd354b6f3efc81556f915ce4",
+    "command_sha256": "2aaad7909c9e38f5cbdc891c7b309ed7c3e752857d081c70c01532ce7d67ab42",
+    "response_sha256": "f3b225f84619a83baab7d24a4f55f30b13383cb1a3305175303f91d25d5a48ec",
     "response_status": "validated_synthetic",
     "reason": "ok",
     "accepted_count": 1,
@@ -48,12 +63,16 @@
   "cleanup": {
     "strategy_stopped": true,
     "interactive_tasks_disabled": true,
-    "coordinator_task_disabled": true
+    "coordinator_task_disabled": true,
+    "ipc_mapping_released": true,
+    "running_orders_after": 0,
+    "running_tasks_after": 0,
+    "running_strategies_after": 0
   },
   "boundaries": {
     "vnc_disconnect_verified": true,
     "production_ui_automation_allowed": false,
-    "qmt_client_restart_auto_run_verified": false,
+    "qmt_client_restart_auto_run_verified": true,
     "windows_restart_verified": false,
     "native_order_reports_verified": false,
     "real_order_authorized": false,
