@@ -15,9 +15,12 @@ PROBE_DATE = ""
 RUN_ID = ""
 ACCOUNT_TYPE = "STOCK"
 READ_ONLY_ACK = ""
+CALLBACKS_ENABLED = False
+CALLBACK_ACK = ""
 
 _EXPECTED_BUILD = "2.1.33.0"
 _EXPECTED_ACK = "READ_REAL_ACCOUNT_FACTS_WITHOUT_TRADING"
+_EXPECTED_CALLBACK_ACK = "OBSERVE_NATIVE_CALLBACKS_WITHOUT_TRADING"
 _PROTOCOL = "qsys.qmt-native-report-shape.v1"
 _QUERY_KINDS = ("ACCOUNT", "POSITION", "ORDER", "DEAL")
 _MAX_QUERY_ROWS = 5000
@@ -77,6 +80,13 @@ def _validate_config():
         raise ValueError("stock account type required")
     if READ_ONLY_ACK != _EXPECTED_ACK:
         raise ValueError("explicit real-account read acknowledgement required")
+    if type(CALLBACKS_ENABLED) is not bool:
+        raise ValueError("explicit callback mode required")
+    if CALLBACKS_ENABLED is True:
+        if CALLBACK_ACK != _EXPECTED_CALLBACK_ACK:
+            raise ValueError("explicit native callback acknowledgement required")
+    elif CALLBACK_ACK:
+        raise ValueError("callback acknowledgement present while callbacks disabled")
 
 
 def _bound_account():
@@ -162,10 +172,11 @@ def init(ContextInfo):
     try:
         _validate_config()
         bound_account = _bound_account()
-        setter = getattr(ContextInfo, "set_account", None)
-        if not callable(setter):
-            raise ValueError("set_account unavailable")
-        setter(bound_account)
+        if CALLBACKS_ENABLED is True:
+            setter = getattr(ContextInfo, "set_account", None)
+            if not callable(setter):
+                raise ValueError("set_account unavailable")
+            setter(bound_account)
     except Exception as exc:
         _emit("configuration", "rejected", error_type=type(exc).__name__,
               account_calls=0, trading_calls=0)
@@ -174,7 +185,8 @@ def init(ContextInfo):
     _CONFIG_OK = True
     _emit("configuration", "accepted", client_build=CLIENT_BUILD,
           probe_date=PROBE_DATE, account_type=ACCOUNT_TYPE,
-          callback_subscription_requested=True, account_value_emitted=False)
+          callback_subscription_requested=CALLBACKS_ENABLED,
+          account_value_emitted=False)
     query_calls = _query_once(bound_account)
     _emit("scope", "incomplete", query_calls=query_calls, account_reads=query_calls,
           callback_observations=0, trading_calls=0, cancel_calls=0,
@@ -184,7 +196,8 @@ def init(ContextInfo):
 
 def _callback(kind, row):
     global _CALLBACK_OBSERVATIONS
-    if not _CONFIG_OK or _CALLBACK_OBSERVATIONS >= _MAX_CALLBACK_OBSERVATIONS:
+    if (not _CONFIG_OK or CALLBACKS_ENABLED is not True or
+            _CALLBACK_OBSERVATIONS >= _MAX_CALLBACK_OBSERVATIONS):
         return
     _CALLBACK_OBSERVATIONS += 1
     try:

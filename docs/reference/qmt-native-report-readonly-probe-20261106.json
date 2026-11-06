@@ -1,0 +1,52 @@
+{
+  "protocol": "qsys.qmt-native-report-shape.evidence.v1",
+  "issue": 601,
+  "observed_at": "2026-11-06T16:56:29+08:00",
+  "run_id": "a28155d67bd04f64a4f88ab2ad881cdb",
+  "client_build": "2.1.33.0",
+  "candidate_sha256": "6eae81ce3896c925e25e0844b7d904331b8ceaae64e2a5e9eb00bbf16b723f6c",
+  "query": {
+    "configuration_accepted": true,
+    "account": {
+      "status": "shape_observed",
+      "object_types": ["AccountDetail"],
+      "account_match": true
+    },
+    "position": {"status": "empty_unverified"},
+    "order": {"status": "empty_unverified"},
+    "deal": {"status": "empty_unverified"},
+    "query_calls": 4,
+    "account_reads": 4,
+    "history_reads": 0,
+    "trading_calls": 0,
+    "cancel_calls": 0,
+    "raw_values_emitted": false,
+    "normalization_performed": false
+  },
+  "unexpected_callback": {
+    "observations": 1,
+    "kind": "ACCOUNT",
+    "object_types": ["AccountDetail"],
+    "raw_values_emitted": false,
+    "authorized_for_this_run": false,
+    "counts_as_callback_acceptance": false,
+    "cause": "query candidate called ContextInfo.set_account in simulated mode"
+  },
+  "final_state": {
+    "model": "QSYS601_REPORT_READONLY",
+    "model_mode": "simulated",
+    "model_auto_run": false,
+    "model_stopped": true,
+    "qmt_pid": 3272,
+    "qmt_responding": true,
+    "window_size": [1024, 728],
+    "helper_tasks_disabled_idle": true,
+    "windows_restarted": false,
+    "live_or_shadow_started": false,
+    "kill_changed": false
+  },
+  "private_evidence": {
+    "raw_log_sha256": "79852d41a9b8c0dcd55220d0203d52ecda6f6aacea1789799eedff104f15782c",
+    "final_screenshot_sha256": "fcb22a3e74ce62f0860f35b58a7209dc69bdcb96f37ae84bb441489b2dc77f5c"
+  }
+}
