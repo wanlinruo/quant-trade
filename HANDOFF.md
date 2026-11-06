@@ -1,5 +1,17 @@
 # 项目交接入口
 
+## 11-06 22:56：#601查询与回调授权模式完成离线互斥
+
+- 合并后的探针虽已阻止查询模式调用`set_account`，但开启回调模式仍会顺带执行四类当前查询，
+  与两层授权独立的目标不一致。候选新增严格布尔`QUERIES_ENABLED`，要求查询/回调恰好启用一种；
+  查询模式只接受`READ_REAL_ACCOUNT_FACTS_WITHOUT_TRADING`，回调模式只接受
+  `OBSERVE_NATIVE_CALLBACKS_WITHOUT_TRADING`，交叉或残留确认串均在绑定/查询前拒绝。
+- 回调模式现在只调用`set_account`并等待自然回调，`query_calls=account_reads=0`；查询模式仍不绑定
+  账户且忽略回调。新增组合模式、缺模式、非布尔值及确认串交叉的零副作用回归。
+- 本地专项及全量测试通过（4643 passed、7项Linux凭据条件跳过、3项既有弃用警告），`py_compile`
+  与`git diff --check`通过。当前仅为本地离线候选；未复制或安装到Windows/QMT，未读取账户、观察
+  回调、重启Windows、下单/撤单、启动Live/Shadow或改KILL。
+
 ## 11-06 16:56：#601真实账户当前查询完成，模拟实例意外触发账户回调
 
 - 维护者明确授权只读真实账户查询，并明确排除实盘回调、下单、撤单和Windows重启。默认关闭候选
