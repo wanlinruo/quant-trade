@@ -110,7 +110,8 @@ transport_received → broker_accepted → partial/fill
 - 第4阶段当前查询层已在维护者单独授权下完成一次现场读取：`ACCOUNT`取得非空脱敏形状，
   `POSITION/ORDER/DEAL`均为`empty_unverified`，四类当前查询各一次；历史读取、交易和撤单调用为0。
   模拟实例调用`set_account`后却自然收到一次账户回调，超出本次授权，因此不计为回调层通过。
-  查询候选已修正为默认不调用`set_account`且不处理回调；回调模式需要另一开关和独立确认。
+  查询候选已修正为默认不调用`set_account`且不处理回调；查询/回调模式严格互斥，回调模式需要
+  另一开关和独立确认且当前查询调用数固定为0，避免回调授权隐式重放账户查询。
   现场模型停止、自动运行关闭，完整事实见[只读探针记录](qmt-native-report-readonly-probe.md)和
   [脱敏摘要](qmt-native-report-readonly-probe-20261106.json)。
 - 当前不授权真实意图、下单、撤单、清KILL或Live/Shadow激活。原生回调层和真实闭环仍未完成。

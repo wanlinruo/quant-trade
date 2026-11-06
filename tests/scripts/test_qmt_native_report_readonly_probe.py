@@ -38,6 +38,7 @@ def enable(module) -> None:
     module.RUN_ID = "a" * 32
     module.ACCOUNT_TYPE = "STOCK"
     module.READ_ONLY_ACK = "READ_REAL_ACCOUNT_FACTS_WITHOUT_TRADING"
+    module.QUERIES_ENABLED = True
     module.CALLBACKS_ENABLED = False
     module.CALLBACK_ACK = ""
     module.account = "private-account"
@@ -134,6 +135,8 @@ def test_missing_fields_remain_explicit_and_are_not_filled(capsys):
 def test_callbacks_are_shape_only_and_bounded(capsys):
     module = load()
     enable(module)
+    module.QUERIES_ENABLED = False
+    module.READ_ONLY_ACK = ""
     module.CALLBACKS_ENABLED = True
     module.CALLBACK_ACK = "OBSERVE_NATIVE_CALLBACKS_WITHOUT_TRADING"
     module.get_trade_detail_data = lambda *args: []
@@ -172,6 +175,8 @@ def test_query_only_mode_never_subscribes_or_observes_callbacks(capsys):
 def test_callback_mode_requires_separate_ack_before_binding(capsys):
     module = load()
     enable(module)
+    module.QUERIES_ENABLED = False
+    module.READ_ONLY_ACK = ""
     module.CALLBACKS_ENABLED = True
     module.get_trade_detail_data = lambda *args: []
     context = Context()
@@ -204,10 +209,80 @@ def test_callback_mode_rejects_non_boolean_value_before_binding(capsys):
     assert records(capsys)[0]["status"] == "rejected"
 
 
-def test_query_only_mode_rejects_callback_ack_before_querying(capsys):
+def test_query_mode_rejects_callback_ack_before_querying(capsys):
     module = load()
     enable(module)
     module.CALLBACK_ACK = "OBSERVE_NATIVE_CALLBACKS_WITHOUT_TRADING"
+    queried = []
+    module.get_trade_detail_data = lambda *args: queried.append(args)
+    context = Context()
+
+    module.init(context)
+
+    assert context.accounts == []
+    assert queried == []
+    assert records(capsys)[0]["status"] == "rejected"
+
+
+def test_callback_mode_never_executes_current_queries(capsys):
+    module = load()
+    enable(module)
+    module.QUERIES_ENABLED = False
+    module.READ_ONLY_ACK = ""
+    module.CALLBACKS_ENABLED = True
+    module.CALLBACK_ACK = "OBSERVE_NATIVE_CALLBACKS_WITHOUT_TRADING"
+    queried = []
+    module.get_trade_detail_data = lambda *args: queried.append(args)
+    context = Context()
+
+    module.init(context)
+
+    assert context.accounts == ["private-account"]
+    assert queried == []
+    parsed = records(capsys)
+    assert parsed[0]["current_queries_requested"] is False
+    assert parsed[-1]["query_calls"] == 0
+    assert parsed[-1]["account_reads"] == 0
+
+
+def test_callback_mode_rejects_query_ack_before_side_effects(capsys):
+    module = load()
+    enable(module)
+    module.QUERIES_ENABLED = False
+    module.CALLBACKS_ENABLED = True
+    module.CALLBACK_ACK = "OBSERVE_NATIVE_CALLBACKS_WITHOUT_TRADING"
+    queried = []
+    module.get_trade_detail_data = lambda *args: queried.append(args)
+    context = Context()
+
+    module.init(context)
+
+    assert context.accounts == []
+    assert queried == []
+    assert records(capsys)[0]["status"] == "rejected"
+
+
+def test_probe_rejects_combined_query_and_callback_modes_before_side_effects(capsys):
+    module = load()
+    enable(module)
+    module.CALLBACKS_ENABLED = True
+    module.CALLBACK_ACK = "OBSERVE_NATIVE_CALLBACKS_WITHOUT_TRADING"
+    queried = []
+    module.get_trade_detail_data = lambda *args: queried.append(args)
+    context = Context()
+
+    module.init(context)
+
+    assert context.accounts == []
+    assert queried == []
+    assert records(capsys)[0]["status"] == "rejected"
+
+
+def test_probe_rejects_missing_mode_before_side_effects(capsys):
+    module = load()
+    enable(module)
+    module.QUERIES_ENABLED = False
+    module.READ_ONLY_ACK = ""
     queried = []
     module.get_trade_detail_data = lambda *args: queried.append(args)
     context = Context()

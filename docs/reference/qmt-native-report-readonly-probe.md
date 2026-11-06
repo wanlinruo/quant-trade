@@ -34,6 +34,11 @@ get_trade_detail_data(accountID, accountType, datatype)
 2. **原生回调层**：须另行明确授权仅运行无交易函数的实盘模式探针，等待自然回调；不通过制造
    委托触发回调。模拟实例或编辑器函数存在性不能冒充这一层通过。
 
+两层在配置和调用上严格互斥。查询层必须且只能设置`QUERIES_ENABLED=True`与
+`READ_REAL_ACCOUNT_FACTS_WITHOUT_TRADING`，不调用`set_account`；回调层必须且只能设置
+`CALLBACKS_ENABLED=True`与`OBSERVE_NATIVE_CALLBACKS_WITHOUT_TRADING`，不调用任何当前查询。
+两模式同时启用、同时关闭、开关不是严格布尔值或携带另一模式的确认串时，均在账户绑定和查询前拒绝。
+
 正式依据：[交易查询函数](https://dict.thinktrader.net/innerApi/trading_function.html)、
 [原生回调函数](https://dict.thinktrader.net/innerApi/callback_function.html)、
 [交易数据结构](https://dict.thinktrader.net/innerApi/data_structure.html)。
@@ -63,9 +68,9 @@ get_trade_detail_data(accountID, accountType, datatype)
   触发，但超出本次授权，不能冒充“回调层验收通过”。实例在有界窗口内停止，未继续等待其他回调。
 
 现场同时暴露候选边界缺陷：查询模式无条件调用`ContextInfo.set_account(account)`，而该调用实际会在
-模拟实例订阅账户回调。候选现改为查询模式不调用`set_account`、不处理任何回调；只有
-`CALLBACKS_ENABLED=True`且提供独立`OBSERVE_NATIVE_CALLBACKS_WITHOUT_TRADING`确认时才订阅。
-专项测试覆盖查询模式零绑定/零回调和回调模式缺独立确认时零绑定。
+模拟实例订阅账户回调。候选现改为查询模式不调用`set_account`、不处理任何回调；回调模式只在
+独立开关与确认匹配时订阅，且不顺带执行`ACCOUNT/POSITION/ORDER/DEAL`当前查询。
+专项测试覆盖查询模式零绑定/零回调、回调模式零查询，以及缺确认、混合模式和交叉确认的零副作用拒绝。
 
 ## 当前完成与下一门禁
 
@@ -74,4 +79,5 @@ get_trade_detail_data(accountID, accountType, datatype)
 主窗口恢复1024×728，辅助任务disabled/idle；未重启Windows、未启动Live/Shadow、未改KILL。
 
 本次查询授权已消费。任何再次读取真实账户都须重新明确授权；原生回调层仍须另一份明确授权，且
-只能使用修正后的独立回调开关与确认。任何授权都不包含真实下单/撤单或Windows重启。
+只能使用修正后的独立回调开关与确认，不顺带重放当前查询。任何授权都不包含真实下单/撤单或
+Windows重启。
