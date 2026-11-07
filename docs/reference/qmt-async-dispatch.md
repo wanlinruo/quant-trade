@@ -32,6 +32,14 @@ synthetic身份；北交所、真实策略/会话/身份形状及任何额外字
 attempt/nonce/SHA及计数再次校验后，才生成现有`DispatchAcknowledgement`。该ACK仍只是
 合成内容校验收据，不是券商受理或交易授权；当前尚未取得Windows/QMT现场运行证据。
 
+端口在运行时只从自身同目录按精确名称加载`qmt-synthetic-intent-protocol.py`；相同字节若只以
+`candidate-default.py`等其他名称存在，不能满足运行契约。准备新的空目录时使用
+`python scripts/prepare_qmt_synthetic_runtime.py stage <target>`，其中`target`是只容纳这两个
+运行时文件的新空目录。工具以不覆盖方式写入精确文件集，拒绝额外文件，逐字对照受审源，并从
+最终目录真实导入port、核对protocol的实际加载路径。传输到
+Windows后仍须对最终节点目录执行`verify`，不能以构建机收据或单独文件SHA替代；缺文件负例必须
+在创建状态根、first-ready和发送门之前失败。
+
 ## 尝试账本与消息含义
 
 每个业务ID只保存一份规范化原始意图、SHA、attempt_id、原会话nonce和真实传输收据。

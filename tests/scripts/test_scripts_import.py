@@ -14,6 +14,7 @@ import pytest
 # （regression_* / reconcile_* 等）在导入时就读数据文件，不在此列。
 SCRIPTS = [
     "replay_public_minute_prefix",
+    "prepare_qmt_synthetic_runtime",
     "probe_native_minute_zero",
     "probe_qmt_local_minutes",
     "win_download_dividends",
