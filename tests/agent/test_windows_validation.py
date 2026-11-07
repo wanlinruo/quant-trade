@@ -58,16 +58,17 @@ def test_preparation_never_repairs_existing_or_untrusted_parent(tmp_path, monkey
     marker.write_text('original')
     calls = []
     monkeypatch.setattr(w, '_local_path', lambda root: None)
-    def inspect(path, script):
-        calls.append((path, script))
+    def inspect(path, script, *, timeout):
+        calls.append((path, script, timeout))
         return receipt()
     monkeypatch.setattr(w, '_powershell', inspect)
     with pytest.raises(FileExistsError):
         w.prepare_windows_validation_root(root, 'component-validation:test', enabled=True)
     assert marker.read_text() == 'original'
-    assert calls == [(root.parent, w._INSPECT)]
+    assert calls == [(root.parent, w._INSPECT, w._COLD_INSPECTION_TIMEOUT)]
     other = tmp_path / 'qsys-async-validation-other'
-    monkeypatch.setattr(w, '_powershell', lambda *a: dict(receipt(), protected=False))
+    monkeypatch.setattr(w, '_powershell',
+        lambda *a, **kw: dict(receipt(), protected=False))
     with pytest.raises(ValueError, match='protected'):
         w.prepare_windows_validation_root(other, 'component-validation:test', enabled=True)
     assert not other.exists()
@@ -79,7 +80,8 @@ def test_unknown_file_and_hardlink_fail_closed(tmp_path, monkeypatch):
     for name in ('.qsys-async-validation', 'dispatch.sqlite3', 'dispatch.lock'):
         (root / name).touch()
     monkeypatch.setattr(w, '_local_path', lambda root: None)
-    monkeypatch.setattr(w, '_powershell', lambda path, script: receipt(path == root))
+    monkeypatch.setattr(w, '_powershell',
+        lambda path, script, *, timeout: receipt(path == root))
     assert w.validate_windows_validation_root(root)['sid'] == SID
     (root / 'unknown').touch()
     with pytest.raises(ValueError, match='unexpected file'):
@@ -97,16 +99,64 @@ def test_powershell_path_is_data_and_errors_are_redacted(monkeypatch):
     captured = []
     monkeypatch.setenv('SystemRoot', 'C:/Windows')
     def run(argv, **kwargs):
-        captured.append(argv)
+        captured.append((argv, kwargs))
         return SimpleNamespace(stdout=json.dumps(receipt()).encode())
     monkeypatch.setattr(w.subprocess, 'run', run)
     path = Path("private';whoami;$x='")
     assert w._powershell(path, w._INSPECT)['sid'] == SID
-    code = base64.b64decode(captured[0][-1]).decode('utf-16le')
+    code = base64.b64decode(captured[0][0][-1]).decode('utf-16le')
     assert str(path) not in code
+    assert captured[0][1]['timeout'] == w._POWERSHELL_TIMEOUT
     def fail(*a, **kw):
         raise subprocess.CalledProcessError(1, a, stderr=b'private account token')
     monkeypatch.setattr(w.subprocess, 'run', fail)
     with pytest.raises(ValueError, match='CalledProcessError') as err:
         w._powershell(path, w._INSPECT)
     assert 'private account' not in str(err.value)
+
+
+def test_cold_inspection_gets_one_longer_read_only_attempt(monkeypatch):
+    calls = []
+    monkeypatch.setattr(w, '_powershell',
+        lambda path, script, *, timeout: calls.append((path, script, timeout)) or receipt())
+    path = Path('C:/private')
+    assert w._inspect(path, cold_start=True)['sid'] == SID
+    assert w._inspect(path)['sid'] == SID
+    assert calls == [
+        (path, w._INSPECT, w._COLD_INSPECTION_TIMEOUT),
+        (path, w._INSPECT, w._POWERSHELL_TIMEOUT),
+    ]
+
+
+def test_cold_inspection_timeout_is_not_retried(monkeypatch):
+    import subprocess
+    calls = []
+    monkeypatch.setenv('SystemRoot', 'C:/Windows')
+    def timeout(*args, **kwargs):
+        calls.append(kwargs['timeout'])
+        raise subprocess.TimeoutExpired(args[0], kwargs['timeout'])
+    monkeypatch.setattr(w.subprocess, 'run', timeout)
+    with pytest.raises(ValueError, match='TimeoutExpired'):
+        w._inspect(Path('C:/private'), cold_start=True)
+    assert calls == [w._COLD_INSPECTION_TIMEOUT]
+
+
+def test_preparation_keeps_mutation_single_attempt_on_short_timeout(tmp_path, monkeypatch):
+    root = tmp_path / 'qsys-async-validation-timeout'
+    calls = []
+    monkeypatch.setattr(w, '_local_path', lambda root: None)
+    def powershell(path, script, *, timeout):
+        calls.append((path, script, timeout))
+        if script == w._PROTECT_NEW_ROOT:
+            raise ValueError('Windows security inspection failed: TimeoutExpired')
+        return receipt()
+    monkeypatch.setattr(w, '_powershell', powershell)
+    with pytest.raises(ValueError, match='TimeoutExpired'):
+        w.prepare_windows_validation_root(
+            root, 'component-validation:test', enabled=True)
+    assert calls == [
+        (root.parent, w._INSPECT, w._COLD_INSPECTION_TIMEOUT),
+        (root, w._PROTECT_NEW_ROOT, w._POWERSHELL_TIMEOUT),
+    ]
+    assert root.is_dir()
+    assert list(root.iterdir()) == []

@@ -16,6 +16,8 @@ _FILES = {'.qsys-async-validation', 'dispatch.sqlite3', 'dispatch.lock',
 _SYSTEM = 'S-1-5-18'
 _ADMINS = 'S-1-5-32-544'
 _FULL = 0x1F01FF
+_POWERSHELL_TIMEOUT = 15
+_COLD_INSPECTION_TIMEOUT = 45
 
 _INSPECT = r'''
 $identity=[System.Security.Principal.WindowsIdentity]::GetCurrent()
@@ -55,7 +57,7 @@ Set-Acl -LiteralPath $path -AclObject $acl
 '''
 
 
-def _powershell(path: Path, script: str) -> dict:
+def _powershell(path: Path, script: str, *, timeout: int = _POWERSHELL_TIMEOUT) -> dict:
     # The path is data, never PowerShell source or a shell argument fragment.
     encoded_path = base64.b64encode(str(path).encode('utf-8')).decode('ascii')
     code = ("$ErrorActionPreference='Stop';[Console]::OutputEncoding=New-Object Text.UTF8Encoding($false);"
@@ -65,7 +67,7 @@ def _powershell(path: Path, script: str) -> dict:
     try:
         result = subprocess.run([str(executable), '-NoProfile', '-NonInteractive', '-EncodedCommand',
             base64.b64encode(code.encode('utf-16le')).decode('ascii')],
-            capture_output=True, timeout=15, check=True)
+            capture_output=True, timeout=timeout, check=True)
         value = json.loads(result.stdout.decode('utf-8-sig'))
         if not isinstance(value, dict):
             raise ValueError('invalid security receipt')
@@ -73,6 +75,15 @@ def _powershell(path: Path, script: str) -> dict:
     except (subprocess.SubprocessError, UnicodeError, ValueError) as exc:
         # stderr may contain private paths or identities; do not embed it.
         raise ValueError('Windows security inspection failed: ' + type(exc).__name__) from None
+
+
+def _inspect(path: Path, *, cold_start: bool = False) -> dict:
+    # The first PowerShell process after a Windows reboot can spend more than
+    # the normal command budget in process/security-provider initialization.
+    # This remains one read-only attempt: mutations keep the shorter timeout
+    # and are never replayed here.
+    timeout = _COLD_INSPECTION_TIMEOUT if cold_start else _POWERSHELL_TIMEOUT
+    return _powershell(path, _INSPECT, timeout=timeout)
 
 
 def _assert_private(value: dict, *, directory: bool, protected: bool) -> None:
@@ -108,14 +119,14 @@ def _local_path(root: Path) -> None:
 
 def validate_windows_validation_root(root: Path) -> dict:
     _local_path(root)
-    receipt = _powershell(root, _INSPECT)
+    receipt = _inspect(root, cold_start=True)
     _assert_private(receipt, directory=True, protected=True)
     if receipt['owner'] != receipt['sid']:
         raise ValueError('validation root must be owned by current Windows identity')
     for path in root.iterdir():
         if path.name not in _FILES:
             raise ValueError('unexpected file in Windows validation state root')
-        _assert_private(_powershell(path, _INSPECT), directory=False, protected=False)
+        _assert_private(_inspect(path), directory=False, protected=False)
         if path.stat().st_nlink != 1:
             raise ValueError('Windows validation state hardlink rejected')
     required = {'.qsys-async-validation', 'dispatch.sqlite3', 'dispatch.lock'}
@@ -131,10 +142,11 @@ def prepare_windows_validation_root(root: Path, namespace: str, *, enabled: bool
     if not re.fullmatch(r'component-validation:[a-z0-9][a-z0-9:_-]{0,95}', namespace):
         raise ValueError('explicit isolated namespace required')
     # Inherit a private DACL from the first instant. Never change the parent ACL.
-    _assert_private(_powershell(root.parent, _INSPECT), directory=True, protected=True)
+    _assert_private(_inspect(root.parent, cold_start=True), directory=True, protected=True)
     root.mkdir(exist_ok=False)
     # A failure preserves the new directory for audit; no overwrite or cleanup retry.
-    if _powershell(root, _PROTECT_NEW_ROOT).get('prepared') is not True:
+    if _powershell(root, _PROTECT_NEW_ROOT,
+            timeout=_POWERSHELL_TIMEOUT).get('prepared') is not True:
         raise ValueError('Windows validation root preparation incomplete')
     for name, content in (('.qsys-async-validation', namespace),
                           ('dispatch.sqlite3', ''), ('dispatch.lock', '0')):
