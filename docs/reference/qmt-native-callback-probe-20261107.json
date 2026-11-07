@@ -1,0 +1,60 @@
+{
+  "protocol": "qsys.qmt-native-callback.evidence.v1",
+  "issue": 601,
+  "observed_at": "2026-11-07T10:23:12+08:00",
+  "run_id": "57f8869db26718d70d252d62e29e78ca",
+  "client_build": "2.1.33.0",
+  "candidate_sha256": "a10e5c3e95d94218326cbb685effb317e79d17b2e1656ac9ec3d7d748e205f3c",
+  "callback_mode": {
+    "configuration_accepted": true,
+    "callback_subscription_requested": true,
+    "model_mode": "simulated",
+    "bounded_window_seconds_approx": 12,
+    "callback_observations": 0,
+    "query_calls": 0,
+    "account_reads": 0,
+    "history_reads": 0,
+    "trading_calls": 0,
+    "cancel_calls": 0,
+    "raw_values_emitted": false,
+    "normalization_performed": false,
+    "authorizes_trading": false,
+    "counts_as_callback_shape_acceptance": false
+  },
+  "stop": {
+    "qmt_transiently_not_responding_before_planned_stop": true,
+    "recovery_stop_clicks": 1,
+    "independently_confirmed_stopped": true,
+    "executing_strategies_after_stop": 0
+  },
+  "default_disabled_restoration": {
+    "source_restored": true,
+    "candidate_file_sha256": "0eec3c097861fcc8b300b14580df3ac9a9966dbf892bde2554b9e8f8c9725cd8",
+    "editor_canonical_sha256": "a34979c225d82ff4db85d4c20e7e3b7fb8702d4bb0aa18620a8f18526d381c60",
+    "editor_matches_candidate": true,
+    "compiled": true,
+    "run_clicked": false
+  },
+  "final_state": {
+    "model": "QSYS601_REPORT_READONLY",
+    "model_auto_run": false,
+    "model_stopped": true,
+    "qmt_pid": 5316,
+    "qmt_session": 1,
+    "qmt_started_at": "2026-11-07T08:53:51.0951441+08:00",
+    "qmt_responding": true,
+    "window_size": [1024, 728],
+    "helper_task_count": 80,
+    "helper_tasks_enabled": 0,
+    "windows_restarted": false,
+    "qmt_restarted_by_probe": false,
+    "live_or_shadow_started": false,
+    "kill_changed": false
+  },
+  "private_evidence": {
+    "matched_log_sha256": "3f699f861e30df5d610fa7d574ce3118e1d59a858a87a66dc55f76cdf38c97ec",
+    "running_screenshot_sha256": "b913f689f8851d07df2492f1e11fd5350dd0fa7d89a68768c3fa56e39f12e631",
+    "stopped_screenshot_sha256": "30efd4319b58681b38ffc9791fecb360cc7c2dbbb13e468199af743d7089f742",
+    "final_screenshot_sha256": "6038bfd1fec9ba3d206346c2ac2a3c6fd8a4de93513c701e7f30c905a2317a"
+  }
+}
