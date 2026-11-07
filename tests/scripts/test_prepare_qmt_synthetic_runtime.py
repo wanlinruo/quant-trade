@@ -77,3 +77,13 @@ def test_verify_rejects_unreviewed_extra_file(tmp_path):
 
     with pytest.raises(ValueError, match="only the exact reviewed file set"):
         verify_runtime_files(SOURCE, tmp_path)
+
+
+def test_verify_rejects_symlink_target_directory(tmp_path):
+    actual = tmp_path / "actual"
+    actual.mkdir()
+    link = tmp_path / "runtime-link"
+    link.symlink_to(actual, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="non-symlink directory"):
+        verify_runtime_files(SOURCE, link)

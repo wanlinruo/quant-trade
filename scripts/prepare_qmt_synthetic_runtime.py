@@ -23,10 +23,14 @@ def _read_regular_file(path: Path) -> bytes:
     return path.read_bytes()
 
 
+def _validate_target_dir(target_dir: Path) -> None:
+    if target_dir.is_symlink() or not target_dir.is_dir():
+        raise ValueError("target must be an existing non-symlink directory")
+
+
 def stage_runtime_files(source_dir: Path, target_dir: Path) -> dict[str, str]:
     """Copy required files under their runtime names without overwriting anything."""
-    if not target_dir.is_dir() or target_dir.is_symlink():
-        raise ValueError("target must be an existing non-symlink directory")
+    _validate_target_dir(target_dir)
     payloads = {name: _read_regular_file(source_dir / name) for name in RUNTIME_FILES}
     for name in RUNTIME_FILES:
         target = target_dir / name
@@ -49,6 +53,7 @@ def stage_runtime_files(source_dir: Path, target_dir: Path) -> dict[str, str]:
 
 def verify_runtime_files(source_dir: Path, target_dir: Path) -> dict[str, str]:
     """Verify byte identity and import the port from the final directory shape."""
+    _validate_target_dir(target_dir)
     entries = {path.name for path in target_dir.iterdir()}
     reviewed = set(RUNTIME_FILES)
     if entries != reviewed:
