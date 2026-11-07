@@ -1,0 +1,101 @@
+{
+  "protocol": "qsys-windows-reboot-probe-summary.v1",
+  "issue": 601,
+  "at": "2026-11-07T16:57:45+08:00",
+  "route": "linux-decision -> windows-durable-gateway -> local-ipc -> qmt-built-in-thin-executor",
+  "source_main_sha": "64e0cd09e01a662b9610119378b3d4450034f7b9",
+  "authorization": {
+    "single_windows_restart": true,
+    "fixed_synthetic_validation_only": true,
+    "account_queries": false,
+    "native_callbacks": false,
+    "orders": false,
+    "cancels": false,
+    "live_or_shadow": false,
+    "kill_changes": false
+  },
+  "preflight": {
+    "logon_task_old_build": "2.1.19.0",
+    "logon_task_repaired_build": "2.1.33.0",
+    "trusted_exe_sha256": "131e7b39fd66388cb125f94635ebb82eecc27f673da017d61f3cda303b3fffcc",
+    "logon_delay": "PT20S",
+    "candidate_compiled": true,
+    "candidate_run_clicked": false,
+    "running_orders": 0,
+    "running_tasks": 0,
+    "running_strategies": 0
+  },
+  "windows": {
+    "pre_reboot_boot_time": "2026-10-04T10:38:40.4931590+08:00",
+    "reboot_requested_at": "2026-11-07T14:20:42.9469534+08:00",
+    "post_reboot_boot_time": "2026-11-07T14:21:18.4949940+08:00",
+    "post_reboot_system_free_bytes": 7205060608
+  },
+  "qmt": {
+    "build": "2.1.33.0",
+    "session": 1,
+    "automatic_start_verified": true,
+    "final_pid": 2272,
+    "final_started_at": "2026-11-07T14:21:59.9926153+08:00",
+    "responding_after": true,
+    "window_restored": "1024x728",
+    "logon_task_enabled": true,
+    "logon_task_points_to_trusted_exe": true
+  },
+  "model": {
+    "name": "QSYS601_THIN_VALIDATION",
+    "instance_mode": "validation-only",
+    "formal_container": "simulated",
+    "automatic_start_verified": true,
+    "observed_started_at": "2026-11-07T14:23:24+08:00",
+    "stopped_after_probe": true,
+    "default_source_restored": true,
+    "enabled_candidate_canonical_sha256": "74b0e8ab9000c33d5daa631159e5cb34c2ae73f66aa4e4e1892ed4adaf700399",
+    "default_candidate_canonical_sha256": "c65f4006abc667103d6f235033e50746aaaa3f4ed8fabef9513faab2793a59f0",
+    "editor_readback_matches_default": true,
+    "compile_clicked": true,
+    "run_clicked_during_cleanup": false
+  },
+  "coordinator": {
+    "automatic_start_verified": true,
+    "started_at": "2026-11-07T14:21:54.4032263+08:00",
+    "result": "failed",
+    "failed_stage": "driver",
+    "error_type": "RuntimeException",
+    "failure_reason": "windows_security_inspection_timeout",
+    "send_gate_created": false,
+    "automatic_replay": false,
+    "fixed_synthetic_intents_sent": 0,
+    "synthetic_response_observed": false
+  },
+  "cleanup": {
+    "running_orders_after": 0,
+    "running_tasks_after": 0,
+    "running_strategies_after": 0,
+    "default_source_restored": true,
+    "interactive_helper_tasks_enabled": 0,
+    "interactive_helper_tasks_running": 0,
+    "helper_processes_running": 0,
+    "shadow_enabled": false,
+    "temporary_windows_scripts_remaining": 0,
+    "failed_records_preserved": true
+  },
+  "evidence_sha256": {
+    "authorization.json": "23e91651d78885b3e4b57bdc379d8e99d27c305a35681bf59378bb8bdcaa3a9f",
+    "requested.json": "50634e81fb9c1a4fbfa758ab09d3a6dbd2a301b6924b623bbde8ee0aa770b369",
+    "reboot-requested.json": "eaf5991c36d91a8bcfb2268edf7615941c7527a49e7be94bf6952342c9acb339",
+    "coordinator-failed.json": "b6e34cd4f18e917761b4267f3bb8f03a276d489a61667910380a41884c498b60",
+    "post-reboot-stop-validation.json": "06946f70471a5af457bef0166ee5810c334628114085b72c80c0d34d476e80d1",
+    "post-reboot-default-restored.json": "e91cd67d919790f47cc555fbd4665474fb65a56dd66ec0bd832ebf63ef34285a",
+    "post-reboot-final-ui.json": "05f2a05afbc4a84e201067f236d616157fdea7cf6423e3eb4da0b8933387df6f"
+  },
+  "boundaries": {
+    "windows_and_qmt_auto_start_verified": true,
+    "validation_model_auto_start_verified": true,
+    "post_reboot_synthetic_closed_loop_verified": false,
+    "windows_restart_stage_complete": false,
+    "native_order_reports_verified": false,
+    "real_order_authorized": false,
+    "live_or_shadow_activated": false
+  }
+}
