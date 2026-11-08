@@ -69,9 +69,10 @@ transport_received → broker_accepted → partial/fill
    进入内置薄执行策略”的明确许可；编辑器模拟结果不能替代这一层。
 3. **无人值守运行（部分完成）**：已配置正式模拟实例自动启动，并验证VNC断开、交互session
    保持及QMT客户端重建后均可自动运行并接收完整合成意图。Windows整机重启后，受信QMT与验证
-   模型也已自动恢复；最新r6已进一步跨过安全检查与两级ACL状态根准备，但协调器仍在发送门前因
-   scheduled证据发现契约和瞬时UI就绪判断失败，未发送固定合成意图。因此整机重启后的端到端
-   合成闭环仍未通过。生产运行不得依赖界面点击，失败保持停止交易姿态。
+   模型也已自动恢复。2026-11-08 r10在先通过不重启全链彩排后执行单次整机重启，**端到端合成
+   闭环通过**：验证模型自动运行、无人工启动，固定合成意图返回`validated_synthetic`，账本重开后
+   转`unknown`且不重放（[r10证据](qmt-windows-reboot-probe-20261108-r10.json)）。生产运行不得依赖
+   界面点击，失败保持停止交易姿态。
 4. **只读账户与回报**：在明确授权后验证账户身份、委托/成交查询和回调字段，不发送委托，
    建立真实唯一标识和状态映射。
 5. **隔离故障组合**：验证丢ACK、回报延迟、进程退出、重复/冲突消息和`unknown`查询对账；
@@ -156,6 +157,10 @@ transport_received → broker_accepted → partial/fill
   [r6整机证据](qmt-windows-reboot-probe-20261108.json)。离线候选改用`schedule_run`成功后写入
   共享内存的run-bound marker，外部driver有界等待并绑定marker收据；本地通过仍不替代下一次新授权
   下的整机验收。
+- 11月8日按维护者授权先做不重启全链彩排：r1（`49fa0fcd…`）首次在真实QMT取得scheduled marker，
+  随即暴露发送门文件被协调器独占写入时driver读取的竞态（发送0）；PR #621改为原子发布并让协调器
+  先于driver写6144标记后，r2（`a0c1486a…`）返回`validated_synthetic`。随后r10（`90d937b4…`，main
+  `8a8d439`）单次整机重启通过端到端合成闭环，见[r10证据](qmt-windows-reboot-probe-20261108-r10.json)。
 - 第4阶段当前查询层已在维护者单独授权下完成一次现场读取：`ACCOUNT`取得非空脱敏形状，
   `POSITION/ORDER/DEAL`均为`empty_unverified`，四类当前查询各一次；历史读取、交易和撤单调用为0。
   模拟实例调用`set_account`后却自然收到一次账户回调，超出本次授权，因此不计为回调层通过。

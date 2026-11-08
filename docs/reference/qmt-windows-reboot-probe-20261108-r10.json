@@ -1,0 +1,126 @@
+{
+ "protocol": "qsys-windows-reboot-probe-summary.v2",
+ "issue": 601,
+ "at": "2026-11-08T17:30:00+08:00",
+ "source_main_sha": "8a8d4395e6e931a28b92ea5d21ed9752b82c0335",
+ "source_tree": "a3711388b1d867ac4f2950a5c88434da96296523",
+ "run_id": "90d937b405dc67757cd98c2adaab8d9f",
+ "mode": "reboot",
+ "authorization": {
+  "single_windows_restart": true,
+  "fixed_synthetic_validation_only": true,
+  "account_queries": false,
+  "native_callbacks": false,
+  "orders": false,
+  "cancels": false,
+  "live_or_shadow": false,
+  "kill_changes": false,
+  "consumed": true
+ },
+ "preceding_rehearsals": [
+  {
+   "run_id": "49fa0fcddb155584623d23a578f604e0",
+   "source_sha": "6da00517f1c23ea5e57013f35972edf0ae75c306",
+   "windows_restarted": false,
+   "result": "failed",
+   "failure": "first-go.json read while coordinator held exclusive write handle (PermissionError) before dispatch",
+   "dispatch_attempt_rows": 0,
+   "fixed_synthetic_intents_sent": 0,
+   "fixed_by": "atomic staging+rename publication (PR #621)"
+  },
+  {
+   "run_id": "a0c1486aff00f71c3489d89a1d256eb1",
+   "source_sha": "77a6c6a9c177a289cfb4d66754f693493f371145",
+   "windows_restarted": false,
+   "result": "success",
+   "response_status": "validated_synthetic",
+   "executed": false,
+   "authorizes_trading": false,
+   "broker_calls": 0
+  }
+ ],
+ "preflight_ready_sha256": "90654b3ef9455ea7afeb91f27711e8da5abb927812b1465d80f6ebb43c6deccc",
+ "windows": {
+  "pre_reboot_boot_time": "2026-11-08T12:33:29.4949430+08:00",
+  "reboot_issued_at": "2026-11-08T17:22:31+08:00",
+  "post_reboot_boot_time": "2026-11-08T17:23:08.4949480+08:00",
+  "restarts": 1
+ },
+ "coordinator": {
+  "started_at": "2026-11-08T17:23:30.4513904+08:00",
+  "trigger": "logon-no-delay",
+  "session": 1,
+  "marker_written_before_driver_at": "2026-11-08T17:23:30.6847307+08:00",
+  "result": "success",
+  "self_disabled": true,
+  "last_task_result": 0
+ },
+ "qmt": {
+  "build": "2.1.33.0",
+  "automatic_start_verified": true,
+  "pid": 3812,
+  "session": 1,
+  "started_at": "2026-11-08T17:23:39.8458100+08:00",
+  "responding": true
+ },
+ "driver": {
+  "launched_at": "2026-11-08T17:23:30.7936259+08:00",
+  "first_ready_at": "2026-11-08T17:24:07.144+08:00",
+  "cold_start_ready_seconds": 36,
+  "exit_code": 0
+ },
+ "model": {
+  "name": "QSYS601_THIN_VALIDATION",
+  "automatic_start_only": true,
+  "manual_start_fallback": false,
+  "scheduled_marker_observed_at": "2026-11-08T17:24:54.383556+08:00",
+  "seconds_after_driver_ready": 47,
+  "stopped_after_validation": true,
+  "default_source_restored": true,
+  "default_source_canonical_sha256": "f0264c7aaf057027ad76d6c66ac3c5a5ee697afb9c50694be370febe24b33ae7"
+ },
+ "send_gate": {
+  "created_at": "2026-11-08T17:24:54.6192955+08:00",
+  "atomic_publication": true,
+  "model_scheduled_sha256": "140989f4877d92bced494806b5865e09e9a0fa1da91e0ae4bcf807e838961621"
+ },
+ "result": {
+  "status": "success",
+  "fixed_synthetic_intents_sent": 1,
+  "receipts": 1,
+  "response_status": "validated_synthetic",
+  "reason": "ok",
+  "executed": false,
+  "authorizes_trading": false,
+  "broker_calls": 0,
+  "account_binding": false,
+  "first_state": "transport_received",
+  "after_ledger_reopen_state": "unknown",
+  "after_ledger_reopen_reason": "gateway_restart_requires_reconciliation",
+  "same_attempt_and_command_sha": true,
+  "old_intent_republished": 0,
+  "dispatch_attempt_rows": 1,
+  "automatic_replay": false
+ },
+ "cleanup": {
+  "validation_instance_stopped": true,
+  "ui_orders_tasks_strategies": "0/0/0",
+  "final_geometry": "1024x728",
+  "issue601_helper_tasks_total": 382,
+  "issue601_helper_tasks_enabled": 0,
+  "shadow_task_enabled": false,
+  "qsys_qmt_task_enabled": true,
+  "large_powershell_residue": 0,
+  "independent_xtminiqmt_observed_not_modified": true
+ },
+ "boundaries": {
+  "account_calls": 0,
+  "market_calls": 0,
+  "trading_calls": 0,
+  "cancel_calls": 0,
+  "live_or_shadow_started": false,
+  "kill_changed": false,
+  "not_broker_acceptance": true,
+  "not_real_closed_loop": true
+ }
+}

@@ -1,5 +1,21 @@
 # 项目交接入口
 
+## 11-08：#601 Windows整机重启后端到端合成闭环通过（r10）
+
+- 按维护者三项授权（修复PR合并、不重启彩排、彩排通过后单次整机重启）推进。复盘见#601：
+  r1~r6每次只暴露下一层故障，根因是重启前只核静态产物；规则已写入AGENTS.md §2.1。
+- PR #621（main `8a8d439`）：协调器纳入仓库并先于driver写6144标记，消除driver冷启动与模型
+  自动运行的竞态；门文件原子发布。`stage-reboot --run-id --validation-mode reboot|rehearsal`
+  一次性生成`coordinate.ps1`与`fixture.json`。
+- 不重启彩排r1在发送门前暴露文件发布竞态（发送0），修复后彩排r2返回`validated_synthetic`。
+- r10单次整机重启：boot 17:23:08；协调器登录即启并先写标记；QMT自动恢复PID3812；driver冷启动
+  36秒就绪；验证模型**自动**运行后47秒发布scheduled marker；发送门原子发布；固定合成意图发送1、
+  `validated_synthetic/ok`、`executed=false`、`broker_calls=0`；账本重开后同attempt转`unknown`，
+  无重放。收尾停止实例、恢复默认关闭源码`f0264c7a…`，0/0/0，382个#601任务disabled，Shadow
+  disabled。证据见[r10摘要](docs/reference/qmt-windows-reboot-probe-20261108-r10.json)。
+- 本层通过不代表券商受理或真实闭环；第4阶段原生回报、unknown真实对账、最小真实闭环和#137激活
+  仍须逐层另行授权。
+
 ## 11-08：#601整机r6跨过ACL冷启动门，scheduled证据门发送前失败并安全收尾
 
 - 维护者明确授权的单次Windows整机重启已执行；boot time前进到12:33:29，受信QMT 2.1.33.0
