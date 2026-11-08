@@ -1,5 +1,23 @@
 # 项目交接入口
 
+## 11-08：#601整机r6跨过ACL冷启动门，scheduled证据门发送前失败并安全收尾
+
+- 维护者明确授权的单次Windows整机重启已执行；boot time前进到12:33:29，受信QMT 2.1.33.0
+  自动恢复为PID4876/session1，验证模型于12:35:13自动运行。driver于12:34:27写出first-ready，
+  证明r5两级ACL修复在真实冷启动路径生效；正式父目录/状态根均为当前SID+SYSTEM受保护DACL、
+  owner当前SID、无reparse，三项状态文件单硬链接。
+- 协调器在`wait_model_scheduled`记录`QMT lost readiness`，driver随后按自身300秒上限以
+  `No verified model run; not sent`退出。发送门、结果和成功收据均不存在；只读SQLite副本
+  `dispatch_attempts=0`，发送0、响应0、无重放，账户/交易/撤单调用0。
+- 离线定位确认协调器查错日志根：`userdata_mini`匹配0，FormulaOutput实际位于`userdata/log`，且
+  活动日志拒绝并发ReadAllText；UI自动运行不能替代scheduled证据。单次Responding/MainWindowHandle
+  漂移也不能作为进程退出。修复候选改为QMT在`schedule_run`成功后向共享内存保留区发布run-bound
+  marker，外部受审driver有界只读等待并写绑定收据，之后才允许协调器创建发送门；不再依赖日志/UI。
+- 安全收尾已精确停止唯一验证实例，恢复默认关闭源码并回读canonical SHA一致；最终委托/任务/策略
+  0/0/0，335个#601任务全部disabled，Shadow disabled，QMT保持Responding。脱敏摘要见
+  [qmt-windows-reboot-probe-20261108.json](docs/reference/qmt-windows-reboot-probe-20261108.json)。r6授权
+  已消费；本地修复不构成整机闭环通过，再次重启必须从最终main生成新run-id并取得新的单次明确授权。
+
 ## 11-08：#601整机r5在状态根ACL契约处发送前拒绝，安全收尾完成
 
 - 维护者明确授权的单次Windows整机重启已执行；boot time前进到10:52:14，受信QMT 2.1.33.0

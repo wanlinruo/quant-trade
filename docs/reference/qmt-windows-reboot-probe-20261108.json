@@ -1,0 +1,98 @@
+{
+  "protocol": "qsys-windows-reboot-probe-summary.v2",
+  "issue": 601,
+  "at": "2026-11-08T13:14:05+08:00",
+  "source_main_sha": "e30012a5930e06ce31b0ee948aa76fa00525709f",
+  "run_id": "56960fa885da0a41f85bd059e2b45308",
+  "authorization": {
+    "single_windows_restart": true,
+    "fixed_synthetic_validation_only": true,
+    "account_queries": false,
+    "native_callbacks": false,
+    "orders": false,
+    "cancels": false,
+    "live_or_shadow": false,
+    "kill_changes": false,
+    "consumed": true
+  },
+  "windows": {
+    "pre_reboot_boot_time": "2026-11-08T10:52:14.4949720+08:00",
+    "post_reboot_boot_time": "2026-11-08T12:33:29.4949430+08:00"
+  },
+  "qmt": {
+    "build": "2.1.33.0",
+    "automatic_start_verified": true,
+    "final_pid": 4876,
+    "final_session": 1,
+    "final_started_at": "2026-11-08T12:33:58.4320943+08:00",
+    "final_responding": true,
+    "final_visible_windows": 1,
+    "final_geometry": "1024x728"
+  },
+  "driver": {
+    "started_at": "2026-11-08T12:33:51+08:00",
+    "first_ready_at": "2026-11-08T12:34:27.6222781+08:00",
+    "acl_cold_start_passed": true,
+    "result": "failed",
+    "failure": "No verified model run; not sent",
+    "send_gate_created": false,
+    "dispatch_attempt_rows": 0,
+    "fixed_synthetic_intents_sent": 0,
+    "automatic_replay": false
+  },
+  "state_root": {
+    "two_level_layout": true,
+    "parent_and_root_owner_is_current_sid": true,
+    "parent_and_root_protected": true,
+    "parent_and_root_exact_current_sid_plus_system": true,
+    "reparse": false,
+    "required_files_single_hardlink": true,
+    "dispatch_sqlite_sha256": "2a7020bc9cb906f7fa6dc6bb6323476897663fb531b06ba3b5d571ef450b3c0a"
+  },
+  "model": {
+    "name": "QSYS601_THIN_VALIDATION",
+    "automatic_start_observed_at": "2026-11-08T12:35:13+08:00",
+    "stopped_after_failure": true,
+    "default_source_restored": true,
+    "default_source_canonical_sha256": "c65f4006abc667103d6f235033e50746aaaa3f4ed8fabef9513faab2793a59f0",
+    "run_clicked_during_cleanup": false
+  },
+  "failure_analysis": {
+    "coordinator_stage": "wait_model_scheduled",
+    "coordinator_message": "QMT lost readiness",
+    "configured_log_root": "userdata_mini",
+    "configured_log_matches": 0,
+    "observed_formula_output_root": "userdata/log",
+    "observed_formula_output_files": 10,
+    "active_log_concurrent_read": "IOException",
+    "scheduled_log_marker_verified": false,
+    "ui_auto_start_is_not_scheduled_marker_evidence": true
+  },
+  "cleanup": {
+    "running_orders_after": 0,
+    "running_tasks_after": 0,
+    "running_strategies_after": 0,
+    "issue601_helper_tasks_total": 335,
+    "issue601_helper_tasks_enabled": 0,
+    "shadow_enabled": false,
+    "failed_records_preserved": true
+  },
+  "evidence_sha256": {
+    "authorization.json": "b7b61eeae564035d5dc49161424d6ec9ad574ba3a13c09a79fd0ba0468c1cb44",
+    "requested.json": "debb9dae90e9373cc61ee7d04ae1b46f275196f83d5433824a364166e4da6bef",
+    "first-ready.json": "d8c20a7f354dac600f53fba7edc9dfa134360b9d7e5679ef77c8e614e3cc1285",
+    "coordinator-failed.json": "948dd959b1fdf3bfcb3c2570a3a734abbce6529c5ee4ecd058a16cb53e89955c",
+    "failed-driver-stderr.txt": "9d8e0548ff6e5f475e83c950c7f5d7bbb4979f7b63ac4119cff72b23f13f17a5",
+    "post-validation-stopped.json": "dfc3523454c9921b5725067552d695244215fe1ecd32d45a79d5891b5d05698e",
+    "post-model-source-verified.json": "8069d6f1dd26ec6de820bc9d62ced5a965bb186047a5703c22b6df3dfa8d55bf",
+    "post-cleanup-final-ui.json": "88c9b8a9837df12da695230d10433ba5a6264da2cff7996438b8975dfa1434b4"
+  },
+  "boundaries": {
+    "windows_qmt_and_model_auto_start_verified": true,
+    "acl_cold_start_verified": true,
+    "post_reboot_synthetic_closed_loop_verified": false,
+    "real_order_authorized": false,
+    "live_or_shadow_activated": false,
+    "another_restart_authorized": false
+  }
+}

@@ -15,6 +15,8 @@ RUNTIME_FILES = (
     "qmt-synthetic-intent-protocol.py",
     "qmt-synthetic-intent-port.py",
 )
+REBOOT_DRIVER_SOURCE = "qmt-windows-reboot-validation-driver.py"
+REBOOT_DRIVER_TARGET = "native.py"
 
 
 def _read_regular_file(path: Path) -> bytes:
@@ -28,6 +30,19 @@ def _validate_target_dir(target_dir: Path) -> None:
         raise ValueError("target must be an existing non-symlink directory")
 
 
+def _write_exclusive(path: Path, payload: bytes) -> None:
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(descriptor, "wb") as output:
+            output.write(payload)
+    except BaseException:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        raise
+
+
 def stage_runtime_files(source_dir: Path, target_dir: Path) -> dict[str, str]:
     """Copy required files under their runtime names without overwriting anything."""
     _validate_target_dir(target_dir)
@@ -37,18 +52,38 @@ def stage_runtime_files(source_dir: Path, target_dir: Path) -> dict[str, str]:
         if os.path.lexists(target):
             raise FileExistsError(f"refusing to overwrite runtime file: {target}")
     for name, payload in payloads.items():
-        target = target_dir / name
-        descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        try:
-            with os.fdopen(descriptor, "wb") as output:
-                output.write(payload)
-        except BaseException:
-            try:
-                os.close(descriptor)
-            except OSError:
-                pass
-            raise
+        _write_exclusive(target_dir / name, payload)
     return verify_runtime_files(source_dir, target_dir)
+
+
+def stage_reboot_bundle_files(source_dir: Path, bundle_dir: Path) -> dict[str, str]:
+    """Stage the reviewed driver plus exact runtime subdirectory without overwrite."""
+    _validate_target_dir(bundle_dir)
+    driver_source = _read_regular_file(source_dir / REBOOT_DRIVER_SOURCE)
+    driver_target = bundle_dir / REBOOT_DRIVER_TARGET
+    runtime_target = bundle_dir / "runtime"
+    if os.path.lexists(driver_target) or os.path.lexists(runtime_target):
+        raise FileExistsError("refusing to overwrite reboot driver/runtime")
+    runtime_target.mkdir(mode=0o700)
+    stage_runtime_files(source_dir, runtime_target)
+    _write_exclusive(driver_target, driver_source)
+    return verify_reboot_bundle_files(source_dir, bundle_dir)
+
+
+def verify_reboot_bundle_files(source_dir: Path, bundle_dir: Path) -> dict[str, str]:
+    """Verify the exact driver bytes and final runtime import shape."""
+    _validate_target_dir(bundle_dir)
+    runtime = verify_runtime_files(source_dir, bundle_dir / "runtime")
+    source = _read_regular_file(source_dir / REBOOT_DRIVER_SOURCE)
+    target = _read_regular_file(bundle_dir / REBOOT_DRIVER_TARGET)
+    if target != source:
+        raise ValueError("reboot validation driver differs from reviewed source")
+    compile(target, str(bundle_dir / REBOOT_DRIVER_TARGET), "exec")
+    return {
+        **{f"runtime/{name}": value for name, value in runtime.items()},
+        REBOOT_DRIVER_TARGET: hashlib.sha256(target).hexdigest(),
+        "driver_compile": "verified",
+    }
 
 
 def verify_runtime_files(source_dir: Path, target_dir: Path) -> dict[str, str]:
@@ -93,7 +128,8 @@ def verify_runtime_files(source_dir: Path, target_dir: Path) -> dict[str, str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("mode", choices=("stage", "verify"))
+    parser.add_argument(
+        "mode", choices=("stage", "verify", "stage-reboot", "verify-reboot"))
     parser.add_argument("target", type=Path)
     parser.add_argument(
         "--source-dir",
@@ -103,8 +139,12 @@ def main() -> int:
     args = parser.parse_args()
     if args.mode == "stage":
         receipt = stage_runtime_files(args.source_dir, args.target)
-    else:
+    elif args.mode == "verify":
         receipt = verify_runtime_files(args.source_dir, args.target)
+    elif args.mode == "stage-reboot":
+        receipt = stage_reboot_bundle_files(args.source_dir, args.target)
+    else:
+        receipt = verify_reboot_bundle_files(args.source_dir, args.target)
     print(json.dumps(receipt, ensure_ascii=True, sort_keys=True))
     return 0
 

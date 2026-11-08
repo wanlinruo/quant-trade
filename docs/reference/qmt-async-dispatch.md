@@ -40,6 +40,14 @@ attempt/nonce/SHA及计数再次校验后，才生成现有`DispatchAcknowledgem
 Windows后仍须对最终节点目录执行`verify`，不能以构建机收据或单独文件SHA替代；缺文件负例必须
 在创建状态根、first-ready和发送门之前失败。
 
+Windows整机重启bundle还必须使用
+`python scripts/prepare_qmt_synthetic_runtime.py stage-reboot <bundle-root>`，以不覆盖方式安装受审
+`native.py`及精确`runtime/`目录；节点侧使用`verify-reboot`。QMT模型只有在正式
+`schedule_run`返回后，才在共享内存保留区写入绑定当前run-id的scheduled marker。外部driver只读
+有界等待该marker并创建`model-scheduled.json`，协调器将其SHA绑定进`first-go.json`后才允许发送。
+不得再以FormulaOutput日志、窗口句柄或单次`Responding`值替代该marker；marker仅证明有限调度已
+建立，不是消息ACK、券商受理或交易授权。
+
 ## 尝试账本与消息含义
 
 每个业务ID只保存一份规范化原始意图、SHA、attempt_id、原会话nonce和真实传输收据。
@@ -138,6 +146,13 @@ unknown/未完成dispatching阻止本作用域新开仓；本阶段尚无券商�
   当前SID，DACL受保护且精确SID+SYSTEM、非reparse；三个状态文件逐项为单硬链接并通过既有
   `validate_windows_validation_root()`。该实测未重启Windows、未启动QMT模型或调用账户/交易接口，
   只证明ACL两级准备链，不冒称整机闭环通过。
+- 11-08整机r6中，两级ACL链在真实重启冷启动路径通过并写出`first-ready`，但协调器随后仍在发送门
+  前失败：它从无FormulaOutput文件的`userdata_mini`查scheduled marker，实际日志位于
+  `userdata/log`且活动文件不允许并发`ReadAllText`；同时单次QMT UI就绪漂移被立即判为
+  `QMT lost readiness`。验证模型虽自动运行，不能替代scheduled证据。最终发送门不存在、
+  `dispatch_attempts=0`、发送0；模型停止、默认关闭源码恢复、现场0/0/0。修复改用共享内存中由
+  `schedule_run`成功后发布的run-bound marker，并将受审重启driver纳入最终bundle形状；本地通过
+  不等于整机复验通过，再次重启仍需新run-id和新的单次明确授权。
 - 11-07整机重启后，driver在创建状态根前的首个只读父目录检查触发15秒`TimeoutExpired`；
   发送门未创建、合成意图发送0。修复候选仅将每个进程首个只读安全检查改为单次45秒窗口，
   不自动重试；ACL写入仍为单次15秒，失败保留新空目录。所有ACL、owner、NTFS、reparse、
