@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import mmap
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -68,9 +69,12 @@ def session(tmp_path, ticking=True, **broker_options):
                                         executor_module.ReportRing(memory))
     executor_module._STATE = dict(memory=memory, executor=executor, ticks=0, last_generation=0,
                                   stopped=False, deadline_ms=executor_module.now_ms() + 600000)
-    executor_module.MAX_TICKS = 10 ** 6  # one simulated tick per driver sleep
+    executor_module.MAX_TICKS = 100000  # one simulated tick per (short, real) driver sleep
 
-    def sleep(_seconds):
+    def sleep(seconds):
+        # Really wait a little so the number of simulated ticks is bounded by
+        # wall time rather than by how fast the CI machine can spin.
+        time.sleep(min(seconds, 0.01))
         if ticking:
             executor_module.on_timer(None)
             while broker.pending:
