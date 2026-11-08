@@ -37,10 +37,26 @@ spec.loader.exec_module(P)
 
 
 def write(name, value):
-    with (audit / name).open('x', encoding='utf-8') as file:
+    # Publish atomically: readers poll for existence, so the final name must
+    # only appear once the bytes are complete.  os.link never overwrites.
+    staging = audit / ('.staging-' + name)
+    with staging.open('x', encoding='utf-8') as file:
         json.dump(value, file)
         file.flush()
         os.fsync(file.fileno())
+    os.link(staging, audit / name)
+    os.unlink(staging)
+
+
+def read_published(name, deadline):
+    """Read a peer-published JSON file, tolerating a still-open writer."""
+    while True:
+        try:
+            return json.loads((audit / name).read_text(encoding='utf-8-sig'))
+        except (FileNotFoundError, PermissionError, json.JSONDecodeError):
+            if time.monotonic() > deadline:
+                raise TimeoutError('No readable coordinator send gate; not sent')
+            time.sleep(.1)
 
 
 write('first-started.json', dict(pid=os.getpid(), at=datetime.now(timezone.utc).isoformat()))
@@ -99,7 +115,7 @@ with open_validation_dispatcher(**options, adapter_factory=lambda: port) as disp
         if time.monotonic() > deadline:
             raise TimeoutError('No coordinator send gate; not sent')
         time.sleep(.1)
-    go = json.loads((audit / 'first-go.json').read_text(encoding='utf-8-sig'))
+    go = read_published('first-go.json', deadline)
     if go['run'] != run or go.get('model_scheduled_sha256') != hashlib.sha256(
             (audit / 'model-scheduled.json').read_bytes()).hexdigest():
         raise ValueError('Run/scheduled evidence binding')

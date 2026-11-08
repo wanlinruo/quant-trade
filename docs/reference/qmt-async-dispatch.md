@@ -49,7 +49,12 @@ Windows整机重启或不重启彩排bundle必须使用
 就写入并回读6144协调器标记，driver只校验不清零；因此开机后自动运行的QMT模型`init()`不再依赖
 driver先完成最长45秒的冷启动安全检查（r6实测余量约46秒，属于未由设计保证的竞态）。
 `rehearsal`模式要求开机时间与记录一致且QMT PID不变，结果如实记录`windows_restarted=false`，
-只证明不重启动态链，不替代整机重启层。QMT模型只有在正式
+只证明不重启动态链，不替代整机重启层。
+协调器与driver之间以文件存在性作门，因此双方都必须原子发布：先在同目录`.staging-<名>`写完并
+刷盘、关闭句柄，再以不覆盖方式（PowerShell `File.Move`、Python `os.link`）出现最终文件名；读取方
+在原期限内对未关闭写入方或半写JSON有界重试，超时即“未发送”失败。2026-11-08不重启彩排
+（run `49fa0fcd…`）正是在此处失败：协调器以独占句柄写`first-go.json`时driver已见文件存在并
+读取，`PermissionError`后在dispatch前退出，发送0；r1~r6从未走到该步，整机重启无法提前暴露。QMT模型只有在正式
 `schedule_run`返回后，才在共享内存保留区写入绑定当前run-id的scheduled marker。外部driver只读
 有界等待该marker并创建`model-scheduled.json`，协调器将其SHA绑定进`first-go.json`后才允许发送。
 不得再以FormulaOutput日志、窗口句柄或单次`Responding`值替代该marker；marker仅证明有限调度已

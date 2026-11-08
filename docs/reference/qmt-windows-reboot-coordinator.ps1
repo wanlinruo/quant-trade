@@ -12,15 +12,30 @@ $root = $PSScriptRoot
 $trustedExe = 'C:\self\qsys-qmt-2.1.33.0\bin.x64\XtItClient.exe'
 $mapping = $null; $view = $null; $driver = $null; $stage = 'guard'; $taskName = $null
 
+# Publish atomically: the driver polls for existence, so the final name must
+# only appear after the bytes are complete and the writer handle is closed.
+# File.Move fails if the destination exists, so nothing is ever overwritten.
 function Write-NewJson([string]$Name, $Value) {
     $path = Join-Path $root $Name
+    $staging = Join-Path $root ('.staging-' + $Name)
     $bytes = [Text.UTF8Encoding]::new($false).GetBytes(($Value | ConvertTo-Json -Depth 8 -Compress))
-    $stream = [IO.File]::Open($path, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+    $stream = [IO.File]::Open($staging, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
     try { $stream.Write($bytes, 0, $bytes.Length); $stream.Flush($true) } finally { $stream.Dispose() }
+    [IO.File]::Move($staging, $path)
 }
 
 function Read-Json([string]$Name) {
     return [IO.File]::ReadAllText((Join-Path $root $Name), [Text.Encoding]::UTF8) | ConvertFrom-Json
+}
+
+# Read a driver-published file, tolerating a writer that has not closed yet.
+function Read-PublishedBytes([string]$Name, [datetime]$Deadline) {
+    while ($true) {
+        try { return [IO.File]::ReadAllBytes((Join-Path $root $Name)) }
+        catch [IO.IOException] { if ((Get-Date) -ge $Deadline) { throw ('published file unreadable: ' + $Name) } }
+        catch [UnauthorizedAccessException] { if ((Get-Date) -ge $Deadline) { throw ('published file unreadable: ' + $Name) } }
+        Start-Sleep -Milliseconds 100
+    }
 }
 
 try {
@@ -126,7 +141,7 @@ try {
         if ((Get-Date) -ge $modelDeadline) { throw 'run-bound scheduled marker timeout' }
         Start-Sleep -Milliseconds 200
     }
-    $scheduledBytes = [IO.File]::ReadAllBytes($scheduledPath)
+    $scheduledBytes = Read-PublishedBytes 'model-scheduled.json' $modelDeadline
     $scheduled = [Text.Encoding]::UTF8.GetString($scheduledBytes) | ConvertFrom-Json
     if ($scheduled.run -cne $run -or $scheduled.evidence -cne 'run-bound-shared-memory-marker') {
         throw 'scheduled receipt binding mismatch'
