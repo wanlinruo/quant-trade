@@ -143,10 +143,10 @@ transport_received → broker_accepted → partial/fill
   Administrators/SYSTEM精确DACL，`prepare_windows_validation_root()`只接受当前SID/SYSTEM，
   因`unexpected NTFS trustee`拒绝。`first-ready`与发送门均不存在，发送0、无重放；自动恢复的
   唯一验证实例已停止，源码恢复默认关闭并重新编译，最终0/0/0。修复候选不把状态根放宽给管理员组，
-  而是在精确管理员私有根下先创建当前SID/SYSTEM专属空父目录，再创建原严格状态根；仍须先完成
-  Windows最终目录实测、CI与测试部署，再用新run-id和新的单次授权重验。候选的两级ACL链已在
+  而是在精确管理员私有根下先创建当前SID/SYSTEM专属空父目录，再创建原严格状态根。候选的两级ACL链已在
   Windows全新隔离目录实测通过，父目录/状态根均为当前SID owner、精确SID+SYSTEM受保护DACL，
-  状态文件单硬链接且通过原验证器；该结果没有重启或接触QMT，只关闭ACL修复的现场形状风险。
+  状态文件单硬链接且通过原验证器；test SHA `47cf3a3e`的CI与测试部署三方证据成功。该结果没有再次
+  重启或接触QMT，只关闭ACL修复的现场形状风险；整机重验仍须最终main、新run-id和新的单次授权。
 - 第4阶段当前查询层已在维护者单独授权下完成一次现场读取：`ACCOUNT`取得非空脱敏形状，
   `POSITION/ORDER/DEAL`均为`empty_unverified`，四类当前查询各一次；历史读取、交易和撤单调用为0。
   模拟实例调用`set_account`后却自然收到一次账户回调，超出本次授权，因此不计为回调层通过。
