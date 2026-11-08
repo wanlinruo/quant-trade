@@ -5,8 +5,12 @@ from pathlib import Path
 import pytest
 
 from scripts.prepare_qmt_synthetic_runtime import (
+    REBOOT_DRIVER_SOURCE,
+    REBOOT_DRIVER_TARGET,
     RUNTIME_FILES,
+    stage_reboot_bundle_files,
     stage_runtime_files,
+    verify_reboot_bundle_files,
     verify_runtime_files,
 )
 
@@ -87,3 +91,37 @@ def test_verify_rejects_symlink_target_directory(tmp_path):
 
     with pytest.raises(ValueError, match="non-symlink directory"):
         verify_runtime_files(SOURCE, link)
+
+
+def test_stage_reboot_bundle_uses_reviewed_driver_and_runtime_shape(tmp_path):
+    receipt = stage_reboot_bundle_files(SOURCE, tmp_path)
+
+    assert (tmp_path / REBOOT_DRIVER_TARGET).read_bytes() == (
+        SOURCE / REBOOT_DRIVER_SOURCE).read_bytes()
+    assert {path.name for path in (tmp_path / "runtime").iterdir()} == set(RUNTIME_FILES)
+    assert receipt["driver_compile"] == "verified"
+    assert receipt["runtime/runtime_import"] == "verified"
+    assert receipt[REBOOT_DRIVER_TARGET] == hashlib.sha256(
+        (SOURCE / REBOOT_DRIVER_SOURCE).read_bytes()).hexdigest()
+
+
+@pytest.mark.parametrize("existing", [REBOOT_DRIVER_TARGET, "runtime"])
+def test_stage_reboot_bundle_refuses_to_overwrite_partial_state(tmp_path, existing):
+    path = tmp_path / existing
+    if existing == "runtime":
+        path.mkdir()
+    else:
+        path.write_text("preserve", encoding="utf-8")
+
+    with pytest.raises(FileExistsError, match="overwrite"):
+        stage_reboot_bundle_files(SOURCE, tmp_path)
+
+    assert path.exists()
+
+
+def test_verify_reboot_bundle_rejects_changed_driver(tmp_path):
+    stage_reboot_bundle_files(SOURCE, tmp_path)
+    (tmp_path / REBOOT_DRIVER_TARGET).write_text("changed", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="driver differs"):
+        verify_reboot_bundle_files(SOURCE, tmp_path)

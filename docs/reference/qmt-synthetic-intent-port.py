@@ -84,6 +84,25 @@ class SyntheticIntentPort:
                 receiver_instance='validated-synthetic:' + self.run_id, received_at=datetime.now(timezone.utc))
         raise TimeoutError('synthetic validation response absent; no retry')
 
+    def scheduled(self):
+        """Return whether the bound QMT model accepted its finite schedule."""
+        if self.closed:
+            raise ValueError('synthetic port closed')
+        self.memory.seek(protocol.SCHEDULED_MARKER_OFFSET)
+        marker = protocol.scheduled_marker(self.run_id)
+        return self.memory.read(len(marker)) == marker
+
+    def wait_scheduled(self, *, timeout=120.0):
+        """Wait read-only for one run-bound marker; never sends or retries a packet."""
+        if type(timeout) not in (int, float) or type(timeout) is bool or not 0 < timeout <= 180:
+            raise ValueError('bounded scheduled marker wait required')
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if self.scheduled():
+                return True
+            time.sleep(0.05)
+        raise TimeoutError('QMT scheduled marker absent; no send')
+
     def validate_reply(self, raw, envelope):
         value = protocol.decode(raw.decode('ascii'))
         fields = {'protocol','run_id','seq','attempt_id','session_nonce','command_sha256',

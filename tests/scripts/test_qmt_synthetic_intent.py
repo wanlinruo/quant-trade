@@ -187,8 +187,10 @@ def test_qmt_schedule_receiver_validates_full_intent_without_trading(monkeypatch
     Q.init(context)
     assert len(context.scheduled) == 1
     assert context.scheduled[0][-1] == 'qsys601_' + RUN
-    memory.callback = lambda: Q.on_timer(context)
     port = P.SyntheticIntentPort(memory, RUN, enabled=True)
+    assert port.scheduled() is True
+    assert port.wait_scheduled(timeout=0.01) is True
+    memory.callback = lambda: Q.on_timer(context)
     envelope = fresh()
 
     ack = port.send(envelope)
@@ -202,6 +204,77 @@ def test_qmt_schedule_receiver_validates_full_intent_without_trading(monkeypatch
     assert "'account_calls': 0" in output
     assert "'executed': False" in output
     assert "'authorizes_trading': False" in output
+
+
+def test_external_port_never_confuses_absent_or_other_run_scheduled_marker():
+    memory = Memory()
+    port = P.SyntheticIntentPort(memory, RUN, enabled=True)
+
+    assert port.scheduled() is False
+    with pytest.raises(TimeoutError, match='no send'):
+        port.wait_scheduled(timeout=0.01)
+    memory.seek(Q.SCHEDULED_MARKER_OFFSET)
+    memory.write(Q.scheduled_marker('d' * 32))
+    assert port.scheduled() is False
+    assert memory.packets == []
+
+
+@pytest.mark.parametrize('timeout', [0, -1, 181, True, None])
+def test_scheduled_marker_wait_requires_an_explicit_bound(timeout):
+    port = P.SyntheticIntentPort(Memory(), RUN, enabled=True)
+    with pytest.raises(ValueError, match='bounded'):
+        port.wait_scheduled(timeout=timeout)
+
+
+def test_schedule_marker_write_failure_cancels_without_emitting_scheduled(monkeypatch, capsys):
+    class FailingMarkerMemory(QmtMemory):
+        def write(self, raw):
+            if self.tell() == Q.SCHEDULED_MARKER_OFFSET:
+                raise OSError('marker write rejected')
+            return super().write(raw)
+
+    memory = FailingMarkerMemory()
+    context = Context()
+    monkeypatch.setitem(sys.modules, 'mmap', SimpleNamespace(
+        ACCESS_WRITE=1, mmap=lambda *args, **kwargs: memory))
+    monkeypatch.setattr(Q, 'ENABLED', True)
+    monkeypatch.setattr(Q, 'RUN_ID', RUN)
+    monkeypatch.setattr(Q, 'CLIENT_BUILD', '2.1.33.0')
+    monkeypatch.setattr(Q, '_STATE', None)
+    monkeypatch.setattr(Q, '_RAN', False)
+
+    Q.init(context)
+
+    output = capsys.readouterr().out
+    assert "'status': 'scheduled'" not in output
+    assert "'status': 'init_failed'" in output
+    assert "'stage': 'publish_scheduled_marker'" in output
+    assert context.cancelled == ['qsys601_' + RUN]
+
+
+def test_schedule_failure_never_publishes_marker(monkeypatch, capsys):
+    class FailingScheduleContext(Context):
+        def schedule_run(self, *args):
+            raise RuntimeError('schedule rejected')
+
+    memory = QmtMemory()
+    context = FailingScheduleContext()
+    monkeypatch.setitem(sys.modules, 'mmap', SimpleNamespace(
+        ACCESS_WRITE=1, mmap=lambda *args, **kwargs: memory))
+    monkeypatch.setattr(Q, 'ENABLED', True)
+    monkeypatch.setattr(Q, 'RUN_ID', RUN)
+    monkeypatch.setattr(Q, 'CLIENT_BUILD', '2.1.33.0')
+    monkeypatch.setattr(Q, '_STATE', None)
+    monkeypatch.setattr(Q, '_RAN', False)
+
+    Q.init(context)
+
+    port = P.SyntheticIntentPort(memory, RUN, enabled=True)
+    assert port.scheduled() is False
+    assert context.cancelled == ['qsys601_' + RUN]
+    output = capsys.readouterr().out
+    assert "'status': 'scheduled'" not in output
+    assert "'stage': 'schedule_run'" in output
 
 
 def test_qmt_schedule_receiver_requires_existing_marker(monkeypatch, capsys):

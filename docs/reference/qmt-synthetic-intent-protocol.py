@@ -28,6 +28,7 @@ CLIENT_BUILD = ''
 ENABLED = False
 INSTANCE_MODE = 'validation-only'
 PACKET_LIMIT = 1
+SCHEDULED_MARKER_OFFSET = 7168
 _STATE = None
 _RAN = False
 
@@ -60,6 +61,12 @@ def valid_id(value):
 
 def valid_sha(value):
     return isinstance(value, str) and re.fullmatch('[0-9a-f]{64}', value) is not None
+
+
+def scheduled_marker(run_id):
+    if not valid_id(run_id):
+        raise ValueError('explicit scheduled marker binding required')
+    return b'QSYS_SYNTHETIC_SCHEDULED:' + run_id.encode('ascii')
 
 
 def sign(value, key=KEY):
@@ -280,6 +287,9 @@ def init(C):
         stage = 'schedule_run'
         task_id = C.schedule_run(on_timer, datetime.now()+timedelta(seconds=2),
                                  24, timedelta(seconds=1), 'qsys601_' + RUN_ID)
+        stage = 'publish_scheduled_marker'
+        memory.seek(SCHEDULED_MARKER_OFFSET)
+        memory.write(scheduled_marker(RUN_ID))
         emit('scheduled', task_id=task_id, finite_repeat_argument=24,
              packet_limit=PACKET_LIMIT)
     except Exception as exc:
