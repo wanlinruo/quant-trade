@@ -16,6 +16,14 @@ def receipt(directory=True):
                  inheritance=3 if directory else 0) for sid in (SID, 'S-1-5-18')])
 
 
+def admin_parent_receipt():
+    value = receipt()
+    value['owner'] = 'S-1-5-32-544'
+    value['admin_member'] = True
+    value['rules'][0]['sid'] = 'S-1-5-32-544'
+    return value
+
+
 @pytest.mark.parametrize('change', [
     dict(filesystem='ReFS'), dict(fixed=False), dict(reparse=True),
     dict(owner='S-1-1-0'), dict(protected=False), dict(directory=False),
@@ -49,6 +57,73 @@ def test_preparation_is_disabled_before_any_io(monkeypatch):
     monkeypatch.setattr(w, '_powershell', lambda *a: pytest.fail('unexpected subprocess'))
     with pytest.raises(ValueError, match='disabled'):
         w.prepare_windows_validation_root(Path('unused'), 'unused')
+    with pytest.raises(ValueError, match='disabled'):
+        w.prepare_windows_validation_parent(Path('unused'))
+
+
+def test_private_bootstrap_parent_requires_exact_acl_and_elevated_identity():
+    w._assert_private_bootstrap_parent(admin_parent_receipt())
+    w._assert_private_bootstrap_parent(dict(receipt(), admin_member=False))
+    value = admin_parent_receipt()
+    value['admin_member'] = False
+    with pytest.raises(ValueError, match='elevated'):
+        w._assert_private_bootstrap_parent(value)
+    value = admin_parent_receipt()
+    value['rules'].append(dict(value['rules'][0]))
+    with pytest.raises(ValueError, match='exact private'):
+        w._assert_private_bootstrap_parent(value)
+    value = admin_parent_receipt()
+    value['rules'][0]['sid'] = 'S-1-5-32-545'
+    with pytest.raises(ValueError, match='bootstrap trustee'):
+        w._assert_private_bootstrap_parent(value)
+
+
+def test_prepares_identity_private_parent_without_repair_or_overwrite(tmp_path, monkeypatch):
+    parent = tmp_path / 'qsys-async-validation-parent-reboot'
+    calls = []
+    monkeypatch.setattr(w, '_local_parent_path', lambda path: None)
+
+    def powershell(path, script, *, timeout):
+        calls.append((path, script, timeout))
+        if path == parent.parent:
+            return admin_parent_receipt()
+        if script == w._PROTECT_NEW_ROOT:
+            return {'prepared': True}
+        return dict(receipt(), admin_member=True)
+
+    monkeypatch.setattr(w, '_powershell', powershell)
+    result = w.prepare_windows_validation_parent(parent, enabled=True)
+    assert result['sid'] == SID
+    assert parent.is_dir() and list(parent.iterdir()) == []
+    assert calls == [
+        (parent.parent, w._INSPECT, w._COLD_INSPECTION_TIMEOUT),
+        (parent, w._PROTECT_NEW_ROOT, w._POWERSHELL_TIMEOUT),
+        (parent, w._INSPECT, w._POWERSHELL_TIMEOUT),
+    ]
+    with pytest.raises(FileExistsError):
+        w.prepare_windows_validation_parent(parent, enabled=True)
+
+
+def test_parent_protection_timeout_is_single_attempt_and_preserves_directory(
+        tmp_path, monkeypatch):
+    parent = tmp_path / 'qsys-async-validation-parent-timeout'
+    calls = []
+    monkeypatch.setattr(w, '_local_parent_path', lambda path: None)
+
+    def powershell(path, script, *, timeout):
+        calls.append((path, script, timeout))
+        if path == parent.parent:
+            return admin_parent_receipt()
+        raise ValueError('Windows security inspection failed: TimeoutExpired')
+
+    monkeypatch.setattr(w, '_powershell', powershell)
+    with pytest.raises(ValueError, match='TimeoutExpired'):
+        w.prepare_windows_validation_parent(parent, enabled=True)
+    assert calls == [
+        (parent.parent, w._INSPECT, w._COLD_INSPECTION_TIMEOUT),
+        (parent, w._PROTECT_NEW_ROOT, w._POWERSHELL_TIMEOUT),
+    ]
+    assert parent.is_dir() and list(parent.iterdir()) == []
 
 
 def test_preparation_never_repairs_existing_or_untrusted_parent(tmp_path, monkeypatch):

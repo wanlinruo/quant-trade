@@ -1,5 +1,26 @@
 # 项目交接入口
 
+## 11-08：#601整机r5在状态根ACL契约处发送前拒绝，安全收尾完成
+
+- 维护者明确授权的单次Windows整机重启已执行；boot time前进到10:52:14，受信QMT 2.1.33.0
+  自动恢复为PID2888/session1，验证模型也自动运行。r4的精确runtime文件缺失已修复，driver实际
+  导入成功，但这仍只完成自动恢复/导入层。
+- driver在创建状态根和`first-ready`/发送门之前报`unexpected NTFS trustee`。现场当前身份SID为
+  `S-1-5-21-1739205241-896119819-1972179975-500`，审计根受保护DACL精确为SYSTEM与
+  Administrators；原状态根入口精确要求SYSTEM与当前SID。状态根不存在，发送0、响应0且无重放；
+  账户、交易、撤单调用均为0。
+- 重启后Windows `OpenWith.exe`因`.disabled-20261004`对话框占据前台；两次QMT焦点探针均在输入前
+  拒绝。按进程/句柄/截图/几何精确关闭该对话框，未改文件关联。随后停止唯一验证实例，编辑器原文
+  SHA先匹配r5启用候选，再恢复默认关闭版，保存、编译且未运行；最终委托/任务/策略0/0/0，全部
+  317个#601辅助任务disabled，Shadow disabled，QMT保持Responding。
+- 修复不能放宽状态根给Administrators。候选新增两级准备：已受保护的精确Administrators/SYSTEM
+  根只作为bootstrap且要求当前token实际为管理员；其下不覆盖地新建并回读当前SID/SYSTEM专属空父
+  目录，再沿用原严格状态根创建与验证。候选已在Windows隔离新目录实测通过：父目录/状态根owner
+  均为当前SID、protected、精确SID+SYSTEM且非reparse，三个状态文件单硬链接并通过原验证器；未重启、
+  未接QMT或账户/交易。专项103项及全量4657项通过、7项条件跳过、3项既有弃用警告，secret scan、
+  `py_compile`和diff检查通过；仍须完成CI和测试部署。r5授权已消费，再次整机重启必须使用新run-id
+  并取得新的单次明确授权。
+
 ## 11-08：#601整机r4通过自动恢复层，合成闭环在发送门前失败并完成收尾
 
 - 维护者明确授权的单次Windows整机重启已执行；系统于00:48:07启动，受信QMT 2.1.33.0于

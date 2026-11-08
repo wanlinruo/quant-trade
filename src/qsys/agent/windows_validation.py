@@ -21,6 +21,7 @@ _COLD_INSPECTION_TIMEOUT = 45
 
 _INSPECT = r'''
 $identity=[System.Security.Principal.WindowsIdentity]::GetCurrent()
+$adminSid=New-Object System.Security.Principal.SecurityIdentifier 'S-1-5-32-544'
 $item=Get-Item -LiteralPath $path -Force
 $reparse=$false
 $cursor=$item
@@ -36,7 +37,8 @@ $rules=@($acl.GetAccessRules($true,$true,[System.Security.Principal.SecurityIden
     inherit_only=(($_.PropagationFlags -band [Security.AccessControl.PropagationFlags]::InheritOnly) -ne 0);
     inheritance=[int]$_.InheritanceFlags}
 })
-@{sid=$identity.User.Value;owner=$acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value;
+@{sid=$identity.User.Value;admin_member=[bool]($identity.Groups -contains $adminSid);
+  owner=$acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value;
   protected=[bool]$acl.AreAccessRulesProtected;rules=$rules;reparse=$reparse;
   filesystem=$drive.DriveFormat;fixed=($drive.DriveType -eq [IO.DriveType]::Fixed);
   directory=[bool]$item.PSIsContainer}|ConvertTo-Json -Depth 5 -Compress
@@ -109,12 +111,68 @@ def _assert_private(value: dict, *, directory: bool, protected: bool) -> None:
             raise ValueError('private NTFS access mask/inheritance mismatch')
 
 
+def _assert_private_bootstrap_parent(value: dict) -> None:
+    """Accept an exact identity-private parent or an exact elevated bootstrap parent."""
+    sid = value.get('sid')
+    if not isinstance(sid, str) or not re.fullmatch(r'S-1-5-21-(?:\d+-){3}\d+', sid):
+        raise ValueError('explicit local/domain Windows identity required')
+    if (value.get('filesystem') != 'NTFS' or value.get('fixed') is not True
+            or value.get('reparse') is not False or value.get('directory') is not True):
+        raise ValueError('fixed local NTFS object without reparse ancestors required')
+    if value.get('owner') not in {sid, _SYSTEM, _ADMINS}:
+        raise ValueError('untrusted Windows object owner')
+    if value.get('protected') is not True:
+        raise ValueError('protected private NTFS directory required')
+    rules = value.get('rules')
+    if not isinstance(rules, list) or len(rules) != 2:
+        raise ValueError('exact private NTFS access list required')
+    trustees = {rule.get('sid') for rule in rules}
+    if trustees == {_ADMINS, _SYSTEM}:
+        if value.get('admin_member') is not True:
+            raise ValueError('elevated bootstrap identity required')
+    elif trustees != {sid, _SYSTEM}:
+        raise ValueError('unexpected NTFS bootstrap trustee')
+    for rule in rules:
+        if (rule.get('allow') is not True or rule.get('mask') != _FULL
+                or rule.get('inherit_only') is not False
+                or rule.get('inheritance') != 3):
+            raise ValueError('private NTFS access mask/inheritance mismatch')
+
+
 def _local_path(root: Path) -> None:
     if os.name != 'nt':
         raise ValueError('Windows validation roots require Windows')
     if (not root.is_absolute() or not re.fullmatch(r'[A-Za-z]:', root.drive)
             or not re.fullmatch(r'qsys-async-validation-[a-z0-9_-]+', root.name)):
         raise ValueError('dedicated local Windows validation root required')
+
+
+def _local_parent_path(parent: Path) -> None:
+    if os.name != 'nt':
+        raise ValueError('Windows validation parents require Windows')
+    if (not parent.is_absolute() or not re.fullmatch(r'[A-Za-z]:', parent.drive)
+            or not re.fullmatch(r'qsys-async-validation-parent-[a-z0-9_-]+', parent.name)):
+        raise ValueError('dedicated local Windows validation parent required')
+
+
+def prepare_windows_validation_parent(parent: Path, *, enabled: bool = False) -> dict:
+    """Create a new current-SID + SYSTEM parent below a verified private bootstrap root."""
+    if enabled is not True:
+        raise ValueError('Windows validation parent preparation is disabled')
+    _local_parent_path(parent)
+    _assert_private_bootstrap_parent(_inspect(parent.parent, cold_start=True))
+    parent.mkdir(exist_ok=False)
+    # A failure preserves the new directory for audit; never repair or overwrite it.
+    if _powershell(parent, _PROTECT_NEW_ROOT,
+            timeout=_POWERSHELL_TIMEOUT).get('prepared') is not True:
+        raise ValueError('Windows validation parent preparation incomplete')
+    receipt = _inspect(parent)
+    _assert_private(receipt, directory=True, protected=True)
+    if receipt['owner'] != receipt['sid']:
+        raise ValueError('validation parent must be owned by current Windows identity')
+    if any(parent.iterdir()):
+        raise ValueError('new Windows validation parent must be empty')
+    return receipt
 
 
 def validate_windows_validation_root(root: Path) -> dict:
