@@ -20,7 +20,9 @@ QMT与验证模型自动恢复，以及协调器在发送门前因瞬时UI就绪
 
 [受审整机验证driver](qmt-windows-reboot-validation-driver.py)只从run-bound共享内存marker确认
 `schedule_run`已建立，绑定marker收据后等待外部发送门；它不读取FormulaOutput日志、不根据UI
-瞬时状态放行，也不自行创建发送门。使用范围和最终bundle准备命令见异步发送隔离接线文档。
+瞬时状态放行，也不自行创建发送门。[受审整机验证协调器](qmt-windows-reboot-coordinator.ps1)
+在启动driver前写入6144协调器标记并唯一创建发送门，支持`reboot`与不重启`rehearsal`两种模式。
+使用范围和最终bundle准备命令见异步发送隔离接线文档。
 
 [原生账户与回报只读探针记录](qmt-native-report-readonly-probe.md)记录第4阶段查询/回调的正式
 接口边界、脱敏规则和两级授权。检入候选默认关闭且没有下单/撤单调用；离线通过不授权读取真实

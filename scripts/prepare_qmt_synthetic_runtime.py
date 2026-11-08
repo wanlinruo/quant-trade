@@ -8,6 +8,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import sys
 
 
@@ -17,6 +18,28 @@ RUNTIME_FILES = (
 )
 REBOOT_DRIVER_SOURCE = "qmt-windows-reboot-validation-driver.py"
 REBOOT_DRIVER_TARGET = "native.py"
+REBOOT_COORDINATOR_SOURCE = "qmt-windows-reboot-coordinator.ps1"
+REBOOT_COORDINATOR_TARGET = "coordinate.ps1"
+FIXTURE_TARGET = "fixture.json"
+VALIDATION_MODES = ("reboot", "rehearsal")
+_RUN_ID = re.compile(r"[0-9a-f]{32}")
+
+
+def coordinator_task_name(run_id: str, mode: str) -> str:
+    return f"qsys-issue601-{mode}-coordinate-{run_id[:8]}"
+
+
+def _fixture_payload(run_id: str, mode: str) -> bytes:
+    if not isinstance(run_id, str) or _RUN_ID.fullmatch(run_id) is None:
+        raise ValueError("run id must be 32 lowercase hex characters")
+    if mode not in VALIDATION_MODES:
+        raise ValueError(f"mode must be one of {VALIDATION_MODES}")
+    value = {
+        "coordinator_task": coordinator_task_name(run_id, mode),
+        "first": run_id,
+        "mode": mode,
+    }
+    return (json.dumps(value, ensure_ascii=True, sort_keys=True) + "\n").encode("ascii")
 
 
 def _read_regular_file(path: Path) -> bytes:
@@ -56,22 +79,35 @@ def stage_runtime_files(source_dir: Path, target_dir: Path) -> dict[str, str]:
     return verify_runtime_files(source_dir, target_dir)
 
 
-def stage_reboot_bundle_files(source_dir: Path, bundle_dir: Path) -> dict[str, str]:
-    """Stage the reviewed driver plus exact runtime subdirectory without overwrite."""
+def stage_reboot_bundle_files(
+    source_dir: Path, bundle_dir: Path, run_id: str, mode: str
+) -> dict[str, str]:
+    """Stage driver, coordinator, fixture and exact runtime without overwrite."""
     _validate_target_dir(bundle_dir)
+    fixture = _fixture_payload(run_id, mode)
     driver_source = _read_regular_file(source_dir / REBOOT_DRIVER_SOURCE)
-    driver_target = bundle_dir / REBOOT_DRIVER_TARGET
+    coordinator_source = _read_regular_file(source_dir / REBOOT_COORDINATOR_SOURCE)
+    targets = (
+        bundle_dir / REBOOT_DRIVER_TARGET,
+        bundle_dir / REBOOT_COORDINATOR_TARGET,
+        bundle_dir / FIXTURE_TARGET,
+        bundle_dir / "runtime",
+    )
+    if any(os.path.lexists(target) for target in targets):
+        raise FileExistsError("refusing to overwrite reboot driver/coordinator/fixture/runtime")
     runtime_target = bundle_dir / "runtime"
-    if os.path.lexists(driver_target) or os.path.lexists(runtime_target):
-        raise FileExistsError("refusing to overwrite reboot driver/runtime")
     runtime_target.mkdir(mode=0o700)
     stage_runtime_files(source_dir, runtime_target)
-    _write_exclusive(driver_target, driver_source)
-    return verify_reboot_bundle_files(source_dir, bundle_dir)
+    _write_exclusive(bundle_dir / REBOOT_DRIVER_TARGET, driver_source)
+    _write_exclusive(bundle_dir / REBOOT_COORDINATOR_TARGET, coordinator_source)
+    _write_exclusive(bundle_dir / FIXTURE_TARGET, fixture)
+    return verify_reboot_bundle_files(source_dir, bundle_dir, run_id, mode)
 
 
-def verify_reboot_bundle_files(source_dir: Path, bundle_dir: Path) -> dict[str, str]:
-    """Verify the exact driver bytes and final runtime import shape."""
+def verify_reboot_bundle_files(
+    source_dir: Path, bundle_dir: Path, run_id: str, mode: str
+) -> dict[str, str]:
+    """Verify exact driver/coordinator bytes, run binding and runtime import shape."""
     _validate_target_dir(bundle_dir)
     runtime = verify_runtime_files(source_dir, bundle_dir / "runtime")
     source = _read_regular_file(source_dir / REBOOT_DRIVER_SOURCE)
@@ -79,9 +115,22 @@ def verify_reboot_bundle_files(source_dir: Path, bundle_dir: Path) -> dict[str, 
     if target != source:
         raise ValueError("reboot validation driver differs from reviewed source")
     compile(target, str(bundle_dir / REBOOT_DRIVER_TARGET), "exec")
+    coordinator = _read_regular_file(bundle_dir / REBOOT_COORDINATOR_TARGET)
+    if coordinator != _read_regular_file(source_dir / REBOOT_COORDINATOR_SOURCE):
+        raise ValueError("reboot coordinator differs from reviewed source")
+    try:
+        coordinator.decode("ascii")
+    except UnicodeDecodeError as exc:
+        raise ValueError("reboot coordinator must be ASCII for Windows PowerShell 5.1") from exc
+    fixture = _read_regular_file(bundle_dir / FIXTURE_TARGET)
+    if fixture != _fixture_payload(run_id, mode):
+        raise ValueError("fixture.json does not bind the requested run id and mode")
     return {
         **{f"runtime/{name}": value for name, value in runtime.items()},
         REBOOT_DRIVER_TARGET: hashlib.sha256(target).hexdigest(),
+        REBOOT_COORDINATOR_TARGET: hashlib.sha256(coordinator).hexdigest(),
+        FIXTURE_TARGET: hashlib.sha256(fixture).hexdigest(),
+        "coordinator_task": coordinator_task_name(run_id, mode),
         "driver_compile": "verified",
     }
 
@@ -136,15 +185,22 @@ def main() -> int:
         type=Path,
         default=Path(__file__).resolve().parents[1] / "docs" / "reference",
     )
+    parser.add_argument("--run-id")
+    parser.add_argument("--validation-mode", choices=VALIDATION_MODES)
     args = parser.parse_args()
+    if args.mode in ("stage-reboot", "verify-reboot") and (
+            args.run_id is None or args.validation_mode is None):
+        parser.error("stage-reboot/verify-reboot require --run-id and --validation-mode")
     if args.mode == "stage":
         receipt = stage_runtime_files(args.source_dir, args.target)
     elif args.mode == "verify":
         receipt = verify_runtime_files(args.source_dir, args.target)
     elif args.mode == "stage-reboot":
-        receipt = stage_reboot_bundle_files(args.source_dir, args.target)
+        receipt = stage_reboot_bundle_files(
+            args.source_dir, args.target, args.run_id, args.validation_mode)
     else:
-        receipt = verify_reboot_bundle_files(args.source_dir, args.target)
+        receipt = verify_reboot_bundle_files(
+            args.source_dir, args.target, args.run_id, args.validation_mode)
     print(json.dumps(receipt, ensure_ascii=True, sort_keys=True))
     return 0
 

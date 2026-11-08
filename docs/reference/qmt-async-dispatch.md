@@ -40,9 +40,21 @@ attempt/nonce/SHA及计数再次校验后，才生成现有`DispatchAcknowledgem
 Windows后仍须对最终节点目录执行`verify`，不能以构建机收据或单独文件SHA替代；缺文件负例必须
 在创建状态根、first-ready和发送门之前失败。
 
-Windows整机重启bundle还必须使用
-`python scripts/prepare_qmt_synthetic_runtime.py stage-reboot <bundle-root>`，以不覆盖方式安装受审
-`native.py`及精确`runtime/`目录；节点侧使用`verify-reboot`。QMT模型只有在正式
+Windows整机重启或不重启彩排bundle必须使用
+`python scripts/prepare_qmt_synthetic_runtime.py stage-reboot <bundle-root> --run-id <run> --validation-mode reboot|rehearsal`，
+以不覆盖方式一次性安装受审`native.py`、受审协调器`coordinate.ps1`
+（[源](qmt-windows-reboot-coordinator.ps1)，run无关、仅从同目录`fixture.json`/`requested.json`绑定）、
+绑定run/mode/任务名的`fixture.json`及精确`runtime/`目录；节点侧使用相同参数的`verify-reboot`。
+不再逐轮手写协调器或另行补写fixture（#601 r3/r7教训）。协调器创建私有映射后、启动driver之前
+就写入并回读6144协调器标记，driver只校验不清零；因此开机后自动运行的QMT模型`init()`不再依赖
+driver先完成最长45秒的冷启动安全检查（r6实测余量约46秒，属于未由设计保证的竞态）。
+`rehearsal`模式要求开机时间与记录一致且QMT PID不变，结果如实记录`windows_restarted=false`，
+只证明不重启动态链，不替代整机重启层。
+协调器与driver之间以文件存在性作门，因此双方都必须原子发布：先在同目录`.staging-<名>`写完并
+刷盘、关闭句柄，再以不覆盖方式（PowerShell `File.Move`、Python `os.link`）出现最终文件名；读取方
+在原期限内对未关闭写入方或半写JSON有界重试，超时即“未发送”失败。2026-11-08不重启彩排
+（run `49fa0fcd…`）正是在此处失败：协调器以独占句柄写`first-go.json`时driver已见文件存在并
+读取，`PermissionError`后在dispatch前退出，发送0；r1~r6从未走到该步，整机重启无法提前暴露。QMT模型只有在正式
 `schedule_run`返回后，才在共享内存保留区写入绑定当前run-id的scheduled marker。外部driver只读
 有界等待该marker并创建`model-scheduled.json`，协调器将其SHA绑定进`first-go.json`后才允许发送。
 不得再以FormulaOutput日志、窗口句柄或单次`Responding`值替代该marker；marker仅证明有限调度已

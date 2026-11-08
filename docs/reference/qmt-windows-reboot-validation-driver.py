@@ -1,7 +1,8 @@
 """Default-off #601 Windows-reboot validation driver.
 
-The surrounding coordinator creates the private named mapping and is the only
-writer of ``first-go.json``.  This driver publishes readiness, waits for the
+The surrounding coordinator creates the private named mapping, writes the
+coordinator marker before this driver starts, and is the only writer of
+``first-go.json``.  This driver publishes readiness, waits for the
 QMT model's run-bound shared-memory schedule marker, and never sends before the
 coordinator gate exists.
 """
@@ -36,14 +37,34 @@ spec.loader.exec_module(P)
 
 
 def write(name, value):
-    with (audit / name).open('x', encoding='utf-8') as file:
+    # Publish atomically: readers poll for existence, so the final name must
+    # only appear once the bytes are complete.  os.link never overwrites.
+    staging = audit / ('.staging-' + name)
+    with staging.open('x', encoding='utf-8') as file:
         json.dump(value, file)
         file.flush()
         os.fsync(file.fileno())
+    os.link(staging, audit / name)
+    os.unlink(staging)
+
+
+def read_published(name, deadline):
+    """Read a peer-published JSON file, tolerating a still-open writer."""
+    while True:
+        try:
+            return json.loads((audit / name).read_text(encoding='utf-8-sig'))
+        except (FileNotFoundError, PermissionError, json.JSONDecodeError):
+            if time.monotonic() > deadline:
+                raise TimeoutError('No readable coordinator send gate; not sent')
+            time.sleep(.1)
 
 
 write('first-started.json', dict(pid=os.getpid(), at=datetime.now(timezone.utc).isoformat()))
-run = json.loads((audit / 'fixture.json').read_text(encoding='utf-8-sig'))['first']
+fixture = json.loads((audit / 'fixture.json').read_text(encoding='utf-8-sig'))
+run = fixture['first']
+mode = fixture['mode']
+if mode not in ('reboot', 'rehearsal'):
+    raise ValueError('fixture mode')
 namespace = 'component-validation:synthetic-intent'
 parent = audit / 'qsys-async-validation-parent-synthetic'
 root = parent / 'qsys-async-validation-synthetic'
@@ -76,9 +97,11 @@ command = OrderCommand(
 )
 memory = mmap.mmap(
     -1, 8192, tagname='Local\\qsys_synthetic_intent_' + run, access=mmap.ACCESS_WRITE)
-memory.write(bytes(8192))
+# The coordinator created this mapping and wrote the marker before starting
+# the driver; never zero or rewrite it (the QMT model may already be scheduled).
 memory.seek(6144)
-memory.write(b'QSYS_SYNTHETIC_INTENT_ONLY:' + run.encode())
+if memory.read(27 + len(run)) != b'QSYS_SYNTHETIC_INTENT_ONLY:' + run.encode():
+    raise ValueError('Coordinator marker absent; not sent')
 port = P.SyntheticIntentPort.open_windows(run, enabled=True, timeout=5)
 with open_validation_dispatcher(**options, adapter_factory=lambda: port) as dispatcher:
     write('first-ready.json', dict(
@@ -92,7 +115,7 @@ with open_validation_dispatcher(**options, adapter_factory=lambda: port) as disp
         if time.monotonic() > deadline:
             raise TimeoutError('No coordinator send gate; not sent')
         time.sleep(.1)
-    go = json.loads((audit / 'first-go.json').read_text(encoding='utf-8-sig'))
+    go = read_published('first-go.json', deadline)
     if go['run'] != run or go.get('model_scheduled_sha256') != hashlib.sha256(
             (audit / 'model-scheduled.json').read_bytes()).hexdigest():
         raise ValueError('Run/scheduled evidence binding')
@@ -121,12 +144,13 @@ memory.close()
 write('first-result.json', dict(
     status='success',
     run=run,
+    mode=mode,
     receipts=port.receipts,
     first_row=first,
     restored=restored,
     old_intent_republished=0,
     broker_calls=0,
     account_binding=False,
-    qmt_client_restarted=True,
-    windows_restarted=True,
+    qmt_client_restarted=mode == 'reboot',
+    windows_restarted=mode == 'reboot',
 ))

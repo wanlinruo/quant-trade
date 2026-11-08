@@ -1,10 +1,14 @@
 import hashlib
 import importlib.util
+import json
 from pathlib import Path
 
 import pytest
 
 from scripts.prepare_qmt_synthetic_runtime import (
+    FIXTURE_TARGET,
+    REBOOT_COORDINATOR_SOURCE,
+    REBOOT_COORDINATOR_TARGET,
     REBOOT_DRIVER_SOURCE,
     REBOOT_DRIVER_TARGET,
     RUNTIME_FILES,
@@ -16,6 +20,7 @@ from scripts.prepare_qmt_synthetic_runtime import (
 
 
 SOURCE = Path(__file__).resolve().parents[2] / "docs" / "reference"
+RUN = "0123456789abcdef0123456789abcdef"
 
 
 def test_stage_uses_exact_runtime_names_and_imports_from_final_directory(tmp_path):
@@ -94,7 +99,7 @@ def test_verify_rejects_symlink_target_directory(tmp_path):
 
 
 def test_stage_reboot_bundle_uses_reviewed_driver_and_runtime_shape(tmp_path):
-    receipt = stage_reboot_bundle_files(SOURCE, tmp_path)
+    receipt = stage_reboot_bundle_files(SOURCE, tmp_path, RUN, "rehearsal")
 
     assert (tmp_path / REBOOT_DRIVER_TARGET).read_bytes() == (
         SOURCE / REBOOT_DRIVER_SOURCE).read_bytes()
@@ -105,7 +110,10 @@ def test_stage_reboot_bundle_uses_reviewed_driver_and_runtime_shape(tmp_path):
         (SOURCE / REBOOT_DRIVER_SOURCE).read_bytes()).hexdigest()
 
 
-@pytest.mark.parametrize("existing", [REBOOT_DRIVER_TARGET, "runtime"])
+@pytest.mark.parametrize(
+    "existing",
+    [REBOOT_DRIVER_TARGET, REBOOT_COORDINATOR_TARGET, FIXTURE_TARGET, "runtime"],
+)
 def test_stage_reboot_bundle_refuses_to_overwrite_partial_state(tmp_path, existing):
     path = tmp_path / existing
     if existing == "runtime":
@@ -114,14 +122,67 @@ def test_stage_reboot_bundle_refuses_to_overwrite_partial_state(tmp_path, existi
         path.write_text("preserve", encoding="utf-8")
 
     with pytest.raises(FileExistsError, match="overwrite"):
-        stage_reboot_bundle_files(SOURCE, tmp_path)
+        stage_reboot_bundle_files(SOURCE, tmp_path, RUN, "rehearsal")
 
     assert path.exists()
 
 
 def test_verify_reboot_bundle_rejects_changed_driver(tmp_path):
-    stage_reboot_bundle_files(SOURCE, tmp_path)
+    stage_reboot_bundle_files(SOURCE, tmp_path, RUN, "rehearsal")
     (tmp_path / REBOOT_DRIVER_TARGET).write_text("changed", encoding="utf-8")
 
     with pytest.raises(ValueError, match="driver differs"):
-        verify_reboot_bundle_files(SOURCE, tmp_path)
+        verify_reboot_bundle_files(SOURCE, tmp_path, RUN, "rehearsal")
+
+
+@pytest.mark.parametrize("mode", ["reboot", "rehearsal"])
+def test_stage_reboot_bundle_binds_coordinator_and_fixture(tmp_path, mode):
+    receipt = stage_reboot_bundle_files(SOURCE, tmp_path, RUN, mode)
+
+    assert (tmp_path / REBOOT_COORDINATOR_TARGET).read_bytes() == (
+        SOURCE / REBOOT_COORDINATOR_SOURCE).read_bytes()
+    fixture = json.loads((tmp_path / FIXTURE_TARGET).read_text(encoding="ascii"))
+    assert fixture == {
+        "coordinator_task": f"qsys-issue601-{mode}-coordinate-{RUN[:8]}",
+        "first": RUN,
+        "mode": mode,
+    }
+    assert receipt["coordinator_task"] == fixture["coordinator_task"]
+    assert {path.name for path in tmp_path.iterdir()} == {
+        REBOOT_DRIVER_TARGET, REBOOT_COORDINATOR_TARGET, FIXTURE_TARGET, "runtime"}
+
+
+@pytest.mark.parametrize(
+    ("run_id", "mode"),
+    [("", "reboot"), (RUN.upper(), "reboot"), (RUN[:-1], "reboot"), (RUN, "live")],
+)
+def test_stage_reboot_bundle_rejects_bad_binding_before_writing(tmp_path, run_id, mode):
+    with pytest.raises(ValueError):
+        stage_reboot_bundle_files(SOURCE, tmp_path, run_id, mode)
+
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_verify_reboot_bundle_rejects_other_run_or_mode(tmp_path):
+    stage_reboot_bundle_files(SOURCE, tmp_path, RUN, "rehearsal")
+
+    with pytest.raises(ValueError, match="fixture.json"):
+        verify_reboot_bundle_files(SOURCE, tmp_path, "f" * 32, "rehearsal")
+    with pytest.raises(ValueError, match="fixture.json"):
+        verify_reboot_bundle_files(SOURCE, tmp_path, RUN, "reboot")
+
+
+def test_verify_reboot_bundle_rejects_changed_coordinator(tmp_path):
+    stage_reboot_bundle_files(SOURCE, tmp_path, RUN, "reboot")
+    (tmp_path / REBOOT_COORDINATOR_TARGET).write_text("changed", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="coordinator differs"):
+        verify_reboot_bundle_files(SOURCE, tmp_path, RUN, "reboot")
+
+
+def test_verify_reboot_bundle_requires_fixture(tmp_path):
+    stage_reboot_bundle_files(SOURCE, tmp_path, RUN, "reboot")
+    (tmp_path / FIXTURE_TARGET).unlink()
+
+    with pytest.raises(ValueError, match="regular file"):
+        verify_reboot_bundle_files(SOURCE, tmp_path, RUN, "reboot")
