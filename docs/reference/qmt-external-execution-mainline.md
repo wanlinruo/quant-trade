@@ -130,6 +130,14 @@ transport_received → broker_accepted → partial/fill
   委托/任务/策略均为0，全部辅助任务禁用，Shadow保持禁用。脱敏证据见
   [qmt-windows-reboot-probe-20261107.json](qmt-windows-reboot-probe-20261107.json)。下一步应先离线定位并
   修复重启后Windows安全检查超时，再使用新的明确授权和run-id重验，不复用本次失败记录或自动重放。
+- 11月8日r4使用新run-id和重新绑定候选执行了另一轮维护者明确授权的单次整机重启。Windows、受信
+  QMT 2.1.33.0和`QSYS601_THIN_VALIDATION`再次自动恢复，说明自动恢复层可重复；但协调器driver在
+  first-ready和发送门之前因缺少精确运行时文件`qmt-synthetic-intent-protocol.py`退出。bundle中虽有
+  相同内容的`candidate-default.py`，端口只按固定同目录文件名加载，不能以改名副本替代。最终发送门
+  不存在、发送0、响应0且无重放，因此合成闭环仍未通过。收尾已停止唯一验证实例、恢复默认关闭源码
+  并确认委托/任务/策略0/0/0；所有#601任务disabled。下一次准备必须通过
+  `scripts/prepare_qmt_synthetic_runtime.py`不覆盖地生成两个精确文件，并在最终目录真实导入port、
+  验证protocol加载路径；再次整机重启仍须新run-id和新的明确授权。
 - 第4阶段当前查询层已在维护者单独授权下完成一次现场读取：`ACCOUNT`取得非空脱敏形状，
   `POSITION/ORDER/DEAL`均为`empty_unverified`，四类当前查询各一次；历史读取、交易和撤单调用为0。
   模拟实例调用`set_account`后却自然收到一次账户回调，超出本次授权，因此不计为回调层通过。
