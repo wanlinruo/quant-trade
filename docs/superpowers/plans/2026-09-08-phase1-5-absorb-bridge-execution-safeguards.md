@@ -711,11 +711,11 @@ def test_assert_may_place_passes_in_armed_live():
 
 
 def test_account_whitelist_accepts_a_listed_account():
-    SafetyPolicy(TradingMode.SHADOW, allowed_account_ids=("803010036",)).assert_account("803010036")
+    SafetyPolicy(TradingMode.SHADOW, allowed_account_ids=("100000001",)).assert_account("100000001")
 
 
 def test_account_whitelist_rejects_an_unlisted_account():
-    policy = SafetyPolicy(TradingMode.SHADOW, allowed_account_ids=("803010036",))
+    policy = SafetyPolicy(TradingMode.SHADOW, allowed_account_ids=("100000001",))
     with pytest.raises(SafetyError, match="not in the allowed"):
         policy.assert_account("999999999")
 
@@ -724,7 +724,7 @@ def test_empty_whitelist_rejects_everything_in_live():
     """live 下没配白名单是危险的默认值，必须显式列出账户。"""
     policy = SafetyPolicy(TradingMode.LIVE, orders_enabled=True)
     with pytest.raises(SafetyError, match="allowed"):
-        policy.assert_account("803010036")
+        policy.assert_account("100000001")
 
 
 def test_empty_whitelist_is_permissive_outside_live():
@@ -732,14 +732,14 @@ def test_empty_whitelist_is_permissive_outside_live():
 
 
 def test_account_ids_are_compared_as_strings():
-    policy = SafetyPolicy(TradingMode.SHADOW, allowed_account_ids=("803010036",))
-    policy.assert_account(803010036)
+    policy = SafetyPolicy(TradingMode.SHADOW, allowed_account_ids=("100000001",))
+    policy.assert_account(100000001)
 
 
 def test_from_mapping_parses_a_config_dict():
     policy = SafetyPolicy.from_mapping({
         "mode": "shadow", "orders_enabled": False,
-        "allowed_account_ids": ["803010036"],
+        "allowed_account_ids": ["100000001"],
     })
     assert policy.mode is TradingMode.SHADOW
     assert policy.may_place_orders is False
@@ -1978,7 +1978,7 @@ def test_safety_policy_blocks_order_placement_in_shadow(tmp_path):
 
 
 def test_safety_policy_rejects_an_unlisted_account():
-    policy = SafetyPolicy(TradingMode.SHADOW, allowed_account_ids=("803010036",))
+    policy = SafetyPolicy(TradingMode.SHADOW, allowed_account_ids=("100000001",))
     with pytest.raises(SafetyError):
         policy.assert_account("111111111")
 

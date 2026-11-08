@@ -180,6 +180,10 @@ PR 作者也不能给自己的 PR 提供“独立批准”。本项目的 Review
 
 1. **Mac 本地硬拦截**：版本化 `.githooks/pre-push`，只拒绝向 `main` 直接
    push，并通过 `core.hooksPath=.githooks` 安装。`test` 和工作分支允许推送。
+   推送前同时运行 `scripts/check_secrets.py`（#600）：CI 与本机都执行账户上下文规则；
+   真实资金账户号只写在仓库外的 `~/.config/qsys/forbidden-account-ids`（权限 600，
+   每行一个），由钩子精确匹配全部被跟踪文件，报警不回显数值。该文件不得提交，
+   也不得把真实值写进 Issue、PR 或 Actions。
 2. **Linux 权限隔离**：Linux 使用 GitHub 只读 deploy key，本身不能 push。
 3. **GitHub PR + CI**：`test` push 直接运行 CI；只有进入 `main` 的变更通过 PR 展示
    diff 并运行检查。红灯时规范上禁止合并或部署。
