@@ -12,4 +12,10 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     esac
 done
 
+# #600：推送前扫描密钥与资金账户号。真实账户号只放在仓库外的私有文件中，
+# 由 check_secrets.py 精确匹配且不回显；文件不存在时只执行上下文规则。
+: "${QSYS_FORBIDDEN_ACCOUNT_IDS_FILE:=$HOME/.config/qsys/forbidden-account-ids}"
+export QSYS_FORBIDDEN_ACCOUNT_IDS_FILE
+python3 scripts/check_secrets.py >&2
+
 exit 0
