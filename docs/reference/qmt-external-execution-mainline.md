@@ -138,6 +138,15 @@ transport_received → broker_accepted → partial/fill
   并确认委托/任务/策略0/0/0；所有#601任务disabled。下一次准备必须通过
   `scripts/prepare_qmt_synthetic_runtime.py`不覆盖地生成两个精确文件，并在最终目录真实导入port、
   验证protocol加载路径；再次整机重启仍须新run-id和新的明确授权。
+- 11月8日r5绑定最终main和新run-id再次执行单次明确授权的整机复验。r4运行时文件名缺陷已修复，
+  driver完成port真实导入；随后在状态根创建前发现另一项准备契约不一致：现场审计根是受保护的
+  Administrators/SYSTEM精确DACL，`prepare_windows_validation_root()`只接受当前SID/SYSTEM，
+  因`unexpected NTFS trustee`拒绝。`first-ready`与发送门均不存在，发送0、无重放；自动恢复的
+  唯一验证实例已停止，源码恢复默认关闭并重新编译，最终0/0/0。修复候选不把状态根放宽给管理员组，
+  而是在精确管理员私有根下先创建当前SID/SYSTEM专属空父目录，再创建原严格状态根。候选的两级ACL链已在
+  Windows全新隔离目录实测通过，父目录/状态根均为当前SID owner、精确SID+SYSTEM受保护DACL，
+  状态文件单硬链接且通过原验证器；test SHA `47cf3a3e`的CI与测试部署三方证据成功。该结果没有再次
+  重启或接触QMT，只关闭ACL修复的现场形状风险；整机重验仍须最终main、新run-id和新的单次授权。
 - 第4阶段当前查询层已在维护者单独授权下完成一次现场读取：`ACCOUNT`取得非空脱敏形状，
   `POSITION/ORDER/DEAL`均为`empty_unverified`，四类当前查询各一次；历史读取、交易和撤单调用为0。
   模拟实例调用`set_account`后却自然收到一次账户回调，超出本次授权，因此不计为回调层通过。

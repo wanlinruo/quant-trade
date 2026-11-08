@@ -120,13 +120,24 @@ unknown/未完成dispatching阻止本作用域新开仓；本阶段尚无券商�
   [NTFS实测](qmt-async-ntfs-probe-20261105.json)。
 - 最新全量4565项通过、7项Linux凭据条件跳过、3项既有弃用警告，包含17项新增NTFS
   策略/准备边界测试和前一阶段真实子进程退出测试。无新增生产入口脚本。
-- NTFS准备默认关闭，只对已为当前SID/SYSTEM私有的父目录创建新根，拒绝复用/覆盖旧根，
-  不修改父目录权限。新根owner必须为实际当前SID；ACL只允许该SID及SYSTEM完整访问，
+- NTFS准备默认关闭。状态根仍只允许在当前SID/SYSTEM私有父目录下创建；若现场既有审计根是
+  精确Administrators/SYSTEM受保护DACL，先要求当前token实际属于Administrators，再在其下
+  不覆盖地新建专属父目录并立即收紧为当前SID/SYSTEM，独立回读owner/DACL和空目录后，才在
+  该专属父目录下创建状态根。不能直接把Administrators组父根当状态根父目录，不能修改既有
+  父根权限，也不能复用/修复失败目录。新根owner必须为实际当前SID；ACL只允许该SID及SYSTEM完整访问，
   检查固定本地NTFS、所有祖先无reparse、状态文件无额外硬链接，拒绝未知文件。
   文件owner允许SID/SYSTEM/Administrators（Windows可能以默认组拥有新文件），这不授予
   Administrators额外DACL项；不声称管理员无法提权访问。准备失败保留新目录，不自动重放。
   r1后台启动未产出启动标记、状态根或输出且进程已退出，具体退出原因未捕获；保留记录，
   r2使用独立新根同步执行，exit0并取得验收。该差异不证明无人值守启动能力。
+- 11-08整机r5中，运行时精确文件打包已越过导入，但审计父根实际为Administrators/SYSTEM，
+  旧入口却直接要求当前SID/SYSTEM，因`unexpected NTFS trustee`在状态根创建前拒绝；发送门不存在、
+  发送0。修复不放宽状态根ACL，而是新增上述两级准备：只把精确管理员私有根作为bootstrap，
+  创建当前SID/SYSTEM专属空父目录，再沿用原状态根严格检查。现场原失败及默认关闭收尾保留。
+  修复候选随后在同一Windows受保护审计根下使用全新隔离目录实测：专属父目录和状态根owner均为
+  当前SID，DACL受保护且精确SID+SYSTEM、非reparse；三个状态文件逐项为单硬链接并通过既有
+  `validate_windows_validation_root()`。该实测未重启Windows、未启动QMT模型或调用账户/交易接口，
+  只证明ACL两级准备链，不冒称整机闭环通过。
 - 11-07整机重启后，driver在创建状态根前的首个只读父目录检查触发15秒`TimeoutExpired`；
   发送门未创建、合成意图发送0。修复候选仅将每个进程首个只读安全检查改为单次45秒窗口，
   不自动重试；ACL写入仍为单次15秒，失败保留新空目录。所有ACL、owner、NTFS、reparse、
