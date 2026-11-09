@@ -790,6 +790,9 @@
       "state_directories": [],
       "seed": null,
       "dropin_lines": [
+        "[Unit]",
+        "StartLimitIntervalSec=900",
+        "StartLimitBurst=3",
         "[Service]",
         "User=qsys-live-core",
         "Group=qsys-live-core",

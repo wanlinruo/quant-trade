@@ -125,6 +125,76 @@ def test_three_error_fuse_keeps_isolated_kill_and_existing_cancel_behavior(monke
     assert not (tmp_path / "var/KILL").exists()
 
 
+def _fuse_runtime(cancel, critical, *, ticks):
+    """tick 前 3 次失败触发熔断，之后按 ticks 给出的结果继续；用尽后抛 Stop。"""
+    plan = ["fail"] * 3 + list(ticks)
+
+    def runtime(*args, **kwargs):
+        def tick():
+            if not plan:
+                raise Stop()
+            if plan.pop(0) == "fail":
+                raise RuntimeError("Timeout reading from socket")
+
+        return SimpleNamespace(
+            heartbeats=nullcontext(), tick=tick,
+            kill_switch=KillSwitch(args[4], key="control:kill", local_path=kwargs["local_kill_path"]),
+            broker=SimpleNamespace(cancel_all=cancel), alerts=SimpleNamespace(critical=critical),
+        )
+
+    return runtime
+
+
+def test_fuse_survives_cancel_all_redis_timeout_and_retries_cancel(monkeypatch, tmp_path):
+    """#535：熔断撤单再遇 Redis 超时不能让进程退出，本地 KILL 保持并稍后重试撤单。"""
+    setup_entry(monkeypatch, tmp_path)
+    clock = iter(range(0, 10_000, 20))
+    monkeypatch.setattr(core_cli.time, "monotonic", lambda: next(clock))
+    cancel = Mock(side_effect=[TimeoutError("Timeout reading from socket"),
+                               TimeoutError("Timeout reading from socket"), None])
+    critical = Mock()
+    monkeypatch.setattr(core_cli, "LiveRuntime", _fuse_runtime(cancel, critical, ticks=["fail"] * 6))
+    with pytest.raises(Stop):
+        core_cli.main(isolated_args(tmp_path))
+    assert cancel.call_count == 3
+    assert (tmp_path / "isolated/KILL").is_file()
+    titles = [c.args[0] for c in critical.call_args_list]
+    assert titles[0] == "实盘核心连续故障熔断"
+    assert "撤单未确认" in critical.call_args_list[0].args[1]
+    assert titles[-1] == "熔断撤单已补发"
+
+
+def test_fuse_cancel_success_is_not_repeated(monkeypatch, tmp_path):
+    setup_entry(monkeypatch, tmp_path)
+    cancel = Mock()
+    critical = Mock()
+    monkeypatch.setattr(core_cli, "LiveRuntime", _fuse_runtime(cancel, critical, ticks=["fail"] * 5))
+    with pytest.raises(Stop):
+        core_cli.main(isolated_args(tmp_path))
+    cancel.assert_called_once()
+    critical.assert_called_once()
+
+
+def test_fuse_alert_failure_does_not_exit(monkeypatch, tmp_path):
+    setup_entry(monkeypatch, tmp_path)
+    cancel = Mock()
+    critical = Mock(side_effect=OSError("ledger disk full"))
+    monkeypatch.setattr(core_cli, "LiveRuntime", _fuse_runtime(cancel, critical, ticks=["ok"]))
+    with pytest.raises(Stop):
+        core_cli.main(isolated_args(tmp_path))
+    cancel.assert_called_once()
+    assert (tmp_path / "isolated/KILL").is_file()
+
+
+def test_live_core_dropin_caps_restart_storm():
+    """#535：失败后最多 3 次启动尝试，之后保持 failed 等人工处理，不无限重启。"""
+    import json
+    spec = json.loads(Path("deploy/component-releases.json").read_text(encoding="utf-8"))
+    lines = spec["components"]["live-core"]["dropin_lines"]
+    assert lines[:3] == ["[Unit]", "StartLimitIntervalSec=900", "StartLimitBurst=3"]
+    assert lines[3] == "[Service]"
+
+
 @pytest.mark.parametrize("kind", ["missing-root", "filesystem-root", "outside-journal", "symlink-escape", "live-notification", "ops-notification"])
 def test_isolation_rejects_unsafe_paths_and_notifications_before_transport(monkeypatch, tmp_path, kind):
     argv = isolated_args(tmp_path)

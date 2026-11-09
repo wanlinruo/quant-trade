@@ -103,6 +103,7 @@ def main(argv: list[str] | None = None) -> int:
             log.info("live_core.started", strategy=str(source.path),
                      follows=source.paper_account_id or None)
             consecutive_errors = 0
+            cancel_retry_at: float | None = None
             while True:
                 try:
                     runtime.tick()
@@ -112,11 +113,56 @@ def main(argv: list[str] | None = None) -> int:
                     log.error("live_core.tick_failed", error=str(exc),
                               consecutive_errors=consecutive_errors)
                     if consecutive_errors == 3:
-                        reason = "three consecutive live-core loop failures"
-                        runtime.kill_switch.engage(reason)
-                        runtime.broker.cancel_all()
-                        runtime.alerts.critical("实盘核心连续故障熔断", f"{reason}: {exc}")
+                        cancel_retry_at = _fuse(runtime, exc)
+                if cancel_retry_at is not None and time.monotonic() >= cancel_retry_at:
+                    if _cancel_all(runtime):
+                        cancel_retry_at = None
+                        _alert(runtime, "熔断撤单已补发", "Redis 恢复后已重新投递 cancel_all")
+                    else:
+                        cancel_retry_at = time.monotonic() + CANCEL_RETRY_SECONDS
                 time.sleep(max(0.2, args.poll))
+
+
+CANCEL_RETRY_SECONDS = 30.0
+
+
+def _cancel_all(runtime) -> bool:
+    """投递 cancel_all；失败（多为 Redis 超时）只记录，结果按未确认处理（#535）。"""
+    try:
+        runtime.broker.cancel_all()
+        return True
+    except Exception as exc:
+        log.error("live_core.fuse_cancel_failed", error=str(exc))
+        return False
+
+
+def _alert(runtime, title: str, detail: str) -> None:
+    try:
+        runtime.alerts.critical(title, detail)
+    except Exception as exc:  # 告警失败不能让熔断后的进程退出
+        log.error("live_core.fuse_alert_failed", title=title, error=str(exc))
+
+
+def _fuse(runtime, exc: Exception) -> float | None:
+    """连续故障熔断：先落 KILL，再撤单，再告警；任何一步失败都不让进程退出。
+
+    10-24 现场：熔断分支里 cancel_all 再次 Redis 超时，异常冲出主循环，进程退出后
+    systemd 反复重启、启动前检查反复拒绝。现在进程保持存活、不再新开仓（KILL 已落），
+    撤单未确认时按 CANCEL_RETRY_SECONDS 重试，直到投递成功；撤单本身可重复，无副作用。
+    返回下一次撤单重试的单调时钟时刻，已投递则返回 None。
+    """
+    reason = "three consecutive live-core loop failures"
+    notes = []
+    try:
+        runtime.kill_switch.engage(reason)
+    except Exception as kill_exc:
+        log.error("live_core.fuse_kill_failed", error=str(kill_exc))
+        notes.append(f"KILL 写入失败：{kill_exc}")
+    cancelled = _cancel_all(runtime)
+    if not cancelled:
+        notes.append(f"撤单未确认，将每 {CANCEL_RETRY_SECONDS:.0f} 秒重试")
+    _alert(runtime, "实盘核心连续故障熔断", "；".join([f"{reason}: {exc}", *notes]))
+    return None if cancelled else time.monotonic() + CANCEL_RETRY_SECONDS
 
 
 if __name__ == "__main__":
