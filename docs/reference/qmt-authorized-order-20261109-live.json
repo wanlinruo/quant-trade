@@ -1,0 +1,409 @@
+{
+ "issue": 601,
+ "run_short": "c192db15",
+ "source_main": "126404f",
+ "window": "2026-11-09 10:00-11:00 +08:00",
+ "quote_0950": {
+  "last": "4.154",
+  "bid1": "4.154",
+  "ask1": "4.155",
+  "limit_down": "3.712",
+  "limit_up": "4.536"
+ },
+ "notes": [
+  "desensitized: broker order/trade ids are sha256 tags; no account value recorded",
+  "driver order-result counted the same fill twice (callback+query); unique_deals is de-duplicated by trade id"
+ ],
+ "steps": [
+  {
+   "at": "2026-11-09T02:01:24.826167+00:00",
+   "event": "sending",
+   "kind": "step",
+   "seq": 1
+  },
+  {
+   "at": "2026-11-09T02:01:26.722951+00:00",
+   "event": "reply",
+   "kind": "step",
+   "seq": 1,
+   "status": "handled",
+   "reason": "ok",
+   "result": {
+    "status": "passorder_called"
+   }
+  },
+  {
+   "at": "2026-11-09T02:01:27.812252+00:00",
+   "event": "sending",
+   "kind": "step",
+   "seq": 2
+  },
+  {
+   "at": "2026-11-09T02:01:28.752286+00:00",
+   "event": "reply",
+   "kind": "step",
+   "seq": 2,
+   "status": "handled",
+   "reason": "ok",
+   "result": {
+    "cancel_result": true,
+    "status": "cancel_signal_sent"
+   }
+  },
+  {
+   "at": "2026-11-09T02:01:29.054694+00:00",
+   "event": "sending",
+   "kind": "step",
+   "seq": 3
+  },
+  {
+   "at": "2026-11-09T02:01:29.755846+00:00",
+   "event": "reply",
+   "kind": "step",
+   "seq": 3,
+   "status": "handled",
+   "reason": "ok",
+   "result": {
+    "status": "passorder_called"
+   }
+  },
+  {
+   "at": "2026-11-09T02:01:30.097154+00:00",
+   "event": "cancel_skipped",
+   "step": 4
+  },
+  {
+   "at": "2026-11-09T02:01:30.098030+00:00",
+   "event": "sending",
+   "kind": "snapshot",
+   "seq": 1
+  },
+  {
+   "at": "2026-11-09T02:01:30.748836+00:00",
+   "event": "reply",
+   "kind": "snapshot",
+   "seq": 1,
+   "status": "handled",
+   "reason": "ok",
+   "result": {
+    "deals": 1,
+    "orders": 2,
+    "positions": 1
+   }
+  }
+ ],
+ "order_status_sequence": {
+  "q601-c192db15-a": [
+   50,
+   50,
+   50,
+   54,
+   54
+  ],
+  "q601-c192db15-b": [
+   50,
+   50,
+   56,
+   56
+  ]
+ },
+ "order_facts": {
+  "q601-c192db15-a": [
+   {
+    "account_match": true,
+    "kind": "order",
+    "m_dCancelAmount": 0.0,
+    "m_dLimitPrice": 4.029,
+    "m_dTradeAmount": 0.0,
+    "m_dTradedPrice": 0.0,
+    "m_nDirection": 48,
+    "m_nErrorID": 2147483647,
+    "m_nOffsetFlag": 48,
+    "m_nOrderPriceType": 50,
+    "m_nOrderStatus": 50,
+    "m_nOrderSubmitStatus": 51,
+    "m_nVolumeTotal": 0,
+    "m_nVolumeTotalOriginal": 100,
+    "m_nVolumeTraded": 0,
+    "m_strCancelInfo": "",
+    "m_strErrorMsg": "",
+    "m_strExchangeID": "SH",
+    "m_strInsertDate": "20261109",
+    "m_strInsertTime": "100127",
+    "m_strInstrumentID": "510300",
+    "m_strRemark": "q601-c192db15-a",
+    "source": "callback",
+    "order_sys_id": null
+   },
+   {
+    "account_match": true,
+    "kind": "order",
+    "m_dCancelAmount": 0.0,
+    "m_dLimitPrice": 4.029,
+    "m_dTradeAmount": 0.0,
+    "m_dTradedPrice": 0.0,
+    "m_nDirection": 48,
+    "m_nErrorID": 2147483647,
+    "m_nOffsetFlag": 48,
+    "m_nOrderPriceType": 50,
+    "m_nOrderStatus": 50,
+    "m_nOrderSubmitStatus": 51,
+    "m_nVolumeTotal": 100,
+    "m_nVolumeTotalOriginal": 100,
+    "m_nVolumeTraded": 0,
+    "m_strCancelInfo": "",
+    "m_strErrorMsg": "",
+    "m_strExchangeID": "SH",
+    "m_strInsertDate": "20261109",
+    "m_strInsertTime": "100127",
+    "m_strInstrumentID": "510300",
+    "m_strRemark": "q601-c192db15-a",
+    "source": "callback",
+    "order_sys_id": "sha256:abe8457f1960"
+   },
+   {
+    "account_match": true,
+    "kind": "order",
+    "m_dCancelAmount": 0.0,
+    "m_dLimitPrice": 4.029,
+    "m_dTradeAmount": 0.0,
+    "m_dTradedPrice": 0.0,
+    "m_nDirection": 48,
+    "m_nErrorID": 2147483647,
+    "m_nOffsetFlag": 48,
+    "m_nOrderPriceType": 50,
+    "m_nOrderStatus": 50,
+    "m_nOrderSubmitStatus": 51,
+    "m_nVolumeTotal": 100,
+    "m_nVolumeTotalOriginal": 100,
+    "m_nVolumeTraded": 0,
+    "m_strCancelInfo": "",
+    "m_strErrorMsg": "",
+    "m_strExchangeID": "SH",
+    "m_strInsertDate": "20261109",
+    "m_strInsertTime": "100127",
+    "m_strInstrumentID": "510300",
+    "m_strRemark": "q601-c192db15-a",
+    "source": "query",
+    "order_sys_id": "sha256:abe8457f1960"
+   },
+   {
+    "account_match": true,
+    "kind": "order",
+    "m_dCancelAmount": 100.0,
+    "m_dLimitPrice": 4.029,
+    "m_dTradeAmount": 0.0,
+    "m_dTradedPrice": 0.0,
+    "m_nDirection": 48,
+    "m_nErrorID": 2147483647,
+    "m_nOffsetFlag": 48,
+    "m_nOrderPriceType": 50,
+    "m_nOrderStatus": 54,
+    "m_nOrderSubmitStatus": 51,
+    "m_nVolumeTotal": 100,
+    "m_nVolumeTotalOriginal": 100,
+    "m_nVolumeTraded": 0,
+    "m_strCancelInfo": "",
+    "m_strErrorMsg": "",
+    "m_strExchangeID": "SH",
+    "m_strInsertDate": "20261109",
+    "m_strInsertTime": "100127",
+    "m_strInstrumentID": "510300",
+    "m_strRemark": "q601-c192db15-a",
+    "source": "callback",
+    "order_sys_id": "sha256:abe8457f1960"
+   },
+   {
+    "account_match": true,
+    "kind": "order",
+    "m_dCancelAmount": 100.0,
+    "m_dLimitPrice": 4.029,
+    "m_dTradeAmount": 0.0,
+    "m_dTradedPrice": 0.0,
+    "m_nDirection": 48,
+    "m_nErrorID": 2147483647,
+    "m_nOffsetFlag": 48,
+    "m_nOrderPriceType": 50,
+    "m_nOrderStatus": 54,
+    "m_nOrderSubmitStatus": 51,
+    "m_nVolumeTotal": 100,
+    "m_nVolumeTotalOriginal": 100,
+    "m_nVolumeTraded": 0,
+    "m_strCancelInfo": "",
+    "m_strErrorMsg": "",
+    "m_strExchangeID": "SH",
+    "m_strInsertDate": "20261109",
+    "m_strInsertTime": "100127",
+    "m_strInstrumentID": "510300",
+    "m_strRemark": "q601-c192db15-a",
+    "source": "query",
+    "order_sys_id": "sha256:abe8457f1960"
+   }
+  ],
+  "q601-c192db15-b": [
+   {
+    "account_match": true,
+    "kind": "order",
+    "m_dCancelAmount": 0.0,
+    "m_dLimitPrice": 4.157,
+    "m_dTradeAmount": 0.0,
+    "m_dTradedPrice": 0.0,
+    "m_nDirection": 48,
+    "m_nErrorID": 2147483647,
+    "m_nOffsetFlag": 48,
+    "m_nOrderPriceType": 50,
+    "m_nOrderStatus": 50,
+    "m_nOrderSubmitStatus": 51,
+    "m_nVolumeTotal": 0,
+    "m_nVolumeTotalOriginal": 100,
+    "m_nVolumeTraded": 0,
+    "m_strCancelInfo": "",
+    "m_strErrorMsg": "",
+    "m_strExchangeID": "SH",
+    "m_strInsertDate": "20261109",
+    "m_strInsertTime": "100129",
+    "m_strInstrumentID": "510300",
+    "m_strRemark": "q601-c192db15-b",
+    "source": "callback",
+    "order_sys_id": null
+   },
+   {
+    "account_match": true,
+    "kind": "order",
+    "m_dCancelAmount": 0.0,
+    "m_dLimitPrice": 4.157,
+    "m_dTradeAmount": 0.0,
+    "m_dTradedPrice": 0.0,
+    "m_nDirection": 48,
+    "m_nErrorID": 2147483647,
+    "m_nOffsetFlag": 48,
+    "m_nOrderPriceType": 50,
+    "m_nOrderStatus": 50,
+    "m_nOrderSubmitStatus": 51,
+    "m_nVolumeTotal": 100,
+    "m_nVolumeTotalOriginal": 100,
+    "m_nVolumeTraded": 0,
+    "m_strCancelInfo": "",
+    "m_strErrorMsg": "",
+    "m_strExchangeID": "SH",
+    "m_strInsertDate": "20261109",
+    "m_strInsertTime": "100129",
+    "m_strInstrumentID": "510300",
+    "m_strRemark": "q601-c192db15-b",
+    "source": "callback",
+    "order_sys_id": "sha256:79367e482303"
+   },
+   {
+    "account_match": true,
+    "kind": "order",
+    "m_dCancelAmount": 0.0,
+    "m_dLimitPrice": 4.157,
+    "m_dTradeAmount": 415.7,
+    "m_dTradedPrice": 4.157,
+    "m_nDirection": 48,
+    "m_nErrorID": 2147483647,
+    "m_nOffsetFlag": 48,
+    "m_nOrderPriceType": 50,
+    "m_nOrderStatus": 56,
+    "m_nOrderSubmitStatus": 51,
+    "m_nVolumeTotal": 0,
+    "m_nVolumeTotalOriginal": 100,
+    "m_nVolumeTraded": 100,
+    "m_strCancelInfo": "",
+    "m_strErrorMsg": "",
+    "m_strExchangeID": "SH",
+    "m_strInsertDate": "20261109",
+    "m_strInsertTime": "100129",
+    "m_strInstrumentID": "510300",
+    "m_strRemark": "q601-c192db15-b",
+    "source": "callback",
+    "order_sys_id": "sha256:79367e482303"
+   },
+   {
+    "account_match": true,
+    "kind": "order",
+    "m_dCancelAmount": 0.0,
+    "m_dLimitPrice": 4.157,
+    "m_dTradeAmount": 415.7,
+    "m_dTradedPrice": 4.157,
+    "m_nDirection": 48,
+    "m_nErrorID": 2147483647,
+    "m_nOffsetFlag": 48,
+    "m_nOrderPriceType": 50,
+    "m_nOrderStatus": 56,
+    "m_nOrderSubmitStatus": 51,
+    "m_nVolumeTotal": 0,
+    "m_nVolumeTotalOriginal": 100,
+    "m_nVolumeTraded": 100,
+    "m_strCancelInfo": "",
+    "m_strErrorMsg": "",
+    "m_strExchangeID": "SH",
+    "m_strInsertDate": "20261109",
+    "m_strInsertTime": "100129",
+    "m_strInstrumentID": "510300",
+    "m_strRemark": "q601-c192db15-b",
+    "source": "query",
+    "order_sys_id": "sha256:79367e482303"
+   }
+  ]
+ },
+ "unique_deals": [
+  {
+   "account_match": true,
+   "kind": "deal",
+   "m_dCommission": 0.12470999999999999,
+   "m_dComssion": 0.12470999999999999,
+   "m_dPrice": 4.157,
+   "m_dTradeAmount": 415.7,
+   "m_nDirection": 48,
+   "m_nOffsetFlag": 48,
+   "m_nVolume": 100,
+   "m_strExchangeID": "SH",
+   "m_strInstrumentID": "510300",
+   "m_strRemark": "q601-c192db15-b",
+   "m_strTradeDate": "20261109",
+   "m_strTradeTime": "100129",
+   "source": "callback",
+   "order_sys_id": "sha256:79367e482303",
+   "trade_id": "sha256:134538eb48bb"
+  }
+ ],
+ "order_errors": [],
+ "positions": [
+  {
+   "account_match": true,
+   "kind": "position",
+   "m_nCanUseVolume": 0,
+   "m_nFrozenVolume": 0,
+   "m_nOnRoadVolume": 100,
+   "m_nVolume": 100,
+   "m_nYesterdayVolume": 0,
+   "m_strExchangeID": "SH",
+   "m_strInstrumentID": "510300",
+   "source": "query"
+  }
+ ],
+ "result": {
+  "automatic_replay": false,
+  "deals": {
+   "q601-c192db15-b": 2
+  },
+  "final_order_status": {
+   "q601-c192db15-a": 54,
+   "q601-c192db15-b": 56
+  },
+  "order_errors": {},
+  "outcome": {
+   "q601-c192db15-a": "cancelled",
+   "q601-c192db15-b": "filled"
+  },
+  "positions": 1,
+  "run": "c192db15653f02b2d40cb2b484ad3d5f",
+  "status": "completed",
+  "stop": null,
+  "deals_unique_by_trade_id": {
+   "q601-c192db15-b": 1
+  }
+ },
+ "account_values_present": false
+}
