@@ -333,3 +333,85 @@ def test_limit_pct_reproduces_the_price_skips_unlimited_rows(ctx, warehouse, tmp
              "limit_pct": None, "limit_up": 1000000.0, "limit_down": 0.01}], warehouse)
     row = _run("A3.limit_pct_reproduces_price", ctx, tmp_path)
     assert row["violations"] == 0 and row["checked_rows"] == 0
+
+
+# --- #608：总成交含大宗交易时，A1 由直取大宗证据解释 ----------------------------
+
+BT_DAY = date(2026, 11, 5)
+A1 = "A1.dimension.amount_vs_volume_close"
+A1_EXPLAINED = "A1.dimension.amount_vs_volume_block_explained"
+
+
+def _bj_daily(warehouse, *, amount=5_201_015.59):
+    """920553.BJ 2026-11-05 现场：均价 5,201,015.59/(8759.81×100)=5.937 < low 6.02。"""
+    _daily([{"symbol": "920553.BJ", "dt": BT_DAY, "close": 6.19, "low": 6.02,
+             "high": 6.23, "volume": 8759.81, "amount": amount}], warehouse)
+
+
+def _blocks(warehouse, rows):
+    """rows: (symbol, price, vol 万股, amount 元)。"""
+    frame = pl.DataFrame({
+        "symbol": [r[0] for r in rows], "dt": [BT_DAY] * len(rows),
+        "seq": list(range(len(rows))), "price": [r[1] for r in rows],
+        "vol": [r[2] for r in rows], "amount": [r[3] for r in rows],
+        "buyer": ["甲"] * len(rows), "seller": ["乙"] * len(rows),
+    }).select(schema.BLOCK_TRADE_DAILY.names)
+    warehouse.write("block_trade_daily",
+                    frame.to_arrow().cast(schema.BLOCK_TRADE_DAILY), year=2026)
+
+
+@pytest.fixture
+def bt_ctx(warehouse):
+    return C.CheckContext(WarehouseQuery(warehouse), warehouse, BT_DAY, BT_DAY)
+
+
+def test_a1_without_block_trade_evidence_stays_blocking(bt_ctx, warehouse, tmp_path):
+    _bj_daily(warehouse)
+    blocking = _run(A1, bt_ctx, tmp_path)
+    assert blocking["violations"] == 1 and blocking["severity"] == "blocking"
+    assert _run(A1_EXPLAINED, bt_ctx, tmp_path)["violations"] == 0
+
+
+def test_a1_explained_by_direct_block_trade_is_warning(bt_ctx, warehouse, tmp_path):
+    _bj_daily(warehouse)
+    _blocks(warehouse, [("920553.BJ", 4.22, 10.0, 422_000.0)])
+    assert _run(A1, bt_ctx, tmp_path)["violations"] == 0
+    explained = _run(A1_EXPLAINED, bt_ctx, tmp_path)
+    assert explained["violations"] == 1
+    assert explained["severity"] == "warning" and explained["known_issue"] == "#608"
+    sample = pl.read_parquet(explained["sample_path"])
+    row = sample.row(0, named=True)
+    assert row["symbol"] == "920553.BJ" and row["block_trades"] == 1
+    assert row["block_volume_hands"] == pytest.approx(1000.0)
+    assert row["block_amount"] == pytest.approx(422_000.0)
+    assert 6.02 <= row["remaining_vwap"] <= 6.23
+
+
+def test_a1_block_trade_that_does_not_restore_the_range_stays_blocking(
+    bt_ctx, warehouse, tmp_path,
+):
+    _bj_daily(warehouse)
+    _blocks(warehouse, [("920553.BJ", 6.10, 1.0, 61_000.0)])  # 扣除后均价仍低于 low
+    assert _run(A1, bt_ctx, tmp_path)["violations"] == 1
+    assert _run(A1_EXPLAINED, bt_ctx, tmp_path)["violations"] == 0
+
+
+def test_a1_other_symbol_block_trade_does_not_explain(bt_ctx, warehouse, tmp_path):
+    _bj_daily(warehouse)
+    _blocks(warehouse, [("600000.SH", 4.22, 10.0, 422_000.0)])
+    assert _run(A1, bt_ctx, tmp_path)["violations"] == 1
+
+
+def test_a1_block_volume_not_below_daily_volume_stays_blocking(bt_ctx, warehouse, tmp_path):
+    _bj_daily(warehouse)
+    _blocks(warehouse, [("920553.BJ", 5.9, 87.6, 5_168_400.0)])  # 大宗量 ≥ 日线总量
+    assert _run(A1, bt_ctx, tmp_path)["violations"] == 1
+
+
+def test_a1_passing_rows_are_never_adjusted(bt_ctx, warehouse, tmp_path):
+    """未违规的行不做任何扣除：即使扣除后会越界也不报。"""
+    _daily([{"symbol": "600036.SH", "dt": BT_DAY, "close": 10.0, "low": 9.5,
+             "high": 10.5, "volume": 1000.0, "amount": 1_000_000.0}], warehouse)
+    _blocks(warehouse, [("600036.SH", 1.0, 0.5, 5_000.0)])
+    assert _run(A1, bt_ctx, tmp_path)["passed"] is True
+    assert _run(A1_EXPLAINED, bt_ctx, tmp_path)["violations"] == 0

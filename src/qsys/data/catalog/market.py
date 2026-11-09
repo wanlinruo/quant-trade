@@ -116,8 +116,10 @@ _PAID_NAME_MEANING = (
 # 生产链路上这些列参与哪些规则（仅 tushare_daily；R2：paid_daily 冻结只挂
 # C4.frozen_unchanged，不挂这些）。规则实现见 Task 12-14。
 _DAILY_CHECKS = {
-    "amount": ("A1.dimension.amount_vs_volume_close", "B3.null_rate"),
-    "volume": ("A1.dimension.amount_vs_volume_close", "B3.null_rate"),
+    "amount": ("A1.dimension.amount_vs_volume_close",
+               "A1.dimension.amount_vs_volume_block_explained", "B3.null_rate"),
+    "volume": ("A1.dimension.amount_vs_volume_close",
+               "A1.dimension.amount_vs_volume_block_explained", "B3.null_rate"),
     "close": ("A3.minute_vs_daily", "A3.pct_change_identity", "B3.null_rate"),
     "pre_close": ("A3.change_identity", "A3.missed_exdiv", "B3.null_rate"),
     "change": ("A3.change_identity",),
@@ -140,7 +142,11 @@ _DAILY_DEFAULT_CHECKS = ("B1.calendar", "B5.span")
 # pre_close 也挂 D-1：A3.missed_exdiv 报的是「价格缺口没有匹配的因子跳变」，
 # 而按 D-1 的判据价格是仲裁者（300091.SZ 2026-02-12 的前收价与转增 0.132616
 # 逐位吻合，不跳的是因子），所以这类不一致不该记在前收价头上判阻断。
-_DAILY_ISSUES = {"factor": ("D-1", "D-2"), "pre_close": ("D-1",)}
+_DAILY_ISSUES = {
+    "factor": ("D-1", "D-2"), "pre_close": ("D-1",),
+    # #608：总成交含大宗交易，且已由直取 block_trade 逐行解释（不是全局豁免）
+    "amount": ("#608",), "volume": ("#608",),
+}
 
 
 def _tushare_daily_metrics() -> list[Metric]:

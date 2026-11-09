@@ -131,7 +131,7 @@ def test_all_reference_datasets_have_a_daily_step():
     assert {name for name, _ in tushare_sync._REFERENCE_STEPS} == {
         "price_limits_daily", "suspend_daily", "index_bars",
         "stock_st_daily", "instruments", "name_history", "limit_list_daily",
-        "moneyflow_daily",
+        "moneyflow_daily", "block_trade_daily",
     }
 
 
@@ -265,6 +265,47 @@ def test_limit_list_step_only_looks_back_a_bounded_number_of_sessions(
     provider = LimitListProvider()
     tushare_sync._sync_limit_list(provider, warehouse, [DAY])
     assert _requested_days(provider) == [DAY]
+
+
+class BlockTradeProvider:
+    def __init__(self):
+        self.calls: list[date] = []
+
+    def block_trade(self, trade_date):
+        self.calls.append(trade_date)
+        return pl.DataFrame()
+
+
+def _seed_block_days(warehouse, write_daily_bars, stored_days):
+    from qsys.data import schema
+    write_daily_bars(warehouse, pl.DataFrame({
+        "symbol": ["000001.SZ"] * len(SESSIONS), "dt": SESSIONS,
+    }))
+    rows = pl.DataFrame({
+        "symbol": ["600000.SH"] * len(stored_days), "dt": stored_days,
+        "seq": [0] * len(stored_days), "price": [8.0] * len(stored_days),
+        "vol": [5.0] * len(stored_days), "amount": [400_000.0] * len(stored_days),
+        "buyer": ["甲"] * len(stored_days), "seller": ["乙"] * len(stored_days),
+    }).select(schema.BLOCK_TRADE_DAILY.names)
+    warehouse.write("block_trade_daily", rows.to_arrow().cast(schema.BLOCK_TRADE_DAILY),
+                    year=2026)
+
+
+def test_block_trade_step_refetches_recent_sessions_without_rows(warehouse, write_daily_bars):
+    """#608：17:00/19:00 都没取到的日子，后续同步在有界窗口内重取。"""
+    _seed_block_days(warehouse, write_daily_bars,
+                     [date(2026, 9, 7), date(2026, 9, 8), date(2026, 9, 10)])
+    provider = BlockTradeProvider()
+    tushare_sync._sync_block_trade(provider, warehouse, [DAY])
+    assert sorted(provider.calls) == [date(2026, 9, 9), DAY]
+
+
+def test_block_trade_step_lookback_is_bounded(warehouse, write_daily_bars):
+    _seed_block_days(warehouse, write_daily_bars,
+                     [date(2026, 9, 7), date(2026, 9, 8), date(2026, 9, 9), date(2026, 9, 10)])
+    provider = BlockTradeProvider()
+    tushare_sync._sync_block_trade(provider, warehouse, [DAY])
+    assert provider.calls == [DAY]
 
 
 def test_every_reference_step_has_an_interface_for_the_service_page():

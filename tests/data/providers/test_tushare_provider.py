@@ -178,3 +178,14 @@ def test_industry_membership_fetches_current_and_historical_rows_explicitly():
         {"is_new": "N", "offset": 0, "limit": 2_000},
     ]
     assert all(call[0] == "index_member_all" for call in client.calls)
+
+
+def test_block_trade_passes_trade_date_and_keeps_source_units():
+    """#608：vol 万股、amount 万元原样返回，单位换算只在入库处做一次。"""
+    client = FakeClient([{"ts_code": "920553.BJ", "trade_date": "20261105",
+                          "price": "4.22", "vol": "10", "amount": "42.2",
+                          "buyer": "甲", "seller": "乙"}])
+    got = TushareProvider(client).block_trade(date(2026, 11, 5))
+    assert client.calls == [("block_trade", {"trade_date": "20261105"}, "")]
+    assert got.row(0, named=True)["vol"] == 10.0
+    assert got.row(0, named=True)["amount"] == 42.2

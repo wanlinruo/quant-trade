@@ -62,18 +62,38 @@ def _sync_limit_list(provider, warehouse: Warehouse, days: list[date]) -> int:
     from qsys.data.query import WarehouseQuery
 
     query = WarehouseQuery(warehouse)
+    retry = _recent_sessions_without_rows(query, days, query.limit_list)
+    if retry:
+        log.warning("limit_list.refetch_empty_sessions",
+                    days=[str(day) for day in retry])
+    return reference.ingest_limit_list(provider, warehouse, sorted({*retry, *days}))
+
+
+def _recent_sessions_without_rows(query, days: list[date], reader) -> list[date]:
+    """最近 _LIMIT_LIST_LOOKBACK 个交易日里该表仍无行的日子（按 tushare_daily 的实际交易日）。"""
     end = max(days)
     sessions = query.tushare_daily(
         None, end - _LIMIT_LIST_CALENDAR_SPAN, end, columns=["dt"]
     )["dt"].unique().sort().to_list()
     recent = [day for day in sessions if day < min(days)][-_LIMIT_LIST_LOOKBACK:]
-    listed = (set(query.limit_list(None, recent[0], recent[-1])["dt"].to_list())
-              if recent else set())
-    retry = [day for day in recent if day not in listed]
+    stored = set(reader(None, recent[0], recent[-1])["dt"].to_list()) if recent else set()
+    return [day for day in recent if day not in stored]
+
+
+def _sync_block_trade(provider, warehouse: Warehouse, days: list[date]) -> int:
+    """当日大宗 + 最近几个交易日里仍无行的日子（#608）。
+
+    `block_trade` 晚于 17:00 发布（2026-11-09 实测 17:20～17:40），19:00 那次若也没
+    取到，下一次同步只看新交易日，前一天就永远缺证据、A1 维持阻断。这里重新直取，
+    仍取不到就继续空着，不推断“当日无大宗”。
+    """
+    from qsys.data.query import WarehouseQuery
+
+    query = WarehouseQuery(warehouse)
+    retry = _recent_sessions_without_rows(query, days, query.block_trades)
     if retry:
-        log.warning("limit_list.refetch_empty_sessions",
-                    days=[str(day) for day in retry])
-    return reference.ingest_limit_list(provider, warehouse, sorted({*retry, *days}))
+        log.warning("block_trade.refetch_empty_sessions", days=[str(day) for day in retry])
+    return reference.ingest_block_trade(provider, warehouse, sorted({*retry, *days}))
 
 
 # 每日任务的统一签名是 fn(provider, warehouse, [day])。指数与无分区主表的
@@ -87,6 +107,7 @@ _REFERENCE_STEPS: list[tuple[str, Callable[..., int]]] = [
     ("name_history", _sync_name_history),
     ("limit_list_daily", _sync_limit_list),
     ("moneyflow_daily", ingest_moneyflow),
+    ("block_trade_daily", _sync_block_trade),
 ]
 
 # 服务管理页显示的「接口 → 表」。键与 _REFERENCE_STEPS 的名字一一对应（守卫测试）。
@@ -101,6 +122,7 @@ STEP_SOURCES: dict[str, tuple[str, str, str]] = {  # 名字 → (步骤, 接口,
     "name_history": ("改名与退市整理期记录", "Tushare namechange", "name_history"),
     "limit_list_daily": ("涨停列表", "Tushare limit_list_d", "limit_list_daily"),
     "moneyflow_daily": ("个股资金流", "Tushare moneyflow", "moneyflow_daily"),
+    "block_trade_daily": ("大宗交易", "Tushare block_trade", "block_trade_daily"),
 }
 
 # 接线守卫检查的是实际公开 ingest，而不是适配器函数名。
@@ -113,6 +135,7 @@ _REFERENCE_INGESTS = {
     reference.ingest_name_history,
     reference.ingest_limit_list,
     ingest_moneyflow,
+    reference.ingest_block_trade,
 }
 
 # D-12 回补：只回看最近 4 个交易日（加上当日共 5 天）。更早的缺口交给告警

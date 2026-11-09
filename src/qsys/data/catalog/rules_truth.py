@@ -59,18 +59,24 @@ def _identity(
                    metrics, (), description, run))
 
 
-def _amount_dimension(ctx: CheckContext) -> CheckResult:
-    """成交均价必须落在当日最低价和最高价之间。
+def _amount_dimension_split(ctx: CheckContext) -> tuple[int, pl.DataFrame, pl.DataFrame]:
+    """返回 (可比行数, 未解释违规, 被直取大宗解释的违规)；两条 A1 规则共用一次计算。
 
-    成交额 / 成交量得到的是 VWAP，不是收盘价。旧规则拿 close 作 5% 近似，
-    会把日内振幅较大的正常股票误报。边界外扩 0.1% 只吸收价格和金额舍入。
+    成交均价必须落在当日最低价和最高价之间。成交额 / 成交量得到的是 VWAP，
+    不是收盘价；边界外扩 0.1% 只吸收价格和金额舍入。
+
+    #608：日线总成交可能包含大宗交易（北交所口径不稳定）。只对**已违规**的行，
+    在当日该标的存在直取 ``block_trade_daily`` 记录、扣除后剩余量为正、且剩余均价
+    回到同样的 [low, high] 区间时，才视为“已由直取大宗解释”；其余一律维持违规。
+    未违规的行不做任何扣除；大宗明细未入库时没有证据，同样维持违规。
     """
+    key = "A1.amount_dimension_split"
+    if key in ctx.cache:
+        return ctx.cache[key]
     frame = ctx.query.tushare_daily(
         None, ctx.start, ctx.end,
         columns=["symbol", "dt", "low", "high", "volume", "amount"],
     ).drop_nulls(["low", "high", "volume", "amount"]).filter(pl.col("volume") > 0)
-    if frame.height == 0:
-        return CheckResult(0, 0, "区间内没有正成交量的可比日线")
     checked = frame.with_columns(
         (pl.col("volume") * 100.0 * pl.col("low") * 0.999).alias("lower_bound"),
         (pl.col("volume") * 100.0 * pl.col("high") * 1.001).alias("upper_bound"),
@@ -79,10 +85,56 @@ def _amount_dimension(ctx: CheckContext) -> CheckResult:
         (pl.col("amount") < pl.col("lower_bound"))
         | (pl.col("amount") > pl.col("upper_bound"))
     )
+    explained = bad.head(0)
+    if bad.height:
+        blocks = ctx.query.block_trades(
+            bad["symbol"].unique().to_list(), ctx.start, ctx.end,
+        ).group_by(["symbol", "dt"]).agg(
+            pl.len().cast(pl.Int64).alias("block_trades"),
+            # 源单位万股 → 手：纯算术（1 万股 = 100 手）
+            (pl.col("vol").sum() * 100.0).alias("block_volume_hands"),
+            pl.col("amount").sum().alias("block_amount"),
+        )
+        joined = bad.join(blocks, on=["symbol", "dt"], how="left").with_columns(
+            (pl.col("volume") - pl.col("block_volume_hands")).alias("remaining_volume"),
+            (pl.col("amount") - pl.col("block_amount")).alias("remaining_amount"),
+        ).with_columns(
+            (pl.col("remaining_amount") / (pl.col("remaining_volume") * 100.0))
+            .alias("remaining_vwap"),
+        )
+        is_explained = (
+            pl.col("block_trades").is_not_null()
+            & (pl.col("remaining_volume") > 0)
+            & (pl.col("remaining_amount")
+               >= pl.col("remaining_volume") * 100.0 * pl.col("low") * 0.999)
+            & (pl.col("remaining_amount")
+               <= pl.col("remaining_volume") * 100.0 * pl.col("high") * 1.001)
+        )  # 无大宗时首项为 False，按 Kleene 与整体为 False，不需要也不允许填充
+        explained = joined.filter(is_explained)
+        bad = joined.filter(~is_explained).select(bad.columns)
+    ctx.cache[key] = (checked.height, bad, explained)
+    return ctx.cache[key]
+
+
+def _amount_dimension(ctx: CheckContext) -> CheckResult:
+    total, bad, _explained = _amount_dimension_split(ctx)
+    if total == 0:
+        return CheckResult(0, 0, "区间内没有正成交量的可比日线")
     return CheckResult(
-        bad.height, checked.height,
-        f"{bad.height} / {checked.height} 行的成交均价超出最低价/最高价区间",
+        bad.height, total,
+        f"{bad.height} / {total} 行的成交均价超出最低价/最高价区间且无直取大宗解释",
         bad.head(5000) if bad.height else None,
+    )
+
+
+def _amount_dimension_block_explained(ctx: CheckContext) -> CheckResult:
+    total, _bad, explained = _amount_dimension_split(ctx)
+    if total == 0:
+        return CheckResult(0, 0, "区间内没有正成交量的可比日线")
+    return CheckResult(
+        explained.height, total,
+        f"{explained.height} / {total} 行总成交含当日直取大宗交易，扣除后均价回到区间（证据见样本）",
+        explained.head(5000) if explained.height else None,
     )
 
 
@@ -90,6 +142,12 @@ register(Check(
     "A1.dimension.amount_vs_volume_close", Category.TRUTHFULNESS, Scope.INCREMENTAL,
     ("tushare_daily.amount", "tushare_daily.volume"), (),
     "成交额/成交量所得均价必须落在当日最低价和最高价之间", _amount_dimension,
+))
+register(Check(
+    "A1.dimension.amount_vs_volume_block_explained", Category.TRUTHFULNESS, Scope.INCREMENTAL,
+    ("tushare_daily.amount", "tushare_daily.volume"), ("#608",),
+    "总成交含大宗交易的量纲差异：仅当日有直取大宗且扣除后均价回到区间时降为已解释警告",
+    _amount_dimension_block_explained,
 ))
 _identity(
     "A3.change_identity",

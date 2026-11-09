@@ -56,6 +56,7 @@ Tushare 直连去掉了全部人工环节。
 | `name_history` | Tushare `namechange` | 区间表，**有 2006 断层** |
 | `name_snapshots` | Tushare `stock_basic` 每日快照 | 点观测，2026-09-14 起累积 |
 | `limit_list_daily` | Tushare `limit_list_d` | 首板/炸板直取 |
+| `block_trade_daily` | Tushare `block_trade` | 每笔大宗直取（#608）；`vol` 万股、`amount` 元；空响应不写入，近 4 个交易日回看重取；尚未回补历史 |
 | `paid_daily` | 百度网盘付费源 | `stock_st` 全量验收前冻结；验收后可按闸门删除 |
 | `bars_daily` | mootdx（已死）| 冻结，入口 `legacy_daily_bars()` |
 | `auction_ticks` | QMT 实时 | **买不到，只能每天自采** |
