@@ -46,3 +46,18 @@ def test_collect_reports_outcomes_by_client_order_id():
     t.append('evt:rejects', RejectEvent(client_order_id=cid, symbol='688001.SH', side='buy', unfilled_qty=100,
                                         reason='executor:market_blocked', at=datetime(2026, 11, 9, 15, 0)).to_payload())
     assert mod.collect(t, [cid])[cid]['rejects'] == ['executor:market_blocked']
+
+
+def test_core_heartbeat_published_only_in_validation_namespace():
+    from qsys.live.messages import Heartbeat
+    inner = MemoryTransport()
+    t = ValidationTransport(inner, NS)
+    mod = tool()
+    ticks = []
+    mod.run_core_heartbeat(t, seconds=3, sleep=ticks.append, clock=lambda: datetime(2026, 11, 9, 20, 0))
+    beat = Heartbeat.model_validate_json(inner.get_key(NS + ':state:heartbeat:core'))
+    assert beat.source == 'core' and beat.event_timed_out is False and len(ticks) == 3
+    assert inner.get_key('state:heartbeat:core') is None
+    with pytest.raises(ValueError):
+        mod.run_core_heartbeat(MemoryTransport(), seconds=1, sleep=lambda _: None,
+                               clock=lambda: datetime(2026, 11, 9))

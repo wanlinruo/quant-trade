@@ -33,7 +33,8 @@ def _epoch_ms(value: datetime) -> int:
 class QmtIpcPort:
     def __init__(self, memory: SharedMemory, *, run_id: str, key: bytes,
                  clock_ms: Callable[[], int], sleep=time.sleep,
-                 receipt_timeout_s: float = 3.0) -> None:
+                 receipt_timeout_s: float = 6.0) -> None:
+        # 回执等待须长于传输有效期（5 秒），否则执行器仍可能在网关记 unknown 后执行。
         self._memory, self._run_id, self._key = memory, run_id, key
         self._clock_ms, self._sleep, self._timeout = clock_ms, sleep, receipt_timeout_s
         self._seq = 0
@@ -42,6 +43,8 @@ class QmtIpcPort:
 
     def _exchange(self, kind: str, command: dict, attempt_id: str, session_nonce: str) -> dict:
         self._seq += 1
+        # 每条指令前刷新网关心跳：09:25 突发多单时主循环一轮可能超过 10 秒。
+        self._memory.beat(self._clock_ms())
         raw = protocol.build_request(run_id=self._run_id, seq=self._seq, kind=kind,
                                      command=command, attempt_id=attempt_id,
                                      session_nonce=session_nonce, now_ms=self._clock_ms(),

@@ -52,8 +52,11 @@
   须在网关就绪后重启该策略实例（F2 验证开机顺序与自启）。
 - 安装 bundle 的 `executor-enabled.py` 含密钥与账户：上传到 Windows 私有 DACL 目录并核对
   实际 NTFS ACL；QMT userdata 中的策略源码同样含密钥（F0 核查 DACL 与备份范围）。
-- 已知遗留（审阅 minor）：09:25 超过约 8 单的突发可能使网关心跳超 10 秒而拒买；回执超时 3 秒
-  短于传输有效期 5 秒，会多出可对账为 present 的 unknown。
+- 审阅 minor 已于 2026-11-09 修复：每条指令前刷新网关心跳（09:25 突发不再误判失联）；回执等待
+  改为 6 秒，长于 5 秒传输有效期。
+- 验证命名空间的网关为 LIVE 姿态时须有核心心跳：`send_qmt_validation_intents.py
+  --core-heartbeat-seconds N` 只在 `component-validation:` 命名空间模拟核心心跳。
+- `windows-agent` 组件分类已加入 `src/qsys/live/validation_transport.py`（网关依赖）。
 
 ## F2 演练开关与合成信号（2026-11-09）
 
