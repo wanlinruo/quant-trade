@@ -153,3 +153,16 @@ def test_a_half_open_server_is_bounded_by_the_command_timeout() -> None:
             release.set()
             server.shutdown()
             thread.join(timeout=1)
+
+
+def test_all_messages_is_a_bounded_read_only_xrange() -> None:
+    calls = []
+
+    class Client:
+        def xrange(self, stream, min, max, count):
+            calls.append((stream, min, max, count))
+            return [(b"1-0", {b"type": b"X", b"data": b"{}"})]
+    from qsys.live.redis_transport import RedisTransport
+    rows = RedisTransport(Client()).all_messages("ns:evt:rejects")
+    assert [(m.id, m.payload) for m in rows] == [("1-0", {"type": "X", "data": "{}"})]
+    assert calls == [("ns:evt:rejects", "-", "+", 10000)]

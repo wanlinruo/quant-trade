@@ -19,8 +19,8 @@ class Clock:
         return self.now
 
 
-def make(api=None, *, market=None, **literals):
-    mod = load_executor(ACCOUNT_ID=ACCOUNT, PRICE_TYPE_MARKET=market, **literals)
+def make(api=None, *, market=None, DRY_RUN=False, **literals):
+    mod = load_executor(ACCOUNT_ID=ACCOUNT, PRICE_TYPE_MARKET=market, DRY_RUN=DRY_RUN, **literals)
     api = api or FakeQmtApi()
     clock = Clock()
     buf = bytearray(protocol.MAP_SIZE)
@@ -201,8 +201,32 @@ def test_constants_match_protocol_module():
 
 
 def test_checked_in_source_is_inert():
-    mod = load_executor()
+    mod = load_executor(raw=True)
     assert mod.ENABLED is False and mod.KEY_HEX == '' and mod.ACCOUNT_ID == '' and mod.RUN_ID == ''
     assert mod.PRICE_TYPE_MARKET is None
     assert mod.MAX_ORDER_NOTIONAL == 10000.0 and mod.MAX_DAILY_BUY_NOTIONAL == 10000.0
     assert mod.GATEWAY_STALE_MS == 10000
+
+
+# -- F2 dry-run switch -------------------------------------------------------------
+
+def test_dry_run_is_default_and_never_calls_native_trading():
+    mod, ex, api, buf, clock = make(DRY_RUN=True)
+    api.order('q261109009abcdef012345', status=50)
+    receipt = send(ex, clock, command=place())
+    assert receipt['status'] == 'accepted' and receipt['result']['status'] == 'dry_run'
+    assert send(ex, clock, kind='cancel', command={'client_order_id': 'q261109009abcdef012345'},
+                attempt='d' * 32, seq=2)['result']['status'] == 'dry_run'
+    assert send(ex, clock, kind='cancel_all', attempt='e' * 32, seq=3)['result']['status'] == 'dry_run'
+    buf[protocol.CONTROL_OFFSET + 8:protocol.CONTROL_OFFSET + 12] = (1).to_bytes(4, 'little')
+    ex.tick(None)
+    assert [c for c in api.calls if c[0] in ('passorder', 'cancel')] == []
+
+
+def test_dry_run_still_applies_every_hard_limit():
+    mod, ex, api, buf, clock = make(DRY_RUN=True)
+    assert send(ex, clock, command=place(symbol='688001.SH'))['reason'] == 'market_blocked'
+
+
+def test_checked_in_source_defaults_to_dry_run():
+    assert load_executor(raw=True).DRY_RUN is True

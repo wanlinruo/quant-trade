@@ -17,6 +17,7 @@ SCRIPTS = [
     "prepare_qmt_authorized_order",
     "prepare_qmt_signal_executor",
     "run_qmt_agent",
+    "send_qmt_validation_intents",
     "prepare_qmt_synthetic_runtime",
     "probe_native_minute_zero",
     "probe_qmt_local_minutes",

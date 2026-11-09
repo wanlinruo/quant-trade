@@ -55,6 +55,9 @@ CLIENT_BUILD = ''
 ACCOUNT_ID = ''
 KEY_HEX = ''
 ENABLED = False
+# Validation (#601 F2): never call passorder/cancel. Only the installer's
+# explicit --live-orders flag flips this for an authorized real window.
+DRY_RUN = True
 PRICE_TYPE_MARKET = None
 MAX_ORDER_NOTIONAL = 10000.0
 MAX_DAILY_BUY_NOTIONAL = 10000.0
@@ -296,6 +299,8 @@ class Executor:
         return counts
 
     def cancel_all(self, C):
+        if DRY_RUN is not False:
+            return 0
         sent = 0
         for obj in self.query('ORDER'):
             if getattr(obj, 'm_nOrderStatus', None) not in TERMINAL_STATUS:
@@ -377,6 +382,8 @@ class Executor:
             for obj in existing:
                 self.record_order('query', obj)
             return dict(status='already_present', orders=len(existing))
+        if DRY_RUN is not False:
+            return dict(status='dry_run', would='passorder', side=cmd['side'])
         if cmd['side'] == 'buy':
             day = self._day(now)
             # Spend the limit before the native call: an exception never refunds it.
@@ -404,6 +411,8 @@ class Executor:
         live = [o for o in orders if getattr(o, 'm_nOrderStatus', None) not in TERMINAL_STATUS]
         if not live:
             return dict(status='cancel_not_needed'), None
+        if DRY_RUN is not False:
+            return dict(status='dry_run', would='cancel', orders=len(live)), None
         try:
             sent = [bool(self.api['cancel'](getattr(o, 'm_strOrderSysID'), ACCOUNT_ID, 'STOCK', C))
                     for o in live]
@@ -469,7 +478,9 @@ class Executor:
             response = (self.reply(obj, 'rejected', reason) if reason
                         else self.reply(obj, 'accepted', 'ok', result))
         elif kind == 'cancel_all':
-            response = self.reply(obj, 'accepted', 'ok', dict(sent=self.cancel_all(C)))
+            result = (dict(status='dry_run', would='cancel_all') if DRY_RUN is not False
+                      else dict(sent=self.cancel_all(C)))
+            response = self.reply(obj, 'accepted', 'ok', result)
         elif kind == 'snapshot':
             try:
                 result = self.snapshot()

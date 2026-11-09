@@ -54,3 +54,16 @@
   实际 NTFS ACL；QMT userdata 中的策略源码同样含密钥（F0 核查 DACL 与备份范围）。
 - 已知遗留（审阅 minor）：09:25 超过约 8 单的突发可能使网关心跳超 10 秒而拒买；回执超时 3 秒
   短于传输有效期 5 秒，会多出可对账为 present 的 unknown。
+
+## F2 演练开关与合成信号（2026-11-09）
+
+- 执行器新增 `DRY_RUN`，仓库默认 `True`：保留全部校验、硬上限、回执、报告与只读查询，但
+  `place`/`cancel`/`cancel_all`/KILL 撤单一律不调用 `passorder`/`cancel`，回执结果为
+  `dry_run`。安装工具只有显式 `--live-orders` 才写入 `DRY_RUN = False`（仅用于维护者授权的
+  真实窗口），`run.json` 记录 `dry_run` 并由 `verify` 复核。
+- `scripts/send_qmt_validation_intents.py`：只向 `component-validation:` 命名空间发布固定合成
+  OrderCommand（`accept` 510300 限价买、`board_reject` 688001 买、`market_sell` 510300 市价卖），
+  等待后汇总 `evt:dispatch_status` 与 `evt:rejects`。`RedisTransport.all_messages` 为只读有界
+  XRANGE。
+- 2026-11-09 已把 `C:\self\qsys-qmt-2.1.33.0\python` 收紧为只允许 SYSTEM 与 Administrators
+  （见 #601），QMT 保存与编译验证正常。
