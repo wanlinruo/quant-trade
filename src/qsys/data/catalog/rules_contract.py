@@ -47,6 +47,7 @@ _KEYS: dict[str, tuple[str, ...]] = {
     "security_status_daily": ("symbol", "dt"),
     "market_flags_daily": ("symbol", "dt"),
     "market_regime_daily": ("dt",),
+    "block_trade_daily": ("symbol", "dt", "seq"),
     "bar_minute_1m": ("symbol", "ts"),
     "live_equity": ("dt",),
     "live_fills": ("client_order_id", "broker_trade_id", "filled_at"),

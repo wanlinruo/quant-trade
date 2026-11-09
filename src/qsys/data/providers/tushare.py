@@ -125,6 +125,13 @@ class TushareProvider:
         )
         return pl.DataFrame(rows, infer_schema_length=None) if rows else pl.DataFrame()
 
+    def block_trade(self, trade_date: date) -> pl.DataFrame:
+        """当日全市场大宗交易明细；vol 万股、amount 万元（#608 探针 52/52 自洽）。"""
+        rows = self._client.call(
+            "block_trade", {"trade_date": trade_date.strftime("%Y%m%d")}
+        )
+        return _rows_to_frame(rows, ("price", "vol", "amount"))
+
     def limit_list_d(self, trade_date: date, limit_type: str = "U") -> pl.DataFrame:
         rows = self._client.call(
             "limit_list_d",

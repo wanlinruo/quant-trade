@@ -609,6 +609,27 @@ MONEYFLOW_DAILY = pa.schema(
     },
 )
 
+# Tushare block_trade（#608）。同一标的同日可有多笔且无成交编号，按交易日整天替换；
+# seq 是该日按 (symbol, price, vol, amount, buyer, seller) 确定性排序后的序号，只作行身份。
+# vol 保持源单位万股；amount 源单位万元，入库 ×10000 为元（同 moneyflow）。
+BLOCK_TRADE_DAILY = pa.schema(
+    [
+        ("symbol", pa.string()),
+        ("dt", pa.date32()),
+        ("seq", pa.int32()),
+        ("price", pa.float64()),
+        ("vol", pa.float64()),
+        ("amount", pa.float64()),
+        ("buyer", pa.string()),
+        ("seller", pa.string()),
+    ],
+    metadata={
+        b"provider": b"tushare-pro.block_trade",
+        b"money_unit": b"CNY",
+        b"volume_unit": b"10k_shares",
+    },
+)
+
 # Point-in-time industry membership.  A row applies on ``in_date <= T`` and
 # ``out_date is null or T <= out_date``; consumers must never use is_new alone.
 INDUSTRY_MEMBERSHIP = pa.schema(
@@ -735,6 +756,7 @@ PARTITIONED: dict[str, pa.Schema] = {
     "stock_st_daily": STOCK_ST_DAILY,
     "limit_list_daily": LIMIT_LIST_DAILY,
     "moneyflow_daily": MONEYFLOW_DAILY,
+    "block_trade_daily": BLOCK_TRADE_DAILY,
     "auction_open_daily": AUCTION_OPEN_DAILY,
     "name_snapshots": NAME_SNAPSHOTS,
     "delisting_pool": DELISTING_POOL,

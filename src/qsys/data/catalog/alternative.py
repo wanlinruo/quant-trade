@@ -5,6 +5,7 @@ from __future__ import annotations
 from qsys.data import schema
 from qsys.data.catalog.types import (
     UNCOVERED,
+    Computed,
     Direct,
     Kind,
     Metric,
@@ -12,7 +13,7 @@ from qsys.data.catalog.types import (
     Validity,
 )
 
-DATASETS = frozenset({"moneyflow_daily"})
+DATASETS = frozenset({"moneyflow_daily", "block_trade_daily"})
 
 _MEANINGS = {
     "symbol": "规范证券代码",
@@ -60,4 +61,46 @@ def _metrics() -> list[Metric]:
     return out
 
 
-METRICS: tuple[Metric, ...] = tuple(_metrics())
+_BLOCK_MEANINGS = {
+    "symbol": "规范证券代码",
+    "dt": "大宗交易所属交易日",
+    "seq": "该交易日内按（代码、价、量、额、买方、卖方）确定性排序后的序号，仅作行身份",
+    "price": "成交价（元/股）",
+    "vol": "成交量（万股，源单位，不换算）",
+    "amount": "成交额（元）",
+    "buyer": "买方营业部",
+    "seller": "卖方营业部",
+}
+
+
+def _block_trade_metrics() -> list[Metric]:
+    out: list[Metric] = []
+    for column in schema.BLOCK_TRADE_DAILY.names:
+        if column == "seq":
+            lineage = Computed(
+                ("block_trade_daily.symbol", "block_trade_daily.dt"),
+                "同一交易日内按 (symbol, price, vol, amount, buyer, seller) 排序后的 0 起序号",
+            )
+            kind = Kind.DERIVED
+        else:
+            field = {"symbol": "ts_code", "dt": "trade_date"}.get(column, column)
+            multiplier = 10_000.0 if column == "amount" else 1.0
+            lineage = Direct(
+                "tushare.block_trade", field, multiplier,
+                note="源成交额单位为万元；落库换算为元" if multiplier != 1.0 else None,
+            )
+            kind = Kind.DIRECT
+        out.append(Metric(
+            id=f"block_trade_daily.{column}",
+            kind=kind,
+            validity=Validity.SESSION,
+            status=MetricStatus.ACTIVE,
+            meaning=_BLOCK_MEANINGS[column],
+            lineage=lineage,
+            checks=UNCOVERED("整天替换、空响应不写及存储契约验证"),
+            ext_consumers=("A1 量纲规则（#608）",),
+        ))
+    return out
+
+
+METRICS: tuple[Metric, ...] = tuple(_metrics() + _block_trade_metrics())

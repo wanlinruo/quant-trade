@@ -4,6 +4,7 @@ from datetime import date
 
 import polars as pl
 from qsys.data.pipeline.tushare_reference import (
+    ingest_block_trade,
     ingest_index_daily,
     ingest_instruments,
     ingest_limit_list,
@@ -45,6 +46,10 @@ class FakeProvider:
     def namechange(self):
         self.calls.append(("namechange",))
         return self.tables.get("namechange", pl.DataFrame())
+
+    def block_trade(self, trade_date):
+        self.calls.append(("block_trade", trade_date))
+        return self.tables.get("block_trade", pl.DataFrame())
 
     def limit_list_d(self, trade_date, limit_type):
         self.calls.append(("limit_list_d", trade_date, limit_type))
@@ -281,3 +286,53 @@ def test_instruments_no_longer_write_name_snapshots(warehouse):
     provider = FakeProvider(stock_basic_L=_basic_frame(["300750.SZ"], "L"))
     ingest_instruments(provider, warehouse, date(2026, 9, 18))
     assert not (warehouse.root / "name_snapshots").exists()
+
+
+# --- 大宗交易（#608）-----------------------------------------------------------
+
+
+def _block_frame(rows):
+    """rows: (ts_code, price, vol 万股, amount 万元, buyer, seller)。"""
+    return pl.DataFrame({
+        "ts_code": [r[0] for r in rows], "trade_date": ["20260911"] * len(rows),
+        "price": [r[1] for r in rows], "vol": [r[2] for r in rows],
+        "amount": [r[3] for r in rows], "buyer": [r[4] for r in rows],
+        "seller": [r[5] for r in rows],
+    })
+
+
+_BLOCKS = [
+    ("920553.BJ", 4.22, 10.0, 42.2, "机构专用", "某营业部"),
+    ("600000.SH", 8.0, 5.0, 40.0, "甲", "乙"),
+    ("600000.SH", 8.0, 5.0, 40.0, "甲", "乙"),
+]
+
+
+def test_block_trade_keeps_every_trade_and_converts_only_amount(warehouse):
+    assert ingest_block_trade(FakeProvider(block_trade=_block_frame(_BLOCKS)), warehouse, [DAY]) == 3
+    got = WarehouseQuery(warehouse).block_trades(None, DAY, DAY).sort(["symbol", "seq"])
+    assert got["symbol"].to_list() == ["600000.SH", "600000.SH", "920553.BJ"]
+    assert got["seq"].to_list() == [0, 1, 2]
+    bj = got.filter(pl.col("symbol") == "920553.BJ").row(0, named=True)
+    assert bj["dt"] == DAY and bj["price"] == 4.22
+    assert bj["vol"] == 10.0                      # 源单位万股，不换算
+    assert bj["amount"] == 422_000.0              # 源万元 ×10000 → 元（同 moneyflow）
+    assert (bj["buyer"], bj["seller"]) == ("机构专用", "某营业部")
+
+
+def test_block_trade_empty_response_writes_nothing_and_keeps_stored_day(warehouse):
+    """17:00 档常为空：空响应是“尚未发布”，不是“当日没有大宗”。"""
+    assert ingest_block_trade(FakeProvider(), warehouse, [DAY]) == 0
+    assert WarehouseQuery(warehouse).block_trades(None, DAY, DAY).height == 0
+    ingest_block_trade(FakeProvider(block_trade=_block_frame(_BLOCKS)), warehouse, [DAY])
+    assert ingest_block_trade(FakeProvider(), warehouse, [DAY]) == 0
+    assert WarehouseQuery(warehouse).block_trades(None, DAY, DAY).height == 3
+
+
+def test_block_trade_rerun_replaces_the_whole_day(warehouse):
+    ingest_block_trade(FakeProvider(block_trade=_block_frame(_BLOCKS)), warehouse, [DAY])
+    ingest_block_trade(FakeProvider(block_trade=_block_frame(_BLOCKS)), warehouse, [DAY])
+    assert WarehouseQuery(warehouse).block_trades(None, DAY, DAY).height == 3
+    ingest_block_trade(FakeProvider(block_trade=_block_frame(_BLOCKS[:1])), warehouse, [DAY])
+    got = WarehouseQuery(warehouse).block_trades(None, DAY, DAY)
+    assert got["symbol"].to_list() == ["920553.BJ"] and got["seq"].to_list() == [0]

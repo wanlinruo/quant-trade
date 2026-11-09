@@ -216,6 +216,15 @@ class WarehouseQuery:
             schema.MONEYFLOW_DAILY, symbols, start, end,
         )
 
+    def block_trades(
+        self, symbols: Sequence[str] | None, start: date, end: date,
+    ) -> pl.DataFrame:
+        """直取大宗交易明细；vol 单位万股，amount 单位元（#608）。"""
+        return self._dated_query(
+            "block_trade_daily", ", ".join(schema.BLOCK_TRADE_DAILY.names),
+            schema.BLOCK_TRADE_DAILY, symbols, start, end,
+        )
+
     def auction_open(
         self, symbols: Sequence[str] | None, start: date, end: date,
     ) -> pl.DataFrame:

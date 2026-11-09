@@ -299,3 +299,43 @@ def ingest_limit_list(provider, warehouse: Warehouse, days: Sequence[date],
     log.info("limit_list.ingested", rows=written, days=len(days),
              limit_types=list(limit_types))
     return written
+
+
+def ingest_block_trade(provider, warehouse: Warehouse, days: Sequence[date]) -> int:
+    """直取大宗交易明细（#608），只整天替换有响应的交易日。
+
+    当日明细晚于 17:00 发布（2026-11-09 实测 17:20～17:40 首次出现），空响应只说明
+    “这次没取到”，不说明当天没有大宗：不写入、不抹掉已入库的日子，交给回看重取。
+    """
+    from qsys.data.query import WarehouseQuery
+
+    frames = []
+    for day in days:
+        raw = provider.block_trade(day)
+        if raw.height:
+            frames.append(raw.select(
+                pl.col("ts_code").alias("symbol"),
+                _date_expr("trade_date").alias("dt"),
+                pl.col("price").cast(pl.Float64),
+                pl.col("vol").cast(pl.Float64),
+                (pl.col("amount").cast(pl.Float64) * 10_000.0).alias("amount"),
+                pl.col("buyer").cast(pl.Utf8),
+                pl.col("seller").cast(pl.Utf8),
+            ))
+    if not frames:
+        log.info("block_trade.not_published", days=[str(day) for day in days])
+        return 0
+    order = ["dt", "symbol", "price", "vol", "amount", "buyer", "seller"]
+    incoming = (
+        pl.concat(frames).sort(order, nulls_last=True, maintain_order=True)
+        .with_columns(pl.int_range(pl.len(), dtype=pl.Int32).over("dt").alias("seq"))
+        .select(schema.BLOCK_TRADE_DAILY.names)
+    )
+    query = WarehouseQuery(warehouse)
+    answered = sorted(set(incoming["dt"].to_list()))
+    written = _replace_days(
+        warehouse, "block_trade_daily", incoming, schema.BLOCK_TRADE_DAILY, answered,
+        lambda lo, hi: query.block_trades(None, lo, hi),
+    )
+    log.info("block_trade.ingested", rows=written, days=[str(day) for day in answered])
+    return written
