@@ -30,7 +30,12 @@ SCENARIOS = {
     'board_reject': dict(symbol='688001.SH', side='buy', qty=100, order_type='limit', limit_price=10.0),
     # 市价卖出：报价类型未启用时 market_price_type_unverified → 拒单
     'market_sell': dict(symbol='510300.SH', side='sell', qty=100, order_type='market', limit_price=None),
+    # 同一指令重投两次：第二次只重放账本事实，不再发给执行器
+    'duplicate': dict(symbol='510300.SH', side='buy', qty=100, order_type='limit', limit_price=1.0),
+    # 同一委托号、不同内容：账本冲突必须失败关闭，不覆盖原意图
+    'conflict': dict(symbol='510300.SH', side='buy', qty=100, order_type='limit', limit_price=1.0),
 }
+KILL = 'control:kill'
 
 
 def submit(transport, *, scenarios: list[str], strategy_id: str, now: datetime,
@@ -45,8 +50,22 @@ def submit(transport, *, scenarios: list[str], strategy_id: str, now: datetime,
                                strategy_id=strategy_id, client_order_id=cid, created_at=now,
                                expires_at=now + timedelta(seconds=ttl_seconds), **spec)
         transport.append(ORDERS, command.to_payload())
+        if name == 'duplicate':
+            transport.append(ORDERS, command.to_payload())
+        elif name == 'conflict':
+            transport.append(ORDERS, command.model_copy(update={'qty': 200}).to_payload())
         sent.append({'scenario': name, 'client_order_id': cid})
     return sent
+
+
+def set_kill(transport, engaged: bool) -> None:
+    """只在验证命名空间设置/清除远程 KILL 键（演练急停）。"""
+    if not isinstance(transport, ValidationTransport):
+        raise ValueError('validation kill drill requires an isolated ValidationTransport')
+    if engaged:
+        transport.set_key(KILL, 'f4 drill: validation namespace kill')
+    else:
+        transport.delete_key(KILL)
 
 
 def run_core_heartbeat(transport, *, seconds: int, sleep=time.sleep, clock=datetime.now) -> None:
@@ -79,6 +98,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--strategy-id', required=True)
     parser.add_argument('--scenario', action='append', choices=sorted(SCENARIOS), default=[])
     parser.add_argument('--wait', type=float, default=20.0)
+    parser.add_argument('--kill', choices=('on', 'off'), default=None,
+                        help='只在验证命名空间设置或清除远程 KILL 键')
     parser.add_argument('--core-heartbeat-seconds', type=int, default=0,
                         help='只发布验证命名空间的模拟核心心跳这么多秒（不发指令）')
     args = parser.parse_args(argv)
@@ -86,6 +107,10 @@ def main(argv: list[str] | None = None) -> int:
     from qsys.live.redis_transport import RedisTransport
     transport = ValidationTransport(RedisTransport.from_config(load_deploy_config(args.config)),
                                     args.namespace)
+    if args.kill:
+        set_kill(transport, args.kill == 'on')
+        print(json.dumps({'kill': args.kill}))
+        return 0
     if args.core_heartbeat_seconds:
         run_core_heartbeat(transport, seconds=args.core_heartbeat_seconds)
         return 0

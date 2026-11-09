@@ -78,6 +78,7 @@ def cmd():
 
 
 def lost_dispatch(rig, dispatcher):
+    rig.ex._beat()                        # executor alive, but this receipt is lost
     rig.deliver = False
     dispatcher.dispatch(cmd())            # executor never ticks → unknown
     rig.deliver = True

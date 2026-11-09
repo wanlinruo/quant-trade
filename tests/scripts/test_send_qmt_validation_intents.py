@@ -61,3 +61,29 @@ def test_core_heartbeat_published_only_in_validation_namespace():
     with pytest.raises(ValueError):
         mod.run_core_heartbeat(MemoryTransport(), seconds=1, sleep=lambda _: None,
                                clock=lambda: datetime(2026, 11, 9))
+
+
+def test_duplicate_and_conflict_reuse_one_client_order_id():
+    inner = MemoryTransport()
+    t = ValidationTransport(inner, NS)
+    sent = tool().submit(t, scenarios=['duplicate', 'conflict'], strategy_id='structural',
+                         now=datetime(2026, 11, 9, 20, 0))
+    commands = [OrderCommand.from_payload(m.payload) for m in inner.all_messages(NS + ':cmd:orders')]
+    assert len(commands) == 4
+    dup, conflict = commands[:2], commands[2:]
+    assert dup[0].model_dump() == dup[1].model_dump()
+    assert conflict[0].client_order_id == conflict[1].client_order_id
+    assert (conflict[0].qty, conflict[1].qty) == (100, 200)
+    assert [s['scenario'] for s in sent] == ['duplicate', 'conflict']
+
+
+def test_kill_switch_only_in_validation_namespace():
+    inner = MemoryTransport()
+    t = ValidationTransport(inner, NS)
+    mod = tool()
+    mod.set_kill(t, True)
+    assert inner.get_key(NS + ':control:kill') is not None and inner.get_key('control:kill') is None
+    mod.set_kill(t, False)
+    assert inner.get_key(NS + ':control:kill') is None
+    with pytest.raises(ValueError):
+        mod.set_kill(MemoryTransport(), True)
