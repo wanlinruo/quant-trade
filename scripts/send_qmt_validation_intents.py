@@ -18,10 +18,11 @@ import sys
 import time
 
 from qsys.core.order_ids import live_order_id
-from qsys.live.messages import DispatchStatusEvent, OrderCommand, RejectEvent
+from qsys.live.messages import DispatchStatusEvent, Heartbeat, OrderCommand, RejectEvent
 from qsys.live.validation_transport import ValidationTransport
 
 ORDERS, REJECTS, DISPATCH = 'cmd:orders', 'evt:rejects', 'evt:dispatch_status'
+HEARTBEAT_CORE = 'state:heartbeat:core'
 SCENARIOS = {
     # 合规买单：执行器 DRY_RUN 回 accepted/dry_run → transport_received
     'accept': dict(symbol='510300.SH', side='buy', qty=100, order_type='limit', limit_price=1.0),
@@ -48,6 +49,16 @@ def submit(transport, *, scenarios: list[str], strategy_id: str, now: datetime,
     return sent
 
 
+def run_core_heartbeat(transport, *, seconds: int, sleep=time.sleep, clock=datetime.now) -> None:
+    """在验证命名空间模拟 Live Core 心跳（每秒一次），让 LIVE 姿态的验证网关不因
+    缺少核心心跳而落闸。只写 ``component-validation:`` 命名空间。"""
+    if not isinstance(transport, ValidationTransport):
+        raise ValueError('validation heartbeat requires an isolated ValidationTransport')
+    for _ in range(seconds):
+        transport.set_key(HEARTBEAT_CORE, Heartbeat(source='core', at=clock()).model_dump_json())
+        sleep(1.0)
+
+
 def collect(transport, client_order_ids: list[str]) -> dict:
     out = {cid: {'dispatch': [], 'rejects': []} for cid in client_order_ids}
     for msg in transport.inner.all_messages(transport.namespace + ':' + DISPATCH):
@@ -66,13 +77,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--config', default=None)
     parser.add_argument('--namespace', required=True)
     parser.add_argument('--strategy-id', required=True)
-    parser.add_argument('--scenario', action='append', choices=sorted(SCENARIOS), required=True)
+    parser.add_argument('--scenario', action='append', choices=sorted(SCENARIOS), default=[])
     parser.add_argument('--wait', type=float, default=20.0)
+    parser.add_argument('--core-heartbeat-seconds', type=int, default=0,
+                        help='只发布验证命名空间的模拟核心心跳这么多秒（不发指令）')
     args = parser.parse_args(argv)
     from qsys.live.config import load_deploy_config
     from qsys.live.redis_transport import RedisTransport
     transport = ValidationTransport(RedisTransport.from_config(load_deploy_config(args.config)),
                                     args.namespace)
+    if args.core_heartbeat_seconds:
+        run_core_heartbeat(transport, seconds=args.core_heartbeat_seconds)
+        return 0
+    if not args.scenario:
+        parser.error('--scenario required unless --core-heartbeat-seconds is given')
     sent = submit(transport, scenarios=args.scenario, strategy_id=args.strategy_id,
                   now=datetime.now())
     time.sleep(args.wait)

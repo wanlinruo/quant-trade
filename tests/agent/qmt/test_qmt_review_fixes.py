@@ -149,3 +149,29 @@ def test_order_error_message_redacts_long_digit_runs():
                     f'账户{ACCOUNT}资金不足')
     (row,) = mem.read_reports()
     assert ACCOUNT not in row['message']
+
+
+# M2 / M3 (fixed before F5) --------------------------------------------------------
+def test_burst_of_orders_keeps_gateway_heartbeat_fresh():
+    from qsys.agent.qmt.port import QmtIpcPort
+    buf = bytearray(protocol.MAP_SIZE)
+    mem = SharedMemory(buf)
+    clock = {'ms': NOW}
+    ex = load_executor(ACCOUNT_ID=ACCOUNT).Executor('a' * 32, bytes(32), FakeQmtApi().as_api(), buf,
+                                                    lambda: clock['ms'])
+    mem.beat(NOW)
+
+    def sleep(_):
+        clock['ms'] += 1000                       # each order waits about one executor tick
+        ex.tick(None)
+    port = QmtIpcPort(mem, run_id='a' * 32, key=bytes(32), clock_ms=lambda: clock['ms'], sleep=sleep)
+    for _ in range(15):
+        assert port.request('ping')['status'] == 'accepted'
+    assert not ex.gateway_stale(clock['ms'])
+
+
+def test_receipt_timeout_exceeds_transport_ttl():
+    import inspect
+    from qsys.agent.qmt.port import QmtIpcPort
+    default = inspect.signature(QmtIpcPort).parameters['receipt_timeout_s'].default
+    assert default * 1000 > protocol.TRANSPORT_TTL_MS
