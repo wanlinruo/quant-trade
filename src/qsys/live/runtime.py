@@ -79,6 +79,7 @@ class LiveRuntime:
         alerts: AlertBus | None = None,
         risk: RiskConfig | None = None,
         shadow: bool = False,
+        dispatch_tracking: bool = False,
     ) -> None:
         self.transport, self.streams, self.store = transport, streams, store
         self.calendar, self.params = calendar, dict(params or {})
@@ -169,6 +170,7 @@ class LiveRuntime:
                 **broker_kwargs,
             strategy_id=str(self.params.get("strategy_id", "structural")),
             command_ttl_seconds=120.0,
+            receive_dispatch_status=dispatch_tracking,
             )
         )
         for order, remaining in self.store.pending_orders():

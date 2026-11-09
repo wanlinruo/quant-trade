@@ -33,7 +33,6 @@ from qsys.live.messages import (
 from qsys.live.risk import RiskContext, RiskGate
 from qsys.live.transport import Transport
 from qsys.live.safety import check_order_market
-from qsys.live.validation_transport import ValidationTransport
 
 log = structlog.get_logger(__name__)
 
@@ -63,8 +62,8 @@ class LiveBroker(Broker):
         command_ttl_seconds: float | None = None,
         receive_dispatch_status: bool = False,
     ) -> None:
-        if receive_dispatch_status and (not isinstance(transport, ValidationTransport) or not strategy_id):
-            raise ValueError("dispatch tracking requires isolated transport and explicit strategy")
+        if receive_dispatch_status and not strategy_id:
+            raise ValueError("dispatch tracking requires an explicit strategy")
         self._t = transport
         self._s = streams
         self._gate = risk_gate

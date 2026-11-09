@@ -102,7 +102,8 @@ class DispatchStatusEvent(Message):
     attempt_id: str = Field(pattern=r"^[0-9a-f]{32}$")
     session_nonce: str = Field(pattern=r"^[0-9a-f]{32}$")
     command_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
-    state: Literal["dispatching", "transport_received", "unknown"]
+    state: Literal["dispatching", "transport_received", "unknown",
+                   "resolved_present", "resolved_absent"]
     at: datetime
     reason: str = ""
     transport_ack_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")

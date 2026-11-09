@@ -96,7 +96,7 @@ def main(argv: list[str] | None = None) -> int:
             local_kill_path=Path(args.kill_switch),
             journal_warehouse=Path(args.journal_warehouse) if args.journal_warehouse else None,
             alerts=AlertBus(sinks, ledger(args.alert_ledger)),
-            shadow=False,
+            shadow=False, dispatch_tracking=config.safety.dispatch_tracking,
             risk=config.risk, params=dict(source.params),
         )
         with runtime.heartbeats:

@@ -39,7 +39,7 @@ def test_minimum_commission_is_once_for_partial_fills():
 
 
 def test_partial_cancel_rejects_only_remainder():
-    out = observe([trade("T1", qty=300)], [order(ordered=1000, traded=300, status=52)])
+    out = observe([trade("T1", qty=300)], [order(ordered=1000, traded=300, status=53)])
     assert out.rejects[0].unfilled_qty == 700
     assert out.statuses[0].status == "cancelled"
 

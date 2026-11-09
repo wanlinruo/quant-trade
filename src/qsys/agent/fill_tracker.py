@@ -10,7 +10,8 @@ from qsys.core.trading import Side, to_cents
 from qsys.live.messages import FillEvent, OrderStatusEvent, RejectEvent
 
 
-TERMINAL_STATUSES = frozenset({52, 53, 54, 56, 57})
+# 52 部成待撤不是终态：交易所确认 53/54 前剩余数量仍可能成交（#601 审阅）。
+TERMINAL_STATUSES = frozenset({53, 54, 56, 57})
 STATUS_NAMES = {
     48: "未报", 49: "待报", 50: "已报", 51: "已报待撤", 52: "部成待撤",
     53: "部撤", 54: "已撤", 55: "部成", 56: "已成", 57: "废单",

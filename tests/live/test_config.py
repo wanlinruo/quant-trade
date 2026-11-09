@@ -124,3 +124,12 @@ def test_nothing_configured_means_no_url_not_a_crash():
 
     assert alerts.strategy_url(shadow=True) == ""
     assert alerts.ops_url == ""
+
+
+def test_missing_dispatch_tracking_defaults_off_for_n_minus_1_config(tmp_path):
+    path = tmp_path / "deploy.local.toml"
+    path.write_text('[safety]\nmode = "live"\norders_enabled = true\n', encoding="utf-8")
+    assert load_deploy_config(path).safety.dispatch_tracking is False
+    path.write_text('[safety]\nmode = "live"\norders_enabled = true\ndispatch_tracking = true\n',
+                    encoding="utf-8")
+    assert load_deploy_config(path).safety.dispatch_tracking is True

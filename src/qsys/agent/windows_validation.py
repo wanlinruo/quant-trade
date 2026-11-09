@@ -175,19 +175,20 @@ def prepare_windows_validation_parent(parent: Path, *, enabled: bool = False) ->
     return receipt
 
 
-def validate_windows_validation_root(root: Path) -> dict:
+def validate_windows_validation_root(root: Path, *, marker_name: str = '.qsys-async-validation') -> dict:
+    allowed = (_FILES - {'.qsys-async-validation'}) | {marker_name}
     _local_path(root)
     receipt = _inspect(root, cold_start=True)
     _assert_private(receipt, directory=True, protected=True)
     if receipt['owner'] != receipt['sid']:
         raise ValueError('validation root must be owned by current Windows identity')
     for path in root.iterdir():
-        if path.name not in _FILES:
+        if path.name not in allowed:
             raise ValueError('unexpected file in Windows validation state root')
         _assert_private(_inspect(path), directory=False, protected=False)
         if path.stat().st_nlink != 1:
             raise ValueError('Windows validation state hardlink rejected')
-    required = {'.qsys-async-validation', 'dispatch.sqlite3', 'dispatch.lock'}
+    required = {marker_name, 'dispatch.sqlite3', 'dispatch.lock'}
     if not required <= {p.name for p in root.iterdir()}:
         raise ValueError('Windows validation root must be prepared before activation')
     return receipt

@@ -32,7 +32,7 @@ class DispatchStore:
             os.close(fd)
         with self.connection() as db:
             db.execute("CREATE TABLE IF NOT EXISTS dispatch_metadata (key TEXT PRIMARY KEY,value TEXT NOT NULL)")
-            binding = json.dumps(dict(schema_version=1, scope=scope), sort_keys=True)
+            binding = json.dumps(dict(schema_version=2, scope=scope), sort_keys=True)
             old = db.execute("SELECT value FROM dispatch_metadata WHERE key='binding'").fetchone()
             if old is not None and old[0] != binding:
                 raise ValueError("dispatch store scope/schema mismatch")
@@ -42,7 +42,8 @@ class DispatchStore:
                 command_sha256 TEXT NOT NULL, attempt_id TEXT NOT NULL,
                 session_nonce TEXT NOT NULL, state TEXT NOT NULL,
                 reason TEXT NOT NULL, updated_at TEXT NOT NULL, receipt_json TEXT,
-                CHECK(state IN ('dispatching','transport_received','unknown','rejected_before_send')))''')
+                CHECK(state IN ('dispatching','transport_received','unknown','rejected_before_send',
+                                'resolved_present','resolved_absent')))''')
 
     @contextmanager
     def connection(self):
@@ -101,7 +102,7 @@ class DispatchStore:
 
     def update(self, client_order_id: str, *, state: str, reason: str,
                at: datetime, receipt_json: str | None = None) -> dict:
-        if state not in {'unknown', 'transport_received'}:
+        if state not in {'unknown', 'transport_received', 'rejected_before_send'}:
             raise ValueError("invalid dispatch transition")
         with self.connection() as db:
             count = db.execute('''UPDATE dispatch_attempts SET state=?, reason=?, updated_at=?,
@@ -111,6 +112,23 @@ class DispatchStore:
             if count != 1:
                 raise RuntimeError("dispatch attempt not in sending state")
         return self.read(client_order_id)
+
+    def resolve(self, client_order_id: str, *, outcome: str, reason: str, at: datetime) -> dict:
+        """对账消解：只允许 unknown → resolved_present / resolved_absent。"""
+        if outcome not in {'present', 'absent'} or not reason:
+            raise ValueError("invalid reconciliation outcome")
+        with self.connection() as db:
+            count = db.execute('''UPDATE dispatch_attempts SET state=?, reason=?, updated_at=?
+                WHERE client_order_id=? AND state='unknown' ''',
+                ('resolved_' + outcome, reason, at.isoformat(), client_order_id)).rowcount
+            if count != 1:
+                raise RuntimeError("dispatch attempt is not unknown")
+        return self.read(client_order_id)
+
+    def unresolved(self) -> list[dict]:
+        with self.connection() as db:
+            return [dict(r) for r in db.execute(
+                "SELECT * FROM dispatch_attempts WHERE state='unknown' ORDER BY updated_at")]
 
     def recover(self, at: datetime) -> int:
         with self.connection() as db:

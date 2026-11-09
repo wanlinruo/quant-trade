@@ -209,6 +209,7 @@ paths = [
   "src/qsys/live/safety.py",
   "src/qsys/live/transport.py",
   "scripts/run_agent.py",
+  "scripts/run_qmt_agent.py",
 ]
 nodes = ["windows"]
 windows_apps = ["live_app"]

@@ -15,6 +15,8 @@ import pytest
 SCRIPTS = [
     "replay_public_minute_prefix",
     "prepare_qmt_authorized_order",
+    "prepare_qmt_signal_executor",
+    "run_qmt_agent",
     "prepare_qmt_synthetic_runtime",
     "probe_native_minute_zero",
     "probe_qmt_local_minutes",

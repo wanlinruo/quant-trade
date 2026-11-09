@@ -326,3 +326,23 @@ def test_risk_gate_runs_before_constraints(tmp_path):
     )
     b.submit(order(Side.BUY, 100))
     assert "kill_switch" in b.poll_rejects()[0].reason
+
+
+def test_live_broker_production_transport_accepts_dispatch_status_when_enabled(tmp_path):
+    import pytest
+    from qsys.live.messages import DispatchStatusEvent
+    transport = MemoryTransport()
+    ks = KillSwitch(transport, local_path=tmp_path / "K")
+    gate = default_ashare_gate(ks, CAL)
+    factory = lambda: RiskContext(portfolio=Portfolio(1_000_000.0), now=T, reference_price=10.0,
+                                  day_start_value=1_000_000.0)
+    with pytest.raises(ValueError):
+        LiveBroker(transport, STREAMS, risk_gate=gate, risk_context_factory=factory,
+                   receive_dispatch_status=True)
+    broker = LiveBroker(transport, STREAMS, risk_gate=gate, risk_context_factory=factory,
+                        strategy_id="structural", receive_dispatch_status=True)
+    event = DispatchStatusEvent(client_order_id="o1", strategy_id="structural", session_id="2024-01-03",
+                                attempt_id="a" * 32, session_nonce="b" * 32, command_sha256="c" * 64,
+                                state="resolved_absent", at=T, reason="two_empty_queries")
+    transport.append(STREAMS.dispatch_status, event.to_payload())
+    assert [e.state for e in broker.poll_dispatch_statuses()] == ["resolved_absent"]
