@@ -60,7 +60,8 @@ PRICE_TYPE_LIMIT = 11
 QUICK_TRADE_ALWAYS = 2
 TERMINAL_STATUS = {54, 56, 57}
 SYMBOL = re.compile(r'(60[0-9]{4}|51[0-9]{4}|00[0-9]{4}|15[0-9]{4})\.(SH|SZ)')
-ORDER_ID = re.compile(r'q601-[0-9a-f]{8}-[a-z]')
+ORDER_ID = re.compile(r'q601-[0-9a-f]{8}-[a-z]|q[0-9]{9}[0-9a-f]{12}')
+PRICE_TYPE_LATEST = 5   # original XtQuantAdapter 'market' = LATEST_PRICE; sells only
 
 ORDER_FIELDS = ('m_strRemark', 'm_strOrderSysID', 'm_nOrderStatus', 'm_nOrderSubmitStatus',
                 'm_nVolumeTotalOriginal', 'm_nVolumeTraded', 'm_nVolumeTotal',
@@ -151,12 +152,15 @@ def validate_plan(raw, run_id):
         if type(step) is not dict or step.get('step') != index or type(step.get('step')) is not int:
             raise ValueError('plan_step_index')
         if step.get('action') == 'place':
-            if set(step) != {'step', 'action', 'client_order_id', 'symbol', 'side', 'qty',
-                             'limit_price'}:
+            base = {'step', 'action', 'client_order_id', 'symbol', 'side', 'qty', 'limit_price'}
+            latest = set(step) == base | {'price_type'}
+            if set(step) != base and not latest:
                 raise ValueError('plan_place_fields')
             cid = step['client_order_id']
-            if (type(cid) is not str or ORDER_ID.fullmatch(cid) is None
-                    or cid[5:13] != run_id[:8] or cid in placed):
+            bound = (cid[5:13] == run_id[:8] if type(cid) is str and cid.startswith('q601-')
+                     else type(cid) is str and cid[-12:] == run_id[:12])
+            if (type(cid) is not str or ORDER_ID.fullmatch(cid) is None or not bound
+                    or cid in placed):
                 raise ValueError('plan_order_identity')
             if type(step['symbol']) is not str or SYMBOL.fullmatch(step['symbol']) is None:
                 raise ValueError('plan_symbol')
@@ -168,7 +172,13 @@ def validate_plan(raw, run_id):
             if type(qty) is not int or qty <= 0 or qty % 100 or qty > MAX_QTY:
                 raise ValueError('plan_qty')
             price = step['limit_price']
-            if (type(price) is not float or not math.isfinite(price) or price <= 0
+            if latest:
+                # Latest-price orders are only for selling an existing holding.
+                if (step['side'] != 'sell' or price is not None
+                        or type(step['price_type']) is not int
+                        or step['price_type'] != PRICE_TYPE_LATEST):
+                    raise ValueError('plan_price')
+            elif (type(price) is not float or not math.isfinite(price) or price <= 0
                     or round(price, 3) != price or price * qty > MAX_NOTIONAL):
                 raise ValueError('plan_price')
             placed[cid] = index
@@ -283,8 +293,10 @@ class Executor:
                     self.record_order('query', obj)
                 return dict(status='already_present', orders=len(existing))
             op = STOCK_BUY if step['side'] == 'buy' else STOCK_SELL
+            pr_type, price = ((PRICE_TYPE_LATEST, 0.0) if 'price_type' in step
+                              else (PRICE_TYPE_LIMIT, step['limit_price']))
             self.api['passorder'](op, ORDER_TYPE_SHARES, ACCOUNT_ID, step['symbol'],
-                                  PRICE_TYPE_LIMIT, step['limit_price'], step['qty'],
+                                  pr_type, price, step['qty'],
                                   STRATEGY_NAME, QUICK_TRADE_ALWAYS, cid, C)
             return dict(status='passorder_called')
         orders = self.orders_for(cid)

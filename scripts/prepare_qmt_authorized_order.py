@@ -9,7 +9,7 @@ the account nor the key is ever printed.  Nothing is overwritten.
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 import importlib.util
 import json
@@ -33,7 +33,7 @@ CLIENT_BUILD = "2.1.33.0"
 _RUN_ID = re.compile(r"[0-9a-f]{32}")
 _PLACE = re.compile(
     r"(?P<tag>[a-z]):(?P<side>buy|sell):(?P<symbol>[0-9]{6}\.(?:SH|SZ)):(?P<qty>[0-9]+)"
-    r":(?P<price>[0-9]+\.[0-9]{1,3}):(?P<expect>resting|fill)")
+    r":(?P<price>[0-9]+\.[0-9]{1,3}|latest):(?P<expect>resting|fill)")
 
 
 def _load_executor(source_dir: Path):
@@ -67,6 +67,8 @@ def build_plan(run_id: str, places: list[str], not_before: str, not_after: str):
     if _RUN_ID.fullmatch(run_id) is None:
         raise ValueError("run id must be 32 lowercase hex characters")
     steps, expect, tags = [], {}, set()
+    day = datetime.fromisoformat(not_before).astimezone(
+        timezone(timedelta(hours=8))).strftime("%y%m%d")
     for text in places:
         match = _PLACE.fullmatch(text)
         if match is None:
@@ -74,10 +76,17 @@ def build_plan(run_id: str, places: list[str], not_before: str, not_after: str):
         if match["tag"] in tags:
             raise ValueError("duplicate place tag")
         tags.add(match["tag"])
-        cid = f"q601-{run_id[:8]}-{match['tag']}"
-        steps.append({"step": len(steps) + 1, "action": "place", "client_order_id": cid,
-                      "symbol": match["symbol"], "side": match["side"],
-                      "qty": int(match["qty"]), "limit_price": float(match["price"])})
+        # Production-shaped 22-byte id q{yymmdd}{seq:03d}{12hex} (#601 F0 probe).
+        cid = f"q{day}{len(tags):03d}{run_id[:12]}"
+        step = {"step": len(steps) + 1, "action": "place", "client_order_id": cid,
+                "symbol": match["symbol"], "side": match["side"], "qty": int(match["qty"])}
+        if match["price"] == "latest":
+            if match["side"] != "sell":
+                raise ValueError("latest-price orders are only for sells")
+            step.update(limit_price=None, price_type=5)
+        else:
+            step["limit_price"] = float(match["price"])
+        steps.append(step)
         steps.append({"step": len(steps) + 1, "action": "cancel", "client_order_id": cid})
         expect[cid] = match["expect"]
     plan = {"run_id": run_id, "not_before": _utc(not_before), "not_after": _utc(not_after),

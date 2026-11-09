@@ -34,7 +34,8 @@ def test_stage_builds_bound_bundle_without_printing_secrets(tmp_path):
     text = json.dumps(receipt)
     assert ACCOUNT not in text
     assert (bundle / "key.hex").read_text() not in text
-    assert receipt["expect"] == {"q601-01234567-a": "resting", "q601-01234567-b": "fill"}
+    day = datetime.fromisoformat(window()[0]).astimezone(timezone(timedelta(hours=8))).strftime("%y%m%d")
+    assert receipt["expect"] == {f"q{day}001{RUN[:12]}": "resting", f"q{day}002{RUN[:12]}": "fill"}
     assert [s["action"] for s in receipt["steps"]] == ["place", "cancel", "place", "cancel"]
     spec = importlib.util.spec_from_file_location("enabled", bundle / "executor-enabled.py")
     enabled = importlib.util.module_from_spec(spec)
@@ -104,3 +105,16 @@ def test_account_file_must_be_numeric(tmp_path):
     bundle.mkdir()
     with pytest.raises(ValueError, match="numeric account"):
         stage(bundle, RUN, bad, ["a:buy:510300.SH:100:3.900:resting"], *window())
+
+
+def test_latest_price_sell_place_is_staged_with_production_id(tmp_path):
+    bundle, receipt = staged(tmp_path, ("a:buy:510300.SH:100:3.900:resting",
+                                        "b:sell:510300.SH:100:latest:fill"))
+    sell = [s for s in receipt["steps"] if s.get("side") == "sell"][0]
+    assert sell["limit_price"] is None and sell["price_type"] == 5
+    assert len(sell["client_order_id"]) == 22 and sell["client_order_id"].endswith(RUN[:12])
+
+
+def test_latest_price_buy_is_refused(tmp_path):
+    with pytest.raises(ValueError):
+        staged(tmp_path, ("a:buy:510300.SH:100:latest:fill",))
