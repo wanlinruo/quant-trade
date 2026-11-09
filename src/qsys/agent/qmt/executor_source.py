@@ -619,6 +619,16 @@ def stop(C):
         C.cancel_schedule_run('qsys601s_' + RUN_ID)
     except Exception as exc:
         emit('cancel_schedule_failed', error_type=type(exc).__name__)
+    try:
+        # QMT keeps the mapping alive after a model stop: withdraw the scheduled
+        # marker and heartbeat so a gateway can never mistake a stopped executor
+        # for a running one (#601 F4 field finding).
+        memory = state['memory']
+        done = scheduled_marker(RUN_ID if valid_id(RUN_ID) else state['executor'].run_id)
+        memory[SCHEDULED_MARKER_OFFSET:SCHEDULED_MARKER_OFFSET + len(done)] = bytes(len(done))
+        _put(memory, EXECUTOR_OFFSET + 32, 8, 0)
+    except Exception as exc:
+        emit('withdraw_marker_failed', error_type=type(exc).__name__)
     emit('stopped')
 
 

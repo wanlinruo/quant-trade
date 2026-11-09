@@ -17,6 +17,7 @@ from datetime import datetime
 import structlog
 
 from qsys.agent.adapter import BrokerAdapter
+from qsys.agent.dispatch_store import DispatchConflictError
 from qsys.agent.async_dispatch import AsyncOrderDispatcher, PreDispatchRejection
 from qsys.agent.fill_tracker import FillTracker
 from qsys.agent.report_ledger import MemoryReportLedger, ReportLedger
@@ -165,8 +166,14 @@ class ExecutionAgent:
 
     def _execute(self, command: OrderCommand) -> None:
         # 历史尝试先于新单门禁：到期/急停不能把已发送未知结果伪装成拒单。
-        if self._async_dispatcher is not None and self._async_dispatcher.replay_existing(command):
-            return
+        try:
+            if self._async_dispatcher is not None and self._async_dispatcher.replay_existing(command):
+                return
+        except DispatchConflictError:
+            # 同一委托号出现不同内容说明 Core 与网关账本不一致：立即本地落闸停开仓，
+            # 消息保留不确认以便取证（#601 F4 现场发现）。
+            self.engage_local_kill(f"dispatch intent conflict: {command.client_order_id}")
+            raise
         market = check_order_market(command.symbol, command.side)
         if not market.allowed:
             # 已受理历史命令的重传不是新开仓，不能改写成拒单或重播券商调用。

@@ -20,6 +20,8 @@ __all__ = ['ExecutorCallUnknown', 'ExecutorRejected', 'QmtIpcPort']
 
 # 这些拒绝原因说明帧本身不可信或与已处理尝试冲突，不能证明“从未下单”。
 _UNSAFE_REJECTIONS = frozenset({'attempt_conflict', 'fields', 'identity'})
+# 执行器每秒写心跳；超过 5 秒未更新视为未运行（停止、重建或卡住）。
+EXECUTOR_FRESH_MS = 5000
 
 
 class ExecutorCallUnknown(RuntimeError):
@@ -63,6 +65,10 @@ class QmtIpcPort:
         return receipt
 
     def send(self, envelope: DispatchEnvelope) -> DispatchAcknowledgement:
+        # Nothing is written to the request area unless the executor is ticking:
+        # a stopped or rebuilt executor is a pre-send reject, never an unknown.
+        if not 0 <= self._clock_ms() - self._memory.executor_state().heartbeat_ms <= EXECUTOR_FRESH_MS:
+            raise ExecutorRejected('executor_not_running')
         order = json.loads(envelope.command_json)
         command = dict(client_order_id=order['client_order_id'], symbol=order['symbol'],
                        side=order['side'], qty=order['qty'], order_type=order['order_type'],

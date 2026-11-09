@@ -10,7 +10,7 @@ from qsys.agent.qmt.memory import ReportGap, SharedMemory
 from qsys.backtest.fees import AShareFeeModel
 from qmt_fake import ACCOUNT, FakeQmtApi, load_executor
 from test_qmt_executor_source import NOW, place, send, make
-from test_qmt_reconcile import CID, Rig, T, lost_dispatch
+from test_qmt_reconcile import CID, Rig, T, cmd, lost_dispatch
 
 
 # I1 -------------------------------------------------------------------------
@@ -175,3 +175,56 @@ def test_receipt_timeout_exceeds_transport_ttl():
     from qsys.agent.qmt.port import QmtIpcPort
     default = inspect.signature(QmtIpcPort).parameters['receipt_timeout_s'].default
     assert default * 1000 > protocol.TRANSPORT_TTL_MS
+
+
+# F4 field findings (2026-11-09) ---------------------------------------------------
+def test_stopped_executor_clears_scheduled_marker_and_heartbeat():
+    buf = bytearray(protocol.MAP_SIZE)
+    mem = SharedMemory(buf)
+    mod = load_executor(ACCOUNT_ID=ACCOUNT, RUN_ID='a' * 32)
+    ex = mod.Executor('a' * 32, bytes(32), FakeQmtApi().as_api(), buf, lambda: NOW)
+    done = b'QSYS_QMT_SIGNAL_SCHEDULED:' + b'a' * 32
+    buf[protocol.SCHEDULED_MARKER_OFFSET:protocol.SCHEDULED_MARKER_OFFSET + len(done)] = done
+    mod._STATE = dict(memory=buf, executor=ex, stopped=False)
+    mod.stop(SimpleNamespace(cancel_schedule_run=lambda name: True))
+    assert not mem.scheduled('a' * 32)
+    assert mem.executor_state().heartbeat_ms == 0
+
+
+def test_gateway_rejects_without_sending_when_executor_heartbeat_stale(tmp_path):
+    rig = Rig(tmp_path)
+    rig.deliver = True
+    with rig.open() as d:
+        generation = bytes(rig.buf[protocol.REQUEST_OFFSET:protocol.REQUEST_OFFSET + 4])
+        rig.now += timedelta(seconds=30)                  # executor stopped ticking 30 s ago
+        rig.deliver = False
+        d.dispatch(cmd().model_copy(update={'created_at': rig.now - timedelta(seconds=1),
+                                            'expires_at': rig.now + timedelta(seconds=60)}))
+        assert not d.store.has_unresolved()
+        assert bytes(rig.buf[protocol.REQUEST_OFFSET:protocol.REQUEST_OFFSET + 4]) == generation
+    assert [r.reason for r in rig.rejects()] == ['executor:executor_not_running']
+
+
+def test_dispatch_conflict_engages_local_kill(tmp_path):
+    from qsys.agent.adapter import FakeAdapter
+    from qsys.agent.dispatch_store import DispatchConflictError
+    from qsys.agent.execution_agent import ExecutionAgent
+    from qsys.live.config import StreamConfig
+    from qsys.live.safety import SafetyPolicy, TradingMode
+    from qsys.live.transport import MemoryTransport
+
+    class Dispatcher:
+        def matches(self, transport, streams):
+            return True
+
+        def replay_existing(self, command):
+            raise DispatchConflictError('immutable dispatch intent differs')
+    kill = tmp_path / 'AGENT_KILL'
+    t = MemoryTransport()
+    agent = ExecutionAgent(t, FakeAdapter(), StreamConfig(), async_dispatcher=Dispatcher(),
+                           safety=SafetyPolicy(TradingMode.LIVE, account_id='a', protected_account_ids=('a',),
+                                               orders_enabled=True, local_kill_path=kill))
+    t.append(StreamConfig().orders, cmd().to_payload())
+    with pytest.raises(DispatchConflictError):
+        agent.run_once()
+    assert kill.exists() and 'conflict' in kill.read_text()
