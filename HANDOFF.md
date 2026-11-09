@@ -1,5 +1,25 @@
 # 项目交接入口
 
+## 11-09 下午：Linux 信号接入大 QMT 执行器——代码合入、F0 部分、F2 通过
+
+- 维护者决定：原系统设计不变，信号由原系统下发；大 QMT 只保留执行器。设计、计划与运行手册见
+  `docs/superpowers/specs/2026-11-09-qmt-linux-signal-integration-design.md`、
+  `docs/superpowers/plans/2026-11-09-qmt-linux-signal-integration.md`、
+  `docs/reference/qmt-signal-executor.md`。PR #626/#627/#628/#629 已合入，新能力全部默认关闭
+  （Linux `[safety] dispatch_tracking` 缺省 false；执行器仓库版 `ENABLED=False`、`DRY_RUN=True`）；
+  未发布 `windows-agent` 生产组件，未启动 Live Core。
+- F0（授权）：22 字节委托号原样回传；最新价 `prType=5` 在柜台为限价单（`m_nOrderPriceType=50`）；
+  卖出 `m_nOffsetFlag=49`；废单原因经回调返回且不含账户号。最新价卖出成交待 11-10 10:00–11:00
+  （11-09 买入的 510300×100 当日 T+1 不可卖，柜台拒单；为安排失误）。
+- `C:\self\qsys-qmt-2.1.33.0\python`（QMT 策略源码明文目录）已收紧为 SYSTEM+Administrators，
+  收据在 `C:\qsys\acl-receipts\issue601-qmt-python-*`；QMT 为内置 Administrator 非拆分提升令牌。
+- F2（验证命名空间、DRY_RUN、零委托）通过：新 QMT 策略 `QSYS601_SIGNAL_EXECUTOR`（第 5 行模拟实例，
+  已勾选自动运行，当前停止）；接受/拒绝/网关重启转 unknown 不重发/unknown 阻止开仓/执行器重启。
+  证据在 Windows `f2-1f9b8471` 审计根与 #601。
+- 待办：F4（11-10 下午，含一次整机重启，已授权）——“确认未下单”自动释放与 QMT 客户端重建后自启；
+  F5 需维护者按日期/资金/改动清单另行授权（改承袭 `3c33f0fa…`、开 dispatch_tracking、发布
+  windows-agent、安装 `--live-orders` 执行器）。`C:\qsys` 整体收紧仍待授权。
+
 ## 11-09：#601授权单笔真实委托窗口通过
 
 - 维护者授权窗口10:00–11:00、唯一股票账户、510300.SH买100份。run `c192db15`（main `126404f`）：
