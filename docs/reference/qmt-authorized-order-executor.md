@@ -75,6 +75,13 @@ QMT 当日 08:53 自行重建，现场重新读取 PID 与窗口句柄；验证�
   `e145d3df…`）。持仓 510300 100 份（T+1），卖出须另行授权。
 - driver 原把回调与查询的同一成交计 2 笔，已改为按 `m_strTradeID` 去重（无 trade id 的行不去重）。
 
+## F0 探针扩展（2026-11-09）
+
+为验证正式信号通道的两项现场事实，授权执行器计划格式扩展：委托号改为生产形状
+`q{yymmdd}{seq:03d}{run前12位}`（22 字节，仍绑定 run）；卖出步骤可用
+`"limit_price": null, "price_type": 5`（最新价，即原 `XtQuantAdapter` 的“市价”口径），
+买入仍只允许限价。`prepare_qmt_authorized_order.py` 的 `--place` 价格字段可写 `latest`（仅卖出）。
+
 ## 不在本项范围
 
 Linux 意图流接入、真实 unknown 自动消解进入业务账本、持仓卖出、Live/Shadow 启动、KILL 修改、#137 激活。

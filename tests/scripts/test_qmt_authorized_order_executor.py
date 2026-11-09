@@ -349,3 +349,49 @@ def test_init_disabled_does_nothing():
 
     module.init(Context())
     assert module._STATE is None
+
+
+# -- F0: production-shaped order ids and latest-price sells (#601) -------------
+
+LONG_A = 'q261110001' + RUN[:12]
+LONG_B = 'q261110002' + RUN[:12]
+
+
+def f0_plan(**sell):
+    now = datetime.now(timezone.utc)
+    step = {'step': 3, 'action': 'place', 'client_order_id': LONG_B, 'symbol': '510300.SH',
+            'side': 'sell', 'qty': 100, 'limit_price': None, 'price_type': 5}
+    step.update(sell)
+    return {'run_id': RUN, 'not_before': iso(now - timedelta(minutes=5)),
+            'not_after': iso(now + timedelta(minutes=55)), 'steps': [
+                {'step': 1, 'action': 'place', 'client_order_id': LONG_A, 'symbol': '510300.SH',
+                 'side': 'buy', 'qty': 100, 'limit_price': 3.9},
+                {'step': 2, 'action': 'cancel', 'client_order_id': LONG_A},
+                step,
+                {'step': 4, 'action': 'cancel', 'client_order_id': LONG_B}]}
+
+
+def test_long_order_id_and_latest_price_sell_accepted():
+    module = load()
+    plan = module.validate_plan(module.canonical(f0_plan()).decode('ascii'), RUN)
+    assert plan['remarks'] == {LONG_A, LONG_B}
+
+
+@pytest.mark.parametrize('change', [
+    {'side': 'buy'}, {'price_type': 42}, {'limit_price': 4.0}, {'price_type': '5'},
+    {'client_order_id': 'q261110002' + 'f' * 12},
+])
+def test_latest_price_step_bounds(change):
+    module = load()
+    with pytest.raises(ValueError):
+        module.validate_plan(module.canonical(f0_plan(**change)).decode('ascii'), RUN)
+
+
+def test_latest_price_sell_calls_passorder_with_type_5_and_zero_price():
+    module = load()
+    api = FakeApi()
+    plan = module.validate_plan(module.canonical(f0_plan()).decode('ascii'), RUN)
+    executor = module.Executor(RUN, KEY, plan, api.table(), [].append)
+    executor.run_step(None, plan['steps'][2])
+    call = [c for c in api.calls if c[0] == 'passorder'][-1]
+    assert call[1] == module.STOCK_SELL and call[5] == 5 and call[6] == 0.0 and call[10] == LONG_B
