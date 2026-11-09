@@ -10,6 +10,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from datetime import datetime
 
 import structlog
@@ -55,6 +57,7 @@ class ExecutionAgent:
         fee_model: FeeModel | None = None,
         safety: SafetyPolicy | None = None,
         async_dispatcher: AsyncOrderDispatcher | None = None,
+        cycle_hook: Callable[[bool], None] | None = None,
     ) -> None:
         self._t = transport
         self._adapter = adapter
@@ -66,6 +69,7 @@ class ExecutionAgent:
         self._tracker = FillTracker(fee_model or AShareFeeModel())
         self._safety = safety
         self._async_dispatcher = async_dispatcher
+        self._cycle_hook = cycle_hook
         if async_dispatcher is not None and not async_dispatcher.matches(transport, streams):
             raise ValueError("async dispatcher transport/streams must match the agent")
         self._remote_kill_seen = False
@@ -78,10 +82,17 @@ class ExecutionAgent:
     def run_once(self) -> int:
         """处理一批指令，返回处理条数。"""
         self._sync_remote_kill()
+        if self._cycle_hook is not None:
+            self._cycle_hook(self.kill_engaged())
         # 停机指令必须先于同一轮的订单处理，避免已经要求停机却又多发一批单。
         handled = self._drain_control() + self._drain_orders()
         self.poll_reports()
         return handled
+
+    def kill_engaged(self) -> bool:
+        """远程 KILL 键或 Windows 本地停机闸任一生效。"""
+        local = self._safety.local_kill_path if self._safety is not None else None
+        return self._t.get_key("control:kill") is not None or bool(local and local.exists())
 
     def _sync_remote_kill(self) -> None:
         reason = self._t.get_key("control:kill")
@@ -166,6 +177,10 @@ class ExecutionAgent:
                          client_order_id=command.client_order_id)
                 return
             self._reject(command, market.reason)
+            return
+        if self._async_dispatcher is not None and command.strategy_id == "commissioning":
+            # 异步通道没有同步 find_order/活动委托检查，首单验证改由授权小额窗口承担（#601）。
+            self._reject(command, "commissioning_disabled_in_async_mode")
             return
         lease = read_commissioning_lease(self._t)
         if command.strategy_id == "commissioning":

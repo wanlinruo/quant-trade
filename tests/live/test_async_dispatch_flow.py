@@ -194,5 +194,6 @@ def test_default_core_does_not_consume_new_stream():
     broker = make_broker(t, Portfolio(100000.0), enabled=False)
     assert broker.poll_dispatch_statuses() == ()
     assert S.dispatch_status not in broker._delivered
-    with pytest.raises(ValueError, match='isolated'):
-        make_broker(MemoryTransport(), Portfolio(100000.0))
+    # #601: production transport may consume dispatch status only when explicitly enabled.
+    assert make_broker(MemoryTransport(), Portfolio(100000.0))._receive_dispatch_status is True
+    assert make_broker(MemoryTransport(), Portfolio(100000.0), enabled=False).poll_dispatch_statuses() == ()

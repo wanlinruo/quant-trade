@@ -295,3 +295,45 @@ def test_remote_kill_blocks_buy_but_keeps_reducing_path_open(tmp_path):
     transport.append(STREAMS.orders, sell.to_payload())
     agent.run_once()
     assert adapter.placed == [("600036.SH", "sell", 100, "market", None)]
+
+
+def test_commissioning_rejected_in_async_mode():
+    class Dispatcher:
+        def __init__(self):
+            self.rejected = []
+
+        def matches(self, transport, streams):
+            return True
+
+        def replay_existing(self, command):
+            return False
+
+        def reject_before_send(self, command, reason):
+            self.rejected.append(reason)
+
+        def dispatch(self, command):
+            raise AssertionError('must not dispatch commissioning in async mode')
+    transport, dispatcher = MemoryTransport(), Dispatcher()
+    agent = ExecutionAgent(transport, FakeAdapter(), STREAMS, async_dispatcher=dispatcher)
+    transport.append(STREAMS.orders, OrderCommand(
+        client_order_id="qc2611090001", strategy_id="commissioning", symbol="511380.SH",
+        side="buy", qty=100, order_type="limit", limit_price=12.0, created_at=T).to_payload())
+    agent.run_once()
+    assert dispatcher.rejected == ["commissioning_disabled_in_async_mode"]
+
+
+def test_cycle_hook_receives_kill_state(tmp_path):
+    seen = []
+    transport = MemoryTransport()
+    kill_file = tmp_path / "AGENT_KILL"
+    agent = ExecutionAgent(
+        transport, FakeAdapter(), STREAMS, cycle_hook=seen.append,
+        safety=SafetyPolicy(TradingMode.LIVE, account_id="a", protected_account_ids=("a",),
+                            orders_enabled=True, local_kill_path=kill_file))
+    agent.run_once()
+    kill_file.write_text("x")
+    agent.run_once()
+    kill_file.unlink()
+    transport.set_key("control:kill", "manual")
+    agent.run_once()
+    assert seen == [False, True, True]

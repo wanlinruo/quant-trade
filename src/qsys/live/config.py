@@ -63,6 +63,8 @@ class SafetyConfig:
     orders_enabled: bool = False
     protected_account_ids: tuple[str, ...] = ()
     local_kill_path: str = "var/AGENT_KILL"
+    # 大 QMT 异步通道（#601）：开启后 Core 消费 evt:dispatch_status。缺省关闭，兼容 N-1 私有配置。
+    dispatch_tracking: bool = False
 
 
 @dataclass(frozen=True, slots=True)
