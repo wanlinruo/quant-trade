@@ -9,7 +9,11 @@ SOURCE = Path(__file__).resolve().parents[3] / 'src' / 'qsys' / 'agent' / 'qmt' 
 ACCOUNT = '100000001'
 
 
-def load_executor(**literals):
+def load_executor(raw=False, **literals):
+    """Load the executor source; unless ``raw``, tests default to DRY_RUN=False so
+    native calls are observable (the checked-in default is DRY_RUN=True)."""
+    if not raw:
+        literals.setdefault('DRY_RUN', False)
     spec = importlib.util.spec_from_file_location('qmt_executor_under_test', SOURCE)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

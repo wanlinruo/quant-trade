@@ -75,3 +75,21 @@ def test_verify_detects_tampering_and_refuses_overwrite(tmp_path, account_file):
     path.write_text(path.read_text().replace('MAX_ORDER_NOTIONAL = 10000.0', 'MAX_ORDER_NOTIONAL = 99999.0'))
     with pytest.raises(ValueError):
         tool().verify(bundle)
+
+
+def _enabled_module(bundle):
+    # Load without leaving __pycache__ in the bundle (verify rejects extra files).
+    source = (bundle / 'executor-enabled.py').read_text()
+    namespace = {}
+    exec(compile(source, 'executor-enabled.py', 'exec'), namespace)
+    return type('M', (), namespace)
+
+
+def test_stage_keeps_dry_run_unless_live_orders_requested(tmp_path, account_file):
+    bundle, receipt = staged(tmp_path, account_file)
+    assert _enabled_module(bundle).DRY_RUN is True and receipt['dry_run'] is True
+    other = tmp_path / 'live'
+    other.mkdir()
+    bundle2, receipt2 = staged(other, account_file, live_orders=True)
+    assert _enabled_module(bundle2).DRY_RUN is False and receipt2['dry_run'] is False
+    assert tool().verify(bundle2)['dry_run'] is False

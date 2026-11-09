@@ -104,6 +104,10 @@ class RedisTransport(Transport):
             self._r.xreadgroup(group, consumer, {stream: ">"}, count=count)
         )
 
+    def all_messages(self, stream: str, limit: int = 10000) -> list[StreamMessage]:
+        """只读 XRANGE（有界），供验证与诊断汇总；不影响任何消费组。"""
+        return self._to_messages([(stream, self._r.xrange(stream, "-", "+", count=limit))])
+
     def ack(self, stream: str, group: str, message_id: str) -> None:
         self._r.xack(stream, group, message_id)
 

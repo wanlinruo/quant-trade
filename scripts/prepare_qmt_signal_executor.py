@@ -37,7 +37,7 @@ def _read_account(path: Path) -> str:
 
 
 def render_enabled(default: str, *, run_id: str, account: str, key_hex: str,
-                   market_price_type: int | None) -> str:
+                   market_price_type: int | None, live_orders: bool = False) -> str:
     replacements = {
         "RUN_ID = ''": f'RUN_ID = {run_id!r}',
         "CLIENT_BUILD = ''": f'CLIENT_BUILD = {CLIENT_BUILD!r}',
@@ -45,6 +45,7 @@ def render_enabled(default: str, *, run_id: str, account: str, key_hex: str,
         "KEY_HEX = ''": f'KEY_HEX = {key_hex!r}',
         'ENABLED = False': 'ENABLED = True',
         'PRICE_TYPE_MARKET = None': f'PRICE_TYPE_MARKET = {market_price_type!r}',
+        'DRY_RUN = True': f'DRY_RUN = {not live_orders!r}',
     }
     lines = default.split('\n')
     for old, new in replacements.items():
@@ -65,7 +66,7 @@ def _sha(data: bytes) -> str:
 
 
 def stage(bundle: Path, *, run_id: str, account_file: Path, market_price_type: int | None = None,
-          source: Path = SOURCE) -> dict:
+          live_orders: bool = False, source: Path = SOURCE) -> dict:
     if bundle.is_symlink() or not bundle.is_dir():
         raise ValueError('bundle must be an existing non-symlink directory')
     if _RUN_ID.fullmatch(run_id) is None:
@@ -78,17 +79,20 @@ def stage(bundle: Path, *, run_id: str, account_file: Path, market_price_type: i
     default = source.read_bytes()
     key_hex = secrets.token_hex(32)
     enabled = render_enabled(default.decode('utf-8'), run_id=run_id, account=account,
-                             key_hex=key_hex, market_price_type=market_price_type).encode('utf-8')
+                             key_hex=key_hex, market_price_type=market_price_type,
+                             live_orders=live_orders).encode('utf-8')
     private = bundle / 'private'
     private.mkdir(mode=0o700)
     run = json.dumps({'run_id': run_id, 'client_build': CLIENT_BUILD,
-                      'market_price_type': market_price_type}, sort_keys=True).encode('ascii')
+                      'market_price_type': market_price_type, 'dry_run': not live_orders},
+                     sort_keys=True).encode('ascii')
     _write_exclusive(bundle / 'executor-default.py', default)
     _write_exclusive(bundle / 'executor-enabled.py', enabled)
     _write_exclusive(private / 'key.hex', key_hex.encode('ascii'))
     _write_exclusive(private / 'account.txt', account.encode('ascii'))
     _write_exclusive(private / 'run.json', run)
     return {'status': 'staged', 'run_id': run_id, 'market_price_type': market_price_type,
+            'dry_run': not live_orders,
             'executor_default_sha256': _sha(default), 'executor_enabled_sha256': _sha(enabled),
             'run_json_sha256': _sha(run)}
 
@@ -109,11 +113,14 @@ def verify(bundle: Path, source: Path = SOURCE) -> dict:
         raise ValueError('private binding malformed')
     expected = render_enabled(default.decode('utf-8'), run_id=run['run_id'],
                               account=_read_account(private / 'account.txt'), key_hex=key_hex,
-                              market_price_type=run.get('market_price_type')).encode('utf-8')
+                              market_price_type=run.get('market_price_type'),
+                              live_orders=run.get('dry_run') is False).encode('utf-8')
     enabled = (bundle / 'executor-enabled.py').read_bytes()
     if enabled != expected:
         raise ValueError('enabled executor differs from the literal-bound default')
-    return {'status': 'verified', 'run_id': run['run_id'],
+    if not isinstance(run.get('dry_run'), bool):
+        raise ValueError('private binding malformed')
+    return {'status': 'verified', 'run_id': run['run_id'], 'dry_run': run['dry_run'],
             'executor_default_sha256': _sha(default), 'executor_enabled_sha256': _sha(enabled)}
 
 
@@ -125,12 +132,14 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument('--run-id', required=True)
     s.add_argument('--account-file', type=Path, required=True)
     s.add_argument('--market-price-type', type=int, default=None)
+    s.add_argument('--live-orders', action='store_true',
+                   help='disable DRY_RUN; only for a maintainer-authorized real window')
     v = sub.add_parser('verify')
     v.add_argument('bundle', type=Path)
     args = parser.parse_args(argv)
     if args.command == 'stage':
         receipt = stage(args.bundle, run_id=args.run_id, account_file=args.account_file,
-                        market_price_type=args.market_price_type)
+                        market_price_type=args.market_price_type, live_orders=args.live_orders)
     else:
         receipt = verify(args.bundle)
     print(json.dumps(receipt, sort_keys=True))
