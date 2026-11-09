@@ -1,0 +1,856 @@
+{
+ "probe": "tushare_block_trade",
+ "issue": 608,
+ "at": "2026-11-08T11:10:55.312788+00:00",
+ "trade_date": "20261105",
+ "block_trade": {
+  "ok": true,
+  "msg": "",
+  "fields": [
+   "ts_code",
+   "trade_date",
+   "price",
+   "vol",
+   "amount",
+   "buyer",
+   "seller"
+  ],
+  "rows": 108,
+  "symbols": 62,
+  "symbols_by_exchange": {
+   "SZ": 30,
+   "SH": 30,
+   "BJ": 2
+  },
+  "rows_with_null_price_vol_amount": 0,
+  "seconds": 0.34,
+  "has_more": false
+ },
+ "daily": {
+  "ok": true,
+  "rows": 5571
+ },
+ "focus": {
+  "code": "920553.BJ",
+  "block_rows": [
+   {
+    "ts_code": "920553.BJ",
+    "trade_date": "20261105",
+    "price": 4.22,
+    "vol": 10.0,
+    "amount": 42.2,
+    "buyer": "麦高证券有限责任公司北京分公司",
+    "seller": "招商证券股份有限公司北京中核路证券营业部"
+   }
+  ],
+  "daily_row": {
+   "ts_code": "920553.BJ",
+   "low": 6.02,
+   "high": 6.23,
+   "vol": 8759.81,
+   "amount": 5201.01559
+  }
+ },
+ "unit_hypotheses": {
+  "vol_wan_shares_amount_wan_yuan": {
+   "examined": 52,
+   "raw_pass": 51,
+   "adjusted_pass": 45,
+   "price_vol_amount_consistent": 52,
+   "failures_sample": [
+    {
+     "code": "000009.SZ",
+     "reason": "outside_after_subtraction",
+     "avg": 6.9861,
+     "low": 6.64,
+     "high": 6.85
+    },
+    {
+     "code": "600985.SH",
+     "reason": "non_positive_remainder"
+    },
+    {
+     "code": "603389.SH",
+     "reason": "outside_after_subtraction",
+     "avg": 56.3589,
+     "low": 46.33,
+     "high": 48.2
+    },
+    {
+     "code": "300586.SZ",
+     "reason": "outside_after_subtraction",
+     "avg": 7.1214,
+     "low": 6.62,
+     "high": 7.05
+    },
+    {
+     "code": "688208.SH",
+     "reason": "outside_after_subtraction",
+     "avg": 22.7389,
+     "low": 21.3,
+     "high": 22.66
+    },
+    {
+     "code": "301267.SZ",
+     "reason": "outside_after_subtraction",
+     "avg": 15.7646,
+     "low": 15.22,
+     "high": 15.52
+    },
+    {
+     "code": "301585.SZ",
+     "reason": "outside_after_subtraction",
+     "avg": 25.8601,
+     "low": 24.96,
+     "high": 25.54
+    }
+   ]
+  },
+  "vol_shares_amount_yuan": {
+   "examined": 52,
+   "raw_pass": 51,
+   "adjusted_pass": 51,
+   "price_vol_amount_consistent": 52,
+   "failures_sample": [
+    {
+     "code": "920553.BJ",
+     "reason": "outside_after_subtraction",
+     "avg": 5.9374,
+     "low": 6.02,
+     "high": 6.23
+    }
+   ]
+  },
+  "vol_hand_amount_thousand_yuan": {
+   "examined": 52,
+   "raw_pass": 51,
+   "adjusted_pass": 46,
+   "price_vol_amount_consistent": 0,
+   "failures_sample": [
+    {
+     "code": "600885.SH",
+     "reason": "outside_after_subtraction",
+     "avg": 32.5132,
+     "low": 32.57,
+     "high": 33.99
+    },
+    {
+     "code": "600985.SH",
+     "reason": "outside_after_subtraction",
+     "avg": 12.3528,
+     "low": 13.84,
+     "high": 14.34
+    },
+    {
+     "code": "603389.SH",
+     "reason": "outside_after_subtraction",
+     "avg": 44.8716,
+     "low": 46.33,
+     "high": 48.2
+    },
+    {
+     "code": "301267.SZ",
+     "reason": "outside_after_subtraction",
+     "avg": 15.1389,
+     "low": 15.22,
+     "high": 15.52
+    },
+    {
+     "code": "920553.BJ",
+     "reason": "outside_after_subtraction",
+     "avg": 5.8959,
+     "low": 6.02,
+     "high": 6.23
+    },
+    {
+     "code": "301585.SZ",
+     "reason": "outside_after_subtraction",
+     "avg": 24.7073,
+     "low": 24.96,
+     "high": 25.54
+    }
+   ]
+  }
+ },
+ "by_exchange": {
+  "20261105": {
+   "SZ": {
+    "counts": {
+     "examined": 24,
+     "raw_pass": 24,
+     "adjusted_pass": 20,
+     "block_exceeds_daily_volume": 0
+    },
+    "samples": [
+     {
+      "code": "000009.SZ",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     },
+     {
+      "code": "300586.SZ",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     },
+     {
+      "code": "301267.SZ",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     },
+     {
+      "code": "301585.SZ",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     }
+    ]
+   },
+   "SH": {
+    "counts": {
+     "examined": 26,
+     "raw_pass": 26,
+     "adjusted_pass": 23,
+     "block_exceeds_daily_volume": 1
+    },
+    "samples": [
+     {
+      "code": "600985.SH",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": true
+     },
+     {
+      "code": "603389.SH",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     },
+     {
+      "code": "688208.SH",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     }
+    ]
+   },
+   "BJ": {
+    "counts": {
+     "examined": 2,
+     "raw_pass": 1,
+     "adjusted_pass": 2,
+     "block_exceeds_daily_volume": 0
+    },
+    "samples": [
+     {
+      "code": "920553.BJ",
+      "raw_pass": false,
+      "adjusted_pass": true,
+      "block_exceeds_daily_volume": false
+     },
+     {
+      "code": "920112.BJ",
+      "raw_pass": true,
+      "adjusted_pass": true,
+      "block_exceeds_daily_volume": false
+     }
+    ]
+   }
+  },
+  "20261026": {
+   "SZ": {
+    "counts": {
+     "examined": 23,
+     "raw_pass": 23,
+     "adjusted_pass": 21,
+     "block_exceeds_daily_volume": 0
+    },
+    "samples": [
+     {
+      "code": "300746.SZ",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     },
+     {
+      "code": "300871.SZ",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     }
+    ]
+   },
+   "SH": {
+    "counts": {
+     "examined": 17,
+     "raw_pass": 17,
+     "adjusted_pass": 17,
+     "block_exceeds_daily_volume": 0
+    },
+    "samples": []
+   }
+  },
+  "20261027": {
+   "SZ": {
+    "counts": {
+     "examined": 12,
+     "raw_pass": 12,
+     "adjusted_pass": 11,
+     "block_exceeds_daily_volume": 0
+    },
+    "samples": [
+     {
+      "code": "301269.SZ",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     }
+    ]
+   },
+   "SH": {
+    "counts": {
+     "examined": 14,
+     "raw_pass": 14,
+     "adjusted_pass": 12,
+     "block_exceeds_daily_volume": 0
+    },
+    "samples": [
+     {
+      "code": "601333.SH",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     },
+     {
+      "code": "605098.SH",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     }
+    ]
+   },
+   "BJ": {
+    "counts": {
+     "examined": 1,
+     "raw_pass": true,
+     "adjusted_pass": false,
+     "block_exceeds_daily_volume": false
+    },
+    "samples": [
+     {
+      "code": "920640.BJ",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     }
+    ]
+   }
+  },
+  "20261028": {
+   "SZ": {
+    "counts": {
+     "examined": 29,
+     "raw_pass": 29,
+     "adjusted_pass": 26,
+     "block_exceeds_daily_volume": 1
+    },
+    "samples": [
+     {
+      "code": "300586.SZ",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     },
+     {
+      "code": "301370.SZ",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": true
+     },
+     {
+      "code": "301303.SZ",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     }
+    ]
+   },
+   "SH": {
+    "counts": {
+     "examined": 32,
+     "raw_pass": 32,
+     "adjusted_pass": 29,
+     "block_exceeds_daily_volume": 0
+    },
+    "samples": [
+     {
+      "code": "603685.SH",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     },
+     {
+      "code": "688065.SH",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     },
+     {
+      "code": "603285.SH",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     }
+    ]
+   },
+   "BJ": {
+    "counts": {
+     "examined": 1,
+     "raw_pass": true,
+     "adjusted_pass": false,
+     "block_exceeds_daily_volume": false
+    },
+    "samples": [
+     {
+      "code": "920765.BJ",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     }
+    ]
+   }
+  },
+  "20261029": {
+   "SZ": {
+    "counts": {
+     "examined": 25,
+     "raw_pass": 25,
+     "adjusted_pass": 24,
+     "block_exceeds_daily_volume": 0
+    },
+    "samples": [
+     {
+      "code": "300586.SZ",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     }
+    ]
+   },
+   "SH": {
+    "counts": {
+     "examined": 27,
+     "raw_pass": 27,
+     "adjusted_pass": 25,
+     "block_exceeds_daily_volume": 0
+    },
+    "samples": [
+     {
+      "code": "601686.SH",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     },
+     {
+      "code": "688065.SH",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     }
+    ]
+   },
+   "BJ": {
+    "counts": {
+     "examined": 2,
+     "raw_pass": 2,
+     "adjusted_pass": 2,
+     "block_exceeds_daily_volume": 0
+    },
+    "samples": [
+     {
+      "code": "920118.BJ",
+      "raw_pass": true,
+      "adjusted_pass": true,
+      "block_exceeds_daily_volume": false
+     },
+     {
+      "code": "920258.BJ",
+      "raw_pass": true,
+      "adjusted_pass": true,
+      "block_exceeds_daily_volume": false
+     }
+    ]
+   }
+  },
+  "20261030": {
+   "SZ": {
+    "counts": {
+     "examined": 13,
+     "raw_pass": 13,
+     "adjusted_pass": 13,
+     "block_exceeds_daily_volume": 0
+    },
+    "samples": []
+   },
+   "SH": {
+    "counts": {
+     "examined": 19,
+     "raw_pass": 19,
+     "adjusted_pass": 18,
+     "block_exceeds_daily_volume": 1
+    },
+    "samples": [
+     {
+      "code": "600233.SH",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": true
+     }
+    ]
+   },
+   "BJ": {
+    "counts": {
+     "examined": 5,
+     "raw_pass": 5,
+     "adjusted_pass": 3,
+     "block_exceeds_daily_volume": 0
+    },
+    "samples": [
+     {
+      "code": "920185.BJ",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     },
+     {
+      "code": "920808.BJ",
+      "raw_pass": true,
+      "adjusted_pass": true,
+      "block_exceeds_daily_volume": false
+     },
+     {
+      "code": "920118.BJ",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     },
+     {
+      "code": "920125.BJ",
+      "raw_pass": true,
+      "adjusted_pass": true,
+      "block_exceeds_daily_volume": false
+     },
+     {
+      "code": "920083.BJ",
+      "raw_pass": true,
+      "adjusted_pass": true,
+      "block_exceeds_daily_volume": false
+     }
+    ]
+   }
+  },
+  "20261102": {
+   "SZ": {
+    "counts": {
+     "examined": 24,
+     "raw_pass": 24,
+     "adjusted_pass": 19,
+     "block_exceeds_daily_volume": 0
+    },
+    "samples": [
+     {
+      "code": "300217.SZ",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     },
+     {
+      "code": "300586.SZ",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     },
+     {
+      "code": "300595.SZ",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     },
+     {
+      "code": "300973.SZ",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     },
+     {
+      "code": "301370.SZ",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     }
+    ]
+   },
+   "SH": {
+    "counts": {
+     "examined": 28,
+     "raw_pass": 28,
+     "adjusted_pass": 27,
+     "block_exceeds_daily_volume": 0
+    },
+    "samples": [
+     {
+      "code": "603285.SH",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     }
+    ]
+   },
+   "BJ": {
+    "counts": {
+     "examined": 2,
+     "raw_pass": 2,
+     "adjusted_pass": 0,
+     "block_exceeds_daily_volume": 0
+    },
+    "samples": [
+     {
+      "code": "920640.BJ",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     },
+     {
+      "code": "920118.BJ",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     }
+    ]
+   }
+  },
+  "20261103": {
+   "SH": {
+    "counts": {
+     "examined": 27,
+     "raw_pass": 27,
+     "adjusted_pass": 26,
+     "block_exceeds_daily_volume": 0
+    },
+    "samples": [
+     {
+      "code": "601026.SH",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     }
+    ]
+   },
+   "SZ": {
+    "counts": {
+     "examined": 21,
+     "raw_pass": 21,
+     "adjusted_pass": 18,
+     "block_exceeds_daily_volume": 0
+    },
+    "samples": [
+     {
+      "code": "300217.SZ",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     },
+     {
+      "code": "300586.SZ",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     },
+     {
+      "code": "300927.SZ",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     }
+    ]
+   },
+   "BJ": {
+    "counts": {
+     "examined": 1,
+     "raw_pass": true,
+     "adjusted_pass": true,
+     "block_exceeds_daily_volume": false
+    },
+    "samples": [
+     {
+      "code": "920006.BJ",
+      "raw_pass": true,
+      "adjusted_pass": true,
+      "block_exceeds_daily_volume": false
+     }
+    ]
+   }
+  },
+  "20261104": {
+   "SZ": {
+    "counts": {
+     "examined": 36,
+     "raw_pass": 36,
+     "adjusted_pass": 30,
+     "block_exceeds_daily_volume": 0
+    },
+    "samples": [
+     {
+      "code": "002438.SZ",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     },
+     {
+      "code": "002345.SZ",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     },
+     {
+      "code": "300217.SZ",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     },
+     {
+      "code": "300830.SZ",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     },
+     {
+      "code": "301267.SZ",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     },
+     {
+      "code": "301585.SZ",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     }
+    ]
+   },
+   "SH": {
+    "counts": {
+     "examined": 25,
+     "raw_pass": 25,
+     "adjusted_pass": 24,
+     "block_exceeds_daily_volume": 0
+    },
+    "samples": [
+     {
+      "code": "601026.SH",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     }
+    ]
+   },
+   "BJ": {
+    "counts": {
+     "examined": 4,
+     "raw_pass": 4,
+     "adjusted_pass": 3,
+     "block_exceeds_daily_volume": 0
+    },
+    "samples": [
+     {
+      "code": "920553.BJ",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     },
+     {
+      "code": "920006.BJ",
+      "raw_pass": true,
+      "adjusted_pass": true,
+      "block_exceeds_daily_volume": false
+     },
+     {
+      "code": "920201.BJ",
+      "raw_pass": true,
+      "adjusted_pass": true,
+      "block_exceeds_daily_volume": false
+     },
+     {
+      "code": "920229.BJ",
+      "raw_pass": true,
+      "adjusted_pass": true,
+      "block_exceeds_daily_volume": false
+     }
+    ]
+   }
+  },
+  "20261106": {
+   "SZ": {
+    "counts": {
+     "examined": 7,
+     "raw_pass": 7,
+     "adjusted_pass": 5,
+     "block_exceeds_daily_volume": 0
+    },
+    "samples": [
+     {
+      "code": "300586.SZ",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     },
+     {
+      "code": "300932.SZ",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     }
+    ]
+   },
+   "SH": {
+    "counts": {
+     "examined": 10,
+     "raw_pass": 10,
+     "adjusted_pass": 9,
+     "block_exceeds_daily_volume": 0
+    },
+    "samples": [
+     {
+      "code": "605098.SH",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": false
+     }
+    ]
+   },
+   "BJ": {
+    "counts": {
+     "examined": 1,
+     "raw_pass": true,
+     "adjusted_pass": false,
+     "block_exceeds_daily_volume": true
+    },
+    "samples": [
+     {
+      "code": "920717.BJ",
+      "raw_pass": true,
+      "adjusted_pass": false,
+      "block_exceeds_daily_volume": true
+     }
+    ]
+   }
+  }
+ },
+ "notes": [
+  "只读探针；不写仓库数据。daily 单位按仓库既有口径（vol 手、amount 千元）。",
+  "单位以 adjusted_pass 与 price_vol_amount_consistent 的实证结果为准，不按文档推定。",
+  "当日更新时点需在交易日晚间另行多次采样，本次不能证明。"
+ ]
+}

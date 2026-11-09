@@ -164,7 +164,13 @@ class Facts:
             if row.get('kind') == 'order' and isinstance(row.get('m_nOrderStatus'), int):
                 self.status[remark] = row['m_nOrderStatus']
             elif row.get('kind') == 'deal':
-                self.deals.setdefault(remark, []).append(row)
+                # The callback and the read-only DEAL query report the same fill; one
+                # broker trade id is one deal.  Rows without a trade id are kept as-is
+                # (no identity to de-duplicate on, so nothing is inferred).
+                rows_for = self.deals.setdefault(remark, [])
+                trade_id = row.get('m_strTradeID')
+                if trade_id in (None, '') or all(r.get('m_strTradeID') != trade_id for r in rows_for):
+                    rows_for.append(row)
             elif row.get('kind') == 'order_error':
                 self.errors.setdefault(remark, []).append(row)
             elif row.get('kind') == 'position':
