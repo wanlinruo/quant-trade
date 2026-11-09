@@ -170,3 +170,15 @@ def test_driver_import_has_no_side_effects_and_main_is_guarded():
     for forbidden in ('passorder(', 'XtQuantTrader', 'xtquant', 'cancel_order(', 'requests',
                       'socket'):
         assert forbidden not in source
+
+
+def test_facts_count_one_deal_per_trade_id_across_callback_and_query(tmp_path):
+    driver, *_ = session(tmp_path)
+    facts = driver.Facts()
+    deal = {'kind': 'deal', 'm_strRemark': 'q601-01234567-b', 'm_strTradeID': 'T-b', 'source': 'callback'}
+    facts.absorb([deal, dict(deal, source='query'), dict(deal, m_strTradeID='T-c')])
+    facts.absorb([dict(deal, source='query')])
+    assert [r['m_strTradeID'] for r in facts.deals['q601-01234567-b']] == ['T-b', 'T-c']
+    # Without a broker trade id there is no identity to de-duplicate on: keep every row.
+    facts.absorb([{'kind': 'deal', 'm_strRemark': 'q601-01234567-a'}] * 2)
+    assert len(facts.deals['q601-01234567-a']) == 2
