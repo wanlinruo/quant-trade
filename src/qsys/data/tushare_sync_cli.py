@@ -327,14 +327,19 @@ def main() -> int:
                         args.dividend_win_host, str(args.late_minute_win_key),
                         component="tushare-sync", known_hosts=str(args.late_minute_win_known_hosts),
                     ) as transport:
+                        deferred_cash: list[str] = []
                         counts["corporate_actions"] = step.rows = sync_dividends(
                             warehouse, day, initial_start=args.dividend_initial_start,
                             work_root=args.late_minute_work_root, transport=transport,
                             script=args.dividend_win_script_source, run_id=run.run_id,
                             cash_source=args.dividend_cash_source,
-                            cash_client=cash_client,
+                            cash_client=cash_client, warn=deferred_cash.append,
                         )
                         step.detail = f"现金选源 {args.dividend_cash_source}；原始QMT快照保留；仅追加无冲突事件"
+                        if deferred_cash:
+                            # 上游数据缺陷只告警，不阻断派生与发布（#636）。
+                            log.warning("dividend.cash_deferred", detail=deferred_cash[0])
+                            step.warn(f"{step.detail}；{deferred_cash[0]}")
             except Exception:
                 # Preserve quality evidence for completed Tushare facts, but do
                 # not derive or publish factors from an unverified event input.

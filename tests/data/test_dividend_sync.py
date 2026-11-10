@@ -141,6 +141,19 @@ def test_window_tracks_successful_response_not_last_event(tmp_path):
         import_window(date(2026, 12, 1), start, checkpoint)
 
 
+def test_window_keeps_deferred_cash_events_in_scope_until_resolved(tmp_path):
+    """#636：暂缓的事件超出7天回看后仍要回查，不能静默丢出窗口。"""
+    checkpoint = tmp_path / "last-imported.json"
+    start = date(2026, 10, 1)
+    checkpoint.write_text(json.dumps({
+        "protocol": "qsys-dividend-import-v1", "initial_start": start.isoformat(),
+        "end": "2026-10-25",
+        "deferred_cash": [{"symbol": "600017.SH", "ex_date": "2026-10-12", "issue": "cash_value_missing"}]}))
+    assert import_window(DAY, start, checkpoint) == date(2026, 10, 12)
+    with pytest.raises(ValueError, match="exceeds"):
+        import_window(date(2026, 11, 20), start, checkpoint)
+
+
 def test_native_scope_keeps_native_and_unknown_history_without_alias_mapping():
     import pyarrow as pa
     instruments = pl.from_arrow(pa.Table.from_pylist([
@@ -256,8 +269,10 @@ def test_cash_selection_preserves_raw_bundle_and_every_non_cash_value(tmp_path):
     fresh = validate(bundle)
     original = (bundle / 'events.parquet').read_bytes()
     calls = []
-    result = select_tushare_cash(fresh, client=cash_client(calls=calls), audit_dir=tmp_path,
-                                 run_id='sync-1', qmt_sha256=_sha(bundle / 'events.parquet'))
+    result, deferred = select_tushare_cash(
+        fresh, client=cash_client(calls=calls), audit_dir=tmp_path,
+        run_id='sync-1', qmt_sha256=_sha(bundle / 'events.parquet'))
+    assert deferred == []
     assert result['cash_per_share'].to_list() == [.033001]
     assert result.drop('cash_per_share').equals(fresh.drop('cash_per_share'))
     assert (bundle / 'events.parquet').read_bytes() == original
@@ -274,18 +289,23 @@ def test_cash_selection_preserves_raw_bundle_and_every_non_cash_value(tmp_path):
     (.033001, 'missing'), (.033001, 'duplicate'), (.033001, 'wrong_symbol'),
     (.033001, 'wrong_date'), (.033001, 'proposal'), (.033001, 'request_error'),
 ])
-def test_cash_quality_refusal_preserves_null_candidate_without_qmt_fallback(tmp_path, cash, mutation):
+def test_cash_quality_issue_defers_only_that_event_without_qmt_fallback(tmp_path, cash, mutation):
+    """#636：Tushare 上游缺值/重复/请求失败只暂缓该事件入库并告警，不整批拒绝、不补值。"""
     from qsys.data.pipeline.dividend_sync import select_tushare_cash, _sha
     bundle = make_bundle(tmp_path)
     fresh = validate(bundle)
-    with pytest.raises(ValueError, match='cash quality rejected'):
-        select_tushare_cash(fresh, client=cash_client(cash, mutation=mutation), audit_dir=tmp_path,
-                            run_id='sync-1', qmt_sha256=_sha(bundle / 'events.parquet'))
+    accepted, deferred = select_tushare_cash(
+        fresh, client=cash_client(cash, mutation=mutation), audit_dir=tmp_path,
+        run_id='sync-1', qmt_sha256=_sha(bundle / 'events.parquet'))
+    assert accepted.is_empty()
+    assert [(d['symbol'], d['ex_date']) for d in deferred] == [(SYMBOLS[1], '2026-10-28')]
+    assert deferred[0]['issue'].startswith('cash_')
     candidate = pl.read_parquet(tmp_path / 'cash-selected.parquet')
     assert candidate['cash_per_share'].to_list() == [None]
     assert candidate.drop('cash_per_share').equals(fresh.drop('cash_per_share'))
     receipts = (tmp_path / 'cash-source.jsonl').read_text()
-    assert json.loads(receipts.splitlines()[-1])['status'] == 'rejected'
+    final = json.loads(receipts.splitlines()[-1])
+    assert final['status'] == 'deferred' and final['deferred'] == deferred
     assert 'Infinity' not in receipts and ': NaN' not in receipts
     assert 'PRIVATE_INPUT_MUST_NOT_LEAK' not in receipts
 
@@ -296,8 +316,9 @@ def test_cash_empty_snapshot_does_not_request_or_invent_a_cash_event(tmp_path):
         def call(self, *args):
             raise AssertionError('no events need cash lookup')
     fresh = pl.from_arrow(schema.CORPORATE_ACTIONS.empty_table())
-    assert select_tushare_cash(fresh, client=Forbidden(), audit_dir=tmp_path,
-                               run_id='empty', qmt_sha256='a' * 64).is_empty()
+    accepted, deferred = select_tushare_cash(fresh, client=Forbidden(), audit_dir=tmp_path,
+                                             run_id='empty', qmt_sha256='a' * 64)
+    assert accepted.is_empty() and deferred == []
 
 
 def test_cash_budget_exhaustion_keeps_null_candidate_and_makes_no_more_requests(tmp_path, monkeypatch):
@@ -308,9 +329,10 @@ def test_cash_budget_exhaustion_keeps_null_candidate_and_makes_no_more_requests(
     class Forbidden:
         def call(self, *args):
             raise AssertionError('expired cash lookup must not start a request')
-    with pytest.raises(ValueError, match='cash quality rejected'):
-        dividend_sync.select_tushare_cash(fresh, client=Forbidden(), audit_dir=tmp_path,
-                                          run_id='expired', qmt_sha256='a' * 64)
+    accepted, deferred = dividend_sync.select_tushare_cash(
+        fresh, client=Forbidden(), audit_dir=tmp_path, run_id='expired', qmt_sha256='a' * 64)
+    assert accepted.is_empty()
+    assert [d['issue'] for d in deferred] == ['cash_source_deadline_exceeded']
     assert pl.read_parquet(tmp_path / 'cash-selected.parquet')['cash_per_share'].to_list() == [None]
     assert 'cash_source_deadline_exceeded' in (tmp_path / 'cash-source.jsonl').read_text()
 
@@ -365,12 +387,19 @@ def test_real_snapshot_cash_source_import_and_conflict_checkpoint_boundary(wareh
                   run_id='cash-1', cash_source='tushare',
                   cash_client=cash_client(mutation='request_error' if failure == 'cash_lookup' else None))
     checkpoint = work / 'dividends' / 'last-imported.json'
-    if failure:
-        message = 'existing dividend event conflicts' if failure == 'existing_conflict' else 'cash quality rejected'
-        with pytest.raises(ValueError, match=message):
+    if failure == 'existing_conflict':
+        with pytest.raises(ValueError, match='existing dividend event conflicts'):
             sync_dividends(warehouse, DAY, **kwargs)
         assert not checkpoint.exists()
         assert WarehouseQuery(warehouse).corporate_actions().equals(baseline)
+    elif failure == 'cash_lookup':
+        warnings = []
+        assert sync_dividends(warehouse, DAY, warn=warnings.append, **kwargs) == 0
+        assert WarehouseQuery(warehouse).corporate_actions().equals(baseline)
+        receipt = json.loads(checkpoint.read_text())
+        assert [(d['symbol'], d['ex_date']) for d in receipt['deferred_cash']] == [
+            (SYMBOLS[1], DAY.isoformat())]
+        assert len(warnings) == 1 and SYMBOLS[1] in warnings[0]
     else:
         assert sync_dividends(warehouse, DAY, **kwargs) == 1
         assert WarehouseQuery(warehouse).corporate_actions()['cash_per_share'].to_list() == [.033001]
