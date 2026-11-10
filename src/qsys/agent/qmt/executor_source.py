@@ -523,11 +523,27 @@ def emit(status, **facts):
     print(repr(row))
 
 
+def _attach(state):
+    """Bind to the gateway once its coordinator marker exists (#601 boot order)."""
+    memory = state['memory']
+    marker = coordinator_marker(RUN_ID)
+    if bytes(memory[COORDINATOR_MARKER_OFFSET:COORDINATOR_MARKER_OFFSET + len(marker)]) != marker:
+        return False
+    executor = Executor(RUN_ID, state['key'], state['api'], memory)
+    state['executor'] = executor
+    done = scheduled_marker(RUN_ID)
+    memory[SCHEDULED_MARKER_OFFSET:SCHEDULED_MARKER_OFFSET + len(done)] = done
+    emit('scheduled', task_id=state['task_id'], epoch=executor.epoch)
+    return True
+
+
 def on_timer(C):
     state = _STATE
     if state is None or state['stopped']:
         return
     try:
+        if state['executor'] is None and not _attach(state):
+            return
         state['executor'].tick(C)
     except Exception as exc:
         emit('tick_failed', error_type=type(exc).__name__)
@@ -535,7 +551,9 @@ def on_timer(C):
 
 def _active():
     state = _STATE
-    return state['executor'] if state is not None and not state['stopped'] else None
+    if state is None or state['stopped']:
+        return None
+    return state['executor']
 
 
 def order_callback(C, orderInfo):
@@ -590,20 +608,25 @@ def init(C):
         import mmap
         memory = mmap.mmap(-1, MAP_SIZE, tagname='Local\\qsys_qmt_signal_' + RUN_ID,
                            access=mmap.ACCESS_WRITE)
-        marker = coordinator_marker(RUN_ID)
-        if bytes(memory[COORDINATOR_MARKER_OFFSET:COORDINATOR_MARKER_OFFSET + len(marker)]) != marker:
-            raise ValueError('gateway coordinator marker required')
-        executor = Executor(RUN_ID, bytes.fromhex(KEY_HEX), api, memory)
+        # A previous instance's scheduled marker/heartbeat must never vouch for
+        # this one: withdraw them until this instance has attached.
+        done = scheduled_marker(RUN_ID)
+        memory[SCHEDULED_MARKER_OFFSET:SCHEDULED_MARKER_OFFSET + len(done)] = bytes(len(done))
+        _put(memory, EXECUTOR_OFFSET + 32, 8, 0)
         stage = 'set_account'
         C.set_account(ACCOUNT_ID)
-        _STATE = dict(memory=memory, executor=executor, stopped=False)
+        state = dict(memory=memory, executor=None, stopped=False, api=api,
+                     key=bytes.fromhex(KEY_HEX), task_id=None)
+        _STATE = state
         stage = 'schedule_run'
-        task_id = C.schedule_run(on_timer, datetime.now() + timedelta(seconds=2),
-                                 SCHEDULE_COUNT, timedelta(seconds=1), 'qsys601s_' + RUN_ID)
-        stage = 'publish_scheduled_marker'
-        done = scheduled_marker(RUN_ID)
-        memory[SCHEDULED_MARKER_OFFSET:SCHEDULED_MARKER_OFFSET + len(done)] = done
-        emit('scheduled', task_id=task_id, epoch=executor.epoch)
+        state['task_id'] = C.schedule_run(on_timer, datetime.now() + timedelta(seconds=2),
+                                          SCHEDULE_COUNT, timedelta(seconds=1),
+                                          'qsys601s_' + RUN_ID)
+        # QMT may auto-run this instance before the gateway exists (client restart,
+        # Windows boot): wait on the timer instead of failing init for good.
+        stage = 'attach'
+        if not _attach(state):
+            emit('waiting_for_gateway')
     except Exception as exc:
         emit('init_failed', stage=stage, error_type=type(exc).__name__)
         if _STATE is None and memory is not None:
@@ -624,7 +647,7 @@ def stop(C):
         # marker and heartbeat so a gateway can never mistake a stopped executor
         # for a running one (#601 F4 field finding).
         memory = state['memory']
-        done = scheduled_marker(RUN_ID if valid_id(RUN_ID) else state['executor'].run_id)
+        done = scheduled_marker(RUN_ID)
         memory[SCHEDULED_MARKER_OFFSET:SCHEDULED_MARKER_OFFSET + len(done)] = bytes(len(done))
         _put(memory, EXECUTOR_OFFSET + 32, 8, 0)
     except Exception as exc:
