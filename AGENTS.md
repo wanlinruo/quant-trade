@@ -139,6 +139,19 @@ manifest → `HANDOFF.md` → 其他历史文档。
   对照上一轮finalize逐项核缺。每轮手写的一次性脚本（硬编码run-id/SHA）曾导致绑定滞后
   与验证器缺陷，重复使用的预检/验证步骤应固化为仓库受管入口并带负例测试。
 
+- **数据补跑后按消费者顺序重跑下游**（2026-11-10，#636）：tushare-sync 失败后补跑成功，
+  只代表数据已发布；当晚已按旧数据运行过的下游不会自动更新。补跑后在同一自然日内按
+  定时顺序逐个核对并重跑：limit-up-shadow（19:35，影子榜单）→ catalog-verify（19:40）
+  → service-checks（20:00）；daily-digest（20:30）只在需要重发日报时另行确认。逐个读取
+  新运行记录的 session 与结果，不以上游成功或 systemd success 代替下游产物（影子榜单
+  曾以“成功+旧日快照已存在而跳过”结束，页面显示未运行）。补跑的默认交易日在16:00前
+  只到前一交易日；跨午夜后仍按此规则核对实际 session。
+- **盘中重启 Windows 前核对 Linux 侧依赖**（2026-11-10，#636）：Linux 经加密隧道访问
+  Windows Redis，模拟账户行情、Paper worker 与健康观察都依赖它。重启授权只覆盖
+  QMT/执行器链路时，仍须先列出 Linux 侧 active 的 Redis 消费者及其断连行为（是否会
+  标记账户 error、是否自动恢复），能避开交易时段就避开；重启后核对这些消费者的状态，
+  不能只验 QMT 自启。账户被标 error 后恢复须走备份回读与精确转换，不直接改库。
+
 - **随机延迟timer恢复核对配置与终态**（2026-11-01，#580）：先记录原active/enabled、
   timer定义指纹、随机延迟配置及oneshot真实终态。`FixedRandomDelay=no`时，重新启动timer
   会重新计算`NextElapseUSecRealtime`；不能把原先随机出的绝对时间当固定身份精确比较。
