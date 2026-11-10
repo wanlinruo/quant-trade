@@ -46,7 +46,9 @@ class Rig:
         self.ex = self.mod.Executor(RUN, KEY, self.api.as_api(), self.buf, lambda: self.ms(at))
         self.ex.clock = lambda: self.ms()
 
-    def _sleep(self, _):
+    def _sleep(self, seconds):
+        if getattr(self, 'time_flows', False):
+            self.now += timedelta(seconds=max(seconds, 0.3))   # real clocks move while waiting
         self.mem.beat(self.ms())
         if self.deliver:
             self.ex.tick(None)
@@ -169,3 +171,18 @@ def test_unresolved_blocks_new_buys_until_resolved(tmp_path):
         lost_dispatch(rig, d)
         with pytest.raises(PreDispatchRejection, match='unresolved'):
             d.dispatch(cmd().model_copy(update={'client_order_id': 'q261109002abcdef012345'}))
+
+
+def test_absent_resolves_when_heartbeat_is_newer_than_query_start(tmp_path):
+    """2026-11-10 F4 field finding: the executor answers the snapshot on its next tick and beats
+    in that tick, so its heartbeat is always newer than a ``now`` taken before the query.
+    Freshness must be judged after the query, or no unknown is ever released."""
+    rig = Rig(tmp_path)
+    with rig.open() as d:
+        lost_dispatch(rig, d)
+        r = rig.reconciler(d)
+        rig.time_flows = True
+        rig.advance(121)
+        assert r.run_once() == []
+        rig.advance(6)
+        assert r.run_once() == [(CID, 'absent')]
