@@ -93,3 +93,15 @@
    不写请求、直接按发送前拒单（`executor_not_running`）。
 2. 同号冲突消息只在 PEL 空闲回收时重现，夹杂成功循环使连续错误计数不到 3，未升级落闸。现检测到
    `DispatchConflictError` 立即本地落闸，消息保留不确认以便取证。
+
+## 网关开机自启（2026-11-10 设计）
+
+- 入口 `scripts/run_qmt_gateway_supervisor.py --config <toml> --state-dir <dir> -- <run_qmt_agent 参数>`：
+  守护进程在 session 1 常驻，网关退出后 30 秒重启；15 分钟内退出 3 次视为重启风暴，写本地停机闸
+  （已有闸不覆盖原因）并改为每 5 分钟重启——落闸下网关仍处理卖出与撤单。`<state-dir>\SUPERVISOR_STOP`
+  存在时不再启动网关（维护入口）；守护进程单实例；日志 `<state-dir>\supervisor.jsonl`。
+  重启不重发任何指令：在途意图转 unknown 后按对账条件消解。
+- 计划任务：Administrator 登录触发、无延迟，交互令牌（与 QMT 同 session 1，`Local\` 命名映射
+  要求）、最高权限、不限运行时长、已运行则不再启动新实例；动作通过 PowerShell 设置 `PYTHONPATH`
+  与 `PYTHONDONTWRITEBYTECODE` 后启动守护进程。执行器与网关的先后顺序不再影响接入（#633）。
+- 进程卡死由网关自身 `StallGuard`（默认 60 秒无主循环进展即退出）转为退出，再由守护进程重启。
