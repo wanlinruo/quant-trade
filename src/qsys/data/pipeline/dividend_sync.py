@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+from collections.abc import Callable
 import hashlib
 import json
 import math
@@ -138,8 +139,13 @@ def prepare_cash_source(work_root: Path, *, cash_source: str,
 
 
 def select_tushare_cash(fresh: pl.DataFrame, *, client: TushareClient,
-                        audit_dir: Path, run_id: str, qmt_sha256: str) -> pl.DataFrame:
-    """独立保存现金直取收据；缺证据候选保留null，质量拒绝前不触碰仓库。"""
+                        audit_dir: Path, run_id: str,
+                        qmt_sha256: str) -> tuple[pl.DataFrame, list[dict]]:
+    """独立保存现金直取收据；返回（可入库事件，暂缓事件）。
+
+    Tushare 上游缺值、重复、非实施或请求失败只暂缓对应事件（#636）：审计候选保留
+    null，不补值、不回退 QMT 现金；其余事件照常入库，暂缓事件由后续运行回查。
+    """
     if fresh.select("symbol", "ex_date").is_duplicated().any():
         raise ValueError("duplicate incoming dividend event")
     rows = fresh.to_dicts()
@@ -161,7 +167,8 @@ def select_tushare_cash(fresh: pl.DataFrame, *, client: TushareClient,
             symbol, stamp = row["symbol"], row["ex_date"].strftime("%Y%m%d")
             if monotonic() >= deadline:
                 record({"symbol": symbol, "ex_date": stamp, "error": "cash_source_deadline_exceeded"})
-                issues.append("cash_source_deadline_exceeded")
+                issues.extend((rest, "cash_source_deadline_exceeded")
+                              for rest in range(index, len(rows)))
                 break
             try:
                 response = client.call("dividend", {"ts_code": symbol, "ex_date": stamp},
@@ -171,7 +178,8 @@ def select_tushare_cash(fresh: pl.DataFrame, *, client: TushareClient,
                 # 私有配置/HTTP异常可能包含输入或凭据，只保留类型，禁止外传原消息。
                 record({"symbol": symbol, "ex_date": stamp,
                         "error_type": type(exc).__name__})
-                issues.append("cash_source_request_failed")
+                issues.extend((rest, "cash_source_request_failed")
+                              for rest in range(index, len(rows)))
                 break
             # 非有限数用带类型的审计表示保留，不能生成非标准JSON或写成业务0。
             audited = [{key: {"nonfinite_float": repr(value)}
@@ -181,11 +189,11 @@ def select_tushare_cash(fresh: pl.DataFrame, *, client: TushareClient,
             matches = [value for value in raw if value["ts_code"] == symbol
                        and value["ex_date"] == stamp and value["div_proc"] == "实施"]
             if len(matches) != 1:
-                issues.append("cash_implementation_missing_or_ambiguous")
+                issues.append((index, "cash_implementation_missing_or_ambiguous"))
                 continue
             cash = matches[0]["cash_div_tax"]
             if cash is None:
-                issues.append("cash_value_missing")
+                issues.append((index, "cash_value_missing"))
             else:
                 try:
                     valid = (type(cash) in (int, float) and math.isfinite(cash)
@@ -195,18 +203,24 @@ def select_tushare_cash(fresh: pl.DataFrame, *, client: TushareClient,
                 if valid:
                     selected[index] = cash
                 else:
-                    issues.append("cash_value_invalid")
+                    issues.append((index, "cash_value_invalid"))
         candidate = fresh.with_columns(pl.Series("cash_per_share", selected, dtype=pl.Float64))
         with (audit_dir / "cash-selected.parquet").open("xb") as output:
             pq.write_table(candidate.to_arrow().cast(schema.CORPORATE_ACTIONS), output)
             output.flush()
             os.fsync(output.fileno())
-        record({"status": "rejected" if issues else "accepted", "rows": candidate.height,
+        deferred = [{"symbol": rows[index]["symbol"],
+                     "ex_date": rows[index]["ex_date"].isoformat(), "issue": issue}
+                    for index, issue in issues]
+        record({"status": "deferred" if deferred else "accepted", "rows": candidate.height,
                 "null_cash_cells": candidate["cash_per_share"].null_count(),
-                "issues": issues})
-    if issues:
-        raise ValueError("dividend cash quality rejected; inspect cash-source.jsonl")
-    return candidate
+                "deferred": deferred})
+    held = {index for index, _ in issues}
+    keep = [index not in held for index in range(candidate.height)]
+    accepted = candidate.filter(pl.Series(keep, dtype=pl.Boolean)) if held else candidate
+    if accepted["cash_per_share"].null_count():
+        raise AssertionError("accepted dividend cash must be complete")
+    return accepted, deferred
 
 
 def import_window(day: date, initial_start: date, checkpoint: Path) -> date:
@@ -219,9 +233,14 @@ def import_window(day: date, initial_start: date, checkpoint: Path) -> date:
         if record.get("initial_start") != initial_start.isoformat():
             raise ValueError("dividend initial scope changed")
         previous = date.fromisoformat(record["end"])
+        deferred = [date.fromisoformat(item["ex_date"]) for item in record.get("deferred_cash", [])]
+    else:
+        deferred = []
     if previous > day or initial_start > day:
         raise ValueError("dividend import cannot move backwards")
     start = max(initial_start, previous - timedelta(days=7))
+    # 暂缓的现金事件留在窗口内回查，直至上游更正（#636）；超出协议窗口仍须显式恢复。
+    start = min([start, *(max(initial_start, value) for value in deferred)])
     if (day - start).days > 31:
         raise ValueError("dividend gap exceeds approved window; explicit recovery required")
     return start
@@ -253,8 +272,12 @@ def dividend_universe(instruments: pl.DataFrame, actions: pl.DataFrame,
 def sync_dividends(warehouse: Warehouse, day: date, *, initial_start: date,
                    work_root: Path, transport: WindowsDataTransport,
                    script: Path, run_id: str, cash_source: str = "qmt",
-                   cash_client: TushareClient | None = None) -> int:
-    """调用方持实际warehouse写锁；不重发run，不自动恢复未知送达请求。"""
+                   cash_client: TushareClient | None = None,
+                   warn: Callable[[str], None] | None = None) -> int:
+    """调用方持实际warehouse写锁；不重发run，不自动恢复未知送达请求。
+
+    Tushare 现金暂缓的事件不入库，记入检查点并通过 ``warn`` 报告（#636）。
+    """
     root = work_root / "dividends"
     checkpoint = root / "last-imported.json"
     prepare_cash_source(work_root, cash_source=cash_source, cash_client=cash_client, run_id=run_id)
@@ -296,15 +319,17 @@ def sync_dividends(warehouse: Warehouse, day: date, *, initial_start: date,
     transport.receive(job, destination)
     fresh = validate_snapshot(destination, symbols=symbols, start=start, end=day, run_id=run_id)
     cash_evidence = {}
+    deferred: list[dict] = []
     if cash_source == "tushare":
-        fresh = select_tushare_cash(fresh, client=cash_client, audit_dir=work,
-                                    run_id=run_id, qmt_sha256=_sha(destination / "events.parquet"))
+        fresh, deferred = select_tushare_cash(
+            fresh, client=cash_client, audit_dir=work,
+            run_id=run_id, qmt_sha256=_sha(destination / "events.parquet"))
         cash_evidence = {"cash_receipts_sha256": _sha(work / "cash-source.jsonl"),
                          "cash_selected_sha256": _sha(work / "cash-selected.parquet")}
     rows = append_events(warehouse, fresh)
     record = {**intent, "protocol": "qsys-dividend-import-v1",
               "initial_start": initial_start.isoformat(), "added": rows,
-              "cash_source": cash_source, **cash_evidence,
+              "cash_source": cash_source, **cash_evidence, "deferred_cash": deferred,
               "bundle_sha256": _sha(destination / "events.parquet")}
     temporary = root / f".last-imported-{run_id}.tmp"
     with temporary.open("x", encoding="utf-8") as handle:
@@ -312,4 +337,8 @@ def sync_dividends(warehouse: Warehouse, day: date, *, initial_start: date,
         handle.flush()
         os.fsync(handle.fileno())
     os.replace(temporary, checkpoint)
+    if deferred and warn is not None:
+        shown = "、".join(f"{d['symbol']} {d['ex_date']} {d['issue']}" for d in deferred[:10])
+        more = f" 等 {len(deferred)} 条" if len(deferred) > 10 else ""
+        warn(f"Tushare 现金上游缺陷，暂缓 {len(deferred)} 条事件入库（下次运行回查）：{shown}{more}")
     return rows

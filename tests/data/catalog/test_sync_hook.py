@@ -205,6 +205,32 @@ def sync_main(monkeypatch, tmp_path):
     return SimpleNamespace(events=events, argv=argv, record=run_record)
 
 
+def test_deferred_cash_events_warn_without_failing_sync(monkeypatch, sync_main, tmp_path):
+    """#636：上游现金缺陷只记警告，派生与发布照常运行，任务不判失败。"""
+    from qsys.data.pipeline import dividend_sync
+    from qsys.data import windows_data_transport
+    monkeypatch.setattr(windows_data_transport.WindowsDataTransport, "__init__", lambda *a, **kw: None)
+    monkeypatch.setattr(windows_data_transport.WindowsDataTransport, "close", lambda *_: None)
+    sync_main.argv.extend([
+        "--dividend-sync", "--dividend-initial-start", str(D),
+        "--dividend-win-script-source", str(tmp_path / "approved.py"),
+        "--late-minute-win-transport", "gateway",
+        "--late-minute-win-known-hosts", str(tmp_path / "known_hosts"),
+    ])
+    def snapshot(*args, warn, **kwargs):
+        sync_main.events.append("dividends")
+        warn("Tushare 现金暂缓 1 条：603596.SH 2026-11-10 cash_value_missing")
+        return 0
+    monkeypatch.setattr(dividend_sync, "sync_dividends", snapshot)
+    monkeypatch.setattr(tushare_daily_sync, "converge_late_listing_minutes", lambda *a, **kw: 0)
+    assert tushare_daily_sync.main() == 0
+    assert sync_main.events == ["facts", "dividends", "derived", "canonical", "quality"]
+    record = sync_main.record()
+    step = next(s for s in record["steps"] if s["table"] == "corporate_actions")
+    assert step["status"] == "warning" and "603596.SH" in step["detail"]
+    assert record["status"] != "failed"
+
+
 @pytest.mark.parametrize("fails", [False, True])
 def test_dividend_snapshot_precedes_factors_and_failure_keeps_quality(
     monkeypatch, sync_main, tmp_path, fails,
