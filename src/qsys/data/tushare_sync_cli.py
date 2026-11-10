@@ -235,6 +235,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--warehouse", type=Path, default=Path("warehouse"))
     parser.add_argument("--config", type=Path, default=Path("config/deploy.local.toml"))
+    parser.add_argument("--block-trade-sync", action="store_true",
+                        help="同步 Tushare 大宗交易（#608）；组件写路径与读者发布就绪前保持关闭")
     parser.add_argument("--day", type=date.fromisoformat, default=None,
                         help="指定交易日；不给则取最近一个已收盘交易日")
     parser.add_argument("--service-runs", type=Path, default=Path("var/service-runs"),
@@ -316,7 +318,7 @@ def main() -> int:
 
         warehouse = Warehouse(args.warehouse)
         provider = TushareProvider(client)
-        counts = sync(provider, warehouse, day, run=run)
+        counts = sync(provider, warehouse, day, run=run, block_trade=args.block_trade_sync)
         if args.dividend_sync:
             from qsys.data.pipeline.dividend_sync import sync_dividends
             from qsys.data.windows_data_transport import WindowsDataTransport

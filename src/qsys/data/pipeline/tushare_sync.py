@@ -184,7 +184,7 @@ def completed_calendar_end(now: datetime) -> date:
 
 
 def sync(provider, warehouse: Warehouse, day: date, *,
-         run: ServiceRun | None = None) -> dict[str, int]:
+         run: ServiceRun | None = None, block_trade: bool = False) -> dict[str, int]:
     """同步一个交易日。返回 {数据集: 写入行数}。
 
     日线为空直接抛错，**且在抛错之前不写任何表**——半张表比没有表更难查。
@@ -203,6 +203,9 @@ def sync(provider, warehouse: Warehouse, day: date, *,
         counts = {"tushare_daily": write_year(warehouse, frame, day.year)}
         step.rows = counts["tushare_daily"]
     for name, ingest in _REFERENCE_STEPS:
+        if name == "block_trade_daily" and not block_trade:
+            # 组件写路径、目录 ACL 与读者发布就绪前默认关闭（#608/#636）。
+            continue
         label, interface, table = STEP_SOURCES.get(name, (name, None, name))
         with record_step(run, label, interface=interface, table=table) as step:
             if ingest is reference.ingest_suspensions:

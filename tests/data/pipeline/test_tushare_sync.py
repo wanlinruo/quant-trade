@@ -356,3 +356,14 @@ def test_suspension_unresolved_warning_reaches_service_run_and_survives_next_syn
         assert step.status == WARNING and run.status == WARNING
         assert step.progress['unresolved_observation_ids']
         assert 'accepted_scope=current_entry_only' in step.detail
+
+
+def test_block_trade_step_is_off_until_its_release_is_prepared(warehouse, monkeypatch):
+    """#636：block_trade_daily 尚无组件写路径与读者发布，默认不接入每日同步。"""
+    called = []
+    monkeypatch.setattr(tushare_sync, "_REFERENCE_STEPS", [
+        ("block_trade_daily", lambda *a, **kw: called.append("block") or 0)])
+    sync(FakeProvider(), warehouse, DAY)
+    assert called == []
+    counts = sync(FakeProvider(), warehouse, DAY, block_trade=True)
+    assert called == ["block"] and counts["block_trade_daily"] == 0
