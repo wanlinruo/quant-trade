@@ -79,6 +79,7 @@ def test_cycle_observes_before_publishing_and_preserves_explicit_inputs(
     commands = []
     session = date(2026, 10, 16)
     monkeypatch.setattr(cycle, "latest_feature_session", lambda root: session)
+    monkeypatch.setattr(cycle, "expected_feature_session", lambda root, now: session)
 
     def execute(command, **kwargs):
         commands.append(command)
@@ -135,3 +136,57 @@ def test_observation_failure_prevents_ranking_publication(tmp_path, monkeypatch)
         cycle.main()
     assert len(commands) == 1
     assert commands[0][2] == "qsys.research.limit_up_shadow_observe_cli"
+
+
+def _cycle_argv(tmp_path):
+    argv = ["qsys-limit-up-shadow"]
+    for name in ("warehouse", "research-run", "drift-reference", "state", "config", "service-runs"):
+        argv += [f"--{name}", str(tmp_path / name)]
+    return argv
+
+
+@pytest.mark.parametrize("expected,reason", [
+    (date(2026, 11, 10), "上游当日数据未到"), (None, "交易日历不可用"),
+])
+def test_stale_features_warn_and_do_not_publish_an_old_day(tmp_path, monkeypatch, expected, reason):
+    """#636：11-10 tushare-sync 失败时，影子榜单不能以成功+跳过旧日结束。"""
+    from qsys.ops.services import load_runs
+    from qsys.research import limit_up_shadow_cli as cycle
+
+    commands = []
+    monkeypatch.setattr(cycle, "latest_feature_session", lambda root: date(2026, 11, 9))
+    monkeypatch.setattr(cycle, "expected_feature_session", lambda root, now: expected)
+
+    def execute(command, **kwargs):
+        commands.append(command[2])
+        return subprocess.CompletedProcess(command, 0, '{"recorded": []}\n', "")
+
+    monkeypatch.setattr(cycle.subprocess, "run", execute)
+    monkeypatch.setattr(sys, "argv", _cycle_argv(tmp_path))
+    assert cycle.main() == 0
+    assert commands == ["qsys.research.limit_up_shadow_observe_cli"]
+    today = date.today()
+    record = load_runs(tmp_path / "service-runs", today, today)[0]
+    assert record["status"] == "warning"
+    ready = next(step for step in record["steps"] if step["name"] == "上游数据就绪")
+    assert ready["status"] == "warning" and reason in ready["detail"]
+    assert "2026-11-09" in ready["detail"]
+
+
+def test_expected_feature_session_uses_stored_calendar_and_close_cutoff(tmp_path):
+    from datetime import datetime
+
+    import polars as pl
+
+    from qsys.research.limit_up_shadow import expected_feature_session
+
+    folder = tmp_path / "trading_calendar" / "year=2026"
+    folder.mkdir(parents=True)
+    pl.DataFrame({
+        "market": ["SSE"] * 4, "dt": [date(2026, 11, d) for d in (7, 9, 10, 11)],
+        "is_open": [False, True, True, True], "pretrade_date": [None] * 4,
+    }).write_parquet(folder / "part.parquet")
+    assert expected_feature_session(tmp_path, datetime(2026, 11, 10, 19, 35)) == date(2026, 11, 10)
+    assert expected_feature_session(tmp_path, datetime(2026, 11, 11, 0, 3)) == date(2026, 11, 10)
+    assert expected_feature_session(tmp_path, datetime(2026, 11, 10, 15, 59)) == date(2026, 11, 9)
+    assert expected_feature_session(tmp_path / "missing", datetime(2026, 11, 10, 19, 35)) is None
