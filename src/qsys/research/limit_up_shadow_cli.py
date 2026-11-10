@@ -6,10 +6,14 @@ import argparse
 import json
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from qsys.ops.services import ServiceRun
-from qsys.research.limit_up_shadow import latest_feature_session
+from qsys.research.limit_up_shadow import expected_feature_session, latest_feature_session
+
+SHANGHAI = ZoneInfo("Asia/Shanghai")
 
 
 def _run(command: list[str]) -> dict:
@@ -42,6 +46,19 @@ def main() -> int:
     python = sys.executable
     with ServiceRun.open(args.service_runs, "limit-up-shadow") as run:
         run.session = latest_feature_session(args.warehouse)
+        expected = expected_feature_session(
+            args.warehouse, datetime.now(SHANGHAI).replace(tzinfo=None))
+        ready = expected is not None and run.session >= expected
+        if not ready:
+            # 不能以“成功 + 旧日快照已存在而跳过”结束：页面会显示未运行却无告警（#636）。
+            with run.step("上游数据就绪", interface="仓库交易日历只读",
+                          table="market_regime") as step:
+                if expected is None:
+                    step.warn(f"交易日历不可用，无法判断当日数据是否到齐；最新特征日 {run.session}，"
+                              "本次不生成榜单")
+                else:
+                    step.warn(f"上游当日数据未到：应为 {expected}，最新特征日 {run.session}；"
+                              "本次不生成榜单，数据补齐后需重跑")
         with run.step("回填到期结果", interface="仓库只读", table="limit_up_shadow_outcomes") as step:
             result = _run([
                 python, "-m", "qsys.research.limit_up_shadow_observe_cli",
@@ -49,6 +66,8 @@ def main() -> int:
             ])
             step.rows = len(result.get("recorded", []))
             step.detail = json.dumps(result, ensure_ascii=False)[:2_000]
+        if not ready:
+            return 0
         with run.step("生成影子榜单", interface="仓库与研究证据只读",
                       table="limit_up_shadow_snapshots") as step:
             result = _run([

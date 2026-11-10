@@ -7,7 +7,7 @@ import io
 import json
 import math
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, time as dt_time, timedelta
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -258,6 +258,26 @@ def latest_feature_session(warehouse: Path) -> date:
     latest = pl.scan_parquet(paths).select(pl.col("dt").max()).collect().item()
     if latest is None:
         raise ValueError("market_regime has no sessions")
+    return latest
+
+
+def expected_feature_session(warehouse: Path, now: datetime) -> date | None:
+    """此刻应已收盘的最近交易日；只读已落库的直取交易日历（#636）。
+
+    16:00 前不把当日算作已收盘，与 tushare-sync 的选日规则一致。日历缺失或
+    无交易日时返回 None，由调用方明确报“无法判断”，不按工作日推算。
+    """
+    paths = list((Path(warehouse) / "trading_calendar").glob("year=*/part.parquet"))
+    if not paths:
+        return None
+    end = now.date() if now.time() >= dt_time(16, 0) else now.date() - timedelta(days=1)
+    latest = (
+        pl.scan_parquet(paths)
+        .filter((pl.col("market") == "SSE") & pl.col("is_open") & (pl.col("dt") <= end))
+        .select(pl.col("dt").max())
+        .collect()
+        .item()
+    )
     return latest
 
 
