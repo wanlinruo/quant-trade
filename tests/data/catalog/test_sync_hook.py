@@ -58,7 +58,7 @@ def test_main_calls_hook_after_facts_and_derived_refresh(monkeypatch, tmp_path):
     monkeypatch.setattr(tushare_daily_sync, "TushareProvider", lambda client: object())
     monkeypatch.setattr(
         tushare_daily_sync, "sync",
-        lambda provider, warehouse, day, run=None: events.append("facts") or {"facts": 1},
+        lambda provider, warehouse, day, run=None, block_trade=False: events.append("facts") or {"facts": 1},
     )
     monkeypatch.setattr(
         tushare_daily_sync, "refresh_derived",
