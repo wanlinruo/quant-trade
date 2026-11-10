@@ -41,12 +41,14 @@ class UnknownReconciler:
         if not rows:
             self._absent.clear()
             return []
-        now = self._clock()
         try:
             self._adapter.query_account_details()      # 新鲜 ORDER 查询并读入报告
         except Exception as exc:
             log.warning('qmt.reconcile_query_failed', error=type(exc).__name__)
             return []
+        # 执行器在下一次定时回调中应答并刷新心跳；时刻须在查询之后取，否则心跳总是
+        # “晚于 now”而永远判为不新鲜（#601 2026-11-10 F4 现场发现）。
+        now = self._clock()
         state = self._memory.executor_state()
         fresh = 0 <= _ms(now) - state.heartbeat_ms <= HEARTBEAT_FRESH_MS
         out: list[tuple[str, str]] = []
