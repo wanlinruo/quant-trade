@@ -51,6 +51,14 @@ class QuoteTimeout(QuoteUnavailable, TimeoutError):
     pass
 
 
+def _connection_errors() -> tuple[type[BaseException], ...]:
+    """传输层断连（Redis 隧道随 Windows 重启断开等）。只认连接/超时，不吞协议或数据错误。"""
+    import redis.exceptions
+
+    return (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError,
+            ConnectionError)
+
+
 # 09:30 前后网关最忙：既要服务全市场报价请求，又要做当日涨跌停核对与全市场概览。
 # 2026-09-21 影子核心以 5 秒超时请求 41 个标的失败，当日竞价事件被判过期跳过。
 # 决策事件宁可多等，也不能因为一次拥塞丢掉当天的信号。
@@ -71,6 +79,13 @@ class QuoteClient:
         unique = sorted(set(symbols))
         if not unique:
             return {}
+        try:
+            return self._request(unique)
+        except _connection_errors() as exc:
+            # 与网关超时同属暂时拿不到行情：调用方按行情中断时限重试并从库重建（#636）。
+            raise QuoteUnavailable(f"Redis 连接中断：{exc}") from exc
+
+    def _request(self, unique: list[str]) -> dict[str, MarketQuote]:
         # This stream fans every client's responses out to every consumer
         # group.  A long-idle/restarted client must not spend its five-second
         # request budget replaying thousands of responses that can no longer

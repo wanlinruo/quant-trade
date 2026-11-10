@@ -252,3 +252,27 @@ def test_limit_check_waits_until_tushare_limits_are_published():
     transport, streams = MemoryTransport(), StreamConfig()
     gateway = MarketGateway(transport, streams, lambda symbols: {})
     assert gateway.check_limits_step(lambda s: {}, date(2026, 9, 17)) is False
+
+
+def test_redis_connection_loss_is_a_retryable_quote_outage():
+    """#636：Windows 重启时 Redis 隧道断开，不能把模拟账户直接打成 error。"""
+    import pytest
+    import redis.exceptions
+
+    from qsys.paper.quotes import QuoteUnavailable
+
+    class Dropping(MemoryTransport):
+        def __init__(self, exc):
+            super().__init__()
+            self.exc = exc
+
+        def append(self, stream, payload):
+            raise self.exc
+
+    streams = StreamConfig()
+    for exc in (redis.exceptions.ConnectionError("Connection closed by server."),
+                redis.exceptions.TimeoutError("Timeout reading from socket"),
+                ConnectionResetError(104, "Connection reset by peer")):
+        client = QuoteClient(Dropping(exc), streams, consumer="test", timeout=1)
+        with pytest.raises(QuoteUnavailable, match="Redis 连接中断"):
+            client.request(["600036.SH"])
