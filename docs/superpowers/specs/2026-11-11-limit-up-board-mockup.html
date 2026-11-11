@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>qsys · 打板看板 v6</title>
+<style>
+/* ---- 以下摘自现有 base.html ---- */
+:root { --fg:#172033; --muted:#697386; --line:#e5e9f0; --bg:#f4f6f9;
+        --surface:#fff; --primary:#2463b5; --primary-soft:#edf4ff;
+        --ok:#16a34a; --warn:#d97706; --bad:#dc2626; }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--fg); font-size:14px;
+       font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif; }
+header { background:#172c57; border-bottom:1px solid #203864; min-height:58px; padding:0 24px;
+         display:flex; align-items:center; gap:28px; flex-wrap:wrap; color:#fff; }
+header h1 { font-size:18px; margin:0; font-weight:700; }
+header nav a { color:#bdc9dc; line-height:58px; display:inline-block; text-decoration:none; margin-right:14px; }
+header nav a.active { color:#fff; }
+.header-spacer { flex:1; }
+.utility-link { color:#bdc9dc; text-decoration:none; }
+.kill-badge { padding:5px 10px; border-radius:5px; text-decoration:none; white-space:nowrap; font-weight:600; background:#fee2e2; color:#991b1b; font-size:13px; }
+.subnav { background:#fff; border-bottom:1px solid var(--line); padding:0 24px; display:flex; gap:26px; }
+.subnav a { color:var(--muted); text-decoration:none; line-height:46px; border-bottom:3px solid transparent; }
+.subnav a.active { color:var(--primary); border-color:var(--primary); font-weight:600; }
+main { padding:24px; max-width:1600px; margin:0 auto; }
+.page-head { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:18px; }
+.page-head h2 { margin:0; font-size:20px; }
+.page-head p { margin:5px 0 0; }
+.muted { color:var(--muted); }
+.pill { display:inline-block; padding:1px 8px; border-radius:999px; font-size:12px; }
+.pill.ok { background:#dcfce7; color:var(--ok); } .pill.bad { background:#fee2e2; color:var(--bad); }
+.pill.warn { background:#fef3c7; color:var(--warn); } .pill.todo { background:#f1f5f9; color:#64748b; }
+.panel { background:var(--surface); border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+.panel-title { min-height:48px; padding:0 16px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:10px; font-weight:600; }
+.metric-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(135px,1fr)); gap:1px; background:var(--line); border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+.metric { background:#fff; padding:15px 16px; min-height:82px; }
+.metric .label { color:var(--muted); font-size:12px; margin-bottom:7px; }
+.metric .value { font-size:20px; font-weight:650; font-variant-numeric:tabular-nums; }
+.tabs { display:flex; gap:24px; border-bottom:1px solid var(--line); padding:0 16px; }
+.tab-button { border:0; border-bottom:3px solid transparent; border-radius:0; color:var(--muted); background:transparent; padding:13px 2px 10px; cursor:pointer; font:inherit; }
+.tab-button.active { color:var(--primary); border-color:var(--primary); }
+input { font:inherit; border:1px solid var(--line); border-radius:6px; padding:6px 8px; }
+button.secondary { font:inherit; border:0; border-radius:6px; padding:7px 14px; background:#e2e8f0; color:var(--fg); cursor:pointer; }
+/* ---- 本页新增，全部复用上面的变量 ---- */
+.note { background:#fffbeb; border-bottom:1px solid #fde68a; color:#92400e; padding:6px 24px; font-size:12px; }
+.head-right { display:flex; align-items:center; gap:10px; }
+.day-picker { display:flex; align-items:center; gap:8px; font-size:13px; }
+.sec { margin-bottom:16px; }
+.metric .value small { font-size:12px; color:var(--muted); font-weight:400; margin-left:4px; }
+.v-bad { color:var(--bad); } .v-warn { color:var(--warn); }
+.replay { display:none; align-items:center; gap:12px; padding:12px 16px; border-bottom:1px solid var(--line); font-size:13px; }
+.replay input[type=range] { flex:1; border:0; padding:0; }
+.layout { display:grid; grid-template-columns:minmax(0,1fr) 400px; gap:16px; }
+table.ladder { width:100%; border-collapse:collapse; table-layout:fixed; font-size:13px; }
+.ladder th { text-align:left; font-weight:600; padding:10px 8px; border-bottom:1px solid var(--line); border-left:1px solid var(--line); background:#fafbfc; }
+.ladder th:first-child { border-left:0; }
+.ladder th .n { color:var(--bad); margin-left:4px; }
+.ladder th .g { display:block; color:var(--muted); font-size:11px; font-weight:400; margin-top:2px; }
+.ladder td { vertical-align:top; padding:6px; border-bottom:1px solid var(--line); border-left:1px solid var(--line); }
+.ladder td.lv { border-left:0; width:78px; text-align:center; vertical-align:middle; background:#fafbfc; }
+.ladder td.lv b { display:block; font-size:15px; color:var(--bad); }
+.ladder td.lv span { font-size:11px; color:var(--muted); }
+.ladder td.lv.alt b { color:var(--warn); }
+.chip { border:1px solid var(--line); border-radius:6px; padding:5px 7px; margin-bottom:5px; cursor:pointer; background:#fff; }
+.chip:hover { border-color:var(--primary); }
+.chip.sel { border-color:var(--primary); box-shadow:0 0 0 2px var(--primary-soft); }
+.chip .nm { font-weight:600; }
+.chip .mt { display:flex; flex-wrap:wrap; gap:2px 8px; color:var(--muted); font-size:11px; margin-top:2px; font-variant-numeric:tabular-nums; }
+.chip.one { background:#fef2f2; border-color:#fecaca; }
+.chip.re { background:#fffbeb; border-color:#fde68a; }
+.chip.brk { border-style:dashed; color:var(--muted); }
+.chip.rush { border-style:dashed; border-color:#fcd34d; }
+.chip.bj { opacity:.5; }
+.chip.more { color:var(--primary); text-align:center; font-size:12px; border-style:dashed; }
+.tag { display:inline-block; font-size:10px; padding:0 5px; border-radius:999px; margin-left:4px; vertical-align:1px; font-weight:500; }
+.tag.st { background:#ede9fe; color:#6d28d9; } .tag.bj { background:#f1f5f9; color:#64748b; } .tag.unk { background:#fef3c7; color:var(--warn); }
+.diff { display:none; color:var(--bad); font-size:11px; margin-top:2px; }
+body.m-final .diff { display:block; }
+.legend { padding:10px 16px; color:var(--muted); font-size:12px; line-height:1.7; border-top:1px solid var(--line); }
+.side { display:flex; flex-direction:column; gap:16px; }
+.side .body { padding:12px 16px; }
+.side svg { width:100%; display:block; }
+.lg { color:var(--muted); font-size:12px; margin-top:6px; }
+.lg i { display:inline-block; width:14px; height:3px; vertical-align:middle; margin:0 4px 0 10px; }
+.lg i:first-child { margin-left:0; }
+.ev { display:flex; gap:12px; padding:6px 0; border-bottom:1px solid var(--line); font-size:13px; }
+.ev:last-child { border-bottom:0; }
+.ev .t { width:62px; color:var(--muted); font-variant-numeric:tabular-nums; }
+.only-live,.only-final,.only-hist { display:none; }
+body.m-live .only-live, body.m-final .only-final, body.m-hist .only-hist { display:inline; }
+.vsw{display:flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.vsw button{border:0;background:#fff;color:var(--muted);padding:6px 14px;cursor:pointer;font:inherit;font-size:13px}
+.vsw button.on{background:var(--primary-soft);color:var(--primary);font-weight:600}
+table.cmp{width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed}
+.cmp th,.cmp td{padding:7px 12px;border-bottom:1px solid var(--line);text-align:left}
+.cmp tr.hd th{background:#fafbfc;font-weight:600}
+.cmp th.yh{width:44%}.cmp th.arr{width:28px;color:var(--bad);text-align:center;padding:0}.cmp th.th{color:var(--bad);width:36%;background:#fef2f2}.cmp th.rt{text-align:right;color:var(--muted);font-weight:500;font-size:12px}
+.cmp td:nth-child(3){background:#fffafa}
+.cmp .nm{font-weight:600;display:inline-block;min-width:64px}
+.cmp .pc{margin-left:10px;font-variant-numeric:tabular-nums;font-weight:600}
+.cmp .pc.r{color:var(--bad)}.cmp .pc.g{color:var(--ok)}
+.cmp .tp{margin-left:10px;font-size:11px;color:var(--primary);background:var(--primary-soft);border-radius:999px;padding:1px 6px}
+.cmp .mt2{margin-left:10px;font-size:11px;color:var(--muted)}
+.cmp tr.miss td:first-child{color:var(--muted)}.cmp tr.miss .nm{font-weight:400}
+.cmp .st2{margin-left:10px;font-size:11px;background:#f1f5f9;color:#64748b;border-radius:999px;padding:1px 6px}.cmp .st2.rush{background:#fef3c7;color:var(--warn)}
+.cmp .more2{color:var(--primary);font-size:12px;text-align:center}
+.cmp th.ai{width:20%;font-weight:500;font-size:12px;color:var(--primary);background:var(--primary-soft)}
+.cmp .rs{float:right;font-weight:500;font-size:12px;color:var(--muted)}
+.cmp td.aic{background:#f8fbff;font-size:12px;white-space:nowrap}
+.cmp .pr{color:var(--primary);font-variant-numeric:tabular-nums;margin-right:8px}
+.cmp .res{font-size:11px;border-radius:999px;padding:1px 6px}
+.cmp .res.ok{background:#fee2e2;color:var(--bad)}.cmp .res.no{background:#f1f5f9;color:#64748b}.cmp .res.wait{background:#fef3c7;color:var(--warn)}.cmp .res.na{color:var(--muted)}
+.cmp th.yh{width:36%}.cmp th.th{width:32%}
+.aibar{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--line);font-size:12px}
+.only-fh{display:none}body.m-final .only-fh,body.m-hist .only-fh{display:inline}
+</style>
+</head>
+<body class="m-live">
+<div class="note">设计稿 v6（今/昨对比新增"AI 晋级（影子）"列；切换盘中/盘后标签页可看两种显示方式）：顶栏、子导航、标题、指标格、面板和标签页都照搬现有系统的样式，数据仍是编的。可以切换下方三个标签页，也可以点卡片。</div>
+
+<header>
+ <h1>qsys</h1>
+ <nav><a class="active">行情</a><a>策略</a><a>回测</a><a>模拟交易</a><a>实盘监控</a></nav>
+ <span class="kill-badge">实盘已停机</span>
+ <span class="header-spacer"></span>
+ <a class="utility-link">数据管理</a><a class="utility-link">服务管理</a>
+</header>
+<div class="subnav"><a>行情总览</a><a class="active">打板看板</a><a>涨停观察</a><a>研究回测</a></div>
+
+<main>
+ <div class="page-head">
+  <div><h2>打板看板</h2><p class="muted">同花顺概念 × 连板高度，盘中每 15 秒刷新；只读，不是交易信号。</p></div>
+  <div class="head-right">
+   <form class="day-picker" onsubmit="return false"><label class="muted">交易日</label><input type="date" id="day" value="2026-11-11"><button class="secondary">查看</button></form>
+   <span class="pill ok only-live">实时</span><span class="muted only-live">10:02:30</span>
+   <span class="pill ok only-final" style="background:var(--primary-soft);color:var(--primary)">直取定版</span><span class="pill bad only-final">对账差异 2</span>
+   <span class="pill warn only-hist">无盘中留存</span>
+  </div>
+ </div>
+
+ <section class="panel sec">
+  <div class="tabs" id="tabs">
+   <button class="tab-button active" data-m="live">盘中实时</button>
+   <button class="tab-button" data-m="final">盘后定版</button>
+   <button class="tab-button" data-m="hist">历史日期</button>
+  </div>
+  <div class="replay" id="replay">
+   <span class="muted">盘中回放</span><span>09:30</span><input type="range" min="0" max="100" value="22"><span>15:00</span><span class="pill todo">10:02:30</span>
+  </div>
+ </section>
+
+ <div class="metric-grid sec">
+  <div class="metric"><div class="label">涨停 / 跌停</div><div class="value"><span class="v-bad">62</span> / 5</div></div>
+  <div class="metric"><div class="label">触板 / 炸板</div><div class="value">81 / <span class="v-warn">19</span></div></div>
+  <div class="metric"><div class="label">封板率</div><div class="value">76.5%</div></div>
+  <div class="metric"><div class="label">最高板</div><div class="value v-bad">5 板<small>己股份</small></div></div>
+  <div class="metric"><div class="label">晋级 1→2</div><div class="value">8<small>/ 51 · 15.7%</small></div></div>
+  <div class="metric"><div class="label">晋级 2→3</div><div class="value">3<small>/ 9 · 33.3%</small></div></div>
+  <div class="metric"><div class="label">晋级 3→4+</div><div class="value">2<small>/ 4</small></div></div>
+  <div class="metric"><div class="label">冲板中（≥7%）</div><div class="value v-warn">14</div></div>
+  <div class="metric" title="缺直取涨停价，或到价但盘口量缺失，不计入涨停"><div class="label">缺涨停价 / 封板未知</div><div class="value">0 / 1</div></div>
+ </div>
+
+ <div class="layout">
+  <section class="panel">
+   <div class="panel-title"><div class="vsw" id="vsw"><button class="on" data-v="ladder">题材梯队</button><button data-v="cmp">今/昨对比</button></div><span class="muted vhint" style="font-weight:400;font-size:12px">按今日封过板家数排序 · 每只票只归一列 · 成分 &gt;300 的概念不参与</span></div>
+   <div id="v-cmp" style="display:none">
+    <div class="aibar"><span class="pill todo">AI 影子 · 非交易信号</span><span class="muted">模型 v2026-10-10 · 滚动 Precision@20 31.5% · 昨日预测对今日 2 板以上票的命中 6/11</span><a class="muted" style="margin-left:auto">查看 AI 涨停观察 →</a></div>
+    <table class="cmp">
+     <tr class="hd"><th class="yh">昨日 4 板（1）</th><th class="arr">→</th><th class="th">今日 5 板（1）<span class="rs">晋级 1/1</span></th><th class="ai"><span class="only-live">昨日预测 → 今日结果</span><span class="only-fh">明日晋级概率</span></th></tr>
+     <tr><td><span class="nm">己股份</span><span class="pc r">+10.01%</span><span class="tp">其他</span></td><td></td><td><span class="nm">己股份</span><span class="pc r">+10.01%</span><span class="mt2">09:25 一字</span></td><td class="aic"><span class="only-live"><b class="pr">41%</b><span class="res ok">✓ 晋级</span></span><span class="only-fh"><b class="pr">23%</b></span></td></tr>
+     <tr class="hd"><th class="yh">昨日 3 板（4）</th><th class="arr">→</th><th class="th">今日 4 板（2）<span class="rs">晋级 2/4 · 50%</span></th><th class="ai"><span class="only-live">昨日预测 → 今日结果</span><span class="only-fh">明日晋级概率</span></th></tr>
+     <tr><td><span class="nm">甲科技</span><span class="pc r">+10.02%</span><span class="tp">机器人</span></td><td></td><td><span class="nm">甲科技</span><span class="pc r">+10.02%</span><span class="mt2">≈09:31 封 1.1 亿</span></td><td class="aic"><span class="only-live"><b class="pr">36%</b><span class="res ok">✓ 晋级</span></span><span class="only-fh"><b class="pr">18%</b></span></td></tr>
+     <tr><td><span class="nm">庚药业</span><span class="pc r">+9.98%</span><span class="tp">其他</span></td><td></td><td><span class="nm">庚药业</span><span class="pc r">+9.98%</span><span class="mt2">≈10:12</span></td><td class="aic"><span class="only-live"><b class="pr">12%</b><span class="res ok">✓ 晋级</span></span><span class="only-fh"><b class="pr">9%</b></span></td></tr>
+     <tr class="miss"><td><span class="nm">寅化工</span><span class="pc r">+3.10%</span><span class="st2">炸板</span></td><td></td><td></td><td class="aic"><span class="only-live"><b class="pr">30%</b><span class="res no">✗ 未晋级</span></span><span class="only-fh"><span class="res na">未晋级 · 不适用</span></span></td></tr>
+     <tr class="miss"><td><span class="nm">辰海运</span><span class="pc g">−6.94%</span><span class="st2">断板</span></td><td></td><td></td><td class="aic"><span class="only-live"><b class="pr">8%</b><span class="res no">✗ 未晋级</span></span><span class="only-fh"><span class="res na">未晋级 · 不适用</span></span></td></tr>
+     <tr class="hd"><th class="yh">昨日 2 板（9）</th><th class="arr">→</th><th class="th">今日 3 板（3）<span class="rs">晋级 3/9 · 33%</span></th><th class="ai"><span class="only-live">昨日预测 → 今日结果</span><span class="only-fh">明日晋级概率</span></th></tr>
+     <tr><td><span class="nm">辛机械</span><span class="pc r">+10.00%</span><span class="tp">机器人</span></td><td></td><td><span class="nm">辛机械</span><span class="pc r">+10.00%</span><span class="mt2">≈09:50</span></td><td class="aic"><span class="only-live"><b class="pr">27%</b><span class="res ok">✓ 晋级</span></span><span class="only-fh"><b class="pr">15%</b></span></td></tr>
+     <tr><td><span class="nm">卯能源</span><span class="tag st">ST</span><span class="pc r">+5.01%</span><span class="tp">固态电池</span></td><td></td><td><span class="nm">卯能源</span><span class="tag st">ST</span><span class="pc r">+5.01%</span><span class="mt2">≈09:58</span></td><td class="aic"><span class="only-live"><span class="res na">昨日无预测</span></span><span class="only-fh"><span class="res na">无预测</span></span></td></tr>
+     <tr><td><span class="nm">壬电子</span><span class="pc r">+10.01%</span><span class="tp">其他</span></td><td></td><td><span class="nm">壬电子</span><span class="pc r">+10.01%</span><span class="mt2">≈09:44 开 2 回封</span></td><td class="aic"><span class="only-live"><b class="pr">19%</b><span class="res ok">✓ 晋级</span></span><span class="only-fh"><b class="pr">11%</b></span></td></tr>
+     <tr class="miss"><td><span class="nm">戊传动</span><span class="pc r">+8.60%</span><span class="st2 rush">冲板中</span></td><td></td><td></td><td class="aic"><span class="only-live"><b class="pr">22%</b><span class="res wait">… 进行中</span></span><span class="only-fh"><span class="res na">未晋级 · 不适用</span></span></td></tr>
+     <tr class="miss"><td><span class="nm">未电池</span><span class="pc r">+6.00%</span><span class="st2">炸板</span></td><td></td><td></td><td class="aic"><span class="only-live"><b class="pr">15%</b><span class="res no">✗ 未晋级</span></span><span class="only-fh"><span class="res na">未晋级 · 不适用</span></span></td></tr>
+     <tr class="miss"><td colspan="4" class="more2">其余 4 只：+2.1% / −0.8% / −3.5% / −9.98% 跌停　展开 ▾</td></tr>
+     <tr class="hd"><th class="yh">昨日首板（51）</th><th class="arr">→</th><th class="th">今日 2 板（8）<span class="rs">晋级 8/51 · 16%</span></th><th class="ai"><span class="only-live">昨日预测 → 今日结果</span><span class="only-fh">明日晋级概率</span></th></tr>
+     <tr><td colspan="4" class="more2">按今日涨幅排序；默认只显示已晋级 8 只 + 冲板中 3 只　展开全部 51 只 ▾</td></tr>
+    </table>
+    <div class="legend">每一组都是"昨日 N 板 → 今日 N+1 板"。左列是昨日 N 板的全部个股，显示今日涨跌幅（涨红跌绿）；已晋级的排在前面，右列同一行显示它今日封板的信息；未晋级的灰化，并标出炸板 / 断板 / 冲板中 / 跌停。每组标题右侧是晋级家数和晋级率。<br>"AI 晋级（影子）"列只读取系统已有的 AI 涨停观察结果，看板本身不做任何计算：盘中显示<b>昨天对这只票的预测概率</b>和今天的实际结果（✓ / ✗ / 进行中），盘后和历史日期显示<b>明日晋级概率</b>（即该影子模型给出的 T+1 收盘封板概率）。这一列仅供影子观测，不是交易信号。</div>
+   </div>
+   <table class="ladder" id="v-ladder">
+    <tr>
+     <th style="width:78px">高度</th>
+     <th>机器人<span class="n">9</span><span class="g">4·2·1·1·1 · 首家 09:31</span></th>
+     <th>固态电池<span class="n">6</span><span class="g">4·1·1 · 首家 09:36</span></th>
+     <th>低空经济<span class="n">4</span><span class="g">3·1 · 首家 09:47</span></th>
+     <th>算力租赁<span class="n">3</span><span class="g">3 · 首家 10:20</span></th>
+     <th>其他<span class="n">40</span><span class="g">泛概念或零散</span></th>
+    </tr>
+    <tr><td class="lv"><b>5 板</b><span>昨 1 → 今 1</span></td><td></td><td></td><td></td><td></td>
+     <td><div class="chip one" data-s="己股份"><div class="nm">己股份</div><div class="mt"><span>09:25 一字</span><span>封 3.2 亿</span></div></div></td></tr>
+    <tr><td class="lv"><b>4 板</b><span>昨 4 → 今 2</span></td>
+     <td><div class="chip sel" data-s="甲科技"><div class="nm">甲科技</div><div class="mt"><span>≈09:31:15</span><span>封 1.1 亿</span><span>开 0</span></div><div class="diff">≠ 直取首封 09:31:02</div></div></td>
+     <td></td><td></td><td></td>
+     <td><div class="chip" data-s="庚药业"><div class="nm">庚药业</div><div class="mt"><span>≈10:12</span><span>封 0.6 亿</span></div></div>
+         <div class="chip brk"><div class="nm">寅化工</div><div class="mt"><span>断板 +3.1%</span></div></div></td></tr>
+    <tr><td class="lv"><b>3 板</b><span>昨 9 → 今 3</span></td>
+     <td><div class="chip" data-s="辛机械"><div class="nm">辛机械</div><div class="mt"><span>≈09:50</span><span>封 0.8 亿</span></div></div></td>
+     <td><div class="chip" data-s="卯能源"><div class="nm">卯能源<span class="tag st">ST</span></div><div class="mt"><span>≈09:58</span><span>封 0.3 亿</span></div></div></td>
+     <td></td><td></td>
+     <td><div class="chip re" data-s="壬电子"><div class="nm">壬电子</div><div class="mt"><span>≈09:44</span><span>开 2 回封</span></div><div class="diff">≠ 直取开板 3 次</div></div></td></tr>
+    <tr><td class="lv"><b>2 板</b><span>昨 51 → 今 8</span></td>
+     <td><div class="chip" data-s="乙智能"><div class="nm">乙智能</div><div class="mt"><span>≈09:33</span><span>封 2.0 亿</span></div></div></td>
+     <td><div class="chip" data-s="辰锂业"><div class="nm">辰锂业</div><div class="mt"><span>≈09:36</span><span>封 0.9 亿</span></div></div></td>
+     <td><div class="chip" data-s="巳航空"><div class="nm">巳航空</div><div class="mt"><span>≈09:47</span></div></div></td>
+     <td></td>
+     <td><div class="chip"><div class="nm">申软件</div><div class="mt"><span>≈10:40</span></div></div><div class="chip more">展开 4 只</div></td></tr>
+    <tr><td class="lv"><b>首板</b><span>今 45</span></td>
+     <td><div class="chip re" data-s="丙精密"><div class="nm">丙精密</div><div class="mt"><span>≈09:41</span><span>开 1 回封</span></div></div>
+         <div class="chip" data-s="丁电机"><div class="nm">丁电机</div><div class="mt"><span>≈10:02</span><span>封 0.4 亿</span></div></div><div class="chip more">展开 3 只</div></td>
+     <td><div class="chip"><div class="nm">午材料</div><div class="mt"><span>≈09:42</span></div></div><div class="chip more">展开 3 只</div></td>
+     <td><div class="chip"><div class="nm">酉通航</div><div class="mt"><span>≈09:55</span></div></div><div class="chip more">展开 2 只</div></td>
+     <td><div class="chip"><div class="nm">戌数据</div><div class="mt"><span>≈10:20</span></div></div><div class="chip more">展开 2 只</div></td>
+     <td><div class="chip bj"><div class="nm">亥新材<span class="tag bj">北交所 · 无交易权限</span></div><div class="mt"><span>≈09:39</span></div></div><div class="chip more">展开 31 只</div></td></tr>
+    <tr><td class="lv alt"><b>炸板<br>冲板</b></td>
+     <td><div class="chip rush" data-s="戊传动"><div class="nm">戊传动</div><div class="mt"><span style="color:var(--warn)">冲 +8.6%</span><span>涨速 1.2%/分</span></div></div></td>
+     <td><div class="chip brk"><div class="nm">未电池</div><div class="mt"><span>炸 · 现 +6.0%</span></div></div></td>
+     <td><div class="chip"><div class="nm">子航电<span class="tag unk">封板未知</span></div><div class="mt"><span>到价 · 盘口缺失</span></div></div></td>
+     <td></td><td><div class="chip more">炸 15 · 冲 11</div></td></tr>
+   </table>
+   <div class="legend" id="v-ladder-lg">
+    行头为"昨日该层家数 → 今日晋级家数"。卡片依次显示：首次封板时间（"≈"表示 15 秒快照观测值）、封单额（买一量 × 涨停价）、开板次数。
+    浅红底为一字板，浅黄底为开板后回封，虚线框为断板 / 炸板 / 冲板。<span class="only-final">红字"≠"表示盘后直取值与盘中观测不一致。</span>
+   </div>
+  </section>
+
+  <div class="side">
+   <section class="panel">
+    <div class="panel-title"><span id="selname">甲科技 · 4 板 · 机器人</span><span class="muted" style="margin-left:auto;font-weight:400;font-size:12px">叠加同题材前排</span></div>
+    <div class="body">
+     <svg viewBox="0 0 360 180">
+      <line x1="0" y1="14" x2="360" y2="14" stroke="#dc2626" stroke-dasharray="4 3" stroke-width=".8"/>
+      <text x="356" y="11" fill="#dc2626" font-size="9" text-anchor="end">涨停 12.65</text>
+      <line x1="0" y1="72" x2="360" y2="72" stroke="#e5e9f0"/>
+      <text x="356" y="69" fill="#697386" font-size="9" text-anchor="end">昨收</text>
+      <line x1="180" y1="0" x2="180" y2="130" stroke="#e5e9f0" stroke-dasharray="2 2"/>
+      <polyline fill="none" stroke="#d97706" stroke-width="1.2" points="0,74 14,52 26,14 360,14"/>
+      <polyline fill="none" stroke="#2463b5" stroke-width="1.2" points="0,76 20,62 40,42 60,28 72,14 90,14 96,32 104,14 360,14"/>
+      <polyline fill="none" stroke="#dc2626" stroke-width="2" points="0,68 6,42 10,14 360,14"/>
+      <circle cx="10" cy="14" r="3" fill="#dc2626"/>
+      <line x1="0" y1="134" x2="360" y2="134" stroke="#e5e9f0"/>
+      <g fill="#cbd5e1"><rect x="1" y="140" width="3" height="38"/><rect x="6" y="152" width="3" height="26"/><rect x="11" y="146" width="3" height="32"/><rect x="40" y="168" width="3" height="10"/><rect x="96" y="160" width="3" height="18"/><rect x="200" y="172" width="3" height="6"/></g>
+      <text x="2" y="130" fill="#697386" font-size="9">09:30</text><text x="168" y="130" fill="#697386" font-size="9">11:30/13:00</text><text x="330" y="130" fill="#697386" font-size="9">15:00</text>
+     </svg>
+     <div class="lg"><i style="background:#dc2626"></i>甲科技（选中）<i style="background:#d97706"></i>乙智能<i style="background:#2463b5"></i>丙精密　● 首封</div>
+     <div class="lg"><span class="only-live">分时来源：15 秒留存</span><span class="only-final">分时来源：15 秒留存，可切换为 1 分钟线</span><span class="only-hist">分时来源：QMT 1 分钟线归档；首根成交量按 D-23 显示为缺失</span></div>
+    </div>
+   </section>
+
+   <section class="panel">
+    <div class="panel-title">题材涨停家数（盘中累计）</div>
+    <div class="body">
+     <svg viewBox="0 0 360 80">
+      <line x1="0" y1="78" x2="360" y2="78" stroke="#e5e9f0"/>
+      <polyline fill="none" stroke="#dc2626" stroke-width="1.6" points="0,74 20,64 40,54 70,44 100,36 130,22 160,18"/>
+      <polyline fill="none" stroke="#d97706" stroke-width="1.3" points="0,76 25,66 50,58 100,50 160,42"/>
+      <polyline fill="none" stroke="#2463b5" stroke-width="1.3" points="0,77 60,70 100,62 160,58"/>
+      <polyline fill="none" stroke="#16a34a" stroke-width="1.3" points="0,77 110,75 160,66"/>
+     </svg>
+     <div class="lg"><i style="background:#dc2626"></i>机器人 9<i style="background:#d97706"></i>固态电池 6<i style="background:#2463b5"></i>低空经济 4<i style="background:#16a34a"></i>算力租赁 3</div>
+    </div>
+   </section>
+
+   <section class="panel">
+    <div class="panel-title"><span>封板时间轴</span><span class="muted" style="margin-left:auto;font-weight:400;font-size:12px"><span class="only-live">最新在上</span><span class="only-final">按直取首封时间</span><span class="only-hist">按直取首封时间</span></span></div>
+    <div class="body" style="padding-top:4px;padding-bottom:4px">
+     <div class="ev"><span class="t">10:02:30</span><span>丁电机 首板 · 机器人 <span class="muted">第 4 家</span></span></div>
+     <div class="ev"><span class="t">09:58:00</span><span>卯能源 3 板 · 固态电池</span></div>
+     <div class="ev"><span class="t">09:52:15</span><span style="color:var(--warn)">壬电子 第 2 次开板后回封</span></div>
+     <div class="ev"><span class="t">09:50:15</span><span>辛机械 3 板 · 机器人 <span class="muted">第 3 家</span></span></div>
+     <div class="ev"><span class="t">09:47:45</span><span style="color:var(--warn)">壬电子 开板</span></div>
+     <div class="ev"><span class="t">09:41:00</span><span>丙精密 首板 · 机器人 <span class="muted">第 3 家</span></span></div>
+     <div class="ev"><span class="t">09:33:45</span><span>乙智能 2 板 · 机器人 <span class="muted">第 2 家</span></span></div>
+     <div class="ev"><span class="t">09:31:15</span><span style="color:var(--bad)">甲科技 4 板 · 机器人 首家</span></div>
+     <div class="ev"><span class="t">09:25:00</span><span style="color:var(--bad)">己股份 5 板 一字</span></div>
+    </div>
+   </section>
+  </div>
+ </div>
+</main>
+
+<script>
+document.querySelectorAll('#tabs .tab-button').forEach(b=>b.onclick=()=>{
+ document.querySelectorAll('#tabs .tab-button').forEach(x=>x.classList.remove('active'));b.classList.add('active');
+ const m=b.dataset.m;document.body.className='m-'+m;
+ document.getElementById('replay').style.display=m==='final'?'flex':'none';
+ document.getElementById('day').value=m==='hist'?'2026-10-21':'2026-11-11';
+});
+document.querySelectorAll('.chip[data-s]').forEach(c=>c.onclick=()=>{
+ document.querySelectorAll('.chip.sel').forEach(x=>x.classList.remove('sel'));c.classList.add('sel');
+ document.getElementById('selname').textContent=c.dataset.s+' · 选中';
+});
+document.querySelectorAll('#vsw button').forEach(b=>b.onclick=()=>{
+ document.querySelectorAll('#vsw button').forEach(x=>x.classList.remove('on'));b.classList.add('on');
+ const c=b.dataset.v==='cmp';document.getElementById('v-cmp').style.display=c?'block':'none';
+ document.getElementById('v-ladder').style.display=c?'none':'table';document.getElementById('v-ladder-lg').style.display=c?'none':'block';
+ document.querySelector('.vhint').textContent=c?'昨日 N 板 → 今日 N+1 板 · 今日涨跌幅为盘中实时':'按今日封过板家数排序 · 每只票只归一列 · 成分 >300 的概念不参与';
+});
+</script>
+</body>
+</html>
