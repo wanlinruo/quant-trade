@@ -80,6 +80,7 @@ ENTRYPOINT_CAPABILITIES = (
     "component-web-evidence-maintenance-v1",
     "component-service-checks-maintenance-v1",
     "component-daily-archive-maintenance-v1",
+    "component-limit-up-shadow-maintenance-v1",
     "component-observer-maintenance-v1",
     "component-idle-paper-maintenance-v1",
     "emergency-restart-authorization-v1",
@@ -758,11 +759,13 @@ def _state_reader_maintenance_identity(repo: Path) -> dict[str, str]:
 
 def _quiescent_data_maintenance_identity(repo: Path, component: str) -> dict[str, str]:
     """Bind the exact idle writer/verifier and stopped trading facts."""
-    if component not in {"tushare-sync", "catalog-verify", "service-checks", "daily-archive"}:
+    if component not in {"tushare-sync", "catalog-verify", "service-checks", "daily-archive",
+                         "limit-up-shadow"}:
         raise ValueError("unsupported stopped-Live data maintenance component")
     identity = _state_reader_maintenance_identity(repo)
     label = {"tushare-sync": "tushare", "catalog-verify": "catalog",
-             "service-checks": "service_checks", "daily-archive": "daily_archive"}[component]
+             "service-checks": "service_checks", "daily-archive": "daily_archive",
+             "limit-up-shadow": "limit_up_shadow"}[component]
     for unit in (f"qsys-{component}.timer", f"qsys-{component}.service"):
         result = _run([
             "systemctl", "show", unit,
@@ -797,6 +800,11 @@ def _service_checks_maintenance_identity(repo: Path) -> dict[str, str]:
 
 def _daily_archive_maintenance_identity(repo: Path) -> dict[str, str]:
     return _quiescent_data_maintenance_identity(repo, "daily-archive")
+
+
+def _limit_up_shadow_maintenance_identity(repo: Path) -> dict[str, str]:
+    # 只读研究榜单（#636）：timer 暂停、oneshot 空闲时才允许在停用 Live 期间升级。
+    return _quiescent_data_maintenance_identity(repo, "limit-up-shadow")
 
 
 PAPER_CGROUP_PROCS = Path("/sys/fs/cgroup/system.slice/qsys-paper.service/cgroup.procs")
@@ -1605,6 +1613,9 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
     archive_maintenance = args.component == "daily-archive" and not _active("qsys-live-core.service", repo)
     if archive_maintenance and before_component == "uninstalled":
         raise ValueError("daily-archive maintenance requires an already installed component")
+    shadow_maintenance = args.component == "limit-up-shadow" and not _active("qsys-live-core.service", repo)
+    if shadow_maintenance and before_component == "uninstalled":
+        raise ValueError("limit-up-shadow maintenance requires an already installed component")
     observer_maintenance = args.component == "health-observer" and not _active("qsys-live-core.service", repo)
     if observer_maintenance and (not before_component_active or before_component == "uninstalled"):
         raise ValueError("observer maintenance only upgrades an already active installed observer")
@@ -1613,9 +1624,11 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
         raise ValueError("Paper maintenance only upgrades an already active installed supervisor")
     maintenance = (reader_maintenance or data_maintenance or catalog_maintenance
                    or web_evidence_maintenance or checks_maintenance or archive_maintenance
+                   or shadow_maintenance
                    or observer_maintenance or paper_maintenance)
     guard = (_idle_paper_maintenance_identity if paper_maintenance else
              _daily_archive_maintenance_identity if archive_maintenance else
+             _limit_up_shadow_maintenance_identity if shadow_maintenance else
              _service_checks_maintenance_identity if checks_maintenance else
              _tushare_maintenance_identity if data_maintenance else
              _catalog_maintenance_identity if catalog_maintenance else
@@ -1635,6 +1648,10 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
         protected_units = {name: unit for name, unit in COMPONENT_PROTECTED_PEERS["catalog-verify"].items()
                            if name != "daily-archive"}
         protected_units = {**protected_units, "catalog-verify": "qsys-catalog-verify.service",
+                           "service-checks": "qsys-service-checks.service"}
+    if shadow_maintenance:
+        protected_units = {**COMPONENT_PROTECTED_PEERS["catalog-verify"],
+                           "catalog-verify": "qsys-catalog-verify.service",
                            "service-checks": "qsys-service-checks.service"}
     if observer_maintenance:
         protected_units = {name: unit for name, unit in COMPONENT_PROTECTED_PEERS["catalog-verify"].items()
@@ -1678,6 +1695,7 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
         "web_evidence_maintenance": web_evidence_maintenance,
         "service_checks_readonly_maintenance": checks_maintenance,
         "daily_archive_data_maintenance": archive_maintenance,
+        "limit_up_shadow_readonly_maintenance": shadow_maintenance,
         "observer_readonly_maintenance": observer_maintenance,
         "paper_idle_maintenance": paper_maintenance,
     }
@@ -1701,6 +1719,9 @@ def component_deploy(args: argparse.Namespace, config: dict[str, object]) -> int
     if archive_maintenance:
         checks.append({"name": "daily-archive-terminal-preserved", "status": "passed",
                        "detail": before_live["daily_archive_terminal"]})
+    if shadow_maintenance:
+        checks.append({"name": "limit-up-shadow-terminal-preserved", "status": "passed",
+                       "detail": before_live["limit_up_shadow_terminal"]})
     if web_evidence_maintenance:
         checks.append({"name": "web-evidence-maintenance", "status": "passed",
                        "detail": "active installed Web upgrade only; enforce stopped Live/state/KILL and eight-peer continuity"})

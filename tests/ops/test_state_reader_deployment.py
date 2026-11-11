@@ -383,6 +383,7 @@ def test_web_evidence_maintenance_is_upgrade_only_and_protects_eight_peers(monke
 @pytest.mark.parametrize("component,label,guard_name", [
     ("service-checks", "service_checks", "_service_checks_maintenance_identity"),
     ("daily-archive", "daily_archive", "_daily_archive_maintenance_identity"),
+    ("limit-up-shadow", "limit_up_shadow", "_limit_up_shadow_maintenance_identity"),
 ])
 @pytest.mark.parametrize("installed", [True, False])
 def test_service_checks_maintenance_preserves_terminal_and_never_starts_units(monkeypatch, tmp_path, component, label, guard_name, installed):
@@ -415,6 +416,8 @@ def test_service_checks_maintenance_preserves_terminal_and_never_starts_units(mo
     monkeypatch.setattr(entry, "_stage_component_release", lambda *a: None)
 
     def run(command, **kwargs):
+        if command[:2] == ["systemctl", "show"]:
+            return subprocess.CompletedProcess(command, 0, "inactive\n", "")
         commands.append(command)
         if entry.GENERIC_COMPONENT_INSTALLER in command:
             current[0] = target
@@ -442,7 +445,9 @@ def test_service_checks_maintenance_preserves_terminal_and_never_starts_units(mo
     assert any(item["name"] == f"{component}-terminal-preserved" and
                item["detail"] == facts[f"{label}_terminal"] for item in records[0]["checks"])
     assert not any("systemctl" in command for command in commands)
-    assert len([k for k in records[0]["before"] if k.endswith("-identity")]) == 9
+    # 只读影子榜单不排除任何既有 peer：8 个 catalog peer + catalog-verify + service-checks（#636）
+    expected_peers = 10 if component == "limit-up-shadow" else 9
+    assert len([k for k in records[0]["before"] if k.endswith("-identity")]) == expected_peers
 
 
 @pytest.mark.parametrize('installed,active', [(False, False), (False, True), (True, False), (True, True)])
@@ -600,3 +605,20 @@ def test_idle_paper_guard_binds_real_table_facts_and_rejects_armed_accounts(monk
         assert entry._idle_paper_maintenance_identity(tmp_path) != first
     else:
         assert entry._idle_paper_maintenance_identity(tmp_path) == first
+
+
+def test_limit_up_shadow_maintenance_requires_paused_timer(monkeypatch):
+    """#636：timer 仍 active 时拒绝，不能在自然运行窗口内替换榜单代码。"""
+    entry = module()
+    monkeypatch.setattr(entry, "_state_reader_maintenance_identity", lambda *a: {})
+
+    def show(command, **kwargs):
+        unit = command[2]
+        state = "active" if unit.endswith(".timer") else "inactive"
+        return subprocess.CompletedProcess(command, 0, (
+            f"LoadState=loaded\nActiveState={state}\nMainPID=0\nResult=success\n"
+            "ExecMainStatus=0\nInvocationID=\n"), "")
+
+    monkeypatch.setattr(entry, "_run", show)
+    with pytest.raises(ValueError, match="limit_up_shadow maintenance requires inactive timer"):
+        entry._limit_up_shadow_maintenance_identity(Path("."))
