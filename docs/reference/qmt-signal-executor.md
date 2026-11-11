@@ -105,3 +105,15 @@
   要求）、最高权限、不限运行时长、已运行则不再启动新实例；动作通过 PowerShell 设置 `PYTHONPATH`
   与 `PYTHONDONTWRITEBYTECODE` 后启动守护进程。执行器与网关的先后顺序不再影响接入（#633）。
 - 进程卡死由网关自身 `StallGuard`（默认 60 秒无主循环进展即退出）转为退出，再由守护进程重启。
+
+## F5 前置：人工对账、冲突隔离与回报归属（2026-11-11）
+
+- **unknown 人工对账**（`--reconcile-requests <私有目录>`）：如果执行器在指令创建后重启过，自动“确认未下单”会永久不可用，买入被一直阻断。维护者在请求目录放入 `*.json`，字段严格为
+  `client_order_id / outcome(absent|present) / operator / evidence(≤500 字) / requested_at`，请求 1 小时内有效。
+  - `absent` 只放宽“执行器启动早于指令”这一条；过期 + 宽限、心跳新鲜、当日、无外来备注委托、两次相隔 ≥5 秒的新鲜查询都查不到，这些条件照旧。柜台若能查到该委托，一律按 present 处理并拒绝请求。跨日的 absent 拒绝（`cross_day_requires_trade_evidence`）。
+  - `present` 只记录事实，不释放预留。
+  - 每个请求生成同名 `.result.json`（applied/refused 及原因），原文件改名为 `.done`，不重放。发往 Core 的 reason 只含 operator 和 evidence 的 SHA-256 前缀，证据原文只留在私有结果文件里。
+- **同号异内容冲突**（`--conflict-quarantine <文件>`）：先落本地 KILL，再把原消息（id、委托号、payload）fsync 追加到隔离文件，然后确认消息。这样守护进程重启后不会反复读到它而形成重启风暴，落闸状态下仍能卖出和撤单。不给这个参数时，保持原来的抛错行为。
+- **回报归属**：异步通道只把**本网关派发账本**（`dispatch_attempts`，发送前先 claim）里的委托回报转给 Core。授权探针等其他委托即使备注形状相同也不转发，只记 `agent.foreign_order_report_ignored`，以免污染 Core 组合或计入连续拒单熔断。授权探针单仍会让当日 `foreign_orders`/查询结果变复杂，F5 期间不与信号单同日混做。
+- **卖出报价**：Core 只发限价单，卖出价为买一×(1−0.2%)，并以当日直取跌停价托底；执行器用 `prType=11`（指定价），市价单在执行器内拒绝。F0 中 `prType 5` 未成交来自手写探针，不是信号路径。
+- **Redis 断连**：Live 核心连续 3 次循环失败即熔断（落 KILL、撤单、告警），解除 KILL 须维护者授权。10-20 以来隧道断开只出现在 Windows 重启演练时。Live 运行期间不在 09:15–15:30 重启 Windows 或隧道。

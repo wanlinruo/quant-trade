@@ -13,6 +13,9 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from datetime import datetime
+import json
+import os
+from pathlib import Path
 
 import structlog
 
@@ -59,6 +62,7 @@ class ExecutionAgent:
         safety: SafetyPolicy | None = None,
         async_dispatcher: AsyncOrderDispatcher | None = None,
         cycle_hook: Callable[[bool], None] | None = None,
+        conflict_quarantine: Path | None = None,
     ) -> None:
         self._t = transport
         self._adapter = adapter
@@ -71,6 +75,8 @@ class ExecutionAgent:
         self._safety = safety
         self._async_dispatcher = async_dispatcher
         self._cycle_hook = cycle_hook
+        self._quarantine = conflict_quarantine
+        self._foreign_logged: set[str] = set()
         if async_dispatcher is not None and not async_dispatcher.matches(transport, streams):
             raise ValueError("async dispatcher transport/streams must match the agent")
         self._remote_kill_seen = False
@@ -159,10 +165,38 @@ class ExecutionAgent:
                 log.error("agent.malformed_order", error=str(exc), payload=msg.payload)
                 self._t.ack(self._s.orders, self._group, msg.id)
                 continue
-            self._execute(command)
+            try:
+                self._execute(command)
+            except DispatchConflictError:
+                if self._quarantine is None:
+                    raise
+                # 已落本地闸；原消息完整落盘取证后确认，避免守护重启后反复读到它
+                # 形成重启风暴，同时保住落闸下的卖出与撤单能力（#601 F5）。
+                self._quarantine_conflict(msg.id, msg.payload, command.client_order_id)
             # 只有券商调用结果或拒单已经持久化/发布后才确认消息。
             self._t.ack(self._s.orders, self._group, msg.id)
         return handled
+
+    def _quarantine_conflict(self, message_id: str, payload: dict, client_order_id: str) -> None:
+        record = {"at": datetime.now().isoformat(), "message_id": message_id,
+                  "client_order_id": client_order_id, "payload": payload}
+        with self._quarantine.open("a", encoding="utf-8") as out:
+            out.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+            out.flush()
+            os.fsync(out.fileno())
+        log.error("agent.dispatch_conflict_quarantined", client_order_id=client_order_id,
+                  message_id=message_id)
+
+    def _owned(self, client_order_id: str) -> bool:
+        """异步通道只转发本网关账本里的委托回报；授权探针等其他委托不进 Core（#601 F5）。"""
+        if self._async_dispatcher is None:
+            return True
+        if self._async_dispatcher.owns(client_order_id):
+            return True
+        if client_order_id not in self._foreign_logged:
+            self._foreign_logged.add(client_order_id)
+            log.warning("agent.foreign_order_report_ignored", client_order_id=client_order_id)
+        return False
 
     def _execute(self, command: OrderCommand) -> None:
         # 历史尝试先于新单门禁：到期/急停不能把已发送未知结果伪装成拒单。
@@ -282,7 +316,8 @@ class ExecutionAgent:
     def poll_reports(self) -> int:
         """发布券商真实回报；重复轮询和重启均不会重复记账。"""
         output = self._tracker.observe(
-            self._adapter.query_trades(), self._adapter.query_orders(),
+            [t for t in self._adapter.query_trades() if self._owned(t.client_order_id)],
+            [o for o in self._adapter.query_orders() if self._owned(o.client_order_id)],
             seen_trade_ids=self._ledger.seen_trade_ids(),
             closed_order_ids=self._ledger.closed_order_ids(), now=datetime.now(),
         )

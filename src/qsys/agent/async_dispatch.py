@@ -97,6 +97,10 @@ class AsyncOrderDispatcher:
             finally:
                 self.store.close()
 
+    def owns(self, client_order_id: str) -> bool:
+        """账本里有这条委托（发送前先落 claim，因此不存在已到柜台而账本无记录的窗口）。"""
+        return self.store.read(client_order_id) is not None
+
     def resolve(self, client_order_id: str, outcome: str, reason: str) -> None:
         """unknown 对账结论；absent 才发拒单释放 Core 预留，present 只记事实。"""
         with self._lock:

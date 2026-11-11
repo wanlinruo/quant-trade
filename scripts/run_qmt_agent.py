@@ -61,7 +61,8 @@ def account_scope(account: str, *, validation: bool) -> str:
 def assemble(cfg: DeployConfig, transport, memory: SharedMemory, *, run_id: str, key: bytes,
              account: str, state_root: Path, ledger: Path, strategy_id: str,
              validation_namespace: str | None = None, sleep=time.sleep,
-             clock=datetime.now, clock_ms=_now_ms):
+             clock=datetime.now, clock_ms=_now_ms,
+             reconcile_requests: Path | None = None, conflict_quarantine: Path | None = None):
     """组装 agent；生产与验证命名空间共用，测试以内存传输与共享内存驱动。"""
     port = QmtIpcPort(memory, run_id=run_id, key=key, clock_ms=clock_ms, sleep=sleep)
     adapter = QmtIpcAdapter(memory, port)
@@ -78,7 +79,8 @@ def assemble(cfg: DeployConfig, transport, memory: SharedMemory, *, run_id: str,
             account_scope=scope, strategy_id=strategy_id,
             session_of=lambda: clock().date().isoformat(), clock=clock)
     with factory as dispatcher:
-        reconciler = UnknownReconciler(dispatcher, adapter, memory, clock=clock)
+        reconciler = UnknownReconciler(dispatcher, adapter, memory, clock=clock,
+                                       requests=reconcile_requests)
         agent = ExecutionAgent(
             transport, adapter, cfg.streams, consumer="qmt-agent",
             ledger=SQLiteReportLedger(ledger),
@@ -93,6 +95,7 @@ def assemble(cfg: DeployConfig, transport, memory: SharedMemory, *, run_id: str,
                 local_kill_path=cfg.safety.local_kill_path),
             async_dispatcher=dispatcher,
             cycle_hook=QmtLink(memory, reconciler, clock_ms=clock_ms),
+            conflict_quarantine=conflict_quarantine,
         )
         yield agent, adapter
 
@@ -118,8 +121,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--validation-namespace", default=None)
     parser.add_argument("--scheduled-timeout", type=float, default=300.0)
     parser.add_argument("--stall-timeout", type=float, default=60.0)
+    parser.add_argument("--reconcile-requests", type=Path, default=None,
+                        help="unknown 人工对账请求目录（私有 ACL，须已存在）")
+    parser.add_argument("--conflict-quarantine", type=Path, default=None,
+                        help="同号异内容指令的取证文件；给出时冲突消息落盘后确认，不再重启风暴")
     args = parser.parse_args(argv)
 
+    for path in (args.reconcile_requests,):
+        if path is not None and (path.is_symlink() or not path.is_dir()):
+            raise SystemExit(f"{path} must be an existing private directory")
+    if args.conflict_quarantine is not None and (
+            args.conflict_quarantine.is_symlink() or not args.conflict_quarantine.parent.is_dir()):
+        raise SystemExit("--conflict-quarantine parent must be an existing private directory")
     cfg = load_deploy_config(args.config)
     from qsys.live.redis_transport import RedisTransport
     transport = RedisTransport.from_config(cfg)
@@ -142,7 +155,9 @@ def main(argv: list[str] | None = None) -> int:
         agent, adapter = stack.enter_context(assemble(
             cfg, transport, memory, run_id=run_id, key=key, account=account,
             state_root=args.state_root, ledger=Path(args.ledger), strategy_id=args.strategy_id,
-            validation_namespace=args.validation_namespace))
+            validation_namespace=args.validation_namespace,
+            reconcile_requests=args.reconcile_requests,
+            conflict_quarantine=args.conflict_quarantine))
         guard = StallGuard(args.stall_timeout, _die_on_stall) if args.stall_timeout > 0 else None
         log.info("qmt-agent.started", mode=cfg.safety.mode, run=run_id[:8],
                  validation=bool(args.validation_namespace), day=date.today().isoformat())
