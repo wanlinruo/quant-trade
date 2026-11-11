@@ -157,7 +157,10 @@ def create_app(
     # 影子核心承袭的模拟账户（只读查询；没配承袭时返回 None）
     shadow_lineage: Callable[[], object | None] | None = None,
     live_kill: LiveKillReader | None = None,
+    core_label: str = "影子盘",
 ) -> FastAPI:
+    # 影子盘与实盘同一时间只运行其一；页面按部署模式称呼当前核心（#601 F5）。
+    TEMPLATES.env.globals["core_label"] = core_label
     app = FastAPI(title=config.title, docs_url=None, redoc_url=None)
     app.state.research_jobs_enabled = research_jobs is not None
     app.state.live_kill = live_kill or LiveKillReader(None, None)

@@ -191,13 +191,14 @@ SERVICES: tuple[ServiceSpec, ...] = (
         heartbeat="market",
     ),
     ServiceSpec(
-        "shadow-agent", "影子盘执行代理", "resident", "Windows", None, "常驻",
-        ("QMT 交易接口（影子模式不下单）",), (), "执行端代理", heartbeat="agent",
+        # 稳定 ID 保留（#592）；同一执行端按部署模式影子不下单、实盘经大 QMT 执行器下单（#601）。
+        "shadow-agent", "QMT 执行代理", "resident", "Windows", None, "常驻",
+        ("QMT 交易接口（影子模式不下单，实盘模式下单）",), (), "执行端代理", heartbeat="agent",
     ),
     ServiceSpec(
         "watchdog", "Windows 进程看门狗", "supervisor", "Windows", None, "每 5 分钟",
         ("Windows 计划任务",), (),
-        "检查影子盘执行代理与 QMT 行情网关进程；进程缺失时触发对应计划任务",
+        "检查 QMT 执行代理与 QMT 行情网关进程；进程缺失时触发对应计划任务",
         windows_task="qsys-watchdog",
     ),
 )

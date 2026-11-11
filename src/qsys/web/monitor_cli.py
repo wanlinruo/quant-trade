@@ -132,6 +132,7 @@ def build_app(
         paper_calendar=trading_calendar,
         # 影子核心承袭的模拟账户；每次请求现查，配置改了不用重启监控台
         shadow_lineage=(lambda: _shadow_lineage(strategy_cfg)),
+        core_label="实盘" if strategy_mode == "live" else "影子盘",
         services=ServiceConsole(
             service_runs_dir or Path("var/service-runs"),
             calendar=trading_calendar,
