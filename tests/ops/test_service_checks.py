@@ -575,6 +575,39 @@ def test_shadow_events_flag_expired_and_unfinished_events(tmp_path):
     assert sc._shadow_events(ctx(FakeQuery(), shadow_state=ok)).status == sc.OK
 
 
+def test_shadow_events_name_a_core_that_missed_the_whole_session(tmp_path):
+    """#482：核心当日收盘后才启动时，事件在同一时刻集体过期。
+
+    结果仍是失败（交易时段确实没运行），但要说清楚是「整段未运行」，
+    而不是让人逐条去猜哪个事件出了错。
+    """
+    path = _live_state(tmp_path / "late.sqlite3", [
+        (f"{DAY}:session_start:09:15:00", f"{DAY}T09:15:00", "session_start",
+         "completed", "仅完成日初结算；策略事件未补跑", f"{DAY}T09:15:00"),
+        (f"{DAY}:auction:09:25:10", f"{DAY}T09:25:10", "auction",
+         "failed", "事件已过期，未补跑", f"{DAY}T16:41:46"),
+        (f"{DAY}:session_end:15:30:00", f"{DAY}T15:30:00", "session_end",
+         "failed", "事件已过期，未补跑", f"{DAY}T16:41:48"),
+    ])
+    got = sc._shadow_events(ctx(FakeQuery(), shadow_state=path))
+    assert got.status == sc.BAD
+    assert "交易时段内核心未处理任何事件" in got.actual
+    assert "16:41" in got.actual
+
+
+def test_shadow_events_keep_plain_wording_when_core_ran_during_session(tmp_path):
+    """盘中曾经处理过事件（哪怕个别过期），不能套用「整段未运行」的说法。"""
+    path = _live_state(tmp_path / "partial.sqlite3", [
+        (f"{DAY}:auction:09:25:10", f"{DAY}T09:25:10", "auction",
+         "failed", "事件已过期，未补跑", f"{DAY}T10:42:45"),
+        (f"{DAY}:session_end:15:30:00", f"{DAY}T15:30:00", "session_end",
+         "completed", "", f"{DAY}T15:30:02"),
+    ])
+    got = sc._shadow_events(ctx(FakeQuery(), shadow_state=path))
+    assert got.status == sc.BAD
+    assert "交易时段内核心未处理任何事件" not in got.actual
+
+
 def test_shadow_events_need_the_session_to_have_started(tmp_path):
     empty = _live_state(tmp_path / "empty.sqlite3", [])
     assert sc._shadow_events(ctx(FakeQuery(), shadow_state=empty)).status == sc.BAD

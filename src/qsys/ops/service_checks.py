@@ -441,19 +441,43 @@ def _shadow_events(ctx: CheckContext) -> CheckResult:
     with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as con:
         con.row_factory = sqlite3.Row
         rows = [dict(row) for row in con.execute(
-            "SELECT event_key, phase, status, detail FROM live_events "
-            "WHERE event_key LIKE ?", (f"{ctx.day}:%",),
+            # SELECT *：只按需读取 scheduled_at / completed_at，缺列的旧库照常判定。
+            "SELECT * FROM live_events WHERE event_key LIKE ?", (f"{ctx.day}:%",),
         )]
     if not rows:
         return CheckResult(BAD, expected, "当日没有任何策略事件", rows=0)
     bad = [r for r in rows if r["status"] != "completed" or r["detail"]]
     if bad:
+        actual = f"{len(bad)} / {len(rows)} 个事件未正常执行"
+        first_seen = _missed_whole_session(rows, bad)
+        if first_seen:
+            # 仍判失败：交易时段确实没跑。只把「为什么全错」说清楚（#482）。
+            actual += f"；交易时段内核心未处理任何事件，首次处理于 {first_seen}（全部计划时刻之后）"
         return CheckResult(
-            BAD, expected, f"{len(bad)} / {len(rows)} 个事件未正常执行",
+            BAD, expected, actual,
             _samples(f"{r['phase']}（{r['detail'] or r['status']}）" for r in bad),
             rows=len(rows),
         )
     return CheckResult(OK, expected, f"{len(rows)} 个事件全部完成", rows=len(rows))
+
+
+def _missed_whole_session(rows: list[dict], bad: list[dict]) -> str | None:
+    """全部事件都没正常执行，且过期记录都晚于当日最后一个计划时刻时，返回首次处理时刻。
+
+    典型情形是核心当日收盘后才启动或恢复：启动时把已过宽限的事件一次性记为过期。
+    日初结算按计划时刻提交，不参与判断首次处理时刻。
+    """
+    if len(bad) != len(rows):
+        return None
+    expired = [r for r in rows if (r.get("detail") or "").startswith("事件已过期")
+               and r.get("completed_at")]
+    scheduled = [r["scheduled_at"] for r in rows if r.get("scheduled_at")]
+    if not expired or not scheduled:
+        return None
+    first = min(r["completed_at"] for r in expired)
+    if first <= max(scheduled):
+        return None
+    return first[11:16]
 
 
 def _paper_events(ctx: CheckContext) -> CheckResult:
