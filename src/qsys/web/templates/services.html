@@ -24,7 +24,7 @@
 
 <div class="card">
   <h2>每日业务验收</h2>
-  <p class="muted">只回答影子盘与模拟盘当天应执行的策略事件是否完成，不代表进程此刻在线。</p>
+  <p class="muted">只回答{{ core_label }}与模拟盘当天应执行的策略事件是否完成，不代表进程此刻在线。</p>
   <div class="table-wrap">
   <table class="board">
     <tr><th></th>{% for day in columns %}<th class="day">{{ day.strftime("%m-%d") }}<br>{{ "一二三四五六日"[day.weekday()] }}</th>{% endfor %}</tr>

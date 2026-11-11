@@ -246,3 +246,33 @@ def test_health_page_survives_a_null_cash_diff(warehouse):
 
     assert r.status_code == 200
     assert "无法判定" in r.text
+
+
+def test_live_mode_labels_the_core_as_live_not_shadow(warehouse):
+    """#601 F5：影子盘与实盘同一时间只运行其一；live 模式下页面不能再写“影子盘”。"""
+    journal = SessionJournal(warehouse)
+    journal.record_equity(D, cash=100_011.98, market_value=0.0)
+    cfg = WebConfig()
+    service = MonitorService(journal, config=cfg)
+    live = TestClient(create_app(service, cfg, paper=_PaperStub(),
+                                 shadow_lineage=lambda: _Lineage(), core_label="实盘"))
+    body = live.get("/live").text
+    assert "实盘承袭模拟账户的存档源码与参数（回测 → 模拟交易 → 实盘）" in body
+    assert "实盘 vs 模拟交易" in body
+    assert "影子盘" not in body
+    from pathlib import Path
+    import qsys.web as web
+    services = (Path(web.__file__).parent / "templates" / "services.html").read_text(encoding="utf-8")
+    assert "只回答{{ core_label }}与模拟盘当天" in services and "影子盘与模拟盘" not in services
+    shadow = TestClient(create_app(service, cfg, paper=_PaperStub(),
+                                   shadow_lineage=lambda: _Lineage()))
+    assert "影子盘 vs 模拟交易" in shadow.get("/live").text
+
+
+def test_windows_execution_agent_name_is_mode_neutral():
+    from qsys.ops.services import SERVICE_BY_ID
+    agent = SERVICE_BY_ID["shadow-agent"]          # 稳定 ID 不变，历史关联保留（#592）
+    assert agent.name == "QMT 执行代理"
+    assert "影子" not in agent.name
+    assert any("影子模式不下单" in t and "实盘模式下单" in t for t in agent.interfaces)
+    assert "影子盘执行代理" not in SERVICE_BY_ID["watchdog"].purpose
