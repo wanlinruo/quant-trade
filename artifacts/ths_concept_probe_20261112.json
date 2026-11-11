@@ -1,0 +1,425 @@
+{
+  "probed_at": "2026-11-12T00:14:29",
+  "ths_index": {
+    "ok": true,
+    "msg": "",
+    "rows": 395,
+    "fields": [
+      "ts_code",
+      "name",
+      "count",
+      "exchange",
+      "list_date",
+      "type"
+    ],
+    "has_more": false,
+    "seconds": 0.21,
+    "count_null": 0,
+    "count_distribution": {
+      "le_50": 109,
+      "51_100": 106,
+      "101_300": 123,
+      "gt_300": 57,
+      "max": 3844
+    },
+    "gt_300_concepts": [
+      {
+        "ts_code": "885338.TI",
+        "name": "融资融券",
+        "count": 3844
+      },
+      {
+        "ts_code": "885694.TI",
+        "name": "深股通",
+        "count": 1875
+      },
+      {
+        "ts_code": "885520.TI",
+        "name": "沪股通",
+        "count": 1639
+      },
+      {
+        "ts_code": "886021.TI",
+        "name": "国企改革",
+        "count": 1468
+      },
+      {
+        "ts_code": "885929.TI",
+        "name": "专精特新",
+        "count": 1226
+      },
+      {
+        "ts_code": "885517.TI",
+        "name": "机器人概念",
+        "count": 1216
+      },
+      {
+        "ts_code": "885728.TI",
+        "name": "人工智能",
+        "count": 1082
+      },
+      {
+        "ts_code": "885431.TI",
+        "name": "新能源汽车",
+        "count": 1061
+      },
+      {
+        "ts_code": "885806.TI",
+        "name": "华为概念",
+        "count": 1002
+      },
+      {
+        "ts_code": "885756.TI",
+        "name": "芯片概念",
+        "count": 910
+      },
+      {
+        "ts_code": "885921.TI",
+        "name": "储能",
+        "count": 894
+      },
+      {
+        "ts_code": "885494.TI",
+        "name": "一带一路",
+        "count": 787
+      },
+      {
+        "ts_code": "886100.TI",
+        "name": "DeepSeek概念",
+        "count": 769
+      },
+      {
+        "ts_code": "885997.TI",
+        "name": "比亚迪概念",
+        "count": 678
+      },
+      {
+        "ts_code": "885887.TI",
+        "name": "数据中心(AIDC)",
+        "count": 649
+      },
+      {
+        "ts_code": "886086.TI",
+        "name": "西部大开发",
+        "count": 635
+      },
+      {
+        "ts_code": "885710.TI",
+        "name": "锂电池概念",
+        "count": 608
+      },
+      {
+        "ts_code": "885700.TI",
+        "name": "军工",
+        "count": 606
+      },
+      {
+        "ts_code": "885840.TI",
+        "name": "人民币贬值受益",
+        "count": 606
+      },
+      {
+        "ts_code": "885531.TI",
+        "name": "光伏概念",
+        "count": 601
+      },
+      {
+        "ts_code": "886108.TI",
+        "name": "AI应用",
+        "count": 527
+      },
+      {
+        "ts_code": "885976.TI",
+        "name": "数字经济",
+        "count": 510
+      },
+      {
+        "ts_code": "886110.TI",
+        "name": "2026中报预增",
+        "count": 507
+      },
+      {
+        "ts_code": "885800.TI",
+        "name": "消费电子概念",
+        "count": 503
+      },
+      {
+        "ts_code": "886078.TI",
+        "name": "商业航天",
+        "count": 502
+      },
+      {
+        "ts_code": "883304.TI",
+        "name": "中证500成份股",
+        "count": 500
+      },
+      {
+        "ts_code": "886067.TI",
+        "name": "低空经济",
+        "count": 498
+      },
+      {
+        "ts_code": "885521.TI",
+        "name": "粤港澳大湾区",
+        "count": 489
+      },
+      {
+        "ts_code": "885312.TI",
+        "name": "物联网",
+        "count": 468
+      },
+      {
+        "ts_code": "885413.TI",
+        "name": "创投",
+        "count": 465
+      },
+      {
+        "ts_code": "885739.TI",
+        "name": "股权转让(并购重组)",
+        "count": 464
+      },
+      {
+        "ts_code": "885564.TI",
+        "name": "无人机",
+        "count": 463
+      },
+      {
+        "ts_code": "886069.TI",
+        "name": "人形机器人",
+        "count": 459
+      },
+      {
+        "ts_code": "885556.TI",
+        "name": "5G",
+        "count": 455
+      },
+      {
+        "ts_code": "886099.TI",
+        "name": "AI智能体",
+        "count": 453
+      },
+      {
+        "ts_code": "885641.TI",
+        "name": "风电",
+        "count": 441
+      },
+      {
+        "ts_code": "885783.TI",
+        "name": "工业互联网",
+        "count": 439
+      },
+      {
+        "ts_code": "885705.TI",
+        "name": "乡村振兴",
+        "count": 433
+      },
+      {
+        "ts_code": "885936.TI",
+        "name": "绿色电力",
+        "count": 427
+      },
+      {
+        "ts_code": "885378.TI",
+        "name": "智慧城市",
+        "count": 419
+      },
+      {
+        "ts_code": "885957.TI",
+        "name": "东数西算(算力)",
+        "count": 409
+      },
+      {
+        "ts_code": "885539.TI",
+        "name": "医疗器械概念",
+        "count": 408
+      },
+      {
+        "ts_code": "885736.TI",
+        "name": "无人驾驶",
+        "count": 407
+      },
+      {
+        "ts_code": "885823.TI",
+        "name": "氢能源",
+        "count": 400
+      },
+      {
+        "ts_code": "886041.TI",
+        "name": "数据要素",
+        "count": 396
+      },
+      {
+        "ts_code": "885595.TI",
+        "name": "央企国企改革",
+        "count": 394
+      },
+      {
+        "ts_code": "885545.TI",
+        "name": "汽车电子",
+        "count": 391
+      },
+      {
+        "ts_code": "885461.TI",
+        "name": "充电桩",
+        "count": 390
+      },
+      {
+        "ts_code": "885427.TI",
+        "name": "高端装备",
+        "count": 387
+      },
+      {
+        "ts_code": "883303.TI",
+        "name": "上证380成份股",
+        "count": 380
+      },
+      {
+        "ts_code": "885785.TI",
+        "name": "小米概念",
+        "count": 373
+      },
+      {
+        "ts_code": "885571.TI",
+        "name": "核电",
+        "count": 350
+      },
+      {
+        "ts_code": "885611.TI",
+        "name": "阿里巴巴概念",
+        "count": 346
+      },
+      {
+        "ts_code": "885642.TI",
+        "name": "跨境电商",
+        "count": 339
+      },
+      {
+        "ts_code": "885402.TI",
+        "name": "智能医疗",
+        "count": 336
+      },
+      {
+        "ts_code": "885939.TI",
+        "name": "海峡两岸",
+        "count": 318
+      },
+      {
+        "ts_code": "886013.TI",
+        "name": "信创",
+        "count": 302
+      }
+    ],
+    "exchange_type_values": {
+      "A/N": 395
+    }
+  },
+  "ths_member_samples": [
+    {
+      "ts_code": "885338.TI",
+      "name": "融资融券",
+      "index_count": 3844,
+      "ok": true,
+      "msg": "",
+      "member_rows": 3903,
+      "fields": [
+        "ts_code",
+        "con_code",
+        "con_name"
+      ],
+      "has_more": false,
+      "non_null_by_field": {},
+      "first_rows": [
+        {
+          "ts_code": "885338.TI",
+          "con_code": "688053.SH",
+          "con_name": "思科瑞"
+        },
+        {
+          "ts_code": "885338.TI",
+          "con_code": "688827.SH",
+          "con_name": "钶锐锶"
+        }
+      ]
+    },
+    {
+      "ts_code": "885914.TI",
+      "name": "煤炭概念",
+      "index_count": 90,
+      "ok": true,
+      "msg": "",
+      "member_rows": 90,
+      "fields": [
+        "ts_code",
+        "con_code",
+        "con_name"
+      ],
+      "has_more": false,
+      "non_null_by_field": {},
+      "first_rows": [
+        {
+          "ts_code": "885914.TI",
+          "con_code": "300515.SZ",
+          "con_name": "三德科技"
+        },
+        {
+          "ts_code": "885914.TI",
+          "con_code": "920098.BJ",
+          "con_name": "科隆新材"
+        }
+      ]
+    },
+    {
+      "ts_code": "885792.TI",
+      "name": "赛马概念",
+      "index_count": 4,
+      "ok": true,
+      "msg": "",
+      "member_rows": 4,
+      "fields": [
+        "ts_code",
+        "con_code",
+        "con_name"
+      ],
+      "has_more": false,
+      "non_null_by_field": {},
+      "first_rows": [
+        {
+          "ts_code": "885792.TI",
+          "con_code": "603843.SH",
+          "con_name": "*ST正平"
+        },
+        {
+          "ts_code": "885792.TI",
+          "con_code": "600195.SH",
+          "con_name": "中牧股份"
+        }
+      ]
+    }
+  ],
+  "ths_member_by_stock": [
+    {
+      "con_code": "000001.SZ",
+      "ok": true,
+      "msg": "",
+      "rows": 57,
+      "in_concept_index": 6,
+      "other_index_codes": 51
+    },
+    {
+      "con_code": "600519.SH",
+      "ok": true,
+      "msg": "",
+      "rows": 73,
+      "in_concept_index": 12,
+      "other_index_codes": 61
+    },
+    {
+      "con_code": "300750.SZ",
+      "ok": true,
+      "msg": "",
+      "rows": 87,
+      "in_concept_index": 19,
+      "other_index_codes": 68
+    }
+  ]
+}
