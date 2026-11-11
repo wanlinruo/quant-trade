@@ -839,6 +839,10 @@ def test_tushare_sync_component_owns_bounded_writer_and_convergence_paths() -> N
     assert "--dividend-win-script-source /opt/qsys/components/tushare-sync/current/source/scripts/win_download_dividends.py" in dropin
     assert any("/data/qsys/warehouse/corporate_actions" in line
                for line in sync["dropin_lines"] if line.startswith("ReadWritePaths="))
+    # #608：大宗交易直取入库须同时具备写路径与显式开关，二者缺一即重演 11-10 沙箱拒写。
+    assert any("/data/qsys/warehouse/block_trade_daily" in line.split()
+               for line in sync["dropin_lines"] if line.startswith("ReadWritePaths="))
+    assert dropin.count("--block-trade-sync") == 1
     assert "--late-minute-work-root /home/ubuntu/qsys/var/tushare-sync" in dropin
     assert "--late-minute-record-root /home/ubuntu/qsys/var/service-runs/tushare-sync" in dropin
     assert "--late-minute-paper-store /home/ubuntu/qsys/var/workbench/workbench.sqlite3" in dropin
