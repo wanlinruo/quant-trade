@@ -132,7 +132,7 @@ def test_preparation_never_repairs_existing_or_untrusted_parent(tmp_path, monkey
     marker = root / '.qsys-async-validation'
     marker.write_text('original')
     calls = []
-    monkeypatch.setattr(w, '_local_path', lambda root: None)
+    monkeypatch.setattr(w, '_local_path', lambda root, **kw: None)
     def inspect(path, script, *, timeout):
         calls.append((path, script, timeout))
         return receipt()
@@ -154,7 +154,7 @@ def test_unknown_file_and_hardlink_fail_closed(tmp_path, monkeypatch):
     root.mkdir()
     for name in ('.qsys-async-validation', 'dispatch.sqlite3', 'dispatch.lock'):
         (root / name).touch()
-    monkeypatch.setattr(w, '_local_path', lambda root: None)
+    monkeypatch.setattr(w, '_local_path', lambda root, **kw: None)
     monkeypatch.setattr(w, '_powershell',
         lambda path, script, *, timeout: receipt(path == root))
     assert w.validate_windows_validation_root(root)['sid'] == SID
@@ -219,7 +219,7 @@ def test_cold_inspection_timeout_is_not_retried(monkeypatch):
 def test_preparation_keeps_mutation_single_attempt_on_short_timeout(tmp_path, monkeypatch):
     root = tmp_path / 'qsys-async-validation-timeout'
     calls = []
-    monkeypatch.setattr(w, '_local_path', lambda root: None)
+    monkeypatch.setattr(w, '_local_path', lambda root, **kw: None)
     def powershell(path, script, *, timeout):
         calls.append((path, script, timeout))
         if script == w._PROTECT_NEW_ROOT:
@@ -235,3 +235,22 @@ def test_preparation_keeps_mutation_single_attempt_on_short_timeout(tmp_path, mo
     ]
     assert root.is_dir()
     assert list(root.iterdir()) == []
+
+
+def test_local_path_accepts_the_root_name_of_its_marker(monkeypatch):
+    """#601 F5：生产派发根 qsys-qmt-dispatch* 曾被验证根命名规则拒绝，生产路径无法启动。"""
+    from pathlib import PureWindowsPath
+    monkeypatch.setattr(w.os, 'name', 'nt')
+    validation = PureWindowsPath(r'C:\q\vparent\qsys-async-validation-f4e')
+    production = PureWindowsPath(r'C:\q\vparent\qsys-qmt-dispatch-f5')
+    w._local_path(validation)
+    w._local_path(production, marker_name='.qsys-qmt-dispatch')
+    with pytest.raises(ValueError, match='dedicated local'):
+        w._local_path(production)
+    with pytest.raises(ValueError, match='dedicated local'):
+        w._local_path(validation, marker_name='.qsys-qmt-dispatch')
+    with pytest.raises(ValueError, match='marker'):
+        w._local_path(production, marker_name='.other')
+    with pytest.raises(ValueError, match='dedicated local'):
+        w._local_path(PureWindowsPath(r'\\server\share\qsys-qmt-dispatch-f5'),
+                      marker_name='.qsys-qmt-dispatch')

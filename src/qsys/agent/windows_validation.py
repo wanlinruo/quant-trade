@@ -139,11 +139,20 @@ def _assert_private_bootstrap_parent(value: dict) -> None:
             raise ValueError('private NTFS access mask/inheritance mismatch')
 
 
-def _local_path(root: Path) -> None:
+# 根目录名随标记文件确定：验证根与生产 QMT 派发根（async_dispatch._private_qmt_root）
+# 各自只接受自己的命名，不能互换（#601 F5 现场发现生产根曾被验证命名规则拒绝）。
+_ROOT_NAMES = {'.qsys-async-validation': r'qsys-async-validation-[a-z0-9_-]+',
+               '.qsys-qmt-dispatch': r'qsys-qmt-dispatch[a-z0-9_-]*'}
+
+
+def _local_path(root: Path, *, marker_name: str = '.qsys-async-validation') -> None:
     if os.name != 'nt':
         raise ValueError('Windows validation roots require Windows')
+    pattern = _ROOT_NAMES.get(marker_name)
+    if pattern is None:
+        raise ValueError('unknown Windows state root marker')
     if (not root.is_absolute() or not re.fullmatch(r'[A-Za-z]:', root.drive)
-            or not re.fullmatch(r'qsys-async-validation-[a-z0-9_-]+', root.name)):
+            or not re.fullmatch(pattern, root.name)):
         raise ValueError('dedicated local Windows validation root required')
 
 
@@ -177,7 +186,7 @@ def prepare_windows_validation_parent(parent: Path, *, enabled: bool = False) ->
 
 def validate_windows_validation_root(root: Path, *, marker_name: str = '.qsys-async-validation') -> dict:
     allowed = (_FILES - {'.qsys-async-validation'}) | {marker_name}
-    _local_path(root)
+    _local_path(root, marker_name=marker_name)
     receipt = _inspect(root, cold_start=True)
     _assert_private(receipt, directory=True, protected=True)
     if receipt['owner'] != receipt['sid']:
