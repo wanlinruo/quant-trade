@@ -1349,6 +1349,7 @@ def test_production_status_declares_fixed_entrypoint_capabilities(monkeypatch, t
         "component-web-evidence-maintenance-v1",
         "component-service-checks-maintenance-v1",
         "component-daily-archive-maintenance-v1",
+        "component-limit-up-shadow-maintenance-v1",
         "component-observer-maintenance-v1",
         "component-idle-paper-maintenance-v1",
         "emergency-restart-authorization-v1",
@@ -1664,7 +1665,10 @@ def test_component_record_preserves_state_and_matches_contract(
     monkeypatch.setattr(
         entrypoint, "_current_component_sha", lambda component: state["component"],
     )
-    monkeypatch.setattr(entrypoint, "_active", lambda unit, repo: state["active"])
+    # Live 的运行状态跟随 fixture 的 Live 身份：pid 非 0 即正常路径（#636 新增停用 Live 维护通道）。
+    monkeypatch.setattr(entrypoint, "_active", lambda unit, repo: (
+        live["pid"] != "0" if unit == "qsys-live-core.service" and component == "limit-up-shadow"
+        else state["active"]))
     monkeypatch.setattr(entrypoint, "_live_identity", lambda repo: dict(live))
     monkeypatch.setattr(entrypoint, "_state_reader_maintenance_identity", lambda repo: dict(live))
     monkeypatch.setattr(entrypoint, "_tushare_maintenance_identity", lambda repo: {
@@ -1770,7 +1774,10 @@ def test_component_health_and_peer_identity_gate(
     monkeypatch.setattr(
         entrypoint, "_current_component_sha", lambda component: state["component"],
     )
-    monkeypatch.setattr(entrypoint, "_active", lambda unit, repo: state["active"])
+    # Live 的运行状态跟随 fixture 的 Live 身份：pid 非 0 即正常路径（#636 新增停用 Live 维护通道）。
+    monkeypatch.setattr(entrypoint, "_active", lambda unit, repo: (
+        live["pid"] != "0" if unit == "qsys-live-core.service" and component == "limit-up-shadow"
+        else state["active"]))
     monkeypatch.setattr(entrypoint, "_live_identity", lambda repo: dict(live))
     monkeypatch.setattr(entrypoint, "_tushare_maintenance_identity", lambda repo: {
         **live, "pid": "0", "maintenance_facts": "unchanged stopped state and KILL",
