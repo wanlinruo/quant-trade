@@ -78,8 +78,22 @@
 **新增泛概念复核**：盘前拉取概念快照时，若出现名称含"成份/样本/预增/预盈/次新/股通/
 自贸区/国企改革"等字样、且不在名单里的新概念，页面上提示复核，不自动排除。
 
+## 盘口字段（2026-11-12 凌晨，部分结论）
+
+- 代码事实：`scripts/run_market_gateway.py` 把 `volume` 从手换算为股（×100），但
+  `bid1_volume`/`ask1_volume` 取 QMT `bidVol`/`askVol` 原值，**未换算**；`_level()` 在字段
+  缺失或为空时返回 0。因此到了 Linux 侧的 `MarketQuote`，"字段缺失"与"真实为 0"已经
+  **无法区分**。
+- 只读实测：Redis `state:quote_realtime_latest`（发布于 11-11 15:29:56，5661 只）**全部**
+  `bid1=ask1=0`、两侧量均为 0，收盘后的快照无法用于判断单位，也无法判断盘中是否
+  提供盘口。
+- 旁证：归档的 QMT 历史 tick（`auction_ticks`，`get_market_data` 接口）中 `bidVol`/`askVol`
+  的单位为手（schema 注释；竞价撮合量与 09:30 竞价 bar 一致，见
+  `auction-order-timing-study.md`）。`get_full_tick` 是否同单位尚未直接验证。
+- 待做：取盘中快照做只读统计，内容包括盘口是否非零、封板票卖一量是否为 0、
+  `bid1_volume × 涨停价` 与收盘后 `limit_list_d.fd_amount` 的比值；在此之前看板不展示
+  盘中封单额，封板判定按"封板未知"处理（设计 §4.3）。
+
 ## 未覆盖
 
-- 盘口探针（`bidVol`/`askVol` 单位以及"缺失 vs 0"能否区分）需要在 Windows 侧 QMT 上
-  实测，本次未做。
 - 接口频次上限、成分每日更新时点未测；盘前拉取的时点将在实现阶段再实测。
