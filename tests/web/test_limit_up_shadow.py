@@ -297,3 +297,42 @@ def test_partial_outcomes_remain_pending_and_do_not_drive_metrics(tmp_path: Path
     complete = reader.view(date(2026, 10, 9))
     assert reader.pending_outcomes(date(2026, 10, 12)) == ()
     assert complete.snapshot.rolling_precision_at_20 == pytest.approx(0.5)
+
+
+# ---- #645：当日涨停股全部打分 ----
+
+_SCORES = [
+    {"symbol": "300750.SZ", "p_touch": 0.5, "p_seal_given_touch": 0.6, "p_close_limit": 0.3},
+    {"symbol": "000573.SZ", "p_touch": 0.2, "p_seal_given_touch": 0.5, "p_close_limit": 0.1},
+]
+
+
+def test_limit_up_scores_round_trip_through_store(tmp_path: Path):
+    path = tmp_path / "shadow.sqlite3"
+    LimitUpShadowPublisher(path).publish(
+        LimitUpShadowSnapshot.model_validate(_payload(limit_up_scores=_SCORES)))
+    snap = LimitUpShadowReader(path).view(date(2026, 10, 9)).snapshot
+    assert {s.symbol: s.p_close_limit for s in snap.limit_up_scores} == {
+        "300750.SZ": 0.3, "000573.SZ": 0.1}
+    assert len(snap.entries) == 2  # Top-20 契约不变
+
+
+def test_reader_tolerates_legacy_store_without_score_table(tmp_path: Path):
+    path = tmp_path / "shadow.sqlite3"
+    LimitUpShadowPublisher(path).publish(LimitUpShadowSnapshot.model_validate(_payload()))
+    with sqlite3.connect(path) as con:
+        con.execute("DROP TABLE limit_up_shadow_limit_scores")
+    snap = LimitUpShadowReader(path).view(date(2026, 10, 9)).snapshot
+    assert snap is not None and snap.limit_up_scores == ()
+
+
+def test_limit_up_scores_enforce_identity_uniqueness_and_ready_state():
+    with pytest.raises(ValidationError):
+        LimitUpShadowSnapshot.model_validate(_payload(limit_up_scores=[
+            {"symbol": "300750.SZ", "p_touch": 0.5, "p_seal_given_touch": 0.6,
+             "p_close_limit": 0.31}]))
+    with pytest.raises(ValidationError):
+        LimitUpShadowSnapshot.model_validate(_payload(limit_up_scores=_SCORES + _SCORES[:1]))
+    with pytest.raises(ValidationError):
+        LimitUpShadowSnapshot.model_validate(_payload(
+            status="waiting", entries=[], limit_up_scores=_SCORES))

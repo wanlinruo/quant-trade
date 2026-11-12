@@ -55,6 +55,7 @@ def main() -> int:
         "target_session": target_session.isoformat(),
         "eligible_count": snapshot.eligible_count,
         "entries": len(snapshot.entries),
+        "limit_up_scores": len(snapshot.limit_up_scores),
         "model_version": snapshot.model_version,
         "model_sha": snapshot.model_sha,
         "data_sha": snapshot.data_sha,
