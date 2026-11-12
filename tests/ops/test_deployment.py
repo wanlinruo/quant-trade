@@ -902,23 +902,36 @@ def test_shared_redis_change_targets_both_nodes() -> None:
     )
 
     assert plan.nodes == ("linux", "windows")
-    assert set(plan.components) == {
-        "linux-resident", "windows-agent", "windows-gateway",
-    }
-    assert set(plan.windows_tasks) == {"qsys-agent-shadow", "qsys-market-gateway"}
+    assert set(plan.components) == {"linux-resident", "windows-gateway"}
+    assert set(plan.windows_tasks) == {"qsys-market-gateway"}
+    assert plan.retired_components == ("windows-agent",)
     assert plan.unknown_paths == ()
 
 
-def test_commissioning_change_targets_linux_and_windows_agent() -> None:
+def test_commissioning_change_no_longer_targets_retired_windows_agent() -> None:
+    """2026-11-12 维护者：windows-agent（live_app/qsys-agent-shadow）退役，#601 执行链另行管理。"""
     plan = DeploymentManifest.load(MANIFEST).plan(
         ["src/qsys/live/commissioning.py"], environment="production",
     )
 
-    assert plan.nodes == ("linux", "windows")
-    assert set(plan.components) == {"linux-resident", "windows-agent"}
-    assert plan.windows_apps == ("live_app",)
-    assert plan.windows_tasks == ("qsys-agent-shadow",)
+    assert plan.nodes == ("linux",)
+    assert set(plan.components) == {"linux-resident"}
+    assert plan.windows_apps == () and plan.windows_tasks == ()
+    assert plan.retired_components == ("windows-agent",)
     assert plan.unknown_paths == ()
+
+
+def test_retired_agent_paths_stay_classified_but_never_plan_live_app() -> None:
+    manifest = DeploymentManifest.load(MANIFEST)
+    plan = manifest.plan(["src/qsys/agent/qmt/adapter.py", "scripts/run_qmt_agent.py"],
+                         environment="production")
+    assert "windows-agent" not in plan.components and plan.unknown_paths == ()
+    assert plan.windows_apps == () and "windows" not in plan.nodes
+    assert plan.retired_components == ("windows-agent",)
+    everything = manifest.plan(["src/qsys/agent/qmt/adapter.py", "deploy/windows/qsys_watchdog.ps1",
+                                "scripts/run_market_gateway.py"], environment="production")
+    assert "live_app" not in everything.windows_apps
+    assert "qsys-agent-shadow" not in everything.windows_tasks
 
 
 def test_docs_only_change_is_recorded_without_a_runtime_deployment() -> None:
@@ -2602,7 +2615,7 @@ def test_windows_control_targets_both_independent_apps() -> None:
     )
 
     assert plan.components == ("linux-data-jobs", "windows-control")
-    assert plan.windows_apps == ("live_app", "paper_app")
+    assert plan.windows_apps == ("paper_app",)
     assert plan.windows_tasks == ("qsys-watchdog",)
 
 

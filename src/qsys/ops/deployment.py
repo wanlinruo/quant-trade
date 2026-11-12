@@ -70,6 +70,8 @@ class Component:
     health_checks: tuple[str, ...] = ()
     rollback: str = ""
     manual_gate: bool = False
+    # 已退役：路径仍算已分类（不报 unknown），但永不进入发布计划（2026-11-12 windows-agent）。
+    retired: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,6 +86,7 @@ class DeploymentPlan:
     health_checks: tuple[str, ...]
     manual_gate: bool
     unknown_paths: tuple[str, ...]
+    retired_components: tuple[str, ...] = ()
 
     @property
     def deployable(self) -> bool:
@@ -101,6 +104,7 @@ class DeploymentPlan:
             "health_checks": list(self.health_checks),
             "manual_gate": self.manual_gate,
             "unknown_paths": list(self.unknown_paths),
+            "retired_components": list(self.retired_components),
             "deployable": self.deployable,
         }
 
@@ -134,6 +138,7 @@ class DeploymentManifest:
             health_checks=tuple(item.get("health_checks", ())),
             rollback=item.get("rollback", ""),
             manual_gate=bool(item.get("manual_gate", False)),
+            retired=bool(item.get("retired", False)),
         ) for item in raw.get("components", ()))
         names = [item.name for item in components]
         if len(names) != len(set(names)) or not names:
@@ -162,6 +167,7 @@ class DeploymentManifest:
             raise ContractError(f"unknown deployment environment: {environment}")
         changed = tuple(sorted(set(changed_paths)))
         selected: list[Component] = []
+        retired: set[str] = set()
         ignored: list[str] = []
         unknown: list[str] = []
         for path in changed:
@@ -176,7 +182,8 @@ class DeploymentManifest:
                 and any(fnmatch(path, pattern) for pattern in component.paths)
             ]
             if matches:
-                for component in matches:
+                retired.update(item.name for item in matches if item.retired)
+                for component in (item for item in matches if not item.retired):
                     if component not in selected:
                         selected.append(component)
             else:
@@ -202,6 +209,7 @@ class DeploymentManifest:
             health_checks=combined("health_checks"),
             manual_gate=any(item.manual_gate for item in selected),
             unknown_paths=tuple(unknown),
+            retired_components=tuple(sorted(retired)),
         )
 
 
