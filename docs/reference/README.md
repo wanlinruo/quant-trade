@@ -374,3 +374,5 @@ HIGH 与 LOW 两个分支。
 [同花顺概念接口探针](ths-concept-probe.md)记录 `ths_index`/`ths_member` 可调用性、成分数分布、
 成分无历史日期及反查需过滤非概念指数等事实；设计见
 [打板看板设计](../superpowers/specs/2026-11-11-limit-up-board-dashboard-design.md)。
+盘中采集器的运行节奏、封板口径实测、存储与首次安装前的节点准备见
+[打板看板盘中采集器](limit-up-board-collector.md)。

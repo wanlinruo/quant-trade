@@ -157,7 +157,8 @@ def nft_script(policy: dict, exists: bool) -> str:
 """
 
 
-READER_USERS = {"qsys-web", "qsys-health-observer", "qsys-daily-digest", "qsys-reboot-drill"}
+READER_USERS = {"qsys-web", "qsys-health-observer", "qsys-daily-digest", "qsys-reboot-drill",
+                "qsys-limit-up-board"}
 GUARDED_USERS = READER_USERS | {"qsys-service-checks"}
 
 
@@ -212,7 +213,7 @@ UMask=0077
     "qsys-redis-readonly-netguard.service": """[Unit]
 Description=Qsys read-only component direct Redis port guard
 After=network-pre.target
-Before=qsys-monitor.service qsys-health-observer.service qsys-daily-digest.service qsys-reboot-drill.service qsys-service-checks.service
+Before=qsys-monitor.service qsys-health-observer.service qsys-daily-digest.service qsys-reboot-drill.service qsys-service-checks.service qsys-limit-up-board.service
 [Service]
 Type=oneshot
 ExecStart=/usr/bin/python3 -I /usr/local/libexec/qsys-redis-reader.py netguard --policy /etc/qsys/redis-reader/policy.json

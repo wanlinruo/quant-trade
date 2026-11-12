@@ -853,6 +853,57 @@
         "ReadOnlyPaths=/home/ubuntu/qsys/var/live-core/var/KILL",
         "ReadOnlyPaths=-/home/ubuntu/qsys/var/live-core/var/live-core.lock"
       ]
+    },
+    "limit-up-board": {
+      "entrypoint": {
+        "command": "qsys-limit-up-board",
+        "target": "qsys.data.board.collector_cli:main"
+      },
+      "scan_roots": [
+        "src/qsys"
+      ],
+      "release_root": "/opt/qsys/components/limit-up-board/releases",
+      "current": "/opt/qsys/components/limit-up-board/current",
+      "executable": "venv/bin/qsys-limit-up-board",
+      "unit": "qsys-limit-up-board.service",
+      "dropin": "/etc/systemd/system/qsys-limit-up-board.service.d/zz-isolated-release.conf",
+      "state_directories": [
+        {
+          "path": "/data/qsys/var-prod/limit-up-board",
+          "owner": "qsys-limit-up-board",
+          "group": "qsys-limit-up-board",
+          "mode": "0750"
+        }
+      ],
+      "seed": null,
+      "dropin_lines": [
+        "[Unit]",
+        "Requires=qsys-redis-readonly-netguard.service qsys-redis-reader.socket",
+        "After=qsys-redis-readonly-netguard.service qsys-redis-reader.socket",
+        "[Service]",
+        "Environment=QSYS_REDIS_READER_SOCKET=/run/qsys-redis-reader.sock",
+        "User=qsys-limit-up-board",
+        "Group=qsys-limit-up-board",
+        "SupplementaryGroups=",
+        "SupplementaryGroups=qsys-observers",
+        "UMask=0027",
+        "WorkingDirectory=/",
+        "ExecStart=",
+        "ReadWritePaths=",
+        "ReadWritePaths=/data/qsys/var-prod/limit-up-board",
+        "ReadOnlyPaths=/data/qsys/warehouse /etc/qsys/components/limit-up-board/deploy.toml",
+        "ExecStart=/opt/qsys/components/limit-up-board/current/venv/bin/qsys-limit-up-board --warehouse /data/qsys/warehouse --config /etc/qsys/components/limit-up-board/deploy.toml --state-root /data/qsys/var-prod/limit-up-board --warehouse-lock /home/ubuntu/qsys/var/warehouse-write.lock",
+        "MemoryHigh=768M",
+        "MemoryMax=1G",
+        "CPUQuota=50%",
+        "Nice=10",
+        "IOSchedulingClass=idle",
+        "Environment=POLARS_MAX_THREADS=1",
+        "Environment=QSYS_QUERY_MEMORY_MB=512",
+        "Environment=QSYS_QUERY_MAX_TEMP_MB=256",
+        "Environment=QSYS_QUERY_THREADS=1",
+        "Environment=QSYS_QUERY_TEMP_ROOT=/tmp/qsys-limit-up-board-query"
+      ]
     }
   }
 }
