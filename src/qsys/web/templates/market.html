@@ -55,7 +55,7 @@
 <section class="panel market-section">
   <div class="panel-title">涨跌停价核对（Tushare stk_limit × QMT）</div>
   {% if limit_check %}
-  <p class="{{ 'down' if limit_check.mismatched else 'muted' }}">
+  <p class="{{ 'alert-text' if limit_check.mismatched else 'muted' }}">
     {{ limit_check.session }} 核对 {{ limit_check.checked }} 只：价格不一致 {{ limit_check.mismatched }} 只
   </p>
   {% for item in limit_check.samples %}<div class="muted">{{ item.symbol }} Tushare {{ item.tushare }} / QMT {{ item.qmt }}</div>{% endfor %}
