@@ -62,8 +62,13 @@ class RedisTransport(Transport):
         )
         return cls(client)
 
-    def append(self, stream: str, payload: dict[str, str]) -> str:
-        return _decode(self._r.xadd(stream, payload))
+    def append(
+        self, stream: str, payload: dict[str, str], *, maxlen: int | None = None,
+    ) -> str:
+        if maxlen is None:
+            return _decode(self._r.xadd(stream, payload))
+        # 近似裁剪：Redis 按宏节点整块删除，开销恒定，不阻塞主线程（#535）。
+        return _decode(self._r.xadd(stream, payload, maxlen=maxlen, approximate=True))
 
     def ensure_group(self, stream: str, group: str, start_id: str = "$") -> None:
         try:

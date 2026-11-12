@@ -266,7 +266,7 @@ def test_redis_connection_loss_is_a_retryable_quote_outage():
             super().__init__()
             self.exc = exc
 
-        def append(self, stream, payload):
+        def append(self, stream, payload, *, maxlen=None):
             raise self.exc
 
     streams = StreamConfig()
@@ -304,3 +304,24 @@ def test_old_heartbeat_consumers_ignore_the_new_fields():
                     order_book_ratio=0.99, order_book_at=datetime(2026, 11, 12, 13, 0)
                     ).model_dump_json()
     assert '"order_book_ratio":0.99' in raw.replace(" ", "")
+
+
+def test_quote_streams_are_bounded_but_requests_still_round_trip():
+    """#535：行情请求/响应流带长度上限；其他流不受影响。"""
+    from qsys.paper.quotes import QUOTE_STREAM_MAXLEN
+
+    calls = []
+
+    class Recording(MemoryTransport):
+        def append(self, stream, payload, *, maxlen=None):
+            calls.append((stream, maxlen))
+            return super().append(stream, payload, maxlen=maxlen)
+
+    transport, streams = Recording(), StreamConfig()
+    gateway = MarketGateway(transport, streams, lambda symbols: {s: _quote(s, 11) for s in symbols})
+    from qsys.live.messages import QuoteRequest
+    transport.append(streams.quote_requests, QuoteRequest(
+        request_id="r1", symbols=["600001.SH"], requested_at=datetime(2026, 9, 16, 10)).to_payload(),
+        maxlen=QUOTE_STREAM_MAXLEN)
+    assert gateway.run_once() == 1
+    assert (streams.quote_snapshots, QUOTE_STREAM_MAXLEN) in calls

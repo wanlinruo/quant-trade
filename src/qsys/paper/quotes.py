@@ -36,6 +36,10 @@ def _is_sentinel(pair, sentinels) -> bool:
                for up, down in sentinels)
 
 
+# 行情请求/响应流只承载即时报价，消费后即无用；不裁剪会让 Windows Redis 数据集与 AOF
+# 无限增长（#535：11-12 两条流各约 70 万条，used_memory 748M）。交易审计流不在此列。
+QUOTE_STREAM_MAXLEN = 20_000
+
 MARKET_INDICES = {
     "000001.SH": "上证指数",
     "399001.SZ": "深证成指",
@@ -96,7 +100,7 @@ class QuoteClient:
         request_id = uuid.uuid4().hex
         self._t.append(self._s.quote_requests, QuoteRequest(
             request_id=request_id, symbols=unique, requested_at=datetime.now()
-        ).to_payload())
+        ).to_payload(), maxlen=QUOTE_STREAM_MAXLEN)
         deadline = time.monotonic() + self._timeout
         while time.monotonic() < deadline:
             for message in self._t.read_group(
@@ -158,7 +162,8 @@ class MarketGateway:
                         request_id=request.request_id, published_at=datetime.now(),
                         quotes={}, error=str(exc),
                     )
-                self._t.append(self._s.quote_snapshots, response.to_payload())
+                self._t.append(self._s.quote_snapshots, response.to_payload(),
+                               maxlen=QUOTE_STREAM_MAXLEN)
             finally:
                 self._t.ack(self._s.quote_requests, self._group, message.id)
         return handled

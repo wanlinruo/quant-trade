@@ -166,3 +166,25 @@ def test_all_messages_is_a_bounded_read_only_xrange() -> None:
     rows = RedisTransport(Client()).all_messages("ns:evt:rejects")
     assert [(m.id, m.payload) for m in rows] == [("1-0", {"type": "X", "data": "{}"})]
     assert calls == [("ns:evt:rejects", "-", "+", 10000)]
+
+
+class _XaddRecorder:
+    def __init__(self):
+        self.calls = []
+
+    def xadd(self, stream, payload, **kwargs):
+        self.calls.append((stream, kwargs))
+        return b"1-0"
+
+
+def test_append_without_maxlen_keeps_unbounded_xadd_for_audit_streams() -> None:
+    client = _XaddRecorder()
+    RedisTransport(client).append("cmd:intents", {"a": "1"})
+    assert client.calls == [("cmd:intents", {})]
+
+
+def test_append_with_maxlen_uses_approximate_trim() -> None:
+    """#535：行情流不裁剪会让 Windows Redis 数据集无限增长。"""
+    client = _XaddRecorder()
+    RedisTransport(client).append("evt:quote_snapshots", {"a": "1"}, maxlen=20000)
+    assert client.calls == [("evt:quote_snapshots", {"maxlen": 20000, "approximate": True})]
