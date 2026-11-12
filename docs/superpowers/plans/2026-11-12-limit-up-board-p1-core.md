@@ -4,7 +4,7 @@
 
 **Goal:** 实现打板看板的纯函数核心：同花顺概念快照、题材归列、连板高度、今/昨晋级，以及盘后对账。用已入库的历史交易日验证这些逻辑，**不包含**盘中采集、Web 页面和发布。
 
-**Architecture:** 新建包 `src/qsys/board/`，每个文件负责一件事：概念快照（拉取与排除名单）、归列、梯队（高度/晋级/今昨对比）、盘后对账。全部是输入 → 输出的纯函数，输入只有直取或纯派生字段，缺失值显示为未知（`None`），不推断。Tushare 访问只新增两个 provider 方法。
+**Architecture:** 新建包 `src/qsys/data/board/`，每个文件负责一件事：概念快照（拉取与排除名单）、归列、梯队（高度/晋级/今昨对比）、盘后对账。全部是输入 → 输出的纯函数，输入只有直取或纯派生字段，缺失值显示为未知（`None`），不推断。Tushare 访问只新增两个 provider 方法。
 
 **Tech Stack:** Python 3.11、polars、pydantic、pytest（`uv run pytest`）。
 
@@ -35,7 +35,7 @@
 
 **Files:**
 - Modify: `src/qsys/data/providers/tushare.py`（`TushareProvider` 新增两个方法）
-- Create: `src/qsys/board/__init__.py`、`src/qsys/board/concepts.py`
+- Create: `src/qsys/data/board/__init__.py`、`src/qsys/data/board/concepts.py`
 - Test: `tests/board/test_concepts.py`
 
 **Interfaces:**
@@ -72,7 +72,7 @@ def test_snapshot_sha_is_order_independent():
 ### Task 2: 题材归列
 
 **Files:**
-- Create: `src/qsys/board/assign.py`
+- Create: `src/qsys/data/board/assign.py`
 - Test: `tests/board/test_assign.py`
 
 **Interfaces:**
@@ -91,7 +91,7 @@ def test_snapshot_sha_is_order_independent():
 ### Task 3: 连板高度、晋级与今/昨对比
 
 **Files:**
-- Create: `src/qsys/board/ladder.py`
+- Create: `src/qsys/data/board/ladder.py`
 - Test: `tests/board/test_ladder.py`
 
 **Interfaces:**
@@ -110,7 +110,7 @@ def test_snapshot_sha_is_order_independent():
 ### Task 4: 盘后对账
 
 **Files:**
-- Create: `src/qsys/board/reconcile.py`
+- Create: `src/qsys/data/board/reconcile.py`
 - Test: `tests/board/test_reconcile.py`
 
 **Interfaces:**
@@ -129,7 +129,7 @@ def test_snapshot_sha_is_order_independent():
 ### Task 5: 历史交易日只读验收脚本
 
 **Files:**
-- Create: `scripts/board_history_check.py`
+- Create: `src/qsys/data/board/history_cli.py`
 - Modify: `tests/scripts/test_scripts_import.py`（把新脚本加进导入清单）
 - Test: `tests/board/test_history_check.py`
 

@@ -2,7 +2,7 @@ from datetime import date
 
 import polars as pl
 
-from qsys.board.ladder import PromotionRow, previous_heights, promotions, today_height
+from qsys.data.board.ladder import PromotionRow, previous_heights, promotions, today_height
 
 D1, D2, D3 = date(2026, 11, 10), date(2026, 11, 11), date(2026, 11, 12)
 SESSIONS = [D1, D2, D3]

@@ -2,7 +2,7 @@ from datetime import date, datetime
 
 import polars as pl
 
-from qsys.board.reconcile import Mismatch, Observed, reconcile
+from qsys.data.board.reconcile import Mismatch, Observed, reconcile
 
 DAY = date(2026, 11, 12)
 

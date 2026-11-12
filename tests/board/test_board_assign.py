@@ -1,7 +1,7 @@
 from datetime import date, datetime
 
-from qsys.board.assign import OTHER, assign, concept_counts
-from qsys.board.concepts import ConceptSnapshot
+from qsys.data.board.assign import OTHER, assign, concept_counts
+from qsys.data.board.concepts import ConceptSnapshot
 
 
 def _snap(members):

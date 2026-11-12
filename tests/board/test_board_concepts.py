@@ -4,7 +4,7 @@ from pathlib import Path
 
 import polars as pl
 
-from qsys.board.concepts import EXCLUDED_CONCEPTS, build_snapshot
+from qsys.data.board.concepts import EXCLUDED_CONCEPTS, build_snapshot
 
 DAY = date(2026, 11, 12)
 FETCHED = datetime(2026, 11, 12, 8, 50)

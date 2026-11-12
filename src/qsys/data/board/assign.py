@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Iterable, Mapping
 
-from qsys.board.concepts import ConceptSnapshot
+from qsys.data.board.concepts import ConceptSnapshot
 
 OTHER = "其他"
 

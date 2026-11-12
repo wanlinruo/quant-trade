@@ -5,7 +5,7 @@ import pyarrow as pa
 from qsys.data import schema
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
-from scripts.board_history_check import summarize
+from qsys.data.board.history_cli import summarize
 
 D1, D2 = date(2026, 11, 11), date(2026, 11, 12)
 

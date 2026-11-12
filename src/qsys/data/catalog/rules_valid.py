@@ -118,6 +118,14 @@ FILL_EXEMPTIONS: dict[tuple[str, str], str] = {
         "规范为确定字节，不改变参与对账的数据语义"
     ),
     (
+        "src/qsys/data/board/assign.py",
+        "best = min(own, key=lambda code: (-counts.get(code, 0), code))",
+    ): "题材家数计数器：当日无封板的概念家数按定义为 0，只用于排序，不产生数据值",
+    (
+        "src/qsys/data/board/assign.py",
+        "if counts.get(previous, 0) * 2 >= counts.get(best, 0):",
+    ): "题材家数计数器：当日无封板的概念家数按定义为 0，只用于改列比较",
+    (
         "src/qsys/data/pipeline/canonical_minute.py",
         'sources[row["source"]] = sources.get(row["source"], 0) + row["len"]',
     ): "构建报告的来源行数计数器；未出现过的来源累计行数按定义从 0 开始",

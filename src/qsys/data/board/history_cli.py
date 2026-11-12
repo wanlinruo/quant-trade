@@ -1,11 +1,10 @@
-#!/usr/bin/env python3
 """打板看板历史交易日只读汇总（#648 P1 验收）。
 
 只读 warehouse：当日封板家数、连板高度分布、未知高度数、今/昨晋级；给出概念快照时
 附题材列家数。上线前的历史日没有当日概念快照，不分题材（不得用当前成分回填）。
 
 用法：
-    python scripts/board_history_check.py --warehouse /data/qsys/warehouse --day 2026-11-11
+    python -m qsys.data.board.history_cli --warehouse /data/qsys/warehouse --day 2026-11-11
 """
 
 from __future__ import annotations
@@ -20,9 +19,9 @@ from pathlib import Path
 
 import polars as pl
 
-from qsys.board.assign import assign, concept_counts
-from qsys.board.concepts import ConceptSnapshot
-from qsys.board.ladder import previous_heights, promotions, today_height
+from qsys.data.board.assign import assign, concept_counts
+from qsys.data.board.concepts import ConceptSnapshot
+from qsys.data.board.ladder import previous_heights, promotions, today_height
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
 
