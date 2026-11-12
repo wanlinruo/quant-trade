@@ -450,6 +450,21 @@ uv run python scripts/run_market_gateway.py --config config/deploy.local.toml
 `state:market_overview`。可用 `--overview-interval` 调整间隔，心跳键为
 `state:heartbeat:market`。不要把它替换成 `run_agent.py`；后者属于真实券商链路。
 
+### 行情源「全推行情」必须带盘口（2026-11-12，#601 / #648）
+
+`get_full_tick` 读的是客户端**全推**数据。QMT「行情源 → 行情选择 → 全推行情」有四档：
+无全推 / 最新价 / 一档行情 / 五档行情。选「最新价」时，`bidPrice/askPrice/bidVol/askVol`
+字段存在但恒为 0，`subscribe_quote` 单只订阅也补不出来（11-12 13:03 实测）；界面行情窗口
+能看到五档是因为界面单独订阅，不经过外部 xtdata。
+
+- 后果：网关报价无对手价，实盘 `protected_limit_price` 对每笔委托报 `NO_OPPONENT`
+  （失败关闭，不会错价成交但无法下单），行情页封板判定退化为纯价格口径。
+- 2026-11-12 13:43 维护者改为带盘口的全推，网关**无需重启**即生效：13:44 全市场快照
+  5661 只中 5609 只带盘口，涨停票卖一为空、买一为封单；四路心跳不中断。
+- 盘口量单位：涨停票买一量量级与"手"一致（待 `limit_list_d.fd_amount` 比对确认）；
+  网关对 `volume` 做了手→股换算，**盘口量未换算**，消费方不得混用。
+- 该设置须在 QMT 自行重建 / 重启后保持；盘前检查应核对全市场快照带盘口比例（跟踪 Issue）。
+
 ### 部署实况与更新步骤（2026-09-17）
 
 - 代码目录 `C:\qsys\paper_app`：**手工拷贝的源码快照，没有 git**，`PYTHONPATH=src`；
