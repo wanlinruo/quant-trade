@@ -276,3 +276,31 @@ def test_redis_connection_loss_is_a_retryable_quote_outage():
         client = QuoteClient(Dropping(exc), streams, consumer="test", timeout=1)
         with pytest.raises(QuoteUnavailable, match="Redis 连接中断"):
             client.request(["600036.SH"])
+
+
+def test_market_heartbeat_carries_order_book_ratio_of_latest_quotes():
+    """#651：健康观察器只能读心跳，网关把全推盘口覆盖写进行情心跳。"""
+    from qsys.live.messages import Heartbeat
+
+    transport, streams = MemoryTransport(), StreamConfig()
+    gateway = MarketGateway(transport, streams, lambda symbols: {})
+    gateway.beat(expected_interval_s=1, phase="afternoon")
+    first = Heartbeat.model_validate_json(transport.get_key(f"{streams.heartbeat}:market"))
+    assert first.order_book_ratio is None and first.order_book_at is None  # 未统计不冒充
+
+    booked = _quote("600001.SH", 11).model_copy(update={"bid1": 10.99, "ask1": 11.0})
+    bare = _quote("600002.SH", 11).model_copy(update={"bid1": 0.0, "ask1": 0.0})
+    now = datetime(2026, 11, 12, 13, 44, 38)
+    gateway.publish_latest_quotes({"600001.SH": booked, "600002.SH": bare}, now=now)
+    gateway.beat(expected_interval_s=1, phase="afternoon")
+    beat = Heartbeat.model_validate_json(transport.get_key(f"{streams.heartbeat}:market"))
+    assert beat.order_book_ratio == 0.5 and beat.order_book_at == now
+
+
+def test_old_heartbeat_consumers_ignore_the_new_fields():
+    from qsys.live.messages import Heartbeat
+
+    raw = Heartbeat(source="market", at=datetime(2026, 11, 12, 13, 0),
+                    order_book_ratio=0.99, order_book_at=datetime(2026, 11, 12, 13, 0)
+                    ).model_dump_json()
+    assert '"order_book_ratio":0.99' in raw.replace(" ", "")

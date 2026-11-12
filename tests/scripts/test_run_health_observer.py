@@ -495,3 +495,19 @@ def test_observer_retains_only_readonly_execution_facts_for_timer():
     assert observed.details['systemd_execution'] == {
         'Result': 'exit-code', 'ExecMainStatus': '226',
         'ExecMainExitTimestamp': 'Mon 2026-10-19 15:41:59 CST'}
+
+
+def test_infra_reads_order_book_ratio_from_market_heartbeat(monkeypatch):
+    from datetime import datetime as dt
+
+    from qsys.live.messages import Heartbeat
+    from qsys.live.transport import MemoryTransport
+
+    monkeypatch.setattr("qsys.ops.infra.failed_units", lambda: ())
+    transport = MemoryTransport()
+    at = dt(2026, 11, 12, 10, 30)
+    transport.set_key("state:heartbeat:market", Heartbeat(
+        source="market", at=at, order_book_ratio=0.0, order_book_at=at).model_dump_json())
+    watch = _infra(RecordingAlertSink(), clock=lambda: at)
+    reading = watch.read(transport)
+    assert reading["order_book_low"] is True

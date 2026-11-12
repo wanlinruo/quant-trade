@@ -5,11 +5,12 @@ from __future__ import annotations
 import argparse
 import ipaddress
 import sys
-from datetime import datetime, time
+from datetime import datetime
 from pathlib import Path
 
 from qsys.live.config import load_deploy_config
 from qsys.live.messages import AccountSnapshot, Heartbeat, QuoteSnapshot
+from qsys.live.order_book import ORDER_BOOK_MIN_RATIO, in_continuous_session, order_book_counts
 from qsys.live.redis_transport import RedisTransport
 
 
@@ -35,9 +36,6 @@ def heartbeat_freshness(
     return -1 <= age <= down_after, age, down_after
 
 
-# 连续竞价时段；盘前、午休、收盘后的快照不代表盘口能力，判为不适用而不是通过。
-CONTINUOUS_SESSIONS = ((time(9, 30), time(11, 30)), (time(13, 0), time(15, 0)))
-ORDER_BOOK_MIN_RATIO = 0.8
 ORDER_BOOK_MAX_AGE_S = 60.0
 
 
@@ -55,18 +53,17 @@ def order_book_coverage(
         return None, "全市场盘口覆盖：不适用（无最新快照）"
     now = now or datetime.now()
     at = snapshot.published_at.replace(tzinfo=None)
-    if not any(start <= at.time() <= end for start, end in CONTINUOUS_SESSIONS):
+    if not in_continuous_session(at):
         return None, f"全市场盘口覆盖：不适用（快照 {at:%H:%M:%S} 不在连续竞价时段）"
     age = (now.replace(tzinfo=None) - at).total_seconds()
     if not -1 <= age <= ORDER_BOOK_MAX_AGE_S:
         return None, f"全市场盘口覆盖：不适用（快照年龄 {age:.0f}s）"
-    valid = [q for q in snapshot.quotes.values() if q.price > 0 and not q.suspended]
+    booked, valid = order_book_counts(snapshot.quotes)
     if not valid:
         return None, "全市场盘口覆盖：不适用（快照无有效报价）"
-    booked = sum(q.bid1 > 0 or q.ask1 > 0 for q in valid)
-    ratio = booked / len(valid)
+    ratio = booked / valid
     return (ratio >= ORDER_BOOK_MIN_RATIO,
-            f"全市场盘口覆盖 {booked}/{len(valid)}（{ratio:.1%}，阈值 {ORDER_BOOK_MIN_RATIO:.0%}）")
+            f"全市场盘口覆盖 {booked}/{valid}（{ratio:.1%}，阈值 {ORDER_BOOK_MIN_RATIO:.0%}）")
 
 
 def agent_live_posture(

@@ -148,3 +148,15 @@ def test_two_problems_are_tracked_independently():
     notices = tracker.update([other])
     assert [n.title for n in notices] == ["磁盘即将写满：已恢复"]
     assert tracker.open_keys == {"cert"}
+
+
+def test_survey_raises_critical_when_full_push_lost_the_order_book():
+    """#651：QMT 全推退回「最新价」时实盘无法定价，必须当天就有人知道。"""
+    findings = survey({"order_book_low": True, "order_book_detail": "10:30:00 带盘口 0.0%"})
+    assert [(f.key, f.severity) for f in findings] == [("order_book", Severity.CRITICAL)]
+    assert "全推行情" in findings[0].detail
+
+
+def test_survey_stays_silent_without_a_valid_order_book_measurement():
+    assert survey({"order_book_low": None}) == []
+    assert survey({"order_book_low": False}) == []

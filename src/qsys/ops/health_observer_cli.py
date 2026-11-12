@@ -6,6 +6,7 @@ import argparse
 import os
 import sys
 import time
+from collections.abc import Callable
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -375,8 +376,14 @@ class InfraAlerts:
     """周期性巡检基础设施，边沿触发地推给运维机器人。"""
 
     def __init__(self, alerts: AlertBus, *, storage_base: Path, config_path,
-                 tls_site: str | None, tls_port: int, interval: float = 300.0) -> None:
+                 tls_site: str | None, tls_port: int, interval: float = 300.0,
+                 heartbeat_prefix: str = "state:heartbeat",
+                 clock: Callable[[], datetime] = datetime.now) -> None:
+        from qsys.live.order_book import OrderBookWatch
+
         self.alerts, self.tracker = alerts, EdgeTracker()
+        self.heartbeat_prefix, self.clock = heartbeat_prefix, clock
+        self.order_book = OrderBookWatch()
         self.storage_base, self.config_path = storage_base, config_path
         self.tls_site, self.tls_port = tls_site, tls_port
         self.interval, self.next_at = interval, 0.0
@@ -413,7 +420,24 @@ class InfraAlerts:
             log.info("infra_watch.system_disk_unavailable", error=str(exc))
         reading["cert_days"] = _cert_days(self.tls_site, self.tls_port)
         reading.update(_redis_state(transport, self.config_path))
+        reading.update(self._order_book_state(transport))
         return reading
+
+    def _order_book_state(self, transport) -> dict:
+        """行情心跳里的全推盘口覆盖（#651）；读不到就保持当日判定，不臆断。"""
+        ratio = at = None
+        if transport is not None:
+            try:
+                from qsys.live.messages import Heartbeat
+
+                raw = transport.get_key(f"{self.heartbeat_prefix}:market")
+                beat = Heartbeat.model_validate_json(raw) if raw else None
+                if beat is not None:
+                    ratio, at = beat.order_book_ratio, beat.order_book_at
+            except Exception as exc:
+                log.info("infra_watch.order_book_unavailable", error=str(exc))
+        low, detail = self.order_book.update(ratio, at, self.clock())
+        return {"order_book_low": low, "order_book_detail": detail}
 
 
 def _cert_days(site: str | None, port: int) -> int | None:
@@ -476,7 +500,7 @@ def main(argv: list[str] | None = None) -> int:
     infra_alerts = InfraAlerts(
         bus, storage_base=Path(args.storage_base), config_path=args.config,
         tls_site=args.tls_site, tls_port=args.tls_port,
-        interval=args.infra_interval,
+        interval=args.infra_interval, heartbeat_prefix=deploy.streams.heartbeat,
     )
     transport = None
     try:

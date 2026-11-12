@@ -19,6 +19,7 @@ from qsys.live.messages import (
     QuoteRequest,
     QuoteSnapshot,
 )
+from qsys.live.order_book import order_book_counts
 from qsys.live.transport import Transport
 # 新股上市初期「无涨跌幅限制」时两边各用哨兵值表达（不是价格）。只认实测见过的组合，
 # 其余形态一律按真实不一致报出（#283）。Tushare stk_limit：仓库实测 up=1,000,000
@@ -134,6 +135,8 @@ class MarketGateway:
         self._t.ensure_group(streams.quote_requests, group)
         # 当日 stk_limit 与 QMT 的核对进度：(交易日, 待核对标的, 已核对结果)
         self._limit_check: tuple[date, list[str], list[dict]] | None = None
+        # 最近一次全推快照的 (盘口覆盖比例, 快照时刻)，写入行情心跳（#651）。
+        self._order_book: tuple[float, datetime] | None = None
         self._limit_checked: date | None = None
 
     def run_once(self) -> int:
@@ -214,6 +217,8 @@ class MarketGateway:
             Heartbeat(
                 source="market", at=datetime.now(),
                 expected_interval_s=expected_interval_s, phase=phase,
+                order_book_ratio=self._order_book[0] if self._order_book else None,
+                order_book_at=self._order_book[1] if self._order_book else None,
             ).model_dump_json(),
         )
 
@@ -242,6 +247,8 @@ class MarketGateway:
         snapshot = QuoteSnapshot(
             request_id="latest", published_at=moment, quotes=quotes,
         )
+        booked, valid = order_book_counts(quotes)
+        self._order_book = (booked / valid, moment) if valid else None
         self._t.set_key(self._s.quote_latest, snapshot.model_dump_json())
         return snapshot
 

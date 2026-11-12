@@ -180,6 +180,10 @@ class Heartbeat(Message):
     account_protected: bool | None = None
     local_kill_engaged: bool | None = None
     commissioning_lease_active: bool | None = None
+    # 行情网关（source=market）发布最近一次全推快照的盘口覆盖（#651）：有效报价中
+    # 买一或卖一价 > 0 的比例及对应快照时刻；未统计时为空，不得视为正常。
+    order_book_ratio: float | None = Field(default=None, ge=0, le=1)
+    order_book_at: datetime | None = None
 
 
 class QuoteRequest(Message):
