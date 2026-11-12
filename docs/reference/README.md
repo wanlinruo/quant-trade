@@ -368,3 +368,9 @@ HIGH 与 LOW 两个分支。
 [消费输入合同](market-input-consumer-contract.md)说明沪深京观察范围、报价覆盖与离线证据核对；
 [订单市场准入](order-market-access.md)说明禁止北交所新开仓与历史受理事实保留。
 代码集成、生产安装及实际消费者接线分别验收，不以离线核对授权交易。
+
+## 打板看板数据源（#648）
+
+[同花顺概念接口探针](ths-concept-probe.md)记录 `ths_index`/`ths_member` 可调用性、成分数分布、
+成分无历史日期及反查需过滤非概念指数等事实；设计见
+[打板看板设计](../superpowers/specs/2026-11-11-limit-up-board-dashboard-design.md)。

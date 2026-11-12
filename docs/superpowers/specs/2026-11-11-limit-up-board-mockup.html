@@ -163,7 +163,7 @@ table.cmp{width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed}
 
  <div class="layout">
   <section class="panel">
-   <div class="panel-title"><div class="vsw" id="vsw"><button class="on" data-v="ladder">题材梯队</button><button data-v="cmp">今/昨对比</button></div><span class="muted vhint" style="font-weight:400;font-size:12px">按今日封过板家数排序 · 每只票只归一列 · 成分 &gt;300 的概念不参与</span></div>
+   <div class="panel-title"><div class="vsw" id="vsw"><button class="on" data-v="ladder">题材梯队</button><button data-v="cmp">今/昨对比</button></div><span class="muted vhint" style="font-weight:400;font-size:12px">按今日封过板家数排序 · 每只票只归一列 · 泛概念按排除名单不参与</span></div>
    <div id="v-cmp" style="display:none">
     <div class="aibar"><span class="pill todo">AI 影子 · 非交易信号</span><span class="muted">模型 v2026-10-10 · 滚动 Precision@20 31.5% · 昨日预测对今日 2 板以上票的命中 6/11</span><a class="muted" style="margin-left:auto">查看 AI 涨停观察 →</a></div>
     <table class="cmp">
@@ -302,7 +302,7 @@ document.querySelectorAll('#vsw button').forEach(b=>b.onclick=()=>{
  document.querySelectorAll('#vsw button').forEach(x=>x.classList.remove('on'));b.classList.add('on');
  const c=b.dataset.v==='cmp';document.getElementById('v-cmp').style.display=c?'block':'none';
  document.getElementById('v-ladder').style.display=c?'none':'table';document.getElementById('v-ladder-lg').style.display=c?'none':'block';
- document.querySelector('.vhint').textContent=c?'昨日 N 板 → 今日 N+1 板 · 今日涨跌幅为盘中实时':'按今日封过板家数排序 · 每只票只归一列 · 成分 >300 的概念不参与';
+ document.querySelector('.vhint').textContent=c?'昨日 N 板 → 今日 N+1 板 · 今日涨跌幅为盘中实时':'按今日封过板家数排序 · 每只票只归一列 · 泛概念按排除名单不参与';
 });
 </script>
 </body>

@@ -5,11 +5,11 @@ from __future__ import annotations
 import argparse
 import ipaddress
 import sys
-from datetime import datetime
+from datetime import datetime, time
 from pathlib import Path
 
 from qsys.live.config import load_deploy_config
-from qsys.live.messages import AccountSnapshot, Heartbeat
+from qsys.live.messages import AccountSnapshot, Heartbeat, QuoteSnapshot
 from qsys.live.redis_transport import RedisTransport
 
 
@@ -33,6 +33,40 @@ def heartbeat_freshness(
     expected = beat.expected_interval_s or 1.0
     down_after = max(10.0, expected * 3.0)
     return -1 <= age <= down_after, age, down_after
+
+
+# 连续竞价时段；盘前、午休、收盘后的快照不代表盘口能力，判为不适用而不是通过。
+CONTINUOUS_SESSIONS = ((time(9, 30), time(11, 30)), (time(13, 0), time(15, 0)))
+ORDER_BOOK_MIN_RATIO = 0.8
+ORDER_BOOK_MAX_AGE_S = 60.0
+
+
+def order_book_coverage(
+    snapshot: QuoteSnapshot | None, now: datetime | None = None,
+) -> tuple[bool | None, str]:
+    """全市场快照中带盘口（买一或卖一价 > 0）的有效报价占比（#651）。
+
+    2026-11-12：QMT「全推行情」为「最新价」时 get_full_tick 盘口恒为 0，实盘对
+    每笔委托报 NO_OPPONENT。返回 None 表示不适用（非连续竞价时段、快照缺失或
+    陈旧），调用方不得计为通过。停牌与无价报价不计入分母；涨跌停只剩单边盘口
+    仍算带盘口。
+    """
+    if snapshot is None:
+        return None, "全市场盘口覆盖：不适用（无最新快照）"
+    now = now or datetime.now()
+    at = snapshot.published_at.replace(tzinfo=None)
+    if not any(start <= at.time() <= end for start, end in CONTINUOUS_SESSIONS):
+        return None, f"全市场盘口覆盖：不适用（快照 {at:%H:%M:%S} 不在连续竞价时段）"
+    age = (now.replace(tzinfo=None) - at).total_seconds()
+    if not -1 <= age <= ORDER_BOOK_MAX_AGE_S:
+        return None, f"全市场盘口覆盖：不适用（快照年龄 {age:.0f}s）"
+    valid = [q for q in snapshot.quotes.values() if q.price > 0 and not q.suspended]
+    if not valid:
+        return None, "全市场盘口覆盖：不适用（快照无有效报价）"
+    booked = sum(q.bid1 > 0 or q.ask1 > 0 for q in valid)
+    ratio = booked / len(valid)
+    return (ratio >= ORDER_BOOK_MIN_RATIO,
+            f"全市场盘口覆盖 {booked}/{len(valid)}（{ratio:.1%}，阈值 {ORDER_BOOK_MIN_RATIO:.0%}）")
 
 
 def agent_live_posture(
@@ -116,6 +150,15 @@ def main() -> int:
             checks.extend(agent_live_posture(
                 beat, require_kill_released=args.require_kill_released,
             ))
+
+    raw_quotes = transport.get_key(cfg.streams.quote_latest)
+    book_ok, book_label = order_book_coverage(
+        QuoteSnapshot.model_validate_json(raw_quotes) if raw_quotes else None
+    )
+    if book_ok is None:
+        print(f"[SKIP] {book_label}")  # 不适用不计入通过数
+    else:
+        checks.append((book_ok, book_label))
 
     for ok, label in checks:
         print(f"[{'PASS' if ok else 'FAIL'}] {label}")

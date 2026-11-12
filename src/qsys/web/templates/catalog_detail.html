@@ -49,7 +49,7 @@
     {% for check in d.checks %}
     <tr>
       <td>{{ check.check_id }}</td><td>{{ check.category }}</td>
-      <td class="num {{ 'down' if check.violations else '' }}">{{ check.violations }}</td>
+      <td class="num {{ 'alert-text' if check.violations else '' }}">{{ check.violations }}</td>
       <td class="num">{{ "{:,}".format(check.checked_rows) }}</td>
       <td style="max-width:320px">{{ check.detail }}</td>
       <td>{% if check.sample_path %}<a href="/data/catalog/sample?path={{ check.sample_path|urlencode }}">下载</a>{% else %}—{% endif %}</td>

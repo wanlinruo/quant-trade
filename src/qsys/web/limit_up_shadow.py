@@ -57,6 +57,23 @@ class LimitUpShadowEntry(BaseModel):
         return self
 
 
+class LimitUpShadowScore(BaseModel):
+    """预测日涨停股的 T+1 概率（#645）；与 Top-20 同一模型/数据指纹，不排名、不截断。"""
+
+    model_config = ConfigDict(frozen=True)
+
+    symbol: str = Field(min_length=1)
+    p_touch: float = Field(ge=0, le=1)
+    p_seal_given_touch: float = Field(ge=0, le=1)
+    p_close_limit: float = Field(ge=0, le=1)
+
+    @model_validator(mode="after")
+    def probabilities_are_coherent(self):
+        if abs(self.p_close_limit - self.p_touch * self.p_seal_given_touch) > 1e-6:
+            raise ValueError("p_close_limit must equal p_touch * p_seal_given_touch")
+        return self
+
+
 class LimitUpShadowSnapshot(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -74,6 +91,7 @@ class LimitUpShadowSnapshot(BaseModel):
     drift_score: float | None = Field(default=None, ge=0)
     error: str = ""
     entries: tuple[LimitUpShadowEntry, ...] = ()
+    limit_up_scores: tuple[LimitUpShadowScore, ...] = ()
 
     @model_validator(mode="after")
     def snapshot_is_coherent(self):
@@ -98,6 +116,11 @@ class LimitUpShadowSnapshot(BaseModel):
             raise ValueError("entry symbols must be unique")
         if self.eligible_count < len(self.entries):
             raise ValueError("eligible_count cannot be smaller than entries")
+        if self.status != "ready" and self.limit_up_scores:
+            raise ValueError("only ready snapshots may contain limit-up scores")
+        scored = [score.symbol for score in self.limit_up_scores]
+        if len(scored) != len(set(scored)):
+            raise ValueError("limit-up score symbols must be unique")
         return self
 
 
@@ -176,6 +199,15 @@ CREATE TABLE IF NOT EXISTS limit_up_shadow_entries (
     UNIQUE (prediction_date, symbol),
     FOREIGN KEY (prediction_date) REFERENCES limit_up_shadow_runs(prediction_date)
 );
+CREATE TABLE IF NOT EXISTS limit_up_shadow_limit_scores (
+    prediction_date TEXT NOT NULL,
+    symbol TEXT NOT NULL,
+    p_touch REAL NOT NULL,
+    p_seal_given_touch REAL NOT NULL,
+    p_close_limit REAL NOT NULL,
+    PRIMARY KEY (prediction_date, symbol),
+    FOREIGN KEY (prediction_date) REFERENCES limit_up_shadow_runs(prediction_date)
+);
 CREATE TABLE IF NOT EXISTS limit_up_shadow_outcomes (
     prediction_date TEXT NOT NULL,
     symbol TEXT NOT NULL,
@@ -251,7 +283,8 @@ class LimitUpShadowReader:
                 metrics = self._rolling_metrics(
                     con, run["prediction_date"], has_outcomes=has_outcomes,
                 )
-                snapshot = self._snapshot(run, rows, metrics=metrics)
+                scores = self._limit_up_scores(con, run["prediction_date"])
+                snapshot = self._snapshot(run, rows, metrics=metrics, scores=scores)
         except (OSError, sqlite3.Error, ValueError) as exc:
             log.warning(
                 "limit_up_shadow.read_failed",
@@ -311,6 +344,24 @@ class LimitUpShadowReader:
                              for row in rows)
         except (OSError, sqlite3.Error):
             return ()
+
+    @staticmethod
+    def _limit_up_scores(
+        con: sqlite3.Connection, prediction_date: str,
+    ) -> tuple[LimitUpShadowScore, ...]:
+        """旧库没有该表时为空，不报错（N-1 兼容）。"""
+        if con.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' "
+            "AND name='limit_up_shadow_limit_scores'"
+        ).fetchone() is None:
+            return ()
+        return tuple(LimitUpShadowScore(
+            symbol=row["symbol"], p_touch=row["p_touch"],
+            p_seal_given_touch=row["p_seal_given_touch"], p_close_limit=row["p_close_limit"],
+        ) for row in con.execute(
+            "SELECT * FROM limit_up_shadow_limit_scores WHERE prediction_date = ? "
+            "ORDER BY symbol", (prediction_date,),
+        ))
 
     @staticmethod
     def _has_outcomes(con: sqlite3.Connection) -> bool:
@@ -378,6 +429,7 @@ class LimitUpShadowReader:
     def _snapshot(
         run: sqlite3.Row, rows: list[sqlite3.Row], *,
         metrics: tuple[float | None, float | None] = (None, None),
+        scores: tuple[LimitUpShadowScore, ...] = (),
     ) -> LimitUpShadowSnapshot:
         entries = tuple(LimitUpShadowEntry(
             rank=row["rank"], symbol=row["symbol"], name=row["name"],
@@ -403,6 +455,7 @@ class LimitUpShadowReader:
                 metrics[1] if metrics[1] is not None else run["calibration_error"]
             ),
             drift_score=run["drift_score"], error=run["error"], entries=entries,
+            limit_up_scores=scores,
         )
 
 
@@ -439,6 +492,8 @@ class LimitUpShadowPublisher:
                 raise ValueError("final shadow snapshot is immutable")
             con.execute("DELETE FROM limit_up_shadow_entries WHERE prediction_date = ?",
                         (snapshot.prediction_date.isoformat(),))
+            con.execute("DELETE FROM limit_up_shadow_limit_scores WHERE prediction_date = ?",
+                        (snapshot.prediction_date.isoformat(),))
             con.execute(
                 "INSERT OR REPLACE INTO limit_up_shadow_runs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
@@ -458,6 +513,13 @@ class LimitUpShadowPublisher:
                     row.p_close_limit, row.actual_touched, row.actual_closed_limit,
                     row.opened_at_limit, row.one_price_limit,
                 ) for row in snapshot.entries],
+            )
+            con.executemany(
+                "INSERT INTO limit_up_shadow_limit_scores VALUES (?,?,?,?,?)",
+                [(
+                    snapshot.prediction_date.isoformat(), score.symbol, score.p_touch,
+                    score.p_seal_given_touch, score.p_close_limit,
+                ) for score in snapshot.limit_up_scores],
             )
 
     def record_outcomes(

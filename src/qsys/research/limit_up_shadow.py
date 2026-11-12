@@ -17,6 +17,7 @@ import polars as pl
 from qsys.research.limit_up_ranking import FEATURE_COLUMNS, file_sha256, scoring_frame
 from qsys.web.limit_up_shadow import (
     LimitUpShadowEntry,
+    LimitUpShadowScore,
     LimitUpShadowOutcome,
     LimitUpShadowSnapshot,
 )
@@ -183,8 +184,13 @@ def score_snapshot(
     names: dict[str, str] | None = None,
     generated_at: datetime | None = None,
     drift_reference: DriftReference | None = None,
+    limit_up_symbols: set[str] | frozenset[str] | None = None,
 ) -> LimitUpShadowSnapshot:
-    """Score a feature slice and retain only the compact Top-20 snapshot."""
+    """Score a feature slice and retain the compact Top-20 snapshot.
+
+    ``limit_up_symbols`` 为预测日（T 日）直取涨停名单时，另存这些标的的全部打分
+    （#645，打板看板“明日晋级概率”）；不在打分范围内的涨停股不补值。
+    """
     prediction_days = frame["prediction_date"].unique().to_list()
     target_days = frame["target_session"].unique().to_list()
     if len(prediction_days) != 1 or len(target_days) != 1:
@@ -211,6 +217,12 @@ def score_snapshot(
         p_seal_given_touch=float(p_seal[index]),
         p_close_limit=float(p_close[index]),
     ) for rank, (_probability, symbol, index) in enumerate(top, 1))
+    wanted = set(limit_up_symbols or ())
+    limit_up_scores = tuple(LimitUpShadowScore(
+        symbol=symbol, p_touch=float(p_touch[index]),
+        p_seal_given_touch=float(p_seal[index]), p_close_limit=float(p_close[index]),
+    ) for _probability, symbol, index in sorted(scored, key=lambda item: item[1])
+        if symbol in wanted)
     prediction_date = prediction_days[0]
     return LimitUpShadowSnapshot(
         prediction_date=prediction_date,
@@ -225,7 +237,19 @@ def score_snapshot(
         drift_score=(prediction_psi([item[0] for item in scored], drift_reference)
                      if drift_reference is not None else None),
         entries=entries,
+        limit_up_scores=limit_up_scores,
     )
+
+
+def prediction_day_limit_ups(warehouse: Path, prediction_date: date) -> frozenset[str]:
+    """预测日收盘封板的标的，只认 daily_flags.is_limit_up（直取派生）；缺行不推断。"""
+    from qsys.data.query import WarehouseQuery
+    from qsys.data.storage import Warehouse
+
+    flags = WarehouseQuery(Warehouse(Path(warehouse))).daily_flags(prediction_date, prediction_date)
+    if flags.height == 0:
+        return frozenset()
+    return frozenset(flags.filter(pl.col("is_limit_up") == True)["symbol"].to_list())  # noqa: E712
 
 
 def build_daily_snapshot(
@@ -248,7 +272,10 @@ def build_daily_snapshot(
         )
     names = dict(instruments.select("symbol", "name").iter_rows())
     reference = load_drift_reference(drift_reference_path) if drift_reference_path else None
-    return score_snapshot(frame, promoted, names=names, drift_reference=reference)
+    return score_snapshot(
+        frame, promoted, names=names, drift_reference=reference,
+        limit_up_symbols=prediction_day_limit_ups(warehouse, prediction_date),
+    )
 
 
 def latest_feature_session(warehouse: Path) -> date:

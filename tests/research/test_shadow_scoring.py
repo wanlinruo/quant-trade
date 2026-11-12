@@ -298,3 +298,42 @@ def test_outcome_truth_rejects_partial_truth_even_with_suspension(tmp_path: Path
 
     with pytest.raises(ValueError, match="completely cover"):
         outcome_truth(tmp_path, day, ("600825.SH",))
+
+
+def test_score_snapshot_keeps_scores_for_prediction_day_limit_ups_only():
+    frame = _frame()
+    snapshot = score_snapshot(
+        frame, _promoted(), limit_up_symbols={"300001.SZ", "999999.SZ"},
+        generated_at=datetime(2026, 10, 9, 17, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+    scores = {s.symbol: s for s in snapshot.limit_up_scores}
+    assert set(scores) == {"300001.SZ"}  # 不在打分范围的涨停股不补值
+    assert scores["300001.SZ"].p_touch == pytest.approx(0.51)
+    assert scores["300001.SZ"].p_close_limit == pytest.approx(0.51 * 0.40)
+
+
+def test_score_snapshot_without_limit_up_set_keeps_no_extra_scores():
+    snapshot = score_snapshot(
+        _frame(), _promoted(),
+        generated_at=datetime(2026, 10, 9, 17, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+    assert snapshot.limit_up_scores == ()
+
+
+def test_prediction_day_limit_ups_reads_only_direct_flags_for_that_day(tmp_path: Path):
+    import pyarrow as pa
+
+    from qsys.data import schema
+    from qsys.data.storage import Warehouse
+    from qsys.research.limit_up_shadow import prediction_day_limit_ups
+
+    warehouse = Warehouse(tmp_path / "warehouse")
+    rows = [
+        {"symbol": "600001.SH", "dt": date(2026, 10, 9), "is_limit_up": True},
+        {"symbol": "300001.SZ", "dt": date(2026, 10, 9), "is_limit_up": False},
+        {"symbol": "688001.SH", "dt": date(2026, 10, 9), "is_limit_up": None},  # 未知不推断
+        {"symbol": "000001.SZ", "dt": date(2026, 10, 8), "is_limit_up": True},
+    ]
+    warehouse.write("daily_flags", pa.Table.from_pylist(rows, schema=schema.DAILY_FLAGS), year=2026)
+    assert prediction_day_limit_ups(tmp_path / "warehouse", date(2026, 10, 9)) == {"600001.SH"}
+    assert prediction_day_limit_ups(tmp_path / "empty", date(2026, 10, 9)) == frozenset()
