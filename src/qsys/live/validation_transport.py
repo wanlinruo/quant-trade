@@ -20,8 +20,12 @@ class ValidationTransport(Transport):
     def _key(self, key: str) -> str:
         return f"{self.namespace}:{key}"
 
-    def append(self, stream: str, payload: dict[str, str]) -> str:
-        return self.inner.append(self._key(stream), payload)
+    def append(
+        self, stream: str, payload: dict[str, str], *, maxlen: int | None = None,
+    ) -> str:
+        if maxlen is None:  # 兼容未声明 maxlen 的内层实现
+            return self.inner.append(self._key(stream), payload)
+        return self.inner.append(self._key(stream), payload, maxlen=maxlen)
 
     def ensure_group(self, stream: str, group: str, start_id: str = "$") -> None:
         self.inner.ensure_group(self._key(stream), group, start_id)

@@ -85,6 +85,13 @@ def survey(reading: dict) -> list[Finding]:
     if kill:
         out.append(Finding("kill", Severity.CRITICAL, "急停开关已触发", str(kill)))
 
+    if reading.get("order_book_low") is True:
+        out.append(Finding(
+            "order_book", Severity.CRITICAL, "行情全推无盘口",
+            f"{reading.get('order_book_detail', '')}。实盘委托会因无对手价被拒；"
+            "检查 QMT「行情源 → 全推行情」是否为一档/五档（#651）",
+        ))
+
     if reading.get("redis_error"):
         out.append(Finding("redis", Severity.CRITICAL, "Redis 不可达",
                            str(reading["redis_error"])))

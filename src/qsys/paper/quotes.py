@@ -19,6 +19,7 @@ from qsys.live.messages import (
     QuoteRequest,
     QuoteSnapshot,
 )
+from qsys.live.order_book import order_book_counts
 from qsys.live.transport import Transport
 # 新股上市初期「无涨跌幅限制」时两边各用哨兵值表达（不是价格）。只认实测见过的组合，
 # 其余形态一律按真实不一致报出（#283）。Tushare stk_limit：仓库实测 up=1,000,000
@@ -34,6 +35,10 @@ def _is_sentinel(pair, sentinels) -> bool:
     return any(abs(pair[0] - up) <= 1e-6 and abs(pair[1] - down) <= 1e-6
                for up, down in sentinels)
 
+
+# 行情请求/响应流只承载即时报价，消费后即无用；不裁剪会让 Windows Redis 数据集与 AOF
+# 无限增长（#535：11-12 两条流各约 70 万条，used_memory 748M）。交易审计流不在此列。
+QUOTE_STREAM_MAXLEN = 20_000
 
 MARKET_INDICES = {
     "000001.SH": "上证指数",
@@ -95,7 +100,7 @@ class QuoteClient:
         request_id = uuid.uuid4().hex
         self._t.append(self._s.quote_requests, QuoteRequest(
             request_id=request_id, symbols=unique, requested_at=datetime.now()
-        ).to_payload())
+        ).to_payload(), maxlen=QUOTE_STREAM_MAXLEN)
         deadline = time.monotonic() + self._timeout
         while time.monotonic() < deadline:
             for message in self._t.read_group(
@@ -134,6 +139,8 @@ class MarketGateway:
         self._t.ensure_group(streams.quote_requests, group)
         # 当日 stk_limit 与 QMT 的核对进度：(交易日, 待核对标的, 已核对结果)
         self._limit_check: tuple[date, list[str], list[dict]] | None = None
+        # 最近一次全推快照的 (盘口覆盖比例, 快照时刻)，写入行情心跳（#651）。
+        self._order_book: tuple[float, datetime] | None = None
         self._limit_checked: date | None = None
 
     def run_once(self) -> int:
@@ -155,7 +162,8 @@ class MarketGateway:
                         request_id=request.request_id, published_at=datetime.now(),
                         quotes={}, error=str(exc),
                     )
-                self._t.append(self._s.quote_snapshots, response.to_payload())
+                self._t.append(self._s.quote_snapshots, response.to_payload(),
+                               maxlen=QUOTE_STREAM_MAXLEN)
             finally:
                 self._t.ack(self._s.quote_requests, self._group, message.id)
         return handled
@@ -214,6 +222,8 @@ class MarketGateway:
             Heartbeat(
                 source="market", at=datetime.now(),
                 expected_interval_s=expected_interval_s, phase=phase,
+                order_book_ratio=self._order_book[0] if self._order_book else None,
+                order_book_at=self._order_book[1] if self._order_book else None,
             ).model_dump_json(),
         )
 
@@ -242,6 +252,8 @@ class MarketGateway:
         snapshot = QuoteSnapshot(
             request_id="latest", published_at=moment, quotes=quotes,
         )
+        booked, valid = order_book_counts(quotes)
+        self._order_book = (booked / valid, moment) if valid else None
         self._t.set_key(self._s.quote_latest, snapshot.model_dump_json())
         return snapshot
 

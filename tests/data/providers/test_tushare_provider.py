@@ -189,3 +189,23 @@ def test_block_trade_passes_trade_date_and_keeps_source_units():
     assert client.calls == [("block_trade", {"trade_date": "20261105"}, "")]
     assert got.row(0, named=True)["vol"] == 10.0
     assert got.row(0, named=True)["amount"] == 42.2
+
+
+def test_ths_index_and_member_pass_through_raw_columns():
+    class Client:
+        def __init__(self):
+            self.calls = []
+
+        def call(self, api, params, fields=""):
+            self.calls.append((api, params))
+            if api == "ths_index":
+                return [{"ts_code": "885517.TI", "name": "机器人概念", "count": 1216,
+                         "exchange": "A", "list_date": "20150101", "type": "N"}]
+            return [{"ts_code": "885517.TI", "con_code": "600000.SH", "con_name": "浦发银行"}]
+
+    client = Client()
+    provider = TushareProvider(client)
+    assert provider.ths_index()["count"].to_list() == [1216]
+    assert provider.ths_member("885517.TI").columns == ["ts_code", "con_code", "con_name"]
+    assert client.calls == [("ths_index", {"exchange": "A", "type": "N"}),
+                            ("ths_member", {"ts_code": "885517.TI"})]

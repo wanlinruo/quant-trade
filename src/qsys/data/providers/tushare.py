@@ -132,6 +132,16 @@ class TushareProvider:
         )
         return _rows_to_frame(rows, ("price", "vol", "amount"))
 
+    def ths_index(self) -> pl.DataFrame:
+        """同花顺 A 股概念指数（type=N）原样返回（#648 探针：count 与成分行数可能不一致）。"""
+        rows = self._client.call("ths_index", {"exchange": "A", "type": "N"})
+        return pl.DataFrame(rows, infer_schema_length=None) if rows else pl.DataFrame()
+
+    def ths_member(self, ts_code: str) -> pl.DataFrame:
+        """同花顺概念成分，只有 ts_code/con_code/con_name 三列，无生效/剔除日期。"""
+        rows = self._client.call("ths_member", {"ts_code": ts_code})
+        return pl.DataFrame(rows, infer_schema_length=None) if rows else pl.DataFrame()
+
     def limit_list_d(self, trade_date: date, limit_type: str = "U") -> pl.DataFrame:
         rows = self._client.call(
             "limit_list_d",

@@ -124,3 +124,14 @@ def test_stream_message_is_frozen():
     msg = StreamMessage("1-0", {"a": "b"})
     with pytest.raises(Exception):
         msg.id = "2-0"
+
+
+def test_memory_transport_trims_to_maxlen_keeping_newest():
+    from qsys.live.transport import MemoryTransport
+
+    t = MemoryTransport()
+    ids = [t.append("s", {"i": str(i)}, maxlen=3) for i in range(5)]
+    assert [m.id for m in t.all_messages("s")] == ids[-3:]
+    t.append("audit", {"i": "x"})
+    t.append("audit", {"i": "y"})
+    assert len(t.all_messages("audit")) == 2

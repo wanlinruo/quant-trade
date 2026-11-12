@@ -22,7 +22,10 @@ class StreamMessage:
 
 class Transport(ABC):
     @abstractmethod
-    def append(self, stream: str, payload: dict[str, str]) -> str: ...
+    def append(
+        self, stream: str, payload: dict[str, str], *, maxlen: int | None = None,
+    ) -> str:
+        """maxlen 只用于可丢弃的行情类流（#535）；交易审计流必须保持 None。"""
 
     @abstractmethod
     def ensure_group(self, stream: str, group: str, start_id: str = "$") -> None: ...
@@ -62,9 +65,14 @@ class MemoryTransport(Transport):
         self._keys: dict[str, str] = {}
         self._seq = count(1)
 
-    def append(self, stream: str, payload: dict[str, str]) -> str:
+    def append(
+        self, stream: str, payload: dict[str, str], *, maxlen: int | None = None,
+    ) -> str:
         message = StreamMessage(f"{next(self._seq):020d}-0", dict(payload))
-        self._streams.setdefault(stream, []).append(message)
+        entries = self._streams.setdefault(stream, [])
+        entries.append(message)
+        if maxlen is not None and len(entries) > maxlen:
+            del entries[:len(entries) - maxlen]
         return message.id
 
     def ensure_group(self, stream: str, group: str, start_id: str = "$") -> None:
