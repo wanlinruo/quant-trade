@@ -50,6 +50,7 @@
   <div class="metric"><div class="label">全市场成交额</div><div class="value" data-money="market_total_money">{% if snap %}{{ '%.0f'|format(snap.market_total_money/100000000) }} 亿{% else %}—{% endif %}</div></div>
   <div class="metric"><div class="label">有效标的</div><div class="value" data-field="valid_stock_count">{{ snap.valid_stock_count if snap else '—' }}</div></div>
   <div class="metric" title="缺当日直取涨跌停价（Tushare stk_limit）的标的不计入涨停、跌停、触板、炸板"><div class="label">缺涨跌停价</div><div class="value" data-field="limit_price_missing_count">{{ snap.limit_price_missing_count if snap else '—' }}</div></div>
+  <div class="metric" title="价在涨/跌停价但买卖一档量都为 0，无法区分盘口缺失与真实为 0，不计入涨停、跌停、炸板（#647）"><div class="label">封板未知 涨 / 跌</div><div class="value"><span data-field="limit_up_unknown_count">{{ snap.limit_up_unknown_count if snap and snap.limit_up_unknown_count is not none else '—' }}</span> / <span data-field="limit_down_unknown_count">{{ snap.limit_down_unknown_count if snap and snap.limit_down_unknown_count is not none else '—' }}</span></div></div>
 </div>
 
 <section class="panel market-section">
@@ -104,7 +105,7 @@
     notice.textContent=!coverage?'尚无绑定股票池的覆盖记录，当前快照不代表已完成全市场验收。':coverage.status==='complete'?'请求集合已覆盖；完整数据质量仍须独立验收。':'覆盖不完整或范围待核验，以下温度仅是已返回有效报价的统计。';coverageBox.append(notice);
     if(coverage)coverage.by_market.forEach(row=>{const p=document.createElement('p'),stamp=document.createElement('span'),fmt=v=>v?v.replace('T',' ').slice(0,19):'未知';p.textContent=({SH:'沪市',SZ:'深市',BJ:'北交所'}[row.market])+`：请求 ${row.expected} / 有效 ${row.valid} / 缺失 ${row.missing} / 待核验 ${row.invalid+row.other_session+row.suspended}`;stamp.className='muted';stamp.textContent=`源时间 ${fmt(row.source_at_min)} 至 ${fmt(row.source_at_max)}`;p.append(document.createElement('br'),stamp);coverageBox.append(p)});
     if(!snap)return;time.textContent=snap.published_at.replace('T',' ').slice(0,19);
-    document.querySelectorAll('[data-field]').forEach(el=>el.textContent=snap[el.dataset.field]);
+    document.querySelectorAll('[data-field]').forEach(el=>el.textContent=snap[el.dataset.field]??'—');
     document.querySelectorAll('[data-pct]').forEach(el=>el.textContent=(snap[el.dataset.pct]*100).toFixed(el.dataset.pct==='market_median_return_1d'?2:1)+'%');
     document.querySelectorAll('[data-money]').forEach(el=>el.textContent=(snap[el.dataset.money]/100000000).toFixed(0)+' 亿');
     const grid=document.getElementById('index-grid');grid.replaceChildren();snap.indices.forEach(item=>{const card=document.createElement('div');card.className='index-card';const name=document.createElement('span'),price=document.createElement('strong'),change=document.createElement('em');name.textContent=item.name;price.textContent=item.price.toFixed(2);change.textContent=(item.change_pct*100).toFixed(2)+'%';change.className=item.change_pct>=0?'up':'down';card.append(name,price,change);grid.append(card)});
