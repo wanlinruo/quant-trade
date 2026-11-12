@@ -217,6 +217,9 @@ windows_apps = ["live_app"]
 windows_tasks = ["qsys-agent-shadow"]
 health_checks = ["windows-file-manifest", "agent-heartbeat"]
 rollback = "previous-successful-release"
+# 2026-11-12 维护者决定退役：qsys-agent-shadow 已禁用，实盘执行链由 #601 单独管理；
+# 发布器若再拉起旧代理会与 #601 执行代理并存（单一交易所有者）。路径仍保留分类。
+retired = true
 
 [[components]]
 name = "windows-gateway"
@@ -241,7 +244,8 @@ name = "windows-control"
 environments = ["production"]
 paths = ["deploy/windows/**", "scripts/check_agent_alive.py"]
 nodes = ["windows"]
-windows_apps = ["live_app", "paper_app"]
+# live_app 随 windows-agent 退役，控制面发布不再切换/拉起它。
+windows_apps = ["paper_app"]
 windows_tasks = ["qsys-watchdog"]
 health_checks = ["watchdog-enabled"]
 manual_gate = true
