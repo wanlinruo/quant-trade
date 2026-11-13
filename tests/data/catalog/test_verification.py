@@ -53,3 +53,18 @@ def test_summary_names_the_rules_that_did_not_pass(warehouse, tmp_path):
     ])
     summary = verify_session(warehouse, DAY, artifacts=tmp_path)
     assert "A3.missed_exdiv" in summary.failed_checks
+
+
+def test_summary_separates_upstream_contradictions_from_system_failures(warehouse, tmp_path):
+    # #653：上游 circ_mv 与 float_share 自相矛盾；只记上游警告，不计阻断
+    _daily(warehouse, [{"symbol": "600292.SH", "dt": DAY, "close": 10.09,
+                        "pre_close": 10.12, "change": -0.03, "factor": 1.0,
+                        "market_cap": 4.80706e10, "total_shares": 4.764185064e9,
+                        "circulating_market_cap": 1.9829316e10,
+                        "circulating_shares": 1.623711063e9}])
+    summary = verify_session(warehouse, DAY, artifacts=tmp_path)
+    assert "A3.market_cap_vs_shares" in summary.upstream_checks
+    assert "A3.market_cap_vs_shares" in summary.failed_checks
+    written = WarehouseQuery(warehouse).metric_checks().filter(
+        pl.col("check_id") == "A3.market_cap_vs_shares")
+    assert set(written["severity"]) == {"warning"}

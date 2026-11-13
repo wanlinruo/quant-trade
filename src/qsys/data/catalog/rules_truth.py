@@ -43,6 +43,7 @@ def _identity(
     *,
     tolerance: float = _REL_TOL,
     absolute_tolerance: float = 0.0,
+    upstream_self_consistency: bool = False,
 ) -> None:
     def run(ctx: CheckContext) -> CheckResult:
         source = ctx.query.tushare_daily(None, ctx.start, ctx.end, columns=columns)
@@ -56,7 +57,8 @@ def _identity(
         )
 
     register(Check(check_id, Category.TRUTHFULNESS, Scope.INCREMENTAL,
-                   metrics, (), description, run))
+                   metrics, (), description, run,
+                   upstream_self_consistency=upstream_self_consistency))
 
 
 def _amount_dimension_split(ctx: CheckContext) -> tuple[int, pl.DataFrame, pl.DataFrame]:
@@ -158,6 +160,7 @@ _identity(
         (pl.col("close") - pl.col("pre_close")).alias("expected"),
     ),
     "涨跌额 = 收盘价 − 前收价",
+    upstream_self_consistency=True,
 )
 _identity(
     "A3.pct_change_identity",
@@ -169,6 +172,7 @@ _identity(
     ),
     "涨跌幅（%）= (收盘价/前收价−1)×100",
     absolute_tolerance=_FOUR_DECIMAL_ABS_TOL,
+    upstream_self_consistency=True,
 )
 # daily_basic 的 total_mv/circ_mv 在股本变化后常仍按旧股本计价若干个交易日：
 # 生产 2026 年 95 只出现过，窗口放到 5 个交易日后只剩 9 只，均为数十天不跟上
@@ -243,6 +247,9 @@ register(Check(
      "valuation_snapshot.market_cap", "valuation_snapshot.circulating_market_cap"),
     (), "市值计价股本满足包含边界，且流通市值 = 收盘价 × 流通股本",
     _market_cap_share_bounds,
+    # 全部为 Tushare 直取原值：违规即上游自相矛盾（#653：600292.SH 的 circ_mv 与
+    # 交易所公告的无限售流通股一致，float_share 不一致）
+    upstream_self_consistency=True,
 ))
 _identity(
     "A3.turnover_identity",
@@ -255,6 +262,7 @@ _identity(
     ),
     "换手率（%）= 成交量（手）×100/流通股本×100",
     absolute_tolerance=_FOUR_DECIMAL_ABS_TOL,
+    upstream_self_consistency=True,
 )
 
 

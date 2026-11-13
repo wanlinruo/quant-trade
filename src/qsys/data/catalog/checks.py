@@ -69,6 +69,13 @@ class Check:
     known_issues: tuple[str, ...]
     description: str
     run: Callable[[CheckContext], CheckResult]
+    # 比较的字段全部是同一上游的直取原值且原样保存：违规即上游自相矛盾，不是本系统故障。
+    # 只记警告并标注上游；规则自身崩溃或分母为 0 仍按阻断（维护者 2026-11-14 裁决，#653）。
+    upstream_self_consistency: bool = False
+
+
+# 上游自相矛盾的 known_issue 标记；服务检查与页面据此与系统故障区分。
+UPSTREAM_INCONSISTENCY = "上游数据自相矛盾"
 
 
 CHECKS: dict[str, Check] = {}
@@ -118,6 +125,8 @@ def run_checks(
 
     for check in selected:
         sample_path: str | None = None
+        # 只有规则真正执行、分母大于 0 且发现违规时，才可降为上游警告。
+        upstream_violation = False
         try:
             result = check.run(ctx)
         except Exception as exc:  # 闸门自身失效也必须可见
@@ -149,6 +158,7 @@ def run_checks(
                 )
             else:
                 passed = result.violations == 0
+                upstream_violation = check.upstream_self_consistency and not passed
 
         if result.sample is not None and result.sample.height:
             path = root / run_id / f"{check.id}.parquet"
@@ -163,6 +173,8 @@ def run_checks(
             )
             metric_passed = passed or not implicated
             severity, issue = _severity_and_issue(check, metric_id, metric_passed)
+            if severity == "blocking" and upstream_violation:
+                severity, issue = "warning", UPSTREAM_INCONSISTENCY
             rows.append({
                 "run_id": run_id,
                 "checked_at": now,

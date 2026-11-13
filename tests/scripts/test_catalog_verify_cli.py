@@ -207,3 +207,19 @@ def test_relations_have_independent_real_status_and_exit(monkeypatch,tmp_path,wa
     assert record['steps'][3]['name']=='关系完整性'
     assert record['steps'][3]['status']==expected_step
     assert record['steps'][3]['rows']==(0 if relation_status is None else 7)
+
+
+def test_upstream_contradiction_is_reported_as_warning_not_task_failure(
+        monkeypatch, tmp_path, warehouse):
+    """上游数据自相矛盾单独写明，任务记警告、退出码 0，服务检查不再显示系统故障（#653）。"""
+    summary = VerificationSummary(DAY, "r", 648, 0, 34,
+                                  ("A3.market_cap_vs_shares", "C3.span_gaps"),
+                                  upstream_checks=("A3.market_cap_vs_shares",))
+    monkeypatch.setattr(catalog_verify, "verify_session", lambda wh, day, **kw: summary)
+    runs = tmp_path / "runs"
+    _argv(monkeypatch, warehouse, runs)
+
+    assert catalog_verify.main() == 0
+    step = _record(runs)["steps"][1]
+    assert step["status"] == "warning"
+    assert "上游数据自相矛盾（非本系统故障）：A3.market_cap_vs_shares" in step["detail"]

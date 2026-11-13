@@ -19,7 +19,9 @@ from pathlib import Path
 import polars as pl
 import structlog
 
-from qsys.data.catalog.checks import CheckContext, Scope, run_checks, write_results
+from qsys.data.catalog.checks import (
+    UPSTREAM_INCONSISTENCY, CheckContext, Scope, run_checks, write_results,
+)
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
 
@@ -34,6 +36,8 @@ class VerificationSummary:
     blocking: int
     warnings: int
     failed_checks: tuple[str, ...]
+    # 其中属于上游数据自相矛盾的规则（只警告，非本系统故障，#653）
+    upstream_checks: tuple[str, ...] = ()
 
 
 def verify_session(
@@ -56,6 +60,8 @@ def verify_session(
         failed.filter(pl.col("severity") == "blocking").height,
         failed.filter(pl.col("severity") == "warning").height,
         tuple(sorted(set(failed["check_id"].to_list()))),
+        tuple(sorted(set(failed.filter(
+            pl.col("known_issue") == UPSTREAM_INCONSISTENCY)["check_id"].to_list()))),
     )
     log.info("verification.session_done", day=str(day), rows=summary.rows,
              blocking=summary.blocking, warnings=summary.warnings)

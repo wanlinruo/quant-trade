@@ -67,6 +67,9 @@ def main(argv: list[str] | None = None) -> int:
                 f"当日增量 + {day.year} 年至今全量：{summary.rows} 条结果，"
                 f"阻断 {summary.blocking} 条，警告 {summary.warnings} 条"
             )
+            if summary.upstream_checks:
+                step.detail += ("。其中上游数据自相矛盾（非本系统故障）："
+                                + "、".join(summary.upstream_checks))
             if summary.failed_checks:
                 step.detail += "。未通过：" + "、".join(summary.failed_checks)
             if summary.blocking:
