@@ -1,0 +1,397 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+.lub .sec { margin-bottom:16px; }
+.lub .metric-grid { grid-template-columns:repeat(auto-fit,minmax(112px,1fr)); }
+.lub [hidden] { display:none !important; }
+.lub .head-right { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.lub .day-picker { display:flex; align-items:center; gap:8px; font-size:13px; }
+.lub .metric .value small { font-size:12px; color:var(--muted); font-weight:400; margin-left:4px; }
+.lub .v-rise { color:var(--rise); } .lub .v-warn { color:var(--warn); }
+.lub .replay { display:none; align-items:center; gap:12px; padding:12px 16px; font-size:13px; }
+.lub .replay input[type=range] { flex:1; border:0; padding:0; }
+.lub .note { padding:10px 16px; font-size:12px; color:#92400e; background:#fffbeb; border-top:1px solid #fde68a; display:none; }
+.lub .layout { display:grid; grid-template-columns:minmax(0,1fr) 400px; gap:16px; }
+@media (max-width:1100px) { .lub .layout { grid-template-columns:1fr; } }
+.lub .scroll { overflow-x:auto; }
+.lub table.ladder { width:100%; border-collapse:collapse; table-layout:fixed; font-size:13px; min-width:640px; }
+.lub .ladder th { text-align:left; font-weight:600; padding:10px 8px; border-bottom:1px solid var(--line); border-left:1px solid var(--line); background:#fafbfc; }
+.lub .ladder th:first-child { border-left:0; width:78px; }
+.lub .ladder th .n { color:var(--rise); margin-left:4px; }
+.lub .ladder th .g { display:block; color:var(--muted); font-size:11px; font-weight:400; margin-top:2px; }
+.lub .ladder td { vertical-align:top; padding:6px; border-bottom:1px solid var(--line); border-left:1px solid var(--line); }
+.lub .ladder td.lv { border-left:0; text-align:center; vertical-align:middle; background:#fafbfc; }
+.lub .ladder td.lv b { display:block; font-size:15px; color:var(--rise); }
+.lub .ladder td.lv span { font-size:11px; color:var(--muted); }
+.lub .ladder td.lv.alt b { color:var(--warn); }
+.lub .chip { border:1px solid var(--line); border-radius:6px; padding:5px 7px; margin-bottom:5px; cursor:pointer; background:#fff; }
+.lub .chip:hover { border-color:var(--primary); }
+.lub .chip.sel { border-color:var(--primary); box-shadow:0 0 0 2px var(--primary-soft); }
+.lub .chip .nm { font-weight:600; }
+.lub .chip .mt { display:flex; flex-wrap:wrap; gap:2px 8px; color:var(--muted); font-size:11px; margin-top:2px; font-variant-numeric:tabular-nums; }
+.lub .chip.re { background:#fffbeb; border-color:#fde68a; }
+.lub .chip.brk { border-style:dashed; color:var(--muted); }
+.lub .chip.rush { border-style:dashed; border-color:#fcd34d; }
+.lub .chip.bj { opacity:.5; }
+.lub .chip.more { color:var(--primary); text-align:center; font-size:12px; border-style:dashed; }
+.lub .tag { display:inline-block; font-size:10px; padding:0 5px; border-radius:999px; margin-left:4px; vertical-align:1px; font-weight:500; }
+.lub .tag.st { background:#ede9fe; color:#6d28d9; } .lub .tag.bj { background:#f1f5f9; color:#64748b; } .lub .tag.unk { background:#fef3c7; color:var(--warn); }
+.lub .diff { color:var(--bad); font-size:11px; margin-top:2px; }
+.lub .legend { padding:10px 16px; color:var(--muted); font-size:12px; line-height:1.7; border-top:1px solid var(--line); }
+.lub .side { display:flex; flex-direction:column; gap:16px; }
+.lub .side .body { padding:12px 16px; }
+.lub .side svg { width:100%; display:block; }
+.lub .lg { color:var(--muted); font-size:12px; margin-top:6px; }
+.lub .lg i { display:inline-block; width:14px; height:3px; vertical-align:middle; margin:0 4px 0 10px; }
+.lub .lg i:first-child { margin-left:0; }
+.lub .ev { display:flex; gap:12px; padding:6px 0; border-bottom:1px solid var(--line); font-size:13px; }
+.lub .ev:last-child { border-bottom:0; }
+.lub .ev .t { width:62px; color:var(--muted); font-variant-numeric:tabular-nums; flex:none; }
+.lub .events { max-height:420px; overflow-y:auto; }
+.lub .vsw { display:flex; border:1px solid var(--line); border-radius:6px; overflow:hidden; }
+.lub .vsw button { border:0; background:#fff; color:var(--muted); padding:6px 14px; cursor:pointer; font:inherit; font-size:13px; }
+.lub .vsw button.on { background:var(--primary-soft); color:var(--primary); font-weight:600; }
+.lub table.cmp { width:100%; border-collapse:collapse; font-size:13px; table-layout:fixed; }
+.lub .cmp th, .lub .cmp td { padding:7px 12px; border-bottom:1px solid var(--line); text-align:left; }
+.lub .cmp tr.hd th { background:#fafbfc; font-weight:600; }
+.lub .cmp th.yh { width:36%; } .lub .cmp th.arr { width:28px; color:var(--rise); text-align:center; padding:0; }
+.lub .cmp th.th { color:var(--rise); width:32%; background:#fef2f2; }
+.lub .cmp th.ai { width:20%; font-weight:500; font-size:12px; color:var(--primary); background:var(--primary-soft); }
+.lub .cmp .rs { float:right; font-weight:500; font-size:12px; color:var(--muted); }
+.lub .cmp .nm { font-weight:600; display:inline-block; min-width:64px; }
+.lub .cmp .pc { margin-left:10px; font-variant-numeric:tabular-nums; font-weight:600; }
+.lub .cmp .tp { margin-left:10px; font-size:11px; color:var(--primary); background:var(--primary-soft); border-radius:999px; padding:1px 6px; }
+.lub .cmp .mt2 { margin-left:10px; font-size:11px; color:var(--muted); }
+.lub .cmp tr.miss td:first-child { color:var(--muted); } .lub .cmp tr.miss .nm { font-weight:400; }
+.lub .cmp .st2 { margin-left:10px; font-size:11px; background:#f1f5f9; color:#64748b; border-radius:999px; padding:1px 6px; }
+.lub .cmp .st2.rush { background:#fef3c7; color:var(--warn); }
+.lub .cmp td.aic { background:#f8fbff; font-size:12px; white-space:nowrap; }
+.lub .cmp .pr { color:var(--primary); font-variant-numeric:tabular-nums; margin-right:8px; }
+.lub .cmp .res { font-size:11px; border-radius:999px; padding:1px 6px; }
+.lub .cmp .res.ok { background:#fee2e2; color:var(--rise); } .lub .cmp .res.no { background:#f1f5f9; color:#64748b; } .lub .cmp .res.wait { background:#fef3c7; color:var(--warn); }
+.lub .cmp .more2 { color:var(--primary); font-size:12px; text-align:center; cursor:pointer; }
+.lub .aibar { display:flex; align-items:center; gap:10px; padding:10px 16px; border-bottom:1px solid var(--line); font-size:12px; flex-wrap:wrap; }
+.lub .empty { padding:24px 16px; }
+</style>
+
+<div class="lub">
+<div class="page-head">
+  <div><h2>打板看板</h2><p class="muted">同花顺概念 × 连板高度，盘中每 15 秒刷新；只读辅助，不是交易信号。</p></div>
+  <div class="head-right">
+    <form class="day-picker" id="day-form"><label class="muted" for="day">交易日</label><input type="date" id="day" value="{{ selected_day or '' }}"><button class="secondary" type="submit">查看</button></form>
+    <span id="state-pill" class="pill todo">加载中</span><span id="state-time" class="muted"></span><span id="diff-pill" class="pill bad" hidden></span>
+  </div>
+</div>
+
+<section class="panel sec">
+  <div class="tabs" id="tabs">
+    <button class="tab-button" data-m="live" type="button">盘中实时</button>
+    <button class="tab-button" data-m="final" type="button">盘后定版</button>
+    <button class="tab-button" data-m="history" type="button">历史日期</button>
+  </div>
+  <div class="replay" id="replay">
+    <span class="muted">盘中回放</span><span id="replay-start"></span><input type="range" id="replay-range" min="0" max="0" value="0"><span id="replay-end"></span><span class="pill todo" id="replay-at"></span><button class="secondary" type="button" id="replay-latest">回到最新</button>
+  </div>
+  <div class="note" id="note"></div>
+</section>
+
+<div id="empty" class="panel sec empty muted" hidden></div>
+
+<div id="board" hidden>
+<div class="metric-grid sec" id="metrics"></div>
+
+<div class="layout">
+  <section class="panel">
+    <div class="panel-title"><div class="vsw" id="vsw"><button class="on" data-v="ladder" type="button">题材梯队</button><button data-v="cmp" type="button">今/昨对比</button></div><span class="muted" id="vhint" style="font-weight:400;font-size:12px"></span></div>
+    <div id="v-ladder">
+      <div class="scroll"><table class="ladder" id="ladder"></table></div>
+      <div class="legend">行头为"昨日上一层家数 → 今日该层家数"。卡片显示首次封板时间（"≈"为 15 秒快照观测值）与开板次数；浅黄底为开板后回封，虚线框为炸板 / 触板未封 / 冲板（≥7%），"封板未知"为到价但买卖盘口量都为 0、无法判断。北交所灰化（无交易权限，不计入题材家数）。封单额待盘口量单位核实后再展示。<span id="lg-final" hidden>红字"≠"为盘后直取 limit_list_d 与盘中观测不一致的值。</span></div>
+    </div>
+    <div id="v-cmp" hidden>
+      <div class="aibar" id="aibar"></div>
+      <table class="cmp" id="cmp"></table>
+      <div class="legend">每组为"昨日 N 板 → 今日 N+1 板"。左列为昨日 N 板全部个股（直取 limit_list_d，ST 用 daily_flags）及今日涨跌幅，已晋级排前，右列显示今日封板信息；未晋级灰化并标状态。"AI 晋级（影子）"只读取 AI 涨停观察的结果：盘中为昨日对该票的预测与今日结果，盘后与历史日期为今日晋级者的明日晋级概率；无预测显示"无预测"。</div>
+    </div>
+  </section>
+
+  <div class="side">
+    <section class="panel">
+      <div class="panel-title"><span id="selname">点选卡片查看分时</span></div>
+      <div class="body"><svg viewBox="0 0 360 180" id="chart"></svg><div class="lg" id="chart-lg">分时来源：15 秒留存</div></div>
+    </section>
+    <section class="panel">
+      <div class="panel-title">题材涨停家数（盘中累计）</div>
+      <div class="body"><svg viewBox="0 0 360 90" id="curves"></svg><div class="lg" id="curves-lg"></div></div>
+    </section>
+    <section class="panel">
+      <div class="panel-title"><span>封板时间轴</span><span class="muted" style="margin-left:auto;font-weight:400;font-size:12px">最新在上</span></div>
+      <div class="body events" id="events"></div>
+    </section>
+  </div>
+</div>
+</div>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const hms = v => v ? v.slice(11, 19) : '—';
+  const hm = v => v ? v.slice(11, 16) : '—';
+  const pct = v => v == null ? '—' : (v >= 0 ? '+' : '') + (v * 100).toFixed(2) + '%';
+  const pcls = v => v == null ? '' : v > 0 ? 'up' : v < 0 ? 'down' : '';
+  const COLORS = ['#dc2626', '#d97706', '#2463b5', '#16a34a'];
+  const params = new URLSearchParams(location.search);
+  let state = {day: params.get('day') || null, at: null, view: params.get('view') === 'cmp' ? 'cmp' : 'ladder', selected: null, data: null, expanded: new Set()};
+  let timer = null;
+
+  function label(card) { return esc(card.name || card.symbol); }
+
+  function metrics(s, d) {
+    const p = (pair) => pair[0] == null ? '<span class="muted">未知</span>'
+      : `${pair[1]}<small>/ ${pair[0]}${pair[0] ? ' · ' + (pair[1] / pair[0] * 100).toFixed(1) + '%' : ''}</small>`;
+    const top = Object.values(d.cards).filter(c => c.status === 'sealed' && c.height === s.max_height);
+    const cell = (l, v, t) => `<div class="metric"${t ? ` title="${esc(t)}"` : ''}><div class="label">${l}</div><div class="value">${v}</div></div>`;
+    return [
+      cell('涨停 / 跌停', `<span class="v-rise">${s.sealed}</span> / <span class="down">${s.limit_down}</span>`),
+      cell('触板 / 炸板', `${s.touched} / <span class="v-warn">${s.broken}</span>`),
+      cell('封板率', s.seal_rate == null ? '—' : (s.seal_rate * 100).toFixed(1) + '%'),
+      cell('最高板', s.max_height == null ? '<span class="muted">未知</span>'
+        : `<span class="v-rise">${s.max_height} 板</span><small>${top.slice(0, 2).map(label).join('、')}</small>`),
+      cell('晋级 1→2', p(s.promote_1_2)), cell('晋级 2→3', p(s.promote_2_3)), cell('晋级 3→4+', p(s.promote_3_up)),
+      cell('冲板中（≥7%）', `<span class="v-warn">${s.rushing}</span>`),
+      cell('缺涨停价 / 封板未知', `${s.missing_limit} / ${s.seal_unknown}`, '缺直取涨停价，或到价但盘口量缺失，均不计入涨停'),
+    ].join('');
+  }
+
+  function chip(card, final) {
+    const cls = card.status === 'sealed' ? (card.resealed ? 're' : '')
+      : card.status === 'rush' ? 'rush' : card.status === 'unknown' ? '' : 'brk';
+    const tags = (card.is_st ? '<span class="tag st">ST</span>' : card.is_st == null ? '<span class="tag unk">ST未知</span>' : '')
+      + (card.is_bj ? '<span class="tag bj">北交所 · 无交易权限</span>' : '')
+      + (card.status === 'unknown' ? '<span class="tag unk">封板未知</span>' : '');
+    const meta = [];
+    if (card.status === 'sealed') {
+      meta.push(`≈${hms(card.first_seal)}`, `开 ${card.open_times}`);
+      if (card.resealed) meta.push('回封');
+    } else if (card.status === 'broken') meta.push(`炸 · 现 ${pct(card.pct)}`, `开 ${card.open_times}`);
+    else if (card.status === 'touched') meta.push(`触板未封 · ${pct(card.pct)}`);
+    else if (card.status === 'rush') meta.push(`<span style="color:var(--warn)">冲 ${pct(card.pct)}</span>`);
+    else meta.push('到价 · 盘口缺失');
+    const names = {height: '高度', first_seal: '首封', open_times: '开板'};
+    const diffs = final ? Object.entries(card.diffs || {}).map(([f, v]) =>
+      `<div class="diff">≠ 直取${names[f] || f} ${esc(f === 'first_seal' ? hms(String(v)) : v)}</div>`).join('') : '';
+    return `<div class="chip ${cls} ${card.is_bj ? 'bj' : ''} ${state.selected === card.symbol ? 'sel' : ''}" data-s="${esc(card.symbol)}"><div class="nm">${label(card)}${tags}</div><div class="mt">${meta.map(m => `<span>${m}</span>`).join('')}</div>${diffs}</div>`;
+  }
+
+  function ladder(d) {
+    const final = d.mode !== 'live';
+    const head = '<tr><th>高度</th>' + d.columns.map(c => {
+      const g = Object.entries(c.gradient).map(([h, n]) => `${h === '?' ? '未知' : h}板×${n}`).join('·');
+      return `<th>${esc(c.name)}${c.sealed_count == null ? '' : `<span class="n">${c.sealed_count}</span>`}<span class="g">${esc(g) || '—'}${c.first_seal ? ' · 首家 ' + hm(c.first_seal) : ''}</span></th>`;
+    }).join('') + '</tr>';
+    const body = d.rows.map(r => {
+      const total = Object.values(r.cells).reduce((a, x) => a + x.length, 0);
+      const sub = r.key === 'other' ? '' : r.yesterday != null ? `昨 ${r.yesterday} → 今 ${total}` : `今 ${total}`;
+      const tds = d.columns.map(c => {
+        const list = r.cells[c.code] || [];
+        const key = r.key + '|' + c.code;
+        const limit = state.expanded.has(key) ? list.length : 6;
+        const html = list.slice(0, limit).map(s => chip(d.cards[s], final)).join('');
+        const more = list.length > limit ? `<div class="chip more" data-x="${esc(key)}">展开 ${list.length - limit} 只</div>` : '';
+        return `<td>${html}${more}</td>`;
+      }).join('');
+      return `<tr><td class="lv ${r.key === 'other' ? 'alt' : ''}"><b>${esc(r.label)}</b><span>${sub}</span></td>${tds}</tr>`;
+    }).join('');
+    $('ladder').innerHTML = head + body;
+  }
+
+  function compare(d) {
+    const live = d.mode === 'live';
+    const sh = d.shadow;
+    $('aibar').innerHTML = '<span class="pill todo">AI 影子 · 非交易信号</span>' + (!sh ? '<span class="muted">影子榜单未配置</span>'
+      : sh.state !== 'ready' ? `<span class="muted">${esc(sh.message)}</span>`
+      : `<span class="muted">模型 ${esc(sh.model_version)} · 滚动 Precision@20 ${sh.precision_at_20 == null ? '—' : (sh.precision_at_20 * 100).toFixed(1) + '%'} · 预测日 ${esc(sh.prediction_date)}${live && sh.hits != null ? ` · 昨日有预测的连板票已晋级 ${sh.hits}` : ''}</span>`)
+      + '<a class="muted" style="margin-left:auto" href="/market/limit-up-shadow">查看 AI 涨停观察 →</a>';
+    const labels = {broken: '炸板', rush: '冲板中', limit_down: '跌停', unknown: '封板未知', missed: '未晋级'};
+    const rows = d.compare.map(g => {
+      const n = g.items.length;
+      const head = `<tr class="hd"><th class="yh">昨日 ${g.level === 1 ? '首板' : g.level + ' 板'}（${n}）</th><th class="arr">→</th><th class="th">今日 ${g.level + 1} 板（${g.promoted}）<span class="rs">晋级 ${g.promoted}/${n}${n ? ' · ' + Math.round(g.promoted / n * 100) + '%' : ''}</span></th><th class="ai">${live ? '昨日预测 → 今日结果' : '明日晋级概率'}</th></tr>`;
+      const key = 'cmp|' + g.level;
+      const open = state.expanded.has(key);
+      const shown = g.items.filter(i => open || g.level > 1 || i.status === 'promoted' || i.status === 'rush');
+      const body = shown.map(i => {
+        const ok = i.status === 'promoted';
+        const ai = !sh || sh.state !== 'ready' ? '<span class="muted">—</span>'
+          : live ? (i.prediction == null ? '<span class="muted">无预测</span>'
+              : `<b class="pr">${Math.round(i.prediction * 100)}%</b>` + (ok ? '<span class="res ok">✓ 晋级</span>'
+                : d.market_open ? '<span class="res wait">… 进行中</span>' : '<span class="res no">✗ 未晋级</span>'))
+          : ok ? (i.prediction == null ? '<span class="muted">无预测</span>' : `<b class="pr">${Math.round(i.prediction * 100)}%</b>`) : '';
+        const left = `<span class="nm">${esc(i.name || i.symbol)}</span><span class="pc ${pcls(i.pct)}">${pct(i.pct)}</span>`
+          + (ok ? (i.column ? `<span class="tp">${esc(colName(d, i.column))}</span>` : '') : `<span class="st2 ${i.status === 'rush' ? 'rush' : ''}">${labels[i.status]}</span>`);
+        const right = ok ? `<span class="nm">${esc(i.name || i.symbol)}</span><span class="mt2">≈${hms(i.first_seal)}${i.open_times ? ' · 开 ' + i.open_times : ''}</span>` : '';
+        return `<tr class="${ok ? '' : 'miss'}"><td>${left}</td><td></td><td>${right}</td><td class="aic">${ai}</td></tr>`;
+      }).join('');
+      const hidden = n - shown.length;
+      const more = hidden > 0 ? `<tr class="miss"><td colspan="4" class="more2" data-x="${key}">其余 ${hidden} 只　展开 ▾</td></tr>` : '';
+      return head + body + more;
+    }).join('');
+    const unknown = d.compare_unknown ? `<tr><td colspan="4" class="muted">昨日高度未知 ${d.compare_unknown} 只（ST 连续计数缺行或 is_st 未知），不列入分组。</td></tr>` : '';
+    $('cmp').innerHTML = rows + unknown || `<tr><td class="muted">${esc(d.meta.heights_error || '昨日无连板票')}</td></tr>`;
+  }
+
+  function colName(d, code) {
+    const c = d.columns.find(x => x.code === code);
+    return c ? c.name : code;
+  }
+
+  function events(d) {
+    const kinds = {seal: '封板', open: '开板', reseal: '回封', reassign: '改列', gap: '快照缺口'};
+    $('events').innerHTML = d.timeline.map(e => {
+      const card = d.cards[e.symbol];
+      const color = e.kind === 'seal' ? 'var(--rise)' : e.kind === 'gap' ? 'var(--muted)' : 'var(--warn)';
+      const h = card && card.height ? ` ${card.height === 1 ? '首板' : card.height + ' 板'}` : '';
+      const text = e.kind === 'gap' ? `快照缺口 ${esc(e.detail)}，期间不插值`
+        : `${esc(e.name || e.symbol)}${e.kind === 'seal' ? h : ''} ${kinds[e.kind] || e.kind}${e.detail && e.kind !== 'gap' ? ` <span class="muted">${esc(e.detail)}</span>` : ''}`;
+      return `<div class="ev"><span class="t">${hms(e.at)}</span><span style="color:${color}">${text}</span></div>`;
+    }).join('') || '<div class="muted">暂无事件</div>';
+  }
+
+  function minuteX(iso) {
+    const h = +iso.slice(11, 13), m = +iso.slice(14, 16), s = +iso.slice(17, 19);
+    let t = h * 60 + m + s / 60 - 570;            // 09:30 起
+    if (t > 120) t = Math.max(120, t - 90);         // 午休折叠
+    return Math.max(0, Math.min(240, t)) / 240 * 360;
+  }
+
+  function curves(d) {
+    const max = Math.max(1, ...d.curves.flatMap(c => c.points.map(p => p[1])));
+    $('curves').innerHTML = '<line x1="0" y1="86" x2="360" y2="86" stroke="#e5e9f0"/>' + d.curves.map((c, i) => {
+      if (!c.points.length) return '';
+      let pts = [], last = 0;
+      c.points.forEach(([at, n]) => { const x = minuteX(at); pts.push(`${x},${86 - last / max * 80}`, `${x},${86 - n / max * 80}`); last = n; });
+      pts.push(`${minuteX(d.at)},${86 - last / max * 80}`);
+      return `<polyline fill="none" stroke="${COLORS[i]}" stroke-width="1.4" points="${pts.join(' ')}"/>`;
+    }).join('');
+    $('curves-lg').innerHTML = d.curves.length ? d.curves.map((c, i) => `<i style="background:${COLORS[i]}"></i>${esc(c.name)} ${c.points.length ? c.points[c.points.length - 1][1] : 0}`).join('')
+      : esc(d.meta.concept_error ? '题材不可用：' + d.meta.concept_error : '暂无封板');
+  }
+
+  async function chart() {
+    const d = state.data;
+    if (!state.selected || !d) return;
+    const card = d.cards[state.selected];
+    $('selname').textContent = card ? `${card.name || card.symbol} · ${card.height ? card.height + ' 板' : card.status === 'sealed' ? '高度未知' : '未封'} · ${colName(d, card.column) || '—'}` : state.selected;
+    const r = await fetch(`/api/market/limit-up-board/series?day=${d.day}&symbol=${encodeURIComponent(state.selected)}`, {cache: 'no-store'});
+    const s = await r.json();
+    if (!s.available) { $('chart').innerHTML = `<text x="8" y="20" font-size="11" fill="#697386">${esc(s.message)}</text>`; return; }
+    const pts = s.points.filter(p => !d.at || p.at <= d.at);
+    const prices = pts.map(p => p.price).concat(s.limit_up ? [s.limit_up] : [], s.prev_close ? [s.prev_close] : []);
+    const hi = Math.max(...prices), lo = Math.min(...prices), span = (hi - lo) || 1;
+    const y = v => 16 + (hi - v) / span * 108;
+    const vmax = Math.max(1, ...pts.map(p => p.volume || 0));
+    let svg = '';
+    if (s.limit_up) svg += `<line x1="0" y1="${y(s.limit_up)}" x2="360" y2="${y(s.limit_up)}" stroke="#dc2626" stroke-dasharray="4 3" stroke-width=".8"/><text x="356" y="${y(s.limit_up) - 3}" fill="#dc2626" font-size="9" text-anchor="end">涨停 ${s.limit_up.toFixed(2)}</text>`;
+    if (s.prev_close) svg += `<line x1="0" y1="${y(s.prev_close)}" x2="360" y2="${y(s.prev_close)}" stroke="#e5e9f0"/><text x="356" y="${y(s.prev_close) - 3}" fill="#697386" font-size="9" text-anchor="end">昨收</text>`;
+    svg += `<polyline fill="none" stroke="#dc2626" stroke-width="1.6" points="${pts.map(p => `${minuteX(p.at)},${y(p.price)}`).join(' ')}"/>`;
+    if (s.first_seal && (!d.at || s.first_seal <= d.at) && s.limit_up) svg += `<circle cx="${minuteX(s.first_seal)}" cy="${y(s.limit_up)}" r="3" fill="#dc2626"/>`;
+    svg += '<line x1="0" y1="134" x2="360" y2="134" stroke="#e5e9f0"/>' + pts.filter(p => p.volume).map(p => `<rect x="${minuteX(p.at)}" y="${178 - p.volume / vmax * 40}" width="1.2" height="${p.volume / vmax * 40}" fill="#cbd5e1"/>`).join('');
+    svg += '<text x="2" y="146" fill="#697386" font-size="9">09:30</text><text x="160" y="146" fill="#697386" font-size="9">11:30/13:00</text><text x="330" y="146" fill="#697386" font-size="9">15:00</text>';
+    $('chart').innerHTML = svg;
+    $('chart-lg').textContent = '分时来源：15 秒留存 · ● 首封（观测）· 成交量为相邻快照累计量之差';
+  }
+
+  function render(d) {
+    state.data = d;
+    const live = d.mode === 'live';
+    document.querySelectorAll('#tabs .tab-button').forEach(b => b.classList.toggle('active', b.dataset.m === d.mode));
+    if (d.day) $('day').value = d.day;
+    const pill = $('state-pill');
+    const stale = live && d.status && d.status.error;
+    pill.className = 'pill ' + (!d.available ? 'todo' : stale ? 'warn' : live ? 'ok' : 'todo');
+    pill.textContent = !d.available ? '无数据' : live ? (d.market_open === true ? '实时' : d.market_open === false ? '盘后待定版' : '盘中观测') : d.mode === 'final' ? '直取定版' : '历史';
+    $('state-time').textContent = d.at ? hms(d.at) : '';
+    $('diff-pill').hidden = !(d.mode !== 'live' && d.mismatch_count);
+    $('diff-pill').textContent = `对账差异 ${d.mismatch_count}`;
+    $('lg-final').hidden = live;
+    const notes = [];
+    if (d.status && d.status.error) notes.push('采集器最近一步失败：' + d.status.error);
+    if (d.meta && d.meta.concept_error) notes.push('题材维度不可用：' + d.meta.concept_error);
+    if (d.meta && d.meta.heights_error) notes.push('连板高度与晋级未知：' + d.meta.heights_error);
+    if (d.meta && d.meta.st_published === 0) notes.push('当日 ST 名单未发布，ST 标记未知');
+    if (d.meta && d.meta.compact_error) notes.push('收盘压缩未通过，已保留全量：' + d.meta.compact_error);
+    if (d.meta && d.meta.reconcile_error) notes.push('盘后对账失败：' + d.meta.reconcile_error);
+    $('note').style.display = notes.length ? 'block' : 'none';
+    $('note').textContent = notes.join('；');
+    const times = d.times || [];
+    $('replay').style.display = times.length > 1 ? 'flex' : 'none';
+    $('replay-range').max = Math.max(0, times.length - 1);
+    $('replay-range').value = Math.max(0, times.indexOf(d.at));
+    $('replay-start').textContent = times.length ? hm(times[0]) : '';
+    $('replay-end').textContent = times.length ? hm(times[times.length - 1]) : '';
+    $('replay-at').textContent = d.at ? hms(d.at) : '';
+    if (!d.available || !d.sentiment) {
+      $('board').hidden = true; $('empty').hidden = false; $('empty').textContent = d.message;
+      return;
+    }
+    $('board').hidden = false; $('empty').hidden = true;
+    $('metrics').innerHTML = metrics(d.sentiment, d);
+    $('vhint').textContent = state.view === 'cmp' ? '昨日 N 板 → 今日 N+1 板' : '按今日封过板家数排序 · 每只票只归一列 · 泛概念按排除名单不参与';
+    ladder(d); compare(d); events(d); curves(d);
+    if (!state.selected) {
+      const first = Object.values(d.cards).filter(c => c.status === 'sealed').sort((a, b) => (b.height || 0) - (a.height || 0))[0];
+      state.selected = first ? first.symbol : null;
+    }
+    chart();
+  }
+
+  async function load() {
+    clearTimeout(timer);
+    const q = new URLSearchParams();
+    if (state.day) q.set('day', state.day);
+    if (state.at) q.set('at', state.at);
+    let d;
+    try {
+      const r = await fetch('/api/market/limit-up-board?' + q, {cache: 'no-store'});
+      d = await r.json();
+    } catch (e) {
+      $('state-pill').className = 'pill warn'; $('state-pill').textContent = '读取失败';
+      timer = setTimeout(load, 30000); return;
+    }
+    render(d);
+    // 只有"最新"视图在交易时段轮询；回放与历史不刷新。
+    if (!state.at && d.mode === 'live') {
+      const wait = d.market_open ? 15000 : d.next_open_at ? Math.min(600000, Math.max(15000, Date.parse(d.next_open_at) - Date.now())) : 60000;
+      timer = setTimeout(load, wait);
+    }
+  }
+
+  $('day-form').onsubmit = e => { e.preventDefault(); state.day = $('day').value || null; state.at = null; state.selected = null; history.replaceState(null, '', state.day ? '?day=' + state.day : location.pathname); load(); };
+  document.querySelectorAll('#tabs .tab-button').forEach(b => b.onclick = () => {
+    const days = (state.data && state.data.days) || [];
+    if (b.dataset.m === 'history') { $('day').focus(); if (days.length > 1) { state.day = days[1]; state.at = null; load(); } return; }
+    state.day = null; state.at = null; load();
+  });
+  $('replay-range').oninput = e => { const t = state.data.times[+e.target.value]; $('replay-at').textContent = hms(t); };
+  $('replay-range').onchange = e => { state.at = state.data.times[+e.target.value]; state.day = state.data.day; load(); };
+  $('replay-latest').onclick = () => { state.at = null; load(); };
+  function setView(v) {
+    state.view = v;
+    document.querySelectorAll('#vsw button').forEach(x => x.classList.toggle('on', x.dataset.v === v));
+    $('v-cmp').hidden = v !== 'cmp'; $('v-ladder').hidden = v === 'cmp';
+  }
+  document.querySelectorAll('#vsw button').forEach(b => b.onclick = () => {
+    setView(b.dataset.v);
+    if (state.data) render(state.data);
+  });
+  setView(state.view);
+  document.querySelector('.lub').addEventListener('click', e => {
+    const more = e.target.closest('[data-x]');
+    if (more) { state.expanded.add(more.dataset.x); render(state.data); return; }
+    const c = e.target.closest('.chip[data-s]');
+    if (c) { state.selected = c.dataset.s; render(state.data); }
+  });
+  load();
+})();
+</script>
+{% endblock %}

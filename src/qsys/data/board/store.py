@@ -62,13 +62,16 @@ CREATE TABLE IF NOT EXISTS board (
   ever_sealed INTEGER NOT NULL, touched INTEGER NOT NULL, PRIMARY KEY (day, symbol));
 CREATE TABLE IF NOT EXISTS series (
   day TEXT NOT NULL, symbol TEXT NOT NULL, published_at TEXT NOT NULL, at TEXT NOT NULL,
-  price REAL NOT NULL, high REAL NOT NULL, volume INTEGER NOT NULL, amount REAL NOT NULL,
-  bid1 REAL NOT NULL, bid1_volume INTEGER NOT NULL, ask1_volume INTEGER NOT NULL,
-  PRIMARY KEY (day, symbol, published_at));
+  price REAL NOT NULL, high REAL NOT NULL, prev_close REAL NOT NULL, volume INTEGER NOT NULL,
+  amount REAL NOT NULL, bid1 REAL NOT NULL, bid1_volume INTEGER NOT NULL,
+  ask1_volume INTEGER NOT NULL, PRIMARY KEY (day, symbol, published_at));
 CREATE TABLE IF NOT EXISTS mismatches (
   day TEXT NOT NULL, symbol TEXT NOT NULL, field TEXT NOT NULL,
   observed TEXT, direct TEXT, PRIMARY KEY (day, symbol, field));
 """
+
+SERIES_FIELDS = ("symbol, published_at, at, price, high, prev_close, volume, amount, bid1, "
+                 "bid1_volume, ask1_volume")
 
 RAW_SCHEMA = """
 CREATE TABLE IF NOT EXISTS raw (
@@ -243,19 +246,21 @@ class BoardStore:
                     replayed.append(_sentiment_row(got[1]))
             if replayed != stored:
                 return self._mark_compact(day, now, "全量重放的情绪聚合与盘中记录不一致，保留全量")
-            symbols = sorted(replay.tracked)
+            # 入选票 + 昨日涨停票（今/昨对比要用它们收盘后的今日涨跌幅）。
+            # prev_heights 覆盖全市场（昨日未涨停为 0），只取高度 >= 1 的。
+            yesterday = {s for s, h in (replay.prev_heights or {}).items()
+                         if h is not None and h >= 1}
+            symbols = sorted(set(replay.tracked) | yesterday)
             with closing(sqlite3.connect(f"file:{raw}?mode=ro", uri=True)) as src:
                 rows = [(d, *r) for s in symbols for r in src.execute(
-                    "SELECT symbol, published_at, at, price, high, volume, amount, bid1, "
-                    "bid1_volume, ask1_volume FROM raw WHERE symbol=? ORDER BY published_at",
+                    f"SELECT {SERIES_FIELDS} FROM raw WHERE symbol=? ORDER BY published_at",
                     (s,))]
             with _connect(self.path, BOARD_SCHEMA) as con:
                 con.execute("DELETE FROM series WHERE day=?", (d,))
-                con.executemany(f"INSERT INTO series VALUES ({','.join('?' * 11)})", rows)
+                con.executemany(f"INSERT INTO series VALUES ({','.join('?' * 12)})", rows)
             with _connect(self.path, BOARD_SCHEMA) as con:
                 back = [(d, *r) for r in con.execute(
-                    "SELECT symbol, published_at, at, price, high, volume, amount, bid1, "
-                    "bid1_volume, ask1_volume FROM series WHERE day=? "
+                    f"SELECT {SERIES_FIELDS} FROM series WHERE day=? "
                     "ORDER BY symbol, published_at", (d,))]
             if back != rows:
                 return self._mark_compact(day, now, "入选票序列回读与全量不一致，保留全量")

@@ -101,7 +101,7 @@
         "ExecStart=",
         "ReadWritePaths=",
         "ReadWritePaths=/home/ubuntu/qsys/var/workbench",
-        "ExecStart=/opt/qsys/components/web/current/venv/bin/qsys-web --host 127.0.0.1 --port 8420 --warehouse /home/ubuntu/qsys/warehouse --config /etc/qsys/components/web/deploy.toml --workspace /home/ubuntu/qsys/var/workbench --strategies /home/ubuntu/qsys/var/workbench/strategies --runs /home/ubuntu/qsys/var/runs --service-runs /home/ubuntu/qsys/var/service-runs --state /home/ubuntu/qsys/var/shadow-state.sqlite3 --health-state /home/ubuntu/qsys/var/health-observer/service-health.sqlite3 --limit-up-shadow-state /data/qsys/var-prod/limit-up-shadow/limit-up-shadow.sqlite3 --limit-up-research-run /data/qsys/research/issue-210/run-20261010 --tushare-config /etc/qsys/components/web/deploy.toml",
+        "ExecStart=/opt/qsys/components/web/current/venv/bin/qsys-web --host 127.0.0.1 --port 8420 --warehouse /home/ubuntu/qsys/warehouse --config /etc/qsys/components/web/deploy.toml --workspace /home/ubuntu/qsys/var/workbench --strategies /home/ubuntu/qsys/var/workbench/strategies --runs /home/ubuntu/qsys/var/runs --service-runs /home/ubuntu/qsys/var/service-runs --state /home/ubuntu/qsys/var/shadow-state.sqlite3 --health-state /home/ubuntu/qsys/var/health-observer/service-health.sqlite3 --limit-up-shadow-state /data/qsys/var-prod/limit-up-shadow/limit-up-shadow.sqlite3 --limit-up-research-run /data/qsys/research/issue-210/run-20261010 --limit-up-board-state /data/qsys/var-prod/limit-up-board --tushare-config /etc/qsys/components/web/deploy.toml",
         "MemoryMax=2G",
         "CPUQuota=100%",
         "Environment=POLARS_MAX_THREADS=1",
