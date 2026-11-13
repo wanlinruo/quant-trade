@@ -38,19 +38,31 @@
 两库 `journal_mode=DELETE`，Web 以 `mode=ro` 只读打开。读 warehouse 时短暂持有
 `warehouse-write.lock` 共享锁（非阻塞重试，最长 120 秒），不长期占锁。
 
-## 首次生产安装前的节点准备（需维护者确认后执行）
+## 首次生产安装（维护者 2026-11-13 确认，收盘后执行）
 
-1. 建系统账号 `qsys-limit-up-board`（`--system --user-group`、nologin、home `/nonexistent`）。
-2. 私有配置 `/etc/qsys/components/limit-up-board/deploy.toml`：只含 `[tushare]` token 与
-   Redis/streams 段，`root:qsys-limit-up-board 0640`；不写入 Git。
-3. Redis 只读代理：从已合并 main 的精确 SHA 安装 `redis_readonly_gateway.py`（`install`），
-   `policy.json` 增加该 UID → `keys=["state:quote_realtime_latest"]`、`date_prefixes=[]`，
-   `blocked_uids` 加入该 UID；`check` 通过后重启 `qsys-redis-reader.service` 并 reload
-   netguard。只在非交易时段做；前后核对 web / health-observer 读取正常。
-4. 节点白名单 `/etc/qsys/component-releases.json` 按 #511/#523 流程从精确 main 更新。
-5. 安装基础 unit `deploy/systemd/qsys-limit-up-board.service`，状态目录加
-   `group:qsys-observers:r-x`（含 default ACL），供 Web 只读（P3）。
-6. 走正常组件发布（首次安装 `uninstalled` 路径），三方核对后 `enable --now`。
+顺序有依赖，逐步核对后再进行下一步；所有操作在 15:40 后、非交易时段进行。
+
+1. 从已合并 main 的精确 SHA 建只读工作树 `/data/qsys/var-deployments/<run>/src`，留存执行记录。
+2. 建系统账号 `qsys-limit-up-board`（`useradd --system --user-group --no-create-home
+   --home-dir /nonexistent --shell /usr/sbin/nologin`），加入 `qsys-observers`（读 warehouse、
+   遍历 home、访问只读代理 socket；与 limit-up-shadow 相同）。
+3. 私有配置 `/etc/qsys/components/limit-up-board/deploy.toml`：采集器只需 `[tushare]` token
+   （Redis 经只读代理 socket，不需要密码），按字节复制 limit-up-shadow 的最小配置，
+   `root:qsys-limit-up-board 0640`；不写入 Git、不回显内容。
+4. Redis 只读代理：节点上旧版本会拒绝含未审阅账号的 policy，必须先从工作树
+   `install` 新版代理（用现有 policy），再备份并修改 `policy.json`（该 UID →
+   `keys=["state:quote_realtime_latest"]`、`date_prefixes=[]`，`blocked_uids` 加入该 UID），
+   `check` 通过后 daemon-reload、重启 `qsys-redis-reader.service`、reload netguard；
+   前后核对 web / health-observer 读取正常。
+5. 固定生产入口与白名单：工作树内 `scripts/install_production_deployment_entrypoint.sh`，
+   核对 `/etc/qsys/component-releases.json` 与 main 一致（#511/#523）。
+6. 安装基础 unit `deploy/systemd/qsys-limit-up-board.service` 并 daemon-reload（不启动）。
+7. 组件发布 workflow：先 dry-run 再正式（首次安装 `uninstalled` 路径，不自动启动）；
+   workflow、GitHub Deployment 与节点 record 三方一致。
+8. 状态目录加 ACL（与 limit-up-shadow 相同）：`user:ubuntu:r-x`、`group:qsys-observers:r-x`，
+   含 default ACL，供 Web 只读。
+9. `systemctl enable --now qsys-limit-up-board`，核对 journal、`status.json`、只读代理读取；
+   随后发布 web（读页面）与 Windows 行情网关（#647）。
 
 ## Web 页面（P3）
 
