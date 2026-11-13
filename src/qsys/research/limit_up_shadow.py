@@ -317,9 +317,11 @@ def outcome_truth(
     ``daily_flags.is_limit_up`` unknown even though OHLC and the price limit are
     present.  Known rows are still publishable; unresolved rows remain pending
     and are excluded from rolling metrics until their authoritative truth
-    arrives.  A symbol absent from both daily truth sources is also unresolved
-    when ``suspend_daily`` authoritatively records a suspension for the target
-    session.  Any other missing or partially missing row remains a hard error.
+    arrives.  A symbol absent from both daily truth sources whose suspension on
+    the target session is recorded by ``suspend_daily`` did not trade, so it
+    cannot have touched or closed at the limit: it is recorded as a miss
+    (all outcome flags False) and counts in the day's denominator (#657).
+    Any other missing or partially missing row remains a hard error.
     """
     root = Path(warehouse)
     expected = set(symbols)
@@ -367,9 +369,7 @@ def outcome_truth(
         raise ValueError("target truth does not completely cover the published ranking")
     required = ("touched_limit_up", "is_limit_up", "limit_up", "open", "high", "low")
     unresolved_mask = pl.any_horizontal(pl.col(required).is_null())
-    unresolved = tuple(sorted(
-        set(truth.filter(unresolved_mask)["symbol"].to_list()) | missing
-    ))
+    unresolved = tuple(sorted(truth.filter(unresolved_mask)["symbol"].to_list()))
     resolved = truth.filter(~unresolved_mask)
     buffer = io.BytesIO()
     truth.write_ipc(buffer, compression="zstd")
@@ -390,6 +390,12 @@ def outcome_truth(
             and float(row["high"]) <= float(row["limit_up"]) + 1e-6
         ),
     ) for row in resolved.iter_rows(named=True))
+    # 停牌无成交：未触板、未封板、非涨停开盘、非一字板，均为事实而非推断。
+    suspended = tuple(LimitUpShadowOutcome(
+        symbol=symbol, actual_touched=False, actual_closed_limit=False,
+        opened_at_limit=False, one_price_limit=False,
+    ) for symbol in sorted(missing))
+    outcomes = tuple(sorted(outcomes + suspended, key=lambda row: row.symbol))
     return outcomes, unresolved, source_sha
 
 

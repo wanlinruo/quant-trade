@@ -271,6 +271,10 @@ def _compute(bars: pl.DataFrame) -> pl.DataFrame:
         .then(price_at_limit)
         .when(~pl.col("touched_limit_up"))
         .then(False)
+        # 触板但未进 U/Z 列表（#657）：收盘低于直取涨停价时收盘封板在算术上不可能，
+        # 纯派生为 False；收盘等于涨停价才是真正无法区分的情形，保持 null。
+        .when(~price_at_limit)
+        .then(False)
         .otherwise(None)
         .alias("is_limit_up")
     )
