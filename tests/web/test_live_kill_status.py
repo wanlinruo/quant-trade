@@ -193,7 +193,7 @@ def test_cli_reads_explicit_environment_and_argument_takes_precedence(tmp_path, 
     monkeypatch.setenv('QSYS_LIVE_KILL_PATH', str(env_path))
     monkeypatch.setattr(sys, 'argv', ['qsys-web'] + (['--live-kill-path', str(explicit)] if override else []))
     captured = []
-    monkeypatch.setattr(monitor_cli, 'build_app', lambda *args: captured.append(args) or object())
+    monkeypatch.setattr(monitor_cli, 'build_app', lambda *args, **kw: captured.append(args) or object())
     monkeypatch.setattr(monitor_cli.uvicorn, 'run', lambda *args, **kwargs: None)
     assert monitor_cli.main() == 0
     assert captured[0][-1] == (explicit if override else env_path)

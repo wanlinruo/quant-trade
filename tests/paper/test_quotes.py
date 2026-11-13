@@ -67,11 +67,14 @@ def test_quote_client_skips_a_persisted_response_group_backlog():
 
 
 def _quote(symbol, price, previous=10, *, high=None, upper=None, lower=None,
-           amount=100, suspended=False, bid1_volume=0, ask1_volume=0):
+           amount=100, suspended=False, bid1_volume=0, ask1_volume=0,
+           bid1=None, ask1=None):
     return MarketQuote(symbol=symbol, at=datetime(2026, 9, 16, 10), price=price,
                        open=previous, high=high or price, low=price,
                        prev_close=previous, amount=amount, upper_limit=upper,
                        lower_limit=lower, suspended=suspended,
+                       bid1=price if bid1 is None else bid1,
+                       ask1=price if ask1 is None else ask1,
                        bid1_volume=bid1_volume, ask1_volume=ask1_volume)
 
 
@@ -79,11 +82,11 @@ def test_market_overview_aggregates_all_a_share_boards():
     now = datetime(2026, 9, 16, 10, 30)
     snapshot = build_market_overview({
         "000001.SH": _quote("000001.SH", 3300, 3270),
-        "600001.SH": _quote("600001.SH", 11, high=11),
-        "000001.SZ": _quote("000001.SZ", 9, high=10.5),
-        "300001.SZ": _quote("300001.SZ", 10),
-        "688001.SH": _quote("688001.SH", 12),
-        "920001.BJ": _quote("920001.BJ", 13),
+        "600001.SH": _quote("600001.SH", 11, high=11, bid1_volume=500),
+        "000001.SZ": _quote("000001.SZ", 9, high=10.5, ask1_volume=800),
+        "300001.SZ": _quote("300001.SZ", 10, ask1_volume=300),
+        "688001.SH": _quote("688001.SH", 12, bid1_volume=20),
+        "920001.BJ": _quote("920001.BJ", 13, bid1_volume=9),
         "600002.SH": _quote("600002.SH", 0, suspended=True),
     }, limits={"600001.SH": (11, 9), "000001.SZ": (11, 9), "300001.SZ": (12, 10),
                "688001.SH": (12, 8), "920001.BJ": (13, 7)}, now=now)
@@ -94,14 +97,30 @@ def test_market_overview_aggregates_all_a_share_boards():
     assert snapshot.touched_limit_up_count == 3
     assert snapshot.broken_board_count == 0
     assert snapshot.limit_price_missing_count == 0
+    assert (snapshot.limit_up_unknown_count, snapshot.limit_down_unknown_count) == (0, 0)
     assert snapshot.indices[0].name == "上证指数"
+
+
+def test_market_overview_without_order_book_is_seal_unknown_not_limit_up():
+    """#647：两侧盘口量都为 0 时不能按价格口径判封板，也不算炸板。"""
+    snapshot = build_market_overview({
+        "600001.SH": _quote("600001.SH", 11, high=11),
+        "000001.SZ": _quote("000001.SZ", 9, high=9.5),
+        "000002.SZ": _quote("000002.SZ", 11, high=11, bid1_volume=10, bid1=10.99),
+    }, limits={"600001.SH": (11, 9), "000001.SZ": (11, 9), "000002.SZ": (11, 9)},
+        now=datetime(2026, 9, 16, 10, 30))
+    assert (snapshot.limit_up_count, snapshot.limit_down_count) == (0, 0)
+    assert snapshot.limit_up_unknown_count == 2  # 买一不在涨停价也不是封板证据
+    assert snapshot.limit_down_unknown_count == 1
+    assert snapshot.touched_limit_up_count == 2
+    assert snapshot.broken_board_count == 0
 
 
 def test_gateway_publishes_one_atomic_overview_key():
     transport, streams = MemoryTransport(), StreamConfig()
     transport.set_key(publish_key(streams, date(2026, 9, 16)), '{"600001.SH": [11, 9]}')
     gateway = MarketGateway(transport, streams, lambda symbols: {})
-    gateway.publish_overview({"600001.SH": _quote("600001.SH", 11)},
+    gateway.publish_overview({"600001.SH": _quote("600001.SH", 11, bid1_volume=1)},
                              now=datetime(2026, 9, 16, 10, 30))
     raw = transport.get_key(streams.market_snapshot)
     assert raw is not None
@@ -142,7 +161,7 @@ def test_market_overview_uses_direct_limits_and_never_derives_them():
     主板 ST 在 2026-07-06 前是 5% 档：按板块 10% 自算会把封在 5% 涨停的票算成未涨停。
     """
     snapshot = build_market_overview({
-        "600001.SH": _quote("600001.SH", 10.5, high=10.5),   # ST，直取涨停 10.50
+        "600001.SH": _quote("600001.SH", 10.5, high=10.5, bid1_volume=3),  # ST，直取涨停 10.50
         "300001.SZ": _quote("300001.SZ", 12, high=12),       # 无直取价
         "000001.SZ": _quote("000001.SZ", 10.5, high=11),
     }, limits={"600001.SH": (10.5, 9.5), "000001.SZ": (11, 9)},

@@ -285,6 +285,10 @@ class MarketOverviewSnapshot(Message):
     market_total_money: float
     # 缺当日直取涨跌停价、未计入涨停类统计的标的数（D-19）
     limit_price_missing_count: int = 0
+    # 价在涨/跌停价但两侧盘口量都为 0、无法判定是否封板的标的数（#647）；
+    # 旧生产者没有该口径时保持 None。
+    limit_up_unknown_count: int | None = None
+    limit_down_unknown_count: int | None = None
     # 旧生产者没有绑定覆盖信息时保持None，不能由当前状态补写历史。
     coverage: MarketCoverage | None = None
 

@@ -1,0 +1,46 @@
+[Unit]
+Description=qsys limit-up board intraday collector (read-only quotes, #648)
+Requires=qsys-redis-readonly-netguard.service qsys-redis-reader.socket
+After=network-online.target qsys-redis-readonly-netguard.service qsys-redis-reader.socket
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=qsys-limit-up-board
+Group=qsys-limit-up-board
+SupplementaryGroups=qsys-observers
+WorkingDirectory=/
+UMask=0027
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=QSYS_REDIS_READER_SOCKET=/run/qsys-redis-reader.sock
+Environment=POLARS_MAX_THREADS=1
+Environment=QSYS_QUERY_MEMORY_MB=512
+Environment=QSYS_QUERY_MAX_TEMP_MB=256
+Environment=QSYS_QUERY_THREADS=1
+Environment=QSYS_QUERY_TEMP_ROOT=/tmp/qsys-limit-up-board-query
+ExecStart=/opt/qsys/components/limit-up-board/current/venv/bin/qsys-limit-up-board --warehouse /data/qsys/warehouse --config /etc/qsys/components/limit-up-board/deploy.toml --state-root /data/qsys/var-prod/limit-up-board --warehouse-lock /home/ubuntu/qsys/var/warehouse-write.lock
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/data/qsys/var-prod/limit-up-board
+ReadOnlyPaths=/data/qsys/warehouse /etc/qsys/components/limit-up-board/deploy.toml
+InaccessiblePaths=/home/ubuntu/qsys/config
+CapabilityBoundingSet=
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryHigh=768M
+MemoryMax=1G
+CPUQuota=50%
+Nice=10
+IOSchedulingClass=idle
+TasksMax=16
+
+[Install]
+WantedBy=multi-user.target

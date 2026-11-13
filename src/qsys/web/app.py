@@ -30,6 +30,7 @@ from qsys.web.live_kill_status import LiveKillReader
 from qsys.web.config import WebConfig
 from qsys.web.domain_views import DOMAIN_LABELS, NOT_INGESTED, STATUS_LABELS, DomainService
 from qsys.web.data_views import DataService, MarketService
+from qsys.web.limit_up_board import BoardView, LimitUpBoardReader, SeriesView
 from qsys.web.limit_up_shadow import LimitUpShadowReader, LimitUpShadowView
 from qsys.web.limit_up_research import LimitUpResearchReader, LimitUpResearchView
 from qsys.web.paper_chart import history_series, intraday_series
@@ -153,6 +154,7 @@ def create_app(
     assets: DataAssetService | None = None,
     limit_up_shadow: LimitUpShadowReader | None = None,
     limit_up_research: LimitUpResearchReader | None = None,
+    limit_up_board: LimitUpBoardReader | None = None,
     research_jobs: ResearchJobConsole | None = None,
     # 影子核心承袭的模拟账户（只读查询；没配承袭时返回 None）
     shadow_lineage: Callable[[], object | None] | None = None,
@@ -393,6 +395,43 @@ def create_app(
     @app.get("/api/market/limit-up-shadow")
     def limit_up_shadow_api(day: date | None = None):
         return _limit_up_shadow_view(day).model_dump(mode="json")
+
+    def _limit_up_board_view(day: date | None, at: datetime | None) -> BoardView:
+        if limit_up_board is None:
+            return BoardView(available=False, message="打板看板数据源未配置")
+        return limit_up_board.view(day, at)
+
+    @app.get("/market/limit-up-board", response_class=HTMLResponse)
+    def limit_up_board_page(request: Request, day: date | None = None):
+        return TEMPLATES.TemplateResponse(
+            request=request, name="limit_up_board.html",
+            context={
+                "title": config.title, "session": None,
+                "page": "limit_up_board", "selected_day": day,
+            },
+        )
+
+    @app.get("/api/market/limit-up-board")
+    def limit_up_board_api(day: date | None = None, at: datetime | None = None):
+        from fastapi.responses import JSONResponse
+        view = _limit_up_board_view(day, at)
+        payload = view.model_dump(mode="json")
+        if market is not None:
+            try:
+                schedule = market.schedule()
+            except Exception:  # 交易时段只用于前端退避轮询，读不到就当未知
+                schedule = None
+            payload["market_open"] = schedule.is_open if schedule else False
+            payload["next_open_at"] = (schedule.next_open_at.isoformat()
+                                       if schedule and schedule.next_open_at else None)
+        return JSONResponse(payload, headers={"Cache-Control": "no-store"})
+
+    @app.get("/api/market/limit-up-board/series")
+    def limit_up_board_series(day: date, symbol: str):
+        if limit_up_board is None:
+            return SeriesView(available=False, symbol=symbol,
+                              message="打板看板数据源未配置").model_dump(mode="json")
+        return limit_up_board.series(day, symbol).model_dump(mode="json")
 
     @app.get("/market/limit-up-research", response_class=HTMLResponse)
     def limit_up_research_page(request: Request, day: date | None = None):

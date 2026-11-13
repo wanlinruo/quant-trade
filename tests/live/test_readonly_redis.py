@@ -190,7 +190,7 @@ def test_real_peer_denial_and_backend_errors_are_not_null(monkeypatch, unknown_p
 
 def test_manifest_only_routes_reviewed_readers_to_gateway():
     manifest = json.loads(Path('deploy/component-releases.json').read_text())['components']
-    readers = {'web', 'health-observer', 'daily-digest', 'reboot-drill'}
+    readers = {'web', 'health-observer', 'daily-digest', 'reboot-drill', 'limit-up-board'}
     for name, spec in manifest.items():
         lines = spec['dropin_lines']
         enabled = 'Environment=QSYS_REDIS_READER_SOCKET=/run/qsys-redis-reader.sock' in lines

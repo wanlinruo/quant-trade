@@ -2549,7 +2549,7 @@ def test_component_workflow_streams_only_a_verified_artifact() -> None:
     assert ".before.linux == .after.linux" in workflow
     assert "PRODUCTION_DEPLOY_SSH_KEY" in workflow
     assert "cancel-in-progress: false" in workflow
-    assert "backtest-worker|web|paper|shadow-core|live-core|live-state-reader|limit-up-shadow|reboot-drill|catalog-verify|service-checks|storage-report|daily-digest|health-observer|daily-archive|premarket-limits|tushare-sync" in workflow
+    assert "backtest-worker|web|paper|shadow-core|live-core|live-state-reader|limit-up-shadow|limit-up-board|reboot-drill|catalog-verify|service-checks|storage-report|daily-digest|health-observer|daily-archive|premarket-limits|tushare-sync" in workflow
     assert 'required = {"component-release-v15", "systemd-component-boundary-v1", "component-web-readiness-v1"}' in workflow
     assert 'entrypoint_version", 0) < 27' in workflow
     assert '.before["backtest-worker-identity"] == .after["backtest-worker-identity"]' in workflow

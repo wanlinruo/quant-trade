@@ -27,6 +27,7 @@ from qsys.web.asset_views import DataAssetService
 from qsys.web.catalog_views import CatalogService
 from qsys.web.config import WebConfig
 from qsys.web.data_views import DataService, MarketService
+from qsys.web.limit_up_board import LimitUpBoardReader
 from qsys.web.limit_up_shadow import LimitUpShadowReader
 from qsys.web.limit_up_research import (
     HistoricalSecurityNameLookup,
@@ -59,6 +60,7 @@ def build_app(
     research_snapshots_path: Path | None = None,
     strategies_path: Path | None = None,
     live_kill_path: Path | None = None,
+    limit_up_board_root: Path | None = None,
 ):
     warehouse = Warehouse(warehouse_root)
     journal = SessionJournal(warehouse)
@@ -109,6 +111,10 @@ def build_app(
         research_console = ResearchJobConsole(research_jobs_path, profile=profile)
     from qsys.web.live_kill_status import LiveKillReader
 
+    names = HistoricalSecurityNameLookup(warehouse_root)
+    shadow_reader = LimitUpShadowReader(
+        limit_up_shadow_state_path or Path("var/limit-up-shadow.sqlite3")
+    )
     return create_app(
         monitor,
         config,
@@ -153,12 +159,14 @@ def build_app(
             }.get(strategy_mode),
         ),
         assets=DataAssetService(warehouse, background_coverage=True),
-        limit_up_shadow=LimitUpShadowReader(
-            limit_up_shadow_state_path or Path("var/limit-up-shadow.sqlite3")
-        ),
+        limit_up_shadow=shadow_reader,
         limit_up_research=LimitUpResearchReader(
             limit_up_research_run_path or Path("var/research/issue-210"),
-            name_lookup=HistoricalSecurityNameLookup(warehouse_root),
+            name_lookup=names,
+        ),
+        limit_up_board=LimitUpBoardReader(
+            limit_up_board_root or Path("var/limit-up-board"),
+            names=names, shadow=shadow_reader,
         ),
         research_jobs=research_console,
     )
@@ -230,6 +238,10 @@ def main() -> int:
         help="T+1 涨停概率影子榜单 SQLite（监控台严格只读）",
     )
     parser.add_argument(
+        "--limit-up-board-state", default="var/limit-up-board",
+        help="打板看板采集器状态目录（board.sqlite3 与当日临时全量，监控台严格只读）",
+    )
+    parser.add_argument(
         "--limit-up-research-run", default="var/research/issue-210",
         help="#210 冻结研究回测目录（监控台只读紧凑证据）",
     )
@@ -268,6 +280,7 @@ def main() -> int:
         Path(args.research_release) if args.research_release else None,
         Path(args.research_snapshots) if args.research_snapshots else None,
         Path(args.strategies), args.live_kill_path,
+        limit_up_board_root=Path(args.limit_up_board_state),
     )
     log.info("monitor.started", host=args.host, port=args.port)
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")

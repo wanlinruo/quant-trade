@@ -18,6 +18,7 @@ ExecStart=/home/ubuntu/qsys-test/.venv/bin/python scripts/run_monitor.py \
           --health-state /data/qsys-test/var/service-health.sqlite3 \
           --limit-up-shadow-state /data/qsys-test/var/limit-up-shadow.sqlite3 \
           --limit-up-research-run /data/qsys/research/issue-210/run-20261010 \
+          --limit-up-board-state /data/qsys-test/var/limit-up-board \
           --runs /data/qsys-test/var/runs \
           --service-runs /data/qsys-test/var/service-runs \
           --tushare-config /data/qsys-test/var/tushare-only.toml

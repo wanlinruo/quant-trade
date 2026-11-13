@@ -350,18 +350,17 @@ def build_market_overview(
     priced = [((float(limits[q.symbol][0]), float(limits[q.symbol][1])), q)
               for q in stocks if q.symbol in limits]
     # 价格落在涨停价但卖一仍有余量，不是封板（002631.SZ 2026-09-18）。
-    # QMT 未提供盘口量时字段默认 0，此时仍退化为价格口径；一旦有五档数据，
-    # 封板必须同时满足卖一无待成交量。跌停对称要求买一无待成交量。
-    sealed_up = [q.price >= upper - 1e-6 and q.ask1_volume <= 0
-                 for (upper, _), q in priced]
-    sealed_down = [q.price <= lower + 1e-6 and q.bid1_volume <= 0
-                   for (_, lower), q in priced]
-    limit_up = sum(sealed_up)
-    limit_down = sum(sealed_down)
+    # 封板须有直取盘口证据：卖一无量且买一挂在涨停价、买一有量（跌停对称）。
+    # 两侧量都为 0 时无法区分"QMT 未给盘口"与"真实为 0"（全推设为最新价时
+    # 五档恒为 0，#651），记为封板未知，不计入涨停/跌停，也不算炸板（#647）。
+    up_states = [_limit_state(q, upper, side="up") for (upper, _), q in priced]
+    down_states = [_limit_state(q, lower, side="down") for (_, lower), q in priced]
+    limit_up = up_states.count("sealed")
+    limit_down = down_states.count("sealed")
     touched = sum(q.high >= upper - 1e-6 for (upper, _), q in priced)
     broken = sum(
-        q.high >= upper - 1e-6 and not is_sealed
-        for ((upper, _), q), is_sealed in zip(priced, sealed_up, strict=True)
+        q.high >= upper - 1e-6 and state not in ("sealed", "unknown")
+        for ((upper, _), q), state in zip(priced, up_states, strict=True)
     )
     directional = advance + decline
     return MarketOverviewSnapshot(
@@ -375,5 +374,21 @@ def build_market_overview(
         market_median_return_1d=median(returns) if returns else 0.0,
         market_total_money=sum(q.amount for q in stocks),
         limit_price_missing_count=len(stocks) - len(priced),
+        limit_up_unknown_count=up_states.count("unknown"),
+        limit_down_unknown_count=down_states.count("unknown"),
         coverage=coverage,
     )
+
+
+def _limit_state(quote: MarketQuote, price: float, *, side: str) -> str:
+    """涨/跌停价上的封板状态：sealed / open / unknown / away。"""
+    if abs(quote.price - price) > 1e-6:
+        return "away"
+    queue_price, queue, against = (
+        (quote.bid1, quote.bid1_volume, quote.ask1_volume) if side == "up"
+        else (quote.ask1, quote.ask1_volume, quote.bid1_volume))
+    if against > 0:
+        return "open"
+    if queue > 0 and abs(queue_price - price) <= 1e-6:
+        return "sealed"
+    return "unknown"
