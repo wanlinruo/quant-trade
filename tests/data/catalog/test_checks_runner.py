@@ -121,3 +121,41 @@ def test_late_failure_sample_does_not_depend_on_first_hundred_rows(ctx, tmp_path
     assert late['passed'] is False and late['severity']=='blocking'
     assert pl.read_parquet(late['sample_path'])['symbol'].to_list()==['000001.SZ']
     assert out['sample_path'].null_count()==120
+
+
+def _upstream_check(cid, fn, *, metrics=("tushare_daily.close",)):
+    return C.Check(cid, C.Category.TRUTHFULNESS, C.Scope.INCREMENTAL,
+                   metrics, (), "测试用", fn, upstream_self_consistency=True)
+
+
+def test_upstream_self_consistency_violation_is_a_labelled_warning(ctx):
+    """上游同一来源的直取字段自相矛盾不是本系统故障：如实记未通过，但只警告。"""
+    out = C.run_checks(ctx, "r1", NOW, only=[
+        _upstream_check("X.upstream", lambda _: C.CheckResult(1, 5571))
+    ])
+    row = out.row(0, named=True)
+    assert row["passed"] is False and row["violations"] == 1
+    assert row["severity"] == "warning"
+    assert row["known_issue"] == C.UPSTREAM_INCONSISTENCY
+
+
+def test_upstream_rule_crash_stays_blocking(ctx):
+    def boom(_):
+        raise RuntimeError("规则自身出错")
+
+    row = C.run_checks(ctx, "r1", NOW, only=[_upstream_check("X.boom", boom)]).row(0, named=True)
+    assert row["severity"] == "blocking" and row["known_issue"] is None
+
+
+def test_upstream_rule_with_zero_denominator_stays_blocking(ctx):
+    row = C.run_checks(ctx, "r1", NOW, only=[
+        _upstream_check("X.empty", lambda _: C.CheckResult(0, 0))
+    ]).row(0, named=True)
+    assert row["severity"] == "blocking" and row["known_issue"] is None
+
+
+def test_ordinary_rule_is_not_affected_by_upstream_label(ctx):
+    row = C.run_checks(ctx, "r1", NOW, only=[
+        _check("X.ours", lambda _: C.CheckResult(1, 5571))
+    ]).row(0, named=True)
+    assert row["severity"] == "blocking" and row["known_issue"] is None

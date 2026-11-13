@@ -415,3 +415,39 @@ def test_a1_passing_rows_are_never_adjusted(bt_ctx, warehouse, tmp_path):
     _blocks(warehouse, [("600036.SH", 1.0, 0.5, 5_000.0)])
     assert _run(A1, bt_ctx, tmp_path)["passed"] is True
     assert _run(A1_EXPLAINED, bt_ctx, tmp_path)["violations"] == 0
+
+
+# --- 上游自洽性规则：违规只警告并标注上游（维护者 2026-11-14 裁决，#653） ---
+
+UPSTREAM_SELF_CONSISTENCY = {
+    "A3.change_identity", "A3.pct_change_identity",
+    "A3.turnover_identity", "A3.market_cap_vs_shares",
+}
+
+
+def test_upstream_self_consistency_rules_are_exactly_the_direct_field_identities():
+    """只有比较字段全部是原样保存的上游直取值的规则才能带此标记。
+
+    A1 量纲规则能抓本系统的单位换算错误，涉及自算或跨源对账的规则都不是上游自洽，保持阻断。
+    """
+    flagged = {cid for cid, check in C.CHECKS.items() if check.upstream_self_consistency}
+    assert flagged == UPSTREAM_SELF_CONSISTENCY
+
+
+def test_market_cap_upstream_contradiction_is_labelled_warning(ctx, warehouse, tmp_path):
+    # #653 的 600292.SH：circ_mv/close = 1,965,244,370 股，上游 float_share = 1,623,711,063 股
+    _daily([{"symbol": "600292.SH", "dt": D[0], "close": 10.09,
+             "market_cap": 4.80706e10, "total_shares": 4.764185064e9,
+             "circulating_market_cap": 1.9829316e10,
+             "circulating_shares": 1.623711063e9}], warehouse)
+    row = _run("A3.market_cap_vs_shares", ctx, tmp_path)
+    assert row["passed"] is False and row["violations"] == 1
+    assert row["severity"] == "warning"
+    assert row["known_issue"] == C.UPSTREAM_INCONSISTENCY
+
+
+def test_change_identity_upstream_contradiction_is_labelled_warning(ctx, warehouse, tmp_path):
+    _daily([{"symbol": "600036.SH", "dt": D[0], "close": 11.0,
+             "pre_close": 10.0, "change": 5.0}], warehouse)
+    row = _run("A3.change_identity", ctx, tmp_path)
+    assert row["severity"] == "warning" and row["known_issue"] == C.UPSTREAM_INCONSISTENCY
