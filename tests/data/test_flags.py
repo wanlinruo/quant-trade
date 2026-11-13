@@ -394,3 +394,52 @@ def test_a_normal_stock_keeps_the_board_limit(warehouse, write_daily_bars):
     assert row["limit_pct"] == pytest.approx(0.10)
     assert row["is_limit_up"] is True
 
+
+
+def _list_other_symbol_as_sealed(warehouse: Warehouse, day: date) -> None:
+    """让该日 limit_list_d 可用：列出另一只票，目标票不在列表里。"""
+    listed = pl.DataFrame({
+        "symbol": ["000001.SZ"], "dt": [day], "limit_type": ["U"],
+        "limit_times": [1], "open_times": [0], "first_time": ["09:30:00"],
+        "fd_amount": [None], "limit_amount": [None], "float_mv": [None],
+    })
+    warehouse.write(
+        "limit_list_daily", listed.to_arrow().cast(schema.LIMIT_LIST_DAILY), year=2024,
+    )
+
+
+def test_unlisted_touch_closing_below_limit_is_not_sealed(warehouse, write_daily_bars):
+    """#657：limit_list_d 漏收的触板票，收盘低于直取涨停价时收盘封板在算术上不可能。"""
+    seed(warehouse, write_daily_bars, [
+        ("000001.SZ", D[0], 10.0, 10.0, 10.0, 10.0),
+        ("000001.SZ", D[1], 11.0, 11.0, 11.0, 11.0),
+        ("002805.SZ", D[0], 10.0, 10.0, 10.0, 10.0),
+        ("002805.SZ", D[1], 10.2, 11.0, 9.9, 10.5),
+    ])
+    _list_other_symbol_as_sealed(warehouse, D[1])
+
+    build_daily_flags(warehouse, D[0], D[1])
+
+    row = flags_of(warehouse, "002805.SZ", D[1])
+    assert row["touched_limit_up"] is True
+    assert row["is_limit_up"] is False
+    assert row["is_broken_board"] is True
+    assert row["is_first_board"] is False
+
+
+def test_unlisted_touch_closing_at_limit_stays_unknown(warehouse, write_daily_bars):
+    """收盘等于涨停价但不在 U/Z 列表：无法区分封单与卖一余量，仍记 null。"""
+    seed(warehouse, write_daily_bars, [
+        ("000001.SZ", D[0], 10.0, 10.0, 10.0, 10.0),
+        ("000001.SZ", D[1], 11.0, 11.0, 11.0, 11.0),
+        ("600371.SH", D[0], 10.0, 10.0, 10.0, 10.0),
+        ("600371.SH", D[1], 10.2, 11.0, 9.9, 11.0),
+    ])
+    _list_other_symbol_as_sealed(warehouse, D[1])
+
+    build_daily_flags(warehouse, D[0], D[1])
+
+    row = flags_of(warehouse, "600371.SH", D[1])
+    assert row["touched_limit_up"] is True
+    assert row["is_limit_up"] is None
+    assert row["is_broken_board"] is None

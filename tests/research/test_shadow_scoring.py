@@ -239,9 +239,10 @@ def test_outcome_truth_keeps_unknown_close_truth_unresolved(tmp_path: Path):
     assert len(source_sha) == 64
 
 
-def test_outcome_truth_keeps_authoritatively_suspended_symbol_unresolved(
+def test_outcome_truth_records_suspended_symbol_as_not_touched_or_sealed(
     tmp_path: Path,
 ):
+    """#657：目标日全天停牌没有成交，不可能触板或封板；按未命中计入当日分母。"""
     day = date(2026, 10, 13)
     flags_path = tmp_path / "daily_flags/year=2026"
     bars_path = tmp_path / "tushare_daily/year=2026"
@@ -267,8 +268,12 @@ def test_outcome_truth_keeps_authoritatively_suspended_symbol_unresolved(
         tmp_path, day, ("000001.SZ", "600825.SH"),
     )
 
-    assert [row.symbol for row in outcomes] == ["000001.SZ"]
-    assert unresolved == ("600825.SH",)
+    assert [row.symbol for row in outcomes] == ["000001.SZ", "600825.SH"]
+    assert unresolved == ()
+    suspended = outcomes[1]
+    assert (suspended.actual_touched, suspended.actual_closed_limit,
+            suspended.opened_at_limit, suspended.one_price_limit) == (
+        False, False, False, False)
     assert len(source_sha) == 64
 
 

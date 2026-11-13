@@ -47,7 +47,7 @@ Tushare 直连去掉了全部人工环节。
 |---|---|---|
 | `tushare_daily` | Tushare `daily` + `daily_basic` + `adj_factor` | 28 列，1990 起 18,224,238 行 |
 | `stock_st_daily` | Tushare `stock_st` | 2023 起完整股票日布尔真值 |
-| `daily_flags` | 派生自 Tushare 直取事实 | ST 优先 `stock_st_daily`，涨跌停价优先 `price_limits_daily` |
+| `daily_flags` | 派生自 Tushare 直取事实 | ST 优先 `stock_st_daily`，涨跌停价优先 `price_limits_daily`；`is_limit_up` 非 ST 取 `limit_list_d` U/Z，触板未入列时收盘 < 直取涨停价记 False、收盘 = 涨停价记 null（#657）|
 | `adj_factors.cum_factor` | **直取** `factor` | 价格反推降级为校验，不得覆盖真值 |
 | `price_limits_daily` | Tushare `stk_limit` | |
 | `suspend_daily` | Tushare `suspend_d` | |
