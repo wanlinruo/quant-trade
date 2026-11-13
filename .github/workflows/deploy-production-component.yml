@@ -20,6 +20,7 @@ on:
           - live-state-reader
           - reboot-drill
           - limit-up-shadow
+          - limit-up-board
           - catalog-verify
           - service-checks
           - storage-report
@@ -103,7 +104,7 @@ jobs:
           printf '%s' "$RELEASE_ID" | grep -Eq '^[A-Za-z0-9._-]{1,100}$'
           printf '%s' "$TARGET_SHA" | grep -Eq '^[0-9a-f]{40}$'
           case "$COMPONENT" in
-            backtest-worker|web|paper|shadow-core|live-core|live-state-reader|limit-up-shadow|reboot-drill|catalog-verify|service-checks|storage-report|daily-digest|health-observer|daily-archive|premarket-limits|tushare-sync) ;;
+            backtest-worker|web|paper|shadow-core|live-core|live-state-reader|limit-up-shadow|limit-up-board|reboot-drill|catalog-verify|service-checks|storage-report|daily-digest|health-observer|daily-archive|premarket-limits|tushare-sync) ;;
             *) exit 2 ;;
           esac
           git fetch --no-tags origin main test

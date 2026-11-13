@@ -110,7 +110,7 @@ def test_ci_routes_only_trusted_events_to_the_configured_runner():
     assert workflow.count(
         "github.event.pull_request.head.repo.full_name == github.repository"
     ) == 5
-    assert workflow.count("github.event_name != 'pull_request'") == 40
+    assert workflow.count("github.event_name != 'pull_request'") == 42
     assert "name: Build Live Core release manifest\n        if: github.event_name != 'pull_request'" in workflow
     assert "name: Upload immutable Live Core release\n        if: github.event_name != 'pull_request'" in workflow
     assert "name: Build Live State Reader release manifest\n        if: github.event_name != 'pull_request'" in workflow
