@@ -476,3 +476,43 @@ def test_a_stock_that_did_not_move_is_flat_not_down(warehouse, write_daily_bars)
            .filter(pl_col_eq("dt", D[1])).to_dicts()[0])
     # 没动的那只算持平，不进分母 -> 只剩上涨的那只
     assert row["market_advance_ratio"] == pytest.approx(1.0)
+
+
+# ---- #663：“昨日涨停”只认上一个交易日，不认停牌前的最后一行 ----
+
+def test_prior_limitup_ignores_a_stock_resuming_after_suspension(warehouse, write_daily_bars):
+    """2026-06-08 实例：600608.SH 04-29 涨停后停牌，06-08 复牌跌约 90%。
+    它不是“昨日涨停股”，不能把它的复牌跌幅算进次日溢价；
+    否则结果取决于构建窗口是否回看到停牌前那一天。"""
+    d3 = date(2024, 1, 5)
+    rows = [
+        ("600001.SH", D[0], 10.0, 10.0, 10.0, 10.0, 1e8),
+        ("600001.SH", D[1], 11.0, 11.0, 11.0, 11.0, 1e8),  # 涨停，随后停牌
+        ("600001.SH", d3, 9.9, 9.9, 9.9, 9.9, 1e8),        # 复牌 -10%，不该计入
+        ("600002.SH", D[0], 10.0, 10.0, 10.0, 10.0, 1e8),
+        ("600002.SH", D[1], 10.0, 10.0, 10.0, 10.0, 1e8),
+        ("600002.SH", D[2], 11.0, 11.0, 11.0, 11.0, 1e8),  # 昨日（D[2]）涨停
+        ("600002.SH", d3, 11.55, 11.6, 11.4, 11.55, 1e8),  # +5%
+    ]
+    seed(warehouse, write_daily_bars, rows)
+    build_market_regime(warehouse, D[0], d3)
+    assert regime_of(warehouse, d3)["prior_limitup_nextday_return_mean"] == pytest.approx(0.05)
+
+
+def test_prior_limitup_does_not_depend_on_build_window(warehouse, write_daily_bars):
+    d3 = date(2024, 1, 5)
+    rows = [
+        ("600001.SH", D[0], 10.0, 10.0, 10.0, 10.0, 1e8),
+        ("600001.SH", D[1], 11.0, 11.0, 11.0, 11.0, 1e8),
+        ("600001.SH", d3, 9.9, 9.9, 9.9, 9.9, 1e8),
+        ("600002.SH", D[0], 10.0, 10.0, 10.0, 10.0, 1e8),
+        ("600002.SH", D[1], 10.0, 10.0, 10.0, 10.0, 1e8),
+        ("600002.SH", D[2], 11.0, 11.0, 11.0, 11.0, 1e8),
+        ("600002.SH", d3, 11.55, 11.6, 11.4, 11.55, 1e8),
+    ]
+    seed(warehouse, write_daily_bars, rows)
+    build_market_regime(warehouse, D[0], d3)
+    wide = regime_of(warehouse, d3)
+    build_market_regime(warehouse, d3, d3)
+    narrow = regime_of(warehouse, d3)
+    assert wide == narrow

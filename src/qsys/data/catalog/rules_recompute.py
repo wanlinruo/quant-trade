@@ -341,10 +341,28 @@ def _compute_expected_regime(ctx: CheckContext) -> pl.DataFrame:
     flags = flags.filter(~code.str.starts_with("900") & ~code.str.starts_with("200"))
     if not bars.height or not flags.height:
         return pl.DataFrame()
-    joined = bars.join(flags, on=["symbol", "dt"], how="inner").sort(["symbol", "dt"])
-    joined = joined.with_columns(
-        pl.col("is_limit_up").shift(1).over("symbol").alias("was_limit_up")
-    )
+    # 独立实现 #663 口径：上市日之前的同代码历史不计入，上市日前收置空。
+    listed = ctx.query.security_master().select(
+        "symbol", pl.col("list_date").alias("_list_date"))
+    if listed.height:
+        bars = bars.join(listed, on="symbol", how="left").filter(
+            pl.col("_list_date").is_null() | (pl.col("dt") >= pl.col("_list_date"))
+        ).drop("_list_date")
+        flags = flags.join(listed, on="symbol", how="left").filter(
+            pl.col("_list_date").is_null() | (pl.col("dt") >= pl.col("_list_date"))
+        ).with_columns(
+            pl.when(pl.col("dt") == pl.col("_list_date")).then(None)
+            .otherwise(pl.col("prev_close")).alias("prev_close")
+        ).drop("_list_date")
+    joined = bars.join(flags, on=["symbol", "dt"], how="inner")
+    # “昨日涨停”只认上一个交易日：停牌后复牌的上一行不是昨日。
+    days = joined.select("dt").unique().sort("dt").with_columns(
+        pl.col("dt").shift(1).alias("_prev_day"))
+    joined = joined.join(days, on="dt", how="left").sort(["symbol", "dt"]).with_columns(
+        pl.when(pl.col("dt").shift(1).over("symbol") == pl.col("_prev_day"))
+        .then(pl.col("is_limit_up").shift(1).over("symbol")).otherwise(None)
+        .alias("was_limit_up")
+    ).drop("_prev_day")
     ratios = ctx.query.adj_factor_ratios(start, ctx.end)
     if ratios.height:
         joined = joined.join(ratios, on=["symbol", "dt"], how="left")

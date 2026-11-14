@@ -167,12 +167,24 @@ def _after_official_listing(
 def _aggregate(
     bars: pl.DataFrame, flags: pl.DataFrame, factors: pl.DataFrame | None = None
 ) -> pl.DataFrame:
+    joined = bars.join(flags, on=["symbol", "dt"], how="inner")
+    # “昨日涨停”只认上一个交易日（#663）。按 symbol 取上一行会把停牌前最后一天
+    # 当成昨日：2026-06-08 600608.SH 04-29 涨停后停牌，复牌跌约 90% 被算进次日
+    # 溢价，且结果取决于构建窗口是否回看到 04-29。上一行不是上一个交易日时记 null。
+    sessions = (
+        joined.select("dt").unique().sort("dt")
+        .with_columns(pl.col("dt").shift(1).alias("_prev_session"))
+    )
     joined = (
-        bars.join(flags, on=["symbol", "dt"], how="inner")
+        joined.join(sessions, on="dt", how="left")
         .sort(["symbol", "dt"])
         .with_columns(
-            pl.col("is_limit_up").shift(1).over("symbol").alias("was_limit_up"),
+            pl.when(pl.col("dt").shift(1).over("symbol") == pl.col("_prev_session"))
+            .then(pl.col("is_limit_up").shift(1).over("symbol"))
+            .otherwise(None)
+            .alias("was_limit_up"),
         )
+        .drop("_prev_session")
     )
     if factors is not None and factors.height:
         ratio = (

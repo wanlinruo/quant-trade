@@ -200,3 +200,24 @@ def test_missing_security_master_keeps_existing_derivation(warehouse):
     _seed(warehouse)
     _build(warehouse)
     assert _prev_close(warehouse, D2) == (pytest.approx(10.0), pytest.approx(10.0))
+
+
+# ---- #663：canonical 情绪与 legacy 一样只用上市期内的行 ----
+
+def test_canonical_regime_excludes_pre_listing_rows_like_legacy(warehouse):
+    """上市日之前挂在同代码下的历史行不能进入广度与收益中位数。"""
+    _seed(warehouse)
+    _master(warehouse, D2)
+    build_daily_flags(warehouse, D1, D2)
+    build_market_regime(warehouse, D1, D2)
+    build_price_limit_daily(warehouse, D1, D2)
+    build_security_status_daily(warehouse, D1, D2)
+    build_market_flags_daily(warehouse, D1, D2)
+    build_market_regime_daily(warehouse, D1, D2)
+    results = state_reconciliation(warehouse, D1, D2)
+    assert all(result.matches for result in results.values()), results
+    query = WarehouseQuery(warehouse)
+    legacy = query.market_regime(D2, D2).row(0, named=True)
+    canonical = query.market_regime_daily(D2, D2).row(0, named=True)
+    for column in ("market_advance_ratio", "market_median_return_1d"):
+        assert canonical[column] == legacy[column], column
