@@ -14,10 +14,11 @@ import pyarrow as pa
 
 from qsys.data import schema
 from qsys.data.pipeline.canonical_reference import Reconciliation, reconcile_frames
-from qsys.data.pipeline.flags import _compute
+from qsys.data.pipeline.flags import _compute, listing_dates
 from qsys.data.pipeline.regime import (
     _aggregate,
     _index_slope,
+    _after_official_listing,
     _in_breadth_universe,
     _keep_boards,
 )
@@ -242,7 +243,7 @@ def _market_flags_frame(
             pl.lit(None, dtype=pl.Utf8).alias("_limit_type"),
             pl.lit(False).alias("_limit_list_available"),
         )
-    return _compute(frame).filter(pl.col("dt").is_between(start, end)).sort(
+    return _compute(frame, listing_dates(query)).filter(pl.col("dt").is_between(start, end)).sort(
         ["symbol", "dt"]
     ).select(schema.MARKET_FLAGS_DAILY.names)
 
@@ -264,10 +265,15 @@ def _market_regime_frame(
 ) -> pl.DataFrame:
     query = WarehouseQuery(warehouse)
     back = start - timedelta(days=30)
-    bars = _keep_boards(_in_breadth_universe(query.bar_daily(None, back, end)), boards)
-    flags = _keep_boards(
-        _in_breadth_universe(query.market_flags_daily(None, back, end)), boards
-    )
+    # 与 legacy build_market_regime 同口径（#663）：上市日前挂在同代码下的
+    # 新三板等历史行不进入广度与收益中位数，上市日的 prev_close 置空。
+    security_master = query.security_master()
+    bars = _keep_boards(_after_official_listing(
+        _in_breadth_universe(query.bar_daily(None, back, end)), security_master
+    ), boards)
+    flags = _keep_boards(_after_official_listing(
+        _in_breadth_universe(query.market_flags_daily(None, back, end)), security_master
+    ), boards)
     if bars.height == 0 or flags.height == 0:
         return pl.DataFrame(schema={field.name: pl.from_arrow(
             pa.array([], type=field.type)

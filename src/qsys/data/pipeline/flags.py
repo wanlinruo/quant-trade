@@ -127,6 +127,7 @@ def build_daily_flags(
         else {}
     )
 
+    listings = listing_dates(query)
     written = 0
     for year in range(start.year, end.year + 1):
         lo_year, hi_year = date(year, 1, 1), date(year, 12, 31)
@@ -202,7 +203,7 @@ def build_daily_flags(
             if bars.height == 0:
                 continue
 
-        flags = _compute(bars).filter(pl.col("dt").is_between(lo, hi))
+        flags = _compute(bars, listings).filter(pl.col("dt").is_between(lo, hi))
         if flags.height == 0:
             continue
         # 缺直取值不填，但要让人看见：覆盖率可直接从 daily_flags 查出
@@ -240,10 +241,29 @@ def build_daily_flags(
     return written
 
 
-def _compute(bars: pl.DataFrame) -> pl.DataFrame:
+def listing_dates(query: WarehouseQuery) -> pl.DataFrame:
+    """直取上市日（security_master.list_date）；缺表或缺值时不推断。"""
+    master = query.security_master()
+    return master.select("symbol", "list_date").filter(pl.col("list_date").is_not_null())
+
+
+def _compute(bars: pl.DataFrame, listings: pl.DataFrame | None = None) -> pl.DataFrame:
     cents = (pl.col("adj_prev_close") * 100).round(0).cast(pl.Int64)
-    frame = bars.sort(["symbol", "dt"]).with_columns(
-        pl.col("close").shift(1).over("symbol").alias("prev_close"),
+    frame = bars.sort(["symbol", "dt"])
+    # prev_close 只在同一代码的上市期内派生（#659，维护者 2026-11-14）：北交所等
+    # 新上市股票在日线里还挂着同代码的新三板历史，上市日的“上一行”是一年多前的
+    # 场外成交，不是上市前收。前一行早于直取上市日时记 null；缺上市日不推断，保持原派生。
+    previous = pl.col("close").shift(1).over("symbol")
+    if listings is not None and listings.height:
+        frame = frame.join(listings.rename({"list_date": "_list_date"}),
+                           on="symbol", how="left").sort(["symbol", "dt"])
+        previous = (
+            pl.when(pl.col("_list_date").is_not_null()
+                    & (pl.col("dt").shift(1).over("symbol") < pl.col("_list_date")))
+            .then(None).otherwise(previous)
+        )
+    frame = frame.with_columns(
+        previous.alias("prev_close"),
         # pre_close 直取即除权参考价，非除权日等于前收。
         pl.coalesce("_direct_pre_close", "pre_close").alias("adj_prev_close"),
         pl.col("_direct_limit_up").alias("limit_up"),
