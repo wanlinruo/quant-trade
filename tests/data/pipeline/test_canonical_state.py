@@ -151,3 +151,52 @@ def test_preflight_distinguishes_unpublished_sparse_facts_from_no_events(warehou
     assert any("suspend_daily 尚未发布" in item for item in issues)
     assert any("delisting_pool 尚未发布" in item for item in issues)
     assert not (warehouse.root / "price_limit_daily").exists()
+
+
+# ---- #659：prev_close 只在上市期内派生（维护者 2026-11-14）----
+import pytest  # noqa: E402
+
+
+def _master(warehouse, list_date):
+    warehouse.write("security_master", pl.DataFrame({
+        "symbol": [SYMBOL], "name": ["fixture"], "market": ["SZ"],
+        "list_date": [list_date], "delist_date": [None], "board": ["main"],
+        "as_of": [D2],
+    }).to_arrow().cast(schema.SECURITY_MASTER))
+
+
+def _prev_close(warehouse, day):
+    query = WarehouseQuery(warehouse)
+    legacy = query.daily_flags(start=day, end=day).filter(pl.col("symbol") == SYMBOL)
+    canonical = query.market_flags_daily(None, day, day).filter(pl.col("symbol") == SYMBOL)
+    return legacy["prev_close"][0], canonical["prev_close"][0]
+
+
+def _build(warehouse):
+    build_daily_flags(warehouse, D1, D2)
+    build_market_flags_daily(warehouse, D1, D2)
+
+
+def test_listing_day_prev_close_does_not_reach_pre_listing_rows(warehouse):
+    """新三板时期的行挂在同一代码下：上市日没有“上一个上市交易日”，记 null。"""
+    _seed(warehouse)
+    _master(warehouse, D2)
+    _build(warehouse)
+    assert _prev_close(warehouse, D2) == (None, None)
+    # adj_prev_close 仍是直取 pre_close，不受影响
+    row = WarehouseQuery(warehouse).market_flags_daily(None, D2, D2).row(0, named=True)
+    assert row["adj_prev_close"] == pytest.approx(10.0)
+
+
+@pytest.mark.parametrize("list_date", [D1, date(2020, 1, 1), None])
+def test_prev_close_within_listing_period_or_unknown_listing_is_unchanged(warehouse, list_date):
+    _seed(warehouse)
+    _master(warehouse, list_date)
+    _build(warehouse)
+    assert _prev_close(warehouse, D2) == (pytest.approx(10.0), pytest.approx(10.0))
+
+
+def test_missing_security_master_keeps_existing_derivation(warehouse):
+    _seed(warehouse)
+    _build(warehouse)
+    assert _prev_close(warehouse, D2) == (pytest.approx(10.0), pytest.approx(10.0))

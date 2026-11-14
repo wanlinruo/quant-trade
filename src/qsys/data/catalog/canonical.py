@@ -146,7 +146,7 @@ def _metrics() -> list[Metric]:
     )
     flag_upstream = {
         "dt": ("bar_daily.dt",), "symbol": ("bar_daily.symbol",),
-        "prev_close": ("bar_daily.close",),
+        "prev_close": ("bar_daily.close", "security_master.list_date"),
         "adj_prev_close": ("price_limit_daily.pre_close", "bar_daily.pre_close"),
         "limit_up": ("price_limit_daily.limit_up",),
         "limit_down": ("price_limit_daily.limit_down",),

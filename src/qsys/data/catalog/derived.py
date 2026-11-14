@@ -66,9 +66,11 @@ METRICS: tuple[Metric, ...] = (
     ),
     _m(
         "daily_flags.prev_close",
-        "前一根日线的收盘价（元）；每只标的的首根记录为 null，不填充",
-        ("tushare_daily.close",),
-        "按 (symbol, dt) 排序，对每只 symbol 取 close.shift(1)；首根记 null",
+        "前一根日线的收盘价（元）；每只标的的首根记录为 null，不填充。只在直取上市日之后"
+        "派生：上市日之前挂在同代码下的新三板等历史行不作为前收（#659），上市日记 null",
+        ("tushare_daily.close", "security_master.list_date"),
+        "按 (symbol, dt) 排序，对每只 symbol 取 close.shift(1)；首根记 null；前一行早于"
+        "security_master.list_date 时记 null，缺上市日不推断",
         ("A2.recompute.prev_close", "C1.no_fill"),
     ),
     _m(

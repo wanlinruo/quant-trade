@@ -58,8 +58,14 @@ def _prev_close(ctx: CheckContext) -> pl.DataFrame:
     daily = ctx.query.tushare_daily(
         None, ctx.start - timedelta(days=10), ctx.end,
         columns=["symbol", "dt", "close"],
-    ).sort(["symbol", "dt"]).with_columns(
-        pl.col("close").shift(1).over("symbol").alias("expected")
+    ).sort(["symbol", "dt"])
+    # 独立实现 #659 口径：前一行早于直取上市日时，上市日的前收为 null。
+    listed = ctx.query.security_master().select(
+        "symbol", pl.col("list_date").alias("_list_date"))
+    daily = daily.join(listed, on="symbol", how="left").sort(["symbol", "dt"]).with_columns(
+        pl.when(pl.col("_list_date").is_not_null()
+                & (pl.col("dt").shift(1).over("symbol") < pl.col("_list_date")))
+        .then(None).otherwise(pl.col("close").shift(1).over("symbol")).alias("expected")
     ).filter(pl.col("dt").is_between(ctx.start, ctx.end))
     return ctx.query.daily_flags(ctx.start, ctx.end).select(
         "symbol", "dt", pl.col("prev_close").alias("actual")

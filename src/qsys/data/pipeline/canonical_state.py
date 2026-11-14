@@ -14,7 +14,7 @@ import pyarrow as pa
 
 from qsys.data import schema
 from qsys.data.pipeline.canonical_reference import Reconciliation, reconcile_frames
-from qsys.data.pipeline.flags import _compute
+from qsys.data.pipeline.flags import _compute, listing_dates
 from qsys.data.pipeline.regime import (
     _aggregate,
     _index_slope,
@@ -242,7 +242,7 @@ def _market_flags_frame(
             pl.lit(None, dtype=pl.Utf8).alias("_limit_type"),
             pl.lit(False).alias("_limit_list_available"),
         )
-    return _compute(frame).filter(pl.col("dt").is_between(start, end)).sort(
+    return _compute(frame, listing_dates(query)).filter(pl.col("dt").is_between(start, end)).sort(
         ["symbol", "dt"]
     ).select(schema.MARKET_FLAGS_DAILY.names)
 
