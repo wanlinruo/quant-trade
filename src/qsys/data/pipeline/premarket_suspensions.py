@@ -12,7 +12,7 @@ import structlog
 from qsys.data import schema
 from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
-from qsys.data.pipeline.suspension_audit import apply_observed_suspensions
+from qsys.data.pipeline.suspension_audit import apply_observed_suspensions, only_ruled_removals
 
 log = structlog.get_logger(__name__)
 
@@ -87,7 +87,9 @@ def sync_premarket_suspensions(
     frame = _suspension_frame(provider.suspend_d(day), day)
     query = WarehouseQuery(warehouse)
     existing_day = query.suspensions(None, day, day)
-    accepted = frame.height >= existing_day.height
+    # 收盘后入口在退市当日只少了按 #551 裁决应接受的行时，以收盘后为准。
+    accepted = frame.height >= existing_day.height or only_ruled_removals(
+        warehouse, day, entry, existing_day, frame)
     digest = _snapshot_hash(frame)
     def write():
         year_start, year_end = date(day.year, 1, 1), date(day.year, 12, 31)

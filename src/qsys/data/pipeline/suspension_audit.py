@@ -18,7 +18,14 @@ from pathlib import Path
 import polars as pl
 
 from qsys.data import schema
+from qsys.data.query import WarehouseQuery
 from qsys.data.storage import Warehouse
+
+# 维护者 2026-11-14 裁决（#551）：直取退市日期当天，盘前有停牌行、收盘后同一接口
+# 不再返回时，以收盘后为准。只适用于收盘后入口与 security_master.delist_date 当天；
+# 缺直取退市日期、其他日期或盘前入口一律仍记未决。原观测收据不改写。
+DELIST_DAY_RULING = "issue551-delist-day-post-close"
+POST_CLOSE_ENTRIES = frozenset({"daily_archive", "tushare_sync"})
 
 
 def _rows(frame: pl.DataFrame) -> list[dict]:
@@ -30,6 +37,38 @@ def _rows(frame: pl.DataFrame) -> list[dict]:
 def _encoded(value) -> bytes:
     return json.dumps(value, ensure_ascii=False, sort_keys=True,
                       separators=(",", ":")).encode("utf-8")
+
+
+def _delisted_on(warehouse: Warehouse, day: date) -> frozenset[str]:
+    master = WarehouseQuery(warehouse).security_master()
+    return frozenset(master.filter(pl.col("delist_date") == day)["symbol"].to_list())
+
+
+def _diff(previous: pl.DataFrame, incoming: pl.DataFrame) -> tuple[list, list, list, list]:
+    old, new = _rows(previous), _rows(incoming)
+    old_counts, new_counts = Counter(map(_encoded, old)), Counter(map(_encoded, new))
+    removed = [json.loads(row) for row, count in (old_counts - new_counts).items()
+               for _ in range(count)]
+    added = [json.loads(row) for row, count in (new_counts - old_counts).items()
+             for _ in range(count)]
+    return old, new, removed, added
+
+
+def ruled_removals(warehouse: Warehouse, day: date, entry: str,
+                   removed: list[dict]) -> list[dict]:
+    """按 #551 裁决可接受的移除行；不满足条件时返回空列表。"""
+    if entry not in POST_CLOSE_ENTRIES or not removed:
+        return []
+    delisted = _delisted_on(warehouse, day)
+    return [row for row in removed if row["symbol"] in delisted]
+
+
+def only_ruled_removals(warehouse: Warehouse, day: date, entry: str,
+                        previous: pl.DataFrame, incoming: pl.DataFrame) -> bool:
+    """新响应相对旧表只少了按裁决应接受的退市当日行，且没有其他变化。"""
+    _, _, removed, added = _diff(previous, incoming)
+    return bool(removed) and not added and \
+        len(ruled_removals(warehouse, day, entry, removed)) == len(removed)
 
 
 def _fingerprint(path: Path) -> dict | None:
@@ -111,14 +150,10 @@ def apply_observed_suspensions(
             if result["status"] != "completed":
                 unresolved.add(record["observation_id"])
 
-    old, new = _rows(previous), _rows(incoming)
-    old_counts, new_counts = Counter(map(_encoded, old)), Counter(map(_encoded, new))
-    removed = [json.loads(row) for row, count in (old_counts - new_counts).items()
-               for _ in range(count)]
-    added = [json.loads(row) for row, count in (new_counts - old_counts).items()
-             for _ in range(count)]
+    old, new, removed, added = _diff(previous, incoming)
+    ruled = ruled_removals(warehouse, day, entry, removed)
     observation_id = uuid.uuid4().hex
-    if removed:
+    if len(removed) > len(ruled):
         unresolved.add(observation_id)
     target = warehouse.path_for("suspend_daily", year=day.year)
     baseline = _fingerprint(target)
@@ -131,6 +166,7 @@ def apply_observed_suspensions(
         "previous": {"rows": old, "sha256": hashlib.sha256(_encoded(old)).hexdigest()},
         "incoming": {"rows": new, "sha256": hashlib.sha256(_encoded(new)).hexdigest()},
         "removed": removed, "added": added,
+        "ruled_removals": ruled, "ruling": DELIST_DAY_RULING if ruled else None,
         "partition_before": baseline, "unresolved_ids": sorted(unresolved),
         "historical_observations_reconstructed": False,
     })
