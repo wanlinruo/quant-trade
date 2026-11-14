@@ -101,7 +101,7 @@ class LiveRuntime:
             min(self.enabled_capital, self.day_start_value * risk.max_position_weight),
         )
         self.shadow = shadow
-        self._recon_seen: tuple[bool, str] | None = None
+        self._recon_seen: tuple[bool, str, str] | None = None
         self.kill_switch = KillSwitch(
             transport,
             key="shadow:control:kill" if shadow else "control:kill",
@@ -211,6 +211,19 @@ class LiveRuntime:
         """写进对账台账的运行模式。`shadow` 可在运行中被改，所以每次现算。"""
         return "shadow" if self.shadow else "live"
 
+    def _recon_day_state(self, day: date) -> str:
+        """该日在交易日历中的状态：trading / closed / uncovered。
+
+        只认交易日历，不按星期几或有无行情推断；只有 trading 才写对账台账。
+        """
+        if self.calendar.is_trading_day(day):
+            return "trading"
+        try:
+            self.calendar.next_session(day)
+        except ValueError:
+            return "uncovered"
+        return "closed"
+
     def _assert_reconciled(self, remote: AccountSnapshot) -> None:
         """对账不一致：实盘停机，影子只告警。
 
@@ -230,18 +243,27 @@ class LiveRuntime:
         # 不是每次尝试都记一行：2026-09-29 一个持续存在的差异写进 10,383 条记录
         # （每 2 秒一条），既撑爆仓库，又让 B4.arrival 永远红着。告警同理——
         # 同一句话推一整天，几条之后人就不看了。
-        fingerprint = (result.is_consistent, result.summary())
+        # 台账只在权威交易日历判定为交易日时写入（#142，维护者 2026-10-20）；
+        # 休市日照常对账、告警与停机，只是不留台账行。既有休市日行不动。
+        # “是否写台账”进指纹：从休市日切到交易日要留下当日第一条，不被去重吞掉。
+        day_state = self._recon_day_state(remote.at.date())
+        ledger = day_state == "trading"
+        fingerprint = (result.is_consistent, result.summary(), day_state)
         if fingerprint == self._recon_seen:
             if not result.is_consistent and not self.shadow:
                 raise LivePreflightError(result.summary())
             return
         self._recon_seen = fingerprint
+        if day_state == "uncovered":
+            # 日历未覆盖这一天：无法判定为交易日，不写台账，但要让人看见（只在变化时记）。
+            log.warning("reconcile.calendar_uncovered", day=str(remote.at.date()))
         if not result.is_consistent:
-            self.journal.record_reconciliation(
-                remote.at.date(), "intraday", mode=self._mode, is_consistent=False,
-                cash_diff=result.cash_diff, n_mismatches=len(result.mismatches),
-                detail=result.summary(), at=remote.at,
-            )
+            if ledger:
+                self.journal.record_reconciliation(
+                    remote.at.date(), "intraday", mode=self._mode, is_consistent=False,
+                    cash_diff=result.cash_diff, n_mismatches=len(result.mismatches),
+                    detail=result.summary(), at=remote.at,
+                )
             if self.shadow:
                 self.alerts.warning("影子盘与券商账户不一致（不停机）", result.summary())
                 log.warning("reconcile.shadow_drift", detail=result.summary())
@@ -249,6 +271,8 @@ class LiveRuntime:
             self.alerts.critical("实盘账户对账失败", result.summary())
             self.kill_switch.engage(result.summary())
             raise LivePreflightError(result.summary())
+        if not ledger:
+            return
         self.journal.record_reconciliation(
             remote.at.date(), "intraday", mode=self._mode, is_consistent=True,
             # 一致也要留口径：影子模式下现金差不参与判定，台账得说出这件事，

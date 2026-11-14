@@ -194,3 +194,93 @@ def test_existing_receipt_cannot_be_overwritten(tmp_path):
         suspension_audit._save_new(path, {'second': True})
     assert path.read_bytes() == before
     assert not list(tmp_path.glob('*.tmp'))
+
+
+# ---- #551 维护者裁决：退市当日停复牌以收盘后为准 ----
+from qsys.data import schema  # noqa: E402
+
+
+def write_master(warehouse, **delist):
+    """fixture 主表：symbol -> 直取退市日期（None 表示未退市/缺失）。"""
+    warehouse.write('security_master', pl.DataFrame({
+        'symbol': list(delist), 'name': ['fixture'] * len(delist),
+        'market': ['SZ'] * len(delist), 'list_date': [date(2014, 1, 1)] * len(delist),
+        'delist_date': list(delist.values()), 'board': ['main'] * len(delist),
+        'as_of': [DAY] * len(delist),
+    }).to_arrow().cast(schema.SECURITY_MASTER))
+
+
+def record_of(warehouse, observation_id):
+    return next(r for r in records(warehouse) if r['observation_id'] == observation_id)
+
+
+@pytest.mark.parametrize('entry', ['daily_archive', 'tushare_sync'])
+def test_delist_day_post_close_removal_is_ruled_not_unresolved(warehouse, entry):
+    write_master(warehouse, **{'fixture-delist': DAY, 'fixture-a': None})
+    sync_premarket_suspensions(Provider('fixture-a', 'fixture-delist'), warehouse, DAY)
+    if entry == 'daily_archive':
+        got = sync_premarket_suspensions(Provider('fixture-a'), warehouse, DAY,
+                                         entry='daily_archive')
+        assert got.accepted  # 收盘后为准：归档入口也接受这次减少
+        observation, unresolved = got.observation_id, got.unresolved_ids
+    else:
+        seen = []
+        ingest_suspensions(Provider('fixture-a'), warehouse, [DAY], on_observation=seen.append)
+        observation, unresolved = seen[0].observation_id, seen[0].unresolved_ids
+    assert not unresolved
+    assert rows(warehouse)['symbol'].to_list() == ['fixture-a']
+    record = record_of(warehouse, observation)
+    assert record['removed'] == record['ruled_removals'] == [
+        {'symbol': 'fixture-delist', 'dt': DAY.isoformat(),
+         'suspend_type': 'S', 'suspend_timing': None}]
+    assert record['ruling'] == suspension_audit.DELIST_DAY_RULING
+
+
+def test_premarket_entry_never_applies_delist_ruling(warehouse):
+    write_master(warehouse, **{'fixture-delist': DAY})
+    sync_premarket_suspensions(Provider('fixture-a', 'fixture-delist'), warehouse, DAY)
+    got = sync_premarket_suspensions(Provider('fixture-a'), warehouse, DAY)
+    assert not got.accepted and got.unresolved_ids  # 盘前不是“收盘后”
+    assert rows(warehouse).height == 2
+
+
+@pytest.mark.parametrize('delist', [None, DAY - timedelta(days=1), DAY + timedelta(days=1)])
+def test_removal_without_same_day_direct_delist_stays_unresolved(warehouse, delist):
+    write_master(warehouse, **{'fixture-b': delist})
+    ingest_suspensions(Provider('fixture-a', 'fixture-b'), warehouse, [DAY])
+    seen = []
+    ingest_suspensions(Provider('fixture-a'), warehouse, [DAY], on_observation=seen.append)
+    assert seen[0].unresolved_ids
+    record = record_of(warehouse, seen[0].observation_id)
+    assert record['ruled_removals'] == [] and record['ruling'] is None
+
+
+def test_missing_security_master_does_not_apply_ruling(warehouse):
+    ingest_suspensions(Provider('fixture-a', 'fixture-delist'), warehouse, [DAY])
+    seen = []
+    ingest_suspensions(Provider('fixture-a'), warehouse, [DAY], on_observation=seen.append)
+    assert seen[0].unresolved_ids
+
+
+def test_mixed_ruled_and_other_removal_stays_unresolved(warehouse):
+    write_master(warehouse, **{'fixture-delist': DAY, 'fixture-b': None})
+    sync_premarket_suspensions(Provider('fixture-a', 'fixture-b', 'fixture-delist'),
+                               warehouse, DAY)
+    got = sync_premarket_suspensions(Provider('fixture-a'), warehouse, DAY,
+                                     entry='daily_archive')
+    assert not got.accepted and got.unresolved_ids
+    assert rows(warehouse).height == 3
+    record = record_of(warehouse, got.observation_id)
+    assert [r['symbol'] for r in record['ruled_removals']] == ['fixture-delist']
+
+
+def test_ruling_does_not_rewrite_earlier_unresolved_receipts(warehouse):
+    write_master(warehouse, **{'fixture-delist': DAY})
+    sync_premarket_suspensions(Provider('fixture-a', 'fixture-delist'), warehouse, DAY)
+    earlier = sync_premarket_suspensions(Provider('fixture-a'), warehouse, DAY)  # 盘前退化
+    assert earlier.unresolved_ids
+    before = {p: p.read_bytes() for p in warehouse.root.rglob('*.json')}
+    seen = []
+    ingest_suspensions(Provider('fixture-a'), warehouse, [DAY], on_observation=seen.append)
+    assert earlier.observation_id in seen[0].unresolved_ids  # 旧未决不被抹掉
+    assert all(p.read_bytes() == content for p, content in before.items())

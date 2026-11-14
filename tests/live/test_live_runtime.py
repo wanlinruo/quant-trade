@@ -1,4 +1,4 @@
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 
 import pytest
 
@@ -543,3 +543,75 @@ def test_the_shadow_core_records_a_cash_gap_but_does_not_call_it_inconsistent(
     assert row["is_consistent"] is True
     assert row["cash_diff"] == pytest.approx(29.0)
     assert "不参与判定" in row["detail"]
+
+
+# ---- live_recon 只在交易日写入（#142，维护者 2026-10-20 裁决）----
+
+def _non_trading_today():
+    """今天在日历覆盖范围内，但不是交易日（前后各一个交易日）。"""
+    today = date.today()
+    return AShareCalendar([today - timedelta(days=1), today + timedelta(days=1)])
+
+
+def _recon_rows(runtime):
+    return runtime.journal.reconciliations(date.today()).height
+
+
+def test_non_trading_day_reconcile_writes_no_ledger_row(warehouse, tmp_path):
+    runtime, _ = _runtime_with_store(warehouse, tmp_path)
+    runtime.calendar = _non_trading_today()
+    before = _recon_rows(runtime)
+    matching = AccountSnapshot(at=datetime.now(), cash=runtime.portfolio.cash,
+                               total_asset=runtime.portfolio.cash, positions={})
+    runtime._assert_reconciled(matching)
+    runtime.shadow = True
+    runtime._assert_reconciled(_drifted(runtime.streams))
+    assert _recon_rows(runtime) == before
+
+
+def test_non_trading_day_live_drift_still_halts_without_ledger_row(warehouse, tmp_path):
+    """休市日不写台账，但实盘对不上照样停机——安全判定不随台账口径变化。"""
+    import pytest
+
+    runtime, _ = _runtime_with_store(warehouse, tmp_path)
+    runtime.calendar = _non_trading_today()
+    before = _recon_rows(runtime)
+    with pytest.raises(LivePreflightError, match="INCONSISTENT"):
+        runtime._assert_reconciled(_drifted(runtime.streams))
+    assert runtime.kill_switch.is_engaged() is True
+    assert _recon_rows(runtime) == before
+
+
+def test_uncovered_calendar_writes_no_row_and_does_not_invent_a_session(warehouse, tmp_path):
+    """日历未覆盖今天：不能判定为交易日，就不写；不按星期几或有无行情推断。"""
+    runtime, _ = _runtime_with_store(warehouse, tmp_path)
+    runtime.calendar = AShareCalendar([date.today() - timedelta(days=3)])
+    before = _recon_rows(runtime)
+    matching = AccountSnapshot(at=datetime.now(), cash=runtime.portfolio.cash,
+                               total_asset=runtime.portfolio.cash, positions={})
+    runtime._assert_reconciled(matching)
+    assert _recon_rows(runtime) == before
+
+
+def test_trading_day_still_records_each_change(warehouse, tmp_path):
+    runtime, _ = _runtime_with_store(warehouse, tmp_path)
+    runtime.shadow = True
+    before = _recon_rows(runtime)
+    runtime._assert_reconciled(_drifted(runtime.streams))
+    assert _recon_rows(runtime) == before + 1
+
+
+def test_first_trading_day_after_holiday_records_even_if_result_unchanged(warehouse, tmp_path):
+    """休市日不写台账，不能顺带把交易日的第一条也去重掉：
+    指纹要包含“是否写台账”，从休市日切到交易日算变化。"""
+    runtime, _ = _runtime_with_store(warehouse, tmp_path)
+    runtime.shadow = True
+    drift = _drifted(runtime.streams)
+    runtime.calendar = _non_trading_today()
+    before = _recon_rows(runtime)
+    runtime._assert_reconciled(drift)          # 休市日：不写
+    assert _recon_rows(runtime) == before
+    runtime.calendar = AShareCalendar([date.today()])
+    runtime._assert_reconciled(drift)          # 同样的差异，交易日第一次：要写
+    runtime._assert_reconciled(drift)          # 之后照常去重
+    assert _recon_rows(runtime) == before + 1
