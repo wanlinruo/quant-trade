@@ -451,3 +451,50 @@ def test_change_identity_upstream_contradiction_is_labelled_warning(ctx, warehou
              "pre_close": 10.0, "change": 5.0}], warehouse)
     row = _run("A3.change_identity", ctx, tmp_path)
     assert row["severity"] == "warning" and row["known_issue"] == C.UPSTREAM_INCONSISTENCY
+
+
+# ---- #663：legacy 与 canonical 市场情绪逐日逐列一致 ----
+
+def _regimes(warehouse, legacy_rows, canonical_rows):
+    for name, sch, rows in (("market_regime", schema.MARKET_REGIME, legacy_rows),
+                            ("market_regime_daily", schema.MARKET_REGIME_DAILY, canonical_rows)):
+        frame = pl.DataFrame(rows)
+        types = {f.name: f.type for f in sch}
+        for col in sch.names:
+            if col not in frame.columns:
+                frame = frame.with_columns(pl.lit(None, dtype=pl.Int64 if pa.types.is_integer(types[col]) else pl.Float64).alias(col))
+        warehouse.write(name, frame.select(sch.names).to_arrow().cast(sch), year=2026)
+
+
+def _regime_check(ctx):
+    return C.CHECKS["A3.regime_legacy_vs_canonical"].run(ctx)
+
+
+def test_regime_tables_identical_pass(ctx, warehouse):
+    rows = [{"dt": d, "market_advance_ratio": 0.5, "prior_limitup_nextday_return_mean": 0.01} for d in D]
+    _regimes(warehouse, rows, rows)
+    result = _regime_check(ctx)
+    assert result.violations == 0 and result.checked_rows > 0
+
+
+def test_regime_cell_difference_is_reported(ctx, warehouse):
+    legacy = [{"dt": d, "prior_limitup_nextday_return_mean": 0.0176} for d in D]
+    canonical = [{"dt": d, "prior_limitup_nextday_return_mean": 0.0176 if d != D[1] else 0.0066} for d in D]
+    _regimes(warehouse, legacy, canonical)
+    result = _regime_check(ctx)
+    assert result.violations == 1
+    sample = result.sample.row(0, named=True)
+    assert sample["dt"] == D[1] and sample["column"] == "prior_limitup_nextday_return_mean"
+
+
+def test_regime_null_versus_value_and_missing_day_are_reported(ctx, warehouse):
+    legacy = [{"dt": d, "market_advance_ratio": 0.5} for d in D]
+    canonical = [{"dt": D[0], "market_advance_ratio": None}, {"dt": D[1], "market_advance_ratio": 0.5}]
+    _regimes(warehouse, legacy, canonical)
+    result = _regime_check(ctx)
+    assert result.violations == 2  # D[0] 空值不一致 + D[2] canonical 缺日
+
+
+def test_regime_check_not_applicable_without_data(ctx):
+    result = _regime_check(ctx)
+    assert result.violations == 0 and result.applicable is False

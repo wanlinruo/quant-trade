@@ -7,6 +7,7 @@ from typing import Callable
 
 import polars as pl
 
+from qsys.data import schema
 from qsys.data.catalog.checks import Category, Check, CheckContext, CheckResult, Scope, register
 from qsys.data.quality.minute_rules import check_minute_bars
 
@@ -520,3 +521,62 @@ def sampling_worklist(ctx: CheckContext, limit: int = 200) -> pl.DataFrame:
         .sort("priority", descending=True)
         .head(limit)
     )
+
+
+# ---- legacy 与 canonical 市场情绪逐日逐列一致（#663）----
+# 两张表由同一套派生逻辑从各自的输入独立生成，S7 Gate 读 canonical。
+# 2026-06-08 曾因构建窗口不同出现 prior_limitup mean 0.0066 vs 0.0176，增量 A2
+# 重算只看当日，查不出这种历史行。差异即本系统派生不一致，按阻断。
+_REGIME_TOL = 1e-12
+
+
+def _regime_legacy_vs_canonical(ctx: CheckContext) -> CheckResult:
+    legacy = ctx.query.market_regime(ctx.start, ctx.end)
+    canonical = ctx.query.market_regime_daily(ctx.start, ctx.end)
+    if legacy.height == 0 and canonical.height == 0:
+        return CheckResult(0, 0, "两张市场情绪表在区间内都没有数据", applicable=False)
+    columns = [c for c in canonical.columns
+               if c != "dt" and c in legacy.columns and canonical[c].dtype.is_numeric()]
+    joined = legacy.select(["dt", *columns]).join(
+        canonical.select(["dt", *columns]), on="dt", how="full",
+        suffix="_canonical", coalesce=True,
+    )
+    missing = joined.filter(
+        ~pl.col("dt").is_in(legacy["dt"].implode()) | ~pl.col("dt").is_in(canonical["dt"].implode())
+    )
+    rows: list[dict] = [
+        {"dt": dt, "column": "dt", "legacy": None, "canonical": None}
+        for dt in missing["dt"].to_list()
+    ]
+    present = joined.filter(~pl.col("dt").is_in(missing["dt"].implode()))
+    failed: set[str] = set()
+    for column in columns:
+        a, b = pl.col(column).cast(pl.Float64), pl.col(f"{column}_canonical").cast(pl.Float64)
+        bad = present.filter(
+            (a.is_not_null() & b.is_not_null() & ((a - b).abs() > _REGIME_TOL))
+            | (a.is_null() != b.is_null())
+        )
+        if bad.height:
+            failed.add(f"market_regime_daily.{column}")
+        rows.extend({"dt": r[0], "column": column, "legacy": r[1], "canonical": r[2]}
+                    for r in bad.select("dt", column, f"{column}_canonical").iter_rows())
+    if missing.height:
+        failed.add("market_regime_daily.dt")
+    checked = present.height * len(columns) + missing.height
+    sample = pl.DataFrame(rows, schema={"dt": pl.Date, "column": pl.Utf8,
+                                        "legacy": pl.Float64, "canonical": pl.Float64}) \
+        if rows else None
+    return CheckResult(
+        len(rows), checked,
+        f"{len(rows)} / {checked} 个日期×列单元格 legacy 与 canonical 不一致"
+        f"（缺日 {missing.height}）",
+        sample, failed_metrics=tuple(sorted(failed)) if failed else None,
+    )
+
+
+register(Check(
+    "A3.regime_legacy_vs_canonical", Category.TRUTHFULNESS, Scope.FULL,
+    tuple(f"market_regime_daily.{c}" for c in schema.MARKET_REGIME_DAILY.names),
+    (), "legacy market_regime 与 canonical market_regime_daily 逐日逐列一致",
+    _regime_legacy_vs_canonical,
+))
