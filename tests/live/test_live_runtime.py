@@ -599,3 +599,19 @@ def test_trading_day_still_records_each_change(warehouse, tmp_path):
     before = _recon_rows(runtime)
     runtime._assert_reconciled(_drifted(runtime.streams))
     assert _recon_rows(runtime) == before + 1
+
+
+def test_first_trading_day_after_holiday_records_even_if_result_unchanged(warehouse, tmp_path):
+    """休市日不写台账，不能顺带把交易日的第一条也去重掉：
+    指纹要包含“是否写台账”，从休市日切到交易日算变化。"""
+    runtime, _ = _runtime_with_store(warehouse, tmp_path)
+    runtime.shadow = True
+    drift = _drifted(runtime.streams)
+    runtime.calendar = _non_trading_today()
+    before = _recon_rows(runtime)
+    runtime._assert_reconciled(drift)          # 休市日：不写
+    assert _recon_rows(runtime) == before
+    runtime.calendar = AShareCalendar([date.today()])
+    runtime._assert_reconciled(drift)          # 同样的差异，交易日第一次：要写
+    runtime._assert_reconciled(drift)          # 之后照常去重
+    assert _recon_rows(runtime) == before + 1
