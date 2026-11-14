@@ -211,6 +211,17 @@ class LiveRuntime:
         """写进对账台账的运行模式。`shadow` 可在运行中被改，所以每次现算。"""
         return "shadow" if self.shadow else "live"
 
+    def _recon_ledger_day(self, day: date) -> bool:
+        """该日的日内对账是否写台账：只认交易日历，不按星期几或有无行情推断。"""
+        if self.calendar.is_trading_day(day):
+            return True
+        try:
+            self.calendar.next_session(day)
+        except ValueError:
+            # 日历未覆盖这一天：无法判定为交易日，不写，但要让人看见。
+            log.warning("reconcile.calendar_uncovered", day=str(day))
+        return False
+
     def _assert_reconciled(self, remote: AccountSnapshot) -> None:
         """对账不一致：实盘停机，影子只告警。
 
@@ -236,12 +247,16 @@ class LiveRuntime:
                 raise LivePreflightError(result.summary())
             return
         self._recon_seen = fingerprint
+        # 台账只在权威交易日历判定为交易日时写入（#142，维护者 2026-10-20）；
+        # 休市日照常对账、告警与停机，只是不留台账行。既有休市日行不动。
+        ledger = self._recon_ledger_day(remote.at.date())
         if not result.is_consistent:
-            self.journal.record_reconciliation(
-                remote.at.date(), "intraday", mode=self._mode, is_consistent=False,
-                cash_diff=result.cash_diff, n_mismatches=len(result.mismatches),
-                detail=result.summary(), at=remote.at,
-            )
+            if ledger:
+                self.journal.record_reconciliation(
+                    remote.at.date(), "intraday", mode=self._mode, is_consistent=False,
+                    cash_diff=result.cash_diff, n_mismatches=len(result.mismatches),
+                    detail=result.summary(), at=remote.at,
+                )
             if self.shadow:
                 self.alerts.warning("影子盘与券商账户不一致（不停机）", result.summary())
                 log.warning("reconcile.shadow_drift", detail=result.summary())
@@ -249,6 +264,8 @@ class LiveRuntime:
             self.alerts.critical("实盘账户对账失败", result.summary())
             self.kill_switch.engage(result.summary())
             raise LivePreflightError(result.summary())
+        if not ledger:
+            return
         self.journal.record_reconciliation(
             remote.at.date(), "intraday", mode=self._mode, is_consistent=True,
             # 一致也要留口径：影子模式下现金差不参与判定，台账得说出这件事，
