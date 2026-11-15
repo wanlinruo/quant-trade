@@ -11,7 +11,11 @@
   只记 warning（#653，catalog-verify 10dce77）。
 - **组件**：11-12 全部 Linux 组件升级到 e1d0fc1（#644）；windows-agent 已退役（#655）；
   打板看板 limit-up-board 11-13 首次安装（#648），11-16 才有首份盘中数据。
-- **容量**：数据盘约 15.9 GiB，系统盘约 17.7 GiB，都低于 20 GiB 告警线（#126）。
+- **容量**：11-15 系统盘约 32 GiB、数据盘约 16 GiB；旧 release 清理走受管入口
+  `scripts/prune_component_releases.py`，#126 已关闭，数据盘暂不扩容，日常由容量告警监控。
+- **SSH（#122，11-15）**：Linux 新增 `/etc/ssh/sshd_config.d/40-qsys-hardening.conf`
+  （PermitRootLogin no / MaxAuthTries 3 / X11Forwarding no，密码与公钥登录不变）；Windows
+  observer key 加 `from=` 限制。Windows sshd 常因扫描报 `Exceeded MaxStartups`，处理方式待维护者定。
 - **QMT**：维护者 11-11 关闭了“每日自动重新初始化”，保留开机自启和自动初始化。
 - **11-14 Issue 盘点**：开放 Issue 从 39 降到 19，每个关闭的 Issue 都写有理由和重开条件。
   维护者裁决：退市当日停复牌以收盘后为准（#551，已写入 AGENTS.md §3.1）；#123、#304 继续冻结；
