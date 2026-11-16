@@ -211,3 +211,87 @@ def test_before_concept_window_does_nothing(tmp_path, hhmmss):
     clock.at(hhmmss)
     c.step()
     assert not (tmp_path / "board.sqlite3").exists()
+
+
+class CountingTransport(FakeTransport):
+    def __init__(self):
+        self.calls = 0
+        self.error = None
+        self.mono = None
+
+    def get_key(self, key):
+        self.calls += 1
+        self.mono.now += self.mono.cost  # 传输耗时
+        if self.error is not None:
+            raise self.error
+        return super().get_key(key)
+
+
+class Monotonic:
+    def __init__(self):
+        self.now, self.cost = 0.0, 0.0
+
+    def __call__(self):
+        return self.now
+
+
+def make_counting(tmp_path):
+    c, clock, _ = make(tmp_path)
+    c.transport, c.monotonic = CountingTransport(), Monotonic()
+    c.transport.mono = c.monotonic
+    c.step()  # 09:00 准备
+    return c, clock, c.transport
+
+
+def steps(c, clock, *times):
+    for hhmmss in times:
+        clock.at(hhmmss)
+        try:
+            c.step()
+        except TimeoutError:
+            pass
+
+
+def test_quote_fetch_follows_publish_interval_not_loop_interval(tmp_path):
+    # #666：快照约 1.8 MB、网关每 15 秒发布一次；按循环间隔 5 秒拉取会占满共享隧道。
+    c, clock, transport = make_counting(tmp_path)
+    transport.value = snapshot("09:31:00", {"A.SH": quote("A.SH", "09:30:58", 11.0, 10.0)})
+    steps(c, clock, "09:31:00", "09:31:05", "09:31:10")
+    assert transport.calls == 1
+    steps(c, clock, "09:31:15")
+    assert transport.calls == 2
+    assert c.status["fetch_backoff_s"] is None
+
+
+def test_failed_quote_fetch_backs_off_and_doubles(tmp_path):
+    c, clock, transport = make_counting(tmp_path)
+    transport.error = TimeoutError("timed out")
+    steps(c, clock, "09:31:00", "09:31:15", "09:31:25")
+    assert transport.calls == 1  # 失败后 30 秒内不再占用隧道
+    steps(c, clock, "09:31:30")
+    assert transport.calls == 2
+    steps(c, clock, "09:32:00", "09:32:25")
+    assert transport.calls == 2  # 连续失败退避加倍到 60 秒
+    steps(c, clock, "09:32:30")
+    assert transport.calls == 3
+    steps(c, clock, "09:34:25")
+    assert transport.calls == 3  # 上限 120 秒
+    steps(c, clock, "09:34:30")
+    assert transport.calls == 4
+
+
+def test_slow_quote_fetch_backs_off_then_recovers(tmp_path):
+    c, clock, transport = make_counting(tmp_path)
+    transport.value = snapshot("09:31:00", {"A.SH": quote("A.SH", "09:30:58", 11.0, 10.0)})
+    c.monotonic.cost = 4.0  # 单次传输 4 秒：隧道已拥塞，让出带宽
+    steps(c, clock, "09:31:00")
+    assert c.status["fetch_seconds"] == 4.0 and c.status["fetch_backoff_s"] == 30.0
+    assert c.status["last_published"] == "2026-11-13T09:31:00"  # 慢但成功的数据照常入库
+    steps(c, clock, "09:31:15")
+    assert transport.calls == 1
+    c.monotonic.cost = 0.5
+    transport.value = snapshot("09:31:30", {"A.SH": quote("A.SH", "09:31:28", 11.0, 10.0)})
+    steps(c, clock, "09:31:30", "09:31:40")
+    assert transport.calls == 2 and c.status["fetch_backoff_s"] is None
+    steps(c, clock, "09:31:45")
+    assert transport.calls == 3  # 恢复为发布间隔
