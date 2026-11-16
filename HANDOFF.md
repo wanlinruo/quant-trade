@@ -1,22 +1,27 @@
 # 项目交接入口
 
-## 11-16：盘中 Redis 隧道拥塞、实盘熔断，急停仍生效（以本节为准，#666）
+## 11-16：盘中 Redis 隧道拥塞、实盘熔断；修复已发布，急停已解除（以本节为准，#666）
 
-- **现状（17:15）**：实盘三道闸全部生效，**未解除**——Linux 本地 KILL 与 Redis `control:kill`
-  （13:20:52，`three consecutive live-core loop failures`）、Windows 网关本地闸 `AGENT_KILL`
-  （14:55:38，`core heartbeat timeout`）。闸不解除，11-17 实盘不会开仓。
-- **当日实盘**：7/7 事件 completed，0 委托，净值 100,011.98，无持仓。live-core 未重启。
+- **现状（17:22）**：实盘三道闸（Linux 本地 KILL、Redis `control:kill`、Windows 网关 `AGENT_KILL`）
+  已于 17:21:53 按维护者授权解除并通过复核：盘前检查 16/16（含本地闸解除要求）、`kill.py status`
+  为运行中、live-core PID 2128485 / NRestarts 0 未变。下一个策略事件是 11-17 09:15。
+- **当日实盘**：7/7 事件 completed，0 委托，净值 100,011.98，无持仓。13:17、13:20 两次连续故障熔断。
 - **原因**：limit-up-board 首个盘中运行日每 5 秒经只读代理拉 1.8 MB 全市场快照（网关 15 秒才
   发布一次），占满 Linux↔Windows 的单条 SSH 隧道。实测一次读取期间同隧道 PING 由 2 ms 升到
   1.1 秒。当日 live-core `tick_failed` 191 次、健康观察器心跳读取失败 773 次，运维告警 11 条。
-- **已发布**（PR #667，main `7f0652b`，limit-up-board release `issue666-limit-up-board-20261116-r1`，
-  三方一致）：采集器按 15 秒发布间隔取数，失败或单次超过 3 秒退避 30→60→120 秒。
+- **已发布**（PR #667，main `7f0652b`，release `issue666-limit-up-board-20261116-r1`，三方一致）：
+  采集器按 15 秒发布间隔取数，失败或单次超过 3 秒退避 30→60→120 秒。
   **效果只能盘中验证**：11-17 开盘后看 `status.json` 的 `fetch_seconds` / `fetch_backoff_s`、
-  live-core `tick_failed` 与健康观察器失败计数。维护者已授权：修复未就绪时可在开盘前暂停采集器。
-- **急停解除被一项前置条件挡住**：券商快照 `active_order_count = 1`，实盘账本为 0 笔委托，
-  执行器不上报非本系统委托明细，远程无法识别。需维护者在 QMT 委托列表确认后，再按
-  「复核与解除同一脚本、任何 FAIL 即中止、解除后复核失败立即回落」执行 `kill.py resume live`
-  （它会连同 Windows 本地闸一并解除）。维护者 11-16 已授权“核对后清除”，核对未通过故未执行。
+  live-core `tick_failed` 与健康观察器失败计数；再次超时会再次熔断落闸。维护者已授权必要时
+  暂停采集器（`qsys-limit-up-board`），目前未暂停。
+- **解除过程如实记录**：r1（17:21:14）解除成功后，复核脚本自身缺陷（`systemctl show --value`
+  的字段顺序与预期不同）误判 live-core 状态，按设计于 17:21:19 重新落闸，解除约 5 秒；收盘后无
+  事件、无委托。修正后 r2（17:21:53）通过。记录在节点
+  `/data/qsys/var-deployments/issue666-kill-release-20261116-r1`、`-r2`。
+- **人工委托与 cancel_all**：券商快照 `active_order_count = 1` 是维护者当日手工申购的新债。
+  执行器 `cancel_all` 会对账户内**全部**非终态委托发撤单，不区分是否本系统委托；当日熔断两次、
+  15:30 收盘和 r1 回落各触发一次，该笔仍为活动状态，撤单结果未单独核对。是否把撤单范围限定为
+  本系统委托待维护者定（#666）。
 - **未查清**：16:04:01 Windows 行情网关进程重启的原因；`live-core-failure-fuse.md` 仍写
   “熔断后不再 tick”，与现行代码（进程存活继续 tick）不符，待更新。
 - **后续项**（#666）：隧道压缩（快照可压 6.7 倍）、只读代理对大键的并发与总耗时限制、
