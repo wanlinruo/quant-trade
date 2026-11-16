@@ -1,6 +1,28 @@
 # 项目交接入口
 
-## 11-14：当前生产状态与 Issue 盘点（以本节为准，下面各节是历史）
+## 11-16：盘中 Redis 隧道拥塞、实盘熔断，急停仍生效（以本节为准，#666）
+
+- **现状（17:15）**：实盘三道闸全部生效，**未解除**——Linux 本地 KILL 与 Redis `control:kill`
+  （13:20:52，`three consecutive live-core loop failures`）、Windows 网关本地闸 `AGENT_KILL`
+  （14:55:38，`core heartbeat timeout`）。闸不解除，11-17 实盘不会开仓。
+- **当日实盘**：7/7 事件 completed，0 委托，净值 100,011.98，无持仓。live-core 未重启。
+- **原因**：limit-up-board 首个盘中运行日每 5 秒经只读代理拉 1.8 MB 全市场快照（网关 15 秒才
+  发布一次），占满 Linux↔Windows 的单条 SSH 隧道。实测一次读取期间同隧道 PING 由 2 ms 升到
+  1.1 秒。当日 live-core `tick_failed` 191 次、健康观察器心跳读取失败 773 次，运维告警 11 条。
+- **已发布**（PR #667，main `7f0652b`，limit-up-board release `issue666-limit-up-board-20261116-r1`，
+  三方一致）：采集器按 15 秒发布间隔取数，失败或单次超过 3 秒退避 30→60→120 秒。
+  **效果只能盘中验证**：11-17 开盘后看 `status.json` 的 `fetch_seconds` / `fetch_backoff_s`、
+  live-core `tick_failed` 与健康观察器失败计数。维护者已授权：修复未就绪时可在开盘前暂停采集器。
+- **急停解除被一项前置条件挡住**：券商快照 `active_order_count = 1`，实盘账本为 0 笔委托，
+  执行器不上报非本系统委托明细，远程无法识别。需维护者在 QMT 委托列表确认后，再按
+  「复核与解除同一脚本、任何 FAIL 即中止、解除后复核失败立即回落」执行 `kill.py resume live`
+  （它会连同 Windows 本地闸一并解除）。维护者 11-16 已授权“核对后清除”，核对未通过故未执行。
+- **未查清**：16:04:01 Windows 行情网关进程重启的原因；`live-core-failure-fuse.md` 仍写
+  “熔断后不再 tick”，与现行代码（进程存活继续 tick）不符，待更新。
+- **后续项**（#666）：隧道压缩（快照可压 6.7 倍）、只读代理对大键的并发与总耗时限制、
+  健康观察器把“只读入口超时”与“Redis 不可达”分开告警。#137 观察期 11-16 是否计入待维护者定。
+
+## 11-14：生产状态与 Issue 盘点（历史，现状见上节）
 
 - **实盘已上线**（#137 / #601）：11-11 17:01 起运行。链路为 Linux live-core（e1d0fc1）→ Redis →
   Windows 生产网关 → QMT 第 5 行真实下单执行器（DRY_RUN=False，市价单禁用）。限额：启用 1 万，
