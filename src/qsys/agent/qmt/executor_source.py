@@ -303,7 +303,9 @@ class Executor:
             return 0
         sent = 0
         for obj in self.query('ORDER'):
-            if getattr(obj, 'm_nOrderStatus', None) not in TERMINAL_STATUS:
+            # Only this system's orders: manual orders on the same account (e.g. a new-bond
+            # subscription) must never be cancelled by a fuse or session-end sweep (#666).
+            if self.own(obj) and getattr(obj, 'm_nOrderStatus', None) not in TERMINAL_STATUS:
                 self.api['cancel'](getattr(obj, 'm_strOrderSysID'), ACCOUNT_ID, 'STOCK', C)
                 sent += 1
         return sent
