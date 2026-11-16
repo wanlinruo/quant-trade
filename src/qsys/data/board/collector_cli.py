@@ -2,7 +2,8 @@
 
 - 盘前（08:30 起）：拉取同花顺概念快照与当日 ST 名单（Tushare 直取）；待盘前任务把当日
   stk_limit 写入 warehouse 后，连同昨日连板高度一次性落入看板库。之后当日输入不再变化。
-- 盘中（09:15–15:05）：只读 Redis ``state:quote_realtime_latest``，按 ``published_at`` 去重，
+- 盘中（09:15–15:05）：按网关发布间隔（15 秒）只读 Redis ``state:quote_realtime_latest``，
+  失败或过慢时退避（#666），按 ``published_at`` 去重，
   先写当日临时全量，再推进状态机并保存事件与情绪聚合。重启后用临时全量重放恢复状态。
 - 收盘后（15:10 起）：压缩为入选票全日序列，校验通过才删除临时全量。
 - 盘后（17:30–23:30）：当日 ``limit_list_d`` 入库后对账，只记差异，不改写盘中观测。
@@ -44,6 +45,11 @@ COMPACT_FROM = time(15, 10)
 RECONCILE_FROM, RECONCILE_UNTIL = time(17, 30), time(23, 30)
 RECONCILE_RETRY = timedelta(minutes=10)
 MEMBER_PAUSE_S = 0.35
+# 行情快照约 1.8 MB，与实盘/模拟共用 Linux↔Windows 的单条隧道（#666）：取数不快于网关
+# 发布间隔；失败或单次传输过慢说明隧道已拥塞，采集器退避让出带宽，不重试抢占。
+QUOTE_INTERVAL = timedelta(seconds=15)
+SLOW_FETCH_S = 3.0
+FETCH_BACKOFF_S, FETCH_BACKOFF_MAX_S = 30.0, 120.0
 
 
 @contextmanager
@@ -97,6 +103,10 @@ class Collector:
     lock: Path | None = None
     clock: Callable[[], datetime] = field(default=lambda: datetime.now(TZ).replace(tzinfo=None))
     pause: Callable[[float], None] = time_mod.sleep
+    monotonic: Callable[[], float] = time_mod.monotonic
+    quote_interval: timedelta = QUOTE_INTERVAL
+    next_fetch: datetime | None = None
+    fetch_backoff_s: float | None = None
     board: BoardDay | None = None
     concepts: dict[date, tuple[ConceptSnapshot | None, dict[str, str], str | None]] = field(
         default_factory=dict)
@@ -167,8 +177,34 @@ class Collector:
         return board
 
     # ---- 盘中 ----
-    def collect(self, day: date) -> bool:
-        raw = self.transport.get_key(self.quote_key)
+    def fetch(self, now: datetime) -> str | None:
+        """取一次快照并安排下次取数时刻；失败或过慢时退避（加倍，有上限）。"""
+        started = self.monotonic()
+        try:
+            raw = self.transport.get_key(self.quote_key)
+        except Exception:
+            self._schedule_fetch(now, None)
+            raise
+        self._schedule_fetch(now, self.monotonic() - started)
+        return raw
+
+    def _schedule_fetch(self, now: datetime, elapsed: float | None) -> None:
+        if elapsed is not None and elapsed <= SLOW_FETCH_S:
+            self.fetch_backoff_s = None
+            self.next_fetch = now + self.quote_interval
+        else:
+            self.fetch_backoff_s = FETCH_BACKOFF_S if self.fetch_backoff_s is None \
+                else min(self.fetch_backoff_s * 2, FETCH_BACKOFF_MAX_S)
+            self.next_fetch = now + timedelta(seconds=self.fetch_backoff_s)
+            log.warning("board.fetch_backoff", elapsed_s=elapsed, backoff_s=self.fetch_backoff_s)
+        self.status.update(
+            fetch_seconds=None if elapsed is None else round(elapsed, 3),
+            fetch_backoff_s=self.fetch_backoff_s)
+
+    def collect(self, day: date, now: datetime) -> bool:
+        if self.next_fetch is not None and now < self.next_fetch:
+            return False
+        raw = self.fetch(now)
         if not raw:
             return False
         snapshot = QuoteSnapshot.model_validate_json(raw)
@@ -225,7 +261,7 @@ class Collector:
             self.next_reconcile = None
         if COLLECT_FROM <= clock <= COLLECT_UNTIL:
             self.status["phase"] = "collecting"
-            self.collect(day)
+            self.collect(day, now)
         elif clock >= COMPACT_FROM and not self.store.compacted(day):
             self.status["phase"] = "compacting"
             error = self.store.compact(day, now)
