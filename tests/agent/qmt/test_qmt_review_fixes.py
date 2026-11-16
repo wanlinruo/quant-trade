@@ -228,3 +228,24 @@ def test_dispatch_conflict_engages_local_kill(tmp_path):
     with pytest.raises(DispatchConflictError):
         agent.run_once()
     assert kill.exists() and 'conflict' in kill.read_text()
+
+
+# #666：cancel_all 只撤本系统委托 ------------------------------------------------
+def test_cancel_all_leaves_foreign_orders_untouched():
+    # 11-16 维护者手工申购新债当日，熔断与收盘的 cancel_all 对该笔人工委托也发了撤单。
+    mod, ex, api, buf, clock = make()
+    own = api.order(CID, status=50)
+    api.order(None, status=50)                 # 人工委托：无备注
+    api.order('manual-bond', status=50)        # 人工委托：备注不是本系统委托号
+    api.order(CID, status=56)                  # 本系统已成终态
+    assert ex.cancel_all(None) == 1
+    assert [c for c in api.calls if c[0] == 'cancel'] == [('cancel', own.m_strOrderSysID, ACCOUNT, 'STOCK')]
+
+
+def test_kill_cancels_only_own_orders():
+    mod, ex, api, buf, clock = make()
+    api.order('manual-bond', status=50)
+    buf[protocol.CONTROL_OFFSET + 8:protocol.CONTROL_OFFSET + 12] = (1).to_bytes(4, 'little')
+    ex.tick(None)
+    assert [c for c in api.calls if c[0] == 'cancel'] == []
+    assert ex.kill_handled is True

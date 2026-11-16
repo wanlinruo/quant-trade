@@ -152,7 +152,8 @@ def test_kill_word_blocks_buy_and_cancels_all_once():
     buf[protocol.CONTROL_OFFSET + 8:protocol.CONTROL_OFFSET + 12] = (1).to_bytes(4, 'little')
     ex.tick(None)
     ex.tick(None)
-    assert sorted(c[1] for c in api.calls if c[0] == 'cancel') == ['S1', 'S2']
+    # 只撤本系统的活动委托一次；人工委托 S2 不动（维护者 2026-11-16 裁决，#666）。
+    assert sorted(c[1] for c in api.calls if c[0] == 'cancel') == ['S1']
     assert send(ex, clock, command=place())['reason'] == 'kill_engaged'
 
 
