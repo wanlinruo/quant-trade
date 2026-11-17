@@ -13,3 +13,6 @@ var/
 artifacts/metric_checks/
 artifacts/sampling_worklist.csv
 artifacts/frozen_baseline.json
+frontend/node_modules/
+src/qsys/web/spa_dist/
+frontend/*.tsbuildinfo
