@@ -1,7 +1,9 @@
 import type { ComponentType } from 'react'
+import { AiluPage } from './ailu/AiluPage'
 import { MarketPage } from './market/MarketPage'
 
 /** 已上线的新页面；没有登记的页面显示占位并链接旧页。 */
 export const PAGE_COMPONENTS: Partial<Record<string, ComponentType>> = {
   market: MarketPage,
+  ailu: AiluPage,
 }

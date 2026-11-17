@@ -40,3 +40,27 @@ export function Link({ to, ...rest }: { to: string } & AnchorHTMLAttributes<HTML
   }
   return <a {...rest} href={hrefFor(to)} onClick={onClick} />
 }
+
+/** 当前页面的查询参数（页面内状态写进 URL，便于分享与后退）。 */
+export function useSearch(): URLSearchParams {
+  const [s, setS] = useState(() => location.search)
+  useEffect(() => {
+    const f = () => setS(location.search)
+    addEventListener('popstate', f)
+    return () => removeEventListener('popstate', f)
+  }, [])
+  return new URLSearchParams(s)
+}
+
+/** 改写查询参数（值为 null 删除该参数），保留路径，进入浏览器历史。 */
+export function setSearch(params: Record<string, string | null>): void {
+  const q = new URLSearchParams(location.search)
+  for (const [k, v] of Object.entries(params)) {
+    if (v === null) q.delete(k)
+    else q.set(k, v)
+  }
+  const qs = q.toString()
+  const href = `${location.pathname}${qs ? `?${qs}` : ''}`
+  if (href !== `${location.pathname}${location.search}`) history.pushState(null, '', href)
+  dispatchEvent(new PopStateEvent('popstate'))
+}
