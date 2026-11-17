@@ -9,6 +9,7 @@ import { pct } from '../../page/format'
 import { hms, parseLocal } from '../../shell/time'
 import { setSearch, useSearch } from '../../shell/router'
 import type { Status } from '../../theme/status'
+import { CompareView, EFFECT_INFO } from './CompareView'
 import { DayControls } from './DayControls'
 import { LadderMatrix } from './LadderMatrix'
 import { SentimentBar } from './SentimentBar'
@@ -86,10 +87,10 @@ export function BoardPage() {
       {d.available && d.sentiment && <SentimentBar s={d.sentiment} provisional={!!d.provisional} />}
       {d.available && (
         <Panel title={view === 'ladder' ? '谁在封板、梯队如何？' : '昨日涨停今天怎样？'}
-          info={view === 'ladder' ? '列为同花顺概念（每只票只归一列：当日涨停家数最多的概念），行为今日连板高度；≈ 为 15 秒快照观测值。' : undefined}
+          info={view === 'ladder' ? '列为同花顺概念（每只票只归一列：当日涨停家数最多的概念），行为今日连板高度；≈ 为 15 秒快照观测值。' : EFFECT_INFO}
           extra={<Segmented size="small" value={view} onChange={(v) => setSearch({ view: v === 'ladder' ? null : String(v) })}
             options={[{ value: 'ladder', label: '题材梯队' }, { value: 'compare', label: '昨日涨停今日表现' }]} />}>
-          {view === 'ladder' ? <LadderMatrix data={d} onPick={setPicked} /> : <div data-testid="view-compare" />}
+          {view === 'ladder' ? <LadderMatrix data={d} onPick={setPicked} /> : <CompareView data={d} onPick={setPicked} />}
         </Panel>
       )}
       {d.available && d.day && <StockDrawer day={d.day} symbol={picked} card={picked ? d.cards?.[picked] : undefined} onClose={() => setPicked(null)} />}
