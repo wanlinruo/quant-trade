@@ -36,6 +36,7 @@ from qsys.web.limit_up_research import LimitUpResearchReader, LimitUpResearchVie
 from qsys.web.paper_chart import history_series, intraday_series
 from qsys.web.research_jobs import ResearchJobConsole
 from qsys.web.service_views import ServiceConsole
+from qsys.web.spa import SPA_DIST, mount_spa
 from qsys.web.svg import line_chart, multi_line_chart
 from qsys.web.views import MonitorService
 from qsys.web.workbench import WorkbenchStore
@@ -160,6 +161,8 @@ def create_app(
     shadow_lineage: Callable[[], object | None] | None = None,
     live_kill: LiveKillReader | None = None,
     core_label: str = "影子盘",
+    # 新前端构建产物目录（#662）；默认取包内 spa_dist
+    spa_root: Path | None = None,
 ) -> FastAPI:
     # 影子盘与实盘同一时间只运行其一；页面按部署模式称呼当前核心（#601 F5）。
     TEMPLATES.env.globals["core_label"] = core_label
@@ -172,6 +175,9 @@ def create_app(
         from fastapi.responses import JSONResponse
         return JSONResponse(app.state.live_kill.read().to_dict(),
                             headers={"Cache-Control": "no-store"})
+
+    # 新前端（#662）：/app 下的单页应用，与旧页面并存
+    mount_spa(app, spa_root if spa_root is not None else SPA_DIST)
 
     def _require_session(session: date) -> None:
         if not service.has_session(session):
