@@ -5,6 +5,7 @@ import { usePalette } from '../theme/context'
 import { KillBanner } from './KillBanner'
 import { NAV, pageByKey, DEFAULT_PAGE } from './nav'
 import { Placeholder } from './Placeholder'
+import { refreshPage } from './refresh'
 import { navigate, useRoute } from './router'
 import { SearchPalette } from './SearchPalette'
 import { createShortcutHandler, HELP } from './shortcuts'
@@ -59,7 +60,8 @@ export function AppShell() {
   useEffect(() => {
     const f = createShortcutHandler({
       navigate, openSearch: () => setSearch(true), openHelp: () => setHelp(true),
-      toggleSider: () => setCollapsed((c) => !c), toggleTheme: theme.toggle, refresh,
+      toggleSider: () => setCollapsed((c) => !c), toggleTheme: theme.toggle,
+      refresh: () => { refresh(); refreshPage() },
     })
     addEventListener('keydown', f)
     return () => removeEventListener('keydown', f)
