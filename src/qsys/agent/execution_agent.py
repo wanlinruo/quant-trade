@@ -82,6 +82,7 @@ class ExecutionAgent:
         self._remote_kill_seen = False
         self._core_timeout_event_seen: str | None = None
         self._started_at = datetime.now()
+        self._core_grace_from: datetime | None = None
         for stream in (streams.orders, streams.control):
             # 首次部署时不能跳过进程启动前已经进入 Stream 的控制与订单指令。
             self._t.ensure_group(stream, group, start_id="0-0")
@@ -143,7 +144,8 @@ class ExecutionAgent:
                 self._safety.engage_local_kill(reason)
                 log.error("agent.core_event_timeout", event_key=event_key)
             return False
-        if (datetime.now() - self._started_at).total_seconds() <= startup_grace_seconds:
+        grace_from = max(self._started_at, self._core_grace_from or self._started_at)
+        if (datetime.now() - grace_from).total_seconds() <= startup_grace_seconds:
             return False
         reason = "core heartbeat timeout"
         self._adapter.cancel_all()
@@ -370,6 +372,9 @@ class ExecutionAgent:
                 self.publish_account()
                 if self._safety is not None:
                     self._safety.release_local_kill()
+                # 停止的核心要在闸解除后才能通过启动复核：resume 后按启动宽限等它
+                # 接管，超时照旧撤单落闸；宽限只推迟落闸，不放行任何委托（#670）。
+                self._core_grace_from = datetime.now()
                 log.warning("agent.resumed", reason=command.reason)
             elif command.action == "query":
                 self.publish_account()

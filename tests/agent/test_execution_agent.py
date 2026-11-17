@@ -337,3 +337,59 @@ def test_cycle_hook_receives_kill_state(tmp_path):
     transport.set_key("control:kill", "manual")
     agent.run_once()
     assert seen == [False, True, True]
+
+
+def _stopped_core_agent(tmp_path):
+    from datetime import timedelta
+
+    transport = MemoryTransport()
+    adapter = FakeAdapter(auto_fill=False)
+    safety = SafetyPolicy(
+        TradingMode.LIVE, account_id="A1", protected_account_ids=("A1",),
+        orders_enabled=True, local_kill_path=tmp_path / "K",
+    )
+    agent = ExecutionAgent(transport, adapter, STREAMS, safety=safety)
+    agent._started_at = datetime.now() - timedelta(minutes=10)
+    transport.set_key(
+        f"{STREAMS.heartbeat}:core",
+        Heartbeat(source="core", at=datetime.now() - timedelta(minutes=5)).model_dump_json(),
+    )
+    return agent, adapter, transport
+
+
+def _resume(agent, transport):
+    from qsys.live.messages import ControlCommand
+
+    transport.append(STREAMS.control, ControlCommand(
+        action="resume", at=datetime.now(), reason="manual",
+    ).to_payload())
+    agent.run_once()
+
+
+def test_resume_gives_a_stopped_core_the_startup_grace(tmp_path):
+    # 11-17：核心停止期间 resume 只放开约 1 秒，下一轮又因心跳超时落闸，
+    # 核心启动复核要求闸已解除，二者死锁（#670）。resume 后按启动宽限等核心接管。
+    agent, adapter, transport = _stopped_core_agent(tmp_path)
+    assert agent.enforce_core_heartbeat() is False
+    assert (tmp_path / "K").exists()
+
+    _resume(agent, transport)
+    adapter.cancelled = False
+
+    assert not (tmp_path / "K").exists()
+    assert agent.enforce_core_heartbeat() is False
+    assert not (tmp_path / "K").exists()
+    assert adapter.cancelled is False
+
+
+def test_resume_grace_expires_and_fails_closed_again(tmp_path):
+    from datetime import timedelta
+
+    agent, adapter, transport = _stopped_core_agent(tmp_path)
+    _resume(agent, transport)
+    agent._core_grace_from = datetime.now() - timedelta(seconds=31)
+    adapter.cancelled = False
+
+    assert agent.enforce_core_heartbeat() is False
+    assert (tmp_path / "K").read_text() == "core heartbeat timeout"
+    assert adapter.cancelled is True
