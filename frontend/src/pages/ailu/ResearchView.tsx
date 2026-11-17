@@ -82,7 +82,7 @@ export function ResearchView({ day, onPickDay }: { day: string | null; onPickDay
           </div>
         )}
       </Panel>
-      {s && <div style={{ fontSize: 11, color: p.muted }}>收据：source_sha {s.source_sha} · data_sha {s.data_sha} · 生成于 {s.generated_at}</div>}
+      {s && <div style={{ fontSize: 11, color: p.muted, overflowWrap: 'anywhere' }}>收据：source_sha {s.source_sha} · data_sha {s.data_sha} · 生成于 {s.generated_at}</div>}
     </>
   )
 }
