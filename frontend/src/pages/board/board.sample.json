@@ -1,0 +1,276 @@
+{
+ "available": true,
+ "message": "盘中观测（≈ 为快照观测值）",
+ "day": "2026-11-13",
+ "days": [
+  "2026-11-13",
+  "2026-11-12"
+ ],
+ "mode": "live",
+ "at": "2026-11-13T09:31:30",
+ "times": [
+  "2026-11-13T09:31:00",
+  "2026-11-13T09:31:15",
+  "2026-11-13T09:31:30"
+ ],
+ "status": {},
+ "meta": {
+  "prev_day": "2026-11-12",
+  "concept_fetched_at": "2026-11-13T08:40:00",
+  "concept_sha": "ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss",
+  "concept_error": null,
+  "st_published": 1,
+  "heights_error": null,
+  "compacted_at": null,
+  "compact_error": null,
+  "reconciled_at": null,
+  "reconcile_error": null,
+  "has_raw": true
+ },
+ "sentiment": {
+  "published_at": "2026-11-13T09:31:30",
+  "quotes": 3,
+  "sealed": 2,
+  "limit_down": 1,
+  "touched": 2,
+  "broken": 0,
+  "seal_rate": 1.0,
+  "max_height": 2,
+  "promote_1_2": [
+   1,
+   1
+  ],
+  "promote_2_3": [
+   1,
+   0
+  ],
+  "promote_3_up": [
+   0,
+   0
+  ],
+  "rushing": 0,
+  "missing_limit": 0,
+  "seal_unknown": 0
+ },
+ "columns": [
+  {
+   "code": "885001.TI",
+   "name": "机器人",
+   "sealed_count": 2,
+   "first_seal": "2026-11-13T09:30:58",
+   "gradient": {
+    "2": 1,
+    "1": 1
+   }
+  }
+ ],
+ "rows": [
+  {
+   "key": "2",
+   "label": "2 板",
+   "yesterday": 1,
+   "cells": {
+    "885001.TI": [
+     "A.SH"
+    ]
+   }
+  },
+  {
+   "key": "1",
+   "label": "首板",
+   "yesterday": null,
+   "cells": {
+    "885001.TI": [
+     "B.SZ"
+    ]
+   }
+  },
+  {
+   "key": "other",
+   "label": "炸板/冲板",
+   "yesterday": null,
+   "cells": {
+    "885001.TI": []
+   }
+  }
+ ],
+ "cards": {
+  "A.SH": {
+   "symbol": "A.SH",
+   "name": "甲科技",
+   "status": "sealed",
+   "column": "885001.TI",
+   "height": 2,
+   "prev_height": 1,
+   "first_seal": "2026-11-13T09:30:58",
+   "open_times": 1,
+   "resealed": true,
+   "pct": 0.10000000000000009,
+   "is_st": false,
+   "is_bj": false,
+   "entered_at": "2026-11-13T09:30:58",
+   "reason": "touch",
+   "diffs": {}
+  },
+  "B.SZ": {
+   "symbol": "B.SZ",
+   "name": "乙智能",
+   "status": "sealed",
+   "column": "885001.TI",
+   "height": 1,
+   "prev_height": 0,
+   "first_seal": "2026-11-13T09:31:13",
+   "open_times": 0,
+   "resealed": false,
+   "pct": 0.10000000000000009,
+   "is_st": false,
+   "is_bj": false,
+   "entered_at": "2026-11-13T09:30:58",
+   "reason": "rush",
+   "diffs": {}
+  }
+ },
+ "compare": [
+  {
+   "level": 2,
+   "items": [
+    {
+     "symbol": "C.SZ",
+     "name": "丙精密",
+     "pct": -0.09999999999999998,
+     "column": null,
+     "status": "limit_down",
+     "first_seal": null,
+     "open_times": null,
+     "prediction": null
+    }
+   ],
+   "promoted": 0
+  },
+  {
+   "level": 1,
+   "items": [
+    {
+     "symbol": "A.SH",
+     "name": "甲科技",
+     "pct": 0.10000000000000009,
+     "column": "885001.TI",
+     "status": "promoted",
+     "first_seal": "2026-11-13T09:30:58",
+     "open_times": 1,
+     "prediction": 0.42
+    }
+   ],
+   "promoted": 1
+  }
+ ],
+ "compare_unknown": 0,
+ "shadow": {
+  "state": "ready",
+  "message": "ok",
+  "prediction_date": "2026-11-12",
+  "model_version": "v-test",
+  "precision_at_20": 0.3,
+  "scored": 1,
+  "hits": 1
+ },
+ "timeline": [
+  {
+   "at": "2026-11-13T09:31:28",
+   "symbol": "A.SH",
+   "name": "甲科技",
+   "kind": "reseal",
+   "detail": ""
+  },
+  {
+   "at": "2026-11-13T09:31:13",
+   "symbol": "B.SZ",
+   "name": "乙智能",
+   "kind": "seal",
+   "detail": "第2家"
+  },
+  {
+   "at": "2026-11-13T09:31:13",
+   "symbol": "A.SH",
+   "name": "甲科技",
+   "kind": "open",
+   "detail": ""
+  },
+  {
+   "at": "2026-11-13T09:30:58",
+   "symbol": "A.SH",
+   "name": "甲科技",
+   "kind": "seal",
+   "detail": "第1家"
+  }
+ ],
+ "curves": [
+  {
+   "code": "885001.TI",
+   "name": "机器人",
+   "points": [
+    [
+     "2026-11-13T09:30:58",
+     1
+    ],
+    [
+     "2026-11-13T09:31:13",
+     2
+    ]
+   ]
+  }
+ ],
+ "mismatch_count": 0,
+ "provisional": true,
+ "prev_day": "2026-11-12",
+ "effect": {
+  "total": 2,
+  "priced": 2,
+  "no_quote": 0,
+  "avg_pct": 5.551115123125783e-17,
+  "red_rate": 0.5,
+  "multi_avg_pct": -0.09999999999999998,
+  "big_loss": 1,
+  "top_level": 2,
+  "top_items": [
+   {
+    "symbol": "C.SZ",
+    "name": "丙精密",
+    "pct": -0.09999999999999998,
+    "status": "limit_down"
+   }
+  ]
+ },
+ "layers": [
+  {
+   "level": 2,
+   "total": 1,
+   "promoted": 0,
+   "broken": 0,
+   "break_up": 0,
+   "break_down": 0,
+   "limit_down": 1,
+   "unknown": 0,
+   "no_quote": 0,
+   "rate": 0.0,
+   "prev_rate": null,
+   "avg_pct": -0.09999999999999998
+  },
+  {
+   "level": 1,
+   "total": 1,
+   "promoted": 1,
+   "broken": 0,
+   "break_up": 0,
+   "break_down": 0,
+   "limit_down": 0,
+   "unknown": 0,
+   "no_quote": 0,
+   "rate": 1.0,
+   "prev_rate": 0.5,
+   "avg_pct": 0.10000000000000009
+  }
+ ],
+ "errors": {},
+ "schedule": null
+}

@@ -75,3 +75,36 @@ test('R key page refresh triggers registered polling refresh', async () => {
   await flush()
   expect(fn).toHaveBeenCalledTimes(2)
 })
+
+test('usePolling with enabled=false fetches once and does not schedule', async () => {
+  const fn = vi.fn(async () => 1)
+  const { result } = renderHook(() => usePolling(fn, { intervalMs: 15_000, enabled: false }))
+  await flush()
+  await act(async () => { await vi.advanceTimersByTimeAsync(120_000) })
+  expect(fn).toHaveBeenCalledTimes(1)
+  act(() => result.current.refresh())
+  await flush()
+  expect(fn).toHaveBeenCalledTimes(2)
+})
+
+test('usePolling interval change reschedules without an immediate refetch', async () => {
+  const fn = vi.fn(async () => 1)
+  const { rerender } = renderHook(({ ms }) => usePolling(fn, { intervalMs: ms }), { initialProps: { ms: 15_000 } })
+  await flush()
+  rerender({ ms: 60_000 })
+  await flush()
+  expect(fn).toHaveBeenCalledTimes(1)
+  await act(async () => { await vi.advanceTimersByTimeAsync(59_000) })
+  expect(fn).toHaveBeenCalledTimes(1)
+  await act(async () => { await vi.advanceTimersByTimeAsync(2_000) })
+  expect(fn).toHaveBeenCalledTimes(2)
+})
+
+test('usePolling enabled turning true resumes scheduling', async () => {
+  const fn = vi.fn(async () => 1)
+  const { rerender } = renderHook(({ on }) => usePolling(fn, { intervalMs: 15_000, enabled: on }), { initialProps: { on: false } })
+  await flush()
+  rerender({ on: true })
+  await act(async () => { await vi.advanceTimersByTimeAsync(15_500) })
+  expect(fn).toHaveBeenCalledTimes(2)
+})
