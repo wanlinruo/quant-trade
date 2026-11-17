@@ -10,7 +10,9 @@ import { hms, parseLocal } from '../../shell/time'
 import { setSearch, useSearch } from '../../shell/router'
 import type { Status } from '../../theme/status'
 import { DayControls } from './DayControls'
+import { LadderMatrix } from './LadderMatrix'
 import { SentimentBar } from './SentimentBar'
+import { StockDrawer } from './StockDrawer'
 
 export const STALE_SECONDS = 45
 const DAY = /^\d{4}-\d{2}-\d{2}$/
@@ -66,6 +68,7 @@ export function BoardPage() {
     refresh()
   }, [day, at, refresh])
 
+  const [picked, setPicked] = useState<string | null>(null)
   const fresh = <Freshness at={poll.fetchedAt} paused={poll.paused} onTogglePause={() => poll.setPaused(!poll.paused)} onRefresh={poll.refresh} error={poll.error} />
   const d = poll.data
   if (!d) {
@@ -86,9 +89,10 @@ export function BoardPage() {
           info={view === 'ladder' ? '列为同花顺概念（每只票只归一列：当日涨停家数最多的概念），行为今日连板高度；≈ 为 15 秒快照观测值。' : undefined}
           extra={<Segmented size="small" value={view} onChange={(v) => setSearch({ view: v === 'ladder' ? null : String(v) })}
             options={[{ value: 'ladder', label: '题材梯队' }, { value: 'compare', label: '昨日涨停今日表现' }]} />}>
-          <div data-testid={`view-${view}`} />
+          {view === 'ladder' ? <LadderMatrix data={d} onPick={setPicked} /> : <div data-testid="view-compare" />}
         </Panel>
       )}
+      {d.available && d.day && <StockDrawer day={d.day} symbol={picked} card={picked ? d.cards?.[picked] : undefined} onClose={() => setPicked(null)} />}
     </>
   )
 }

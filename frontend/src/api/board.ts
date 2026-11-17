@@ -16,7 +16,7 @@ export interface Card {
   symbol: string; name: string; status: CardStatus; column: string | null
   height: number | null; prev_height: number | null; first_seal: string | null; open_times: number
   resealed: boolean; pct: number | null; is_st: boolean | null; is_bj: boolean
-  entered_at: string; reason: string; diffs: Record<string, string>
+  entered_at: string; reason: string; diffs: Record<string, unknown>
 }
 
 export interface Column { code: string; name: string; sealed_count: number | null; first_seal: string | null; gradient: Record<string, number> }
