@@ -615,3 +615,66 @@ def test_first_trading_day_after_holiday_records_even_if_result_unchanged(wareho
     runtime._assert_reconciled(drift)          # 同样的差异，交易日第一次：要写
     runtime._assert_reconciled(drift)          # 之后照常去重
     assert _recon_rows(runtime) == before + 1
+
+
+class _Limits:
+    def __init__(self, table):
+        self.table, self.days = table, []
+
+    def on(self, day):
+        self.days.append(day)
+        return self.table
+
+
+def test_constraint_context_takes_direct_limits_and_passes_the_pipeline(
+    warehouse, tmp_path
+):
+    # 11-17 实盘竞价首笔下单：上下文仍传已删除的 prev_close，三连异常熔断（#670）。
+    from qsys.markets.ashare import ashare_pre_trade_pipeline
+    from qsys.core.trading import OrderIntent, OrderType, Side
+    from qsys.core.types import Symbol
+
+    runtime, _ = _runtime_with_store(warehouse, tmp_path)
+    moment = datetime.combine(date.today(), time(9, 25, 10))
+    runtime.clock.set(moment)
+    runtime._limits = _Limits({"600036.SH": (11.0, 9.0)})
+    intent = OrderIntent(Symbol.parse("600036.SH"), Side.BUY, 100, OrderType.LIMIT, 10.0)
+
+    ctx = runtime._constraint_context(intent)
+
+    assert (ctx.limit_up, ctx.limit_down) == (11.0, 9.0)
+    assert runtime._limits.days == [moment.date()]
+    assert ashare_pre_trade_pipeline().apply(intent, ctx).allowed_qty == 100
+
+
+def test_constraint_context_without_direct_limit_leaves_limits_empty(warehouse, tmp_path):
+    from qsys.core.trading import OrderIntent, OrderType, Side
+    from qsys.core.types import Symbol
+
+    runtime, _ = _runtime_with_store(warehouse, tmp_path)
+    runtime._limits = _Limits({})
+    buy = OrderIntent(Symbol.parse("600036.SH"), Side.BUY, 100, OrderType.LIMIT, 10.0)
+
+    ctx = runtime._constraint_context(buy)
+
+    assert (ctx.limit_up, ctx.limit_down) == (None, None)
+
+
+def test_a_live_buy_reaches_the_intent_stream(warehouse, tmp_path):
+    # 实盘下单路径此前没有任何测试经过 broker.submit（#670）。
+    from qsys.core.trading import Order, OrderType, Side
+    from qsys.core.types import Symbol
+
+    runtime, _ = _runtime_with_store(warehouse, tmp_path)
+    moment = datetime.combine(date.today(), time(9, 31))
+    runtime.clock.set(moment)
+    runtime._limits = _Limits({"600036.SH": (11.0, 9.0)})
+    order = Order("q-e2e-1", Symbol.parse("600036.SH"), Side.BUY, 100,
+                  OrderType.LIMIT, 10.0, moment)
+
+    runtime.broker.submit(order)
+
+    assert runtime.broker.remaining("q-e2e-1") == 100
+    sent = runtime.transport.all_messages(runtime.streams.orders)
+    assert len(sent) == 1
+    assert "q-e2e-1" in str(sent[0])

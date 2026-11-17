@@ -349,10 +349,15 @@ class LiveRuntime:
 
     def _constraint_context(self, intent: OrderIntent) -> ConstraintContext:
         quote = self._quote(intent.symbol)
+        # 当日直取涨跌停价（D-19）；拿不到时为 None，价格约束拒买放卖。
+        limit_up, limit_down = self._limits.on(self.clock.now.date()).get(
+            str(intent.symbol), (None, None),
+        )
         return ConstraintContext(
             portfolio=self.portfolio,
             reference_price=float(intent.limit_price or quote.price),
-            prev_close=quote.prev_close or None,
+            limit_up=limit_up,
+            limit_down=limit_down,
             board=self.boards.get(intent.symbol, board_of(intent.symbol.code)),
             is_suspended=quote.suspended,
         )
