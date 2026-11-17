@@ -48,3 +48,14 @@ test('deep link renders the page and nav switches routes', async ({ page }) => {
   await expect(page).toHaveURL(/\/app\/recon$/)
   await expect(page.getByRole('heading', { name: '对账与风控' })).toBeVisible()
 })
+
+test('kill banner never covers the side navigation after scrolling', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 420 })
+  await page.goto('/app/recon')
+  await page.mouse.wheel(0, 600)
+  await page.waitForTimeout(200)
+  const banner = await page.getByRole('alert').boundingBox()
+  const first = await page.getByRole('menuitem', { name: '今日运行' }).boundingBox()
+  expect(banner && first).toBeTruthy()
+  expect(first!.y).toBeGreaterThanOrEqual(banner!.y + banner!.height - 1)
+})

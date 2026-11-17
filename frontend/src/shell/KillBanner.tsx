@@ -12,7 +12,7 @@ export function KillBanner({ status }: { status: ShellStatus | null }) {
   const link = agent?.state === 'unknown' ? '链路：agent 心跳不可用' : '链路：agent 心跳正常'
   return (
     <div role="alert" className="qs-kill-banner"
-      style={{ background: p.bad, color: '#fff', padding: '8px 18px', display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap', position: 'sticky', top: 44, zIndex: 9 }}>
+      style={{ background: p.bad, color: '#fff', padding: '8px 18px', display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap' }}>
       <b>✕ 停机闸已触发</b>
       {stopped.map((s) => {
         const at = parseLocal(s.recorded_at)

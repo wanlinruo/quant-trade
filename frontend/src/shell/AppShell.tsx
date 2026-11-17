@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Layout, Menu, Modal } from 'antd'
 import { useShellStatus } from '../api/shell'
 import { usePalette } from '../theme/context'
@@ -32,6 +32,18 @@ export function AppShell() {
   const [search, setSearch] = useState(false)
   const [help, setHelp] = useState(false)
   const [recent, setRecent] = useState<string[]>(readRecent)
+  // 顶栏与停机闸横幅一起吸顶；侧栏按其实际高度下移，横幅出现或换行时不遮住导航。
+  const topRef = useRef<HTMLDivElement>(null)
+  const [topH, setTopH] = useState(44)
+  useEffect(() => {
+    const el = topRef.current
+    if (!el) return
+    const update = () => setTopH(Math.round(el.getBoundingClientRect().height))
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   useEffect(() => { localStorage.setItem(SIDER_KEY, collapsed ? '1' : '0') }, [collapsed])
   useEffect(() => {
@@ -60,13 +72,15 @@ export function AppShell() {
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Layout.Header style={{ borderBottom: `1px solid ${p.border}`, position: 'sticky', top: 0, zIndex: 10, lineHeight: 'normal' }}>
-        <TopBar status={status.data} error={status.error} collapsed={collapsed} onOpenSearch={() => setSearch(true)} onOpenHelp={() => setHelp(true)} />
-      </Layout.Header>
-      <KillBanner status={status.data} />
+      <div ref={topRef} style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+        <Layout.Header style={{ borderBottom: `1px solid ${p.border}`, lineHeight: 'normal' }}>
+          <TopBar status={status.data} error={status.error} collapsed={collapsed} onOpenSearch={() => setSearch(true)} onOpenHelp={() => setHelp(true)} />
+        </Layout.Header>
+        <KillBanner status={status.data} />
+      </div>
       <Layout>
         <Layout.Sider width={196} collapsible collapsed={collapsed} onCollapse={setCollapsed} collapsedWidth={56}
-          style={{ borderRight: `1px solid ${p.border}`, position: 'sticky', top: 44, height: 'calc(100vh - 44px)', overflow: 'auto' }}>
+          style={{ borderRight: `1px solid ${p.border}`, position: 'sticky', top: topH, height: `calc(100vh - ${topH}px)`, overflow: 'auto' }}>
           <Menu mode="inline" selectedKeys={[page.key]} items={items} onClick={(e) => navigate(e.key)} style={{ borderInlineEnd: 'none', paddingTop: 4 }} />
         </Layout.Sider>
         <Layout.Content style={{ padding: '12px 16px 32px', minWidth: 0 }}>
