@@ -4,6 +4,7 @@ import { useShellStatus } from '../api/shell'
 import { usePalette } from '../theme/context'
 import { KillBanner } from './KillBanner'
 import { NAV, pageByKey, DEFAULT_PAGE } from './nav'
+import { PAGE_COMPONENTS } from '../pages/registry'
 import { Placeholder } from './Placeholder'
 import { refreshPage } from './refresh'
 import { navigate, useRoute } from './router'
@@ -28,6 +29,7 @@ export function AppShell() {
   const theme = useTheme()
   const route = useRoute()
   const page = pageByKey(route) ?? pageByKey(DEFAULT_PAGE)!
+  const PageComponent = PAGE_COMPONENTS[page.key]
   const status = useShellStatus()
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(SIDER_KEY) === '1')
   const [search, setSearch] = useState(false)
@@ -90,7 +92,7 @@ export function AppShell() {
             <span style={{ color: p.muted, fontSize: 12 }}>{page.group} /</span>
             <h1 style={{ color: p.head, fontSize: 18, fontWeight: 600, margin: 0 }}>{page.label}</h1>
           </div>
-          <div key={page.key} className="qs-page"><Placeholder page={page} /></div>
+          <div key={page.key} className="qs-page">{PageComponent ? <PageComponent /> : <Placeholder page={page} />}</div>
         </Layout.Content>
       </Layout>
       <SearchPalette open={search} recent={recent} onClose={() => setSearch(false)} onPick={navigate} />
