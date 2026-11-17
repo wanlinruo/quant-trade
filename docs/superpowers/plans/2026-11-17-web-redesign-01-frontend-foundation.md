@@ -6,7 +6,7 @@
 
 **Architecture:** 前端源码放在 `frontend/`，`npm run build` 输出到 `src/qsys/web/spa_dist/`（gitignore，hatch 以 artifacts 方式打进 wheel）。FastAPI 新增 `/app` 路由提供单页应用、`/api/shell/status` 提供顶栏状态（复用 `LiveKillReader`，服务端缓存，不按请求直接读 Redis）。旧 Jinja 页面不动；19 个页面在本计划中只是占位页，链接到对应旧页面。
 
-**Tech Stack:** Node 24 + npm、Vite 7、React 19、TypeScript 5、antd 6、ECharts 6、lightweight-charts 5、Vitest + Testing Library、Playwright（仅布局冒烟）；Python 3.11+、FastAPI、hatchling、pytest。
+**Tech Stack:** Node 24 + npm、Vite 8、React 19、TypeScript 7、antd 6、ECharts 6、lightweight-charts 5、Vitest + Testing Library、Playwright（仅布局冒烟）；Python 3.11+、FastAPI、hatchling、pytest。
 
 **Spec:** `docs/superpowers/specs/2026-11-17-web-redesign-design.md`（实现 §3 前端发布、§5 全局框架、§6.4 颜色、§10 读取边界的框架部分；页面内容由后续计划实现）
 
@@ -35,7 +35,8 @@
 - 网页不提供任何改变实盘交易状态的操作；本计划只新增只读接口。
 - Web 不按请求直接读 Redis：`/api/shell/status` 对停机闸与心跳读取做服务端缓存，缓存期 5 秒，并发请求共用一次读取。
 - 拿不到的值返回 `null` 并附 `reason`，前端显示“缺失”，不推算、不给默认值。
-- 新增或修改受 Git 管理的路径时，同时检查 `deploy/deployment.toml` 的路径分类：`frontend/**` 归入生产 `linux-web` 与测试 `test-runtime`。测试部署用可信 `main` 上的 planner，未分类路径会让规划失败，所以 **Task 0 必须先单独合入 main**，之后才能把含 `frontend/` 的提交推到 test。
+- 新增或修改受 Git 管理的路径时，同时检查 `deploy/deployment.toml` 的路径分类：`frontend/**` 归入生产 `linux-web` 与测试 `test-runtime`。测试部署用可信 `main` 上的 planner，未分类路径会让规划失败，所以最终合入时 **Task 0 必须先单独合入 main**，之后才能把含 `frontend/` 的提交推到 test。
+- **分支策略（维护者 2026-11-17 决定）**：改版全部在长期需求分支 `feat/web-redesign` 上开发（从 `origin/main` 拉出），开发期间**不合入 test / main**，避免干扰线上修复。定期把 `origin/main` merge 进本分支取得最新代码（main 不会被改写；仅在确需未上线修复时才 merge test）。本分支可推到 origin 作为备份，不触发 CI/部署；阶段性需要完整 CI 时手动 `workflow_dispatch`。会改变生产组件行为的后端工作（采集器写快照、live-core 结构化记录等）不放进本分支，单独开 `feat/` / `fix/` 走正常流程。整体合入时机与每一步合并由维护者确认。
 - 改动 `.github/workflows/ci.yml` 与 `scripts/build_component_release.py` 属于控制面改动：先按 AGENTS.md §2.1 核对 source/controller 哈希与证据复用条件，再推进发布。
 - 所有 GitHub Actions 引用固定到完整提交 SHA 并注释版本号（与 `ci.yml` 现有写法一致）。
 - 提交信息遵循 Conventional Commits，正文中文；每个 Task 一个提交。
@@ -50,7 +51,7 @@
 
 ---
 
-### Task 0: 路径分类先行（单独发布到 main）
+### Task 0: 路径分类先行（最终合入时先单独发布到 main）
 
 **Files:**
 - Modify: `deploy/deployment.toml`（`linux-web.paths` 与 `test-runtime.paths` 各追加 `"frontend/**"`）
@@ -91,7 +92,7 @@ git add deploy/deployment.toml tests/ops/test_deployment.py
 git commit -m "chore(deploy): frontend 路径归入 linux-web 与 test-runtime（#662）"
 ```
 
-从最新 test 开 `chore/web-frontend-paths`，squash 到 test → CI → 测试部署 → PR → 合并 main。确认 main 已包含本改动后，才推进 Task 1 起的提交。
+开发期间随 `feat/web-redesign` 提交即可，不单独发布。最终合入时：先把本改动单独 squash 到 test → CI → 测试部署 → PR → 合并 main，确认 main 已包含后，再合入其余改版提交。
 
 ---
 
@@ -446,6 +447,6 @@ git commit -m "ci(web): CI 构建前端并校验 web 制品包含构建产物（
 
 ## 发布与验收（本计划完成后）
 
-- 按 AGENTS.md 流程（Task 0 已先行合入 main）：`feat/web-frontend-foundation` → squash 到 test → CI → 测试部署（测试环境此时 `/app` 应返回 503“前端构建产物缺失”，属预期；第 02 份计划解决）→ PR → 合并 → web 组件生产发布（收盘后）。
+- 本计划完成后留在 `feat/web-redesign`，不立即合入。整体合入时按 AGENTS.md 流程（Task 0 先行合入 main）：`feat/web-redesign` → squash 到 test → CI → 测试部署（测试环境此时 `/app` 应返回 503“前端构建产物缺失”，属预期；第 02 份计划解决）→ PR → 合并 → web 组件生产发布（收盘后）。
 - 生产验收：`/app` 可打开；顶栏停机闸与 `/api/live/kill-status` 一致；旧页面全部照常；`/healthz` 正常；`qsys-monitor` 内存与 CPU 无明显变化。
 - 验收层级分开记录：CI、测试部署（/app 503 预期）、生产页面人工验收。
