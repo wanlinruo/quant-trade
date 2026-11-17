@@ -69,6 +69,8 @@ def _live_parts(market) -> dict:
 
 def register_app_market(app: FastAPI, market) -> None:
     if market is None:
+        app.state.app_live_parts = None
+
         @app.get("/api/app/market")
         def app_market_disabled():
             return JSONResponse({"enabled": False}, headers={"Cache-Control": "no-store"})
@@ -79,6 +81,8 @@ def register_app_market(app: FastAPI, market) -> None:
     live_cache = SingleFlightCache(lambda: _live_parts(market), LIVE_TTL_SECONDS)
     regime_cache = SingleFlightCache(lambda: regime_rows(market.history(REGIME_DAYS)), REGIME_TTL_SECONDS)
     app.state.app_market_caches = (live_cache, regime_cache)
+    # 同一份 15 秒缓存供其他新页面接口取交易时段（如打板看板），不按请求读 Redis（§10）
+    app.state.app_live_parts = live_cache
 
     @app.get("/api/app/market")
     def app_market():

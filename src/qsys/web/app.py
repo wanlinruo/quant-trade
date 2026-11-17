@@ -36,6 +36,7 @@ from qsys.web.limit_up_research import LimitUpResearchReader, LimitUpResearchVie
 from qsys.web.paper_chart import history_series, intraday_series
 from qsys.web.research_jobs import ResearchJobConsole
 from qsys.web.service_views import ServiceConsole
+from qsys.web.app_board import register_app_board
 from qsys.web.app_market import register_app_market
 from qsys.web.shell_status import ShellStatusCache
 from qsys.web.spa import SPA_DIST, mount_spa
@@ -187,6 +188,7 @@ def create_app(
                             headers={"Cache-Control": "no-store"})
 
     register_app_market(app, market)
+    register_app_board(app, limit_up_board, app.state.app_live_parts)
 
     # 新前端（#662）：/app 下的单页应用，与旧页面并存
     mount_spa(app, spa_root if spa_root is not None else SPA_DIST)

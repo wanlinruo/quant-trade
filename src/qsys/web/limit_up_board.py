@@ -573,6 +573,23 @@ class LimitUpBoardReader:
         return [ConceptCurve(code=code, name=names.get(code, code), points=points[code])
                 for code in picks]
 
+    # ---- 个股事件（新前端抽屉，#662）----
+    def symbol_events(self, day: date, symbol: str) -> list[TimelineEvent]:
+        """该股当日的首封、开板、回封事件（按记录顺序）；读不到时返回空表。"""
+        if not self.path.exists():
+            return []
+        try:
+            with self._ro(self.path) as con:
+                rows = con.execute(
+                    "SELECT at, kind, detail FROM events WHERE day=? AND symbol=? AND kind IN "
+                    "('seal', 'open', 'reseal') ORDER BY seq", (day.isoformat(), symbol)).fetchall()
+        except (OSError, sqlite3.Error) as exc:
+            log.warning("limit_up_board.events_unavailable", error_type=type(exc).__name__)
+            return []
+        name = self._name(symbol, day)
+        return [TimelineEvent(at=datetime.fromisoformat(at), symbol=symbol, name=name, kind=kind,
+                              detail=detail) for at, kind, detail in rows]
+
     # ---- 分时 ----
     def series(self, day: date, symbol: str) -> SeriesView:
         try:
