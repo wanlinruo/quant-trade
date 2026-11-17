@@ -106,17 +106,17 @@ def test_artifact_upload_uses_the_pinned_node24_release():
 def test_ci_routes_only_trusted_events_to_the_configured_runner():
     workflow = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
 
-    assert workflow.count("vars.QSYS_CI_RUNNER_LABELS") == 10
+    assert workflow.count("vars.QSYS_CI_RUNNER_LABELS") == 12
     assert workflow.count(
         "github.event.pull_request.head.repo.full_name == github.repository"
-    ) == 5
-    assert workflow.count("github.event_name != 'pull_request'") == 42
+    ) == 6
+    assert workflow.count("github.event_name != 'pull_request'") == 43
     assert "name: Build Live Core release manifest\n        if: github.event_name != 'pull_request'" in workflow
     assert "name: Upload immutable Live Core release\n        if: github.event_name != 'pull_request'" in workflow
     assert "name: Build Live State Reader release manifest\n        if: github.event_name != 'pull_request'" in workflow
     assert "name: Upload immutable Live State Reader release\n        if: github.event_name != 'pull_request'" in workflow
     assert "workflow_dispatch:" in workflow
-    assert workflow.count("'\"ubuntu-24.04\"'") == 5
+    assert workflow.count("'\"ubuntu-24.04\"'") == 6
     assert "permissions:\n  actions: read\n  checks: read\n  contents: read" in workflow
 
 

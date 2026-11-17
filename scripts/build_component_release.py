@@ -93,7 +93,39 @@ def _require_checkout(repo: Path, sha: str) -> None:
         raise ValueError("release checkout has tracked modifications")
 
 
-def _validate_wheel(path: Path, command: str, target: str) -> None:
+SPA_PREFIX = "qsys/web/spa_dist/"
+SPA_BUILD_INFO = SPA_PREFIX + "build-info.json"
+
+
+def _validate_spa(archive: zipfile.ZipFile) -> None:
+    """web 制品必须带完整新前端，且与 build-info 逐文件一致（#662）。"""
+    names = set(archive.namelist())
+    if SPA_BUILD_INFO not in names or SPA_PREFIX + "index.html" not in names:
+        raise ValueError("wheel does not contain the web frontend build")
+    try:
+        info = json.loads(archive.read(SPA_BUILD_INFO))
+        files = info["files"]
+        valid = (
+            info["schema_version"] == 1
+            and isinstance(files, dict)
+            and info["index_sha256"] == files.get("index.html")
+        )
+    except (ValueError, KeyError, TypeError):
+        valid = False
+    if not valid:
+        raise ValueError("web frontend build-info is invalid")
+    members = {
+        name[len(SPA_PREFIX):] for name in names
+        if name.startswith(SPA_PREFIX) and not name.endswith("/") and name != SPA_BUILD_INFO
+    }
+    if members != set(files) or any(
+        hashlib.sha256(archive.read(SPA_PREFIX + name)).hexdigest() != digest
+        for name, digest in files.items()
+    ):
+        raise ValueError("web frontend build does not match build-info")
+
+
+def _validate_wheel(path: Path, command: str, target: str, component: str) -> None:
     if path.is_symlink() or not path.is_file():
         raise ValueError("wheel must be a regular non-symlink file")
     with zipfile.ZipFile(path) as archive:
@@ -109,6 +141,8 @@ def _validate_wheel(path: Path, command: str, target: str) -> None:
         config.read_string(archive.read(entries[0]).decode("utf-8"))
         if config.get("console_scripts", command, fallback="") != target:
             raise ValueError(f"wheel does not expose the {command} entrypoint")
+        if component == "web":
+            _validate_spa(archive)
 
 
 def build(
@@ -127,7 +161,7 @@ def build(
     wheels = sorted(dist.glob("qsys-*.whl"))
     if len(wheels) != 1:
         raise ValueError("dist must contain exactly one qsys wheel")
-    _validate_wheel(wheels[0], command, target)
+    _validate_wheel(wheels[0], command, target, component)
     if output.exists() and any(output.iterdir()):
         raise ValueError("release output directory must be empty")
     (output / "dist").mkdir(parents=True, exist_ok=True)
@@ -212,7 +246,7 @@ def verify(repo: Path, sha: str, component: str, release: Path) -> dict[str, obj
     ):
         raise ValueError("release wheel_filename is invalid")
     wheel = release / "dist" / wheel_filename
-    _validate_wheel(wheel, command, target)
+    _validate_wheel(wheel, command, target, component)
     expected = {
         "wheel_sha256": _sha256(wheel),
         "wheel_bytes": wheel.stat().st_size,
