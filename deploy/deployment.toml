@@ -103,6 +103,7 @@ rollback = "previous-successful-sha"
 name = "linux-web"
 environments = ["production"]
 paths = [
+  "frontend/**",
   "src/qsys/__init__.py",
   "src/qsys/backtest/**",
   "src/qsys/core/**",
@@ -257,6 +258,7 @@ environments = ["test"]
 paths = [
   "deploy/systemd/**",
   "deploy/windows/**",
+  "frontend/**",
   "pyproject.toml",
   "scripts/*.py",
   "scripts/*.sh",
