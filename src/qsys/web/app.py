@@ -36,6 +36,7 @@ from qsys.web.limit_up_research import LimitUpResearchReader, LimitUpResearchVie
 from qsys.web.paper_chart import history_series, intraday_series
 from qsys.web.research_jobs import ResearchJobConsole
 from qsys.web.service_views import ServiceConsole
+from qsys.web.shell_status import ShellStatusCache
 from qsys.web.spa import SPA_DIST, mount_spa
 from qsys.web.svg import line_chart, multi_line_chart
 from qsys.web.views import MonitorService
@@ -174,6 +175,14 @@ def create_app(
     def live_kill_status():
         from fastapi.responses import JSONResponse
         return JSONResponse(app.state.live_kill.read().to_dict(),
+                            headers={"Cache-Control": "no-store"})
+
+    app.state.shell_status = ShellStatusCache(app.state.live_kill)
+
+    @app.get("/api/shell/status")
+    def shell_status():
+        from fastapi.responses import JSONResponse
+        return JSONResponse(app.state.shell_status.get(),
                             headers={"Cache-Control": "no-store"})
 
     # 新前端（#662）：/app 下的单页应用，与旧页面并存
