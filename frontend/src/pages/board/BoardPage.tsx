@@ -13,6 +13,8 @@ import { CompareView, EFFECT_INFO } from './CompareView'
 import { DayControls } from './DayControls'
 import { LadderMatrix } from './LadderMatrix'
 import { SentimentBar } from './SentimentBar'
+import { ConceptCurves, Timeline } from './SidePanels'
+import './board.css'
 import { StockDrawer } from './StockDrawer'
 
 export const STALE_SECONDS = 45
@@ -86,12 +88,20 @@ export function BoardPage() {
       <Hero {...h} />
       {d.available && d.sentiment && <SentimentBar s={d.sentiment} provisional={!!d.provisional} />}
       {d.available && (
-        <Panel title={view === 'ladder' ? '谁在封板、梯队如何？' : '昨日涨停今天怎样？'}
-          info={view === 'ladder' ? '列为同花顺概念（每只票只归一列：当日涨停家数最多的概念），行为今日连板高度；≈ 为 15 秒快照观测值。' : EFFECT_INFO}
-          extra={<Segmented size="small" value={view} onChange={(v) => setSearch({ view: v === 'ladder' ? null : String(v) })}
-            options={[{ value: 'ladder', label: '题材梯队' }, { value: 'compare', label: '昨日涨停今日表现' }]} />}>
-          {view === 'ladder' ? <LadderMatrix data={d} onPick={setPicked} /> : <CompareView data={d} onPick={setPicked} />}
-        </Panel>
+        <div className="qs-board-grid">
+          <div style={{ minWidth: 0 }}>
+            <Panel title={view === 'ladder' ? '谁在封板、梯队如何？' : '昨日涨停今天怎样？'}
+              info={view === 'ladder' ? '列为同花顺概念（每只票只归一列：当日涨停家数最多的概念），行为今日连板高度；≈ 为 15 秒快照观测值。' : EFFECT_INFO}
+              extra={<Segmented size="small" style={{ maxWidth: '100%', overflowX: 'auto' }} value={view} onChange={(v) => setSearch({ view: v === 'ladder' ? null : String(v) })}
+                options={[{ value: 'ladder', label: '题材梯队' }, { value: 'compare', label: '昨日涨停今日表现' }]} />}>
+              {view === 'ladder' ? <LadderMatrix data={d} onPick={setPicked} /> : <CompareView data={d} onPick={setPicked} />}
+            </Panel>
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <Panel title="哪些题材在发酵？" info="前 4 个题材当日封过板的累计家数（北交所不计入），随封板事件逐步增加。"><ConceptCurves data={d} /></Panel>
+            <Panel title="封板时间轴"><Timeline data={d} onPick={setPicked} /></Panel>
+          </div>
+        </div>
       )}
       {d.available && d.day && <StockDrawer day={d.day} symbol={picked} card={picked ? d.cards?.[picked] : undefined} onClose={() => setPicked(null)} />}
     </>

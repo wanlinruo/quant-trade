@@ -26,9 +26,9 @@ export function DayControls({ data, urlDay, urlAt }: { data: BoardData; urlDay: 
       {data.mode === 'history' && <span style={{ color: p.warn, fontSize: 12 }}>▲ 正在回看 · 只读</span>}
       {(urlDay || urlAt) && <Button size="small" onClick={() => setSearch({ day: null, at: null })}>回到今天</Button>}
       {canReplay && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '1 1 220px', minWidth: 0 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, flex: '1 1 220px', minWidth: 0 }}>
           <span style={{ fontSize: 12, color: p.muted, whiteSpace: 'nowrap' }}>盘中回放</span>
-          <Slider style={{ flex: 1, minWidth: 80 }} min={0} max={times.length - 1} value={idx}
+          <Slider style={{ flex: '1 1 100px', minWidth: 80 }} min={0} max={times.length - 1} value={idx}
             tooltip={{ formatter: (i) => (i === undefined ? '' : times[i]?.slice(11, 19)) }}
             onChangeComplete={(i: number) => replayTo(day!, times[i])} />
           <span style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>{times[idx]?.slice(11, 19)}</span>

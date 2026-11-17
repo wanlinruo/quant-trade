@@ -33,11 +33,11 @@ export function StockDrawer({ day, symbol, card, onClose }: { day: string; symbo
     const prev = d.prev_close
     const line: [string, number | null][] = d.points.map((x) => [x.at, x.price / prev - 1])
     const marks: object[] = []
-    if (d.limit_up) marks.push({ yAxis: d.limit_up / prev - 1, name: '涨停价', label: { formatter: '涨停价', color: p.up }, lineStyle: { color: p.up, type: 'dashed' } })
+    if (d.limit_up) marks.push({ yAxis: d.limit_up / prev - 1, name: '涨停价', label: { formatter: '涨停价', color: p.up, position: 'insideStartTop' }, lineStyle: { color: p.up, type: 'dashed' } })
     for (const e of d.events ?? []) {
       const at = parseLocal(e.at)
       const label = `${KIND[e.kind] ?? e.kind} ${at ? hms(at) : '未知'}`
-      marks.push({ xAxis: e.at, name: label, label: { formatter: label, color: p.muted, fontSize: 10 }, lineStyle: { color: e.kind === 'open' ? p.warn : p.up, type: 'dotted' } })
+      marks.push({ xAxis: e.at, name: label, label: { show: false }, lineStyle: { color: e.kind === 'open' ? p.warn : p.up, type: 'dotted' } })
     }
     return {
       grid: [{ left: 48, right: 16, top: 16, height: '58%' }, { left: 48, right: 16, top: '74%', bottom: 24 }],
@@ -61,6 +61,14 @@ export function StockDrawer({ day, symbol, card, onClose }: { day: string; symbo
       {d && !d.available && <div style={{ color: p.muted }}>{d.message}</div>}
       {d?.available && !d.prev_close && <div>分时 <Missing why="缺昨收价，无法换算涨跌幅" /></div>}
       {option && <EChart option={option} height={360} />}
+      {d?.available && (d.events ?? []).length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 12px', fontSize: 12, marginTop: 6 }}>
+          {(d.events ?? []).map((e, i) => {
+            const at = parseLocal(e.at)
+            return <span key={i} style={{ color: e.kind === 'open' ? p.warn : p.up }}>{KIND[e.kind] ?? e.kind} {at ? hms(at) : '未知'}{e.detail && ` · ${e.detail}`}</span>
+          })}
+        </div>
+      )}
       {d?.available && <div style={{ fontSize: 11, color: p.muted, marginTop: 8 }}>15 秒快照留存；没有逐笔数据，快照之间的封板与开板时刻未知。成交量为相邻快照累计量之差，首点为空。</div>}
     </Drawer>
   )

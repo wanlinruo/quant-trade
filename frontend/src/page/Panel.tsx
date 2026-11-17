@@ -7,7 +7,7 @@ export function Panel({ title, info, extra, children }: { title: ReactNode; info
   const p = usePalette()
   return (
     <section className="qs-panel" style={{ background: p.panel, border: `1px solid ${p.border}`, borderRadius: 4, marginBottom: 12, minWidth: 0 }}>
-      <header style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderBottom: `1px solid ${p.border}` }}>
+      <header style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, padding: '8px 12px', borderBottom: `1px solid ${p.border}` }}>
         <h3 style={{ margin: 0, fontSize: 13, fontWeight: 600, color: p.head }}>{title}</h3>
         {info !== undefined && (
           <Tooltip title={info}><span aria-label="口径说明" style={{ color: p.muted, cursor: 'help', fontSize: 12 }}>ⓘ</span></Tooltip>

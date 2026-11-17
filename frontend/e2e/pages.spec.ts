@@ -2,6 +2,8 @@ import { expect, test } from '@playwright/test'
 import market from './fixtures/market.json' with { type: 'json' }
 import research from './fixtures/research.json' with { type: 'json' }
 import shadow from './fixtures/shadow.json' with { type: 'json' }
+import board from './fixtures/board.json' with { type: 'json' }
+import boardSeries from './fixtures/board-series.json' with { type: 'json' }
 
 const CLEAR = {
   schema_version: 1, checked_at: '2026-11-17T10:40:00',
@@ -15,6 +17,8 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/app/market', (r) => r.fulfill({ json: market }))
   await page.route('**/api/market/limit-up-shadow*', (r) => r.fulfill({ json: shadow }))
   await page.route('**/api/market/limit-up-research*', (r) => r.fulfill({ json: research }))
+  await page.route('**/api/app/board/series*', (r) => r.fulfill({ json: boardSeries }))
+  await page.route(/\/api\/app\/board(\?.*)?$/, (r) => r.fulfill({ json: board }))
 })
 
 async function noOverflow(page: import('@playwright/test').Page) {
@@ -42,5 +46,20 @@ for (const width of [390, 1280, 1600]) {
     await expect(page.getByText('月度稳定吗？')).toBeVisible()
     await expect(page).toHaveURL(/tab=research/)
     await noOverflow(page)
+  })
+
+  test(`board page has no horizontal overflow at ${width}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto('/app/board')
+    await expect(page.getByTestId('hero-title')).toContainText('涨停 72')
+    await expect(page.getByText('谁在封板、梯队如何？')).toBeVisible()
+    await noOverflow(page)
+    await page.getByText('昨日涨停今日表现').click()
+    await expect(page).toHaveURL(/view=compare/)
+    await expect(page.getByTestId('effect-avg')).toBeVisible()
+    await noOverflow(page)
+    await page.locator('[data-item]').first().click()
+    await expect(page.locator('.ant-drawer-title')).toContainText('300500.SZ')
+    await expect(page.locator('.ant-drawer canvas').first()).toBeVisible()
   })
 }
