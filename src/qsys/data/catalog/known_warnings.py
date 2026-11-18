@@ -81,8 +81,9 @@ def judge(row: Mapping, fingerprint: str | None, *,
     known = lookup(str(row.get("check_id")), row.get("metric_id"), entries)
     if known is None:
         return Verdict("new", None, None, "未登记的警告")
-    violations = int(row.get("violations") or 0)
-    over = violations - known.baseline_violations
+    if row.get("violations") is None:  # 缺失不当 0（数据铁律）
+        return Verdict("new", known.issue, None, "违规数缺失，无法与基线比较")
+    over = int(row["violations"]) - known.baseline_violations
     if over > 0:
         return Verdict("new", known.issue, over, f"比基线多 {over}")
     if known.baseline_sample_sha256 is not None:

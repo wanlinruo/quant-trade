@@ -99,3 +99,8 @@ def test_registry_entries_valid():
         assert e.baseline_sample_sha256 is None or re.fullmatch(r"[0-9a-f]{64}", e.baseline_sample_sha256)
     keys = [(e.check_id, e.metric_id) for e in KNOWN_WARNINGS]
     assert len(keys) == len(set(keys))
+
+
+def test_missing_violations_is_new_not_zero():
+    v = judge(row(violations=None), "abc", entries=(entry(),))
+    assert v.kind == "new" and v.over_baseline is None and "违规数缺失" in v.reason

@@ -63,9 +63,12 @@ def main(argv: list[str] | None = None) -> int:
     ).sort(["check_id", "metric_id"])
     lines = ["("]
     for row in picked.iter_rows(named=True):
+        if row["violations"] is None:  # 缺失不当 0：无法形成基线，只提示
+            lines.append(f"    # 跳过 {row['check_id']} / {row['metric_id']}：违规数缺失，无法形成基线")
+            continue
         fields = {
             "check_id": row["check_id"], "metric_id": row["metric_id"], "issue": args.issue,
-            "baseline_violations": int(row["violations"] or 0),
+            "baseline_violations": int(row["violations"]),
             "baseline_sample_sha256": sample_fingerprint(_sample(row, args.sample_root)),
             "registered_on": args.registered_on, "note": f"{run} 生成，待评审",
         }
