@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from qsys.web.board_effect import layer_rates, layer_rows, money_effect
-from qsys.web.limit_up_board import CompareGroup, CompareItem
+from qsys.webapp.queries.board_reader import CompareGroup, CompareItem
 
 
 def g(level, *items):

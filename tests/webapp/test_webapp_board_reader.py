@@ -8,7 +8,7 @@ from qsys.ops.journal import SessionJournal
 from qsys.web.app import create_app
 from qsys.web.config import WebConfig
 from qsys.web.views import MonitorService
-from tests.web.board_fixtures import DAY, PREV, build, reader, shadow, t
+from tests.webapp.board_fixtures import DAY, PREV, build, reader, shadow, t
 
 
 def test_latest_view_builds_ladder_columns_and_compare(tmp_path):

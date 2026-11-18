@@ -166,7 +166,7 @@ def test_route_disabled_and_no_store(client):
 
 
 def test_board_schedule_uses_market_query_cache(warehouse, tmp_path):
-    from tests.web.board_fixtures import build, reader
+    from tests.webapp.board_fixtures import build, reader
     t = FakeTransport()
     build(tmp_path)
     cfg = WebConfig()

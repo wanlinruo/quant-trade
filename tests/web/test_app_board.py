@@ -11,9 +11,9 @@ from qsys.data.board.store import BoardStore
 from qsys.ops.journal import SessionJournal
 from qsys.web.app import create_app
 from qsys.web.config import WebConfig
-from qsys.web.limit_up_board import LimitUpBoardReader
+from qsys.webapp.queries.board_reader import LimitUpBoardReader
 from qsys.web.views import MonitorService
-from tests.web.board_fixtures import DAY, NAMES, PREV, build, q
+from tests.webapp.board_fixtures import DAY, NAMES, PREV, build, q
 
 PREV2 = date(2026, 11, 11)
 

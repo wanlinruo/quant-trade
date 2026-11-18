@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from qsys.data.board.concepts import ConceptSnapshot
 from qsys.data.board.store import BoardStore
 from qsys.live.messages import MarketQuote
-from qsys.web.limit_up_board import LimitUpBoardReader
+from qsys.webapp.queries.board_reader import LimitUpBoardReader
 
 DAY, PREV = date(2026, 11, 13), date(2026, 11, 12)
 NAMES = {"A.SH": "甲科技", "B.SZ": "乙智能", "C.SZ": "丙精密"}

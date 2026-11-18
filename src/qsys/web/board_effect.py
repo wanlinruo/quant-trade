@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from qsys.web.limit_up_board import CompareGroup, CompareItem
+from qsys.webapp.queries.board_reader import CompareGroup, CompareItem
 
 BIG_LOSS = -0.05
 _BREAK = {"rush", "missed"}
