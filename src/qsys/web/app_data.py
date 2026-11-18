@@ -27,7 +27,6 @@ from qsys.web.data_app_views import (
     warning_sources,
 )
 from qsys.web.domain_views import domain_label
-from qsys.web.domain_views import DomainService
 from qsys.web.read_cache import SingleFlightCache
 
 LIST_TTL_SECONDS = 60.0
@@ -102,8 +101,18 @@ def register_app_data(app: FastAPI, *, assets, catalog) -> None:
         for n in graph["nodes"]:
             if n["id"].startswith("dataset:"):
                 n["status"] = status_by_id.get(n["ref"], "gray")
+        domains: dict[str, dict] = {}
+        for t in tables:
+            d = domains.setdefault(t["domain"], {"domain": t["domain"], "label": t["domain_label"],
+                                                 "tables": 0, "sources": set(),
+                                                 "status_counts": dict.fromkeys(("red", "yellow", "gray", "green"), 0)})
+            d["tables"] += 1
+            d["status_counts"][t["status"]] = d["status_counts"].get(t["status"], 0) + 1
+            d["sources"].update(DATASETS[t["id"]].sources)
+        domain_rows = [{**d, "sources": len(d["sources"])} for d in domains.values()]
+        domain_rows.sort(key=lambda d: d["label"])
         return {"enabled": True, "dimension_labels": DIMENSION_LABELS, "status_labels": STATUS_LABELS,
-                "tables": tables, "domains": jsonable_encoder(DomainService.rows()), "lineage": graph}
+                "tables": tables, "domains": domain_rows, "lineage": graph}
 
     def table_rows(include_raw: bool) -> dict:
         rows = []

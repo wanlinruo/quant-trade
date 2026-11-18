@@ -64,7 +64,9 @@ def test_overview_matrix_gray_without_evidence(make):
         assert set(t["dimensions"]) == {"freshness", "completeness", "structure", "validity", "lineage"}
         assert set(t["dimensions"].values()) == {"gray"}
     assert body["dimension_labels"]["freshness"] == "时效"
-    assert body["domains"]
+    dom = body["domains"]
+    assert dom and set(dom[0]) == {"domain", "label", "tables", "sources", "status_counts"}
+    assert sum(d["tables"] for d in dom) == len(body["tables"])
 
 
 def test_overview_lineage_nodes_cover_datasets(make):
