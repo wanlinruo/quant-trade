@@ -65,3 +65,21 @@
 异常收尾统一要求：撤销所有活动委托，确认券商持仓；Linux / Windows 同步退回
 `mode=shadow`、`orders_enabled=false`，重启 shadow agent，确认其心跳后才解除 lease，
 再恢复 shadow core。任何残仓、未知委托或未知现金差存在时，#137 保持阻断且不启动策略实盘。
+
+## 停机闸解除前核对（#662 计划 05）
+
+解除实盘急停（`kill.py resume live`）之前，先运行受管的只读核对：
+
+```bash
+uv run python scripts/kill.py review live --confirmed-by <维护者>        # 人读
+uv run python scripts/kill.py review live --json --confirmed-by <维护者> # 机器可读
+```
+
+- 逐项给出当前真实状态与判定：三道闸、触发原因是否消除、执行端与行情心跳、执行端交易姿态、账户快照、
+  资金持仓对账、本系统未终结委托、券商活动委托与本系统账本、维护者确认。项目 ID 稳定。
+- 退出码 0 = ready、1 = blocked（有失败或读不到的项）、3 = needs_confirmation。
+- 券商活动委托多于本系统时须确认来源（#666，例如人工新债申购），不推断。
+- 只读：不写 Redis、不改 KILL、不发控制指令；冷库（live-core 已停、无 WAL）以 immutable 读取，
+  不在状态目录创建辅助文件。
+- 解除顺序仍按 AGENTS.md §2.1（#670）：旧版 live-core 仍运行时先解闸、确认三道闸与心跳正常，再发布。
+- `resume` 目前不以 `review` 结论为硬门槛（是否改为硬门槛待维护者决定）。

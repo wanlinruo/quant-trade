@@ -15,6 +15,7 @@ import pytest
 SCRIPTS = [
     "gen_frontend_contracts",
     "replay_public_minute_prefix",
+    "known_warnings_baseline",
     "prune_component_releases",
     "prepare_qmt_authorized_order",
     "prepare_qmt_signal_executor",

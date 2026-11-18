@@ -5,7 +5,7 @@
 
 from datetime import date
 
-from qsys.ops.alerts import send_email
+from qsys.ops.alerts import Severity, send_email
 from qsys.ops.digest import build_digest
 
 DAY = date(2026, 9, 28)
@@ -436,3 +436,58 @@ def test_an_unreadable_heartbeat_says_so_rather_than_claiming_it_is_down():
 
     assert "问不出来" in digest.as_text()
     assert "无心跳" not in digest.as_text()
+
+
+# ---- #662 计划 03：日报改读结构化告警事件，兼容旧账本 ----
+
+def _events_and_legacy(tmp_path):
+    import json
+    from datetime import date, datetime
+
+    from qsys.ops.alert_events import SHANGHAI
+    from qsys.ops.alerts import AlertBus, RecordingAlertSink, ledger
+
+    class Broken(RecordingAlertSink):
+        def send(self, event):
+            raise RuntimeError("down")
+
+    at = datetime(2026, 11, 18, 10, 0, tzinfo=SHANGHAI)
+    AlertBus([RecordingAlertSink()], ledger(tmp_path), source="live-core", clock=lambda: at).emit(
+        "live.reject.fuse")
+    AlertBus([Broken()], ledger(tmp_path / "health-observer"), source="health-observer",
+             clock=lambda: at).emit("observer.process.down", subject="paper",
+                                    params={"title": "模拟交易已停止"}, severity=Severity.CRITICAL)
+    legacy = {"at": "2026-11-18T09:00:00", "severity": "WARNING", "title": "旧格式", "delivered": 1,
+              "failed": []}
+    (tmp_path / "paper").mkdir()
+    (tmp_path / "paper" / "2026-11-18.jsonl").write_text(json.dumps(legacy, ensure_ascii=False) + "\n",
+                                                         encoding="utf-8")
+    return date(2026, 11, 18)
+
+
+def test_digest_merges_events_and_legacy_ledger(tmp_path):
+    from qsys.ops.alerts import delivery_records
+    day = _events_and_legacy(tmp_path)
+    records = delivery_records(tmp_path, day)
+    assert sorted(r["title"] for r in records) == ["实盘连续拒单熔断", "旧格式", "模拟交易已停止"]
+    assert {r["severity"] for r in records} == {"CRITICAL", "WARNING"}
+    keys = {r["title"]: r.get("key") for r in records}
+    assert keys["实盘连续拒单熔断"] == "live.reject.fuse" and keys["旧格式"] is None
+
+
+def test_digest_counts_failed_deliveries_from_events(tmp_path):
+    from qsys.ops.alerts import delivery_records
+    day = _events_and_legacy(tmp_path)
+    digest = build_digest(day, trading=False, deliveries=delivery_records(tmp_path, day))
+    text = digest.as_text() if hasattr(digest, "as_text") else str(digest)
+    assert "3 条（CRITICAL 2，WARNING 1）" in text
+    assert "1 条，通道：Broken" in text
+
+
+def test_digest_section_text_unchanged_for_legacy_records():
+    from qsys.ops.digest import _notification_section
+    old = [{"at": "x", "severity": "WARNING", "title": "a", "delivered": 1, "failed": []},
+           {"at": "x", "severity": "CRITICAL", "title": "b", "delivered": 0, "failed": ["WebhookAlertSink"]}]
+    section = _notification_section(old)
+    assert [(l.label, l.value) for l in section.lines] == [
+        ("今日推送", "2 条（CRITICAL 1，WARNING 1）"), ("投递失败", "1 条，通道：WebhookAlertSink")]

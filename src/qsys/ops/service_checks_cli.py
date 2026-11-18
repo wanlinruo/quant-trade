@@ -55,20 +55,23 @@ def _notify(
     """Send the nightly result to the operations alert sink without affecting checks."""
     try:
         from qsys.live.config import load_deploy_config
-        from qsys.ops.alerts import AlertBus, WebhookAlertSink, ledger
+        from qsys.ops.alerts import AlertBus, Severity, WebhookAlertSink, ledger
 
         url = load_deploy_config(config_path).alerts.ops_url
         if not url:
             return
-        bus = AlertBus([WebhookAlertSink(url)], ledger(ledger_root))
+        bus = AlertBus([WebhookAlertSink(url)], ledger(ledger_root), source="service-checks")
         bad = [problem for problem in problems if problem[0] == BAD]
         warn = [problem for problem in problems if problem[0] == WARN]
         if not bad and not warn:
-            bus.info(f"服务质检通过（{day}）", f"{total} 项全部正常")
+            bus.emit("checks.service.passed", params={"day": day}, detail=f"{total} 项全部正常",
+                     evidence={"total": total})
             return
         lines = [f"{name}：{detail}" for _, name, detail in (bad + warn)[:10]]
         title = f"服务质检 {day}：失败 {len(bad)} 项，告警 {len(warn)} 项"
-        (bus.critical if bad else bus.warning)(title, "\n".join(lines))
+        bus.emit("checks.service.problems", params={"title": title}, detail="\n".join(lines),
+                 severity=Severity.CRITICAL if bad else Severity.WARNING,
+                 evidence={"bad": len(bad), "warn": len(warn), "total": total})
     except Exception as exc:  # 通知挂了不能影响质检结论
         log.warning("service_checks.notify_failed", error=str(exc))
 

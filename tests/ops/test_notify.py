@@ -31,7 +31,7 @@ def record(**kw) -> RunRecord:
 
 def _bus():
     sink = RecordingAlertSink()
-    return AlertBus([sink]), sink
+    return AlertBus([sink], source="test"), sink
 
 
 def test_active_positions_ignore_zero_but_expose_negative_anomalies():
@@ -115,7 +115,7 @@ def test_severity_matches_how_bad_it_is():
     notifier.on_run(record(rejects=1))
     notifier.on_run(record(orders=1))
 
-    assert [a.severity for a in sink.alerts] == [
+    assert [a.severity for a in sink.events] == [
         Severity.CRITICAL, Severity.WARNING, Severity.INFO,
     ]
 
@@ -133,7 +133,7 @@ def test_a_broken_sink_never_breaks_the_caller():
         def send(self, alert):
             raise RuntimeError("企微挂了")
 
-    notifier = StrategyNotifier(AlertBus([Broken()]), "实盘")
+    notifier = StrategyNotifier(AlertBus([Broken()], source="test"), "实盘")
 
     assert notifier.on_run(record(orders=1)) is True   # 不抛
 
@@ -222,8 +222,8 @@ def test_the_premarket_message_is_sent_when_something_must_be_sold_today():
         record(phase="session_start"), TradeContext(positions=(HELD,)))
 
     assert sent is True
-    assert "盘前就位" in sink.alerts[0].title
-    assert "600036.SH" in sink.alerts[0].detail
+    assert "盘前就位" in sink.events[0].title
+    assert "600036.SH" in sink.events[0].detail
 
 
 def test_an_empty_morning_is_not_worth_waking_you_for():
@@ -231,7 +231,7 @@ def test_an_empty_morning_is_not_worth_waking_you_for():
     bus, sink = _bus()
     sent = StrategyNotifier(bus, "模拟").on_run(record(phase="session_start"))
 
-    assert sent is False and sink.alerts == []
+    assert sent is False and sink.events == []
 
 
 def test_a_premarket_failure_is_still_sent():
@@ -239,7 +239,7 @@ def test_a_premarket_failure_is_still_sent():
     sent = StrategyNotifier(bus, "模拟").on_run(
         record(phase="session_start", error="行情未就绪"))
 
-    assert sent is True and sink.alerts[0].severity is Severity.CRITICAL
+    assert sent is True and sink.events[0].severity is Severity.CRITICAL
 
 
 def test_the_old_two_fixed_messages_are_unchanged():

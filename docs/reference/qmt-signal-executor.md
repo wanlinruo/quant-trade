@@ -83,7 +83,7 @@
 |---|---|
 | 同一指令重投 | 第二次只重放账本事实（`transport_received`），不再发给执行器 |
 | 远程 KILL | 买入拒绝、卖出仍下达；网关同时落本地停机闸；清 KILL 后本地闸仍拦截，人工解除后恢复 |
-| 核心心跳超时 | 约 10 秒后撤单并落本地闸（`core heartbeat timeout`），买入拒绝 |
+| 核心心跳超时 | 约 10 秒后撤单并落本地闸（`core heartbeat timeout`），买入拒绝。#677 起阈值为 30 秒 |
 | 回执丢失（执行器停止） | `unknown`（`adapter_error:TimeoutError`），不重发 |
 | 同号冲突 | 不执行、不覆盖原意图 |
 

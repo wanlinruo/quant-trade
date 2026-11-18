@@ -95,7 +95,7 @@ def main(argv: list[str] | None = None) -> int:
             transport, config.streams, store,
             local_kill_path=Path(args.kill_switch),
             journal_warehouse=Path(args.journal_warehouse) if args.journal_warehouse else None,
-            alerts=AlertBus(sinks, ledger(args.alert_ledger)),
+            alerts=AlertBus(sinks, ledger(args.alert_ledger), source="live-core"),
             shadow=False, dispatch_tracking=config.safety.dispatch_tracking,
             risk=config.risk, params=dict(source.params),
         )
@@ -117,7 +117,7 @@ def main(argv: list[str] | None = None) -> int:
                 if cancel_retry_at is not None and time.monotonic() >= cancel_retry_at:
                     if _cancel_all(runtime):
                         cancel_retry_at = None
-                        _alert(runtime, "熔断撤单已补发", "Redis 恢复后已重新投递 cancel_all")
+                        _alert(runtime, "live.fuse.cancel_resent", "Redis 恢复后已重新投递 cancel_all")
                     else:
                         cancel_retry_at = time.monotonic() + CANCEL_RETRY_SECONDS
                 time.sleep(max(0.2, args.poll))
@@ -136,11 +136,11 @@ def _cancel_all(runtime) -> bool:
         return False
 
 
-def _alert(runtime, title: str, detail: str) -> None:
+def _alert(runtime, key: str, detail: str) -> None:
     try:
-        runtime.alerts.critical(title, detail)
+        runtime.alerts.emit(key, detail=detail)
     except Exception as exc:  # 告警失败不能让熔断后的进程退出
-        log.error("live_core.fuse_alert_failed", title=title, error=str(exc))
+        log.error("live_core.fuse_alert_failed", key=key, error=str(exc))
 
 
 def _fuse(runtime, exc: Exception) -> float | None:
@@ -161,7 +161,7 @@ def _fuse(runtime, exc: Exception) -> float | None:
     cancelled = _cancel_all(runtime)
     if not cancelled:
         notes.append(f"撤单未确认，将每 {CANCEL_RETRY_SECONDS:.0f} 秒重试")
-    _alert(runtime, "实盘核心连续故障熔断", "；".join([f"{reason}: {exc}", *notes]))
+    _alert(runtime, "live.core.fuse", "；".join([f"{reason}: {exc}", *notes]))
     return None if cancelled else time.monotonic() + CANCEL_RETRY_SECONDS
 
 

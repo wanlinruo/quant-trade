@@ -111,7 +111,7 @@ def test_three_error_fuse_keeps_isolated_kill_and_existing_cancel_behavior(monke
         return SimpleNamespace(
             heartbeats=nullcontext(), tick=tick,
             kill_switch=KillSwitch(args[4], key="control:kill", local_path=kwargs["local_kill_path"]),
-            broker=SimpleNamespace(cancel_all=cancel), alerts=SimpleNamespace(critical=critical),
+            broker=SimpleNamespace(cancel_all=cancel), alerts=SimpleNamespace(emit=critical),
         )
 
     monkeypatch.setattr(core_cli, "LiveRuntime", runtime)
@@ -139,7 +139,7 @@ def _fuse_runtime(cancel, critical, *, ticks):
         return SimpleNamespace(
             heartbeats=nullcontext(), tick=tick,
             kill_switch=KillSwitch(args[4], key="control:kill", local_path=kwargs["local_kill_path"]),
-            broker=SimpleNamespace(cancel_all=cancel), alerts=SimpleNamespace(critical=critical),
+            broker=SimpleNamespace(cancel_all=cancel), alerts=SimpleNamespace(emit=critical),
         )
 
     return runtime
@@ -158,10 +158,10 @@ def test_fuse_survives_cancel_all_redis_timeout_and_retries_cancel(monkeypatch, 
         core_cli.main(isolated_args(tmp_path))
     assert cancel.call_count == 3
     assert (tmp_path / "isolated/KILL").is_file()
-    titles = [c.args[0] for c in critical.call_args_list]
-    assert titles[0] == "实盘核心连续故障熔断"
-    assert "撤单未确认" in critical.call_args_list[0].args[1]
-    assert titles[-1] == "熔断撤单已补发"
+    keys = [c.args[0] for c in critical.call_args_list]
+    assert keys[0] == "live.core.fuse"
+    assert "撤单未确认" in critical.call_args_list[0].kwargs["detail"]
+    assert keys[-1] == "live.fuse.cancel_resent"
 
 
 def test_fuse_cancel_success_is_not_repeated(monkeypatch, tmp_path):

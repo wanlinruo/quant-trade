@@ -393,3 +393,30 @@ def test_resume_grace_expires_and_fails_closed_again(tmp_path):
     assert agent.enforce_core_heartbeat() is False
     assert (tmp_path / "K").read_text() == "core heartbeat timeout"
     assert adapter.cancelled is True
+
+
+def _core_beat_aged(tmp_path, seconds):
+    from datetime import timedelta
+
+    agent, adapter, transport = _stopped_core_agent(tmp_path)
+    transport.set_key(
+        f"{STREAMS.heartbeat}:core",
+        Heartbeat(source="core", at=datetime.now() - timedelta(seconds=seconds)).model_dump_json(),
+    )
+    return agent, adapter
+
+
+def test_a_core_heartbeat_gap_under_30_seconds_does_not_latch_the_kill(tmp_path):
+    # 11-18 09:42：一次隧道超时让核心心跳空窗 >10 秒，网关即锁存本地闸；Linux 侧
+    # 同一故障只算 1 次失败（#677）。维护者 11-18 定阈值 30 秒。
+    agent, adapter = _core_beat_aged(tmp_path, 25)
+    assert agent.enforce_core_heartbeat() is True
+    assert not (tmp_path / "K").exists()
+    assert adapter.cancelled is False
+
+
+def test_a_core_heartbeat_gap_over_30_seconds_still_fails_closed(tmp_path):
+    agent, adapter = _core_beat_aged(tmp_path, 31)
+    assert agent.enforce_core_heartbeat() is False
+    assert (tmp_path / "K").read_text() == "core heartbeat timeout"
+    assert adapter.cancelled is True
