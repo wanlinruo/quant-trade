@@ -1,5 +1,79 @@
 // 由 scripts/gen_frontend_contracts.py 生成，勿手改。契约来源：src/qsys/webapp/contracts/
 
+export interface ArtifactInfo {
+  path: string
+  bytes: number | null
+  sha256: string | null
+}
+
+export interface BacktestJobInfo {
+  id: string
+  strategy_name: string
+  status: string
+  progress: number
+  total: number
+  percent: number
+  current_session: string | null
+  error: string | null
+  config: Record<string, JsonValue>
+}
+
+export interface BacktestList {
+  schema_version: 1
+  enabled: true
+  rows: BacktestRow[]
+}
+
+export interface BacktestPending {
+  schema_version: 1
+  enabled: true
+  report: false
+  strategy_id: string
+  job: BacktestJobInfo
+  log_tail: string
+}
+
+export interface BacktestReport {
+  schema_version: 1
+  enabled: true
+  report: true
+  name: string
+  strategy_id: string | null
+  job: BacktestJobInfo | null
+  summary: RunSummary
+  metrics: Record<string, number>
+  series: ReturnPoint[]
+  episodes: Episode[]
+  monthly: MonthReturn[]
+  fills: (Record<string, string | number | boolean | null>)[]
+  fills_total: number
+  rejects: (Record<string, string | number | boolean | null>)[]
+  files: RunFileInfo[]
+  warnings: string[]
+}
+
+export interface BacktestRow {
+  id: string
+  strategy: string
+  strategy_id: string | null
+  start: string | null
+  end: string | null
+  created_at: string | null
+  started_at: string | null
+  finished_at: string | null
+  duration_seconds: number | null
+  status: string
+  cost_model: string | null
+  total_return: number | null
+  benchmark_return: number | null
+  max_drawdown: number | null
+  has_report: boolean
+  source: "web" | "cli"
+  progress: number | null
+  total: number | null
+  current_session: string | null
+}
+
 export interface Board {
   schema_version: 1
   available: true
@@ -100,8 +174,20 @@ export interface BoardSeries {
   limit_up: number | null
   prev_close: number | null
   first_seal: string | null
-  points: SeriesPoint[]
-  events: SeriesEvent[]
+  points: BoardSeriesPoint[]
+  events: BoardSeriesEvent[]
+}
+
+export interface BoardSeriesEvent {
+  at: string
+  kind: string
+  detail: string
+}
+
+export interface BoardSeriesPoint {
+  at: string
+  price: number
+  volume: number | null
 }
 
 export interface BoardShadow {
@@ -120,6 +206,11 @@ export interface BoardUnavailable {
   message: string
   day: string | null
   days: string[]
+}
+
+export interface Cancelled {
+  schema_version: 1
+  status: "cancelled" | "cancellation-requested"
 }
 
 export interface CompareGroup {
@@ -145,11 +236,23 @@ export interface ConceptCurve {
   points: [string, number][]
 }
 
+export interface Created {
+  schema_version: 1
+  id: string
+}
+
 export interface EffectItem {
   symbol: string
   name: string
   pct: number | null
   status: "promoted" | "broken" | "rush" | "limit_down" | "unknown" | "missed"
+}
+
+export interface Episode {
+  peak_date: string
+  trough_date: string
+  recovery_date: string | null
+  depth: number
 }
 
 export interface ErrorBody {
@@ -182,6 +285,8 @@ export interface IndexQuote {
   change_pct: number
   amount: number
 }
+
+export type JsonValue = unknown
 
 export interface KillSource {
   id: string
@@ -324,6 +429,22 @@ export interface MoneyEffect {
   top_items: EffectItem[]
 }
 
+export interface MonthReturn {
+  month: string
+  value: number | null
+}
+
+export interface ParameterSpec {
+  name: string
+  type: "int" | "float" | "bool" | "str"
+  default: number | boolean | string | null
+  label: string
+  description: string
+  minimum: number | null
+  maximum: number | null
+  choices: (number | boolean | string)[]
+}
+
 export interface RegimeDay {
   dt: string
   limit_up_count: number | null
@@ -361,6 +482,11 @@ export interface ResearchDay {
   entries: ResearchEntry[]
 }
 
+export interface ResearchDisabled {
+  schema_version: 1
+  enabled: false
+}
+
 export interface ResearchEntry {
   rank: number
   symbol: string
@@ -381,6 +507,27 @@ export interface ResearchHistoryDay {
   split: "TEST" | "OBS"
   precision_at_20: number
   touch_precision_at_20: number
+}
+
+export interface ResearchJob {
+  id: string
+  state: string
+  detail: string
+  task: string | null
+  parameters: Record<string, JsonValue>
+  timeout_seconds: number | null
+  created_at: string | null
+  code_sha: string | null
+  snapshot_id: string | null
+  snapshot_content_sha256: string | null
+  artifacts: ArtifactInfo[]
+}
+
+export interface ResearchJobList {
+  schema_version: 1
+  enabled: true
+  submission_enabled: boolean
+  jobs: ResearchJob[]
 }
 
 export interface ResearchMonth {
@@ -408,16 +555,43 @@ export interface ResearchSummary {
   promoted_to_shadow: boolean
 }
 
-export interface SeriesEvent {
-  at: string
-  kind: string
-  detail: string
+export interface Resubmitted {
+  schema_version: 1
+  id: string
+  resubmitted_from: string
 }
 
-export interface SeriesPoint {
-  at: string
-  price: number
-  volume: number | null
+export interface ReturnPoint {
+  date: string
+  strategy: number | null
+  benchmark: number | null
+  excess: number | null
+  drawdown: number | null
+}
+
+export interface RunFileInfo {
+  name: string
+  size: number
+}
+
+export interface RunSummary {
+  name: string
+  run_id: string
+  strategy: string
+  start: string | null
+  end: string | null
+  initial_value: number | null
+  total_value: number | null
+  cumulative_return: number | null
+  buys: number | null
+  sells: number | null
+  rejects: number | null
+  closed_lots: number | null
+  cost_model: string | null
+  entry_fill: string | null
+  params: Record<string, JsonValue>
+  generated_at: string | null
+  source: "web" | "cli"
 }
 
 export interface ShadowBoard {
@@ -476,4 +650,50 @@ export interface ShellStatus {
   qmt: null
   alerts_open: number | null
   missing: Record<string, string>
+}
+
+export interface StrategyDetail {
+  id: string
+  name: string
+  updated_at: string | null
+  version_id: string
+  stage: "live" | "paper" | "backtest" | "draft"
+  stage_label: string
+  stage_detail: string
+  in_use: boolean
+  used_by: string[]
+  latest_backtest: BacktestRow | null
+  schema_version: 1
+  enabled: true
+  core_label: string
+  source: string
+  parameters: ParameterSpec[]
+  versions: StrategyVersion[]
+  backtests: BacktestRow[]
+}
+
+export interface StrategyList {
+  schema_version: 1
+  enabled: true
+  core_label: string
+  templates: string[]
+  strategies: StrategyRow[]
+}
+
+export interface StrategyRow {
+  id: string
+  name: string
+  updated_at: string | null
+  version_id: string
+  stage: "live" | "paper" | "backtest" | "draft"
+  stage_label: string
+  stage_detail: string
+  in_use: boolean
+  used_by: string[]
+  latest_backtest: BacktestRow | null
+}
+
+export interface StrategyVersion {
+  id: string
+  created_at: string | null
 }

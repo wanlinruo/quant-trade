@@ -37,7 +37,6 @@ from qsys.web.paper_chart import history_series, intraday_series
 from qsys.web.research_jobs import ResearchJobConsole
 from qsys.web.service_views import ServiceConsole
 from qsys.web.app_data import register_app_data
-from qsys.web.app_research import register_app_research
 from qsys.webapp.app import WebappDeps, mount_webapp
 from qsys.web.svg import line_chart, multi_line_chart
 from qsys.web.views import MonitorService
@@ -186,10 +185,21 @@ def create_app(
     if deps.board is None:
         deps.board = limit_up_board  # 旧打板页与新接口共用同一读取器
     register_app_data(app, assets=assets, catalog=catalog)
-    register_app_research(app, workbench=workbench, backtests=backtests, paper=paper,
-                          research_jobs=research_jobs, strategy_templates=strategy_templates,
-                          shadow_lineage=shadow_lineage, core_label=core_label,
-                          backtest_rows=_backtest_rows)
+    # 研究侧新接口（R3）与旧页面共用同一组服务；deps 未显式给出时用本函数参数补齐
+    if deps.workbench is None:
+        deps.workbench = workbench
+    if deps.runs is None and backtests is not None:
+        from qsys.webapp.queries.backtest_runs import BacktestRuns
+        deps.runs = BacktestRuns(backtests.root)
+    if deps.paper is None:
+        deps.paper = paper
+    if deps.research_jobs is None:
+        deps.research_jobs = research_jobs
+    if deps.strategy_templates is None:
+        deps.strategy_templates = strategy_templates
+    if deps.shadow_lineage is None:
+        deps.shadow_lineage = shadow_lineage
+    deps.core_label = core_label  # 部署模式只有一个来源：create_app 的 core_label
 
     # 新前端（#662）：/app 下的单页应用，与旧页面并存
     mount_webapp(app, deps)

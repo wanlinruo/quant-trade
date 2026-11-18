@@ -190,13 +190,13 @@ class BoardUnavailable(Contract):
     days: list[date]
 
 
-class SeriesPoint(Contract):
+class BoardSeriesPoint(Contract):
     at: Timestamp
     price: float
     volume: int | None  # 相邻快照累计成交量之差；首点或回退为 None
 
 
-class SeriesEvent(Contract):
+class BoardSeriesEvent(Contract):
     at: Timestamp
     kind: str
     detail: str
@@ -211,5 +211,5 @@ class BoardSeries(Contract):
     limit_up: float | None
     prev_close: float | None
     first_seal: Timestamp | None
-    points: list[SeriesPoint]
-    events: list[SeriesEvent]
+    points: list[BoardSeriesPoint]
+    events: list[BoardSeriesEvent]

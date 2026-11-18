@@ -87,3 +87,9 @@ def test_every_route_response_model_is_exported(warehouse):
             continue
         missing = {m for m in _members(model) if issubclass(m, Contract)} - exported
         assert not missing, f"{route.path} 的响应模型未登记到 EXPORTED：{missing}"
+
+
+def test_exported_contract_names_are_unique():
+    """不同领域的契约重名时 pydantic 会生成带模块路径的长名字，前端无法使用：契约名必须全局唯一。"""
+    out = GENERATED.read_text(encoding="utf-8")
+    assert "__" not in "".join(line for line in out.splitlines() if line.startswith("export "))

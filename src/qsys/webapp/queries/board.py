@@ -16,7 +16,7 @@ import structlog
 
 from qsys.webapp.cache import SingleFlightCache
 from qsys.webapp.contracts.base import LOCAL_TZ
-from qsys.webapp.contracts.board import Board, BoardSeries, BoardUnavailable, SeriesEvent
+from qsys.webapp.contracts.board import Board, BoardSeries, BoardUnavailable, BoardSeriesEvent
 from qsys.webapp.contracts.market import MarketSchedule
 from qsys.webapp.queries.board_effect import layer_rates, layer_rows, money_effect
 
@@ -102,6 +102,6 @@ class BoardQuery:
             return BoardSeries(available=False, message=UNCONFIGURED, symbol=symbol, name="",
                                limit_up=None, prev_close=None, first_seal=None, points=[], events=[])
         view = self._reader.series(day, symbol)
-        events = [SeriesEvent(at=e.at, kind=e.kind, detail=e.detail)
+        events = [BoardSeriesEvent(at=e.at, kind=e.kind, detail=e.detail)
                   for e in self._reader.symbol_events(day, symbol)]
         return BoardSeries.model_validate(view.model_dump() | {"events": events})

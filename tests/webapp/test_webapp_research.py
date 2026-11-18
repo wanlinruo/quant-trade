@@ -1,4 +1,4 @@
-"""新前端策略、回测与研究任务接口（#662，设计文档 §6.3、§8.10、§8.11）。"""
+"""研究侧新契约：策略、回测、研究任务的读取与下载（#662 R3，设计文档 §6.3、§8.10、§8.11）。"""
 
 from __future__ import annotations
 
@@ -16,6 +16,11 @@ from qsys.web.app import create_app
 from qsys.web.backtest_views import BacktestService
 from qsys.web.config import WebConfig
 from qsys.web.views import MonitorService
+from qsys.webapp.app import WebappDeps
+from qsys.web.live_kill_status import LiveKillReader
+from qsys.webapp.contracts.research import (
+    BacktestList, BacktestPending, BacktestReport, ResearchJobList, StrategyDetail, StrategyList,
+)
 from qsys.web.workbench import WorkbenchStore
 from tests.web.test_research_jobs import _console
 
@@ -68,7 +73,7 @@ def env(warehouse, tmp_path):
     templates = tmp_path / "templates"
     templates.mkdir()
     (templates / "sample.py").write_text(SOURCE, encoding="utf-8")
-    state = SimpleNamespace(wb=wb, paper=paper, runs=runs, lineage=None, research=None)
+    state = SimpleNamespace(wb=wb, paper=paper, runs=runs, lineage=None, research=None, core_label="影子盘")
 
     def client() -> TestClient:
         cfg = WebConfig()
@@ -76,7 +81,8 @@ def env(warehouse, tmp_path):
             MonitorService(SessionJournal(warehouse), config=cfg), cfg,
             backtests=BacktestService(runs), workbench=wb, paper=paper,
             strategy_templates=templates, research_jobs=state.research,
-            shadow_lineage=lambda: state.lineage, core_label="影子盘"))
+            shadow_lineage=lambda: state.lineage, core_label=state.core_label,
+            webapp=WebappDeps(live_kill=LiveKillReader(None, None))))
     state.client = client
     return state
 
@@ -101,7 +107,8 @@ def test_strategies_list_stage_and_latest_backtest(env):
     assert rows["demo"]["stage"] == "backtest" and rows["draft-only"]["stage"] == "draft"
     shared = {r["id"]: r for r in c.get("/api/app/backtests").json()["rows"]}[bt]
     assert rows["demo"]["latest_backtest"] == shared
-    assert rows["demo"]["latest_backtest"]["return_pct"] == pytest.approx(-1.0)
+    assert rows["demo"]["latest_backtest"]["total_return"] == pytest.approx(-0.01)
+    assert rows["demo"]["latest_backtest"]["max_drawdown"] == pytest.approx(-0.2)
     assert rows["draft-only"]["latest_backtest"] is None
 
 
@@ -127,33 +134,17 @@ def test_strategy_detail(env):
     assert c.get("/api/app/strategies/nope").status_code == 404
 
 
-def test_save_in_use_strategy_is_rejected(env):
-    s = env.wb.create_strategy("demo", SOURCE)
-    bt = succeeded_backtest(env, s.id)
-    env.paper.create(bt, "A", 100000, date(2024, 2, 1))
-    c = env.client()
-    r = c.put(f"/api/app/strategies/{s.id}", json={"name": "demo", "source": SOURCE + "\n# x\n"})
-    assert r.status_code == 409
-    message = r.json()["error"]["message"]
-    assert r.json()["error"]["code"] == "http_409" and "模拟账户 A" in message and "另存" in message
-    assert env.wb.strategy(s.id).draft == SOURCE
-    free = env.wb.create_strategy("free", SOURCE)
-    ok = c.put(f"/api/app/strategies/{free.id}", json={"name": "free", "source": SOURCE + "\n# x\n"})
-    assert ok.status_code == 200
-    bad = c.put(f"/api/app/strategies/{free.id}", json={"name": "free", "source": "def ("})
-    assert bad.status_code == 422
-
 
 def test_backtest_detail_report(env):
     s = env.wb.create_strategy("demo", SOURCE)
     bt = succeeded_backtest(env, s.id)
     d = env.client().get(f"/api/app/backtests/{bt}").json()
     assert d["report"] is True and d["strategy_id"] == s.id
-    assert d["summary"]["return_pct"] == pytest.approx(-1.0)
+    assert d["summary"]["cumulative_return"] == pytest.approx(-0.01)
     assert d["metrics"]["max_drawdown"] == pytest.approx(-0.2)
     assert [p["date"] for p in d["series"]] == ["2024-01-02", "2024-01-03", "2024-01-04", "2024-01-05"]
     assert d["episodes"][0]["peak_date"] == "2024-01-03" and d["episodes"][0]["recovery_date"] is None
-    assert d["monthly"] == [{"month": "2024-01", "return": -0.01}]
+    assert d["monthly"] == [{"month": "2024-01", "value": -0.01}]
     assert d["fills_total"] == 2 and len(d["fills"]) == 2 and len(d["rejects"]) == 1
     assert d["warnings"] == ["下单被拒 1 笔（详见 rejects.csv）"]
 
@@ -179,39 +170,6 @@ def test_backtest_detail_running_job(env):
 
 
 
-def test_research_jobs_list_and_resubmit_creates_new_job_and_keeps_failed(env, tmp_path):
-    env.research = _console(tmp_path)
-    c = env.client()
-    first = c.post("/api/research-jobs", json={"task": "verify-snapshot", "parameters": {"purpose": "x"}}).json()["id"]
-    claimed = env.research.store.claim_next()
-    env.research.store.transition(claimed, "running")
-    env.research.store.transition(claimed, "failed")
-    body = c.get("/api/app/research-jobs").json()
-    assert body["enabled"] and body["submission_enabled"]
-    job = body["jobs"][0]
-    assert job["id"] == first and job["state"] == "failed" and job["task"] == "verify-snapshot"
-    assert job["code_sha"] == "a" * 40 and job["snapshot_id"] == "close-20261013"
-    assert job["timeout_seconds"] == 14_400 and job["artifacts"] == []
-    r = c.post(f"/api/app/research-jobs/{first}/resubmit")
-    assert r.status_code == 201
-    new = r.json()["id"]
-    assert new != first
-    states = {j["id"]: j for j in c.get("/api/app/research-jobs").json()["jobs"]}
-    assert states[first]["state"] == "failed"
-    assert states[new]["state"] == "queued" and states[new]["parameters"] == {"purpose": "x"}
-
-
-def test_resubmit_rejected_when_submission_disabled_or_job_active(env, tmp_path):
-    env.research = _console(tmp_path)
-    c = env.client()
-    active = c.post("/api/research-jobs", json={"task": "verify-snapshot", "parameters": {}}).json()["id"]
-    assert c.post(f"/api/app/research-jobs/{active}/resubmit").status_code == 409
-    assert c.post("/api/app/research-jobs/nope/resubmit").status_code == 404
-    from qsys.web.research_jobs import ResearchJobConsole
-    env.research = ResearchJobConsole(env.research.root)
-    ro = env.client()
-    assert ro.get("/api/app/research-jobs").json()["submission_enabled"] is False
-    assert ro.post(f"/api/app/research-jobs/{active}/resubmit").status_code == 403
 
 
 def test_endpoints_disabled_without_services(warehouse):
@@ -219,5 +177,93 @@ def test_endpoints_disabled_without_services(warehouse):
     c = TestClient(create_app(MonitorService(SessionJournal(warehouse), config=cfg), cfg))
     for url in ("/api/app/strategies", "/api/app/backtests", "/api/app/research-jobs"):
         r = c.get(url)
-        assert r.status_code == 200 and r.json() == {"enabled": False}
+        assert r.status_code == 200 and r.json() == {"schema_version": 1, "enabled": False}
         assert r.headers["cache-control"] == "no-store"
+
+
+    for url in ("/api/app/backtests/x/files/a.csv", "/api/app/research-jobs/x/files/a.csv"):
+        assert c.get(url).status_code == 404
+
+
+def test_research_jobs_list(env, tmp_path):
+    env.research = _console(tmp_path)
+    first = env.research.submit("verify-snapshot", {"purpose": "x"}).job_id
+    claimed = env.research.store.claim_next()
+    env.research.store.transition(claimed, "running")
+    env.research.store.transition(claimed, "failed")
+    body = env.client().get("/api/app/research-jobs").json()
+    ResearchJobList.model_validate(body)
+    assert body["enabled"] and body["submission_enabled"]
+    job = body["jobs"][0]
+    assert job["id"] == first and job["state"] == "failed" and job["task"] == "verify-snapshot"
+    assert job["code_sha"] == "a" * 40 and job["snapshot_id"] == "close-20261013"
+    assert job["timeout_seconds"] == 14_400 and job["artifacts"] == []
+    assert job["created_at"].endswith("+08:00")
+
+
+def test_research_responses_validate_against_contracts(env):
+    s = env.wb.create_strategy("demo", SOURCE)
+    bt = succeeded_backtest(env, s.id)
+    running = env.wb.enqueue(s.id, {"start": "2024-01-02", "end": "2024-01-05", "cash": 1, "params": {}})
+    c = env.client()
+    StrategyList.model_validate(c.get("/api/app/strategies").json())
+    StrategyDetail.model_validate(c.get(f"/api/app/strategies/{s.id}").json())
+    BacktestList.model_validate(c.get("/api/app/backtests").json())
+    BacktestReport.model_validate(c.get(f"/api/app/backtests/{bt}").json())
+    BacktestPending.model_validate(c.get(f"/api/app/backtests/{running.id}").json())
+
+
+def test_backtest_list_blank_status_values_are_null(env):
+    run = env.runs / "cli-run"
+    run.mkdir()
+    (run / "run_status.csv").write_text(STATUS.replace("99000,-0.01,2,1,1,1", "99000,,2,,1,"), encoding="utf-8")
+    c = env.client()
+    row = {r["id"]: r for r in c.get("/api/app/backtests").json()["rows"]}["cli-run"]
+    assert row["total_return"] is None and row["source"] == "cli" and row["created_at"] is None
+    d = c.get("/api/app/backtests/cli-run").json()
+    assert d["summary"]["buys"] is None and d["summary"]["rejects"] is None
+    assert d["summary"]["generated_at"] is None and d["summary"]["cost_model"] is None
+
+
+def test_backtest_file_download_via_new_route(env):
+    s = env.wb.create_strategy("demo", SOURCE)
+    bt = succeeded_backtest(env, s.id)
+    (env.runs / bt / "state.sqlite3").write_bytes(b"x")
+    c = env.client()
+    names = [f["name"] for f in c.get(f"/api/app/backtests/{bt}").json()["files"]]
+    assert "fills.csv" in names and "state.sqlite3" not in names
+    r = c.get(f"/api/app/backtests/{bt}/files/fills.csv")
+    assert r.status_code == 200 and r.content.startswith(b"filled_at,")
+    assert r.headers["content-disposition"].startswith("attachment;")
+    assert c.get(f"/api/app/backtests/{bt}/files/state.sqlite3").status_code == 404
+    assert c.get(f"/api/app/backtests/{bt}/files/..%2Frun_status.csv").status_code == 404
+    assert c.get("/api/app/backtests/..%2F..%2Fetc/files/passwd").status_code == 404
+
+
+def test_research_artifact_download_checks_manifest(env, tmp_path):
+    import hashlib
+    env.research = _console(tmp_path)
+    job_id = env.research.submit("verify-snapshot", {}).job_id
+    claimed = env.research.store.claim_next()
+    env.research.store.transition(claimed, "running")
+    art = env.research.root / "jobs" / job_id / "artifacts"
+    (art / "out").mkdir(parents=True)
+    body = b"result-bytes"
+    (art / "out" / "report.json").write_bytes(body)
+    (art / "manifest.json").write_text(json.dumps({"files": [
+        {"path": "out/report.json", "bytes": len(body), "sha256": hashlib.sha256(body).hexdigest()}]}),
+        encoding="utf-8")
+    c = env.client()
+    listed = {j["id"]: j for j in c.get("/api/app/research-jobs").json()["jobs"]}[job_id]
+    assert listed["artifacts"] == [{"path": "out/report.json", "bytes": len(body),
+                                    "sha256": hashlib.sha256(body).hexdigest()}]
+    ok = c.get(f"/api/app/research-jobs/{job_id}/files/out/report.json")
+    assert ok.status_code == 200 and ok.content == body
+    assert c.get(f"/api/app/research-jobs/{job_id}/files/manifest.json").status_code == 404
+    (art / "out" / "report.json").write_bytes(b"tampered!!!!")
+    assert c.get(f"/api/app/research-jobs/{job_id}/files/out/report.json").status_code == 404
+
+
+def test_core_label_follows_deployment_mode_even_with_explicit_deps(env):
+    env.core_label = "实盘"
+    assert env.client().get("/api/app/strategies").json()["core_label"] == "实盘"

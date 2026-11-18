@@ -10,6 +10,10 @@ from qsys.webapp.contracts.ailu import ResearchBoard, ShadowBoard
 from qsys.webapp.contracts.board import Board, BoardSeries, BoardUnavailable
 from qsys.webapp.contracts.base import Contract, ErrorBody
 from qsys.webapp.contracts.market import MarketDisabled, MarketOverview
+from qsys.webapp.contracts.research import (
+    BacktestList, BacktestPending, BacktestReport, Cancelled, Created, ResearchDisabled, ResearchJobList,
+    Resubmitted, StrategyDetail, StrategyList,
+)
 from qsys.webapp.contracts.shell import ShellStatus
 
 EXPORTED: tuple[type[Contract], ...] = (
@@ -22,4 +26,14 @@ EXPORTED: tuple[type[Contract], ...] = (
     Board,
     BoardUnavailable,
     BoardSeries,
+    ResearchDisabled,
+    StrategyList,
+    StrategyDetail,
+    BacktestList,
+    BacktestReport,
+    BacktestPending,
+    ResearchJobList,
+    Created,
+    Cancelled,
+    Resubmitted,
 )
