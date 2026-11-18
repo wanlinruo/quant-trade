@@ -166,7 +166,8 @@ systemctl status qsys-health-observer --no-pager
 ```
 
 采样器故障只会让时刻轴出现灰色缺测，不参与 `control:kill`，也不替代 LIVE 的固定
-10 秒双向心跳检查。
+双向心跳检查（core 要求 agent/market 心跳 10 秒内新鲜；网关要求 core 心跳 30 秒内新鲜，
+#677 由 10 秒放宽）。
 
 ## 访问监控台
 
