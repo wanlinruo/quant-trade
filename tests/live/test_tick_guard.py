@@ -15,11 +15,9 @@ class _Bus:
     def __init__(self):
         self.alerts = []
 
-    def critical(self, title, detail=""):
-        self.alerts.append(("critical", title, detail))
-
-    def info(self, title, detail=""):
-        self.alerts.append(("info", title, detail))
+    def emit(self, key, *, params=None, detail="", severity=None, state=None, evidence=None):
+        assert key == "shadow.tick.failing"
+        self.alerts.append(("info" if state == "resolved" else "critical", params["title"], detail, severity))
 
 
 def _guard(bus):

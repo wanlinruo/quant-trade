@@ -172,3 +172,110 @@ def test_resume_checks_local_directory_access_before_clearing_remote(at, monkeyp
     assert _run(monkeypatch, "resume", "live") == 1
     assert transport.get_key("control:kill") == "keep stopped"
     assert (root / "KILL").read_text() == "keep stopped"
+
+
+# ---- review live（#662 计划 05）----
+
+def _review_env(at, monkeypatch, *, broker=0, kill="heartbeat timeout: agent"):
+    import json as _json
+    from datetime import datetime, timedelta
+    from types import SimpleNamespace
+    from zoneinfo import ZoneInfo
+
+    from qsys.live.messages import AccountSnapshot, Heartbeat
+    from qsys.live.store import LiveStore
+    tmp_path, transport = at
+    now = datetime.now(ZoneInfo("Asia/Shanghai"))
+    beat = lambda s, **kw: Heartbeat(source=s, at=now - timedelta(seconds=1), expected_interval_s=1.0, **kw)  # noqa: E731
+    transport.set_key("state:heartbeat:agent", beat("agent", trading_mode="live", orders_enabled=True,
+                                                    account_protected=True, local_kill_engaged=True).model_dump_json())
+    transport.set_key("state:heartbeat:market", beat("market").model_dump_json())
+    account = AccountSnapshot(at=now.replace(tzinfo=None), cash=1000.0, positions={}, total_asset=1000.0,
+                              active_order_count=broker)
+    transport.set_key("state:account", account.model_dump_json())
+    if kill:
+        transport.set_key("control:kill", kill)
+    state = tmp_path / "live-state.sqlite3"
+    store = LiveStore(state)
+    store.initialize(account)
+    store.close()
+    cfg = SimpleNamespace(streams=SimpleNamespace(heartbeat="state:heartbeat", account="state:account"))
+    monkeypatch.setattr(kill_mod(), "_transport", lambda: (transport, cfg))
+    return state, _json
+
+
+def kill_mod():
+    return kill
+
+
+def test_kill_review_cli_json_and_exit_codes(at, monkeypatch, capsys):
+    state, json = _review_env(at, monkeypatch)
+    assert _run(monkeypatch, "review", "live", "--json", "--state", str(state), "--confirmed-by", "维护者") == 0
+    body = json.loads(capsys.readouterr().out)
+    assert body["schema_version"] == 1 and body["overall"] == "ready"
+    assert _run(monkeypatch, "review", "live", "--json", "--state", str(state)) == 3
+    capsys.readouterr()
+    _review_env(at, monkeypatch, broker=0)
+    assert _run(monkeypatch, "review", "live", "--state", str(at[0] / "missing.sqlite3"), "--confirmed-by", "x") == 1
+    out = capsys.readouterr().out
+    assert "blocked" in out and "reconcile.positions_cash" in out
+
+
+def test_kill_review_cli_record_atomic(at, monkeypatch, capsys):
+    state, json = _review_env(at, monkeypatch, broker=1)
+    target = at[0] / "review" / "latest.json"
+    target.parent.mkdir()
+    assert _run(monkeypatch, "review", "live", "--state", str(state), "--record", str(target),
+                "--confirmed-by", "x") == 3
+    body = json.loads(target.read_text(encoding="utf-8"))
+    assert body["overall"] == "needs_confirmation"
+    assert [p.name for p in target.parent.iterdir()] == ["latest.json"]
+
+
+def test_kill_review_is_read_only(at, monkeypatch, capsys):
+    """冷库（生产者未运行、无 WAL）：不创建任何辅助文件；库、KILL、Redis 键字节不变。"""
+    import gc
+    import hashlib
+    state, _ = _review_env(at, monkeypatch)
+    tmp_path, transport = at
+    (tmp_path / "KILL").write_text("x heartbeat timeout: agent")
+    gc.collect()  # 夹具建库留下的写连接先回收（其关闭时的 checkpoint 不属于复核）
+
+    def snapshot():
+        files = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in tmp_path.iterdir() if p.is_file()}
+        keys = {k: transport.get_key(k) for k in ("control:kill", "state:account", "state:heartbeat:agent")}
+        return files, keys
+    before = snapshot()
+    assert not any(n.endswith(("-wal", "-shm")) for n in before[0])
+    _run(monkeypatch, "review", "live", "--json", "--state", str(state), "--confirmed-by", "x")
+    gc.collect()
+    assert snapshot() == before
+
+
+def test_kill_review_with_running_producer_keeps_db_and_wal(at, monkeypatch, capsys):
+    """生产者在运行（持有 WAL）：主库与 WAL 字节不变，不新建文件（-shm 读标记由 SQLite 维护，不比较）。"""
+    import gc
+    import hashlib
+
+    from qsys.live.store import LiveStore
+    state, _ = _review_env(at, monkeypatch)
+    tmp_path, _ = at
+    gc.collect()
+    producer = LiveStore(state)
+    producer.pin_reader_sidecars()
+    try:
+        def snap():
+            return {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in tmp_path.iterdir()
+                    if p.is_file() and not p.name.endswith("-shm")}
+        before = snap()
+        assert any(n.endswith("-wal") for n in before)
+        _run(monkeypatch, "review", "live", "--json", "--state", str(state), "--confirmed-by", "x")
+        gc.collect()
+        assert snap() == before
+    finally:
+        producer.close()
+
+
+def test_review_shadow_not_supported(at, monkeypatch, capsys):
+    assert _run(monkeypatch, "review", "shadow") == 2
+    assert "只支持 live" in capsys.readouterr().err

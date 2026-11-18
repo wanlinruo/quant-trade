@@ -112,7 +112,7 @@ class LiveRuntime:
             event_timeout_s=self.EVENT_TIMEOUT_SECONDS,
             on_event_timeout=self._on_event_timeout,
         )
-        self.alerts = alerts or AlertBus([LogAlertSink()])
+        self.alerts = alerts or AlertBus([LogAlertSink()], source="shadow-core" if shadow else "live-core")
         # 策略推送与运维告警共用同一条 AlertBus：影子/实盘各自一个机器人由部署配置决定
         self._event_orders: list = []      # 本事件的委托 / 成交 / 拒单，发完就清
         self._event_fills: list = []
@@ -265,10 +265,12 @@ class LiveRuntime:
                     detail=result.summary(), at=remote.at,
                 )
             if self.shadow:
-                self.alerts.warning("影子盘与券商账户不一致（不停机）", result.summary())
+                self.alerts.emit("live.reconcile.drift", detail=result.summary(), evidence={
+                    "cash_diff": result.cash_diff, "mismatches": len(result.mismatches)})
                 log.warning("reconcile.shadow_drift", detail=result.summary())
                 return
-            self.alerts.critical("实盘账户对账失败", result.summary())
+            self.alerts.emit("live.reconcile.failed", detail=result.summary(), evidence={
+                "cash_diff": result.cash_diff, "mismatches": len(result.mismatches)})
             self.kill_switch.engage(result.summary())
             raise LivePreflightError(result.summary())
         if not ledger:
@@ -291,7 +293,8 @@ class LiveRuntime:
         if dead:
             self.kill_switch.engage(f"heartbeat timeout: {','.join(dead)}")
             self.broker.cancel_all()
-            self.alerts.critical("实盘心跳超时", ",".join(dead))
+            self.alerts.emit("live.heartbeat.timeout", subject=",".join(dead), detail=",".join(dead),
+                             evidence={"dead": list(dead), "max_age_s": self.HEARTBEAT_MAX_AGE})
             raise LivePreflightError(f"heartbeat timeout: {','.join(dead)}")
         self._assert_reconciled(self._remote_account())
 
@@ -713,14 +716,15 @@ class LiveRuntime:
         self.journal.record_rejects(datetime.now().date(), rejects)
         if rejects:
             self.consecutive_rejects += len(rejects)
-            self.alerts.warning(
-                "实盘订单被拒", "\n".join(f"{r.order_id}: {r.reason}" for r in rejects)
-            )
+            self.alerts.emit(
+                "live.order.rejected", detail="\n".join(f"{r.order_id}: {r.reason}" for r in rejects),
+                evidence={"rejects": len(rejects), "consecutive": self.consecutive_rejects})
             if self.consecutive_rejects >= 3:
                 reason = f"连续拒单达到熔断阈值: {self.consecutive_rejects}"
                 self.kill_switch.engage(reason)
                 self.broker.cancel_all()
-                self.alerts.critical("实盘连续拒单熔断", reason)
+                self.alerts.emit("live.reject.fuse", detail=reason,
+                                 evidence={"consecutive": self.consecutive_rejects})
         if fills:
             self.consecutive_rejects = 0
         return len(rejects)

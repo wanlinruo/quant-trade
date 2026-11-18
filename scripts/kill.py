@@ -15,6 +15,10 @@
   uv run python scripts/kill.py status
   uv run python scripts/kill.py resume live
   uv run python scripts/kill.py resume shadow
+  uv run python scripts/kill.py review live [--json] [--confirmed-by 维护者] [--record PATH] [--state PATH]
+
+``review`` 只读：逐项核对实盘停机闸能否解除并输出机器可读结果（#662 计划 05），
+不改任何状态。退出码 0=ready、1=blocked、3=needs_confirmation。``resume`` 的行为不受影响。
 """
 
 from __future__ import annotations
@@ -82,12 +86,57 @@ def _announce(transport, cfg, action: str, reason: str) -> None:
     )
 
 
+def _review(argv: list[str]) -> int:
+    import argparse
+    import json
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    if not argv or argv[0] != "live":
+        print("review 只支持 live", file=sys.stderr)
+        return 2
+    parser = argparse.ArgumentParser(prog="kill.py review live")
+    parser.add_argument("--json", action="store_true")
+    parser.add_argument("--confirmed-by", default=None)
+    parser.add_argument("--record", type=Path, default=None)
+    parser.add_argument("--state", type=Path, default=Path("var/live-state.sqlite3"))
+    args = parser.parse_args(argv[1:])
+
+    from qsys.live.kill_review import gather, render, review
+    from qsys.live.state_binding import local_kill_path, state_path
+
+    transport, cfg = _transport()
+    key, local = TARGETS["live"]
+    try:
+        local = local_kill_path(local)
+        state = state_path(args.state)
+    except (OSError, ValueError):
+        print("状态绑定异常，无法核对", file=sys.stderr)
+        return 1
+    inputs = gather(
+        transport, redis_ok=cfg is not None,
+        heartbeat_prefix=cfg.streams.heartbeat if cfg else "state:heartbeat",
+        account_key=cfg.streams.account if cfg else "state:account",
+        kill_key=key, local_kill=local, state=state)
+    result = review(inputs, confirmed_by=args.confirmed_by, now=datetime.now(ZoneInfo("Asia/Shanghai")))
+    text = json.dumps(result.model_dump(mode="json"), ensure_ascii=False, indent=2)
+    if args.record is not None:
+        tmp = args.record.with_name(args.record.name + ".tmp")
+        tmp.write_text(text + "\n", encoding="utf-8")
+        os.replace(tmp, args.record)
+    print(text if args.json else render(result))
+    return {"ready": 0, "blocked": 1, "needs_confirmation": 3}[result.overall]
+
+
 def main() -> int:
     argv = sys.argv[1:]
-    if not argv or argv[0] not in {"stop", "resume", "status"}:
+    if not argv or argv[0] not in {"stop", "resume", "status", "review"}:
         print(__doc__)
         return 2
     action = argv[0]
+
+    if action == "review":
+        return _review(argv[1:])
 
     if action == "status":
         transport, _ = _transport()

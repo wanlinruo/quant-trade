@@ -20,7 +20,7 @@ from pathlib import Path
 
 import structlog
 
-from qsys.ops.alerts import ledger as alert_ledger
+from qsys.ops.alerts import delivery_records
 from qsys.ops.digest import build_digest
 from qsys.ops.services import SKIPPED, ServiceRun, load_runs, run_session
 from qsys.paper.calendar import load_trading_calendar
@@ -374,7 +374,7 @@ def _run(args, day, trading, run) -> int:
         missing_services=missing,
         quality=quality(args.warehouse, day),
         infra=infrastructure(args.storage_base, args.tls_site, args.tls_port, mode=mode),
-        deliveries=alert_ledger(args.alert_ledger).read(day),
+        deliveries=delivery_records(args.alert_ledger, day),
         readiness=readiness(args.config, core_state, args.workbench, day,
                             core_name=core_name),
     )

@@ -14,11 +14,11 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Protocol
 
+from qsys.ops.alert_events import Severity
+
 
 class Alerts(Protocol):
-    def critical(self, title: str, detail: str = "") -> None: ...
-
-    def info(self, title: str, detail: str = "") -> None: ...
+    def emit(self, key: str, **kw) -> object: ...
 
 
 @dataclass
@@ -46,9 +46,11 @@ class TickFailureGuard:
         if not self._alerted and now - self._first_at >= self.alert_after:
             self._alerted = True
             minutes = int(self.alert_after.total_seconds() // 60)
-            self.alerts.critical(
-                f"影子核心连续失败超过 {minutes} 分钟",
-                f"自 {self._first_at:%Y-%m-%d %H:%M:%S} 起持续失败：{error}",
+            self.alerts.emit(
+                "shadow.tick.failing", severity=Severity.CRITICAL,
+                params={"title": f"影子核心连续失败超过 {minutes} 分钟"},
+                detail=f"自 {self._first_at:%Y-%m-%d %H:%M:%S} 起持续失败：{error}",
+                evidence={"minutes": minutes},
             )
         return should_log
 
@@ -56,10 +58,11 @@ class TickFailureGuard:
         if self._first_at is None:
             return
         if self._alerted:
-            self.alerts.info(
-                "影子核心已恢复",
-                f"{self._first_at:%Y-%m-%d %H:%M:%S} ~ {now:%Y-%m-%d %H:%M:%S} "
-                f"的连续失败已结束：{self._error}",
+            self.alerts.emit(
+                "shadow.tick.failing", severity=Severity.INFO, state="resolved",
+                params={"title": "影子核心已恢复"},
+                detail=(f"{self._first_at:%Y-%m-%d %H:%M:%S} ~ {now:%Y-%m-%d %H:%M:%S} "
+                        f"的连续失败已结束：{self._error}"),
             )
         self._error, self._first_at, self._last_log_at = "", None, None
         self._alerted = False
