@@ -35,6 +35,8 @@ class WebappDeps:
     strategy_templates: Path | None = None
     shadow_lineage: Any | None = None
     core_label: str = "影子盘"
+    # 数据组（R4）
+    data_assets: Any | None = None   # queries.data_assets.DataAssets
     spa_root: Path | None = None
 
 
@@ -44,6 +46,7 @@ def mount_webapp(app: FastAPI, deps: WebappDeps) -> None:
     from qsys.webapp.routes.ailu import ailu_router
     from qsys.webapp.queries.research import ResearchQuery
     from qsys.webapp.routes.board import board_router
+    from qsys.webapp.routes.data import data_router
     from qsys.webapp.routes.research import research_router
     from qsys.webapp.routes.market import market_router
     from qsys.webapp.routes.shell import shell_router
@@ -58,4 +61,5 @@ def mount_webapp(app: FastAPI, deps: WebappDeps) -> None:
         workbench=deps.workbench, runs=deps.runs, paper=deps.paper, research_jobs=deps.research_jobs,
         strategy_templates=deps.strategy_templates, shadow_lineage=deps.shadow_lineage,
         core_label=deps.core_label)))
+    app.include_router(data_router(deps.data_assets))
     mount_spa(app, deps.spa_root if deps.spa_root is not None else SPA_DIST)

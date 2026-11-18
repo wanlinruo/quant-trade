@@ -1,4 +1,4 @@
-"""数据组页面的纯派生（#662，设计文档 §8.13）。
+"""数据组页面的纯派生（#662，设计文档 §8.13；R4 起位于新后端查询层）。
 
 - quality_runs：按 run_id 汇总近 30 次质检结构；某 run 没有表级记录时 tables 为 None，不当 0。
 - warning_sources：最新一次 run 的未通过、非阻断记录按 known_issue 归类（设计者决定）。
@@ -119,22 +119,23 @@ def _jsonable(v: Any) -> Any:
 
 
 def table_sample(root: Path, dataset: Dataset, limit: int = SAMPLE_LIMIT) -> dict:
-    out: dict[str, Any] = {"available": False, "message": "", "file": None, "row_group": None,
+    """reason：ok / logical_view / no_file / empty_file（文字由前端映射）；读取异常由调用方记 read_failed。"""
+    out: dict[str, Any] = {"available": False, "reason": "ok", "file": None, "row_group": None,
                            "columns": [], "rows": [], "limit": limit}
     if not dataset.physical:
-        out["message"] = "逻辑视图没有物理文件，无法抽样"
+        out["reason"] = "logical_view"
         return out
     base = Path(root) / dataset.id
     parts = sorted(base.glob("year=*/part.parquet"))
     target = parts[-1] if parts else base / "part.parquet"
     if not target.is_file():
-        out["message"] = "仓库里没有这张表的文件"
+        out["reason"] = "no_file"
         return out
     pf = pq.ParquetFile(target)
     out["file"] = str(target.relative_to(Path(root)))
     out["columns"] = list(pf.schema_arrow.names)
     if pf.metadata.num_row_groups == 0:
-        out.update(available=True, message="文件为空")
+        out.update(available=True, reason="empty_file")
         return out
     last = pf.metadata.num_row_groups - 1
     out["row_group"] = last

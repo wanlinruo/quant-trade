@@ -11,7 +11,7 @@ import pyarrow.parquet as pq
 
 from qsys.data import schema
 from qsys.data.catalog import DATASETS, DEPENDENCIES
-from qsys.web.data_app_views import lineage_graph, quality_runs, table_sample, warning_sources
+from qsys.webapp.queries.data_derive import lineage_graph, quality_runs, table_sample, warning_sources
 
 
 def mc(run, at, passed, severity="blocking", known="", metric="m1", check="c1", detail="d"):
@@ -121,6 +121,6 @@ def test_sample_unavailable_for_logical_or_missing(tmp_path):
     logical = next((d for d in DATASETS.values() if not d.physical), None)
     if logical is not None:
         s = table_sample(tmp_path, logical)
-        assert s["available"] is False and s["message"]
+        assert s["available"] is False and s["reason"] == "logical_view"
     missing = table_sample(tmp_path, replace(_physical_dataset(), id="nope"))
-    assert missing["available"] is False and "没有" in missing["message"]
+    assert missing["available"] is False and missing["reason"] == "no_file"

@@ -200,6 +200,11 @@ def create_app(
     if deps.shadow_lineage is None:
         deps.shadow_lineage = shadow_lineage
     deps.core_label = core_label  # 部署模式只有一个来源：create_app 的 core_label
+    # 数据组新接口（R4）：生产由 monitor_cli 显式构造；未给出时用旧服务的仓库根补齐
+    if deps.data_assets is None and assets is not None:
+        from qsys.data.storage import Warehouse
+        from qsys.webapp.queries.data_assets import DataAssets
+        deps.data_assets = DataAssets(Warehouse(assets.root))
 
     # 新前端（#662）：/app 下的单页应用，与旧页面并存
     mount_webapp(app, deps)

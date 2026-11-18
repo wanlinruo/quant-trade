@@ -73,6 +73,16 @@ def _members(tp) -> set:
     return {a for a in args if isinstance(a, type)} if args else ({tp} if isinstance(tp, type) else set())
 
 
+def _api_routes(routes):
+    """展开 include_router 挂上的路由（FastAPI 0.141 起在 app.routes 中是 _IncludedRouter 包装）。"""
+    for route in routes:
+        inner = getattr(route, "original_router", None)
+        if inner is not None:
+            yield from _api_routes(inner.routes)
+        else:
+            yield route
+
+
 def test_every_route_response_model_is_exported(warehouse):
     from qsys.ops.journal import SessionJournal
     from qsys.web.app import create_app
@@ -81,7 +91,11 @@ def test_every_route_response_model_is_exported(warehouse):
     cfg = WebConfig()
     app = TestClient(create_app(MonitorService(SessionJournal(warehouse), config=cfg), cfg)).app
     exported = set(EXPORTED)
-    for route in app.routes:
+    routes = list(_api_routes(app.routes))
+    checked = [r for r in routes if str(getattr(r, "path", "")).startswith("/api/app/")
+               and getattr(r, "response_model", None) is not None]
+    assert any(str(r.path) == "/api/app/shell/status" for r in checked), "未展开新后端路由，校验无效"
+    for route in routes:
         model = getattr(route, "response_model", None)
         if not str(getattr(route, "path", "")).startswith("/api/app/") or model is None:
             continue

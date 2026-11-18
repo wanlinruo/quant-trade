@@ -48,54 +48,15 @@ def make(warehouse):
 
 def test_endpoints_disabled_without_services(make):
     c = make(assets=False, catalog=False)
-    for url in ("/api/app/data/overview", "/api/app/data/tables", f"/api/app/data/tables/{PHYSICAL}",
-                f"/api/app/data/tables/{PHYSICAL}/sample", "/api/app/data/catalog",
+    for url in ("/api/app/data/catalog",
                 f"/api/app/data/catalog/{METRIC}", "/api/app/data/quality", "/api/app/data/quality/rules/x"):
         r = c.get(url)
         assert r.status_code == 200 and r.json() == {"enabled": False}, url
         assert r.headers["cache-control"] == "no-store"
 
 
-def test_overview_matrix_gray_without_evidence(make):
-    body = make().get("/api/app/data/overview").json()
-    assert body["enabled"] and body["tables"]
-    for t in body["tables"]:
-        assert t["status"] == "gray"
-        assert set(t["dimensions"]) == {"freshness", "completeness", "structure", "validity", "lineage"}
-        assert set(t["dimensions"].values()) == {"gray"}
-    assert body["dimension_labels"]["freshness"] == "时效"
-    dom = body["domains"]
-    assert dom and set(dom[0]) == {"domain", "label", "tables", "sources", "status_counts"}
-    assert sum(d["tables"] for d in dom) == len(body["tables"])
 
 
-def test_overview_lineage_nodes_cover_datasets(make):
-    g = make().get("/api/app/data/overview").json()["lineage"]
-    ids = {n["id"] for n in g["nodes"]}
-    assert {f"dataset:{d}" for d in DATASETS} <= ids
-    node = next(n for n in g["nodes"] if n["id"] == f"dataset:{PHYSICAL}")
-    assert node["status"] == "gray"
-
-
-def test_tables_list_and_detail_and_404(make):
-    c = make()
-    rows = c.get("/api/app/data/tables").json()["rows"]
-    assert PHYSICAL in {r["id"] for r in rows}
-    assert all(r["layer"] != "raw" for r in rows)
-    assert any(r["layer"] == "raw" for r in c.get("/api/app/data/tables", params={"include_raw": "true"}).json()["rows"])
-    d = c.get(f"/api/app/data/tables/{PHYSICAL}").json()
-    assert d["enabled"] and d["row"]["dataset"]["id"] == PHYSICAL and d["status_label"] == "灰·缺证据"
-    assert c.get("/api/app/data/tables/nope").status_code == 404
-
-
-def test_table_sample_endpoint(make, warehouse):
-    c = make()
-    assert c.get(f"/api/app/data/tables/{PHYSICAL}/sample").json()["available"] is False
-    (warehouse.root / PHYSICAL).mkdir(parents=True, exist_ok=True)
-    pq.write_table(pa.table({"a": [1, None]}), warehouse.root / PHYSICAL / "part.parquet")
-    s = c.get(f"/api/app/data/tables/{PHYSICAL}/sample").json()
-    assert s["available"] and s["rows"] == [{"a": 1}, {"a": None}]
-    assert c.get("/api/app/data/tables/nope/sample").status_code == 404
 
 
 def test_catalog_list_and_detail_with_evidence(make, warehouse):
@@ -136,19 +97,6 @@ def test_rule_detail_has_sample_url(make, warehouse):
     assert d["enabled"] and d["latest"][0]["sample_url"] == "/data/catalog/sample?path=artifacts/metric_checks/r2/c.rule.parquet"
     assert c.get("/api/app/data/quality/rules/nope.never").status_code == 404
 
-
-def test_list_endpoints_cached_60s(make, monkeypatch):
-    calls = {"n": 0}
-    orig = DataAssetService.tables
-
-    def counting(self, *a, **kw):
-        calls["n"] += 1
-        return orig(self, *a, **kw)
-    monkeypatch.setattr(DataAssetService, "tables", counting)
-    c = make()
-    c.get("/api/app/data/tables")
-    c.get("/api/app/data/tables")
-    assert calls["n"] == 1
 
 
 def test_still_no_write_endpoints(make):

@@ -236,9 +236,115 @@ export interface ConceptCurve {
   points: [string, number][]
 }
 
+export interface Coverage {
+  rows: number
+  symbols: number
+  first_dt: string | null
+  last_dt: string | null
+  measured_at: string | null
+}
+
 export interface Created {
   schema_version: 1
   id: string
+}
+
+export interface DataDisabled {
+  schema_version: 1
+  enabled: false
+}
+
+export interface DataOverview {
+  schema_version: 1
+  enabled: true
+  tables: OverviewTable[]
+  domains: DomainSummary[]
+  lineage: Lineage
+}
+
+export interface DataTableDetail {
+  schema_version: 1
+  enabled: true
+  row: DataTableRow
+  contract: DatasetContract
+  sources: SourceRef[]
+  root_sources: SourceRef[]
+  dimensions: Record<string, "red" | "yellow" | "green" | "gray">
+  reasons: HealthReasonInfo[]
+  evidence: Record<string, JsonValue>[]
+  upstream: DependencyInfo[]
+  downstream: DependencyInfo[]
+  fields: FieldInfo[]
+  rules: string[]
+}
+
+export interface DataTableList {
+  schema_version: 1
+  enabled: true
+  rows: DataTableRow[]
+}
+
+export interface DataTableRow {
+  id: string
+  name: string
+  layer: string
+  domain: DomainRef
+  status: "red" | "yellow" | "green" | "gray"
+  purpose: string
+  grain: string
+  coverage: Coverage | null
+  coverage_state: "ready" | "pending" | "failed" | "none"
+}
+
+export interface DatasetContract {
+  id: string
+  name: string
+  purpose: string
+  layer: string
+  role: string
+  status: string
+  grain: string
+  primary_key: string[]
+  time_columns: string[]
+  partition_keys: string[]
+  sort_keys: string[]
+  schema_id: string | null
+  schema_version: number
+  compatibility: string
+  builder: string
+  update_mode: string
+  finalized_at: string
+  lifecycle: string
+  sources: string[]
+  consumers: string[]
+  health_policy: string | null
+  domain: DomainRef
+  physical: boolean
+}
+
+export interface DependencyInfo {
+  upstream: string
+  downstream: string
+  kind: string
+  join_keys: [string, string][]
+  cardinality: string
+  requirement: string
+  allowed_lag: string
+  metrics: string[]
+  health_policy: string | null
+  note: string
+}
+
+export interface DomainRef {
+  code: string
+  unclassified_reason: string | null
+}
+
+export interface DomainSummary {
+  domain: DomainRef
+  tables: number
+  sources: number
+  status_counts: Record<string, number>
 }
 
 export interface EffectItem {
@@ -276,6 +382,19 @@ export interface ExchangeCoverage {
   missing_samples: string[]
   source_at_min: string | null
   source_at_max: string | null
+}
+
+export interface FieldInfo {
+  name: string
+  type: string
+  meaning: string | null
+}
+
+export interface HealthReasonInfo {
+  code: string
+  message: string
+  dimension: "freshness" | "completeness" | "structure" | "validity" | "lineage" | null
+  check_id: string | null
 }
 
 export interface IndexQuote {
@@ -348,6 +467,24 @@ export interface LimitCheckSample {
 export interface LimitPair {
   up: number | null
   down: number | null
+}
+
+export interface Lineage {
+  nodes: LineageNode[]
+  edges: LineageEdge[]
+}
+
+export interface LineageEdge {
+  source: string
+  target: string
+}
+
+export interface LineageNode {
+  id: string
+  label: string
+  kind: string
+  ref: string | null
+  status: "red" | "yellow" | "green" | "gray" | null
 }
 
 export interface LiveMarket {
@@ -432,6 +569,15 @@ export interface MoneyEffect {
 export interface MonthReturn {
   month: string
   value: number | null
+}
+
+export interface OverviewTable {
+  id: string
+  name: string
+  layer: string
+  domain: DomainRef
+  status: "red" | "yellow" | "green" | "gray"
+  dimensions: Record<string, "red" | "yellow" | "green" | "gray">
 }
 
 export interface ParameterSpec {
@@ -652,6 +798,14 @@ export interface ShellStatus {
   missing: Record<string, string>
 }
 
+export interface SourceRef {
+  kind: "source" | "table" | "note"
+  id: string
+  provider: string | null
+  api: string | null
+  status: "active" | "frozen" | "dead" | null
+}
+
 export interface StrategyDetail {
   id: string
   name: string
@@ -696,4 +850,16 @@ export interface StrategyRow {
 export interface StrategyVersion {
   id: string
   created_at: string | null
+}
+
+export interface TableSample {
+  schema_version: 1
+  enabled: true
+  available: boolean
+  reason: "ok" | "logical_view" | "no_file" | "empty_file" | "read_failed"
+  file: string | null
+  row_group: number | null
+  columns: string[]
+  rows: Record<string, JsonValue>[]
+  limit: number
 }

@@ -19,7 +19,7 @@ from qsys.data.catalog.checks import CHECKS
 from qsys.data.catalog.health import ALL_DIMENSIONS
 from qsys.web.asset_views import _CHECK_METADATA, _DIMENSION_LABELS, _STATUS_LABELS
 from qsys.web.catalog_views import Status
-from qsys.web.data_app_views import (
+from qsys.webapp.queries.data_derive import (
     BLOCKING,
     lineage_graph,
     quality_runs,
@@ -130,41 +130,6 @@ def register_app_data(app: FastAPI, *, assets, catalog) -> None:
         m, d = assets.query.metric_checks(), assets.query.dataset_checks()
         return {"enabled": True, "runs": quality_runs(m, d), "warning_sources": warning_sources(m),
                 "rules": _rule_rows(m, d)}
-
-    @app.get("/api/app/data/overview")
-    def data_overview():
-        return _json(DISABLED) if assets is None else _json(cached("overview", overview))
-
-    @app.get("/api/app/data/tables")
-    def data_tables(include_raw: bool = False):
-        if assets is None:
-            return _json(DISABLED)
-        return _json(cached(f"tables:{include_raw}", lambda: table_rows(include_raw)))
-
-    @app.get("/api/app/data/tables/{dataset_id}")
-    def data_table(dataset_id: str):
-        if assets is None:
-            return _json(DISABLED)
-        detail = assets.table(dataset_id)
-        if detail is None:
-            raise HTTPException(status_code=404, detail="数据表不存在")
-        body = jsonable_encoder(detail)
-        body.update(enabled=True, status_label=STATUS_LABELS.get(str(detail.row.status)),
-                    dimension_labels=DIMENSION_LABELS)
-        return _json(body)
-
-    @app.get("/api/app/data/tables/{dataset_id}/sample")
-    def data_table_sample(dataset_id: str):
-        if assets is None:
-            return _json(DISABLED)
-        ds = DATASETS.get(dataset_id)
-        if ds is None:
-            raise HTTPException(status_code=404, detail="数据表不存在")
-        try:
-            body = table_sample(assets.root, ds)
-        except Exception as exc:  # 文件损坏等：如实说明不可抽样，不回显路径
-            body = {"available": False, "message": f"抽样失败：{type(exc).__name__}", "columns": [], "rows": []}
-        return _json({"enabled": True, **body})
 
     @app.get("/api/app/data/catalog")
     def data_catalog(dataset: str | None = None, kind: str | None = None, status: str | None = None):
