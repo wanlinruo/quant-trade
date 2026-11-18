@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build && node scripts/write-build-info.mjs",
     "typecheck": "tsc -b --noEmit",
-    "test": "vitest run"
+    "test": "TZ=Asia/Shanghai vitest run"
   },
   "dependencies": {
     "@ant-design/icons": "6.3.4",

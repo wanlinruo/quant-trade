@@ -12,7 +12,7 @@ test('fetchShellStatus returns parsed body on 200', async () => {
 
 test('fetchShellStatus never returns stale data on failure', async () => {
   vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('boom', { status: 500 }))
-  expect(await fetchShellStatus()).toEqual({ data: null, error: '状态接口返回 500' })
+  expect(await fetchShellStatus()).toEqual({ data: null, error: '接口返回 500' })
   vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Failed to fetch'))
   expect((await fetchShellStatus()).data).toBeNull()
 })

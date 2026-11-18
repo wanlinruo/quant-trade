@@ -1,15 +1,29 @@
 const pad = (n: number) => String(n).padStart(2, '0')
 
-export const hms = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+/** 市场时区。页面一律按它显示时刻，不依赖浏览器所在时区（契约时间都带时区）。 */
+export const MARKET_TZ = 'Asia/Shanghai'
+const FMT = new Intl.DateTimeFormat('en-US', {
+  timeZone: MARKET_TZ, hourCycle: 'h23', weekday: 'short',
+  year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+})
+const WEEKDAY: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }
+
+/** 某一时刻在市场时区下的日历与钟点。 */
+export function marketParts(d: Date): { year: number; month: number; day: number; hour: number; minute: number; second: number; weekday: number } {
+  const p = Object.fromEntries(FMT.formatToParts(d).map((x) => [x.type, x.value]))
+  return { year: +p.year, month: +p.month, day: +p.day, hour: +p.hour, minute: +p.minute, second: +p.second, weekday: WEEKDAY[p.weekday] }
+}
+
+export const hms = (d: Date) => { const p = marketParts(d); return `${pad(p.hour)}:${pad(p.minute)}:${pad(p.second)}` }
 
 const WEEK = '日一二三四五六'
-export const dayLabel = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} 周${WEEK[d.getDay()]}`
+export const dayLabel = (d: Date) => { const p = marketParts(d); return `${p.year}-${pad(p.month)}-${pad(p.day)} 周${WEEK[p.weekday]}` }
 
-/** 只按本地时间与星期判断时段；节假日要等交易日历接入（后续计划），此处不推断。 */
+/** 按市场时区的钟点与星期判断时段；节假日要等交易日历接入（后续计划），此处不推断。 */
 export function phaseOf(d: Date): string {
-  const day = d.getDay()
-  if (day === 0 || day === 6) return '周末休市'
-  const s = d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()
+  const p = marketParts(d)
+  if (p.weekday === 0 || p.weekday === 6) return '周末休市'
+  const s = p.hour * 3600 + p.minute * 60 + p.second
   if (s < 9 * 3600 + 15 * 60) return '盘前'
   if (s < 9 * 3600 + 30 * 60) return '集合竞价'
   if (s < 11 * 3600 + 30 * 60) return '盘中'

@@ -1,5 +1,5 @@
 import { Button, Result } from 'antd'
-import { fetchMarket, type MarketPayload, type MarketSnapshot } from '../../api/market'
+import { fetchMarket, type MarketOverview, type MarketSnapshot } from '../../api/market'
 import { Freshness } from '../../page/Freshness'
 import { Hero, type Kpi } from '../../page/Hero'
 import { Panel } from '../../page/Panel'
@@ -18,7 +18,7 @@ import { TrendChart } from './TrendChart'
 
 const upDown = (p: Palette, v: number) => (v > 0 ? p.up : v < 0 ? p.down : p.muted)
 
-function heroOf(d: MarketPayload, p: Palette) {
+function heroOf(d: MarketOverview, p: Palette) {
   const live = d.live
   const snap = live?.snapshot ?? null
   if (!snap) {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from 'antd'
-import { fetchResearch, type ResearchView as View } from '../../api/ailu'
+import { fetchResearch, type ResearchBoard as View } from '../../api/ailu'
 import { EChart, type EChartsOption } from '../../page/EChart'
 import { Hero } from '../../page/Hero'
 import { Panel } from '../../page/Panel'

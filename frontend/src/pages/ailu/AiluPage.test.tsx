@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import type { EChartsOption } from '../../page/EChart'
 import { AiluPage } from './AiluPage'
 import { research, shadow } from './fixtures'
-import type { ShadowView } from '../../api/ailu'
+import type { ShadowBoard } from '../../api/ailu'
 
 const options: EChartsOption[] = []
 vi.mock('../../page/EChart', () => ({
@@ -20,14 +20,14 @@ beforeEach(() => { options.length = 0; history.replaceState(null, '', '/app/ailu
 afterEach(() => { vi.unstubAllGlobals() })
 
 test('ailu always shows the not-a-trading-signal notice', async () => {
-  mockFetch(shadow({ state: 'unavailable', available: false, message: '影子榜单数据源未配置', snapshot: null, history: [] }))
+  mockFetch(shadow({ state: 'unavailable', message: '影子榜单数据源未配置', snapshot: null, history: [] }))
   render(<AiluPage />)
   expect(await screen.findByText('影子榜单数据源未配置')).toBeInTheDocument()
   expect(screen.getByText('不是交易信号，不进入实盘或模拟决策。')).toBeInTheDocument()
 })
 
 test('ailu hero maps every view state', async () => {
-  const cases: [ShadowView['state'], string][] = [
+  const cases: [ShadowBoard['state'], string][] = [
     ['ready', '● 正常'], ['stale', '▲ 已过期'], ['generating', '◐ 运行中'],
     ['waiting', '○ 待运行'], ['failed', '✕ 失败'], ['unavailable', '○ 待运行'],
   ]
@@ -66,7 +66,7 @@ test('precision chart keeps nulls and baseline shows 缺失', async () => {
 })
 
 test('failed shadow shows error message and no table', async () => {
-  mockFetch(shadow({ state: 'failed', available: false, message: '特征缺失：bars_daily 2026-11-16', snapshot: null }))
+  mockFetch(shadow({ state: 'failed', message: '特征缺失：bars_daily 2026-11-16', snapshot: null }))
   render(<AiluPage />)
   expect(await screen.findByText('特征缺失：bars_daily 2026-11-16')).toBeInTheDocument()
   expect(screen.queryByText('今天模型看好谁？')).toBeNull()

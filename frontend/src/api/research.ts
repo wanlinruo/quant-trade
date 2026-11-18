@@ -1,3 +1,5 @@
+import { getJson, sendJson } from './client'
+
 /** 研究侧接口类型（字段见 src/qsys/web/app_research.py）。写操作沿用现有接口。 */
 
 export interface BacktestRow {
@@ -49,27 +51,8 @@ export interface ResearchJob {
 }
 export type ResearchJobList = { enabled: true; submission_enabled: boolean; jobs: ResearchJob[] } | Disabled
 
-async function call<T>(method: string, url: string, body?: unknown, signal?: AbortSignal): Promise<T> {
-  let r: Response
-  try {
-    r = await fetch(url, {
-      method, cache: 'no-store', signal,
-      headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    })
-  } catch (e) {
-    if ((e as Error).name === 'AbortError') throw e
-    throw new Error('接口无法访问')
-  }
-  if (!r.ok) {
-    let detail = `接口返回 ${r.status}`
-    try { const j = await r.json(); if (typeof j?.detail === 'string') detail = j.detail } catch { /* 非 JSON */ }
-    throw new Error(detail)
-  }
-  return r.json() as Promise<T>
-}
-
-const get = <T,>(url: string, signal?: AbortSignal) => call<T>('GET', url, undefined, signal)
+const get = getJson
+const call = <T,>(method: 'POST' | 'PUT', url: string, body?: unknown) => sendJson<T>(method, url, body)
 
 export const fetchStrategies = (s?: AbortSignal) => get<StrategyList>('/api/app/strategies', s)
 export const fetchStrategy = (id: string, s?: AbortSignal) => get<StrategyDetail | Disabled>(`/api/app/strategies/${encodeURIComponent(id)}`, s)

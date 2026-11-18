@@ -5,7 +5,7 @@
   "stale": false,
   "snapshot": {
    "session": "2026-11-17",
-   "published_at": "2026-11-17T10:42:00",
+   "published_at": "2026-11-17T10:42:00+08:00",
    "indices": [
     {
      "symbol": "000001.SH",
@@ -69,7 +69,6 @@
     "status": "incomplete",
     "universe_source": "stock_basic",
     "universe_session": "2026-11-17",
-    "universe_sha256": null,
     "expected": 5441,
     "excluded_non_a": 0,
     "invalid_identity_count": 0,
@@ -85,8 +84,8 @@
       "invalid": 0,
       "other_session": 0,
       "missing_samples": [],
-      "source_at_min": "2026-11-17T10:41:58",
-      "source_at_max": "2026-11-17T10:42:00"
+      "source_at_min": "2026-11-17T10:41:58+08:00",
+      "source_at_max": "2026-11-17T10:42:00+08:00"
      },
      {
       "market": "SZ",
@@ -98,8 +97,8 @@
       "invalid": 0,
       "other_session": 0,
       "missing_samples": [],
-      "source_at_min": "2026-11-17T10:41:58",
-      "source_at_max": "2026-11-17T10:42:00"
+      "source_at_min": "2026-11-17T10:41:58+08:00",
+      "source_at_max": "2026-11-17T10:42:00+08:00"
      },
      {
       "market": "BJ",
@@ -114,15 +113,15 @@
        "920001.BJ",
        "920002.BJ"
       ],
-      "source_at_min": "2026-11-17T10:41:58",
-      "source_at_max": "2026-11-17T10:42:00"
+      "source_at_min": "2026-11-17T10:41:58+08:00",
+      "source_at_max": "2026-11-17T10:42:00+08:00"
      }
     ]
    }
   }
  },
  "schedule": {
-  "checked_at": "2026-11-17T10:42:00",
+  "checked_at": "2026-11-17T10:42:00+08:00",
   "is_trading_day": true,
   "is_open": true,
   "next_open_at": null
@@ -134,8 +133,14 @@
   "samples": [
    {
     "symbol": "600000.SH",
-    "tushare": 11.11,
-    "qmt": 11.12
+    "tushare": {
+     "up": 11.11,
+     "down": 11.11
+    },
+    "qmt": {
+     "up": 11.12,
+     "down": 11.12
+    }
    }
   ],
   "unbounded_equivalent": 3,
@@ -143,19 +148,35 @@
   "missing_samples": [
    {
     "symbol": "200001.SH",
-    "tushare": 1
+    "tushare": {
+     "up": 1,
+     "down": 1
+    },
+    "qmt": null
    },
    {
     "symbol": "200002.SH",
-    "tushare": 1
+    "tushare": {
+     "up": 1,
+     "down": 1
+    },
+    "qmt": null
    },
    {
     "symbol": "900901.SH",
-    "tushare": 1
+    "tushare": {
+     "up": 1,
+     "down": 1
+    },
+    "qmt": null
    },
    {
     "symbol": "600001.SH",
-    "tushare": 1
+    "tushare": {
+     "up": 1,
+     "down": 1
+    },
+    "qmt": null
    }
   ],
   "missing_in_roster": [
@@ -166,7 +187,8 @@
    "200002.SH",
    "900901.SH"
   ],
-  "missing_split_complete": true
+  "missing_split_complete": true,
+  "checked_at": "2026-11-17T09:00:05+08:00"
  },
  "regime": [
   {
@@ -1190,26 +1212,10 @@
    "index_ma20_slope_5d": 0.6000000000000001
   }
  ],
- "regime_columns": [
-  "dt",
-  "limit_up_count",
-  "limit_down_count",
-  "limit_up_down_ratio",
-  "touched_limit_up_count",
-  "broken_board_count",
-  "broken_board_rate",
-  "first_board_count",
-  "market_advance_ratio",
-  "market_median_return_1d",
-  "market_total_money",
-  "prior_limitup_nextday_return_mean",
-  "prior_limitup_nextday_return_median",
-  "valid_stock_count",
-  "index_ma20_slope_5d"
- ],
  "missing": {
   "index_intraday": "行情快照只保存当前值，没有指数分时序列；需采集器保存（见 #675）",
   "return_distribution": "行情快照没有涨跌幅分布；需采集器提供（见 #675）"
  },
- "errors": {}
+ "errors": {},
+ "schema_version": 1
 }

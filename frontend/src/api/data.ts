@@ -1,3 +1,5 @@
+import { getJson } from './client'
+
 /** /api/app/data/* 的类型（字段见 src/qsys/web/app_data.py 与 asset_views / catalog_views）。只读。 */
 
 export type Health = 'red' | 'yellow' | 'green' | 'gray'
@@ -55,19 +57,7 @@ export type RuleDetail = Disabled | {
   targets: string[]; latest: (Record<string, unknown> & { sample_url?: string })[]; history: Record<string, unknown>[]
 }
 
-async function get<T>(url: string, signal?: AbortSignal): Promise<T> {
-  let r: Response
-  try { r = await fetch(url, { cache: 'no-store', signal }) } catch (e) {
-    if ((e as Error).name === 'AbortError') throw e
-    throw new Error('数据接口无法访问')
-  }
-  if (!r.ok) {
-    let detail = `数据接口返回 ${r.status}`
-    try { const j = await r.json(); if (typeof j?.detail === 'string') detail = j.detail } catch { /* 非 JSON */ }
-    throw new Error(detail)
-  }
-  return r.json() as Promise<T>
-}
+const get = getJson
 const enc = encodeURIComponent
 const qs = (p: Record<string, string | null | undefined>) => {
   const q = new URLSearchParams(); for (const [k, v] of Object.entries(p)) if (v) q.set(k, v)

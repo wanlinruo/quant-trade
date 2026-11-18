@@ -2,23 +2,23 @@ import { expect, test } from '@playwright/test'
 
 const STOPPED = {
   schema_version: 1,
-  checked_at: '2026-11-17T10:40:00',
+  checked_at: '2026-11-17T10:40:00+08:00',
   kill: {
     state: 'stopped', label: '实盘已停机', message: '禁止自动开仓；减仓与风控沿用现有规则。',
     sources: [
-      { id: 'linux', name: 'Linux 本地停机闸', state: 'stopped', reason: 'Linux⇄Windows Redis 隧道心跳中断超过 90 秒，触发 watchdog', recorded_at: '2026-11-17T10:32:35' },
-      { id: 'redis', name: 'Redis 实盘停机闸', state: 'stopped', reason: '同上', recorded_at: '2026-11-17T10:32:35' },
+      { id: 'linux', name: 'Linux 本地停机闸', state: 'stopped', reason: 'Linux⇄Windows Redis 隧道心跳中断超过 90 秒，触发 watchdog', recorded_at: '2026-11-17T10:32:35+08:00' },
+      { id: 'redis', name: 'Redis 实盘停机闸', state: 'stopped', reason: '同上', recorded_at: '2026-11-17T10:32:35+08:00' },
       { id: 'agent', name: 'Windows 实盘 agent', state: 'unknown', reason: '心跳不可用', recorded_at: null },
     ],
   },
   live: { state: 'reduce_only', label: '仅允许减仓' },
   agent_heartbeat_at: null,
-  qmt: null, qmt_reason: '第 03 份计划提供结构化链路记录后接入',
-  alerts_open: null, alerts_reason: '第 04 份计划提供告警汇总后接入',
+  qmt: null, alerts_open: null,
+  missing: { qmt: '待计划 03/07 接入', alerts_open: '待计划 04 接入' },
 }
 
 test.beforeEach(async ({ page }) => {
-  await page.route('**/api/shell/status', (r) => r.fulfill({ json: STOPPED }))
+  await page.route('**/api/app/shell/status', (r) => r.fulfill({ json: STOPPED }))
 })
 
 for (const width of [390, 1280, 1600]) {

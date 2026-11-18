@@ -19,17 +19,17 @@ import dQuality from './fixtures/data-quality.json' with { type: 'json' }
 import dRule from './fixtures/data-rule.json' with { type: 'json' }
 
 const CLEAR = {
-  schema_version: 1, checked_at: '2026-11-17T10:40:00',
+  schema_version: 1, checked_at: '2026-11-17T10:40:00+08:00',
   kill: { state: 'clear', label: '未触发', message: '', sources: [] },
-  live: { state: 'trading', label: '实盘运行' }, agent_heartbeat_at: '2026-11-17T10:39:58',
-  qmt: null, qmt_reason: '后续计划接入', alerts_open: null, alerts_reason: '后续计划接入',
+  live: { state: 'trading', label: '实盘运行' }, agent_heartbeat_at: '2026-11-17T10:39:58+08:00',
+  qmt: null, alerts_open: null, missing: { qmt: '后续计划接入', alerts_open: '后续计划接入' },
 }
 
 test.beforeEach(async ({ page }) => {
-  await page.route('**/api/shell/status', (r) => r.fulfill({ json: CLEAR }))
+  await page.route('**/api/app/shell/status', (r) => r.fulfill({ json: CLEAR }))
   await page.route('**/api/app/market', (r) => r.fulfill({ json: market }))
-  await page.route('**/api/market/limit-up-shadow*', (r) => r.fulfill({ json: shadow }))
-  await page.route('**/api/market/limit-up-research*', (r) => r.fulfill({ json: research }))
+  await page.route('**/api/app/ailu/shadow*', (r) => r.fulfill({ json: shadow }))
+  await page.route('**/api/app/ailu/research*', (r) => r.fulfill({ json: research }))
   await page.route('**/api/app/board/series*', (r) => r.fulfill({ json: boardSeries }))
   await page.route(/\/api\/app\/board(\?.*)?$/, (r) => r.fulfill({ json: board }))
   await page.route('**/api/app/strategies', (r) => r.fulfill({ json: strategies }))

@@ -1,3 +1,5 @@
+import { getJson } from './client'
+
 /** /api/app/board 的类型（字段见 src/qsys/web/limit_up_board.py BoardView 与 app_board.py）。 */
 
 export type BoardMode = 'live' | 'final' | 'history'
@@ -72,27 +74,15 @@ export interface SeriesData {
   events?: { at: string; kind: string; detail: string }[]
 }
 
-async function getJson<T>(url: string, label: string, signal?: AbortSignal): Promise<T> {
-  let r: Response
-  try {
-    r = await fetch(url, { cache: 'no-store', signal })
-  } catch (e) {
-    if ((e as Error).name === 'AbortError') throw e
-    throw new Error(`${label}接口无法访问`)
-  }
-  if (!r.ok) throw new Error(`${label}接口返回 ${r.status}`)
-  return r.json() as Promise<T>
-}
-
 export function fetchBoard(day: string | null, at: string | null, signal?: AbortSignal): Promise<BoardData> {
   const q = new URLSearchParams()
   if (day) q.set('day', day)
   if (day && at) q.set('at', `${day}T${at}`)
   const s = q.toString()
-  return getJson<BoardData>(`/api/app/board${s ? `?${s}` : ''}`, '打板看板', signal)
+  return getJson<BoardData>(`/api/app/board${s ? `?${s}` : ''}`, signal)
 }
 
 export function fetchBoardSeries(day: string, symbol: string, signal?: AbortSignal): Promise<SeriesData> {
   const q = new URLSearchParams({ day, symbol })
-  return getJson<SeriesData>(`/api/app/board/series?${q}`, '分时', signal)
+  return getJson<SeriesData>(`/api/app/board/series?${q}`, signal)
 }

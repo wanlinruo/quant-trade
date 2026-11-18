@@ -86,7 +86,7 @@ export function TopBar({ status, error, collapsed = false, onOpenSearch, onOpenH
         tip={status ? (liveState === 'reduce_only' ? '停机闸已触发：禁止自动开仓' : liveState === 'trading' ? '三处停机闸均未生效 · 点击打开实盘总览' : status.kill.message) : unavailable} />
       <Pill testId="kill-pill" ok={kill.ok} text={kill.text} to="recon" tip={status ? status.kill.message : unavailable} />
       <Stat testId="stat-qmt" k="QMT" to="nodes" tip="QMT 执行端在线状态 · 点击看节点与链路">
-        <Missing why={status?.qmt_reason ?? unavailable} />
+        <Missing why={status?.missing.qmt ?? unavailable} />
       </Stat>
       <Stat testId="stat-heartbeat" k="心跳" to="live" tip="Windows 实盘 agent 最近一次心跳距今">
         {status ? <Heartbeat at={status.agent_heartbeat_at} /> : <Missing why={unavailable} />}
@@ -94,7 +94,7 @@ export function TopBar({ status, error, collapsed = false, onOpenSearch, onOpenH
       <Stat testId="stat-alerts" k="告警" to="alerts" tip="未处理告警数">
         {status && status.alerts_open !== null
           ? <Num size={12} color={status.alerts_open ? p.warn : p.ok}>{status.alerts_open}</Num>
-          : <Missing why={status?.alerts_reason ?? unavailable} />}
+          : <Missing why={status?.missing.alerts_open ?? unavailable} />}
       </Stat>
       <span style={{ flex: 1 }} />
       <Button size="small" icon={<SearchOutlined />} onClick={onOpenSearch} className="qs-h-search" aria-label="搜索"

@@ -1,4 +1,4 @@
-import { parseLocal, phaseOf } from './time'
+import { dayLabel, hms, parseLocal, phaseOf } from './time'
 
 const at = (dow: number, h: number, m: number) => new Date(2026, 10, 15 + dow, h, m) // 2026-11-15 是周日
 
@@ -20,4 +20,12 @@ test('parseLocal returns null for missing or malformed values', () => {
   expect(parseLocal(null)).toBeNull()
   expect(parseLocal('not a date')).toBeNull()
   expect(parseLocal('2026-11-17T10:00:00')?.getHours()).toBe(10)
+})
+
+test('times are shown in Asia/Shanghai regardless of browser timezone', () => {
+  // 18:00 UTC = 次日 02:00 上海；不论运行环境时区，都按市场时区显示
+  const d = new Date('2026-11-18T18:00:00Z')
+  expect(hms(d)).toBe('02:00:00')
+  expect(dayLabel(d)).toBe('2026-11-19 周四')
+  expect(phaseOf(new Date('2026-11-19T02:00:00Z'))).toBe('盘中') // 上海 10:00 周四
 })

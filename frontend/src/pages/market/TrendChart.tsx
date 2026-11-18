@@ -1,17 +1,17 @@
 import { useMemo } from 'react'
 import { EChart, type EChartsOption } from '../../page/EChart'
 import { clipFuture, toSeries, type Point } from '../../page/series'
-import type { RegimeRow } from '../../api/market'
+import type { RegimeDay } from '../../api/market'
 import { usePalette } from '../../theme/context'
 
-const closeOf = (x: string) => new Date(`${x}T15:00:00`)
+const closeOf = (x: string) => new Date(`${x}T15:00:00+08:00`)
 
-function col(rows: RegimeRow[], c: string, now: Date): Point[] {
-  return clipFuture(toSeries(rows, (r) => r.dt, (r) => r[c] as number | null), now, closeOf)
+function col(rows: RegimeDay[], c: Exclude<keyof RegimeDay, 'dt'>, now: Date): Point[] {
+  return clipFuture(toSeries(rows, (r) => r.dt, (r) => r[c]), now, closeOf)
 }
 
 /** 近 60 日情绪：涨停实心柱、炸板虚线框柱、跌停柱、上涨占比折线（右轴）；斜率单独小图。null 断开。 */
-export function TrendChart({ rows }: { rows: RegimeRow[] }) {
+export function TrendChart({ rows }: { rows: RegimeDay[] }) {
   const p = usePalette()
   const [main, slope] = useMemo(() => {
     const now = new Date()

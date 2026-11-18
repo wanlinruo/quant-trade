@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react'
 import { Button, Space } from 'antd'
-import { fetchShadow, type ShadowView as View, type ViewState } from '../../api/ailu'
+import { fetchShadow, type ShadowBoard as View, type ViewState } from '../../api/ailu'
 import { EChart, type EChartsOption } from '../../page/EChart'
 import { Freshness } from '../../page/Freshness'
 import { Hero } from '../../page/Hero'
@@ -19,8 +19,7 @@ const STATE: Record<ViewState, { s: Status; text?: string }> = {
   waiting: { s: 'idle' }, failed: { s: 'bad' }, unavailable: { s: 'idle' },
 }
 
-export const NO_CALIBRATION = '影子榜单记录尚未提供基线与分桶校准数据（见 #676）'
-const closeOf = (x: string) => new Date(`${x}T15:00:00`)
+const closeOf = (x: string) => new Date(`${x}T15:00:00+08:00`)
 
 function PrecisionChart({ view }: { view: View }) {
   const p = usePalette()
@@ -77,10 +76,10 @@ export function ShadowView({ day, onPickDay }: { day: string | null; onPickDay(d
       <Panel title="模型最近准不准？" info="P@20：榜单前 20 只中收盘封板的比例，逐日来自影子榜单记录；未出结果的日子断开。">
         {v.history.length === 0 ? <div style={{ color: p.muted }}>暂无历史</div> : <PrecisionChart view={v} />}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 20px', marginTop: 8, fontSize: 12, color: p.muted }}>
-          <span>基线 <Missing why={NO_CALIBRATION} /></span>
-          <span>10 日滚动 <Missing why={NO_CALIBRATION} /></span>
-          <span>校准曲线 <Missing why={NO_CALIBRATION} /></span>
-          <span>特征漂移序列 <Missing why={NO_CALIBRATION} /></span>
+          <span>基线 <Missing why={v.missing.baseline ?? '后端未给出原因'} /></span>
+          <span>10 日滚动 <Missing why={v.missing.rolling_10d ?? '后端未给出原因'} /></span>
+          <span>校准曲线 <Missing why={v.missing.calibration_curve ?? '后端未给出原因'} /></span>
+          <span>特征漂移序列 <Missing why={v.missing.drift_series ?? '后端未给出原因'} /></span>
         </div>
       </Panel>
       <Panel title="历史榜单">

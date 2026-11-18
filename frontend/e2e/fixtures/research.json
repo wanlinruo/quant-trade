@@ -1,11 +1,9 @@
 {
  "state": "ready",
- "available": true,
- "historical_research": true,
  "message": "研究回测结果（冻结）",
  "selected": null,
  "summary": {
-  "generated_at": "2026-11-01T10:00:00",
+  "generated_at": "2026-11-01T10:00:00+08:00",
   "source_sha": "0123456789abcdef0123456789abcdef01234567",
   "data_sha": "fedcba9876543210fedcba9876543210fedcba98",
   "first_prediction_date": "2024-01-02",
@@ -247,5 +245,6 @@
    "predictions": 411,
    "hits": 133
   }
- ]
+ ],
+ "schema_version": 1
 }
