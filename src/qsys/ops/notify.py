@@ -229,10 +229,8 @@ class StrategyNotifier:
         if self._alerts is None or not should_notify(record, context):
             return False
         title, detail = compose(self._name, record, context)
-        if record.error:
-            self._alerts.critical(title, detail)
-        elif record.rejects:
-            self._alerts.warning(title, detail)
-        else:
-            self._alerts.info(title, detail)
+        key = ("strategy.run.error" if record.error else
+               "strategy.run.rejects" if record.rejects else "strategy.run.report")
+        self._alerts.emit(key, subject=self._name, params={"title": title}, detail=detail,
+                          evidence={"session": str(record.session), "phase": record.phase})
         return True

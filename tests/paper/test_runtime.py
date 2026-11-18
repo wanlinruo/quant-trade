@@ -101,7 +101,8 @@ def _runtime(warehouse, tmp_path, quotes, source=SOURCE):
 def test_notified_account_writes_actual_explicit_or_legacy_ledger(
     warehouse, tmp_path, monkeypatch, custom,
 ):
-    from qsys.ops.alerts import AlertLedger, RecordingAlertSink
+    from qsys.ops.alerts import RecordingAlertSink
+    from qsys.ops.alert_events import AlertEventLog
 
     monkeypatch.chdir(tmp_path)
     _, store, ident, today = _runtime(warehouse, tmp_path, Quotes())
@@ -113,10 +114,10 @@ def test_notified_account_writes_actual_explicit_or_legacy_ledger(
         ident, store, warehouse.root, AShareCalendar([today]), Quotes(), tmp_path,
         alert_ledger=explicit if custom else None,
     )
-    runtime.notifier._alerts.info("local ledger verification")
+    runtime.notifier._alerts.emit("strategy.run.report", params={"title": "local ledger verification"})
     target = explicit if custom else tmp_path / "var/alerts"
-    assert [r["title"] for r in AlertLedger(target).read(today)] == ["local ledger verification"]
-    assert len(sink.alerts) == 1
+    assert [e.title for e in AlertEventLog(target).read(today)] == ["local ledger verification"]
+    assert len(sink.events) == 1
     if custom:
         assert not (tmp_path / "var/alerts").exists()
 
@@ -300,12 +301,12 @@ def test_a_paper_order_is_announced_with_the_symbol_and_price(warehouse, tmp_pat
 
     runtime, store, ident, today = _runtime(warehouse, tmp_path, Quotes(), source=BUYER)
     sink = RecordingAlertSink()
-    runtime.notifier._alerts = AlertBus([sink])
+    runtime.notifier._alerts = AlertBus([sink], source="test")
 
     runtime.tick(datetime.combine(today, time(9, 15, 10)))
 
-    sent = [a for a in sink.alerts if "买入" in a.title or "下单" in a.title]
-    assert sent, [a.title for a in sink.alerts]
+    sent = [a for a in sink.events if "买入" in a.title or "下单" in a.title]
+    assert sent, [a.title for a in sink.events]
     assert "600036.SH" in sent[0].detail
 
 
@@ -315,7 +316,7 @@ def test_a_context_failure_never_stops_the_notification(warehouse, tmp_path, mon
 
     runtime, store, ident, today = _runtime(warehouse, tmp_path, Quotes())
     sink = RecordingAlertSink()
-    runtime.notifier._alerts = AlertBus([sink])
+    runtime.notifier._alerts = AlertBus([sink], source="test")
     monkeypatch.setattr(runtime.store, "previous_total_value",
                         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("坏了")))
 

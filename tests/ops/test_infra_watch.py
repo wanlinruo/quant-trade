@@ -177,3 +177,26 @@ def test_gateway_kill_is_covered_by_the_kill_switch_alert_when_both_engaged():
 def test_gateway_kill_unknown_or_released_stays_silent():
     assert survey({"gateway_local_kill": None}) == []
     assert survey({"gateway_local_kill": False}) == []
+
+
+def test_every_finding_key_maps_to_a_registered_event_key():
+    """巡检发现键 → 受管事件键（#662 计划 03）；所有 survey 可能产生的键都已登记。"""
+    from qsys.ops.alert_keys import KEYS
+    from qsys.ops.infra_watch import event_key
+    reading = {"disk_free_bytes": 0, "system_disk_free_bytes": 0, "cert_days": 1,
+               "failed_units": ["qsys-web.service"], "kill_switch": "manual", "order_book_low": True,
+               "redis_error": "timeout"}
+    findings = survey(reading) + survey({"gateway_local_kill": True})
+    assert {f.key.split(":")[0] for f in findings} >= {"disk", "cert", "unit", "kill", "gateway_kill", "order_book", "redis"}
+    for f in findings:
+        key, subject = event_key(f.key)
+        assert key in KEYS, f.key
+    assert event_key("unit:qsys-web.service") == ("infra.unit.failed", "qsys-web.service")
+    assert event_key("disk:system") == ("infra.disk.system", "")
+
+
+def test_notices_carry_finding_key_and_recovery_flag():
+    tracker = EdgeTracker()
+    [fire] = tracker.update([BAD])
+    [recover] = tracker.update([])
+    assert (fire.key, fire.resolved) == ("disk", False) and (recover.key, recover.resolved) == ("disk", True)

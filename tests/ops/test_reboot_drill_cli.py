@@ -109,8 +109,9 @@ def test_shutdown_failure_stops_without_wait_or_retry(monkeypatch, response):
     assert len(ssh.call_args_list) == 1
     assert "shutdown /r" in ssh.call_args.args[2]
     assert len(run.steps) == 3
-    bus.critical.assert_called_once()
-    assert "sensitive" not in str(bus.critical.call_args)
+    bus.emit.assert_called_once()
+    assert bus.emit.call_args.args[0] in ("drill.command.unknown", "drill.command.failed")
+    assert "sensitive" not in str(bus.emit.call_args)
 
 
 def test_confirmation_rechecked_after_baseline(monkeypatch):
@@ -139,8 +140,7 @@ def test_accepted_shutdown_continues_to_recovery(monkeypatch):
         assert cli._run(args(), DAY, "test", run) == 0
     assert run.status == "succeeded"
     assert ssh.call_count == 2
-    bus.info.assert_called_once()
-    bus.critical.assert_not_called()
+    assert [c.args[0] for c in bus.emit.call_args_list] == ["drill.reboot.passed"]
 
 
 def test_legacy_script_uses_same_guarded_entry():

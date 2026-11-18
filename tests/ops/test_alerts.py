@@ -1,260 +1,168 @@
-from datetime import datetime
+"""告警总线（#662 计划 03 起发布结构化事件）：旁路、失败隔离、留存与通道路由。"""
+
+from __future__ import annotations
+
+import json
+from datetime import date, datetime
 
 import pytest
 
+from qsys.ops.alert_events import SHANGHAI, AlertEventLog, Severity, render_text
 from qsys.ops.alerts import (
-    LogAlertSink,
-    Alert,
-    AlertBus,
-    RecordingAlertSink,
-    Severity,
-    WebhookAlertSink,
+    AlertBus, LegacyLedger, LogAlertSink, MinSeveritySink, RecordingAlertSink, WebhookAlertSink, ledger,
+    strategy_sinks,
 )
 
-T = datetime(2024, 1, 3, 10, 0)
+T = datetime(2026, 11, 18, 9, 30, 1, tzinfo=SHANGHAI)
+DAY = date(2026, 11, 18)
 
 
-def test_alert_text_contains_severity_and_title():
-    text = Alert(Severity.CRITICAL, "持仓不一致", "600036.SH local=500 remote=400", T).as_text()
-    assert "CRITICAL" in text
-    assert "持仓不一致" in text
-    assert "600036.SH" in text
-
-
-def test_alert_text_without_detail():
-    text = Alert(Severity.INFO, "启动完成", "", T).as_text()
-    assert "启动完成" in text
-
-
-def test_recording_sink_captures_alerts():
-    sink = RecordingAlertSink()
-    AlertBus([sink]).warning("心跳超时", "agent 90 秒无心跳")
-    assert len(sink.alerts) == 1
-    assert sink.alerts[0].severity is Severity.WARNING
-
-
-def test_bus_fans_out_to_every_sink():
-    a, b = RecordingAlertSink(), RecordingAlertSink()
-    AlertBus([a, b]).critical("停机")
-    assert len(a.alerts) == 1 and len(b.alerts) == 1
-
-
-def test_severity_helpers():
-    sink = RecordingAlertSink()
-    bus = AlertBus([sink])
-    bus.info("i")
-    bus.warning("w")
-    bus.critical("c")
-    assert [a.severity for a in sink.alerts] == [
-        Severity.INFO, Severity.WARNING, Severity.CRITICAL,
-    ]
-
-
-def test_a_failing_sink_does_not_block_the_others():
-    """告警发不出去也不能让主流程崩——告警是旁路，不是主路。"""
-
-    class Broken(RecordingAlertSink):
-        def send(self, alert):
-            raise RuntimeError("webhook down")
-
-    good = RecordingAlertSink()
-    AlertBus([Broken(), good]).critical("重要告警")
-    assert len(good.alerts) == 1
-
-
-def test_bus_with_no_sinks_does_not_raise():
-    AlertBus([]).critical("nobody listening")
-
-
-def test_webhook_posts_the_alert_text():
-    posted = []
-
-    def poster(url, payload, timeout):
-        posted.append((url, payload, timeout))
-
-    WebhookAlertSink("https://example.invalid/hook", poster=poster).send(
-        Alert(Severity.CRITICAL, "熔断", "日内亏损 5%", T)
-    )
-    assert posted[0][0] == "https://example.invalid/hook"
-    assert "熔断" in str(posted[0][1])
-    assert posted[0][2] == 5.0
-
-
-def test_webhook_timeout_is_configurable():
-    posted = []
-    WebhookAlertSink("https://x.invalid", timeout=1.5,
-                     poster=lambda u, p, t: posted.append(t)).send(
-        Alert(Severity.INFO, "x", "", T)
-    )
-    assert posted[0] == 1.5
-
-
-def test_alert_is_frozen():
-    with pytest.raises(Exception):
-        Alert(Severity.INFO, "x", "", T).title = "y"
-
-
-# ---- 投递留账：通知链路自己挂了，得有办法发现（2026-10-01）----
-
-from datetime import date  # noqa: E402
-
-from qsys.ops.alerts import AlertLedger  # noqa: E402
-
-EMPTY_DAY = date(2024, 1, 3)
+def bus(*sinks, log=None, source="live-core"):
+    return AlertBus(list(sinks), log, source=source, clock=lambda: T)
 
 
 class Broken(RecordingAlertSink):
-    def send(self, alert):
-        raise RuntimeError("webhook 40001 invalid key")
+    def send(self, event):
+        raise RuntimeError("sink down")
 
 
-def test_a_delivered_alert_is_written_down(tmp_path):
-    ledger = AlertLedger(tmp_path)
-    AlertBus([RecordingAlertSink()], ledger).warning("心跳超时", "90 秒无心跳")
-
-    rows = ledger.read(date.today())
-    assert len(rows) == 1
-    assert rows[0]["severity"] == "WARNING"
-    assert rows[0]["delivered"] == 1 and rows[0]["failed"] == []
-
-
-def test_a_failed_sink_is_named_in_the_ledger(tmp_path):
-    ledger = AlertLedger(tmp_path)
-    AlertBus([RecordingAlertSink(), Broken()], ledger).critical("停机")
-
-    row = ledger.read(date.today())[0]
-    assert row["delivered"] == 1
-    assert row["failed"] == ["Broken"]
-
-
-def test_an_unwritable_ledger_never_breaks_the_alert(tmp_path):
-    """留账是旁路的旁路，绝不能反过来影响主流程。"""
+def test_emit_builds_event_from_registry():
     sink = RecordingAlertSink()
-    blocked = tmp_path / "file"
-    blocked.write_text("not a directory")
-    AlertBus([sink], AlertLedger(blocked / "under")).critical("停机")
-
-    assert len(sink.alerts) == 1
-
-
-def test_a_half_written_line_does_not_destroy_the_day(tmp_path):
-    """进程被 kill 会留下半行 JSON，不能让当天的账整份读不出来。"""
-    ledger = AlertLedger(tmp_path)
-    AlertBus([RecordingAlertSink()], ledger).info("开工")
-    (tmp_path / f"{date.today():%Y-%m-%d}.jsonl").open("a").write('{"at": "2024')
-
-    assert len(ledger.read(date.today())) == 1
+    e = bus(sink).emit("live.reconcile.failed", detail="差 1 股", evidence={"diff": 1})
+    assert [x.event_id for x in sink.events] == [e.event_id]  # sink 收到的是投递前的事件
+    assert (e.key, e.source, e.severity, e.state, e.title) == (
+        "live.reconcile.failed", "live-core", Severity.CRITICAL, "firing", "实盘账户对账失败")
+    assert e.occurred_at == T and e.evidence == {"diff": 1} and len(e.event_id) == 32
+    assert render_text(e) == "[CRITICAL] 2026-11-18 09:30:01 实盘账户对账失败\n差 1 股"
 
 
-def test_a_day_with_no_alerts_reads_empty(tmp_path):
-    assert AlertLedger(tmp_path).read(EMPTY_DAY) == []
+def test_emit_template_params_and_explicit_state():
+    sink = RecordingAlertSink()
+    b = bus(sink, source="reboot-drill")
+    assert b.emit("drill.reboot.passed", params={"day": "2026-11-18"}).title == "月度重启演练通过（2026-11-18）"
+    r = b.emit("observer.process.down", subject="paper", params={"title": "模拟交易已恢复"},
+               severity=Severity.INFO, state="resolved")
+    assert (r.state, r.severity, r.subject, r.title) == ("resolved", Severity.INFO, "paper", "模拟交易已恢复")
+    notice = b.emit("strategy.run.report", subject="paper", params={"title": "竞价"})
+    assert notice.state == "notice"
 
 
-def test_alert_ledger_merges_component_namespace(tmp_path):
-    today = date.today()
-    shared = AlertLedger(tmp_path)
-    component = AlertLedger(tmp_path / "service-checks")
-    observer = AlertLedger(tmp_path / "health-observer")
-    alert = Alert(Severity.WARNING, "质检告警", "缺表", datetime.now())
-    shared.record(alert, 1, [])
-    component.record(Alert(Severity.INFO, "质检通过", "", datetime.now()), 1, [])
-    observer.record(Alert(Severity.CRITICAL, "观测告警", "", datetime.now()), 1, [])
-
-    rows = shared.read(today)
-
-    assert [row["title"] for row in rows] == ["质检告警", "观测告警", "质检通过"]
+def test_ambiguous_severity_must_be_explicit():
+    sink = RecordingAlertSink()
+    e = bus(sink).emit("checks.service.problems", params={"title": "x"})  # 允许 W/C，未指定
+    assert e.key == "unregistered:checks.service.problems" and e.severity is Severity.CRITICAL
+    assert [x.event_id for x in sink.events] == [e.event_id]
 
 
-# ---- CRITICAL 双发：既是交易事件也是运维事故（2026-10-03）----
+def test_unregistered_key_still_delivered_as_critical(tmp_path):
+    sink, log = RecordingAlertSink(), AlertEventLog(tmp_path)
+    e = bus(sink, log=log).emit("nope.never.used", detail="原详情", params={"title": "原标题"})
+    assert e.key == "unregistered:nope.never.used" and e.severity is Severity.CRITICAL and e.state == "firing"
+    assert e.title == "原标题" and e.detail == "原详情"
+    assert [x.event_id for x in sink.events] == [e.event_id] and log.read(DAY) == [e] and e.delivered == 1
 
-from qsys.ops.alerts import MinSeveritySink, strategy_sinks  # noqa: E402
+
+def test_disallowed_severity_falls_back_to_unregistered_critical():
+    sink = RecordingAlertSink()
+    e = bus(sink).emit("live.reconcile.failed", severity=Severity.INFO)
+    assert e.key == "unregistered:live.reconcile.failed" and e.severity is Severity.CRITICAL
+    wrong_state = bus(sink).emit("strategy.run.report", params={"title": "x"}, state="firing")
+    assert wrong_state.key == "unregistered:strategy.run.report"
+
+
+def test_emit_isolates_sink_and_store_failures(tmp_path):
+    good = RecordingAlertSink()
+    blocker = tmp_path / "file"
+    blocker.write_text("x")
+    e = bus(Broken(), good, log=AlertEventLog(blocker / "sub")).emit("live.heartbeat.timeout", subject="agent")
+    assert good.events and e.delivered == 1 and e.failed == ("Broken",)
+
+
+def test_store_records_delivery_outcome(tmp_path):
+    log = AlertEventLog(tmp_path)
+    bus(RecordingAlertSink(), Broken(), log=log).emit("live.reject.fuse", detail="3 笔")
+    [stored] = log.read(DAY)
+    assert stored.delivered == 1 and stored.failed == ("Broken",) and stored.key == "live.reject.fuse"
+
+
+def test_bus_with_no_sinks_does_not_raise(tmp_path):
+    e = bus().emit("live.core.fuse")
+    assert e.delivered == 0 and e.failed == ()
+
+
+def test_webhook_posts_the_event_text():
+    calls = []
+    sink = WebhookAlertSink("https://hook", timeout=2.5, poster=lambda u, p, t: calls.append((u, p, t)))
+    e = bus(sink).emit("live.reject.fuse", detail="日内亏损 5%")
+    assert calls == [("https://hook", {"msgtype": "text", "text": {"content": render_text(e)}}, 2.5)]
 
 
 def test_only_critical_crosses_into_the_ops_channel():
     ops = RecordingAlertSink()
-    bus = AlertBus([MinSeveritySink(ops)])
-    bus.info("竞价决策"); bus.warning("订单被拒"); bus.critical("对账失败")
-
-    assert [a.title for a in ops.alerts] == ["对账失败"]
-
-
-def test_the_strategy_channel_still_gets_everything():
-    sinks = strategy_sinks("https://x/live", "https://x/ops")
-    urls = [s._url for s in sinks if hasattr(s, "_url")]
-
-    assert urls == ["https://x/live"]          # 策略群直连
-    assert any(isinstance(s, MinSeveritySink) for s in sinks)
-
-
-def test_one_robot_for_both_is_not_wired_twice():
-    """只配了一个机器人时重复装配会让每条严重告警发两遍。"""
-    sinks = strategy_sinks("https://x/only", "https://x/only")
-
-    assert sum(1 for s in sinks if hasattr(s, "_url")) == 1
-    assert not any(isinstance(s, MinSeveritySink) for s in sinks)
-
-
-def test_no_webhook_at_all_still_logs():
-    sinks = strategy_sinks("", "")
-
-    assert len(sinks) == 1 and isinstance(sinks[0], LogAlertSink)
+    b = bus(MinSeveritySink(ops))
+    b.emit("live.order.rejected", detail="x")
+    b.emit("live.reject.fuse")
+    assert [e.key for e in ops.events] == ["live.reject.fuse"]
 
 
 def test_a_filtered_sink_is_not_counted_as_a_delivery(tmp_path):
-    """留账里的「今天推了几条」要是把挡下的也算进去，就不能用来判断链路好坏。"""
-    book = AlertLedger(tmp_path)
-    bus = AlertBus([RecordingAlertSink(), MinSeveritySink(RecordingAlertSink())], book)
-    bus.info("竞价决策")
-    bus.critical("对账失败")
-
-    rows = book.read(date.today())
-    assert [r["delivered"] for r in rows] == [1, 2]
+    e = bus(RecordingAlertSink(), MinSeveritySink(RecordingAlertSink())).emit("live.order.rejected")
+    assert e.delivered == 1 and e.failed == ()
 
 
-def test_a_filter_does_not_hide_a_real_delivery_failure(tmp_path):
-    book = AlertLedger(tmp_path)
-    AlertBus([MinSeveritySink(Broken())], book).critical("对账失败")
-
-    row = book.read(date.today())[0]
-    assert row["delivered"] == 0 and row["failed"] == ["MinSeveritySink"]
+def test_a_filter_does_not_hide_a_real_delivery_failure():
+    e = bus(MinSeveritySink(Broken())).emit("live.reject.fuse")
+    assert e.delivered == 0 and e.failed == ("MinSeveritySink",)
 
 
 def test_a_sink_without_accepts_still_works():
-    """sink 只要有 send 就该能用，不该因为少一个可选方法把告警链打死。"""
-    seen = []
+    class Plain:
+        def __init__(self):
+            self.got = []
 
-    class Minimal:
-        def send(self, alert):
-            seen.append(alert.title)
-
-    AlertBus([Minimal()]).info("开工")
-
-    assert seen == ["开工"]
+        def send(self, event):
+            self.got.append(event)
+    p = Plain()
+    bus(p).emit("live.core.fuse")
+    assert len(p.got) == 1
 
 
 def test_a_sink_whose_accepts_explodes_is_still_sent_to():
-    """宁可多发不可不发。"""
-    seen = []
-
-    class Moody:
-        def accepts(self, alert):
-            raise RuntimeError("坏了")
-
-        def send(self, alert):
-            seen.append(alert.title)
-
-    AlertBus([Moody()]).critical("对账失败")
-
-    assert seen == ["对账失败"]
+    class Weird(RecordingAlertSink):
+        def accepts(self, event):
+            raise RuntimeError("bad filter")
+    w = Weird()
+    bus(w).emit("live.core.fuse")
+    assert len(w.events) == 1
 
 
-def test_reboot_ledger_remains_visible_to_shared_reader(tmp_path):
-    AlertBus([RecordingAlertSink()], AlertLedger(tmp_path / "reboot-drill")).critical("演练命令失败")
-    assert [r["title"] for r in AlertLedger(tmp_path).read(date.today())] == ["演练命令失败"]
+def test_strategy_sinks_unchanged():
+    sinks = strategy_sinks("https://s", "https://o")
+    assert [type(s).__name__ for s in sinks] == ["LogAlertSink", "WebhookAlertSink", "MinSeveritySink"]
+    assert [type(s).__name__ for s in strategy_sinks("https://s", "https://s")] == ["LogAlertSink", "WebhookAlertSink"]
+    assert [type(s).__name__ for s in strategy_sinks("")] == ["LogAlertSink"]
 
 
-def test_paper_and_shadow_ledgers_are_visible_alongside_legacy(tmp_path):
-    for namespace, title in [("", "legacy"), ("paper", "paper"), ("shadow-core", "shadow")]:
-        AlertBus([RecordingAlertSink()], AlertLedger(tmp_path / namespace)).info(title)
-    rows = AlertLedger(tmp_path).read(date.today())
-    assert [r["title"] for r in rows] == ["legacy", "paper", "shadow"]
+def test_log_sink_never_raises():
+    LogAlertSink().send(bus().emit("live.core.fuse"))
+
+
+def test_ledger_factory_returns_event_log(tmp_path):
+    assert isinstance(ledger(tmp_path), AlertEventLog) and ledger(tmp_path).root == tmp_path
+
+
+def test_legacy_ledger_reads_old_lines_and_namespaces(tmp_path):
+    line = {"at": "2026-11-18T09:30:00", "severity": "WARNING", "title": "旧", "delivered": 1, "failed": []}
+    (tmp_path / "2026-11-18.jsonl").write_text(json.dumps(line, ensure_ascii=False) + "\n{半行", encoding="utf-8")
+    (tmp_path / "paper").mkdir()
+    (tmp_path / "paper" / "2026-11-18.jsonl").write_text(json.dumps({**line, "title": "模拟"}) + "\n", encoding="utf-8")
+    assert [r["title"] for r in LegacyLedger(tmp_path).read(DAY)] == ["旧", "模拟"]
+    assert LegacyLedger(tmp_path / "none").read(DAY) == []
+
+
+def test_old_text_api_is_gone():
+    b = bus()
+    for name in ("info", "warning", "critical", "publish"):
+        assert not hasattr(b, name)
+    with pytest.raises(ImportError):
+        from qsys.ops.alerts import Alert  # noqa: F401

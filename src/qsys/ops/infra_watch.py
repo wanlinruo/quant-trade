@@ -19,7 +19,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 import re
 
-from qsys.ops.alerts import Severity
+from qsys.ops.alert_events import Severity
 from qsys.ops.storage import FREE_FAIL_BYTES, FREE_WARN_BYTES, GIB
 from qsys.ops.services import SERVICES
 
@@ -112,6 +112,24 @@ class Notice:
     severity: Severity
     title: str
     detail: str
+    key: str = ""          # 来源 Finding.key（事件键由 event_key 映射）
+    resolved: bool = False
+
+
+# Finding.key（或其冒号前缀）→ 受管事件键（qsys.ops.alert_keys）
+_EVENT_KEYS = {
+    "disk": "infra.disk.data", "disk:system": "infra.disk.system", "cert": "infra.cert.expiry",
+    "unit": "infra.unit.failed", "kill": "infra.kill.engaged", "gateway_kill": "infra.gateway_kill.engaged",
+    "order_book": "infra.order_book.empty", "redis": "infra.redis.unreachable",
+}
+
+
+def event_key(finding_key: str) -> tuple[str, str]:
+    """返回 (事件键, subject)。未映射的键原样加前缀，由告警总线按未登记处理（不丢告警）。"""
+    if finding_key in _EVENT_KEYS:
+        return _EVENT_KEYS[finding_key], ""
+    prefix, _, rest = finding_key.partition(":")
+    return _EVENT_KEYS.get(prefix, f"infra.{prefix}.unmapped"), rest
 
 
 class EdgeTracker:
@@ -127,7 +145,7 @@ class EdgeTracker:
     def update(self, findings: Iterable[Finding]) -> list[Notice]:
         current = {f.key: f for f in findings}
         notices = [
-            Notice(f.severity, f.title, f.detail)
+            Notice(f.severity, f.title, f.detail, f.key)
             for key, f in current.items()
             if key not in self._open or (
                 f.severity is Severity.CRITICAL
@@ -137,7 +155,7 @@ class EdgeTracker:
         notices += [
             Notice(Severity.INFO,
                    f"{f.title}：已离开 failed 状态（业务结果待核对）"
-                   if f.key.startswith("unit:") else f"{f.title}：已恢复", f.detail)
+                   if f.key.startswith("unit:") else f"{f.title}：已恢复", f.detail, f.key, True)
             for key, f in self._open.items()
             if key not in current
         ]

@@ -64,7 +64,7 @@ def main() -> int:
         alerts = AlertBus(strategy_sinks(
             config.alerts.strategy_url(shadow=True), config.alerts.ops_url,
             timeout=config.alerts.timeout_seconds,
-        ), ledger(args.alert_ledger))
+        ), ledger(args.alert_ledger), source="shadow-core")
         if args.strategy:
             source = StrategySource(Path(args.strategy))
         else:

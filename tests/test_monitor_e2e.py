@@ -42,7 +42,7 @@ def rig(warehouse, tmp_path):
     portfolio = Portfolio(1_000_000.0)
     journal = SessionJournal(warehouse)
     sink = RecordingAlertSink()
-    bus = AlertBus([sink])
+    bus = AlertBus([sink], source="test")
 
     ks = KillSwitch(transport, local_path=tmp_path / "KILL")
     gate = default_ashare_gate(ks, CAL)
@@ -90,7 +90,7 @@ def run_session(rig) -> None:
         detail=result.summary(), at=T,
     )
     if not result.is_consistent:
-        bus.critical("持仓不一致", result.summary())
+        bus.emit("live.reconcile.failed", detail=result.summary())
 
     journal.record_equity(D, cash=portfolio.cash, market_value=0.0)
 
@@ -157,7 +157,7 @@ def test_position_mismatch_raises_a_critical_alert(rig):
     """FakeAdapter 不跟踪持仓，本地有仓远端无仓 -> 必须告警。"""
     run_session(rig)
     _, _, _, _, _, _, sink = rig
-    assert any(a.severity is Severity.CRITICAL for a in sink.alerts)
+    assert any(a.severity is Severity.CRITICAL for a in sink.events)
 
 
 def test_daily_report_text_is_available(rig):
