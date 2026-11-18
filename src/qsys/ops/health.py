@@ -188,6 +188,26 @@ class HealthObservation:
         )
 
 
+LINK_RETENTION = timedelta(hours=48)
+
+
+@dataclass(frozen=True, slots=True)
+class LinkSample:
+    """一轮采样中一个链路来源的心跳状况（#662 计划 03b）。读不到时年龄与新鲜度为 None。"""
+
+    source: str               # agent / market / executor
+    beat_at: datetime | None  # 最近心跳时刻（本地时间）
+    age_s: float | None
+    threshold_s: float | None
+    fresh: bool | None
+    details: dict
+
+
+def _utc_iso(at: datetime) -> str:
+    """与本模块其他时间同口径：无时区时间按上海时间解释，不依赖运行机器的系统时区。"""
+    return _utc(at).isoformat()
+
+
 class HealthStore:
     """只记状态变化与周期检查点的 SQLite WAL 存储。"""
 
@@ -252,6 +272,18 @@ class HealthStore:
                     service_id TEXT PRIMARY KEY,
                     healthy_count INTEGER NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS link_samples (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    sampled_at_utc TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    beat_at_utc TEXT,
+                    age_s REAL,
+                    threshold_s REAL,
+                    fresh INTEGER,
+                    details TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS ix_link_source_time ON link_samples(source, sampled_at_utc);
+                CREATE INDEX IF NOT EXISTS ix_link_time ON link_samples(sampled_at_utc);
             """)
 
     @staticmethod
@@ -263,6 +295,35 @@ class HealthStore:
             "process_state", "business_state", "reason_code", "source",
             "details",
         ))
+
+    def record_link_samples(self, rows: list[LinkSample], *, now: datetime) -> None:
+        """写入一轮链路采样并清理 48 小时前的采样（同一事务）；失败只记日志，不影响采样循环。"""
+        if self.read_only:
+            raise RuntimeError("cannot record into a read-only health store")
+        try:
+            with self._connect() as con:
+                con.executemany(
+                    "INSERT INTO link_samples (sampled_at_utc, source, beat_at_utc, age_s, threshold_s, fresh, details)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    [(_utc_iso(now), r.source, _utc_iso(r.beat_at) if r.beat_at else None, r.age_s, r.threshold_s,
+                      None if r.fresh is None else int(r.fresh), json.dumps(r.details, ensure_ascii=False, sort_keys=True))
+                     for r in rows])
+                con.execute("DELETE FROM link_samples WHERE sampled_at_utc < ?", (_utc_iso(now - LINK_RETENTION),))
+        except (sqlite3.Error, OSError) as exc:
+            logging.getLogger(__name__).warning("link samples not recorded: %s", type(exc).__name__)
+
+    def link_samples(self, since: datetime) -> list[dict]:
+        """since 之后的链路采样（按时间升序）；旧库没有该表时返回空列表。"""
+        with self._connect() as con:
+            exists = con.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='link_samples'").fetchone()
+            if exists is None:
+                return []
+            rows = con.execute(
+                "SELECT sampled_at_utc, source, beat_at_utc, age_s, threshold_s, fresh, details FROM link_samples "
+                "WHERE sampled_at_utc >= ? ORDER BY sampled_at_utc, id", (_utc_iso(since),)).fetchall()
+        return [{**dict(r), "fresh": None if r["fresh"] is None else bool(r["fresh"]),
+                 "details": json.loads(r["details"])} for r in rows]
 
     def record(self, observation: HealthObservation) -> bool:
         if self.read_only:
@@ -453,6 +514,11 @@ class HealthStoreReader(HealthStore):
             except sqlite3.Error as exc:
                 # 新库准备/切换期间可暂不可读；保留其他已观测历史，缺测仍是未知。
                 logging.getLogger(__name__).warning("health database unavailable: %s: %s", store.path, exc)
+        return rows
+
+    def link_samples(self, since: datetime) -> list[dict]:
+        rows = self._read_rows("link_samples", since)
+        rows.sort(key=lambda row: row["sampled_at_utc"])
         return rows
 
     def latest(self, service_id: str | None = None) -> list[dict]:
