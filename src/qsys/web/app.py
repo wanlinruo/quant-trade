@@ -38,6 +38,7 @@ from qsys.web.research_jobs import ResearchJobConsole
 from qsys.web.service_views import ServiceConsole
 from qsys.web.app_board import register_app_board
 from qsys.web.app_market import register_app_market
+from qsys.web.app_research import register_app_research
 from qsys.web.shell_status import ShellStatusCache
 from qsys.web.spa import SPA_DIST, mount_spa
 from qsys.web.svg import line_chart, multi_line_chart
@@ -189,6 +190,10 @@ def create_app(
 
     register_app_market(app, market)
     register_app_board(app, limit_up_board, app.state.app_live_parts)
+    register_app_research(app, workbench=workbench, backtests=backtests, paper=paper,
+                          research_jobs=research_jobs, strategy_templates=strategy_templates,
+                          shadow_lineage=shadow_lineage, core_label=core_label,
+                          backtest_rows=_backtest_rows)
 
     # 新前端（#662）：/app 下的单页应用，与旧页面并存
     mount_spa(app, spa_root if spa_root is not None else SPA_DIST)
