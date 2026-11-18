@@ -28,8 +28,9 @@ def inputs(**over) -> ReviewInputs:
     pf.cash = 90_000.0
     pf.positions[Symbol.parse("600000.SH")] = Position(Symbol.parse("600000.SH"), 100, 100, 1000.0)
     account = AccountSnapshot(at=NOW.replace(tzinfo=None) - timedelta(seconds=1), cash=90_000.0,
-                              positions={"600000.SH": PositionSnapshot(total_qty=100, available_qty=100, avg_cost=10.0)},
-                              active_order_count=0)
+                              positions={"600000.SH": PositionSnapshot(total_qty=100, available_qty=100, avg_cost=10.0,
+                                                                       market_value=1000.0)},
+                              total_asset=91_000.0, active_order_count=0)
     base = dict(local_kill_reason="heartbeat timeout: agent", redis_kill_reason="heartbeat timeout: agent",
                 redis_ok=True, agent=agent(), market=beat("market"), account=account, portfolio=pf,
                 own_pending=0, state_error=None)
@@ -130,3 +131,66 @@ def test_redis_unavailable_is_blocked_not_crash():
 def test_reviewed_at_must_be_aware():
     with pytest.raises(ValueError):
         review(inputs(), confirmed_by="x", now=NOW.replace(tzinfo=None))
+
+
+# ---- 采集（Task 2）----
+
+def _store(tmp_path, account):
+    from qsys.live.store import LiveStore
+    path = tmp_path / "live-state.sqlite3"
+    store = LiveStore(path)
+    store.initialize(account)
+    store.close()
+    return path
+
+
+def _transport(account, kill=None):
+    from qsys.live.transport import MemoryTransport
+    t = MemoryTransport()
+    t.set_key("state:heartbeat:agent", agent().model_dump_json())
+    t.set_key("state:heartbeat:market", beat("market").model_dump_json())
+    t.set_key("state:account", account.model_dump_json())
+    if kill:
+        t.set_key("control:kill", kill)
+    return t
+
+
+def test_gather_reads_memory_transport_and_state_db(tmp_path):
+    from qsys.live.kill_review import gather
+    account = inputs().account
+    state = _store(tmp_path, account)
+    (tmp_path / "KILL").write_text("2026-11-18T09:42:00 heartbeat timeout: agent")
+    got = gather(_transport(account, kill="x heartbeat timeout: agent"), redis_ok=True,
+                 heartbeat_prefix="state:heartbeat", account_key="state:account", kill_key="control:kill",
+                 local_kill=tmp_path / "KILL", state=state)
+    assert got.redis_ok and got.local_kill_reason.endswith("heartbeat timeout: agent")
+    assert got.redis_kill_reason == "x heartbeat timeout: agent"
+    assert got.agent.trading_mode == "live" and got.account.cash == 90_000.0
+    assert got.own_pending == 0 and got.portfolio is not None and got.state_error is None
+    missing = gather(_transport(account), redis_ok=True, heartbeat_prefix="state:heartbeat",
+                     account_key="state:account", kill_key="control:kill", local_kill=tmp_path / "NONE",
+                     state=tmp_path / "missing.sqlite3")
+    assert missing.portfolio is None and missing.own_pending is None and "不存在" in missing.state_error
+    assert missing.local_kill_reason is None and missing.redis_kill_reason is None
+
+
+def test_gather_redis_read_failure_marks_unavailable(tmp_path):
+    from qsys.live.kill_review import gather
+
+    class Down:
+        def get_key(self, key):
+            raise ConnectionError("timeout")
+    got = gather(Down(), redis_ok=True, heartbeat_prefix="state:heartbeat", account_key="state:account",
+                 kill_key="control:kill", local_kill=None, state=tmp_path / "missing.sqlite3")
+    assert got.redis_ok is False and got.agent is None and got.account is None
+
+
+def test_review_uses_structured_inputs_only(tmp_path):
+    """端到端：真实状态库 + MemoryTransport，判定只用结构化字段（11-16 复核脚本依赖输出列顺序出错）。"""
+    from qsys.live.kill_review import gather
+    account = inputs().account
+    got = gather(_transport(account, kill="heartbeat timeout: agent"), redis_ok=True,
+                 heartbeat_prefix="state:heartbeat", account_key="state:account", kill_key="control:kill",
+                 local_kill=None, state=_store(tmp_path, account))
+    r = review(got, confirmed_by="维护者", now=NOW)
+    assert r.overall == "ready", [(i.id, i.state, i.detail) for i in r.items]

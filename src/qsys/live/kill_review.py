@@ -187,3 +187,71 @@ def review(inputs: ReviewInputs, *, confirmed_by: str | None, now: datetime) -> 
     overall = ("blocked" if states & {"fail", "unknown"} else
                "needs_confirmation" if "confirm" in states else "ready")
     return KillReview(reviewed_at=now, overall=overall, engaged=engaged, items=ordered)
+
+
+def gather(transport, *, redis_ok: bool, heartbeat_prefix: str, account_key: str, kill_key: str,
+           local_kill: Path | None, state: Path) -> ReviewInputs:
+    """只读采集。任一 Redis 读取异常即视为 Redis 不可用（相应字段为 None，判定为 unknown）。"""
+    local_reason = None
+    if local_kill is not None and local_kill.exists():
+        local_reason = local_kill.read_text(encoding="utf-8").strip()
+    redis_reason = agent = market = account = None
+    if redis_ok:
+        try:
+            redis_reason = transport.get_key(kill_key)
+            raw = transport.get_key(f"{heartbeat_prefix}:agent")
+            agent = Heartbeat.model_validate_json(raw) if raw else None
+            raw = transport.get_key(f"{heartbeat_prefix}:market")
+            market = Heartbeat.model_validate_json(raw) if raw else None
+            raw = transport.get_key(account_key)
+            account = AccountSnapshot.model_validate_json(raw) if raw else None
+        except Exception:  # noqa: BLE001 —— 读不到就是未知，不能让复核本身失败
+            redis_ok, redis_reason, agent, market, account = False, None, None, None, None
+    portfolio = own_pending = None
+    state_error = None
+    if not Path(state).is_file():
+        state_error = f"状态库不存在：{Path(state).name}"
+    else:
+        store = _cold_safe_store(Path(state))
+        try:
+            portfolio = store.load()[0]
+            own_pending = len(store.pending_orders())
+        except Exception as exc:  # noqa: BLE001
+            portfolio, own_pending, state_error = None, None, type(exc).__name__
+        finally:
+            store.close()
+    return ReviewInputs(local_kill_reason=local_reason, redis_kill_reason=redis_reason, redis_ok=redis_ok,
+                        agent=agent, market=market, account=account, portfolio=portfolio,
+                        own_pending=own_pending, state_error=state_error)
+
+
+def _cold_safe_store(path: Path):
+    """只读打开实盘状态库，且不在状态目录创建任何文件。
+
+    生产者在运行时持有 WAL/SHM（pin_reader_sidecars），按 mode=ro 读即可。
+    冷库（生产者已停、没有 WAL 文件）时，mode=ro 也会新建 -wal/-shm，属主是复核者而非 live-core
+    运行账号，可能让 live-core 之后打不开（#529/#544）。此时库文件就是完整内容，没有 WAL 可忽略，
+    用 immutable=1 读取。存在 WAL 时绝不使用 immutable（AGENTS.md：不得用 immutable 忽略 WAL）。
+    """
+    import sqlite3
+
+    from qsys.live.store import LiveStore
+
+    class _Reader(LiveStore):
+        def _connect(self):
+            target = self.path
+            cold = not target.with_name(target.name + "-wal").exists()
+            uri = target.resolve().as_uri() + ("?mode=ro&immutable=1" if cold else "?mode=ro")
+            con = sqlite3.connect(uri, uri=True, timeout=30)
+            con.row_factory = sqlite3.Row
+            con.execute("PRAGMA query_only=ON")
+            return con
+
+    return _Reader(path, read_only=True)
+
+
+def render(r: KillReview) -> str:
+    mark = {"pass": "PASS", "fail": "FAIL", "unknown": "未知", "confirm": "待确认", "info": "信息"}
+    lines = [f"[{mark[i.state]}] {i.id} {i.label}：{i.detail}" for i in r.items]
+    lines.append(f"\n结论：{r.overall}（{r.reviewed_at:%Y-%m-%d %H:%M:%S}）")
+    return "\n".join(lines)
