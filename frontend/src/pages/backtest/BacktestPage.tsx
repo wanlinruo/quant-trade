@@ -6,6 +6,7 @@ import { usePolling } from '../../page/usePolling'
 import { setSearch, useSearch } from '../../shell/router'
 import { BacktestDetailView } from './BacktestDetailView'
 import { BacktestPicker } from './BacktestPicker'
+import { ResearchJobs } from './ResearchJobs'
 
 function BacktestTab() {
   const q = useSearch()
@@ -35,7 +36,7 @@ export function BacktestPage() {
     <Tabs activeKey={tab} onChange={(k) => setSearch({ tab: k === 'backtest' ? null : k })}
       items={[
         { key: 'backtest', label: '回测', children: tab === 'backtest' ? <BacktestTab /> : null },
-        { key: 'research', label: '研究任务', children: tab === 'research' ? <div data-testid="research-tab" /> : null },
+        { key: 'research', label: '研究任务', children: tab === 'research' ? <ResearchJobs /> : null },
       ]} />
   )
 }
