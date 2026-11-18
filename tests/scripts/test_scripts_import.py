@@ -13,6 +13,7 @@ import pytest
 # 生产入口：systemd 服务、定时任务与运维命令直接调用的脚本。一次性分析脚本
 # （regression_* / reconcile_* 等）在导入时就读数据文件，不在此列。
 SCRIPTS = [
+    "gen_frontend_contracts",
     "replay_public_minute_prefix",
     "prune_component_releases",
     "prepare_qmt_authorized_order",
