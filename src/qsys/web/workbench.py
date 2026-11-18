@@ -19,6 +19,11 @@ from typing import Mapping
 from qsys.strategy.parameters import ParameterSpec, parameter_specs
 
 
+def version_id_for(strategy_id: str, source: str) -> str:
+    """策略版本号：同一策略同一份源码得到同一个号（回测入队、模拟承袭共用）。"""
+    return hashlib.sha256(f"{strategy_id}:".encode() + source.encode()).hexdigest()[:16]
+
+
 @dataclass(frozen=True, slots=True)
 class ManagedStrategy:
     id: str
@@ -150,8 +155,7 @@ class WorkbenchStore:
         strategy = self.strategy(strategy_id)
         if strategy is None:
             raise LookupError("策略不存在")
-        digest = hashlib.sha256(f"{strategy.id}:".encode() + strategy.draft.encode()).hexdigest()
-        version_id = digest[:16]
+        version_id = version_id_for(strategy.id, strategy.draft)
         specs_json = json.dumps([asdict(x) for x in strategy.parameters], ensure_ascii=False)
         job_id, now = uuid.uuid4().hex[:16], _now()
         with self._connect() as con:
