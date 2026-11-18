@@ -511,3 +511,51 @@ def test_infra_reads_order_book_ratio_from_market_heartbeat(monkeypatch):
     watch = _infra(RecordingAlertSink(), clock=lambda: at)
     reading = watch.read(transport)
     assert reading["order_book_low"] is True
+
+
+def _agent_beat(transport, at, engaged):
+    from qsys.live.messages import Heartbeat
+
+    transport.set_key("state:heartbeat:agent", Heartbeat(
+        source="agent", at=at, local_kill_engaged=engaged).model_dump_json())
+
+
+def test_infra_reads_gateway_local_kill_from_a_fresh_agent_heartbeat(monkeypatch):
+    from datetime import datetime as dt, timedelta
+
+    from qsys.live.transport import MemoryTransport
+
+    monkeypatch.setattr("qsys.ops.infra.failed_units", lambda: ())
+    now = dt(2026, 11, 18, 9, 45)
+    transport = MemoryTransport()
+    watch = _infra(RecordingAlertSink(), clock=lambda: now)
+
+    _agent_beat(transport, now - timedelta(seconds=2), True)
+    assert watch.read(transport)["gateway_local_kill"] is True
+    _agent_beat(transport, now - timedelta(seconds=2), False)
+    assert watch.read(transport)["gateway_local_kill"] is False
+    # 过期或未上报：不臆断
+    _agent_beat(transport, now - timedelta(seconds=61), True)
+    assert watch.read(transport)["gateway_local_kill"] is None
+    _agent_beat(transport, now - timedelta(seconds=2), None)
+    assert watch.read(transport)["gateway_local_kill"] is None
+
+
+def test_gateway_local_kill_alerts_once_and_reports_recovery(monkeypatch):
+    from datetime import datetime as dt, timedelta
+
+    from qsys.live.transport import MemoryTransport
+
+    monkeypatch.setattr("qsys.ops.infra.failed_units", lambda: ())
+    monkeypatch.setattr("qsys.ops.health_observer_cli._redis_state", lambda t, c: {"kill_switch": None})
+    now = dt(2026, 11, 18, 9, 45)
+    sink, transport = RecordingAlertSink(), MemoryTransport()
+    watch = _infra(sink, clock=lambda: now)
+
+    _agent_beat(transport, now - timedelta(seconds=1), True)
+    watch.run(0.0, transport)
+    watch.run(300.0, transport)
+    _agent_beat(transport, now - timedelta(seconds=1), False)
+    watch.run(600.0, transport)
+    titles = [a.title for a in sink.alerts]
+    assert [t for t in titles if "网关本地闸" in t] == ["Windows 网关本地闸已落", "Windows 网关本地闸已落：已恢复"]

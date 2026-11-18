@@ -160,3 +160,20 @@ def test_survey_raises_critical_when_full_push_lost_the_order_book():
 def test_survey_stays_silent_without_a_valid_order_book_measurement():
     assert survey({"order_book_low": None}) == []
     assert survey({"order_book_low": False}) == []
+
+
+def test_gateway_local_kill_alone_is_critical():
+    # 11-18 09:42：网关锁存本地闸、Linux 急停未落，没有任何告警（#677）
+    findings = survey({"kill_switch": None, "gateway_local_kill": True})
+    assert [(f.key, f.severity) for f in findings] == [("gateway_kill", Severity.CRITICAL)]
+
+
+def test_gateway_kill_is_covered_by_the_kill_switch_alert_when_both_engaged():
+    findings = survey({"kill_switch": "three consecutive live-core loop failures",
+                       "gateway_local_kill": True})
+    assert [f.key for f in findings] == ["kill"]
+
+
+def test_gateway_kill_unknown_or_released_stays_silent():
+    assert survey({"gateway_local_kill": None}) == []
+    assert survey({"gateway_local_kill": False}) == []

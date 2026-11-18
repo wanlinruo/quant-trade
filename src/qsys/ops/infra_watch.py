@@ -84,6 +84,14 @@ def survey(reading: dict) -> list[Finding]:
     kill = reading.get("kill_switch")
     if kill:
         out.append(Finding("kill", Severity.CRITICAL, "急停开关已触发", str(kill)))
+    elif reading.get("gateway_local_kill") is True:
+        # 远程闸未落而网关本地闸锁存：Linux 侧 kill.py status 显示运行中，委托却会被网关
+        # 拒绝（11-18 09:42 无人知晓约 10 分钟，#677）。两闸都落时由上一条覆盖。
+        out.append(Finding(
+            "gateway_kill", Severity.CRITICAL, "Windows 网关本地闸已落",
+            "Linux 急停未触发，但网关会拒绝实盘委托；原因见 Windows run\\AGENT_KILL，"
+            "复核后 kill.py resume live 解除（#677）",
+        ))
 
     if reading.get("order_book_low") is True:
         out.append(Finding(
