@@ -36,7 +36,6 @@ from qsys.web.limit_up_research import LimitUpResearchReader, LimitUpResearchVie
 from qsys.web.paper_chart import history_series, intraday_series
 from qsys.web.research_jobs import ResearchJobConsole
 from qsys.web.service_views import ServiceConsole
-from qsys.web.app_board import register_app_board
 from qsys.web.app_data import register_app_data
 from qsys.web.app_research import register_app_research
 from qsys.webapp.app import WebappDeps, mount_webapp
@@ -184,7 +183,8 @@ def create_app(
     deps = webapp or WebappDeps(
         live_kill=app.state.live_kill, shadow=limit_up_shadow, research=limit_up_research,
         spa_root=spa_root)
-    register_app_board(app, limit_up_board, deps.market)
+    if deps.board is None:
+        deps.board = limit_up_board  # 旧打板页与新接口共用同一读取器
     register_app_data(app, assets=assets, catalog=catalog)
     register_app_research(app, workbench=workbench, backtests=backtests, paper=paper,
                           research_jobs=research_jobs, strategy_templates=strategy_templates,

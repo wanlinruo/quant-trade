@@ -26,12 +26,15 @@ class WebappDeps:
     market: Any | None = None       # queries.market.MarketQuery
     shadow: Any | None = None       # 影子榜单读取器
     research: Any | None = None     # 研究回测读取器
+    board: Any | None = None        # queries.board_reader.LimitUpBoardReader
     spa_root: Path | None = None
 
 
 def mount_webapp(app: FastAPI, deps: WebappDeps) -> None:
     from qsys.webapp.queries.shell import ShellQuery
+    from qsys.webapp.queries.board import BoardQuery
     from qsys.webapp.routes.ailu import ailu_router
+    from qsys.webapp.routes.board import board_router
     from qsys.webapp.routes.market import market_router
     from qsys.webapp.routes.shell import shell_router
 
@@ -40,4 +43,5 @@ def mount_webapp(app: FastAPI, deps: WebappDeps) -> None:
     app.include_router(shell_router(ShellQuery(deps.live_kill)))
     app.include_router(market_router(deps.market))
     app.include_router(ailu_router(deps.shadow, deps.research))
+    app.include_router(board_router(BoardQuery(deps.board, deps.market)))
     mount_spa(app, deps.spa_root if deps.spa_root is not None else SPA_DIST)

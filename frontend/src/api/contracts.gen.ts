@@ -1,5 +1,157 @@
 // 由 scripts/gen_frontend_contracts.py 生成，勿手改。契约来源：src/qsys/webapp/contracts/
 
+export interface Board {
+  schema_version: 1
+  available: true
+  message: string
+  day: string
+  days: string[]
+  mode: "live" | "final" | "history"
+  provisional: boolean
+  at: string | null
+  times: string[]
+  meta: BoardMeta
+  sentiment: BoardSentiment | null
+  columns: BoardColumn[]
+  rows: LadderRow[]
+  cards: Record<string, BoardCard>
+  compare: CompareGroup[]
+  compare_unknown: number
+  shadow: BoardShadow | null
+  timeline: BoardEvent[]
+  curves: ConceptCurve[]
+  mismatch_count: number
+  effect: MoneyEffect | null
+  layers: LayerRow[]
+  schedule: MarketSchedule | null
+  errors: Record<string, "读取失败">
+}
+
+export interface BoardCard {
+  symbol: string
+  name: string
+  status: "sealed" | "unknown" | "broken" | "touched" | "rush"
+  column: string | null
+  height: number | null
+  prev_height: number | null
+  first_seal: string | null
+  open_times: number
+  resealed: boolean
+  pct: number | null
+  is_st: boolean | null
+  is_bj: boolean
+  entered_at: string
+  reason: string
+  diffs: Record<string, string>
+}
+
+export interface BoardColumn {
+  code: string
+  name: string
+  sealed_count: number | null
+  first_seal: string | null
+  gradient: Record<string, number>
+}
+
+export interface BoardEvent {
+  at: string
+  symbol: string
+  name: string
+  kind: string
+  detail: string
+}
+
+export interface BoardMeta {
+  prev_day: string | null
+  concept_fetched_at: string | null
+  concept_error: string | null
+  st_published: boolean
+  heights_error: string | null
+  compacted_at: string | null
+  compact_error: string | null
+  reconciled_at: string | null
+  reconcile_error: string | null
+  has_raw: boolean
+}
+
+export interface BoardSentiment {
+  published_at: string
+  quotes: number
+  sealed: number
+  limit_down: number
+  touched: number
+  broken: number
+  seal_rate: number | null
+  max_height: number | null
+  promote_1_2: [number | null, number | null]
+  promote_2_3: [number | null, number | null]
+  promote_3_up: [number | null, number | null]
+  rushing: number
+  missing_limit: number
+  seal_unknown: number
+}
+
+export interface BoardSeries {
+  schema_version: 1
+  available: boolean
+  message: string
+  symbol: string
+  name: string
+  limit_up: number | null
+  prev_close: number | null
+  first_seal: string | null
+  points: SeriesPoint[]
+  events: SeriesEvent[]
+}
+
+export interface BoardShadow {
+  state: string
+  message: string
+  prediction_date: string | null
+  model_version: string | null
+  precision_at_20: number | null
+  scored: number
+  hits: number | null
+}
+
+export interface BoardUnavailable {
+  schema_version: 1
+  available: false
+  message: string
+  day: string | null
+  days: string[]
+}
+
+export interface CompareGroup {
+  level: number
+  items: CompareItem[]
+  promoted: number
+}
+
+export interface CompareItem {
+  symbol: string
+  name: string
+  pct: number | null
+  column: string | null
+  status: "promoted" | "broken" | "rush" | "limit_down" | "unknown" | "missed"
+  first_seal: string | null
+  open_times: number | null
+  prediction: number | null
+}
+
+export interface ConceptCurve {
+  code: string
+  name: string
+  points: [string, number][]
+}
+
+export interface EffectItem {
+  symbol: string
+  name: string
+  pct: number | null
+  status: "promoted" | "broken" | "rush" | "limit_down" | "unknown" | "missed"
+}
+
 export interface ErrorBody {
   error: ErrorDetail
 }
@@ -44,6 +196,28 @@ export interface KillStatus {
   label: string
   message: string
   sources: KillSource[]
+}
+
+export interface LadderRow {
+  key: string
+  label: string
+  yesterday: number | null
+  cells: Record<string, string[]>
+}
+
+export interface LayerRow {
+  level: number
+  total: number
+  promoted: number
+  broken: number
+  break_up: number
+  break_down: number
+  limit_down: number
+  unknown: number
+  no_quote: number
+  rate: number | null
+  prev_rate: number | null
+  avg_pct: number | null
 }
 
 export interface LimitCheck {
@@ -138,6 +312,18 @@ export interface MarketSnapshot {
   coverage: MarketCoverage | null
 }
 
+export interface MoneyEffect {
+  total: number
+  priced: number
+  no_quote: number
+  avg_pct: number | null
+  red_rate: number | null
+  multi_avg_pct: number | null
+  big_loss: number
+  top_level: number
+  top_items: EffectItem[]
+}
+
 export interface RegimeDay {
   dt: string
   limit_up_count: number | null
@@ -220,6 +406,18 @@ export interface ResearchSummary {
   obs_lift_at_20: number
   obs_month_win_rate: number
   promoted_to_shadow: boolean
+}
+
+export interface SeriesEvent {
+  at: string
+  kind: string
+  detail: string
+}
+
+export interface SeriesPoint {
+  at: string
+  price: number
+  volume: number | null
 }
 
 export interface ShadowBoard {

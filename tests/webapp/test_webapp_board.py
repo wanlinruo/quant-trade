@@ -1,4 +1,4 @@
-"""新前端打板看板接口 /api/app/board（#662，设计文档 §8.9、§10）。"""
+"""打板看板：新契约、查询层与路由（#662 R2，设计文档 §8.9、§10）。"""
 
 from __future__ import annotations
 
@@ -11,11 +11,15 @@ from qsys.data.board.store import BoardStore
 from qsys.ops.journal import SessionJournal
 from qsys.web.app import create_app
 from qsys.web.config import WebConfig
-from qsys.webapp.queries.board_reader import LimitUpBoardReader
+from qsys.web.live_kill_status import LiveKillReader
 from qsys.web.views import MonitorService
+from qsys.webapp.app import WebappDeps
+from qsys.webapp.contracts.board import Board, BoardMeta, BoardSeries, BoardUnavailable
+from qsys.webapp.queries.board_reader import BoardView, LimitUpBoardReader
 from tests.webapp.board_fixtures import DAY, NAMES, PREV, build, q
 
 PREV2 = date(2026, 11, 11)
+OFFSET = "+08:00"
 
 
 def tp(hhmmss: str) -> datetime:
@@ -52,14 +56,29 @@ class CountingReader(LimitUpBoardReader):
 def make_client(warehouse):
     def make(board) -> TestClient:
         cfg = WebConfig()
+        deps = WebappDeps(live_kill=LiveKillReader(None, None), board=board)
         return TestClient(create_app(MonitorService(SessionJournal(warehouse), config=cfg), cfg,
-                                     limit_up_board=board))
+                                     webapp=deps))
     return make
 
 
-def test_app_board_unconfigured(make_client):
-    body = make_client(None).get("/api/app/board").json()
-    assert body == {"available": False, "message": "打板看板数据源未配置"}
+# ---- 迁移自 tests/web/test_app_board.py ----
+
+def test_board_unavailable_variants(make_client, tmp_path):
+    body = make_client(None).get("/api/app/board")
+    assert body.status_code == 200
+    assert body.json() == {"schema_version": 1, "available": False,
+                           "message": "打板看板数据源未配置", "day": None, "days": []}
+    empty = make_client(CountingReader(tmp_path / "none")).get("/api/app/board").json()
+    assert empty["available"] is False and empty["message"] == "打板看板采集器尚未产生数据"
+    build(tmp_path)
+    other = make_client(CountingReader(tmp_path)).get("/api/app/board", params={"day": "2026-11-10"})
+    assert other.status_code == 200
+    o = BoardUnavailable.model_validate(other.json())
+    assert o.day == date(2026, 11, 10) and o.days == [DAY]
+    series = make_client(None).get("/api/app/board/series", params={"day": "2026-11-13", "symbol": "A.SH"})
+    assert series.status_code == 200
+    assert series.json()["available"] is False and series.json()["points"] == []
 
 
 def test_app_board_adds_effect_and_layers(make_client, tmp_path):
@@ -69,7 +88,7 @@ def test_app_board_adds_effect_and_layers(make_client, tmp_path):
     assert body["effect"]["total"] == 2 and body["effect"]["top_level"] == 2
     assert [r["level"] for r in body["layers"]] == [2, 1]
     assert body["layers"][1]["promoted"] == 1 and body["layers"][0]["limit_down"] == 1
-    assert body["prev_day"] == PREV.isoformat()
+    assert body["meta"]["prev_day"] == PREV.isoformat() and "prev_day" not in body
     assert body["schedule"] is None and body["errors"] == {}
 
 
@@ -94,9 +113,9 @@ def test_replay_is_not_served_from_latest_cache(make_client, tmp_path):
     c = make_client(CountingReader(tmp_path))
     latest = c.get("/api/app/board").json()
     replay = c.get("/api/app/board", params={"at": "2026-11-13T09:31:15"}).json()
-    assert latest["at"] == "2026-11-13T09:31:30"
-    assert replay["at"] == "2026-11-13T09:31:15"
-    assert replay["sentiment"]["published_at"] == "2026-11-13T09:31:15"
+    assert latest["at"] == "2026-11-13T09:31:30+08:00"
+    assert replay["at"] == "2026-11-13T09:31:15+08:00"
+    assert replay["sentiment"]["published_at"] == "2026-11-13T09:31:15+08:00"
 
 
 def test_prev_rate_from_previous_day_board(make_client, tmp_path):
@@ -113,9 +132,11 @@ def test_series_includes_seal_open_reseal_events(make_client, tmp_path):
     build(tmp_path)
     body = make_client(CountingReader(tmp_path)).get(
         "/api/app/board/series", params={"day": "2026-11-13", "symbol": "A.SH"}).json()
+    BoardSeries.model_validate(body)
     assert body["available"] and len(body["points"]) == 3
     assert [e["kind"] for e in body["events"]] == ["seal", "open", "reseal"]
-    assert body["events"][0]["at"] == "2026-11-13T09:30:58"
+    assert body["events"][0]["at"] == "2026-11-13T09:30:58+08:00"
+    assert body["points"][0]["at"].endswith(OFFSET)
 
 
 def test_board_endpoints_no_store(make_client, tmp_path):
@@ -124,3 +145,52 @@ def test_board_endpoints_no_store(make_client, tmp_path):
     assert c.get("/api/app/board").headers["cache-control"] == "no-store"
     r = c.get("/api/app/board/series", params={"day": "2026-11-13", "symbol": "A.SH"})
     assert r.headers["cache-control"] == "no-store"
+
+
+# ---- R2 新增 ----
+
+def test_board_times_have_shanghai_offset(make_client, tmp_path):
+    build(tmp_path)
+    body = make_client(CountingReader(tmp_path)).get("/api/app/board").json()
+    assert body["at"].endswith(OFFSET) and body["times"][0].endswith(OFFSET)
+    assert body["cards"]["A.SH"]["first_seal"].endswith(OFFSET)
+    assert body["timeline"][0]["at"].endswith(OFFSET)
+    assert body["meta"]["concept_fetched_at"].endswith(OFFSET)
+
+
+def test_replay_at_with_offset_matches_local_time(make_client, tmp_path):
+    build(tmp_path)
+    c = make_client(CountingReader(tmp_path))
+    local = c.get("/api/app/board", params={"at": "2026-11-13T09:31:15"}).json()
+    utc = c.get("/api/app/board", params={"at": "2026-11-13T01:31:15Z"}).json()
+    assert local["sentiment"]["published_at"] == utc["sentiment"]["published_at"] \
+        == "2026-11-13T09:31:15+08:00"
+
+
+def test_series_invalid_params_are_422(make_client, tmp_path):
+    build(tmp_path)
+    r = CountingReader(tmp_path)
+    c = make_client(r)
+    for params in ({"day": "2026-11-13", "symbol": "../x"}, {"day": "2026-13-01", "symbol": "A.SH"}):
+        bad = c.get("/api/app/board/series", params=params)
+        assert bad.status_code == 422 and bad.json()["error"]["code"] == "invalid_request"
+
+
+def test_contract_covers_reader_fields(tmp_path):
+    derived = {"schema_version", "provisional", "effect", "layers", "schedule", "errors"}
+    assert set(BoardView.model_fields) - {"status"} == set(Board.model_fields) - derived
+    build(tmp_path)
+    meta = CountingReader(tmp_path).view().meta
+    assert set(meta) - {"concept_sha"} == set(BoardMeta.model_fields)
+
+
+def test_board_response_validates_against_contract(make_client, tmp_path):
+    build(tmp_path)
+    body = make_client(CountingReader(tmp_path)).get("/api/app/board").json()
+    assert Board.model_validate(body).day == DAY
+
+
+def test_concept_sha_not_exposed(make_client, tmp_path):
+    build(tmp_path)
+    text = make_client(CountingReader(tmp_path)).get("/api/app/board").text
+    assert "concept_sha" not in text and "s" * 64 not in text

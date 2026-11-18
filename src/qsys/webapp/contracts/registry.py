@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from qsys.webapp.contracts.ailu import ResearchBoard, ShadowBoard
+from qsys.webapp.contracts.board import Board, BoardSeries, BoardUnavailable
 from qsys.webapp.contracts.base import Contract, ErrorBody
 from qsys.webapp.contracts.market import MarketDisabled, MarketOverview
 from qsys.webapp.contracts.shell import ShellStatus
@@ -18,4 +19,7 @@ EXPORTED: tuple[type[Contract], ...] = (
     MarketDisabled,
     ShadowBoard,
     ResearchBoard,
+    Board,
+    BoardUnavailable,
+    BoardSeries,
 )
