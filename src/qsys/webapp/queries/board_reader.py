@@ -69,7 +69,7 @@ class Card(BaseModel):
     is_bj: bool
     entered_at: datetime
     reason: str
-    diffs: dict[str, str] = {}  # 字段 → 直取值（盘后对账差异）
+    diffs: dict[str, str | int | None] = {}  # 字段 → 直取值原样（盘后对账差异）
 
 
 class Column(BaseModel):

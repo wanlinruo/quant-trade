@@ -49,7 +49,7 @@ class BoardCard(Contract):
     is_bj: bool
     entered_at: Timestamp
     reason: str
-    diffs: dict[str, str]  # 字段 → 直取值（盘后对账差异）
+    diffs: dict[str, str | int | None]  # 字段 → 直取值原样（盘后对账差异；高度/开板为整数，上游缺失为 null）
 
 
 class BoardColumn(Contract):

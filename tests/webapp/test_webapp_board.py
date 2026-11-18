@@ -194,3 +194,18 @@ def test_concept_sha_not_exposed(make_client, tmp_path):
     build(tmp_path)
     text = make_client(CountingReader(tmp_path)).get("/api/app/board").text
     assert "concept_sha" not in text and "s" * 64 not in text
+
+
+def test_reconciled_diffs_keep_direct_types(make_client, tmp_path):
+    """盘后对账差异的直取值原样输出：高度与开板次数为整数，上游缺失为 null（不转成字符串）。"""
+    from qsys.data.board.reconcile import Mismatch
+    store = build(tmp_path)
+    store.save_reconcile(DAY, [Mismatch("A.SH", "height", 2, 3), Mismatch("A.SH", "open_times", 1, None),
+                               Mismatch("B.SZ", "first_seal", None, datetime(2026, 11, 13, 9, 31))],
+                         datetime(2026, 11, 13, 19, 48))
+    r = make_client(CountingReader(tmp_path)).get("/api/app/board")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["mode"] == "final" and body["mismatch_count"] == 3
+    assert body["cards"]["A.SH"]["diffs"] == {"height": 3, "open_times": None}
+    assert body["cards"]["B.SZ"]["diffs"] == {"first_seal": "2026-11-13 09:31:00"}
