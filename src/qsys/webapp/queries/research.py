@@ -16,7 +16,8 @@ import structlog
 from fastapi import HTTPException
 
 from qsys.webapp.contracts.research import (
-    ArtifactInfo, BacktestJobInfo, BacktestList, BacktestPending, BacktestReport, BacktestRow,
+    ArtifactInfo, BacktestJobInfo, BacktestList, BacktestPending, BacktestReport, BacktestRequest,
+    BacktestRow, Cancelled, Created, ResearchJobRequest, Resubmitted, StrategyInput, TemplateImport,
     Episode, MonthReturn, ParameterSpec, ResearchDisabled, ResearchJob, ResearchJobList,
     RunFileInfo, ReturnPoint, RunSummary, StrategyDetail, StrategyList, StrategyRow, StrategyVersion,
 )
@@ -278,3 +279,110 @@ class ResearchQuery:
         root = self.research_jobs.root / "jobs" / job.job_id / "artifacts"
         return controlled_file(root, path, suffixes=None,
                                expected=Expected(bytes=entry["bytes"], sha256=str(entry["sha256"])))
+
+
+# ---- 写操作（只在对应服务启用时由路由调用）----
+RESUBMITTABLE = frozenset({"failed", "cancelled", "interrupted"})
+
+
+def _http(status: int, message: str) -> HTTPException:
+    return HTTPException(status_code=status, detail=message)
+
+
+class ResearchWrites:
+    """写操作：校验与调用口径与旧接口相同（入队配置键是回测 worker 的输入契约）。"""
+
+    def __init__(self, query: ResearchQuery) -> None:
+        self.q = query
+
+    def create_strategy(self, body: StrategyInput) -> Created:
+        try:
+            s = self.q.workbench.create_strategy(body.name, body.source)
+        except (ValueError, SyntaxError) as exc:
+            raise _http(422, str(exc)) from exc
+        return Created(id=s.id)
+
+    def save_strategy(self, ident: str, body: StrategyInput) -> Created:
+        from qsys.web.workbench import version_id_for
+
+        s = self.q.workbench.strategy(ident)
+        if s is None:
+            raise _http(404, "策略不存在")
+        users = self.q.used().get(version_id_for(s.id, s.draft))
+        if users:
+            raise _http(409, f"该版本正被{'、'.join(users)}使用，只读；请另存为新策略")
+        try:
+            saved = self.q.workbench.save_strategy(ident, body.name, body.source)
+        except LookupError as exc:
+            raise _http(404, "策略不存在") from exc
+        except (ValueError, SyntaxError) as exc:
+            raise _http(422, str(exc)) from exc
+        return Created(id=saved.id)
+
+    def import_template(self, body: TemplateImport) -> Created:
+        name = body.filename
+        if not name or Path(name).name != name or not name.endswith(".py") or name.startswith("."):
+            raise _http(422, "模板文件名不合法")
+        root = self.q.strategy_templates.resolve()
+        target = root / name
+        if target.is_symlink() or not target.is_file() or target.resolve().parent != root:
+            raise _http(404, "模板不存在")
+        return Created(id=self.q.workbench.import_file(target).id)
+
+    def enqueue_backtest(self, body: BacktestRequest) -> Created:
+        from qsys.backtest.runner import ENTRY_FILL_MODES
+        from qsys.strategy.parameters import validate_parameters
+
+        s = self.q.workbench.strategy(body.strategy_id)
+        if s is None:
+            raise _http(404, "策略不存在")
+        if body.start > body.end or body.cash <= 0:
+            raise _http(422, "日期区间或初始资金无效")
+        if body.entry_fill not in ENTRY_FILL_MODES:
+            raise _http(422, f"未知的竞价入场口径：{body.entry_fill}")
+        try:
+            params = validate_parameters(s.parameters, body.params)
+        except (TypeError, ValueError) as exc:
+            raise _http(422, str(exc)) from exc
+        job = self.q.workbench.enqueue(s.id, {
+            "start": str(body.start), "end": str(body.end), "cash": float(body.cash),
+            "jq_compat": body.jq_compat, "params": params, "entry_fill": body.entry_fill})
+        return Created(id=job.id)
+
+    def cancel_backtest(self, ident: str) -> Cancelled:
+        if not self.q.workbench.cancel(ident):
+            raise _http(409, "该回测已结束或不存在，不能取消")
+        return Cancelled(status="cancelled")
+
+    def submit_research(self, body: ResearchJobRequest) -> Created:
+        try:
+            job = self.q.research_jobs.submit(body.task, body.parameters, timeout_seconds=body.timeout_seconds)
+        except RuntimeError as exc:
+            raise _http(403, "本节点未开启网页提交") from exc
+        except (OSError, TypeError, ValueError) as exc:
+            raise _http(422, str(exc)) from exc
+        return Created(id=job.job_id)
+
+    def cancel_research(self, ident: str) -> Cancelled:
+        try:
+            self.q.research_jobs.cancel(ident)
+        except LookupError as exc:
+            raise _http(404, "研究任务不存在") from exc
+        except ValueError as exc:
+            raise _http(409, str(exc)) from exc
+        return Cancelled(status="cancellation-requested")
+
+    def resubmit_research(self, ident: str) -> Resubmitted:
+        rj = self.q.research_jobs
+        job = rj.job(ident, log_limit=1)
+        if job is None:
+            raise _http(404, "研究任务不存在")
+        if not rj.submission_enabled:
+            raise _http(403, "本节点未开启网页提交")
+        if job.state not in RESUBMITTABLE:
+            raise _http(409, "只有失败、取消或中断的任务可以重新提交")
+        req = job.request
+        new = self.submit_research(ResearchJobRequest(
+            task=str(req.get("task", "")), parameters=dict(req.get("parameters") or {}),
+            timeout_seconds=(req.get("limits") or {}).get("timeout_seconds")))
+        return Resubmitted(id=new.id, resubmitted_from=ident)
