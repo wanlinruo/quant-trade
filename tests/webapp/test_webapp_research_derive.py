@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from qsys.web.research_views import (
+from qsys.webapp.queries.research_derive import (
     aligned_series,
     backtest_warnings,
     drawdown_episodes,
@@ -99,3 +99,23 @@ def test_in_use_versions_from_lineage_and_active_accounts():
     got = in_use_versions([acct("A", "S1", "v1"), acct("B", "S2", "v2"),
                            acct("C", "S3", "v3", status="ended")], lineage, core_label="实盘")
     assert got == {"v1": ["实盘", "模拟账户 A"], "v2": ["模拟账户 B"]}
+
+
+def test_aligned_series_null_value_day():
+    nav = [{"date": "d1", "total_value": 100.0}, {"date": "d2", "total_value": None},
+           {"date": "d3", "total_value": 110.0}]
+    rows = aligned_series(nav, {"d1": 1.0, "d2": 1.1, "d3": 1.2})
+    assert rows[1]["strategy"] is None and rows[1]["drawdown"] is None and rows[1]["excess"] is None
+    assert rows[1]["benchmark"] == pytest.approx(0.1)
+    assert rows[2]["strategy"] == pytest.approx(0.1) and rows[2]["drawdown"] == 0.0
+
+
+def test_aligned_series_null_initial_value_has_no_returns():
+    rows = aligned_series([{"date": "d1", "total_value": None}, {"date": "d2", "total_value": 90.0}], {})
+    assert [r["strategy"] for r in rows] == [None, None]
+
+
+def test_episodes_skip_null_value_day():
+    eps = drawdown_episodes([("d1", 100), ("d2", None), ("d3", 80), ("d4", 100)])
+    assert eps == [{"peak_date": "d1", "trough_date": "d3", "recovery_date": "d4",
+                    "depth": pytest.approx(-0.2)}]

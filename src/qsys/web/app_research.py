@@ -17,7 +17,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
-from qsys.web.research_views import (
+from qsys.webapp.queries.research_derive import (
     aligned_series,
     backtest_warnings,
     drawdown_episodes,

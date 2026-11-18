@@ -1,6 +1,7 @@
-"""新前端研究侧的纯派生（#662，设计文档 §8.10、§8.11）。
+"""新前端研究侧的纯派生（#662，设计文档 §8.10、§8.11；R3 起位于新后端查询层）。
 
 只做确定性计算，不读文件、不补值：基准缺某日时该日基准与超额为 None；
+净值为空的日子策略收益与回撤为 None，回撤段跳过该日；首日净值为空时没有收益基数；
 回撤段从前高到谷底再到收复前高，未收复时 recovery_date 为 None。
 推进位置与“使用中”的口径为设计者决定（见计划 08c）。
 """
@@ -15,8 +16,9 @@ from qsys.paper.store import ACTIVE
 TOP_EPISODES = 5
 
 
-def drawdown_episodes(nav: Sequence[tuple[str, float]], top: int = TOP_EPISODES) -> list[dict]:
+def drawdown_episodes(nav: Sequence[tuple[str, float | None]], top: int = TOP_EPISODES) -> list[dict]:
     episodes: list[dict] = []
+    nav = [(day, value) for day, value in nav if value is not None]
     if not nav:
         return episodes
     peak_date, peak = nav[0]
@@ -61,20 +63,23 @@ def backtest_warnings(*, rejects: int, has_benchmark: bool, missing_benchmark_da
 def aligned_series(nav: Sequence[Mapping[str, Any]], benchmark: Mapping[str, float]) -> list[dict]:
     if not nav:
         return []
-    initial = float(nav[0]["total_value"])
+    first = nav[0]["total_value"]
+    initial = None if first is None else float(first)
     bench_initial = next(iter(benchmark.values()), None) if benchmark else None
-    peak = initial
+    peak: float | None = None
     rows = []
     for row in nav:
-        day, value = str(row["date"]), float(row["total_value"])
-        peak = max(peak, value)
-        strategy = value / initial - 1.0 if initial else None
+        day, raw = str(row["date"]), row["total_value"]
+        value = None if raw is None else float(raw)
+        if value is not None:
+            peak = value if peak is None else max(peak, value)
+        strategy = value / initial - 1.0 if value is not None and initial else None
         b = benchmark.get(day)
         bench = b / bench_initial - 1.0 if b is not None and bench_initial else None
         rows.append({
             "date": day, "strategy": strategy, "benchmark": bench,
             "excess": strategy - bench if strategy is not None and bench is not None else None,
-            "drawdown": value / peak - 1.0 if peak else None,
+            "drawdown": value / peak - 1.0 if value is not None and peak else None,
         })
     return rows
 
