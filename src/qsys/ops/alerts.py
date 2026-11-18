@@ -285,3 +285,16 @@ class AlertBus:
         if self._log is not None:
             self._log.append(event)
         return event
+
+
+def delivery_records(root, day) -> list[dict]:
+    """当日全部告警的投递记录：结构化事件（计划 03 起）+ 旧格式账本（迁移前与 N-1 生产者）。
+
+    两者写在不同文件（``.events.jsonl`` / ``.jsonl``），合并即可，不会重复。
+    记录形状与旧账本行相同（at / severity / title / delivered / failed），事件额外带 key。
+    """
+    base = Path(root) if root else LEDGER_DIR
+    records = [{"at": e.occurred_at.isoformat(timespec="seconds"), "severity": e.severity.value,
+                "title": e.title, "delivered": e.delivered, "failed": list(e.failed), "key": e.key}
+               for e in AlertEventLog(base).read(day)]
+    return records + LegacyLedger(base).read(day)

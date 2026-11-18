@@ -205,3 +205,47 @@ def test_a_skipped_check_run_is_not_counted_as_a_check(tmp_path):
     checks, _ = checks_and_missing(tmp_path, date(2026, 10, 1), False)
 
     assert checks == []
+
+
+def test_digest_run_reads_structured_events_and_legacy_ledger(monkeypatch, tmp_path):
+    """日报入口按真实告警目录读取：结构化事件与旧账本合并成投递记录（#662 计划 03）。"""
+    import json
+    from datetime import datetime
+    from types import SimpleNamespace
+
+    from qsys.ops import daily_digest_cli
+    from qsys.ops.alert_events import SHANGHAI
+    from qsys.ops.alerts import AlertBus, RecordingAlertSink, ledger
+
+    alerts = tmp_path / "alerts"
+    at = datetime.combine(DAY, datetime.min.time()).replace(hour=10, tzinfo=SHANGHAI)
+    AlertBus([RecordingAlertSink()], ledger(alerts), source="live-core", clock=lambda: at).emit("live.core.fuse")
+    (alerts / f"{DAY:%Y-%m-%d}.jsonl").write_text(json.dumps(
+        {"at": "x", "severity": "INFO", "title": "旧", "delivered": 1, "failed": []}) + "\n", encoding="utf-8")
+    captured = {}
+    monkeypatch.setattr("qsys.live.config.load_deploy_config",
+                        lambda _: SimpleNamespace(safety=SimpleNamespace(mode="shadow")))
+    monkeypatch.setattr(daily_digest_cli, "checks_and_missing", lambda *a: ([], []))
+    monkeypatch.setattr(daily_digest_cli, "quality", lambda *a: {})
+    monkeypatch.setattr(daily_digest_cli, "infrastructure", lambda *a, **k: {})
+    monkeypatch.setattr(daily_digest_cli, "readiness", lambda *a, **k: {})
+
+    def build(day, **kw):
+        captured.update(kw)
+        return SimpleNamespace(subject=lambda: "s", problems=[], as_text=lambda: "t")
+    monkeypatch.setattr(daily_digest_cli, "build_digest", build)
+    step = SimpleNamespace(detail="", rows=0)
+    class Step:
+        def __enter__(self):
+            return step
+
+        def __exit__(self, *exc):
+            return False
+    run = SimpleNamespace(step=lambda *a, **k: Step())
+    args = SimpleNamespace(config="c", shadow_state=None, live_state=None, service_runs=tmp_path, workbench=None,
+                           warehouse=tmp_path, storage_base=tmp_path, tls_site=None, tls_port=443,
+                           alert_ledger=alerts, print=True)
+    assert daily_digest_cli._run(args, DAY, False, run) == 0
+    records = captured["deliveries"]
+    assert all(isinstance(r, dict) for r in records)
+    assert sorted(r["title"] for r in records) == ["实盘核心连续故障熔断", "旧"]
