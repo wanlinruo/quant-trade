@@ -10,7 +10,8 @@ from qsys.webapp.contracts.ailu import ResearchBoard, ShadowBoard
 from qsys.webapp.contracts.board import Board, BoardSeries, BoardUnavailable
 from qsys.webapp.contracts.base import Contract, ErrorBody
 from qsys.webapp.contracts.data import (
-    DataDisabled, DataOverview, DataTableDetail, DataTableList, MetricDetail, MetricList, TableSample,
+    DataDisabled, DataOverview, DataTableDetail, DataTableList, MetricDetail, MetricList, QualitySummary, RuleDetail,
+    TableSample,
 )
 from qsys.webapp.contracts.market import MarketDisabled, MarketOverview
 from qsys.webapp.contracts.research import (
@@ -46,4 +47,6 @@ EXPORTED: tuple[type[Contract], ...] = (
     TableSample,
     MetricList,
     MetricDetail,
+    QualitySummary,
+    RuleDetail,
 )

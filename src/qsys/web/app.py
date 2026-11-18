@@ -36,7 +36,6 @@ from qsys.web.limit_up_research import LimitUpResearchReader, LimitUpResearchVie
 from qsys.web.paper_chart import history_series, intraday_series
 from qsys.web.research_jobs import ResearchJobConsole
 from qsys.web.service_views import ServiceConsole
-from qsys.web.app_data import register_app_data
 from qsys.webapp.app import WebappDeps, mount_webapp
 from qsys.web.svg import line_chart, multi_line_chart
 from qsys.web.views import MonitorService
@@ -184,7 +183,6 @@ def create_app(
         spa_root=spa_root)
     if deps.board is None:
         deps.board = limit_up_board  # 旧打板页与新接口共用同一读取器
-    register_app_data(app, assets=assets, catalog=catalog)
     # 研究侧新接口（R3）与旧页面共用同一组服务；deps 未显式给出时用本函数参数补齐
     if deps.workbench is None:
         deps.workbench = workbench
@@ -208,6 +206,10 @@ def create_app(
     if deps.data_catalog is None and catalog is not None:
         from qsys.webapp.queries.data_catalog import DataCatalog
         deps.data_catalog = DataCatalog(catalog._query)  # 过渡接线：旧服务合入时删除
+    if deps.data_quality is None and assets is not None:
+        from qsys.webapp.queries.data_quality import DataQuality
+        deps.data_quality = DataQuality(deps.data_assets.query,
+                                        catalog._sample_root if catalog is not None else None)
 
     # 新前端（#662）：/app 下的单页应用，与旧页面并存
     mount_webapp(app, deps)

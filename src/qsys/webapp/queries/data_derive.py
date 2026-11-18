@@ -56,9 +56,9 @@ def quality_runs(metric_checks: pl.DataFrame, dataset_checks: pl.DataFrame,
 
 def warning_sources(metric_checks: pl.DataFrame) -> list[dict]:
     groups = [
-        {"key": "upstream", "label": "上游自相矛盾", "issue": "#653", "count": 0, "samples": []},
-        {"key": "registered", "label": "已登记缺口", "issue": "#594", "count": 0, "samples": []},
-        {"key": "unclassified", "label": "待归类", "issue": None, "count": 0, "samples": []},
+        {"key": "upstream", "issue": "#653", "count": 0, "samples": []},
+        {"key": "registered", "issue": "#594", "count": 0, "samples": []},
+        {"key": "unclassified", "issue": None, "count": 0, "samples": []},
     ]
     if metric_checks.height == 0:
         return groups

@@ -267,3 +267,99 @@ class MetricDetail(Contract):
     checks: list[MetricCheckRow]
     history: list[MetricCheckRow]
     evidence: list[MetricEvidence]
+
+
+# ---- 数据质量 ----
+RuleStatus = Literal["blocking", "warning", "unknown", "passed"]
+
+
+class FieldCounts(Contract):
+    total: int
+    passed: int
+    blocking: int
+    warning: int
+
+
+class QualityRun(Contract):
+    run_id: str
+    checked_at: Timestamp | None
+    fields: FieldCounts
+    tables: dict[Health, int] | None  # 该 run 没有表级记录时为 None，不当 0
+
+
+class WarningSample(Contract):
+    metric_id: str
+    check_id: str
+    detail: str | None
+    known_issue: str | None
+
+
+class WarningSource(Contract):
+    key: Literal["upstream", "registered", "unclassified"]
+    issue: str | None
+    count: int
+    samples: list[WarningSample]
+
+
+class RuleRow(Contract):
+    id: str
+    name: str
+    category: str
+    scope: str
+    known_issues: list[str]
+    upstream_self_consistency: bool
+    latest_status: RuleStatus
+
+
+class QualitySummary(Contract):
+    schema_version: Literal[1] = 1
+    enabled: Literal[True] = True
+    runs: list[QualityRun]
+    warning_sources: list[WarningSource]
+    rules: list[RuleRow]
+
+
+class RuleResult(Contract):
+    """字段级 / 表级 / 关系级质检记录的并集；不适用的字段为 None。"""
+
+    run_id: str | None
+    checked_at: Timestamp | None
+    metric_id: str | None
+    dataset_id: str | None
+    upstream: str | None
+    downstream: str | None
+    check_id: str
+    category: str | None
+    dimension: str | None
+    scope_start: date | None
+    scope_end: date | None
+    passed: bool | None
+    severity: str | None
+    known_issue: str | None
+    status: str | None
+    evidence_at: Timestamp | None
+    expires_at: Timestamp | None
+    required: bool | None
+    violations: int | None
+    checked_rows: int | None
+    upstream_rows: int | None
+    downstream_rows: int | None
+    matched_rows: int | None
+    orphan_rows: int | None
+    detail: str | None
+    input_version: str | None
+    sample_file: str | None
+
+
+class RuleDetail(Contract):
+    schema_version: Literal[1] = 1
+    enabled: Literal[True] = True
+    id: str
+    name: str
+    category: str
+    condition: str
+    limitation: str
+    implementation: str
+    targets: list[str]
+    latest: list[RuleResult]
+    history: list[RuleResult]

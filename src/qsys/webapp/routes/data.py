@@ -8,7 +8,8 @@ from fastapi.exceptions import RequestValidationError
 
 from qsys.webapp.cache import SingleFlightCache
 from qsys.webapp.contracts.data import (
-    DataDisabled, DataOverview, DataTableDetail, DataTableList, MetricDetail, MetricList, TableSample,
+    DataDisabled, DataOverview, DataTableDetail, DataTableList, MetricDetail, MetricList, QualitySummary, RuleDetail,
+    TableSample,
 )
 from qsys.webapp.queries.data_catalog import STATUSES
 
@@ -76,5 +77,24 @@ def data_router(assets, catalog=None, quality=None) -> APIRouter:
         if d is None:
             raise HTTPException(status_code=404, detail="指标不存在")
         return no_store(d)
+
+    @router.get("/api/app/data/quality", response_model=QualitySummary | DataDisabled)
+    def quality_summary():
+        return no_store(DataDisabled() if quality is None else cached("quality", quality.summary))
+
+    @router.get("/api/app/data/quality/rules/{check_id}", response_model=RuleDetail | DataDisabled)
+    def quality_rule(check_id: str):
+        if quality is None:
+            return no_store(DataDisabled())
+        d = quality.rule(check_id)
+        if d is None:
+            raise HTTPException(status_code=404, detail="规则不存在")
+        return no_store(d)
+
+    @router.get("/api/app/data/quality/samples/{run_id}/{filename}")
+    def quality_sample(run_id: str, filename: str):
+        if quality is None:
+            raise HTTPException(status_code=404, detail="文件不存在")
+        return quality.sample(run_id, filename)
 
     return router

@@ -128,6 +128,13 @@ def build_app(
         limit_up_research_run_path or Path("var/research/issue-210"),
         name_lookup=names,
     )
+    sample_root = ((service_runs_dir or Path("var/service-runs"))
+                   .resolve().parent.parent / "artifacts/metric_checks")
+    from qsys.webapp.queries.data_assets import DataAssets
+    from qsys.webapp.queries.data_catalog import DataCatalog
+    from qsys.webapp.queries.data_quality import DataQuality
+    # 数据组（R4）：覆盖统计后台刷新，避免表清单请求同步做全仓统计（#442）
+    data_assets = DataAssets(warehouse, background_coverage=True)
     # 新后端（#662 总路线 v2）：市场查询直接读同一 transport 与仓库，不经旧视图服务
     webapp = WebappDeps(
         live_kill=live_kill,
@@ -135,14 +142,15 @@ def build_app(
             transport, warehouse, snapshot_key=market_snapshot_key,
             schedule_key=market_schedule_key, limit_check_prefix=f"{limits_prefix}_check"),
         shadow=shadow_reader, research=research_reader,
+        data_assets=data_assets, data_catalog=DataCatalog(data_assets.query),
+        data_quality=DataQuality(data_assets.query, sample_root),
     )
     return create_app(
         monitor,
         config,
         DataService(warehouse),
         BacktestService(runs_root),
-        CatalogService(warehouse, sample_root=(service_runs_dir or Path("var/service-runs"))
-                       .resolve().parent.parent / "artifacts/metric_checks"),
+        CatalogService(warehouse, sample_root=sample_root),
         workbench, strategies_path or Path("strategies"), paper,
         MarketService(
             warehouse, transport, snapshot_key=market_snapshot_key,

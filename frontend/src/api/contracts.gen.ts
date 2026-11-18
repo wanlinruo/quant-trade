@@ -400,6 +400,13 @@ export interface ExchangeCoverage {
   source_at_max: string | null
 }
 
+export interface FieldCounts {
+  total: number
+  passed: number
+  blocking: number
+  warning: number
+}
+
 export interface FieldInfo {
   name: string
   type: string
@@ -673,6 +680,21 @@ export interface ParameterSpec {
   choices: (number | boolean | string)[]
 }
 
+export interface QualityRun {
+  run_id: string
+  checked_at: string | null
+  fields: FieldCounts
+  tables: Record<string, number> | null
+}
+
+export interface QualitySummary {
+  schema_version: 1
+  enabled: true
+  runs: QualityRun[]
+  warning_sources: WarningSource[]
+  rules: RuleRow[]
+}
+
 export interface RegimeDay {
   dt: string
   limit_up_count: number | null
@@ -795,6 +817,60 @@ export interface ReturnPoint {
   benchmark: number | null
   excess: number | null
   drawdown: number | null
+}
+
+export interface RuleDetail {
+  schema_version: 1
+  enabled: true
+  id: string
+  name: string
+  category: string
+  condition: string
+  limitation: string
+  implementation: string
+  targets: string[]
+  latest: RuleResult[]
+  history: RuleResult[]
+}
+
+export interface RuleResult {
+  run_id: string | null
+  checked_at: string | null
+  metric_id: string | null
+  dataset_id: string | null
+  upstream: string | null
+  downstream: string | null
+  check_id: string
+  category: string | null
+  dimension: string | null
+  scope_start: string | null
+  scope_end: string | null
+  passed: boolean | null
+  severity: string | null
+  known_issue: string | null
+  status: string | null
+  evidence_at: string | null
+  expires_at: string | null
+  required: boolean | null
+  violations: number | null
+  checked_rows: number | null
+  upstream_rows: number | null
+  downstream_rows: number | null
+  matched_rows: number | null
+  orphan_rows: number | null
+  detail: string | null
+  input_version: string | null
+  sample_file: string | null
+}
+
+export interface RuleRow {
+  id: string
+  name: string
+  category: string
+  scope: string
+  known_issues: string[]
+  upstream_self_consistency: boolean
+  latest_status: "blocking" | "warning" | "unknown" | "passed"
 }
 
 export interface RunFileInfo {
@@ -944,4 +1020,18 @@ export interface TableSample {
   columns: string[]
   rows: Record<string, JsonValue>[]
   limit: number
+}
+
+export interface WarningSample {
+  metric_id: string
+  check_id: string
+  detail: string | null
+  known_issue: string | null
+}
+
+export interface WarningSource {
+  key: "upstream" | "registered" | "unclassified"
+  issue: string | null
+  count: number
+  samples: WarningSample[]
 }
