@@ -37,6 +37,7 @@ class WebappDeps:
     core_label: str = "影子盘"
     # 数据组（R4）
     data_assets: Any | None = None   # queries.data_assets.DataAssets
+    data_catalog: Any | None = None  # queries.data_catalog.DataCatalog
     spa_root: Path | None = None
 
 
@@ -61,5 +62,7 @@ def mount_webapp(app: FastAPI, deps: WebappDeps) -> None:
         workbench=deps.workbench, runs=deps.runs, paper=deps.paper, research_jobs=deps.research_jobs,
         strategy_templates=deps.strategy_templates, shadow_lineage=deps.shadow_lineage,
         core_label=deps.core_label)))
-    app.include_router(data_router(deps.data_assets))
+    data = data_router(deps.data_assets, deps.data_catalog)
+    app.state.webapp_routers = [data]
+    app.include_router(data)
     mount_spa(app, deps.spa_root if deps.spa_root is not None else SPA_DIST)

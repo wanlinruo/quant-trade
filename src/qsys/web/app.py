@@ -205,6 +205,9 @@ def create_app(
         from qsys.data.storage import Warehouse
         from qsys.webapp.queries.data_assets import DataAssets
         deps.data_assets = DataAssets(Warehouse(assets.root))
+    if deps.data_catalog is None and catalog is not None:
+        from qsys.webapp.queries.data_catalog import DataCatalog
+        deps.data_catalog = DataCatalog(catalog._query)  # 过渡接线：旧服务合入时删除
 
     # 新前端（#662）：/app 下的单页应用，与旧页面并存
     mount_webapp(app, deps)

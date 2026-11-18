@@ -4,11 +4,13 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
+from fastapi.exceptions import RequestValidationError
 
 from qsys.webapp.cache import SingleFlightCache
 from qsys.webapp.contracts.data import (
-    DataDisabled, DataOverview, DataTableDetail, DataTableList, TableSample,
+    DataDisabled, DataOverview, DataTableDetail, DataTableList, MetricDetail, MetricList, TableSample,
 )
+from qsys.webapp.queries.data_catalog import STATUSES
 
 LIST_TTL_SECONDS = 60.0
 
@@ -52,5 +54,27 @@ def data_router(assets, catalog=None, quality=None) -> APIRouter:
         if s is None:
             raise HTTPException(status_code=404, detail="数据表不存在")
         return no_store(s)
+
+    @router.get("/api/app/data/catalog", response_model=MetricList | DataDisabled)
+    def catalog_list(dataset: str | None = None, kind: str | None = None, status: str | None = None):
+        if catalog is None:
+            return no_store(DataDisabled())
+        if status is not None and status not in STATUSES:
+            raise RequestValidationError([{"loc": ("query", "status"), "msg": "未知的指标状态",
+                                           "type": "value_error"}])
+        build = lambda: catalog.list(dataset, kind, status)  # noqa: E731
+        # 只为合法筛选值建缓存，任意字符串不会让缓存无限增长
+        if (dataset is None or dataset in catalog.datasets()) and (kind is None or kind in catalog.kinds()):
+            return no_store(cached(f"catalog:{dataset}:{kind}:{status}", build))
+        return no_store(build())
+
+    @router.get("/api/app/data/catalog/{metric_id}", response_model=MetricDetail | DataDisabled)
+    def catalog_detail(metric_id: str):
+        if catalog is None:
+            return no_store(DataDisabled())
+        d = catalog.detail(metric_id)
+        if d is None:
+            raise HTTPException(status_code=404, detail="指标不存在")
+        return no_store(d)
 
     return router

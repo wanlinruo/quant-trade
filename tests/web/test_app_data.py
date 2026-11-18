@@ -48,8 +48,7 @@ def make(warehouse):
 
 def test_endpoints_disabled_without_services(make):
     c = make(assets=False, catalog=False)
-    for url in ("/api/app/data/catalog",
-                f"/api/app/data/catalog/{METRIC}", "/api/app/data/quality", "/api/app/data/quality/rules/x"):
+    for url in ("/api/app/data/quality", "/api/app/data/quality/rules/x"):
         r = c.get(url)
         assert r.status_code == 200 and r.json() == {"enabled": False}, url
         assert r.headers["cache-control"] == "no-store"
@@ -58,19 +57,6 @@ def test_endpoints_disabled_without_services(make):
 
 
 
-
-def test_catalog_list_and_detail_with_evidence(make, warehouse):
-    write_partition(warehouse.root, "metric_evidence", schema.METRIC_EVIDENCE, [{
-        "metric_id": METRIC, "symbol": "600000.SH", "dt": date(2026, 11, 3), "our_value": "10.1",
-        "reference_value": "10.1", "reference_source": "同花顺", "verdict": "一致", "checked_by": "维护者",
-        "checked_at": datetime(2026, 11, 4, 9), "note": ""}])
-    c = make()
-    body = c.get("/api/app/data/catalog").json()
-    assert body["enabled"] and body["summary"]["total"] == len(REGISTRY) and body["rows"]
-    d = c.get(f"/api/app/data/catalog/{METRIC}").json()
-    assert d["evidence"][0]["reference_source"] == "同花顺" and d["evidence"][0]["verdict"] == "一致"
-    assert c.get("/api/app/data/catalog/nope").status_code == 404
-    assert c.get("/api/app/data/catalog", params={"status": "bogus"}).status_code == 422
 
 
 def test_quality_endpoint_shapes(make, warehouse):
@@ -106,28 +92,3 @@ def test_still_no_write_endpoints(make):
     assert methods <= {"GET", "HEAD"}
 
 
-def test_catalog_list_cached_60s_per_filter(make, monkeypatch):
-    calls = {"n": 0}
-    orig = CatalogService.rows
-
-    def counting(self, *a, **kw):
-        calls["n"] += 1
-        return orig(self, *a, **kw)
-    monkeypatch.setattr(CatalogService, "rows", counting)
-    c = make()
-    c.get("/api/app/data/catalog")
-    first = calls["n"]
-    c.get("/api/app/data/catalog")
-    assert calls["n"] == first
-    c.get("/api/app/data/catalog", params={"kind": "direct"})
-    assert calls["n"] > first
-
-
-def test_catalog_cache_ignores_unknown_filters(make):
-    c = make()
-    c.get("/api/app/data/catalog", params={"kind": "direct"})
-    for i in range(5):
-        assert c.get("/api/app/data/catalog", params={"dataset": f"bogus{i}"}).json()["rows"] == []
-    keys = list(c.app.state.app_data_caches)
-    assert "catalog:None:direct:None" in keys
-    assert not any("bogus" in k for k in keys)

@@ -9,7 +9,9 @@ from __future__ import annotations
 from qsys.webapp.contracts.ailu import ResearchBoard, ShadowBoard
 from qsys.webapp.contracts.board import Board, BoardSeries, BoardUnavailable
 from qsys.webapp.contracts.base import Contract, ErrorBody
-from qsys.webapp.contracts.data import DataDisabled, DataOverview, DataTableDetail, DataTableList, TableSample
+from qsys.webapp.contracts.data import (
+    DataDisabled, DataOverview, DataTableDetail, DataTableList, MetricDetail, MetricList, TableSample,
+)
 from qsys.webapp.contracts.market import MarketDisabled, MarketOverview
 from qsys.webapp.contracts.research import (
     BacktestList, BacktestPending, BacktestReport, Cancelled, Created, ResearchDisabled, ResearchJobList,
@@ -42,4 +44,6 @@ EXPORTED: tuple[type[Contract], ...] = (
     DataTableList,
     DataTableDetail,
     TableSample,
+    MetricList,
+    MetricDetail,
 )

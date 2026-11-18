@@ -181,3 +181,89 @@ class DataOverview(Contract):
     tables: list[OverviewTable]
     domains: list[DomainSummary]
     lineage: Lineage
+
+
+# ---- 指标字典 ----
+MetricStatus = Literal["failed", "unknown", "uncovered", "unverified", "known_issue", "ok"]
+
+
+class DirectLineage(Contract):
+    source_id: str
+    provider: str | None
+    api: str | None
+    field: str
+    multiplier: float
+
+
+class MetricRow(Contract):
+    id: str
+    dataset: str
+    column: str
+    kind: str
+    validity: str
+    meaning: str | None  # 含义未登记为 None
+    direct: DirectLineage | None  # 直取指标的接口与字段；派生指标为 None
+    roots: list[str]  # 递归追溯到的根源接口
+    status: MetricStatus
+    issues: list[str]
+
+
+class CatalogSummary(Contract):
+    total: int
+    by_kind: dict[str, int]
+    covered: int
+    pending: int
+    latest_run: Timestamp | None
+
+
+class MetricList(Contract):
+    schema_version: Literal[1] = 1
+    enabled: Literal[True] = True
+    summary: CatalogSummary
+    rows: list[MetricRow]
+    datasets: list[str]
+    kinds: list[str]
+
+
+class MetricCheckRow(Contract):
+    run_id: str
+    checked_at: Timestamp | None
+    metric_id: str
+    check_id: str
+    category: str | None
+    scope_start: date | None
+    scope_end: date | None
+    passed: bool | None
+    severity: str | None
+    known_issue: str | None
+    violations: int | None
+    checked_rows: int | None
+    detail: str | None
+    sample_file: str | None  # "<run_id>/<check_id>.parquet"，可经质检样本接口下载
+
+
+class MetricEvidence(Contract):
+    metric_id: str
+    symbol: str | None
+    dt: date | None
+    our_value: str | None
+    reference_value: str | None
+    reference_source: str | None
+    verdict: str | None
+    checked_by: str | None
+    checked_at: Timestamp | None
+    note: str | None
+
+
+class MetricDetail(Contract):
+    schema_version: Literal[1] = 1
+    enabled: Literal[True] = True
+    row: MetricRow
+    upstream: list[str]
+    downstream: list[str]
+    ext_consumers: list[str]
+    formula: str | None
+    params: dict[str, JsonValue]
+    checks: list[MetricCheckRow]
+    history: list[MetricCheckRow]
+    evidence: list[MetricEvidence]

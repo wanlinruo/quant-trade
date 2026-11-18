@@ -131,37 +131,6 @@ def register_app_data(app: FastAPI, *, assets, catalog) -> None:
         return {"enabled": True, "runs": quality_runs(m, d), "warning_sources": warning_sources(m),
                 "rules": _rule_rows(m, d)}
 
-    @app.get("/api/app/data/catalog")
-    def data_catalog(dataset: str | None = None, kind: str | None = None, status: str | None = None):
-        if catalog is None:
-            return _json(DISABLED)
-        try:
-            sel = Status(status) if status else None
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail="未知的指标状态") from exc
-
-        def build() -> dict:
-            rows = [{**jsonable_encoder(r), "label": r.label}
-                    for r in catalog.rows(dataset=dataset, kind=kind, status=sel)]
-            return {"enabled": True, "summary": catalog.summary(), "rows": rows,
-                    "datasets": catalog.datasets(), "kinds": catalog.kinds(), "statuses": catalog.statuses()}
-        # 只为合法筛选值建缓存，任意字符串不会让缓存无限增长
-        if (dataset is None or dataset in catalog.datasets()) and (kind is None or kind in catalog.kinds()):
-            return _json(cached(f"catalog:{dataset}:{kind}:{status}", build))
-        return _json(build())
-
-    @app.get("/api/app/data/catalog/{metric_id}")
-    def data_metric(metric_id: str):
-        if catalog is None:
-            return _json(DISABLED)
-        d = catalog.detail(metric_id)
-        if d is None:
-            raise HTTPException(status_code=404, detail="指标不存在")
-        body = jsonable_encoder(d)
-        body["row"]["label"] = d.row.label
-        body["enabled"] = True
-        return _json(body)
-
     @app.get("/api/app/data/quality")
     def data_quality():
         return _json(DISABLED) if assets is None else _json(cached("quality", quality))

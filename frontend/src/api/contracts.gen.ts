@@ -213,6 +213,14 @@ export interface Cancelled {
   status: "cancelled" | "cancellation-requested"
 }
 
+export interface CatalogSummary {
+  total: number
+  by_kind: Record<string, number>
+  covered: number
+  pending: number
+  latest_run: string | null
+}
+
 export interface CompareGroup {
   level: number
   items: CompareItem[]
@@ -333,6 +341,14 @@ export interface DependencyInfo {
   metrics: string[]
   health_policy: string | null
   note: string
+}
+
+export interface DirectLineage {
+  source_id: string
+  provider: string | null
+  api: string | null
+  field: string
+  multiplier: number
 }
 
 export interface DomainRef {
@@ -552,6 +568,72 @@ export interface MarketSnapshot {
   limit_up_unknown_count: number | null
   limit_down_unknown_count: number | null
   coverage: MarketCoverage | null
+}
+
+export interface MetricCheckRow {
+  run_id: string
+  checked_at: string | null
+  metric_id: string
+  check_id: string
+  category: string | null
+  scope_start: string | null
+  scope_end: string | null
+  passed: boolean | null
+  severity: string | null
+  known_issue: string | null
+  violations: number | null
+  checked_rows: number | null
+  detail: string | null
+  sample_file: string | null
+}
+
+export interface MetricDetail {
+  schema_version: 1
+  enabled: true
+  row: MetricRow
+  upstream: string[]
+  downstream: string[]
+  ext_consumers: string[]
+  formula: string | null
+  params: Record<string, JsonValue>
+  checks: MetricCheckRow[]
+  history: MetricCheckRow[]
+  evidence: MetricEvidence[]
+}
+
+export interface MetricEvidence {
+  metric_id: string
+  symbol: string | null
+  dt: string | null
+  our_value: string | null
+  reference_value: string | null
+  reference_source: string | null
+  verdict: string | null
+  checked_by: string | null
+  checked_at: string | null
+  note: string | null
+}
+
+export interface MetricList {
+  schema_version: 1
+  enabled: true
+  summary: CatalogSummary
+  rows: MetricRow[]
+  datasets: string[]
+  kinds: string[]
+}
+
+export interface MetricRow {
+  id: string
+  dataset: string
+  column: string
+  kind: string
+  validity: string
+  meaning: string | null
+  direct: DirectLineage | null
+  roots: string[]
+  status: "failed" | "unknown" | "uncovered" | "unverified" | "known_issue" | "ok"
+  issues: string[]
 }
 
 export interface MoneyEffect {
