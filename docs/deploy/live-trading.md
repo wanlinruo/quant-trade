@@ -178,7 +178,7 @@ Redis 读不到时按**停机**处理：宁可误停，不可停不下来。
 
 1. 确认 core 心跳健康、`activity=idle`，账户空仓且无活动委托
 2. 武装 10 分钟验证窗口，确认 agent 心跳声明 `commissioning_lease_active=true`
-3. `systemctl stop qsys-live-core`（代理与行情网关保持运行）；等 core 心跳超过 10 秒，
+3. `systemctl stop qsys-live-core`（代理与行情网关保持运行）；等 core 心跳超过 30 秒（网关核心心跳阈值，#677），
    再确认 agent 本地闸未生效且 `live_preflight --require-live --require-kill-released` 全过
 4. 读取 `511380.SH` 实时 QMT 买一/卖一；以实时卖一作为买入限价执行 100 份
 5. 确认完整成交、券商持仓 100 份且 `available_qty=100`；若只部分成交，先确认撤单终态，

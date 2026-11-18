@@ -46,6 +46,10 @@ from qsys.live.transport import Transport
 
 log = structlog.get_logger(__name__)
 
+# 核心心跳空窗超过此值才撤单落闸（#677，维护者 2026-11-18 定 30 秒）。原 10 秒时，
+# 隧道单次读超时（核心 1 秒一跳）就会锁存网关本地闸，而 Linux 侧同一故障只算 1 次失败。
+CORE_HEARTBEAT_MAX_AGE_SECONDS = 30.0
+
 
 class ExecutionAgent:
     def __init__(
@@ -113,7 +117,8 @@ class ExecutionAgent:
         log.warning("agent.remote_kill", reason=reason)
 
     def enforce_core_heartbeat(
-        self, *, max_age_seconds: float = 10.0, startup_grace_seconds: float = 30.0,
+        self, *, max_age_seconds: float = CORE_HEARTBEAT_MAX_AGE_SECONDS,
+        startup_grace_seconds: float = 30.0,
     ) -> bool:
         """LIVE 模式下核心失联即撤单并在 Windows 本地落闸。"""
         if self._safety is None or self._safety.mode is not TradingMode.LIVE:

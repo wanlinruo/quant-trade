@@ -421,7 +421,30 @@ class InfraAlerts:
         reading["cert_days"] = _cert_days(self.tls_site, self.tls_port)
         reading.update(_redis_state(transport, self.config_path))
         reading.update(self._order_book_state(transport))
+        reading["gateway_local_kill"] = self._gateway_local_kill(transport)
         return reading
+
+    # 网关心跳 1 秒一跳；超过此值视为读数过期，不据此判闸（网关失联另有告警路径）。
+    GATEWAY_BEAT_MAX_AGE_SECONDS = 60.0
+
+    def _gateway_local_kill(self, transport) -> bool | None:
+        """网关心跳上报的本地闸状态（#677）；读不到或过期返回 None，不臆断。"""
+        if transport is None:
+            return None
+        try:
+            from qsys.live.messages import Heartbeat
+
+            raw = transport.get_key(f"{self.heartbeat_prefix}:agent")
+            beat = Heartbeat.model_validate_json(raw) if raw else None
+        except Exception as exc:
+            log.info("infra_watch.gateway_kill_unavailable", error=str(exc))
+            return None
+        if beat is None or beat.local_kill_engaged is None:
+            return None
+        age = (self.clock() - beat.at).total_seconds()
+        if not -5 <= age <= self.GATEWAY_BEAT_MAX_AGE_SECONDS:
+            return None
+        return beat.local_kill_engaged
 
     def _order_book_state(self, transport) -> dict:
         """行情心跳里的全推盘口覆盖（#651）；读不到就保持当日判定，不臆断。"""
