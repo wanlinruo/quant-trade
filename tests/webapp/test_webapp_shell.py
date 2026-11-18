@@ -14,7 +14,7 @@ from qsys.web.app import create_app
 from qsys.web.config import WebConfig
 from qsys.web.live_kill_status import KillSource, LiveKillReader, LiveKillStatus
 from qsys.webapp.contracts.shell import ShellStatus
-from qsys.webapp.queries.shell import ShellQuery as ShellStatusCache
+from qsys.webapp.queries.shell import ShellQuery
 from qsys.web.views import MonitorService
 
 AT = "2026-11-17T10:00:00"
@@ -62,14 +62,14 @@ def test_status_maps_kill_states_to_live_posture() -> None:
     expected = {"stopped": ("reduce_only", "仅允许减仓"), "clear": ("trading", "实盘运行"),
                 "unknown": ("unknown", "实盘状态未知")}
     for kill, (live, label) in expected.items():
-        body = ShellStatusCache(CountingReader(_status(kill))).get().model_dump(mode="json")
+        body = ShellQuery(CountingReader(_status(kill))).get().model_dump(mode="json")
         assert body["schema_version"] == 1
         assert body["kill"]["state"] == kill
         assert body["live"] == {"state": live, "label": label}
 
 
 def test_unknown_kill_state_is_never_reported_clear() -> None:
-    body = ShellStatusCache(CountingReader(error=RuntimeError("redis down /var/secret"))).get().model_dump(mode="json")
+    body = ShellQuery(CountingReader(error=RuntimeError("redis down /var/secret"))).get().model_dump(mode="json")
     assert body["kill"]["state"] == "unknown"
     assert body["kill"]["label"] == "停机状态未知"
     assert body["live"]["state"] == "unknown"
@@ -79,7 +79,7 @@ def test_unknown_kill_state_is_never_reported_clear() -> None:
 def test_concurrent_requests_share_one_read_within_ttl() -> None:
     reader = CountingReader()
     clock = FakeClock()
-    cache = ShellStatusCache(reader, ttl_seconds=5, clock=clock)
+    cache = ShellQuery(reader, ttl_seconds=5, clock=clock)
     with ThreadPoolExecutor(8) as ex:
         list(ex.map(lambda _: cache.get(), range(32)))
     assert reader.calls == 1
@@ -92,7 +92,7 @@ def test_cache_never_outlives_kill_status_validity() -> None:
     # 心跳快过期时读取结果只剩 1 秒有效，缓存不得在其失效后继续返回“已解除”。
     reader = CountingReader(_status("clear", valid_for=1.0))
     clock = FakeClock()
-    cache = ShellStatusCache(reader, ttl_seconds=5, clock=clock)
+    cache = ShellQuery(reader, ttl_seconds=5, clock=clock)
     cache.get()
     clock.advance(1.01)
     cache.get()
@@ -102,7 +102,7 @@ def test_cache_never_outlives_kill_status_validity() -> None:
 def test_failed_read_is_not_cached_as_clear_later() -> None:
     reader = CountingReader(error=RuntimeError("x"))
     clock = FakeClock()
-    cache = ShellStatusCache(reader, ttl_seconds=5, clock=clock)
+    cache = ShellQuery(reader, ttl_seconds=5, clock=clock)
     assert cache.get().kill.state == "unknown"
     reader.error = None
     clock.advance(5.01)
@@ -110,20 +110,20 @@ def test_failed_read_is_not_cached_as_clear_later() -> None:
 
 
 def test_agent_heartbeat_taken_from_agent_source() -> None:
-    got = ShellStatusCache(CountingReader(_status("clear", agent_at=AT))).get().model_dump(mode="json")
+    got = ShellQuery(CountingReader(_status("clear", agent_at=AT))).get().model_dump(mode="json")
     assert got["agent_heartbeat_at"] == AT + "+08:00"
-    assert ShellStatusCache(CountingReader(_status("unknown", agent_at=None))).get().agent_heartbeat_at is None
+    assert ShellQuery(CountingReader(_status("unknown", agent_at=None))).get().agent_heartbeat_at is None
 
 
 def test_shell_missing_reasons_in_missing_map() -> None:
-    body = ShellStatusCache(CountingReader()).get()
+    body = ShellQuery(CountingReader()).get()
     assert body.qmt is None and body.missing["qmt"]
     assert body.alerts_open is None and body.missing["alerts_open"]
     assert set(body.model_dump()) == set(ShellStatus.model_fields)
 
 
 def test_shell_times_carry_offset() -> None:
-    body = ShellStatusCache(CountingReader()).get().model_dump(mode="json")
+    body = ShellQuery(CountingReader()).get().model_dump(mode="json")
     assert body["checked_at"].endswith("+08:00")
     assert body["kill"]["sources"][0]["recorded_at"] is None or body["kill"]["sources"][0]["recorded_at"].endswith("+08:00")
 
