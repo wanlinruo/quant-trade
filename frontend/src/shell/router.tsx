@@ -64,3 +64,10 @@ export function setSearch(params: Record<string, string | null>): void {
   if (href !== `${location.pathname}${location.search}`) history.pushState(null, '', href)
   dispatchEvent(new PopStateEvent('popstate'))
 }
+
+/** 跳到另一页并带上查询参数（如从策略页打开某次回测）。 */
+export function goTo(key: string, params: Record<string, string> = {}): void {
+  const qs = new URLSearchParams(params).toString()
+  history.pushState(null, '', `${hrefFor(key)}${qs ? `?${qs}` : ''}`)
+  dispatchEvent(new PopStateEvent('popstate'))
+}

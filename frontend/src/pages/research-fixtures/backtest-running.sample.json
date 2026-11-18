@@ -1,0 +1,22 @@
+{
+ "enabled": true,
+ "report": false,
+ "strategy_id": "9354dda873a5436399889523eb66599f",
+ "job": {
+  "id": "cf8fbc70a4204d94",
+  "strategy_name": "草稿策略",
+  "status": "queued",
+  "progress": 0,
+  "total": 0,
+  "percent": 0,
+  "current_session": null,
+  "error": "",
+  "config": {
+   "start": "2024-01-02",
+   "end": "2024-03-29",
+   "cash": 100000,
+   "params": {}
+  }
+ },
+ "log_tail": ""
+}

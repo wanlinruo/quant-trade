@@ -53,7 +53,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={value}>
       <ModeProvider value={mode}>
-        <ConfigProvider locale={zhCN} theme={cfg}>
+        <ConfigProvider locale={zhCN} theme={cfg} button={{ autoInsertSpace: false }}>
           <AntApp>{children}</AntApp>
         </ConfigProvider>
       </ModeProvider>
