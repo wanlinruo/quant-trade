@@ -94,13 +94,13 @@ export interface MarketCoverage {
 }
 
 export interface MarketDisabled {
-  schema_version?: 1
-  enabled?: false
+  schema_version: 1
+  enabled: false
 }
 
 export interface MarketOverview {
-  schema_version?: 1
-  enabled?: true
+  schema_version: 1
+  enabled: true
   live: LiveMarket | null
   schedule: MarketSchedule | null
   limit_check: LimitCheck | null
@@ -157,7 +157,7 @@ export interface RegimeDay {
 }
 
 export interface ResearchBoard {
-  schema_version?: 1
+  schema_version: 1
   state: "ready" | "unavailable" | "not_found"
   message: string
   summary: ResearchSummary | null
@@ -223,7 +223,7 @@ export interface ResearchSummary {
 }
 
 export interface ShadowBoard {
-  schema_version?: 1
+  schema_version: 1
   state: "unavailable" | "waiting" | "generating" | "ready" | "stale" | "failed"
   message: string
   historical: boolean
@@ -270,12 +270,12 @@ export interface ShadowSnapshot {
 }
 
 export interface ShellStatus {
-  schema_version?: 1
+  schema_version: 1
   checked_at: string
   kill: KillStatus
   live: LivePosture
   agent_heartbeat_at: string | null
-  qmt?: null
-  alerts_open?: number | null
+  qmt: null
+  alerts_open: number | null
   missing: Record<string, string>
 }

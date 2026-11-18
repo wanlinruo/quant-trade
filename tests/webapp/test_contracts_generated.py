@@ -48,7 +48,7 @@ def test_render_maps_schema_shapes():
     assert "  schema_version: 1\n" in out
     assert '  state: "a" | "b"\n' in out
     assert "  at: string\n" in out and "  day: string\n" in out
-    assert "  ratio?: number | null\n" in out
+    assert "  ratio: number | null\n" in out  # 序列化时总会输出（值为 null）
     assert "  items: Inner[]\n" in out
     assert "  pair: [string, number | null]\n" in out
     assert "  counts: Record<string, number>\n" in out

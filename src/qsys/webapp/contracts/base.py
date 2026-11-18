@@ -26,7 +26,8 @@ Timestamp = Annotated[datetime, AfterValidator(to_aware)]
 
 
 class Contract(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    # 序列化输出总是包含有默认值的字段：生成的前端类型里它们必须是必填（如 enabled 判别联合）
+    model_config = ConfigDict(extra="forbid", frozen=True, json_schema_serialization_defaults_required=True)
 
 
 class ErrorDetail(Contract):
