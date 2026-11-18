@@ -156,6 +156,119 @@ export interface RegimeDay {
   index_ma20_slope_5d: number | null
 }
 
+export interface ResearchBoard {
+  schema_version?: 1
+  state: "ready" | "unavailable" | "not_found"
+  message: string
+  summary: ResearchSummary | null
+  selected: ResearchDay | null
+  history: ResearchHistoryDay[]
+  monthly: ResearchMonth[]
+}
+
+export interface ResearchDay {
+  prediction_date: string
+  target_session: string
+  split: "TEST" | "OBS"
+  precision_at_20: number
+  touch_precision_at_20: number
+  entries: ResearchEntry[]
+}
+
+export interface ResearchEntry {
+  rank: number
+  symbol: string
+  name: string
+  board: string
+  p_touch: number
+  p_seal_given_touch: number
+  p_close_limit: number
+  actual_touched: boolean
+  actual_closed_limit: boolean
+  opened_at_limit: boolean
+  one_price_limit: boolean
+}
+
+export interface ResearchHistoryDay {
+  prediction_date: string
+  target_session: string
+  split: "TEST" | "OBS"
+  precision_at_20: number
+  touch_precision_at_20: number
+}
+
+export interface ResearchMonth {
+  month: string
+  split: "TEST" | "OBS"
+  precision_at_20: number
+  predictions: number
+  hits: number
+}
+
+export interface ResearchSummary {
+  generated_at: string | null
+  source_sha: string
+  data_sha: string
+  first_prediction_date: string
+  last_prediction_date: string
+  sessions: number
+  test_sessions: number
+  obs_sessions: number
+  test_precision_at_20: number
+  obs_precision_at_20: number
+  obs_baseline_precision_at_20: number
+  obs_lift_at_20: number
+  obs_month_win_rate: number
+  promoted_to_shadow: boolean
+}
+
+export interface ShadowBoard {
+  schema_version?: 1
+  state: "unavailable" | "waiting" | "generating" | "ready" | "stale" | "failed"
+  message: string
+  historical: boolean
+  snapshot: ShadowSnapshot | null
+  history: ShadowDay[]
+  missing: Record<string, string>
+}
+
+export interface ShadowDay {
+  prediction_date: string
+  target_session: string
+  generated_at: string
+  status: "waiting" | "generating" | "ready" | "failed"
+  model_version: string
+  entry_count: number
+  precision_at_20: number | null
+}
+
+export interface ShadowEntry {
+  rank: number
+  symbol: string
+  name: string
+  board: string
+  p_touch: number
+  p_seal_given_touch: number
+  p_close_limit: number
+  actual_touched: boolean | null
+  actual_closed_limit: boolean | null
+  opened_at_limit: boolean | null
+  one_price_limit: boolean | null
+}
+
+export interface ShadowSnapshot {
+  prediction_date: string
+  target_session: string
+  generated_at: string
+  status: "waiting" | "generating" | "ready" | "failed"
+  model_version: string
+  eligible_count: number
+  rolling_precision_at_20: number | null
+  calibration_error: number | null
+  drift_score: number | null
+  entries: ShadowEntry[]
+}
+
 export interface ShellStatus {
   schema_version?: 1
   checked_at: string
