@@ -59,3 +59,12 @@ test('kill banner never covers the side navigation after scrolling', async ({ pa
   expect(banner && first).toBeTruthy()
   expect(first!.y).toBeGreaterThanOrEqual(banner!.y + banner!.height - 1)
 })
+
+test('sider collapses automatically below 992px and restores preference above', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 800 })
+  await page.goto('/app/today')
+  const width = async () => (await page.locator('.ant-layout-sider').boundingBox())!.width
+  await expect.poll(width).toBeLessThanOrEqual(56)
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await expect.poll(width).toBe(196)
+})

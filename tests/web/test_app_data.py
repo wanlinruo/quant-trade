@@ -156,3 +156,30 @@ def test_still_no_write_endpoints(make):
     methods = {m for r in c.app.routes if str(getattr(r, "path", "")).startswith("/api/app/data")
                for m in getattr(r, "methods", set())}
     assert methods <= {"GET", "HEAD"}
+
+
+def test_catalog_list_cached_60s_per_filter(make, monkeypatch):
+    calls = {"n": 0}
+    orig = CatalogService.rows
+
+    def counting(self, *a, **kw):
+        calls["n"] += 1
+        return orig(self, *a, **kw)
+    monkeypatch.setattr(CatalogService, "rows", counting)
+    c = make()
+    c.get("/api/app/data/catalog")
+    first = calls["n"]
+    c.get("/api/app/data/catalog")
+    assert calls["n"] == first
+    c.get("/api/app/data/catalog", params={"kind": "direct"})
+    assert calls["n"] > first
+
+
+def test_catalog_cache_ignores_unknown_filters(make):
+    c = make()
+    c.get("/api/app/data/catalog", params={"kind": "direct"})
+    for i in range(5):
+        assert c.get("/api/app/data/catalog", params={"dataset": f"bogus{i}"}).json()["rows"] == []
+    keys = list(c.app.state.app_data_caches)
+    assert "catalog:None:direct:None" in keys
+    assert not any("bogus" in k for k in keys)

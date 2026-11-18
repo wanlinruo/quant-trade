@@ -75,6 +75,7 @@ def _rule_rows(metric_checks: pl.DataFrame, dataset_checks: pl.DataFrame) -> lis
 
 def register_app_data(app: FastAPI, *, assets, catalog) -> None:
     caches: dict[str, SingleFlightCache] = {}
+    app.state.app_data_caches = caches
 
     def cached(key: str, fn) -> Any:
         if key not in caches:
@@ -173,9 +174,16 @@ def register_app_data(app: FastAPI, *, assets, catalog) -> None:
             sel = Status(status) if status else None
         except ValueError as exc:
             raise HTTPException(status_code=422, detail="未知的指标状态") from exc
-        rows = [{**jsonable_encoder(r), "label": r.label} for r in catalog.rows(dataset=dataset, kind=kind, status=sel)]
-        return _json({"enabled": True, "summary": catalog.summary(), "rows": rows,
-                      "datasets": catalog.datasets(), "kinds": catalog.kinds(), "statuses": catalog.statuses()})
+
+        def build() -> dict:
+            rows = [{**jsonable_encoder(r), "label": r.label}
+                    for r in catalog.rows(dataset=dataset, kind=kind, status=sel)]
+            return {"enabled": True, "summary": catalog.summary(), "rows": rows,
+                    "datasets": catalog.datasets(), "kinds": catalog.kinds(), "statuses": catalog.statuses()}
+        # 只为合法筛选值建缓存，任意字符串不会让缓存无限增长
+        if (dataset is None or dataset in catalog.datasets()) and (kind is None or kind in catalog.kinds()):
+            return _json(cached(f"catalog:{dataset}:{kind}:{status}", build))
+        return _json(build())
 
     @app.get("/api/app/data/catalog/{metric_id}")
     def data_metric(metric_id: str):

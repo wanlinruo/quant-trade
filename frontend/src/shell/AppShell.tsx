@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Layout, Menu, Modal } from 'antd'
 import { useShellStatus } from '../api/shell'
 import { usePalette } from '../theme/context'
@@ -31,7 +31,14 @@ export function AppShell() {
   const page = pageByKey(route) ?? pageByKey(DEFAULT_PAGE)!
   const PageComponent = PAGE_COMPONENTS[page.key]
   const status = useShellStatus()
-  const [collapsed, setCollapsed] = useState(() => localStorage.getItem(SIDER_KEY) === '1')
+  // 宽屏用保存的偏好；窄屏（< 992px，antd lg 断点）自动收起，手动展开只在本次窄屏期间生效。
+  // antd 在断点变化时会以 'responsive' 类型回调 onCollapse，不能写进用户偏好。
+  const [pref, setPref] = useState(() => localStorage.getItem(SIDER_KEY) === '1')
+  const [narrow, setNarrow] = useState(false)
+  const [narrowOpen, setNarrowOpen] = useState(false)
+  const collapsed = narrow ? !narrowOpen : pref
+  const setCollapsed = useCallback((c: boolean) => { if (narrow) setNarrowOpen(!c); else setPref(c) }, [narrow])
+  const toggleSider = useCallback(() => { if (narrow) setNarrowOpen((o) => !o); else setPref((c) => !c) }, [narrow])
   const [search, setSearch] = useState(false)
   const [help, setHelp] = useState(false)
   const [recent, setRecent] = useState<string[]>(readRecent)
@@ -48,7 +55,7 @@ export function AppShell() {
     return () => ro.disconnect()
   }, [])
 
-  useEffect(() => { localStorage.setItem(SIDER_KEY, collapsed ? '1' : '0') }, [collapsed])
+  useEffect(() => { localStorage.setItem(SIDER_KEY, pref ? '1' : '0') }, [pref])
   useEffect(() => {
     document.title = `${page.label} · qsys`
     setRecent((r) => {
@@ -62,12 +69,12 @@ export function AppShell() {
   useEffect(() => {
     const f = createShortcutHandler({
       navigate, openSearch: () => setSearch(true), openHelp: () => setHelp(true),
-      toggleSider: () => setCollapsed((c) => !c), toggleTheme: theme.toggle,
+      toggleSider, toggleTheme: theme.toggle,
       refresh: () => { refresh(); refreshPage() },
     })
     addEventListener('keydown', f)
     return () => removeEventListener('keydown', f)
-  }, [theme.toggle, refresh])
+  }, [theme.toggle, refresh, toggleSider])
 
   const items = useMemo(() => NAV.map((g) => ({
     type: 'group' as const, label: g.group,
@@ -83,7 +90,8 @@ export function AppShell() {
         <KillBanner status={status.data} />
       </div>
       <Layout>
-        <Layout.Sider width={196} collapsible collapsed={collapsed} onCollapse={setCollapsed} collapsedWidth={56}
+        <Layout.Sider width={196} collapsible collapsed={collapsed} onCollapse={(c, type) => { if (type !== 'responsive') setCollapsed(c) }} collapsedWidth={56}
+          breakpoint="lg" onBreakpoint={(broken) => { setNarrow(broken); setNarrowOpen(false) }}
           style={{ borderRight: `1px solid ${p.border}`, position: 'sticky', top: topH, height: `calc(100vh - ${topH}px)`, overflow: 'auto' }}>
           <Menu mode="inline" selectedKeys={[page.key]} items={items} onClick={(e) => navigate(e.key)} style={{ borderInlineEnd: 'none', paddingTop: 4 }} />
         </Layout.Sider>

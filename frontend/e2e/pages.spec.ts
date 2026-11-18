@@ -9,6 +9,14 @@ import strategy from './fixtures/strategy.json' with { type: 'json' }
 import backtests from './fixtures/backtests.json' with { type: 'json' }
 import backtest from './fixtures/backtest.json' with { type: 'json' }
 import researchJobs from './fixtures/research-jobs.json' with { type: 'json' }
+import dOverview from './fixtures/data-overview.json' with { type: 'json' }
+import dTables from './fixtures/data-tables.json' with { type: 'json' }
+import dTable from './fixtures/data-table.json' with { type: 'json' }
+import dSample from './fixtures/data-sample.json' with { type: 'json' }
+import dCatalog from './fixtures/data-catalog.json' with { type: 'json' }
+import dMetric from './fixtures/data-metric.json' with { type: 'json' }
+import dQuality from './fixtures/data-quality.json' with { type: 'json' }
+import dRule from './fixtures/data-rule.json' with { type: 'json' }
 
 const CLEAR = {
   schema_version: 1, checked_at: '2026-11-17T10:40:00',
@@ -29,6 +37,14 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/app/backtests', (r) => r.fulfill({ json: backtests }))
   await page.route('**/api/app/backtests/*', (r) => r.fulfill({ json: backtest }))
   await page.route('**/api/app/research-jobs', (r) => r.fulfill({ json: researchJobs }))
+  await page.route('**/api/app/data/overview', (r) => r.fulfill({ json: dOverview }))
+  await page.route(/\/api\/app\/data\/tables(\?.*)?$/, (r) => r.fulfill({ json: dTables }))
+  await page.route('**/api/app/data/tables/*/sample', (r) => r.fulfill({ json: dSample }))
+  await page.route(/\/api\/app\/data\/tables\/[^/]+$/, (r) => r.fulfill({ json: dTable }))
+  await page.route(/\/api\/app\/data\/catalog(\?.*)?$/, (r) => r.fulfill({ json: dCatalog }))
+  await page.route(/\/api\/app\/data\/catalog\/[^/?]+$/, (r) => r.fulfill({ json: dMetric }))
+  await page.route('**/api/app/data/quality', (r) => r.fulfill({ json: dQuality }))
+  await page.route('**/api/app/data/quality/rules/*', (r) => r.fulfill({ json: dRule }))
 })
 
 async function noOverflow(page: import('@playwright/test').Page) {
@@ -84,6 +100,23 @@ for (const width of [390, 1280, 1600]) {
     await noOverflow(page)
     await page.goto('/app/backtest?tab=research')
     await expect(page.getByText('任务跑完了吗？')).toBeVisible()
+    await noOverflow(page)
+  })
+
+  test(`data pages have no horizontal overflow at ${width}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto('/app/dataov')
+    await expect(page.getByText('数据从哪来、被谁用？')).toBeVisible()
+    await expect(page.locator('canvas').first()).toBeVisible()
+    await noOverflow(page)
+    await page.goto('/app/tables?id=instruments&tab=sample')
+    await expect(page.getByText(/只读抽样，不代表全表/)).toBeVisible()
+    await noOverflow(page)
+    await page.goto('/app/catalog?id=tushare_daily.dt')
+    await expect(page.getByText('人工抽样验真')).toBeVisible()
+    await noOverflow(page)
+    await page.goto('/app/quality?rule=c.rule')
+    await expect(page.getByRole('link', { name: '下载违规样本' })).toBeVisible()
     await noOverflow(page)
   })
 }
