@@ -42,7 +42,7 @@ export interface BoardCard {
   is_bj: boolean
   entered_at: string
   reason: string
-  diffs: Record<string, string>
+  diffs: Record<string, string | number | null>
 }
 
 export interface BoardColumn {

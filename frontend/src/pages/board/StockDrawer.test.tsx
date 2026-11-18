@@ -23,7 +23,9 @@ test('drawer plots pct series with limit line and event marks, null volume stays
   expect(marks).toContain('开板 09:31:13')
   expect(marks).toContain('回封 09:31:28')
   const vol = all.find((s) => s.name === '成交量')!
-  expect(vol.data![0]).toEqual(['2026-11-13T09:30:58', null])
+  expect(vol.data![0]).toEqual(['2026-11-13T09:30:58+08:00', null])
+  const axes = options.at(-1)!.xAxis as { axisLabel: { formatter?: (v: number) => string } }[]
+  expect(axes[1].axisLabel.formatter!(Date.parse('2026-11-13T05:00:00Z'))).toBe('13:00')
 })
 
 test('drawer shows message when series unavailable', async () => {

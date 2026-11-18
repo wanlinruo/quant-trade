@@ -1,20 +1,20 @@
 import { useMemo } from 'react'
-import type { BoardData } from '../../api/board'
+import type { Board } from '../../api/board'
 import { EChart, type EChartsOption } from '../../page/EChart'
-import { hms, parseLocal } from '../../shell/time'
+import { axisHm, hms, parseLocal } from '../../shell/time'
 import { usePalette } from '../../theme/context'
 
 const KIND: Record<string, string> = { seal: '首封', open: '开板', reseal: '回封', reassign: '改列', gap: '快照缺口' }
 
 /** 题材涨停家数盘中累计（前 4 题材）：阶梯线，不画未来。 */
-export function ConceptCurves({ data }: { data: BoardData }) {
+export function ConceptCurves({ data }: { data: Board }) {
   const p = usePalette()
   const curves = data.curves ?? []
   const option = useMemo<EChartsOption>(() => {
     const now = Date.now()
     return {
       grid: { left: 32, right: 12, top: 28, bottom: 24 }, legend: { top: 0, textStyle: { color: p.muted } },
-      xAxis: { type: 'time', axisLabel: { color: p.muted } },
+      xAxis: { type: 'time', axisLabel: { color: p.muted, formatter: axisHm } },
       yAxis: { type: 'value', minInterval: 1, splitLine: { lineStyle: { color: p.grid } } },
       series: curves.map((c) => ({
         name: c.name, type: 'line' as const, step: 'end' as const, showSymbol: false,
@@ -27,7 +27,7 @@ export function ConceptCurves({ data }: { data: BoardData }) {
 }
 
 /** 封板时间轴：最新在上；盘中时刻带“≈”。点名称打开个股分时。 */
-export function Timeline({ data, onPick }: { data: BoardData; onPick(s: string): void }) {
+export function Timeline({ data, onPick }: { data: Board; onPick(s: string): void }) {
   const p = usePalette()
   const approx = data.mode === 'live' ? '≈' : ''
   const events = data.timeline ?? []

@@ -1,4 +1,4 @@
-import type { BoardMode, Card } from '../../api/board'
+import type { BoardMode, BoardCard as Card } from '../../api/board'
 import { signedPct } from '../../page/format'
 import { hms, parseLocal } from '../../shell/time'
 import { usePalette } from '../../theme/context'

@@ -1,5 +1,5 @@
 import { Button, Select, Slider } from 'antd'
-import type { BoardData } from '../../api/board'
+import type { Board } from '../../api/board'
 import { hms, parseLocal } from '../../shell/time'
 import { setSearch } from '../../shell/router'
 import { usePalette } from '../../theme/context'
@@ -11,7 +11,7 @@ export function replayTo(day: string, iso: string): void {
 }
 
 /** 交易日选择、回看提示与盘中回放滑杆（11-11 §5.3 / 设计文档 §5.5）。 */
-export function DayControls({ data, urlDay, urlAt }: { data: BoardData; urlDay: string | null; urlAt: string | null }) {
+export function DayControls({ data, urlDay, urlAt }: { data: Board; urlDay: string | null; urlAt: string | null }) {
   const p = usePalette()
   const days = data.days ?? []
   const times = data.times ?? []

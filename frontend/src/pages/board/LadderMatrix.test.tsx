@@ -1,10 +1,10 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { Card } from '../../api/board'
+import type { BoardCard } from '../../api/board'
 import { LadderMatrix } from './LadderMatrix'
 import { board } from './fixtures'
 
-function card(symbol: string, over: Partial<Card> = {}): Card {
+function card(symbol: string, over: Partial<BoardCard> = {}): BoardCard {
   return { symbol, name: `票${symbol}`, status: 'sealed', column: '885001.TI', height: 1, prev_height: 0, first_seal: '2026-11-13T09:40:00',
     open_times: 0, resealed: false, pct: 0.1, is_st: false, is_bj: false, entered_at: '2026-11-13T09:40:00', reason: 'touch', diffs: {}, ...over }
 }

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Button } from 'antd'
-import type { BoardData, CompareGroup, CompareItem, ShadowInfo } from '../../api/board'
+import type { Board, BoardShadow, CompareGroup, CompareItem } from '../../api/board'
 import { pct, signedPct } from '../../page/format'
 import { Value } from '../../page/Value'
 import { hms, parseLocal } from '../../shell/time'
@@ -31,7 +31,7 @@ function Effect({ id, k, provisional, children }: { id: string; k: string; provi
   )
 }
 
-function Item({ i, live, shadow, onPick }: { i: CompareItem; live: boolean; shadow: ShadowInfo | null | undefined; onPick(s: string): void }) {
+function Item({ i, live, shadow, onPick }: { i: CompareItem; live: boolean; shadow: BoardShadow | null | undefined; onPick(s: string): void }) {
   const p = usePalette()
   const color = i.pct === null ? p.muted : i.pct > 0 ? p.up : i.pct < 0 ? p.down : p.muted
   const promoted = i.status === 'promoted'
@@ -53,7 +53,7 @@ function Item({ i, live, shadow, onPick }: { i: CompareItem; live: boolean; shad
   )
 }
 
-function Group({ g, live, shadow, onPick }: { g: CompareGroup; live: boolean; shadow: ShadowInfo | null | undefined; onPick(s: string): void }) {
+function Group({ g, live, shadow, onPick }: { g: CompareGroup; live: boolean; shadow: BoardShadow | null | undefined; onPick(s: string): void }) {
   const p = usePalette()
   const [open, setOpen] = useState(false)
   const keep = (i: CompareItem) => i.status === 'promoted' || i.status === 'rush' || i.status === 'unknown'
@@ -70,7 +70,7 @@ function Group({ g, live, shadow, onPick }: { g: CompareGroup; live: boolean; sh
   )
 }
 
-function ShadowHead({ shadow, live }: { shadow: ShadowInfo | null | undefined; live: boolean }) {
+function ShadowHead({ shadow, live }: { shadow: BoardShadow | null | undefined; live: boolean }) {
   const p = usePalette()
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', fontSize: 12, color: p.muted, marginBottom: 6 }}>
@@ -88,14 +88,14 @@ function ShadowHead({ shadow, live }: { shadow: ShadowInfo | null | undefined; l
 }
 
 /** 昨日涨停今日表现（§8.9）：赚钱效应 → 晋级表 → 分列卡片；数字全部取后端派生。 */
-export function CompareView({ data, onPick }: { data: BoardData; onPick(s: string): void }) {
+export function CompareView({ data, onPick }: { data: Board; onPick(s: string): void }) {
   const p = usePalette()
   const e = data.effect
-  const meta = (data.meta ?? {}) as { heights_error?: string | null }
+  const meta = data.meta
   if (!e) {
     return <div style={{ color: p.warn }}>{meta.heights_error ? `昨日连板高度不可用：${meta.heights_error}` : '昨日没有涨停个股记录'}</div>
   }
-  const prov = !!data.provisional
+  const prov = data.provisional
   const live = data.mode === 'live'
   const color = (v: number | null) => (v === null ? undefined : v > 0 ? p.up : v < 0 ? p.down : undefined)
   return (
@@ -119,10 +119,10 @@ export function CompareView({ data, onPick }: { data: BoardData; onPick(s: strin
           ))}
         </Effect>
       </div>
-      <LayerTable rows={data.layers ?? []} />
+      <LayerTable rows={data.layers} />
       <ShadowHead shadow={data.shadow} live={live} />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 360px), 1fr))', gap: 8 }}>
-        {(data.compare ?? []).map((g) => <Group key={g.level} g={g} live={live} shadow={data.shadow} onPick={onPick} />)}
+        {data.compare.map((g) => <Group key={g.level} g={g} live={live} shadow={data.shadow} onPick={onPick} />)}
       </div>
     </>
   )

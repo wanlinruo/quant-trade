@@ -1,23 +1,23 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Drawer } from 'antd'
-import { fetchBoardSeries, type Card, type SeriesData } from '../../api/board'
+import { fetchBoardSeries, type BoardCard, type BoardSeries } from '../../api/board'
 import { EChart, type EChartsOption } from '../../page/EChart'
-import { hms, parseLocal } from '../../shell/time'
+import { axisHm, hms, parseLocal } from '../../shell/time'
 import { usePalette } from '../../theme/context'
 import { Missing } from '../../ui/Missing'
 
 const KIND: Record<string, string> = { seal: '首封', open: '开板', reseal: '回封' }
 
-function heightText(card?: Card): string {
+function heightText(card?: BoardCard): string {
   if (!card) return '未进入看板'
   if (card.status !== 'sealed') return '未封'
   return card.height === null ? '高度未知' : card.height === 1 ? '首板' : `${card.height} 板`
 }
 
 /** 个股分时（按涨跌幅 = 价 ÷ 昨收 − 1），标涨停价线与首封、开板、回封；缺的不补。 */
-export function StockDrawer({ day, symbol, card, onClose }: { day: string; symbol: string | null; card?: Card; onClose(): void }) {
+export function StockDrawer({ day, symbol, card, onClose }: { day: string; symbol: string | null; card?: BoardCard; onClose(): void }) {
   const p = usePalette()
-  const [s, setS] = useState<{ data: SeriesData | null; error: string | null }>({ data: null, error: null })
+  const [s, setS] = useState<{ data: BoardSeries | null; error: string | null }>({ data: null, error: null })
   useEffect(() => {
     if (!symbol) return
     const c = new AbortController()
@@ -41,7 +41,7 @@ export function StockDrawer({ day, symbol, card, onClose }: { day: string; symbo
     }
     return {
       grid: [{ left: 48, right: 16, top: 16, height: '58%' }, { left: 48, right: 16, top: '74%', bottom: 24 }],
-      xAxis: [{ type: 'time', gridIndex: 0, axisLabel: { show: false } }, { type: 'time', gridIndex: 1 }],
+      xAxis: [{ type: 'time', gridIndex: 0, axisLabel: { show: false } }, { type: 'time', gridIndex: 1, axisLabel: { formatter: axisHm } }],
       yAxis: [{ type: 'value', gridIndex: 0, scale: true, axisLabel: { formatter: (v: number) => `${(v * 100).toFixed(1)}%` }, splitLine: { lineStyle: { color: p.grid } } },
         { type: 'value', gridIndex: 1, splitLine: { show: false } }],
       series: [

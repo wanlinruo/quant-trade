@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Button } from 'antd'
-import type { BoardData } from '../../api/board'
+import type { Board } from '../../api/board'
 import { hms, parseLocal } from '../../shell/time'
 import { usePalette } from '../../theme/context'
 import { BoardCard } from './BoardCard'
@@ -13,7 +13,7 @@ export function gradientEntries(g: Record<string, number>): [string, number][] {
 }
 
 /** 题材 × 连板高度矩阵（11-11 §5.3）：列为题材，行为今日高度；超量折叠。面板内横向滚动。 */
-export function LadderMatrix({ data, onPick }: { data: BoardData; onPick(symbol: string): void }) {
+export function LadderMatrix({ data, onPick }: { data: Board; onPick(symbol: string): void }) {
   const p = usePalette()
   const [open, setOpen] = useState<Set<string>>(new Set())
   const columns = data.columns ?? []

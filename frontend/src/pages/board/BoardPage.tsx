@@ -29,7 +29,7 @@ export function heroOf(d: BoardData, now: Date): { s: Status; statusText?: strin
     : d.message
   const at = parseLocal(d.at ?? null)
   const reasons: string[] = []
-  const meta = (d.meta ?? {}) as NonNullable<BoardData['meta']> & Record<string, string | null>
+  const meta = d.meta
   if (meta.concept_error) reasons.push(`题材维度不可用：${meta.concept_error}`)
   if (meta.heights_error) reasons.push(`昨日连板高度不可用：${meta.heights_error}`)
   const subtitle = [`交易日 ${d.day}`, at ? `快照 ${d.mode === 'live' ? '≈' : ''}${hms(at)}` : null, d.message, ...reasons].filter(Boolean).join(' · ')
@@ -60,7 +60,7 @@ export function BoardPage() {
   const poll = usePolling(fetcher, { intervalMs: cadence.closed ? 60_000 : 15_000, minIntervalMs: 15_000, enabled: live })
   useEffect(() => {
     const x = poll.data
-    if (x) setCadence({ liveData: x.mode === 'live', closed: x.schedule ? !x.schedule.is_open : false })
+    if (x) setCadence({ liveData: x.available && x.mode === 'live', closed: x.available && x.schedule ? !x.schedule.is_open : false })
   }, [poll.data])
 
   // 日期或回放时刻变化：重新取数（保留旧数据直到新数据到达）

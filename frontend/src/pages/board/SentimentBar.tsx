@@ -1,4 +1,4 @@
-import type { Sentiment } from '../../api/board'
+import type { BoardSentiment as Sentiment } from '../../api/board'
 import { pct } from '../../page/format'
 import { usePalette } from '../../theme/context'
 import { Num } from '../../ui/Num'

@@ -16,6 +16,9 @@ export function marketParts(d: Date): { year: number; month: number; day: number
 
 export const hms = (d: Date) => { const p = marketParts(d); return `${pad(p.hour)}:${pad(p.minute)}:${pad(p.second)}` }
 
+/** ECharts 时间轴标签：按市场时区显示 HH:MM（ECharts 默认按浏览器时区格式化）。 */
+export const axisHm = (v: number) => hms(new Date(v)).slice(0, 5)
+
 const WEEK = '日一二三四五六'
 export const dayLabel = (d: Date) => { const p = marketParts(d); return `${p.year}-${pad(p.month)}-${pad(p.day)} 周${WEEK[p.weekday]}` }
 

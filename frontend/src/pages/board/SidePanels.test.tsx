@@ -14,7 +14,13 @@ test('curves keep step shape and clip future', () => {
   const s = (options[0].series as { name: string; step?: string; data: unknown[] }[])[0]
   expect(s.name).toBe('机器人')
   expect(s.step).toBe('end')
-  expect(s.data).toEqual([['2026-11-13T09:30:58', 1]])
+  expect(s.data).toEqual([['2026-11-13T09:30:58+08:00', 1]])
+})
+
+test('curve time axis labels use market time zone', () => {
+  render(<ConceptCurves data={board()} />)
+  const fmt = (options[0].xAxis as { axisLabel: { formatter: (v: number) => string } }).axisLabel.formatter
+  expect(fmt(Date.parse('2026-11-13T01:30:00Z'))).toBe('09:30')
 })
 
 test('curves without concepts explain why', () => {
