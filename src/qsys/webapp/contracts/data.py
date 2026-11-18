@@ -52,6 +52,7 @@ class DataTableRow(Contract):
     purpose: str
     grain: str
     coverage: Coverage | None
+    # pending/failed 时 coverage 可能是上次的结果；none 表示没有统计且不在刷新中
     coverage_state: Literal["ready", "pending", "failed", "none"]
 
 

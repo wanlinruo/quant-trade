@@ -167,10 +167,10 @@ class DataAssets:
 
     def _row(self, ds: Dataset, status: HealthStatus, cover, pending, failed) -> DataTableRow:
         c = cover.get(ds.id)
-        if c is not None:
-            state = "ready"
-        elif ds.id in pending:
+        if ds.id in pending:  # 刷新中：有上次结果时一并给出
             state = "failed" if failed else "pending"
+        elif c is not None:
+            state = "ready"
         else:
             state = "none"
         return DataTableRow(

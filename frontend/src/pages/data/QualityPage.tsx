@@ -1,6 +1,8 @@
 import { useCallback, useMemo } from 'react'
+import { dateTime } from '../../shell/time'
+import { WARNING_SOURCE_LABEL } from './labels'
 import { Descriptions, Drawer, Result, Table } from 'antd'
-import { fetchQuality, fetchRule, type QualitySummary, type RuleRow } from '../../api/data'
+import { fetchQuality, fetchRule, qualitySampleUrl, type QualitySummary, type RuleRow } from '../../api/data'
 import { EChart, type EChartsOption } from '../../page/EChart'
 import { Hero } from '../../page/Hero'
 import { Panel } from '../../page/Panel'
@@ -37,7 +39,7 @@ function RuleDrawer({ id, onClose }: { id: string; onClose(): void }) {
               columns={[
                 ...['metric_id', 'dataset_id', 'checked_at', 'passed', 'status', 'severity', 'known_issue', 'violations', 'checked_rows', 'detail']
                   .filter((k) => d.latest.some((r) => k in r)).map((k) => ({ title: k, dataIndex: k, render: (v: unknown) => String(v ?? '') })),
-                { title: '样本', key: 's', render: (_: unknown, r: (typeof d.latest)[number]) => r.sample_url ? <a href={r.sample_url}>下载违规样本</a> : '—' },
+                { title: '样本', key: 's', render: (_: unknown, r: (typeof d.latest)[number]) => r.sample_file ? <a href={qualitySampleUrl(r.sample_file)}>下载违规样本</a> : '—' },
               ]} />
           )}
           <div style={{ marginTop: 8, fontSize: 12, color: p.muted }}>历史结果 {d.history.length} 条</div>
@@ -65,7 +67,7 @@ export function QualityPage() {
         const items = x as { dataIndex: number }[]; const r = runs[items[0]?.dataIndex ?? 0]
         if (!r) return ''
         const t = r.tables ? `表级 红${r.tables.red} 黄${r.tables.yellow} 灰${r.tables.gray} 绿${r.tables.green}` : '无表级记录'
-        return `${r.run_id}<br/>${String(r.checked_at).replace('T', ' ')}<br/>字段 通过${r.fields.passed} 警告${r.fields.warning} 阻断${r.fields.blocking}<br/>${t}`
+        return `${r.run_id}<br/>${dateTime(r.checked_at)}<br/>字段 通过${r.fields.passed} 警告${r.fields.warning} 阻断${r.fields.blocking}<br/>${t}`
       } },
       xAxis: { type: 'category', data: runs.map((r) => String(r.checked_at).slice(5, 16).replace('T', ' ')), axisLabel: { color: p.muted, rotate: 30 } },
       yAxis: { type: 'value', minInterval: 1, splitLine: { lineStyle: { color: p.grid } } },
@@ -91,7 +93,7 @@ export function QualityPage() {
           {d.warning_sources.map((g) => (
             <div key={g.key} data-source={g.key} style={{ border: `1px solid ${p.border}`, borderRadius: 4, padding: 10, minWidth: 0 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                <span style={{ color: p.head }}>{g.label}</span>
+                <span style={{ color: p.head }}>{WARNING_SOURCE_LABEL[g.key]}</span>
                 {g.issue && <a href={`${ISSUE_BASE}${g.issue.slice(1)}`} target="_blank" rel="noreferrer">{g.issue}</a>}
               </div>
               <div style={{ fontSize: 20, color: g.key === 'unclassified' && g.count ? p.warn : p.text }}>{g.count}</div>

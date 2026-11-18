@@ -7,6 +7,7 @@ import { usePolling } from '../../page/usePolling'
 import { setSearch, useSearch } from '../../shell/router'
 import { StatusTag } from '../../ui/StatusTag'
 import { CoverageText } from './coverage'
+import { domainLabel } from './labels'
 import { HEALTH_LABEL, HEALTH_STATUS } from './healthStatus'
 import { TableDetail } from './TableDetail'
 
@@ -20,8 +21,8 @@ export function TablesPage() {
   const d = poll.data as TableList | null
   if (!d) return poll.error ? <Hero s="bad" title="数据接口无法访问" subtitle={poll.error} /> : <Hero s="running" title="加载中" />
   if (!d.enabled) return <Result status="info" title="数据资产未启用" />
-  const domains = [...new Set(d.rows.map((r) => r.domain_label))].sort()
-  const rows = domain ? d.rows.filter((r) => r.domain_label === domain) : d.rows
+  const domains = [...new Set(d.rows.map((r) => domainLabel(r.domain)))].sort()
+  const rows = domain ? d.rows.filter((r) => domainLabel(r.domain) === domain) : d.rows
   return (
     <>
       <Panel title="有哪些表？" extra={
@@ -35,7 +36,7 @@ export function TablesPage() {
           onRow={(r) => ({ onClick: () => setSearch({ id: r.id, tab: null }), style: { cursor: 'pointer' } })}
           columns={[
             { title: '表', dataIndex: 'name', render: (v: string, r) => <span>{v} <span style={{ opacity: 0.6, fontSize: 11 }}>{r.id}</span></span> },
-            { title: '层', dataIndex: 'layer' }, { title: '域', dataIndex: 'domain_label' },
+            { title: '层', dataIndex: 'layer' }, { title: '域', key: 'domain', render: (_, r) => domainLabel(r.domain) },
             { title: '健康', dataIndex: 'status', render: (h: keyof typeof HEALTH_STATUS) => <StatusTag s={HEALTH_STATUS[h]} text={HEALTH_LABEL[h]} /> },
             { title: '覆盖', key: 'c', render: (_, r) => <CoverageText row={r} /> },
           ]} />

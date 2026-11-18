@@ -4,6 +4,7 @@ import type { EChartsOption } from '../../page/EChart'
 import { ThemeProvider } from '../../shell/ThemeProvider'
 import { DataOverviewPage as Page } from './DataOverviewPage'
 import { dfx } from '../data-fixtures'
+import { domainLabel } from './labels'
 
 const DataOverviewPage = () => <ThemeProvider><Page /></ThemeProvider>
 const options: EChartsOption[] = []
@@ -79,7 +80,7 @@ test('domain summary lists counts', async () => {
   render(<DataOverviewPage />)
   const panel = (await screen.findByText('各数据域怎样？')).closest('section')!
   const d = dfx.overview().domains[0]
-  expect(within(panel).getByText(d.label)).toBeInTheDocument()
+  expect(within(panel).getByText(domainLabel(d.domain))).toBeInTheDocument()
 })
 
 test('assets disabled shows message', async () => {

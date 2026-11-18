@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Descriptions, Table, Tabs } from 'antd'
-import { fetchTable, type Dependency, type Health, type TableDetail as Detail } from '../../api/data'
+import { fetchTable, type DependencyInfo as Dependency, type Dim, type Health, type TableDetail as Detail } from '../../api/data'
 import { Hero } from '../../page/Hero'
 import { Panel } from '../../page/Panel'
 import { goTo, setSearch } from '../../shell/router'
@@ -8,6 +8,8 @@ import { usePalette } from '../../theme/context'
 import { MONO } from '../../ui/Num'
 import { StatusTag } from '../../ui/StatusTag'
 import { CoverageText } from './coverage'
+import { DIMENSION_LABEL, domainLabel, sourceText } from './labels'
+import { dateTime } from '../../shell/time'
 import { HEALTH_LABEL, HEALTH_STATUS } from './healthStatus'
 import { TableSample } from './TableSample'
 
@@ -29,7 +31,7 @@ export function TableDetail({ id, tab }: { id: string; tab: string | null }) {
   if (error) return <Panel title="数据表详情"><div style={{ color: p.bad }}>{error}</div></Panel>
   if (!d) return <Panel title="数据表详情"><div style={{ color: p.muted }}>加载中</div></Panel>
   if (!d.enabled) return null
-  const ds = d.row.dataset
+  const ds = d.contract
   const active: TabKey = (TABS as readonly string[]).includes(tab ?? '') ? (tab as TabKey) : 'overview'
   const health = (h: Health) => <StatusTag s={HEALTH_STATUS[h]} text={HEALTH_LABEL[h]} />
 
@@ -45,18 +47,18 @@ export function TableDetail({ id, tab }: { id: string; tab: string | null }) {
     ]} />
   )
   const fields = (
-    <Table size="small" pagination={false} rowKey={(r) => r[0]} dataSource={d.fields} scroll={{ x: 'max-content' }}
-      columns={[{ title: '字段', render: (_, r) => <span style={{ fontFamily: MONO }}>{r[0]}</span> }, { title: '类型', render: (_, r) => r[1] }, { title: '说明', render: (_, r) => r[2] }]} />
+    <Table size="small" pagination={false} rowKey={(r) => r.name} dataSource={d.fields} scroll={{ x: 'max-content' }}
+      columns={[{ title: '字段', render: (_, r) => <span style={{ fontFamily: MONO }}>{r.name}</span> }, { title: '类型', render: (_, r) => r.type }, { title: '说明', render: (_, r) => r.meaning ?? '尚无字段说明' }]} />
   )
   const quality = (
     <>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
-        {d.dimensions.map(([label, h]) => <span key={label}>{label} {health(h)}</span>)}
+        {(Object.entries(d.dimensions) as [Dim, Health][]).map(([dim, h]) => <span key={dim}>{DIMENSION_LABEL[dim]} {health(h)}</span>)}
       </div>
       {d.reasons.length > 0 && <ul style={{ margin: '0 0 8px', paddingLeft: 18 }}>{d.reasons.map((r, i) => <li key={i}>{r.message}{r.check_id ? `（${r.check_id}）` : ''}</li>)}</ul>}
       {d.evidence.length === 0 ? <div style={{ color: p.muted, marginBottom: 8 }}>没有可用的质检证据</div> : (
         <Table size="small" pagination={false} rowKey={(_, i) => String(i)} dataSource={d.evidence} scroll={{ x: 'max-content' }}
-          columns={['check_id', 'dimension', 'status', 'observed_at', 'violations', 'checked_rows'].map((k) => ({ title: k, dataIndex: k, render: (v: unknown) => String(v ?? '') }))} />
+          columns={['check_id', 'dimension', 'status', 'evidence_at', 'violations', 'checked_rows'].map((k) => ({ title: k, dataIndex: k, render: (v: unknown) => (k === 'evidence_at' ? dateTime(v as string | null) : String(v ?? '')) }))} />
       )}
       <div style={{ marginTop: 8, fontSize: 12 }}>适用规则：{d.rules.length === 0 ? '—' : d.rules.map((r) => (
         <a key={r} style={{ marginRight: 10 }} onClick={() => goTo('quality', { rule: r })}>{r}</a>
@@ -73,8 +75,8 @@ export function TableDetail({ id, tab }: { id: string; tab: string | null }) {
   )
   const lineage = (
     <>
-      <div style={{ marginBottom: 8 }}>数据源：{d.source_refs.length === 0 ? '—' : d.source_refs.map((s) => <span key={s.label} style={{ marginRight: 10 }}>{s.label}</span>)}</div>
-      <div style={{ marginBottom: 8, color: p.muted, fontSize: 12 }}>根数据源：{d.root_refs.map((s) => s.label).join('、') || '—'} · 消费者：{list(ds.consumers)}</div>
+      <div style={{ marginBottom: 8 }}>数据源：{d.sources.length === 0 ? '—' : d.sources.map((s) => <span key={s.id} style={{ marginRight: 10 }}>{sourceText(s)}</span>)}</div>
+      <div style={{ marginBottom: 8, color: p.muted, fontSize: 12 }}>根数据源：{d.root_sources.map(sourceText).join('、') || '—'} · 消费者：{list(ds.consumers)}</div>
       {deps(d.upstream, '上游')}
       <div style={{ height: 8 }} />
       {deps(d.downstream, '下游')}
@@ -83,7 +85,7 @@ export function TableDetail({ id, tab }: { id: string; tab: string | null }) {
   const content: Record<TabKey, React.ReactNode> = { overview, fields, quality, lineage, sample: <TableSample id={ds.id} /> }
   return (
     <>
-      <Hero s={HEALTH_STATUS[d.row.status]} statusText={d.status_label} title={`${ds.name} · ${ds.id}`} subtitle={`${d.domain_label} · ${ds.layer} · ${ds.status}`} />
+      <Hero s={HEALTH_STATUS[d.row.status]} statusText={HEALTH_LABEL[d.row.status]} title={`${ds.name} · ${ds.id}`} subtitle={`${domainLabel(ds.domain)} · ${ds.layer} · ${ds.status}`} />
       <Panel title="这张表怎样？">
         <Tabs activeKey={active} onChange={(k) => setSearch({ tab: k === 'overview' ? null : k })}
           items={[['overview', '概览'], ['fields', '字段'], ['quality', '质量'], ['lineage', '血缘'], ['sample', '样本']].map(([k, label]) => ({

@@ -41,7 +41,7 @@ test('rule drawer shows sample download link', async () => {
   history.replaceState(null, '', '/app/quality?rule=c.rule')
   render(<QualityPage />)
   const link = await screen.findByRole('link', { name: '下载违规样本' })
-  expect(link.getAttribute('href')).toBe('/data/catalog/sample?path=artifacts/metric_checks/r2/c.rule.parquet')
+  expect(link.getAttribute('href')).toBe('/api/app/data/quality/samples/r2/c.rule.parquet')
   expect(screen.getByText('以最近持久化结果的状态或 passed 字段为准')).toBeInTheDocument()
 })
 

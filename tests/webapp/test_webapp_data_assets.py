@@ -132,3 +132,13 @@ def test_asset_endpoints_disabled_without_services(make):
                 f"/api/app/data/tables/{PHYSICAL}/sample"):
         r = c.get(url)
         assert r.status_code == 200 and r.json() == {"schema_version": 1, "enabled": False}, url
+
+
+def test_pending_coverage_keeps_previous_result(warehouse, monkeypatch):
+    from qsys.data.coverage import DatasetCoverage
+    prev = DatasetCoverage(dataset=PHYSICAL, rows=5, symbols=2, first_dt=None, last_dt=None)
+    monkeypatch.setattr(mod, "cached_coverage", lambda wh: ([], frozenset({PHYSICAL})))
+    monkeypatch.setattr(mod, "previous_coverage", lambda wh, pending: [prev])
+    monkeypatch.setattr(mod, "coverage", lambda wh: [])
+    row = {r.id: r for r in DataAssets(warehouse, background_coverage=True).tables(False).rows}[PHYSICAL]
+    assert row.coverage_state == "pending" and row.coverage is not None and row.coverage.rows == 5

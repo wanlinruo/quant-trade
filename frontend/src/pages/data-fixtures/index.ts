@@ -8,7 +8,7 @@ import sample from './sample.sample.json'
 import table from './table.sample.json'
 import tables from './tables.sample.json'
 
-/** 后端测试数据导出的真实形状（见 tests/web/test_app_data.py），每次深拷贝。 */
+/** 后端契约的真实输出（数据组查询经新接口导出，场景见 R4 计划任务 4），每次深拷贝。 */
 const clone = <T,>(x: unknown) => structuredClone(x) as unknown as T
 export const dfx = {
   overview: () => clone<Extract<DataOverview, { enabled: true }>>(overview),

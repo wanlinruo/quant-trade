@@ -1,4 +1,5 @@
 import type { Dim, Health, OverviewTable } from '../../api/data'
+import { DIMENSION_LABEL, domainLabel } from './labels'
 import { goTo } from '../../shell/router'
 import { usePalette } from '../../theme/context'
 import { StatusTag } from '../../ui/StatusTag'
@@ -11,7 +12,7 @@ function Cell({ h }: { h: Health }) {
 }
 
 /** 核心表 × 五维健康矩阵：按 红 → 黄 → 灰 → 绿 稳定排序；点行看表详情。 */
-export function HealthMatrix({ tables, labels }: { tables: OverviewTable[]; labels: Record<Dim, string> }) {
+export function HealthMatrix({ tables }: { tables: OverviewTable[] }) {
   const p = usePalette()
   const sorted = [...tables].sort((a, b) => HEALTH_ORDER.indexOf(a.status) - HEALTH_ORDER.indexOf(b.status))
   const td = { padding: '4px 8px', borderBottom: `1px solid ${p.border}`, whiteSpace: 'nowrap' as const }
@@ -21,7 +22,7 @@ export function HealthMatrix({ tables, labels }: { tables: OverviewTable[]; labe
         <thead>
           <tr style={{ color: p.muted, textAlign: 'left' }}>
             <th style={{ ...td, fontWeight: 400 }}>表</th><th style={{ ...td, fontWeight: 400 }}>总体</th>
-            {DIMS.map((d) => <th key={d} style={{ ...td, fontWeight: 400 }}>{labels[d] ?? d}</th>)}
+            {DIMS.map((d) => <th key={d} style={{ ...td, fontWeight: 400 }}>{DIMENSION_LABEL[d as Dim] ?? d}</th>)}
             <th style={{ ...td, fontWeight: 400 }}>域</th>
           </tr>
         </thead>
@@ -31,7 +32,7 @@ export function HealthMatrix({ tables, labels }: { tables: OverviewTable[]; labe
               <td style={td}><span style={{ color: p.head }}>{t.name}</span> <span style={{ color: p.muted }}>{t.id}</span></td>
               <td style={td}><Cell h={t.status} /></td>
               {DIMS.map((d) => <td key={d} style={td}><Cell h={t.dimensions[d] ?? 'gray'} /></td>)}
-              <td style={{ ...td, color: p.muted }}>{t.domain_label}</td>
+              <td style={{ ...td, color: p.muted }}>{domainLabel(t.domain)}</td>
             </tr>
           ))}
         </tbody>
