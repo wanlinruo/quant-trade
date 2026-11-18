@@ -1,5 +1,81 @@
 // 由 scripts/gen_frontend_contracts.py 生成，勿手改。契约来源：src/qsys/webapp/contracts/
 
+export interface AckInfo {
+  by: string
+  acked_at: string
+  through: string
+}
+
+export interface AckResult {
+  schema_version: 1
+  ack: AckInfo
+}
+
+export interface AlertCenter {
+  schema_version: 1
+  enabled: true
+  state: "ok" | "unknown"
+  day: string
+  window_start: string
+  window_end: string
+  unhandled: number | null
+  unhandled_critical: number | null
+  acknowledged: number | null
+  notices: number | null
+  items: AlertItem[]
+  trend: AlertTrendDay[]
+  missing: Record<string, string>
+}
+
+export interface AlertDetail {
+  schema_version: 1
+  enabled: true
+  item: AlertItem
+  events: AlertEventInfo[]
+}
+
+export interface AlertEventInfo {
+  event_id: string
+  occurred_at: string
+  severity: "INFO" | "WARNING" | "CRITICAL"
+  state: "firing" | "resolved" | "notice"
+  title: string
+  detail: string
+  evidence: Record<string, JsonValue>
+  delivered: number
+  failed: string[]
+}
+
+export interface AlertItem {
+  key: string
+  subject: string
+  source: string
+  kind: "incident" | "notice" | "unregistered"
+  severity: "INFO" | "WARNING" | "CRITICAL"
+  status: "unhandled" | "acknowledged" | "resolved" | "notice"
+  first_at: string
+  last_at: string
+  resolved_at: string | null
+  count: number
+  title: string
+  detail: string
+  description: string | null
+  ack: AckInfo | null
+}
+
+export interface AlertTrendDay {
+  day: string
+  critical: number
+  warning: number
+  info: number
+  resolved: number
+}
+
+export interface AlertsDisabled {
+  schema_version: 1
+  enabled: false
+}
+
 export interface ArtifactInfo {
   path: string
   bytes: number | null

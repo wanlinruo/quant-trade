@@ -39,6 +39,9 @@ class WebappDeps:
     data_assets: Any | None = None   # queries.data_assets.DataAssets
     data_catalog: Any | None = None  # queries.data_catalog.DataCatalog
     data_quality: Any | None = None  # queries.data_quality.DataQuality
+    # 告警中心（06a）
+    alert_roots: tuple[Path, ...] = ()
+    alert_acks: Path | None = None
     spa_root: Path | None = None
 
 
@@ -55,7 +58,15 @@ def mount_webapp(app: FastAPI, deps: WebappDeps) -> None:
 
     install_error_handlers(app)
     app.state.webapp = deps
-    app.include_router(shell_router(ShellQuery(deps.live_kill)))
+    from qsys.webapp.queries.alerts import AlertCenterQuery
+    from qsys.webapp.routes.alerts import alerts_router
+    from qsys.webapp.stores.alert_acks import AlertAckStore
+
+    alerts = (AlertCenterQuery(deps.alert_roots, AlertAckStore(deps.alert_acks) if deps.alert_acks else None)
+              if deps.alert_roots else None)
+    app.state.alert_center = alerts
+    app.include_router(shell_router(ShellQuery(deps.live_kill, alerts=alerts.unhandled_count if alerts else None)))
+    app.include_router(alerts_router(alerts))
     app.include_router(market_router(deps.market))
     app.include_router(ailu_router(deps.shadow, deps.research))
     app.include_router(board_router(BoardQuery(deps.board, deps.market)))

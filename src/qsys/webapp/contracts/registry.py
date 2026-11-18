@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from qsys.webapp.contracts.alerts import AckResult, AlertCenter, AlertDetail, AlertsDisabled
 from qsys.webapp.contracts.ailu import ResearchBoard, ShadowBoard
 from qsys.webapp.contracts.board import Board, BoardSeries, BoardUnavailable
 from qsys.webapp.contracts.base import Contract, ErrorBody
@@ -49,4 +50,8 @@ EXPORTED: tuple[type[Contract], ...] = (
     MetricDetail,
     QualitySummary,
     RuleDetail,
+    AlertsDisabled,
+    AlertCenter,
+    AlertDetail,
+    AckResult,
 )

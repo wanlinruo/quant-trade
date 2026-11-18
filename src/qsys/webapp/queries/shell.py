@@ -17,8 +17,9 @@ from qsys.webapp.contracts.shell import KillSource, KillStatus, LivePosture, She
 
 MISSING = {
     "qmt": "QMT 客户端与执行器状态待计划 03/07 的结构化采集接入",
-    "alerts_open": "告警汇总待计划 04 接入",
 }
+ALERTS_UNCONFIGURED = "告警存储未配置"
+ALERTS_UNREADABLE = "告警存储不可读"
 _LIVE = {
     "stopped": ("reduce_only", "仅允许减仓"),
     "clear": ("trading", "实盘运行"),
@@ -32,7 +33,8 @@ class KillReader(Protocol):
     def read(self) -> LiveKillStatus: ...
 
 
-def build_status(status: LiveKillStatus | None, checked_at: datetime) -> ShellStatus:
+def build_status(status: LiveKillStatus | None, checked_at: datetime, *,
+                 alerts_open: int | None = None, alerts_reason: str | None = ALERTS_UNCONFIGURED) -> ShellStatus:
     if status is None or status.state not in _LIVE:
         kill, state, agent_at = _UNKNOWN, "unknown", None
     else:
@@ -46,13 +48,16 @@ def build_status(status: LiveKillStatus | None, checked_at: datetime) -> ShellSt
     live_state, live_label = _LIVE[state]
     return ShellStatus(checked_at=checked_at, kill=kill,
                        live=LivePosture(state=live_state, label=live_label),
-                       agent_heartbeat_at=agent_at, missing=MISSING)
+                       agent_heartbeat_at=agent_at, alerts_open=alerts_open,
+                       missing=MISSING | ({"alerts_open": alerts_reason} if alerts_reason else {}))
 
 
 class ShellQuery:
     def __init__(self, reader: KillReader, ttl_seconds: float = 5.0,
-                 clock: Callable[[], float] = time.monotonic) -> None:
+                 clock: Callable[[], float] = time.monotonic, *,
+                 alerts: Callable[[], int | None] | None = None) -> None:
         self._reader, self._ttl, self._clock = reader, ttl_seconds, clock
+        self._alerts = alerts
         self._lock = threading.Lock()
         self._value: ShellStatus | None = None
         self._expires = 0.0
@@ -68,6 +73,11 @@ class ShellQuery:
             except Exception:
                 status = None
             ttl = self._ttl if status is None else min(self._ttl, max(0.0, status.valid_for_seconds))
-            self._value = build_status(status, checked_at)
+            if self._alerts is None:
+                open_count, reason = None, ALERTS_UNCONFIGURED
+            else:
+                open_count = self._alerts()
+                reason = ALERTS_UNREADABLE if open_count is None else None
+            self._value = build_status(status, checked_at, alerts_open=open_count, alerts_reason=reason)
             self._expires = now + ttl
             return self._value

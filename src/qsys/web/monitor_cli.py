@@ -61,6 +61,8 @@ def build_app(
     strategies_path: Path | None = None,
     live_kill_path: Path | None = None,
     limit_up_board_root: Path | None = None,
+    alert_roots: tuple[Path, ...] = (Path("var/alerts"),),
+    alert_acks: Path | None = Path("var/web/alert-acks.sqlite3"),
 ):
     warehouse = Warehouse(warehouse_root)
     journal = SessionJournal(warehouse)
@@ -144,6 +146,7 @@ def build_app(
         shadow=shadow_reader, research=research_reader,
         data_assets=data_assets, data_catalog=DataCatalog(data_assets.query),
         data_quality=DataQuality(data_assets.query, sample_root),
+        alert_roots=tuple(alert_roots), alert_acks=alert_acks,
     )
     return create_app(
         monitor,
@@ -281,6 +284,10 @@ def main() -> int:
     parser.add_argument("--tushare-config", default=None,
                         help="只取 [tushare] 凭据查交易日历；不给则用 --config。"
                              "测试环境用它避免连到生产 Redis")
+    parser.add_argument("--alert-root", action="append", default=None,
+                        help="告警事件根目录（可重复；各含组件命名空间），默认 var/alerts（#662 06a）")
+    parser.add_argument("--alert-acks", default="var/web/alert-acks.sqlite3",
+                        help="告警“确认已知悉”存储（Web 自有，只追加）")
     add_facade_argument(parser)
     args = parser.parse_args()
     apply_facade_argument(args.market_data_facade)
@@ -302,6 +309,8 @@ def main() -> int:
         Path(args.research_snapshots) if args.research_snapshots else None,
         Path(args.strategies), args.live_kill_path,
         limit_up_board_root=Path(args.limit_up_board_state),
+        alert_roots=tuple(Path(p) for p in (args.alert_root or ["var/alerts"])),
+        alert_acks=Path(args.alert_acks) if args.alert_acks else None,
     )
     log.info("monitor.started", host=args.host, port=args.port)
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
