@@ -17,6 +17,7 @@ import dCatalog from './fixtures/data-catalog.json' with { type: 'json' }
 import dMetric from './fixtures/data-metric.json' with { type: 'json' }
 import dQuality from './fixtures/data-quality.json' with { type: 'json' }
 import dRule from './fixtures/data-rule.json' with { type: 'json' }
+import alerts from './fixtures/alerts.json' with { type: 'json' }
 
 const CLEAR = {
   schema_version: 1, checked_at: '2026-11-17T10:40:00+08:00',
@@ -37,6 +38,7 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/app/backtests', (r) => r.fulfill({ json: backtests }))
   await page.route('**/api/app/backtests/*', (r) => r.fulfill({ json: backtest }))
   await page.route('**/api/app/research-jobs', (r) => r.fulfill({ json: researchJobs }))
+  await page.route(/\/api\/app\/alerts(\?.*)?$/, (r) => r.fulfill({ json: alerts }))
   await page.route('**/api/app/data/overview', (r) => r.fulfill({ json: dOverview }))
   await page.route(/\/api\/app\/data\/tables(\?.*)?$/, (r) => r.fulfill({ json: dTables }))
   await page.route('**/api/app/data/tables/*/sample', (r) => r.fulfill({ json: dSample }))
@@ -71,6 +73,14 @@ for (const width of [390, 1280, 1600]) {
     await page.getByRole('tab', { name: '研究回测' }).click()
     await expect(page.getByText('月度稳定吗？')).toBeVisible()
     await expect(page).toHaveURL(/tab=research/)
+    await noOverflow(page)
+  })
+
+  test(`alerts page has no horizontal overflow at ${width}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto('/app/alerts')
+    await expect(page.getByTestId('hero-title')).toContainText('未处理 2 条')
+    await expect(page.getByText('有哪些事要我处理？')).toBeVisible()
     await noOverflow(page)
   })
 
