@@ -70,3 +70,16 @@ def test_key_registry_ids_unique_and_templates_format():
         k.title.format(**{n: "x" for n in names})
     assert lookup("live.reconcile.failed") is KEYS["live.reconcile.failed"]
     assert lookup("nope.never.used") is None
+
+
+def test_every_emit_key_is_registered():
+    """仓库内 emit("…") 的字面量键都已在受管清单登记；infra.* 经 event_key 映射，单独测试。"""
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[2] / "src" / "qsys"
+    used = set()
+    for path in root.rglob("*.py"):
+        used |= set(re.findall(r"""\.emit\(\s*["']([a-z_.]+)["']""", path.read_text(encoding="utf-8")))
+        used |= set(re.findall(r"""_alert\(runtime,\s*["']([a-z_.]+)["']""", path.read_text(encoding="utf-8")))
+    assert used, "没有扫描到任何 emit 调用"
+    assert used - set(KEYS) == set(), used - set(KEYS)
+    assert {"live.reconcile.failed", "observer.process.down", "drill.reboot.passed"} <= used

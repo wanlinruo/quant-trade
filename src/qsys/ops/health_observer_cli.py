@@ -28,7 +28,7 @@ from qsys.ops.health import (
     trading_phase,
 )
 from qsys.ops.alerts import AlertBus, LogAlertSink, Severity, WebhookAlertSink, ledger
-from qsys.ops.infra_watch import EdgeTracker, survey
+from qsys.ops.infra_watch import EdgeTracker, event_key, survey
 from qsys.ops.services import CORE_SERVICE_IDS, SERVICE_BY_ID, active_core_service
 from qsys.ops.trading_chain import ChainAssessment, assess_paper, assess_shadow
 from qsys.web.service_views import ServiceConsole, windows_task_show
@@ -296,16 +296,24 @@ class BusinessAlertTracker:
         name = {
             "paper": "模拟交易", "shadow-core": "影子盘", "live-core": "实盘",
         }[item.service_id]
+        evidence = {"business_state": current, "reason_code": item.reason_code}
         if current == DOWN and (previous != DOWN or unreadable != previous_unreadable):
             title = f"{name}状态库读取失败" if unreadable else f"{name}交易链路失败"
-            self.alerts.critical(title, detail)
+            key = "observer.chain.state_unreadable" if unreadable else "observer.chain.down"
+            self.alerts.emit(key, subject=item.service_id, params={"title": title}, detail=detail,
+                             severity=Severity.CRITICAL, evidence=evidence)
         elif current == DEGRADED and previous not in (DEGRADED, DOWN):
-            self.alerts.warning(f"{name}策略事件延迟", detail)
+            self.alerts.emit("observer.chain.degraded", subject=item.service_id,
+                             params={"title": f"{name}策略事件延迟"}, detail=detail,
+                             severity=Severity.WARNING, evidence=evidence)
         elif (current == HEALTHY and previous in (DEGRADED, DOWN)
               and (item.details or {}).get("trading_chain", {}).get("reason_code")
               != "strategy_events_not_due"):
             title = f"{name}状态库读取已恢复" if previous_unreadable else f"{name}交易链路已恢复"
-            self.alerts.info(title, detail)
+            key = ("observer.chain.state_unreadable" if previous_unreadable else
+                   "observer.chain.degraded" if previous == DEGRADED else "observer.chain.down")
+            self.alerts.emit(key, subject=item.service_id, params={"title": title}, detail=detail,
+                             severity=Severity.INFO, state="resolved", evidence=evidence)
 
 
 class ProcessAlertTracker:
@@ -338,10 +346,13 @@ class ProcessAlertTracker:
         self.states[item.service_id] = current
         name = SERVICE_BY_ID[item.service_id].name if (
             item.service_id in SERVICE_BY_ID) else item.service_id
+        evidence = {"process_state": current, "reason_code": item.reason_code}
         if current == DOWN and previous not in (None, DOWN):
-            self.alerts.critical(f"{name}已停止", item.reason_code)
+            self.alerts.emit("observer.process.down", subject=item.service_id, params={"title": f"{name}已停止"},
+                             detail=item.reason_code, severity=Severity.CRITICAL, evidence=evidence)
         elif current == HEALTHY and previous == DOWN:
-            self.alerts.info(f"{name}已恢复", item.reason_code)
+            self.alerts.emit("observer.process.down", subject=item.service_id, params={"title": f"{name}已恢复"},
+                             detail=item.reason_code, severity=Severity.INFO, state="resolved", evidence=evidence)
 
     def _schedule_update(self, item: HealthObservation, name: str) -> None:
         current = item.reason_code
@@ -356,10 +367,15 @@ class ProcessAlertTracker:
                 "Result", "ExecMainStatus", "ExecMainStartTimestamp", "ExecMainExitTimestamp",
             ) if execution.get(key) not in (None, "")
         )
+        evidence = {"reason_code": current, "previous": previous}
         if current == "schedule_inactive":
-            self.alerts.critical(f"{name}调度未启用", detail)
+            self.alerts.emit("observer.schedule.inactive", subject=item.service_id,
+                             params={"title": f"{name}调度未启用"}, detail=detail,
+                             severity=Severity.CRITICAL, evidence=evidence)
         elif current == "scheduled_task_failed":
-            self.alerts.critical(f"{name}最近执行失败", detail)
+            self.alerts.emit("observer.schedule.failed", subject=item.service_id,
+                             params={"title": f"{name}最近执行失败"}, detail=detail,
+                             severity=Severity.CRITICAL, evidence=evidence)
         elif previous in {"schedule_inactive", "scheduled_task_failed"}:
             if current == "scheduled_task_running":
                 title = f"{name}调度可用，任务正在执行（结果待定）"
@@ -369,7 +385,9 @@ class ProcessAlertTracker:
                 title = f"{name}调度可用，上次进程正常退出"
             else:
                 title = f"{name}调度可用（尚无成功执行证据）"
-            self.alerts.info(title, detail)
+            key = "observer.schedule.inactive" if previous == "schedule_inactive" else "observer.schedule.failed"
+            self.alerts.emit(key, subject=item.service_id, params={"title": title}, detail=detail,
+                             severity=Severity.INFO, state="resolved", evidence=evidence)
 
 
 class InfraAlerts:
@@ -399,11 +417,10 @@ class InfraAlerts:
             log.error("infra_watch.survey_failed", error=str(exc))
             return
         for notice in self.tracker.update(findings):
-            {
-                Severity.CRITICAL: self.alerts.critical,
-                Severity.WARNING: self.alerts.warning,
-                Severity.INFO: self.alerts.info,
-            }[notice.severity](notice.title, notice.detail)
+            key, subject = event_key(notice.key)
+            self.alerts.emit(key, subject=subject, params={"title": notice.title}, detail=notice.detail,
+                             severity=notice.severity, state="resolved" if notice.resolved else "firing",
+                             evidence={"finding": notice.key})
 
     def read(self, transport) -> dict:
         from qsys.ops.infra import failed_units
@@ -517,7 +534,7 @@ def main(argv: list[str] | None = None) -> int:
     from qsys.live.readonly_transport import readonly_from_config
 
     deploy = load_deploy_config(args.config)
-    bus = AlertBus(ops_sinks(deploy), ledger(args.alert_ledger))
+    bus = AlertBus(ops_sinks(deploy), ledger(args.alert_ledger), source="health-observer")
     alert_tracker = BusinessAlertTracker(bus)
     process_tracker = ProcessAlertTracker(bus)
     infra_alerts = InfraAlerts(

@@ -250,7 +250,7 @@ def test_retried_event_notifies_only_on_the_first_failure(
     runtime, _ = _runtime_with_store(warehouse, tmp_path)
     runtime.schedule.checkpoint("10:30")
     sink = RecordingAlertSink()
-    runtime.alerts = AlertBus([sink])
+    runtime.alerts = AlertBus([sink], source="test")
     runtime.notifier = StrategyNotifier(runtime.alerts, "实盘")
 
     def boom(ctx, at):
@@ -262,8 +262,8 @@ def test_retried_event_notifies_only_on_the_first_failure(
         with pytest.raises(RuntimeError, match="行情响应积压"):
             runtime.tick(datetime.combine(day, time(10, 30, second)))
 
-    assert len(sink.alerts) == 1
-    assert sink.alerts[0].title == "实盘｜checkpoint 出错"
+    assert len(sink.events) == 1
+    assert sink.events[0].title == "实盘｜checkpoint 出错"
 
 
 def test_an_expired_event_leaves_a_run_row(warehouse, tmp_path):
@@ -448,14 +448,14 @@ def test_a_standing_difference_is_recorded_once_not_every_tick(warehouse, tmp_pa
         strategy, warehouse.root, AShareCalendar([date.today()]), Quotes(),
         transport, streams, LiveStore(tmp_path / "dedup.sqlite3"),
         local_kill_path=tmp_path / "SHADOW_KILL", shadow=True,
-        alerts=AlertBus([sink]),
+        alerts=AlertBus([sink], source="test"),
     )
 
     drift = _drifted(streams)
     for _ in range(50):
         runtime._assert_reconciled(drift)
 
-    assert len(sink.alerts) == 1
+    assert len(sink.events) == 1
 
 
 def test_the_recovery_is_recorded_too(warehouse, tmp_path):
@@ -464,7 +464,7 @@ def test_the_recovery_is_recorded_too(warehouse, tmp_path):
 
     runtime, _ = _runtime_with_store(warehouse, tmp_path)
     sink = RecordingAlertSink()
-    runtime.alerts = AlertBus([sink])
+    runtime.alerts = AlertBus([sink], source="test")
     runtime.shadow = True
 
     drift = _drifted(runtime.streams)
@@ -474,7 +474,7 @@ def test_the_recovery_is_recorded_too(warehouse, tmp_path):
                                total_asset=runtime.portfolio.cash, positions={})
     runtime._assert_reconciled(matching)       # 恢复一致
 
-    assert len(sink.alerts) == 1               # 只有那次变坏；恢复走 journal 不告警
+    assert len(sink.events) == 1               # 只有那次变坏；恢复走 journal 不告警
 
 
 def test_the_live_core_keeps_refusing_on_every_attempt(warehouse, tmp_path):

@@ -138,7 +138,7 @@ def _alerts(config_path: str, root: Path | None = None):
             sinks.append(WebhookAlertSink(url))
     except Exception as exc:
         log.warning("reboot_drill.alerts_unavailable", error=str(exc))
-    return AlertBus(sinks, ledger(root))
+    return AlertBus(sinks, ledger(root), source="reboot-drill")
 
 
 def _today() -> date:
@@ -237,11 +237,11 @@ def _run(args, today, why, run) -> int:
         except (OSError, subprocess.SubprocessError):
             # SSH 超时可能发生在远端已接受命令后；不得自动重试。
             step.fail("重启命令传输异常，远端是否接受未知；停止并人工核验，不自动重试")
-            _alerts(args.config, args.alert_ledger).critical("重启演练命令结果未知", step.detail)
+            _alerts(args.config, args.alert_ledger).emit("drill.command.unknown", detail=step.detail)
             return 1
         if command.returncode != 0:
             step.fail(f"重启命令 SSH 返回 {command.returncode}，未确认接受；停止且不自动重试")
-            _alerts(args.config, args.alert_ledger).critical("重启演练命令失败", step.detail)
+            _alerts(args.config, args.alert_ledger).emit("drill.command.failed", detail=step.detail)
             return 1
         step.detail = "远端已接受重启命令，尚待核验恢复"
 
@@ -279,9 +279,10 @@ def _run(args, today, why, run) -> int:
                        for f in result.findings)
     bus = _alerts(args.config, args.alert_ledger)
     if result.passed:
-        bus.info(f"月度重启演练通过（{today}）", detail)
+        bus.emit("drill.reboot.passed", params={"day": today}, detail=detail)
     else:
-        bus.critical(f"月度重启演练未通过（{today}）", detail)
+        bus.emit("drill.reboot.failed", params={"day": today}, detail=detail,
+                 evidence={"failed": [f.name for f in result.findings if not f.ok]})
     print(f"{today} 重启演练：{result.summary()}")
     print(detail)
     return 0 if result.passed else 1

@@ -1,8 +1,11 @@
-"""告警链路。
+"""告警链路（#662 计划 03 起发布结构化事件）。
 
 告警是旁路，不是主路：任何一个 sink 发送失败都不得中断主流程，
 更不得让其它 sink 收不到——实盘出问题时最不该发生的就是
 「告警系统自己挂了导致你不知道出了问题」。
+
+唯一入口 ``AlertBus.emit(key, …)``：按受管键清单（``alert_keys``）构造事件 → 发送 →
+连同投递结果写入事件存储（``alert_events.AlertEventLog``）。通知文本由事件生成。
 """
 
 from __future__ import annotations
@@ -12,38 +15,23 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from enum import StrEnum
 from pathlib import Path
 
 import structlog
 
+from qsys.ops.alert_events import (
+    SERVICE_LEDGER_NAMESPACES, AlertEvent, AlertEventLog, Severity, new_event_id, now_shanghai, render_text,
+)
+from qsys.ops.alert_keys import lookup
+
 log = structlog.get_logger(__name__)
-
-
-class Severity(StrEnum):
-    INFO = "INFO"
-    WARNING = "WARNING"
-    CRITICAL = "CRITICAL"
-
-
-@dataclass(frozen=True, slots=True)
-class Alert:
-    severity: Severity
-    title: str
-    detail: str
-    at: datetime
-
-    def as_text(self) -> str:
-        stamp = self.at.strftime("%Y-%m-%d %H:%M:%S")
-        head = f"[{self.severity.value}] {stamp} {self.title}"
-        return f"{head}\n{self.detail}" if self.detail else head
 
 
 class AlertSink(ABC):
     @abstractmethod
-    def send(self, alert: Alert) -> None: ...
+    def send(self, event: AlertEvent) -> None: ...
 
-    def accepts(self, alert: Alert) -> bool:
+    def accepts(self, event: AlertEvent) -> bool:
         """这条告警会不会真的从这个 sink 出去。
 
         过滤掉的不算投递——留账里的「今天推了几条」要是把挡下的也算进去，
@@ -55,23 +43,24 @@ class AlertSink(ABC):
 class LogAlertSink(AlertSink):
     """始终装配的兜底 sink：至少日志里留得下。"""
 
-    def send(self, alert: Alert) -> None:
+    def send(self, event: AlertEvent) -> None:
         emit = {
             Severity.INFO: log.info,
             Severity.WARNING: log.warning,
             Severity.CRITICAL: log.error,
-        }[alert.severity]
-        emit("alert", title=alert.title, detail=alert.detail, at=alert.at.isoformat())
+        }[event.severity]
+        emit("alert", key=event.key, subject=event.subject, state=event.state, title=event.title,
+             detail=event.detail, at=event.occurred_at.isoformat())
 
 
 class RecordingAlertSink(AlertSink):
     """测试用。"""
 
     def __init__(self) -> None:
-        self.alerts: list[Alert] = []
+        self.events: list[AlertEvent] = []
 
-    def send(self, alert: Alert) -> None:
-        self.alerts.append(alert)
+    def send(self, event: AlertEvent) -> None:
+        self.events.append(event)
 
 
 _RANK = {Severity.INFO: 0, Severity.WARNING: 1, Severity.CRITICAL: 2}
@@ -89,12 +78,12 @@ class MinSeveritySink(AlertSink):
                  minimum: Severity = Severity.CRITICAL) -> None:
         self._inner, self._minimum = inner, minimum
 
-    def accepts(self, alert: Alert) -> bool:
-        return _RANK[alert.severity] >= _RANK[self._minimum]
+    def accepts(self, event: AlertEvent) -> bool:
+        return _RANK[event.severity] >= _RANK[self._minimum]
 
-    def send(self, alert: Alert) -> None:
-        if self.accepts(alert):
-            self._inner.send(alert)
+    def send(self, event: AlertEvent) -> None:
+        if self.accepts(event):
+            self._inner.send(event)
 
 
 def _default_poster(url: str, payload: dict, timeout: float) -> None:
@@ -122,10 +111,10 @@ class WebhookAlertSink(AlertSink):
         self._timeout = timeout
         self._poster = poster or _default_poster
 
-    def send(self, alert: Alert) -> None:
+    def send(self, event: AlertEvent) -> None:
         self._poster(
             self._url,
-            {"msgtype": "text", "text": {"content": alert.as_text()}},
+            {"msgtype": "text", "text": {"content": render_text(event)}},
             self._timeout,
         )
 
@@ -166,35 +155,15 @@ def send_email(
         client.send_message(message)
 
 
-class AlertLedger:
-    """按天把每条告警的投递结果追加成 JSONL，供日报自检。
+class LegacyLedger:
+    """旧格式告警账本（``<日期>.jsonl``）的只读读取器。
 
-    通知链路自己挂了是最难发现的一类故障：机器人 key 被撤、群被解散、
-    出口网络被墙，全都**静默**——告警发不出去，而「告警发不出去」这件事
-    本身也要靠告警才能知道。所以留一份账，日报每天报一次
-    「今天推了几条、失败几条」，把静默变成可核对的数字。
-
-    写失败一律吞掉：留账是旁路的旁路，绝不能反过来影响主流程。
+    计划 03 之前各组件按天写的投递流水；迁移期尚未升级的生产者（N-1）也仍写这种格式。
+    日报合并读取它与事件存储；全部生产者发布满 14 天后在合入计划 02 中删除本类，历史文件保留。
     """
 
     def __init__(self, root) -> None:
         self._root = Path(root)
-
-    def record(self, alert: Alert, delivered: int, failed: Sequence[str]) -> None:
-        line = {
-            "at": alert.at.isoformat(timespec="seconds"),
-            "severity": alert.severity.value,
-            "title": alert.title,
-            "delivered": delivered,
-            "failed": list(failed),
-        }
-        try:
-            self._root.mkdir(parents=True, exist_ok=True)
-            path = self._root / f"{alert.at:%Y-%m-%d}.jsonl"
-            with path.open("a", encoding="utf-8") as out:
-                out.write(json.dumps(line, ensure_ascii=False) + "\n")
-        except OSError as exc:
-            log.warning("alert.ledger_failed", error=str(exc))
 
     def read(self, day) -> list[dict]:
         paths = [self._root / f"{day:%Y-%m-%d}.jsonl"]
@@ -231,59 +200,88 @@ def strategy_sinks(strategy_url: str, ops_url: str = "", *,
     return sinks
 
 
-# 按天留账，日报合并显式组件目录与旧flat历史；legacy默认相对仓库根，独立入口须传绝对路径。
+# 按天留存，日报合并显式组件目录与旧flat历史；legacy默认相对仓库根，独立入口须传绝对路径。
 LEDGER_DIR = Path("var/alerts")
-SERVICE_LEDGER_NAMESPACES = frozenset({
-    "health-observer", "service-checks", "reboot-drill", "paper", "shadow-core",
-})
 
 
-def ledger(root=None) -> AlertLedger:
-    return AlertLedger(Path(root) if root else LEDGER_DIR)
+def ledger(root=None) -> AlertEventLog:
+    """告警事件存储（与旧账本同一目录，文件名 <日期>.events.jsonl）。"""
+    return AlertEventLog(Path(root) if root else LEDGER_DIR)
 
 
-def _accepts(sink, alert: Alert) -> bool:
+def _accepts(sink, event: AlertEvent) -> bool:
     """`accepts` 是可选约定：没有就当全收。
 
     sink 只要有 `send` 就该能用——调用方自己写的 sink 不该因为少一个方法
     就把整条告警链打死。问这一句本身出错也按全收处理，宁可多发不可不发。
     """
     try:
-        return bool(getattr(sink, "accepts", _ALWAYS)(alert))
+        return bool(getattr(sink, "accepts", _ALWAYS)(event))
     except Exception as exc:
         log.warning("alert.accepts_failed", sink=type(sink).__name__, error=str(exc))
         return True
 
 
-def _ALWAYS(alert: Alert) -> bool:
+def _ALWAYS(event: AlertEvent) -> bool:
     return True
 
 
-class AlertBus:
-    def __init__(self, sinks: Sequence[AlertSink],
-                 ledger: AlertLedger | None = None) -> None:
-        self._sinks = tuple(sinks)
-        self._ledger = ledger
+_DEFAULT_STATE = {"incident": "firing", "notice": "notice"}
 
-    def publish(self, alert: Alert) -> None:
+
+class AlertBus:
+    """告警唯一入口。``source`` 为发布组件名（如 live-core、health-observer）。"""
+
+    def __init__(self, sinks: Sequence[AlertSink], log: AlertEventLog | None = None, *,
+                 source: str, clock: Callable[[], datetime] = now_shanghai) -> None:
+        self._sinks = tuple(sinks)
+        self._log = log
+        self._source = source
+        self._clock = clock
+
+    def _build(self, key, subject, params, detail, evidence, severity, state) -> AlertEvent:
+        spec = lookup(key)
+        params = dict(params or {})
+        if spec is not None:
+            if severity is None and len(spec.severities) == 1:
+                severity = next(iter(spec.severities))
+            state = state or _DEFAULT_STATE[spec.kind]
+            state_ok = (state == "notice") == (spec.kind == "notice")
+            if severity in spec.severities and state_ok:
+                return AlertEvent(
+                    event_id=new_event_id(), key=key, source=self._source, subject=subject,
+                    severity=severity, state=state, title=spec.title.format(**params), detail=detail,
+                    evidence=dict(evidence or {}), occurred_at=self._clock())
+        # 未登记的键、不允许的级别或状态：不丢告警，按 critical 以 unregistered: 键发出
+        log.error("alert.unregistered", key=key, severity=str(severity), state=state)
+        return AlertEvent(
+            event_id=new_event_id(), key=f"unregistered:{key}", source=self._source, subject=subject,
+            severity=Severity.CRITICAL, state="firing",
+            title=str(params.get("title") or (spec.title if spec else key)), detail=detail,
+            evidence=dict(evidence or {}), occurred_at=self._clock())
+
+    def emit(self, key: str, *, subject: str = "", params: dict | None = None, detail: str = "",
+             evidence: dict | None = None, severity: Severity | None = None,
+             state: str | None = None) -> AlertEvent:
+        try:
+            event = self._build(key, subject, params, detail, evidence, severity, state)
+        except Exception as exc:  # 构造失败（如模板参数缺失）也不能丢告警、不能影响主流程
+            log.error("alert.build_failed", key=key, error=str(exc))
+            event = AlertEvent(
+                event_id=new_event_id(), key=f"unregistered:{key}", source=self._source, subject=subject,
+                severity=Severity.CRITICAL, state="firing", title=str((params or {}).get("title") or key),
+                detail=detail, occurred_at=now_shanghai())
         delivered, failed = 0, []
         for sink in self._sinks:
-            if not _accepts(sink, alert):
+            if not _accepts(sink, event):
                 continue
             try:
-                sink.send(alert)
+                sink.send(event)
                 delivered += 1
             except Exception as exc:  # 一个 sink 挂了不能影响其它 sink 与主流程
                 failed.append(type(sink).__name__)
                 log.error("alert.sink_failed", sink=type(sink).__name__, error=str(exc))
-        if self._ledger is not None:
-            self._ledger.record(alert, delivered, failed)
-
-    def info(self, title: str, detail: str = "") -> None:
-        self.publish(Alert(Severity.INFO, title, detail, datetime.now()))
-
-    def warning(self, title: str, detail: str = "") -> None:
-        self.publish(Alert(Severity.WARNING, title, detail, datetime.now()))
-
-    def critical(self, title: str, detail: str = "") -> None:
-        self.publish(Alert(Severity.CRITICAL, title, detail, datetime.now()))
+        event = event.model_copy(update={"delivered": delivered, "failed": tuple(failed)})
+        if self._log is not None:
+            self._log.append(event)
+        return event

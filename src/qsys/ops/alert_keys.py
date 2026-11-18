@@ -68,6 +68,9 @@ _ALL = (
     _k("infra.redis.unreachable", "health-observer", "incident", {C, I}, "{title}", "Redis 不可达"),
     # ---- 演练与质检 ----
     _k("drill.reboot.passed", "reboot-drill", "notice", {I}, "月度重启演练通过（{day}）", "月度重启演练通过"),
+    _k("drill.command.unknown", "reboot-drill", "notice", {C}, "重启演练命令结果未知",
+       "演练命令投递后结果未知，不重放"),
+    _k("drill.command.failed", "reboot-drill", "notice", {C}, "重启演练命令失败", "演练命令明确失败"),
     _k("drill.reboot.failed", "reboot-drill", "notice", {C}, "月度重启演练未通过（{day}）", "月度重启演练未通过"),
     _k("checks.service.passed", "service-checks", "notice", {I}, "服务质检通过（{day}）", "每晚服务质检全部正常"),
     _k("checks.service.problems", "service-checks", "notice", {W, C}, "{title}",

@@ -46,10 +46,10 @@ def test_error_paper_account_overrides_fresh_heartbeat_and_alerts_once(tmp_path)
     assert item.process_state == HEALTHY
     assert item.reason_code == "strategy_account_error"
     sink = RecordingAlertSink()
-    tracker = BusinessAlertTracker(AlertBus([sink]))
+    tracker = BusinessAlertTracker(AlertBus([sink], source="test"))
     tracker.update(item)
     tracker.update(item)
-    assert len(sink.alerts) == 1 and sink.alerts[0].severity == Severity.CRITICAL
+    assert len(sink.events) == 1 and sink.events[0].severity == Severity.CRITICAL
     with sqlite3.connect(path) as con:
         assert con.execute("SELECT status FROM paper_accounts").fetchone()[0] == "error"
 
@@ -74,7 +74,7 @@ def test_event_timeout_is_business_failure_not_process_stopped():
 
 def test_business_alerts_fire_once_and_report_recovery():
     sink = RecordingAlertSink()
-    tracker = BusinessAlertTracker(AlertBus([sink]))
+    tracker = BusinessAlertTracker(AlertBus([sink], source="test"))
     now = datetime(2026, 9, 21, 9, 30, 15)
     delayed = observation(
         row(), now, MORNING,
@@ -93,24 +93,24 @@ def test_business_alerts_fire_once_and_report_recovery():
     tracker.update(failed)
     tracker.update(failed)
     tracker.update(recovered)
-    assert [alert.severity for alert in sink.alerts] == [
+    assert [alert.severity for alert in sink.events] == [
         Severity.WARNING, Severity.CRITICAL, Severity.INFO,
     ]
 
 
 def test_live_business_failure_is_named_as_live_not_shadow():
     sink = RecordingAlertSink()
-    tracker = BusinessAlertTracker(AlertBus([sink]))
+    tracker = BusinessAlertTracker(AlertBus([sink], source="test"))
     tracker.update(observation(
         row("live-core"), datetime(2026, 10, 12, 9, 30, 15), MORNING,
         ChainAssessment(DOWN, "strategy_event_failed", "竞价事件失败"),
     ))
-    assert "实盘交易链路失败" in sink.alerts[-1].title
+    assert "实盘交易链路失败" in sink.events[-1].title
 
 
 def test_unreadable_state_alerts_and_recovers_without_claiming_event_failure():
     sink = RecordingAlertSink()
-    tracker = BusinessAlertTracker(AlertBus([sink]))
+    tracker = BusinessAlertTracker(AlertBus([sink], source="test"))
     now = datetime(2026, 10, 23, 13, 28)
     def item(state, reason):
         return observation(row("live-core"), now, MORNING, ChainAssessment(state, reason, "证据"))
@@ -120,11 +120,11 @@ def test_unreadable_state_alerts_and_recovers_without_claiming_event_failure():
     healthy = item(HEALTHY, "strategy_events_current")
     for value in (unreadable, unreadable, healthy, unreadable, failed, failed, unreadable, healthy):
         tracker.update(value)
-    assert [a.title for a in sink.alerts] == [
+    assert [a.title for a in sink.events] == [
         "实盘状态库读取失败", "实盘状态库读取已恢复", "实盘状态库读取失败",
         "实盘交易链路失败", "实盘状态库读取失败", "实盘状态库读取已恢复",
     ]
-    assert all(a.severity == Severity.CRITICAL for a in sink.alerts if a.title.endswith("失败"))
+    assert all(a.severity == Severity.CRITICAL for a in sink.events if a.title.endswith("失败"))
 
 
 def _task(age_seconds=30, **over):
@@ -234,63 +234,63 @@ def _process(service, state):
 def test_a_windows_service_going_down_is_announced():
     """行情网关与执行代理整个停掉以前一声不响——这两个恰恰是实盘的必经之路。"""
     sink = RecordingAlertSink()
-    tracker = ProcessAlertTracker(AlertBus([sink]))
+    tracker = ProcessAlertTracker(AlertBus([sink], source="test"))
     tracker.update(_process("market-gateway", "ok"))
     tracker.update(_process("market-gateway", "bad"))
 
-    assert len(sink.alerts) == 1
-    assert sink.alerts[0].severity is Severity.CRITICAL
-    assert "QMT 行情网关已停止" in sink.alerts[0].title
+    assert len(sink.events) == 1
+    assert sink.events[0].severity is Severity.CRITICAL
+    assert "QMT 行情网关已停止" in sink.events[0].title
 
 
 def test_a_long_outage_is_still_one_alert():
     sink = RecordingAlertSink()
-    tracker = ProcessAlertTracker(AlertBus([sink]))
+    tracker = ProcessAlertTracker(AlertBus([sink], source="test"))
     tracker.update(_process("market-gateway", "ok"))
     for _ in range(2016):
         tracker.update(_process("market-gateway", "bad"))
 
-    assert len(sink.alerts) == 1
+    assert len(sink.events) == 1
 
 
 def test_recovery_is_announced_as_well():
     sink = RecordingAlertSink()
-    tracker = ProcessAlertTracker(AlertBus([sink]))
+    tracker = ProcessAlertTracker(AlertBus([sink], source="test"))
     tracker.update(_process("market-gateway", "ok"))
     tracker.update(_process("market-gateway", "bad"))
     tracker.update(_process("market-gateway", "ok"))
 
-    assert [a.severity for a in sink.alerts] == [Severity.CRITICAL, Severity.INFO]
+    assert [a.severity for a in sink.events] == [Severity.CRITICAL, Severity.INFO]
 
 
 def test_a_degraded_process_does_not_emit_stopped_or_recovery_alerts():
     sink = RecordingAlertSink()
-    tracker = ProcessAlertTracker(AlertBus([sink]))
+    tracker = ProcessAlertTracker(AlertBus([sink], source="test"))
     tracker.update(_process("market-gateway", "ok"))
     tracker.update(_process("market-gateway", "warn"))
     tracker.update(_process("market-gateway", "ok"))
 
-    assert sink.alerts == []
+    assert sink.events == []
 
 
 def test_the_very_first_sample_does_not_alert():
     """采样器刚起来时不该把「本来就停着」当成刚刚发生的事故补报一遍。"""
     sink = RecordingAlertSink()
-    ProcessAlertTracker(AlertBus([sink])).update(_process("market-gateway", "bad"))
+    ProcessAlertTracker(AlertBus([sink], source="test")).update(_process("market-gateway", "bad"))
 
-    assert sink.alerts == []
+    assert sink.events == []
 
 
 def test_an_unobservable_service_is_not_called_down():
     """连不上 Windows 时刷一串「离线」，比不报更糟。"""
     sink = RecordingAlertSink()
-    tracker = ProcessAlertTracker(AlertBus([sink]))
+    tracker = ProcessAlertTracker(AlertBus([sink], source="test"))
     tracker.update(_process("market-gateway", "ok"))
     unknown = _process("market-gateway", "unobservable")
     assert unknown.process_state == UNKNOWN
     tracker.update(unknown)
 
-    assert sink.alerts == []
+    assert sink.events == []
 
 
 def _scheduled_observation(timer="active", result="success", execution="inactive"):
@@ -309,7 +309,7 @@ def _scheduled_observation(timer="active", result="success", execution="inactive
 
 def test_timer_pause_and_failed_execution_are_distinct_without_clearing_failure():
     sink = RecordingAlertSink()
-    tracker = ProcessAlertTracker(AlertBus([sink]))
+    tracker = ProcessAlertTracker(AlertBus([sink], source="test"))
     for item in (
         _scheduled_observation(),
         _scheduled_observation(timer="inactive"),
@@ -318,44 +318,44 @@ def test_timer_pause_and_failed_execution_are_distinct_without_clearing_failure(
         _scheduled_observation(result="exit-code"),
     ):
         tracker.update(item)
-    assert [a.title for a in sink.alerts] == [
+    assert [a.title for a in sink.events] == [
         "指标字典验证调度未启用", "指标字典验证最近执行失败",
     ]
-    assert all(a.severity == Severity.CRITICAL for a in sink.alerts)
-    assert "ExecMainStatus=1" in sink.alerts[-1].detail
-    assert "13:23:56" in sink.alerts[-1].detail
+    assert all(a.severity == Severity.CRITICAL for a in sink.events)
+    assert "ExecMainStatus=1" in sink.events[-1].detail
+    assert "13:23:56" in sink.events[-1].detail
     assert item.process_state == DOWN
 
 
 def test_retry_start_does_not_claim_task_or_data_recovered():
     sink = RecordingAlertSink()
-    tracker = ProcessAlertTracker(AlertBus([sink]))
+    tracker = ProcessAlertTracker(AlertBus([sink], source="test"))
     tracker.update(_scheduled_observation())
     tracker.update(_scheduled_observation(result="exit-code"))
     tracker.update(_scheduled_observation(execution="activating"))
-    assert sink.alerts[-1].title == "指标字典验证调度可用，任务正在执行（结果待定）"
-    assert "已恢复" not in sink.alerts[-1].title
+    assert sink.events[-1].title == "指标字典验证调度可用，任务正在执行（结果待定）"
+    assert "已恢复" not in sink.events[-1].title
 
 
 def test_enabling_a_timer_without_a_completed_invocation_does_not_claim_success():
     sink = RecordingAlertSink()
-    tracker = ProcessAlertTracker(AlertBus([sink]))
+    tracker = ProcessAlertTracker(AlertBus([sink], source="test"))
     tracker.update(_scheduled_observation(timer="inactive"))
     item = _scheduled_observation()
     item.details["systemd_execution"].pop("ExecMainExitTimestamp")
     tracker.update(item)
-    assert sink.alerts[-1].title == "指标字典验证调度可用（尚无成功执行证据）"
+    assert sink.events[-1].title == "指标字典验证调度可用（尚无成功执行证据）"
 
 
 def test_midnight_without_due_events_does_not_announce_trading_recovery():
     sink = RecordingAlertSink()
-    tracker = BusinessAlertTracker(AlertBus([sink]))
+    tracker = BusinessAlertTracker(AlertBus([sink], source="test"))
     now = datetime(2026, 10, 29)
     tracker.update(observation(row("live-core"), now, MORNING,
                                ChainAssessment(DOWN, "strategy_event_failed", "未落库")))
     tracker.update(observation(row("live-core"), now, MORNING,
                                ChainAssessment(HEALTHY, "strategy_events_not_due", "首个事件尚未到时")))
-    assert [a.title for a in sink.alerts] == ["实盘交易链路失败"]
+    assert [a.title for a in sink.events] == ["实盘交易链路失败"]
 
 
 # ---- 基础设施巡检：按间隔跑，边沿触发 ----
@@ -365,7 +365,7 @@ from qsys.ops.health_observer_cli import InfraAlerts  # noqa: E402
 
 
 def _infra(sink, **kw):
-    return InfraAlerts(AlertBus([sink]), storage_base=Path("/nonexistent"),
+    return InfraAlerts(AlertBus([sink], source="test"), storage_base=Path("/nonexistent"),
                        config_path=None, tls_site=None, tls_port=8443, **kw)
 
 
@@ -388,11 +388,11 @@ def test_a_finding_is_pushed_once_and_its_recovery_once(monkeypatch):
     monkeypatch.setattr("qsys.ops.health_observer_cli.survey", lambda reading: findings)
     watch.run(0.0)
     watch.run(300.0)
-    assert [a.title for a in sink.alerts] == ["磁盘即将写满"]
+    assert [a.title for a in sink.events] == ["磁盘即将写满"]
 
     findings = []
     watch.run(600.0)
-    assert [a.title for a in sink.alerts] == ["磁盘即将写满", "磁盘即将写满：已恢复"]
+    assert [a.title for a in sink.events] == ["磁盘即将写满", "磁盘即将写满：已恢复"]
 
 
 def test_a_broken_survey_never_stops_the_sampling_loop(monkeypatch):
@@ -405,7 +405,7 @@ def test_a_broken_survey_never_stops_the_sampling_loop(monkeypatch):
     monkeypatch.setattr("qsys.ops.health_observer_cli.survey", explode)
     watch.run(0.0)          # 不抛
 
-    assert sink.alerts == []
+    assert sink.events == []
     assert watch.due(0.0) is False   # 仍然推进了下次时间，不会原地空转
 
 
@@ -557,5 +557,5 @@ def test_gateway_local_kill_alerts_once_and_reports_recovery(monkeypatch):
     watch.run(300.0, transport)
     _agent_beat(transport, now - timedelta(seconds=1), False)
     watch.run(600.0, transport)
-    titles = [a.title for a in sink.alerts]
+    titles = [a.title for a in sink.events]
     assert [t for t in titles if "网关本地闸" in t] == ["Windows 网关本地闸已落", "Windows 网关本地闸已落：已恢复"]
