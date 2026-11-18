@@ -15,7 +15,7 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 from qsys.data.schema import MARKET_REGIME
-from qsys.web.read_cache import SingleFlightCache
+from qsys.webapp.cache import SingleFlightCache
 
 LIVE_TTL_SECONDS = 15.0
 REGIME_TTL_SECONDS = 300.0

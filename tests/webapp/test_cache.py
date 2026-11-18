@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from qsys.web.read_cache import SingleFlightCache
+from qsys.webapp.cache import SingleFlightCache
 
 
 class Clock:

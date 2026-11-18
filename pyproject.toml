@@ -72,11 +72,11 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/qsys"]
 # 新前端构建产物（gitignored，由 CI 构建后打进 wheel；#662）
-artifacts = ["src/qsys/web/spa_dist/**"]
+artifacts = ["src/qsys/webapp/spa_dist/**"]
 
 [tool.hatch.build.targets.sdist]
 # `uv build` 从 sdist 构建 wheel，被 git 忽略的构建产物须在 sdist 中同样声明。
-artifacts = ["src/qsys/web/spa_dist/**"]
+artifacts = ["src/qsys/webapp/spa_dist/**"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -110,6 +110,7 @@ paths = [
   "src/qsys/markets/**",
   "src/qsys/strategy/**",
   "src/qsys/web/**",
+  "src/qsys/webapp/**",
   "src/qsys/research/__init__.py",
   "src/qsys/research/limit_up_ranking.py",
   "src/qsys/research/limit_up_shadow.py",

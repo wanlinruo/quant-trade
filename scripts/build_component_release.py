@@ -93,7 +93,7 @@ def _require_checkout(repo: Path, sha: str) -> None:
         raise ValueError("release checkout has tracked modifications")
 
 
-SPA_PREFIX = "qsys/web/spa_dist/"
+SPA_PREFIX = "qsys/webapp/spa_dist/"
 SPA_BUILD_INFO = SPA_PREFIX + "build-info.json"
 
 

@@ -17,7 +17,7 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 from qsys.web.board_effect import layer_rates, layer_rows, money_effect
-from qsys.web.read_cache import SingleFlightCache
+from qsys.webapp.cache import SingleFlightCache
 
 LATEST_TTL_SECONDS = 15.0
 PREV_TTL_SECONDS = 300.0

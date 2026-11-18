@@ -92,10 +92,10 @@ def _spa_members(*, tamper: bool = False) -> dict[str, bytes]:
         "files": {name: hashlib.sha256(data).hexdigest() for name, data in files.items()},
         "index_sha256": hashlib.sha256(SPA_INDEX).hexdigest(),
     }
-    members = {f"qsys/web/spa_dist/{name}": data for name, data in files.items()}
+    members = {f"qsys/webapp/spa_dist/{name}": data for name, data in files.items()}
     if tamper:
-        members["qsys/web/spa_dist/assets/index-abc.js"] = b"tampered"
-    members["qsys/web/spa_dist/build-info.json"] = json.dumps(info).encode()
+        members["qsys/webapp/spa_dist/assets/index-abc.js"] = b"tampered"
+    members["qsys/webapp/spa_dist/build-info.json"] = json.dumps(info).encode()
     return members
 
 

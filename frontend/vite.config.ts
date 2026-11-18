@@ -5,6 +5,6 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   base: '/app/',
   plugins: [react()],
-  build: { outDir: '../src/qsys/web/spa_dist', emptyOutDir: true },
+  build: { outDir: '../src/qsys/webapp/spa_dist', emptyOutDir: true },
   test: { environment: 'jsdom', globals: true, setupFiles: ['./src/test-setup.ts'], include: ['src/**/*.test.{ts,tsx}'] },
 })

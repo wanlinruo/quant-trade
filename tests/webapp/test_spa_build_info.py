@@ -7,7 +7,7 @@ import json
 import tomllib
 from pathlib import Path
 
-from qsys.web.spa import read_build_info
+from qsys.webapp.spa import read_build_info
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -82,11 +82,11 @@ def test_read_build_info_rejects_path_escape(tmp_path: Path) -> None:
 
 def test_pyproject_ships_spa_dist_as_wheel_artifact() -> None:
     data = tomllib.loads((REPO / "pyproject.toml").read_text())
-    assert "src/qsys/web/spa_dist/**" in data["tool"]["hatch"]["build"]["targets"]["wheel"]["artifacts"]
+    assert "src/qsys/webapp/spa_dist/**" in data["tool"]["hatch"]["build"]["targets"]["wheel"]["artifacts"]
 
 
 def test_pyproject_ships_spa_dist_in_sdist_too() -> None:
     # CI 用 `uv build`：先打 sdist 再从 sdist 构建 wheel；spa_dist 被 git 忽略，
     # sdist 不显式声明就会丢失，wheel 里也就没有前端。
     data = tomllib.loads((REPO / "pyproject.toml").read_text())
-    assert "src/qsys/web/spa_dist/**" in data["tool"]["hatch"]["build"]["targets"]["sdist"]["artifacts"]
+    assert "src/qsys/webapp/spa_dist/**" in data["tool"]["hatch"]["build"]["targets"]["sdist"]["artifacts"]

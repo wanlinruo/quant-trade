@@ -41,7 +41,7 @@ from qsys.web.app_data import register_app_data
 from qsys.web.app_market import register_app_market
 from qsys.web.app_research import register_app_research
 from qsys.web.shell_status import ShellStatusCache
-from qsys.web.spa import SPA_DIST, mount_spa
+from qsys.webapp.app import WebappDeps, mount_webapp
 from qsys.web.svg import line_chart, multi_line_chart
 from qsys.web.views import MonitorService
 from qsys.web.workbench import WorkbenchStore
@@ -168,6 +168,8 @@ def create_app(
     core_label: str = "影子盘",
     # 新前端构建产物目录（#662）；默认取包内 spa_dist
     spa_root: Path | None = None,
+    # 新后端依赖（#662 总路线 v2）；为 None 时按本函数已有参数构造
+    webapp: WebappDeps | None = None,
 ) -> FastAPI:
     # 影子盘与实盘同一时间只运行其一；页面按部署模式称呼当前核心（#601 F5）。
     TEMPLATES.env.globals["core_label"] = core_label
@@ -198,7 +200,9 @@ def create_app(
                           backtest_rows=_backtest_rows)
 
     # 新前端（#662）：/app 下的单页应用，与旧页面并存
-    mount_spa(app, spa_root if spa_root is not None else SPA_DIST)
+    mount_webapp(app, webapp or WebappDeps(
+        live_kill=app.state.live_kill, shadow=limit_up_shadow, research=limit_up_research,
+        spa_root=spa_root))
 
     def _require_session(session: date) -> None:
         if not service.has_session(session):

@@ -4,7 +4,7 @@ import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const root = fileURLToPath(new URL('../../src/qsys/web/spa_dist/', import.meta.url))
+const root = fileURLToPath(new URL('../../src/qsys/webapp/spa_dist/', import.meta.url))
 const INFO = 'build-info.json'
 
 function walk(dir) {

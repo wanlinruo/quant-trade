@@ -133,7 +133,9 @@ def test_save_in_use_strategy_is_rejected(env):
     env.paper.create(bt, "A", 100000, date(2024, 2, 1))
     c = env.client()
     r = c.put(f"/api/app/strategies/{s.id}", json={"name": "demo", "source": SOURCE + "\n# x\n"})
-    assert r.status_code == 409 and "模拟账户 A" in r.json()["detail"] and "另存" in r.json()["detail"]
+    assert r.status_code == 409
+    message = r.json()["error"]["message"]
+    assert r.json()["error"]["code"] == "http_409" and "模拟账户 A" in message and "另存" in message
     assert env.wb.strategy(s.id).draft == SOURCE
     free = env.wb.create_strategy("free", SOURCE)
     ok = c.put(f"/api/app/strategies/{free.id}", json={"name": "free", "source": SOURCE + "\n# x\n"})

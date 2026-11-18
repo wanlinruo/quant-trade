@@ -27,7 +27,7 @@ from qsys.web.data_app_views import (
     warning_sources,
 )
 from qsys.web.domain_views import domain_label
-from qsys.web.read_cache import SingleFlightCache
+from qsys.webapp.cache import SingleFlightCache
 
 LIST_TTL_SECONDS = 60.0
 NO_STORE = {"Cache-Control": "no-store"}
