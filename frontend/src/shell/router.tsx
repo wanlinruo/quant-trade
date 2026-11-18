@@ -53,7 +53,7 @@ export function useSearch(): URLSearchParams {
 }
 
 /** 改写查询参数（值为 null 删除该参数），保留路径，进入浏览器历史。 */
-export function setSearch(params: Record<string, string | null>): void {
+export function setSearch(params: Record<string, string | null>, opts: { replace?: boolean } = {}): void {
   const q = new URLSearchParams(location.search)
   for (const [k, v] of Object.entries(params)) {
     if (v === null) q.delete(k)
@@ -61,7 +61,10 @@ export function setSearch(params: Record<string, string | null>): void {
   }
   const qs = q.toString()
   const href = `${location.pathname}${qs ? `?${qs}` : ''}`
-  if (href !== `${location.pathname}${location.search}`) history.pushState(null, '', href)
+  if (href !== `${location.pathname}${location.search}`) {
+    if (opts.replace) history.replaceState(null, '', href)
+    else history.pushState(null, '', href)
+  }
   dispatchEvent(new PopStateEvent('popstate'))
 }
 

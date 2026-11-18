@@ -96,8 +96,10 @@ test('running backtest shows progress and polls until done', async () => {
 
 test('picker defaults to latest report and writes id to url', async () => {
   history.replaceState(null, '', '/app/backtest')
+  const depth = history.length
   mockApi()
   render(<BacktestPage />)
   await screen.findByText(/下单被拒 1 笔/)
   expect(location.search).toContain(`id=${REPORT_ID}`)
+  expect(history.length).toBe(depth) // 默认选中只替换当前记录，不制造后退陷阱
 })

@@ -15,7 +15,8 @@ function BacktestTab() {
   const poll = usePolling(fetcher, { intervalMs: 60_000, enabled: false })
   const d = poll.data as BacktestList | null
   const firstReport = d && d.enabled ? d.rows.find((r) => r.has_report)?.id ?? d.rows[0]?.id ?? null : null
-  useEffect(() => { if (!id && firstReport) setSearch({ id: firstReport }) }, [id, firstReport])
+  // 默认选中只替换当前历史记录，避免“后退”回到无 id 地址又被立刻带回
+  useEffect(() => { if (!id && firstReport) setSearch({ id: firstReport }, { replace: true }) }, [id, firstReport])
 
   if (!d) return poll.error ? <Hero s="bad" title="回测接口无法访问" subtitle={poll.error} /> : <Hero s="running" title="加载中" />
   if (!d.enabled) return <Result status="info" title="回测控制台未启用" subTitle="当前部署没有接入回测结果目录。" />
