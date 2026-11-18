@@ -167,6 +167,19 @@ class DataAssetService:
         self._coverage_failed = False
         self._coverage_retry_at = 0.0
 
+    # ---- 新前端（#662）用的公开只读访问点 ----
+    @property
+    def root(self):
+        return self._warehouse.root
+
+    @property
+    def query(self) -> WarehouseQuery:
+        return self._query
+
+    def assessment(self, dataset_id: str):
+        """单表健康评估（含五维）；与 tables() 使用同一套证据与策略。"""
+        return self._assessment(dataset_id)
+
     def _refresh_coverage(self) -> None:
         try:
             coverage(self._warehouse)

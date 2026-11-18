@@ -37,6 +37,7 @@ from qsys.web.paper_chart import history_series, intraday_series
 from qsys.web.research_jobs import ResearchJobConsole
 from qsys.web.service_views import ServiceConsole
 from qsys.web.app_board import register_app_board
+from qsys.web.app_data import register_app_data
 from qsys.web.app_market import register_app_market
 from qsys.web.app_research import register_app_research
 from qsys.web.shell_status import ShellStatusCache
@@ -190,6 +191,7 @@ def create_app(
 
     register_app_market(app, market)
     register_app_board(app, limit_up_board, app.state.app_live_parts)
+    register_app_data(app, assets=assets, catalog=catalog)
     register_app_research(app, workbench=workbench, backtests=backtests, paper=paper,
                           research_jobs=research_jobs, strategy_templates=strategy_templates,
                           shadow_lineage=shadow_lineage, core_label=core_label,
