@@ -2,6 +2,7 @@ import type { ComponentType } from 'react'
 import { AiluPage } from './ailu/AiluPage'
 import { BacktestPage } from './backtest/BacktestPage'
 import { BoardPage } from './board/BoardPage'
+import { DataOverviewPage } from './data/DataOverviewPage'
 import { MarketPage } from './market/MarketPage'
 import { StrategiesPage } from './strategies/StrategiesPage'
 
@@ -12,4 +13,5 @@ export const PAGE_COMPONENTS: Partial<Record<string, ComponentType>> = {
   board: BoardPage,
   strategies: StrategiesPage,
   backtest: BacktestPage,
+  dataov: DataOverviewPage,
 }
