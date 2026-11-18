@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { Button, Input, Modal, Result, Select, Space, Table } from 'antd'
+import { Button, Input, Modal, Result, Select, Table } from 'antd'
 import { createStrategy, fetchStrategies, importTemplate, type StrategyList } from '../../api/research'
 import { useConfirmAction } from '../../page/ConfirmAction'
 import { Hero } from '../../page/Hero'
@@ -48,11 +48,11 @@ export function StrategiesPage() {
         title={`共 ${d.strategies.length} 个策略 · ${d.core_label} ${count('live')} · 模拟 ${count('paper')} · 回测 ${count('backtest')} · 草稿 ${count('draft')}`}
         subtitle="推进位置：部署承袭 → 未结束的模拟账户 → 成功回测 → 草稿，命中即停（设计者决定）。" />
       <Panel title="有哪些策略、走到哪一步？" info="最近回测指标与回测页同一行数据（§9.5）。实盘或模拟正在使用的版本只读。"
-        extra={<Space wrap>
+        extra={<div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, maxWidth: '100%', minWidth: 0 }}>
           <Button size="small" onClick={() => { setCreating(true); setErr(null) }}>新建策略</Button>
-          <Select size="small" style={{ width: 180 }} placeholder="从模板导入" value={tpl} onChange={setTpl} options={d.templates.map((t) => ({ value: t, label: t }))} />
+          <Select size="small" style={{ flex: '1 1 120px', width: 180, maxWidth: '100%', minWidth: 0 }} placeholder="从模板导入" value={tpl} onChange={setTpl} options={d.templates.map((t) => ({ value: t, label: t }))} />
           <Button size="small" disabled={!tpl} onClick={doImport}>导入</Button>
-        </Space>}>
+        </div>}>
         {err && <div role="alert" style={{ color: p.bad, marginBottom: 8 }}>{err}</div>}
         <Table size="small" rowKey="id" dataSource={d.strategies} pagination={{ pageSize: 20, hideOnSinglePage: true }} scroll={{ x: 'max-content' }}
           rowClassName={(r) => (r.id === id ? 'ant-table-row-selected' : '')}

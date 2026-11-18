@@ -9,6 +9,8 @@ import { MONO } from '../../ui/Num'
 import { NewBacktestDialog } from './NewBacktestDialog'
 import { pctPoints } from './format'
 
+const BT_STATUS: Record<string, string> = { queued: '排队中', running: '运行中', succeeded: '已完成', failed: '失败', cancelled: '已取消', interrupted: '已中断' }
+
 /** 策略详情：源码、参数、版本、回测记录。使用中的版本只读，只能另存为新策略（§6.3、§8.10）。 */
 export function StrategyDetail({ id, onChanged }: { id: string; onChanged(): void }) {
   const p = usePalette()
@@ -52,7 +54,7 @@ export function StrategyDetail({ id, onChanged }: { id: string; onChanged(): voi
           <Button size="small" onClick={saveAs}>另存为新策略</Button>
           <Button size="small" onClick={() => setNewBt(true)}>新建回测</Button>
         </Space>}>
-        {d.in_use && <div style={{ color: p.warn, marginBottom: 8 }}>▲ 该版本正被{d.used_by.join('、')}使用，只读；修改请另存为新策略，再按 回测 → 模拟 → 实盘 推进。</div>}
+        {d.in_use && <div style={{ color: p.warn, marginBottom: 8 }}>▲ 该版本正被{d.used_by.join('、')}使用，只读；修改请另存为新策略，再按 回测 → 模拟 → {d.core_label} 推进。</div>}
         {msg && <div role="status" style={{ color: msg.ok ? p.ok : p.bad, marginBottom: 8 }}>{msg.text}</div>}
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
           <span style={{ color: p.muted, fontSize: 12 }}>名称</span>
@@ -80,7 +82,7 @@ export function StrategyDetail({ id, onChanged }: { id: string; onChanged(): voi
             columns={[
               { title: '回测', dataIndex: 'id', render: (v: string) => <span style={{ fontFamily: MONO }}>{v.slice(0, 8)}</span> },
               { title: '区间', key: 'r', render: (_, r) => `${r.start} ~ ${r.end}` },
-              { title: '状态', dataIndex: 'status' },
+              { title: '状态', dataIndex: 'status', render: (v: string) => BT_STATUS[v] ?? v },
               { title: '收益', dataIndex: 'return_pct', render: (v) => pctPoints(v) ?? '—' },
               { title: '最大回撤', dataIndex: 'max_drawdown_pct', render: (v) => pctPoints(v) ?? '—' },
             ]} />

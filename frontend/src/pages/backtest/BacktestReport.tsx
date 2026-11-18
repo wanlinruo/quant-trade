@@ -11,6 +11,7 @@ import { MonthlyHeatmap } from './MonthlyHeatmap'
 
 type Report = Extract<BacktestDetail, { report: true }>
 const ENTRY: Record<string, string> = { continuous: '连续竞价判定（09:31 分钟线）', open: '开盘价成交（原口径）' }
+const num = (v: unknown, digits: number) => (typeof v === 'number' && Number.isFinite(v) ? v.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits }) : String(v ?? ''))
 const pctPts = (v: number | null | undefined) => (v === null || v === undefined ? null : `${v > 0 ? '+' : ''}${v.toFixed(2)}%`)
 
 export function BacktestReport({ d }: { d: Report }) {
@@ -81,8 +82,10 @@ export function BacktestReport({ d }: { d: Report }) {
             { title: '时间', dataIndex: 'filled_at', render: (v) => String(v).replace('T', ' ') },
             { title: '代码', dataIndex: 'symbol' },
             { title: '方向', dataIndex: 'side', render: (v) => <span style={{ color: v === 'buy' ? p.up : p.down }}>{v === 'buy' ? '买' : v === 'sell' ? '卖' : String(v)}</span> },
-            { title: '数量', dataIndex: 'qty', align: 'right' }, { title: '价格', dataIndex: 'price', align: 'right' },
-            { title: '费用', dataIndex: 'fee', align: 'right' }, { title: '金额', dataIndex: 'notional', align: 'right' },
+            { title: '数量', dataIndex: 'qty', align: 'right', render: (v) => num(v, 0) },
+            { title: '价格', dataIndex: 'price', align: 'right', render: (v) => num(v, 3) },
+            { title: '费用', dataIndex: 'fee', align: 'right', render: (v) => num(v, 2) },
+            { title: '金额', dataIndex: 'notional', align: 'right', render: (v) => num(v, 2) },
           ]} />
         {d.rejects.length > 0 && (
           <Collapse size="small" style={{ marginTop: 8 }} items={[{ key: 'r', label: `被拒的单（${d.rejects.length}）`, children: (

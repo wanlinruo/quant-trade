@@ -45,6 +45,8 @@ test('in-use strategy is read-only and offers save-as', async () => {
   expect(screen.queryByRole('button', { name: '保存' })).toBeNull()
   expect(screen.getByRole('button', { name: '另存为新策略' })).toBeInTheDocument()
   expect(screen.getAllByText('window').length).toBeGreaterThan(0)
+  expect(screen.getByText(/回测 → 模拟 → 影子盘 推进/)).toBeInTheDocument()
+  expect(screen.getByText('已完成')).toBeInTheDocument()
 })
 
 test('saving asks for confirmation mentioning 不影响实盘 and surfaces 409 detail', async () => {

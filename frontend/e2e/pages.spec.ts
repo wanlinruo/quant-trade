@@ -4,6 +4,11 @@ import research from './fixtures/research.json' with { type: 'json' }
 import shadow from './fixtures/shadow.json' with { type: 'json' }
 import board from './fixtures/board.json' with { type: 'json' }
 import boardSeries from './fixtures/board-series.json' with { type: 'json' }
+import strategies from './fixtures/strategies.json' with { type: 'json' }
+import strategy from './fixtures/strategy.json' with { type: 'json' }
+import backtests from './fixtures/backtests.json' with { type: 'json' }
+import backtest from './fixtures/backtest.json' with { type: 'json' }
+import researchJobs from './fixtures/research-jobs.json' with { type: 'json' }
 
 const CLEAR = {
   schema_version: 1, checked_at: '2026-11-17T10:40:00',
@@ -19,6 +24,11 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/market/limit-up-research*', (r) => r.fulfill({ json: research }))
   await page.route('**/api/app/board/series*', (r) => r.fulfill({ json: boardSeries }))
   await page.route(/\/api\/app\/board(\?.*)?$/, (r) => r.fulfill({ json: board }))
+  await page.route('**/api/app/strategies', (r) => r.fulfill({ json: strategies }))
+  await page.route('**/api/app/strategies/*', (r) => r.fulfill({ json: strategy }))
+  await page.route('**/api/app/backtests', (r) => r.fulfill({ json: backtests }))
+  await page.route('**/api/app/backtests/*', (r) => r.fulfill({ json: backtest }))
+  await page.route('**/api/app/research-jobs', (r) => r.fulfill({ json: researchJobs }))
 })
 
 async function noOverflow(page: import('@playwright/test').Page) {
@@ -61,5 +71,19 @@ for (const width of [390, 1280, 1600]) {
     await page.locator('[data-item]').first().click()
     await expect(page.locator('.ant-drawer-title')).toContainText('300500.SZ')
     await expect(page.locator('.ant-drawer canvas').first()).toBeVisible()
+  })
+
+  test(`strategies and backtest pages have no horizontal overflow at ${width}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto('/app/strategies?id=b3cc572a1afb4df79f6245c79187a512')
+    await expect(page.getByLabel('策略源码')).toBeVisible()
+    await noOverflow(page)
+    await page.goto('/app/backtest?id=d3e195d9bd63499b')
+    await expect(page.getByText('跑赢基准了吗？')).toBeVisible()
+    await expect(page.locator('canvas').first()).toBeVisible()
+    await noOverflow(page)
+    await page.goto('/app/backtest?tab=research')
+    await expect(page.getByText('任务跑完了吗？')).toBeVisible()
+    await noOverflow(page)
   })
 }

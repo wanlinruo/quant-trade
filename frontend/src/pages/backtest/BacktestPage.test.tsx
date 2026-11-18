@@ -44,6 +44,8 @@ test('report shows kpis, warnings and charts with null benchmark gaps', async ()
   expect((bench.data![2] as [string, number | null])[1]).toBeNull()
   expect(bench.connectNulls).toBe(false)
   expect(screen.getByText('2 笔，显示最后 2 笔', { exact: false })).toBeInTheDocument()
+  expect(screen.getByText('1,000.00')).toBeInTheDocument()
+  expect(screen.getByText('990.00')).toBeInTheDocument()
 })
 
 test('underwater chart marks the 5 deepest episodes and lists them', async () => {
