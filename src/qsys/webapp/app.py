@@ -30,6 +30,12 @@ class WebappDeps:
 
 
 def mount_webapp(app: FastAPI, deps: WebappDeps) -> None:
+    from qsys.webapp.queries.shell import ShellQuery
+    from qsys.webapp.routes.market import market_router
+    from qsys.webapp.routes.shell import shell_router
+
     install_error_handlers(app)
     app.state.webapp = deps
+    app.include_router(shell_router(ShellQuery(deps.live_kill)))
+    app.include_router(market_router(deps.market))
     mount_spa(app, deps.spa_root if deps.spa_root is not None else SPA_DIST)

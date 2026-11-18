@@ -8,11 +8,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from qsys.data.board.store import BoardStore
-from qsys.live.messages import MarketSchedule
 from qsys.ops.journal import SessionJournal
 from qsys.web.app import create_app
 from qsys.web.config import WebConfig
-from qsys.web.data_views import LiveMarketView
 from qsys.web.limit_up_board import LimitUpBoardReader
 from qsys.web.views import MonitorService
 from tests.web.board_fixtures import DAY, NAMES, PREV, build, q
@@ -50,30 +48,12 @@ class CountingReader(LimitUpBoardReader):
         return super().view(day, at)
 
 
-class FakeMarket:
-    def __init__(self) -> None:
-        self.schedule_calls = 0
-
-    def live(self, *, now=None):
-        return LiveMarketView(None, True, False)
-
-    def schedule(self):
-        self.schedule_calls += 1
-        return MarketSchedule(checked_at=datetime(2026, 11, 13, 9, 31), is_trading_day=True, is_open=True)
-
-    def limit_check(self, day=None):
-        return None
-
-    def history(self, limit=60):
-        return []
-
-
 @pytest.fixture
 def make_client(warehouse):
-    def make(board, market=None) -> TestClient:
+    def make(board) -> TestClient:
         cfg = WebConfig()
         return TestClient(create_app(MonitorService(SessionJournal(warehouse), config=cfg), cfg,
-                                     limit_up_board=board, market=market))
+                                     limit_up_board=board))
     return make
 
 
@@ -144,14 +124,3 @@ def test_board_endpoints_no_store(make_client, tmp_path):
     assert c.get("/api/app/board").headers["cache-control"] == "no-store"
     r = c.get("/api/app/board/series", params={"day": "2026-11-13", "symbol": "A.SH"})
     assert r.headers["cache-control"] == "no-store"
-
-
-def test_schedule_from_shared_live_cache_not_per_request(make_client, tmp_path):
-    build(tmp_path)
-    m = FakeMarket()
-    c = make_client(CountingReader(tmp_path), m)
-    for _ in range(3):
-        assert c.get("/api/app/board").json()["schedule"]["is_open"] is True
-        c.get("/api/app/board", params={"at": "2026-11-13T09:31:15"})
-        c.get("/api/app/market")
-    assert m.schedule_calls == 1

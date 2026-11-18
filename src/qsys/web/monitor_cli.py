@@ -110,10 +110,31 @@ def build_app(
             )
         research_console = ResearchJobConsole(research_jobs_path, profile=profile)
     from qsys.web.live_kill_status import LiveKillReader
+    from qsys.webapp.app import WebappDeps
+    from qsys.webapp.queries.market import MarketQuery
 
     names = HistoricalSecurityNameLookup(warehouse_root)
     shadow_reader = LimitUpShadowReader(
         limit_up_shadow_state_path or Path("var/limit-up-shadow.sqlite3")
+    )
+    live_kill = LiveKillReader(
+        transport if strategy_mode == "live" else None,
+        live_kill_path if strategy_mode == "live" else None,
+        heartbeat_prefix=(deploy.streams.heartbeat
+                          if transport is not None and strategy_mode == "live"
+                          else config.heartbeat_prefix),
+    )
+    research_reader = LimitUpResearchReader(
+        limit_up_research_run_path or Path("var/research/issue-210"),
+        name_lookup=names,
+    )
+    # 新后端（#662 总路线 v2）：市场查询直接读同一 transport 与仓库，不经旧视图服务
+    webapp = WebappDeps(
+        live_kill=live_kill,
+        market=MarketQuery.from_warehouse(
+            transport, warehouse, snapshot_key=market_snapshot_key,
+            schedule_key=market_schedule_key, limit_check_prefix=f"{limits_prefix}_check"),
+        shadow=shadow_reader, research=research_reader,
     )
     return create_app(
         monitor,
@@ -128,13 +149,7 @@ def build_app(
             schedule_key=market_schedule_key,
             limit_check_prefix=f"{limits_prefix}_check",
         ),
-        live_kill=LiveKillReader(
-            transport if strategy_mode == "live" else None,
-            live_kill_path if strategy_mode == "live" else None,
-            heartbeat_prefix=(deploy.streams.heartbeat
-                              if transport is not None and strategy_mode == "live"
-                              else config.heartbeat_prefix),
-        ),
+        live_kill=live_kill,
         paper_calendar=trading_calendar,
         # 影子核心承袭的模拟账户；每次请求现查，配置改了不用重启监控台
         shadow_lineage=(lambda: _shadow_lineage(strategy_cfg)),
@@ -160,15 +175,13 @@ def build_app(
         ),
         assets=DataAssetService(warehouse, background_coverage=True),
         limit_up_shadow=shadow_reader,
-        limit_up_research=LimitUpResearchReader(
-            limit_up_research_run_path or Path("var/research/issue-210"),
-            name_lookup=names,
-        ),
+        limit_up_research=research_reader,
         limit_up_board=LimitUpBoardReader(
             limit_up_board_root or Path("var/limit-up-board"),
             names=names, shadow=shadow_reader,
         ),
         research_jobs=research_console,
+        webapp=webapp,
     )
 
 

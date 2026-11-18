@@ -13,7 +13,8 @@ from qsys.ops.journal import SessionJournal
 from qsys.web.app import create_app
 from qsys.web.config import WebConfig
 from qsys.web.live_kill_status import KillSource, LiveKillReader, LiveKillStatus
-from qsys.web.shell_status import ShellStatusCache
+from qsys.webapp.contracts.shell import ShellStatus
+from qsys.webapp.queries.shell import ShellQuery as ShellStatusCache
 from qsys.web.views import MonitorService
 
 AT = "2026-11-17T10:00:00"
@@ -61,14 +62,14 @@ def test_status_maps_kill_states_to_live_posture() -> None:
     expected = {"stopped": ("reduce_only", "仅允许减仓"), "clear": ("trading", "实盘运行"),
                 "unknown": ("unknown", "实盘状态未知")}
     for kill, (live, label) in expected.items():
-        body = ShellStatusCache(CountingReader(_status(kill))).get()
+        body = ShellStatusCache(CountingReader(_status(kill))).get().model_dump(mode="json")
         assert body["schema_version"] == 1
         assert body["kill"]["state"] == kill
         assert body["live"] == {"state": live, "label": label}
 
 
 def test_unknown_kill_state_is_never_reported_clear() -> None:
-    body = ShellStatusCache(CountingReader(error=RuntimeError("redis down /var/secret"))).get()
+    body = ShellStatusCache(CountingReader(error=RuntimeError("redis down /var/secret"))).get().model_dump(mode="json")
     assert body["kill"]["state"] == "unknown"
     assert body["kill"]["label"] == "停机状态未知"
     assert body["live"]["state"] == "unknown"
@@ -102,21 +103,29 @@ def test_failed_read_is_not_cached_as_clear_later() -> None:
     reader = CountingReader(error=RuntimeError("x"))
     clock = FakeClock()
     cache = ShellStatusCache(reader, ttl_seconds=5, clock=clock)
-    assert cache.get()["kill"]["state"] == "unknown"
+    assert cache.get().kill.state == "unknown"
     reader.error = None
     clock.advance(5.01)
-    assert cache.get()["kill"]["state"] == "clear"
+    assert cache.get().kill.state == "clear"
 
 
 def test_agent_heartbeat_taken_from_agent_source() -> None:
-    assert ShellStatusCache(CountingReader(_status("clear", agent_at=AT))).get()["agent_heartbeat_at"] == AT
-    assert ShellStatusCache(CountingReader(_status("unknown", agent_at=None))).get()["agent_heartbeat_at"] is None
+    got = ShellStatusCache(CountingReader(_status("clear", agent_at=AT))).get().model_dump(mode="json")
+    assert got["agent_heartbeat_at"] == AT + "+08:00"
+    assert ShellStatusCache(CountingReader(_status("unknown", agent_at=None))).get().agent_heartbeat_at is None
 
 
-def test_missing_fields_are_null_with_reason() -> None:
+def test_shell_missing_reasons_in_missing_map() -> None:
     body = ShellStatusCache(CountingReader()).get()
-    assert body["qmt"] is None and body["qmt_reason"]
-    assert body["alerts_open"] is None and body["alerts_reason"]
+    assert body.qmt is None and body.missing["qmt"]
+    assert body.alerts_open is None and body.missing["alerts_open"]
+    assert set(body.model_dump()) == set(ShellStatus.model_fields)
+
+
+def test_shell_times_carry_offset() -> None:
+    body = ShellStatusCache(CountingReader()).get().model_dump(mode="json")
+    assert body["checked_at"].endswith("+08:00")
+    assert body["kill"]["sources"][0]["recorded_at"] is None or body["kill"]["sources"][0]["recorded_at"].endswith("+08:00")
 
 
 def test_endpoint_is_no_store_and_escapes_nothing_sensitive(warehouse, tmp_path) -> None:
@@ -124,7 +133,7 @@ def test_endpoint_is_no_store_and_escapes_nothing_sensitive(warehouse, tmp_path)
     cfg = WebConfig()
     app = create_app(MonitorService(SessionJournal(warehouse), config=cfg), cfg,
                      live_kill=LiveKillReader(None, kill_root))
-    r = TestClient(app).get("/api/shell/status")
+    r = TestClient(app).get("/api/app/shell/status")
     assert r.status_code == 200
     assert r.headers["cache-control"] == "no-store"
     body = r.json()

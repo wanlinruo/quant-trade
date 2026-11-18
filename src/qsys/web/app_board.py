@@ -47,7 +47,7 @@ class _PrevRates:
             return rates
 
 
-def register_app_board(app: FastAPI, board, live_parts) -> None:
+def register_app_board(app: FastAPI, board, market) -> None:
     if board is None:
         @app.get("/api/app/board")
         def app_board_disabled():
@@ -83,12 +83,14 @@ def register_app_board(app: FastAPI, board, live_parts) -> None:
     latest = SingleFlightCache(lambda: build(None, None), LATEST_TTL_SECONDS)
 
     def schedule() -> dict | None:
-        if live_parts is None:
+        # 交易时段取市场查询层的同一份 15 秒缓存，不按请求读 Redis（§10）
+        if market is None:
             return None
         try:
-            return live_parts.get()["schedule"]
+            s = market.schedule()
         except Exception:
             return None
+        return None if s is None else s.model_dump(mode="json")
 
     @app.get("/api/app/board")
     def app_board(day: date | None = None, at: datetime | None = None):

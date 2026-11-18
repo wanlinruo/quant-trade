@@ -38,9 +38,7 @@ from qsys.web.research_jobs import ResearchJobConsole
 from qsys.web.service_views import ServiceConsole
 from qsys.web.app_board import register_app_board
 from qsys.web.app_data import register_app_data
-from qsys.web.app_market import register_app_market
 from qsys.web.app_research import register_app_research
-from qsys.web.shell_status import ShellStatusCache
 from qsys.webapp.app import WebappDeps, mount_webapp
 from qsys.web.svg import line_chart, multi_line_chart
 from qsys.web.views import MonitorService
@@ -183,16 +181,10 @@ def create_app(
         return JSONResponse(app.state.live_kill.read().to_dict(),
                             headers={"Cache-Control": "no-store"})
 
-    app.state.shell_status = ShellStatusCache(app.state.live_kill)
-
-    @app.get("/api/shell/status")
-    def shell_status():
-        from fastapi.responses import JSONResponse
-        return JSONResponse(app.state.shell_status.get(),
-                            headers={"Cache-Control": "no-store"})
-
-    register_app_market(app, market)
-    register_app_board(app, limit_up_board, app.state.app_live_parts)
+    deps = webapp or WebappDeps(
+        live_kill=app.state.live_kill, shadow=limit_up_shadow, research=limit_up_research,
+        spa_root=spa_root)
+    register_app_board(app, limit_up_board, deps.market)
     register_app_data(app, assets=assets, catalog=catalog)
     register_app_research(app, workbench=workbench, backtests=backtests, paper=paper,
                           research_jobs=research_jobs, strategy_templates=strategy_templates,
@@ -200,9 +192,7 @@ def create_app(
                           backtest_rows=_backtest_rows)
 
     # 新前端（#662）：/app 下的单页应用，与旧页面并存
-    mount_webapp(app, webapp or WebappDeps(
-        live_kill=app.state.live_kill, shadow=limit_up_shadow, research=limit_up_research,
-        spa_root=spa_root))
+    mount_webapp(app, deps)
 
     def _require_session(session: date) -> None:
         if not service.has_session(session):
