@@ -19,6 +19,14 @@ export const hms = (d: Date) => { const p = marketParts(d); return `${pad(p.hour
 /** ECharts 时间轴标签：按市场时区显示 HH:MM（ECharts 默认按浏览器时区格式化）。 */
 export const axisHm = (v: number) => hms(new Date(v)).slice(0, 5)
 
+/** 契约时间（带时区）→ 市场时区的“YYYY-MM-DD HH:MM:SS”；缺失或解析失败为“未知”。 */
+export function dateTime(iso: string | null | undefined): string {
+  const d = iso ? new Date(iso) : null
+  if (!d || Number.isNaN(d.getTime())) return '未知'
+  const p = marketParts(d)
+  return `${p.year}-${pad(p.month)}-${pad(p.day)} ${pad(p.hour)}:${pad(p.minute)}:${pad(p.second)}`
+}
+
 const WEEK = '日一二三四五六'
 export const dayLabel = (d: Date) => { const p = marketParts(d); return `${p.year}-${pad(p.month)}-${pad(p.day)} 周${WEEK[p.weekday]}` }
 

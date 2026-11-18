@@ -1,133 +1,161 @@
 {
- "enabled": true,
- "report": true,
- "name": "d3e195d9bd63499b",
- "strategy_id": "b3cc572a1afb4df79f6245c79187a512",
- "job": {
-  "id": "d3e195d9bd63499b",
-  "status": "succeeded",
-  "config": {
-   "start": "2024-01-02",
-   "end": "2024-01-05",
-   "cash": 100000,
-   "params": {
-    "window": 20
-   },
-   "entry_fill": "continuous"
-  }
- },
- "summary": {
-  "name": "d3e195d9bd63499b",
-  "run_id": "r1",
-  "strategy": "Demo",
-  "start": "2024-01-02",
-  "end": "2024-01-05",
-  "initial_value": 100000.0,
-  "total_value": 99000.0,
-  "cumulative_return": -0.01,
-  "buys": 1,
-  "sells": 1,
-  "rejects": 1,
-  "closed_lots": 1,
-  "gate_allowed": 0,
-  "gate_rejected": 0,
-  "cost_model": "qsys 实盘档位",
-  "generated_at": "2026-11-18T12:38:07",
-  "params": {},
-  "entry_fill": "",
-  "source": "cli",
-  "return_pct": -1.0
- },
- "metrics": {
-  "max_drawdown": -0.2,
-  "benchmark_return": 0.1
- },
- "series": [
-  {
-   "date": "2024-01-02",
-   "strategy": 0.0,
-   "benchmark": 0.0,
-   "excess": 0.0,
-   "drawdown": 0.0
+  "schema_version": 1,
+  "enabled": true,
+  "report": true,
+  "name": "1811de075c414e1c",
+  "strategy_id": "eee2b4af4a8548428bfd68dc9bda1aca",
+  "job": {
+    "id": "1811de075c414e1c",
+    "strategy_name": "首板打板",
+    "status": "succeeded",
+    "progress": 0,
+    "total": 0,
+    "percent": 0,
+    "current_session": null,
+    "error": null,
+    "config": {
+      "start": "2024-01-02",
+      "end": "2024-01-05",
+      "cash": 100000,
+      "params": {
+        "window": 20
+      },
+      "entry_fill": "continuous"
+    }
   },
-  {
-   "date": "2024-01-03",
-   "strategy": 0.10000000000000009,
-   "benchmark": 0.010000000000000009,
-   "excess": 0.09000000000000008,
-   "drawdown": 0.0
+  "summary": {
+    "name": "1811de075c414e1c",
+    "run_id": "r1",
+    "strategy": "Demo",
+    "start": "2024-01-02",
+    "end": "2024-01-05",
+    "initial_value": 100000.0,
+    "total_value": 99000.0,
+    "cumulative_return": -0.01,
+    "buys": 1,
+    "sells": 1,
+    "rejects": 1,
+    "closed_lots": 1,
+    "cost_model": "qsys 实盘档位",
+    "entry_fill": null,
+    "params": {},
+    "generated_at": null,
+    "source": "cli"
   },
-  {
-   "date": "2024-01-04",
-   "strategy": -0.12,
-   "benchmark": null,
-   "excess": null,
-   "drawdown": -0.19999999999999996
+  "metrics": {
+    "max_drawdown": -0.2,
+    "benchmark_return": 0.1
   },
-  {
-   "date": "2024-01-05",
-   "strategy": -0.010000000000000009,
-   "benchmark": 0.020000000000000018,
-   "excess": -0.030000000000000027,
-   "drawdown": -0.09999999999999998
-  }
- ],
- "episodes": [
-  {
-   "peak_date": "2024-01-03",
-   "trough_date": "2024-01-04",
-   "recovery_date": null,
-   "depth": -0.19999999999999996
-  }
- ],
- "monthly": [
-  {
-   "month": "2024-01",
-   "return": -0.01
-  }
- ],
- "fills": [
-  {
-   "filled_at": "2024-01-03T09:31:00",
-   "stock": "600000.XSHG",
-   "symbol": "600000.SH",
-   "side": "buy",
-   "qty": 100,
-   "price": 10.0,
-   "fee": 5.0,
-   "notional": 1000.0
-  },
-  {
-   "filled_at": "2024-01-05T14:55:00",
-   "stock": "600000.XSHG",
-   "symbol": "600000.SH",
-   "side": "sell",
-   "qty": 100,
-   "price": 9.9,
-   "fee": 5.0,
-   "notional": 990.0
-  }
- ],
- "fills_total": 2,
- "rejects": [
-  {
-   "date": "2024-01-04",
-   "symbol": "600001.SH",
-   "reason": "涨停"
-  }
- ],
- "files": [
-  "benchmark_nav.csv",
-  "config.json",
-  "daily_nav.csv",
-  "fills.csv",
-  "metrics.csv",
-  "monthly_returns.csv",
-  "rejects.csv",
-  "run_status.csv"
- ],
- "warnings": [
-  "下单被拒 1 笔（详见 rejects.csv）",
-  "1 个交易日缺基准，图上断开"
- ]
+  "series": [
+    {
+      "date": "2024-01-02",
+      "strategy": 0.0,
+      "benchmark": 0.0,
+      "excess": 0.0,
+      "drawdown": 0.0
+    },
+    {
+      "date": "2024-01-03",
+      "strategy": 0.10000000000000009,
+      "benchmark": 0.010000000000000009,
+      "excess": 0.09000000000000008,
+      "drawdown": 0.0
+    },
+    {
+      "date": "2024-01-04",
+      "strategy": -0.12,
+      "benchmark": null,
+      "excess": null,
+      "drawdown": -0.19999999999999996
+    },
+    {
+      "date": "2024-01-05",
+      "strategy": -0.010000000000000009,
+      "benchmark": 0.020000000000000018,
+      "excess": -0.030000000000000027,
+      "drawdown": -0.09999999999999998
+    }
+  ],
+  "episodes": [
+    {
+      "peak_date": "2024-01-03",
+      "trough_date": "2024-01-04",
+      "recovery_date": null,
+      "depth": -0.19999999999999996
+    }
+  ],
+  "monthly": [
+    {
+      "month": "2024-01",
+      "value": -0.01
+    }
+  ],
+  "fills": [
+    {
+      "filled_at": "2024-01-03T09:31:00",
+      "stock": "600000.XSHG",
+      "symbol": "600000.SH",
+      "side": "buy",
+      "qty": 100,
+      "price": 10.0,
+      "fee": 5.0,
+      "notional": 1000.0
+    },
+    {
+      "filled_at": "2024-01-05T14:55:00",
+      "stock": "600000.XSHG",
+      "symbol": "600000.SH",
+      "side": "sell",
+      "qty": 100,
+      "price": 9.9,
+      "fee": 5.0,
+      "notional": 990.0
+    }
+  ],
+  "fills_total": 2,
+  "rejects": [
+    {
+      "date": "2024-01-04",
+      "symbol": "600001.SH",
+      "reason": "涨停"
+    }
+  ],
+  "files": [
+    {
+      "name": "benchmark_nav.csv",
+      "size": 81
+    },
+    {
+      "name": "config.json",
+      "size": 47
+    },
+    {
+      "name": "daily_nav.csv",
+      "size": 167
+    },
+    {
+      "name": "fills.csv",
+      "size": 182
+    },
+    {
+      "name": "metrics.csv",
+      "size": 52
+    },
+    {
+      "name": "monthly_returns.csv",
+      "size": 27
+    },
+    {
+      "name": "rejects.csv",
+      "size": 47
+    },
+    {
+      "name": "run_status.csv",
+      "size": 225
+    }
+  ],
+  "warnings": [
+    "下单被拒 1 笔（详见 rejects.csv）",
+    "1 个交易日缺基准，图上断开"
+  ]
 }

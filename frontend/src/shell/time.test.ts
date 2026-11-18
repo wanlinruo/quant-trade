@@ -29,3 +29,11 @@ test('times are shown in Asia/Shanghai regardless of browser timezone', () => {
   expect(dayLabel(d)).toBe('2026-11-19 周四')
   expect(phaseOf(new Date('2026-11-19T02:00:00Z'))).toBe('盘中') // 上海 10:00 周四
 })
+
+test('dateTime formats in market time zone and reports unknown', async () => {
+  const { dateTime } = await import('./time')
+  expect(dateTime('2026-11-18T03:04:05Z')).toBe('2026-11-18 11:04:05')
+  expect(dateTime('2026-11-18T11:04:05+08:00')).toBe('2026-11-18 11:04:05')
+  expect(dateTime(null)).toBe('未知')
+  expect(dateTime('bad')).toBe('未知')
+})

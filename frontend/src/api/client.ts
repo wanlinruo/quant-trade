@@ -23,10 +23,8 @@ async function request<T>(method: string, path: string, body: unknown, signal?: 
   if (!r.ok) {
     let err: ApiError = new ApiError(`http_${r.status}`, `接口返回 ${r.status}`, r.status)
     try {
-      const j = (await r.json()) as Partial<ErrorBody> & { detail?: unknown }
+      const j = (await r.json()) as Partial<ErrorBody>
       if (j?.error?.message) err = new ApiError(j.error.code, j.error.message, r.status)
-      // 旧接口（合入时删除）仍用 FastAPI 默认的 {detail}
-      else if (typeof j?.detail === 'string') err = new ApiError(`http_${r.status}`, j.detail, r.status)
     } catch { /* 非 JSON 错误体 */ }
     throw err
   }

@@ -1,8 +1,9 @@
 import { Select } from 'antd'
 import type { BacktestRow } from '../../api/research'
+import { signedPct } from '../../page/format'
 
 const STATUS: Record<string, string> = { queued: '排队中', running: '运行中', succeeded: '已完成', failed: '失败', cancelled: '已取消', interrupted: '已中断' }
-const pts = (v: number | null) => (v === null ? '' : ` · ${v > 0 ? '+' : ''}${v.toFixed(2)}%`)
+const pts = (v: number | null) => { const t = signedPct(v); return t === null ? '' : ` · ${t}` }
 
 /** 回测选择器：每次回测一份确定结果；可按策略名、ID、区间搜索。 */
 export function BacktestPicker({ rows, value, onChange }: { rows: BacktestRow[]; value: string | null; onChange(id: string): void }) {
@@ -11,7 +12,7 @@ export function BacktestPicker({ rows, value, onChange }: { rows: BacktestRow[];
       optionFilterProp="label"
       options={rows.map((r) => ({
         value: r.id,
-        label: `${r.strategy} · ${r.start} ~ ${r.end} · ${STATUS[r.status] ?? r.status}${r.status === 'running' && r.total ? ` ${r.progress}/${r.total}` : ''}${pts(r.return_pct)} · ${r.id.slice(0, 8)}`,
+        label: `${r.strategy} · ${r.start} ~ ${r.end} · ${STATUS[r.status] ?? r.status}${r.status === 'running' && r.total ? ` ${r.progress}/${r.total}` : ''}${pts(r.total_return)} · ${r.id.slice(0, 8)}`,
       }))} />
   )
 }

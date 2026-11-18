@@ -91,10 +91,10 @@ for (const width of [390, 1280, 1600]) {
 
   test(`strategies and backtest pages have no horizontal overflow at ${width}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
-    await page.goto('/app/strategies?id=b3cc572a1afb4df79f6245c79187a512')
+    await page.goto('/app/strategies?id=b5715c156ffc446a91c7c5fae70ff134')
     await expect(page.getByLabel('策略源码')).toBeVisible()
     await noOverflow(page)
-    await page.goto('/app/backtest?id=d3e195d9bd63499b')
+    await page.goto('/app/backtest?id=big')
     await expect(page.getByText('跑赢基准了吗？')).toBeVisible()
     await expect(page.locator('canvas').first()).toBeVisible()
     await noOverflow(page)

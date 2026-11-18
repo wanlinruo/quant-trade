@@ -60,7 +60,7 @@ test('underwater chart marks the 5 deepest episodes and lists them', async () =>
 })
 
 test('monthly heatmap lays out years by months', async () => {
-  detail = () => { const d = fx.backtest() as Report; d.monthly = [{ month: '2023-12', return: 0.02 }, { month: '2024-01', return: -0.01 }, { month: '2024-03', return: null }]; return d }
+  detail = () => { const d = fx.backtest() as Report; d.monthly = [{ month: '2023-12', value: 0.02 }, { month: '2024-01', value: -0.01 }, { month: '2024-03', value: null }]; return d }
   mockApi()
   render(<BacktestPage />)
   const grid = await screen.findByTestId('monthly-heatmap')
@@ -102,4 +102,22 @@ test('picker defaults to latest report and writes id to url', async () => {
   await screen.findByText(/下单被拒 1 笔/)
   expect(location.search).toContain(`id=${REPORT_ID}`)
   expect(history.length).toBe(depth) // 默认选中只替换当前记录，不制造后退陷阱
+})
+
+test('report download links use new route', async () => {
+  mockApi()
+  render(<BacktestPage />)
+  const link = await screen.findByRole('link', { name: 'fills.csv' })
+  expect(link.getAttribute("href")).toBe(`/api/app/backtests/${(fx.backtest() as Report).name}/files/fills.csv`)
+})
+
+test('null summary shows unknown, not zero', async () => {
+  detail = () => { const d = fx.backtest() as Report; d.summary = { ...d.summary, cumulative_return: null, buys: null, sells: null, rejects: null }; return d }
+  mockApi()
+  render(<BacktestPage />)
+  expect(await screen.findByText('被拒')).toBeInTheDocument()
+  const kpi = (k: string) => screen.getByText(k).parentElement!.textContent
+  expect(kpi('被拒')).toContain('未知')
+  expect(kpi('买 / 卖')).toContain('未知 / 未知')
+  expect(kpi('被拒')).not.toContain('0')
 })

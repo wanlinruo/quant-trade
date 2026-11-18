@@ -6,11 +6,12 @@ import { Hero } from '../../page/Hero'
 import { Panel } from '../../page/Panel'
 import { usePolling } from '../../page/usePolling'
 import { setSearch, useSearch } from '../../shell/router'
+import { dateTime } from '../../shell/time'
 import { usePalette } from '../../theme/context'
 import { MONO } from '../../ui/Num'
 import { StageSteps } from './StageSteps'
 import { StrategyDetail } from './StrategyDetail'
-import { pctPoints } from './format'
+import { signedPct } from '../../page/format'
 
 const BLANK = 'from qsys.strategy.base import Strategy\n\nPARAMETERS = {}\n\n\nclass MyStrategy(Strategy):\n    pass\n'
 
@@ -62,9 +63,9 @@ export function StrategiesPage() {
             { title: '版本', dataIndex: 'version_id', render: (v: string) => <span style={{ fontFamily: MONO }}>{v.slice(0, 8)}</span> },
             { title: '推进位置', key: 's', render: (_, r) => <span title={r.stage_detail}><StageSteps stage={r.stage} coreLabel={d.core_label} /></span> },
             { title: '最近回测 收益 / 最大回撤', key: 'b', render: (_, r) => r.latest_backtest
-              ? <span style={{ fontFamily: MONO }}>{pctPoints(r.latest_backtest.return_pct) ?? '缺失'} / {pctPoints(r.latest_backtest.max_drawdown_pct) ?? '缺失'}</span>
+              ? <span style={{ fontFamily: MONO }}>{signedPct(r.latest_backtest.total_return) ?? '缺失'} / {signedPct(r.latest_backtest.max_drawdown) ?? '缺失'}</span>
               : <span style={{ color: p.muted }}>无回测</span> },
-            { title: '更新时间', dataIndex: 'updated_at', render: (v: string) => v.replace('T', ' ') },
+            { title: '更新时间', dataIndex: 'updated_at', render: (v: string | null) => dateTime(v) },
           ]} />
       </Panel>
       {id && <StrategyDetail key={id} id={id} onChanged={poll.refresh} />}

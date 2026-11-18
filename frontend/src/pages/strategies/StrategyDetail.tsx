@@ -7,7 +7,7 @@ import { goTo, setSearch } from '../../shell/router'
 import { usePalette } from '../../theme/context'
 import { MONO } from '../../ui/Num'
 import { NewBacktestDialog } from './NewBacktestDialog'
-import { pctPoints } from './format'
+import { signedPct } from '../../page/format'
 
 const BT_STATUS: Record<string, string> = { queued: '排队中', running: '运行中', succeeded: '已完成', failed: '失败', cancelled: '已取消', interrupted: '已中断' }
 
@@ -83,8 +83,8 @@ export function StrategyDetail({ id, onChanged }: { id: string; onChanged(): voi
               { title: '回测', dataIndex: 'id', render: (v: string) => <span style={{ fontFamily: MONO }}>{v.slice(0, 8)}</span> },
               { title: '区间', key: 'r', render: (_, r) => `${r.start} ~ ${r.end}` },
               { title: '状态', dataIndex: 'status', render: (v: string) => BT_STATUS[v] ?? v },
-              { title: '收益', dataIndex: 'return_pct', render: (v) => pctPoints(v) ?? '—' },
-              { title: '最大回撤', dataIndex: 'max_drawdown_pct', render: (v) => pctPoints(v) ?? '—' },
+              { title: '收益', dataIndex: 'total_return', render: (v) => signedPct(v) ?? '—' },
+              { title: '最大回撤', dataIndex: 'max_drawdown', render: (v) => signedPct(v) ?? '—' },
             ]} />
         )}
         <div style={{ fontSize: 12, color: p.muted, marginTop: 6 }}>版本 {d.versions.length} 个：{d.versions.map((v) => v.id.slice(0, 8)).join('、') || '—'}</div>

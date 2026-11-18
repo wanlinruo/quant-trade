@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { Alert, Collapse, Table } from 'antd'
-import type { BacktestDetail } from '../../api/research'
+import { backtestFileUrl, type BacktestDetail } from '../../api/research'
 import { EChart, type EChartsOption } from '../../page/EChart'
 import { Hero } from '../../page/Hero'
 import { Panel } from '../../page/Panel'
@@ -12,7 +12,7 @@ import { MonthlyHeatmap } from './MonthlyHeatmap'
 type Report = Extract<BacktestDetail, { report: true }>
 const ENTRY: Record<string, string> = { continuous: '连续竞价判定（09:31 分钟线）', open: '开盘价成交（原口径）' }
 const num = (v: unknown, digits: number) => (typeof v === 'number' && Number.isFinite(v) ? v.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits }) : String(v ?? ''))
-const pctPts = (v: number | null | undefined) => (v === null || v === undefined ? null : `${v > 0 ? '+' : ''}${v.toFixed(2)}%`)
+const known = (v: number | null) => (v === null ? '未知' : v)
 
 export function BacktestReport({ d }: { d: Report }) {
   const p = usePalette()
@@ -50,12 +50,12 @@ export function BacktestReport({ d }: { d: Report }) {
       <Hero s={d.warnings.length ? 'warn' : 'ok'} statusText={d.warnings.length ? `${d.warnings.length} 条警告` : '已完成'}
         title={`${s.strategy} · ${s.start} ~ ${s.end}`} subtitle={`回测 ${d.name}`}
         kpis={[
-          { k: '区间收益', v: <Value v={pctPts(s.return_pct)} why="报告没有累计收益" /> },
+          { k: '区间收益', v: <Value v={signedPct(s.cumulative_return)} why="报告没有累计收益" /> },
           { k: '基准收益', v: <Value v={signedPct(d.metrics.benchmark_return)} why="报告没有基准收益" /> },
           { k: '超额（期末）', v: <Value v={signedPct(last?.excess ?? null)} why="期末缺基准，无法计算超额" /> },
           { k: '最大回撤', v: <Value v={signedPct(d.metrics.max_drawdown)} why="报告没有最大回撤" /> },
-          { k: '买 / 卖', v: `${s.buys} / ${s.sells}` },
-          { k: '被拒', v: s.rejects },
+          { k: '买 / 卖', v: `${known(s.buys)} / ${known(s.sells)}` },
+          { k: '被拒', v: known(s.rejects) },
           { k: '费用模型', v: s.cost_model || '未知' },
           { k: '入场口径', v: ENTRY[entry] ?? '未记录' },
         ]} />
@@ -96,7 +96,7 @@ export function BacktestReport({ d }: { d: Report }) {
       </Panel>
       <Panel title="报告文件">
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px', fontSize: 12 }}>
-          {d.files.map((f) => <a key={f} href={`/backtests/${encodeURIComponent(d.name)}/file/${encodeURIComponent(f)}`}>{f}</a>)}
+          {d.files.map((f) => <a key={f.name} href={backtestFileUrl(d.name, f.name)}>{f.name}</a>)}
         </div>
       </Panel>
     </>

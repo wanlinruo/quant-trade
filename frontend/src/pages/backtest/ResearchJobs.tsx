@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
+import { dateTime } from '../../shell/time'
 import { Button, Input, InputNumber, Modal, Result, Space, Table, Tooltip } from 'antd'
-import { cancelResearchJob, fetchResearchJobs, resubmitResearchJob, submitResearchJob, type ResearchJob, type ResearchJobList } from '../../api/research'
+import { cancelResearchJob, fetchResearchJobs, researchArtifactUrl, resubmitResearchJob, submitResearchJob, type ResearchJob, type ResearchJobList } from '../../api/research'
 import { useConfirmAction } from '../../page/ConfirmAction'
 import { Freshness } from '../../page/Freshness'
 import { Hero } from '../../page/Hero'
@@ -76,7 +77,7 @@ export function ResearchJobs() {
               <div>参数：<code style={{ fontFamily: MONO }}>{JSON.stringify(j.parameters)}</code></div>
               <div>超时：{j.timeout_seconds ?? '未知'} 秒 · 快照内容哈希 <Hash v={j.snapshot_content_sha256} /></div>
               <div>产物：{j.artifacts.length === 0 ? '尚无可审计产物' : j.artifacts.map((a) => (
-                <a key={a.path} style={{ marginRight: 10 }} href={`/research-jobs/${encodeURIComponent(j.id)}/file/${a.path.split('/').map(encodeURIComponent).join('/')}`}>{a.path}（{a.bytes} 字节）</a>
+                <a key={a.path} style={{ marginRight: 10 }} href={researchArtifactUrl(j.id, a.path)}>{a.path}（{a.bytes} 字节）</a>
               ))}</div>
             </div>
           ) }}
@@ -85,7 +86,7 @@ export function ResearchJobs() {
             { title: '任务', dataIndex: 'task' },
             { title: '状态', dataIndex: 'state', render: (s: string) => { const [st, text] = STATE[s] ?? ['idle', s]; return <StatusTag s={st} text={text} /> } },
             { title: '进度', key: 'p', render: () => <Missing why="研究任务运行器不报告进度" /> },
-            { title: '提交时间', dataIndex: 'created_at', render: (v: string) => (v ?? '').slice(0, 19).replace('T', ' ') },
+            { title: '提交时间', dataIndex: 'created_at', render: (v: string | null) => dateTime(v) },
             { title: '代码', dataIndex: 'code_sha', render: (v: string) => <Hash v={v} /> },
             { title: '快照', dataIndex: 'snapshot_id' },
             { title: '操作', key: 'a', render: (_, j) => !d.submission_enabled ? null : (

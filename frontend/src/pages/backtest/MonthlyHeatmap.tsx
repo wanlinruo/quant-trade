@@ -1,12 +1,13 @@
+import type { MonthReturn } from '../../api/research'
 import { signedPct } from '../../page/format'
 import { usePalette } from '../../theme/context'
 
 /** 月度收益热力图：行为年、列为 1–12 月；空月份留空，null 显示“缺失”。涨红跌绿。 */
-export function MonthlyHeatmap({ months }: { months: { month: string; return: number | null }[] }) {
+export function MonthlyHeatmap({ months }: { months: MonthReturn[] }) {
   const p = usePalette()
-  const byMonth = new Map(months.map((m) => [m.month, m.return]))
+  const byMonth = new Map(months.map((m) => [m.month, m.value]))
   const years = [...new Set(months.map((m) => m.month.slice(0, 4)))].sort()
-  const max = Math.max(0.0001, ...months.map((m) => Math.abs(m.return ?? 0)))
+  const max = Math.max(0.0001, ...months.map((m) => Math.abs(m.value ?? 0)))
   const cell = (key: string) => {
     if (!byMonth.has(key)) return { text: '', bg: 'transparent' }
     const v = byMonth.get(key)!
