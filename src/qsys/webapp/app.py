@@ -7,11 +7,12 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from qsys.webapp.errors import install_error_handlers
 from qsys.webapp.config import WebConfig
+from qsys.webapp.legacy import mount_legacy_redirects
 from qsys.webapp.spa import SPA_DIST, mount_spa
 
 NO_STORE = {"Cache-Control": "no-store"}
@@ -62,10 +63,7 @@ def create_app(deps: WebappDeps, config: WebConfig | None = None) -> FastAPI:
     def healthz() -> dict[str, str]:
         return {"status": "ok"}
 
-    @app.get("/", include_in_schema=False)
-    def root() -> RedirectResponse:
-        return RedirectResponse("/app/today", status_code=308)
-
+    mount_legacy_redirects(app)
     mount_webapp(app, deps)
     return app
 
