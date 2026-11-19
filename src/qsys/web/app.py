@@ -35,7 +35,7 @@ from qsys.research.limit_up_shadow_store import LimitUpShadowReader, LimitUpShad
 from qsys.research.limit_up_research_store import LimitUpResearchReader, LimitUpResearchView
 from qsys.web.paper_chart import history_series, intraday_series
 from qsys.research.job_console import ResearchJobConsole
-from qsys.web.service_views import ServiceConsole
+from qsys.ops.service_console import ServiceConsole
 from qsys.webapp.app import WebappDeps, mount_webapp
 from qsys.web.svg import line_chart, multi_line_chart
 from qsys.web.views import MonitorService

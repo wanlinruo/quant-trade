@@ -12,7 +12,7 @@ from qsys.ops.journal import SessionJournal
 from qsys.web.app import create_app
 from qsys.web.catalog_views import CatalogService
 from qsys.web.config import WebConfig
-from qsys.web.service_views import ServiceConsole, windows_task_show
+from qsys.ops.service_console import ServiceConsole, windows_task_show
 from qsys.web.views import MonitorService
 
 NOW = datetime(2026, 9, 17, 20, 0)  # 周四
@@ -282,7 +282,7 @@ def test_windows_task_query_uses_read_only_encoded_powershell(monkeypatch, tmp_p
             b'\xd5\xfd\xd4\xda',  # PowerShell stderr 可以不是 UTF-8
         )
 
-    monkeypatch.setattr("qsys.web.service_views.subprocess.run", fake_run)
+    monkeypatch.setattr("qsys.ops.service_console.subprocess.run", fake_run)
     assert windows_task_show("qsys-watchdog", host="win.example", key=tmp_path / "key") == {
         "State": "Ready", "LastTaskResult": 0, "LastRunTime": "2026-09-26T23:19:00",
     }
@@ -505,7 +505,7 @@ def test_the_windows_task_probe_reads_localised_schtasks_output():
 
     看门狗在时刻轴上连续显示未知。改读 schtasks，按列位置取值，不认标题文字。
     """
-    from qsys.web.service_views import parse_schtasks_csv
+    from qsys.ops.service_console import parse_schtasks_csv
 
     got = parse_schtasks_csv(ZH_TASK_CSV)
 
@@ -514,7 +514,7 @@ def test_the_windows_task_probe_reads_localised_schtasks_output():
 
 
 def test_an_english_disabled_task_and_a_failure_are_recognised():
-    from qsys.web.service_views import parse_schtasks_csv
+    from qsys.ops.service_console import parse_schtasks_csv
 
     english = (
         '"HostName","TaskName","Next Run Time","Status","Logon Mode",'
@@ -527,7 +527,7 @@ def test_an_english_disabled_task_and_a_failure_are_recognised():
 
 
 def test_unparsable_output_reports_nothing_rather_than_a_state():
-    from qsys.web.service_views import parse_schtasks_csv
+    from qsys.ops.service_console import parse_schtasks_csv
 
     assert parse_schtasks_csv("") == {}
     assert parse_schtasks_csv("错误: 系统找不到指定的文件。") == {}
@@ -541,7 +541,7 @@ def test_the_windows_probe_allows_for_a_busy_two_core_box():
 
     给 8 秒会在机器忙起来时超时，把健康的看门狗报成「问不出来」。
     """
-    from qsys.web.service_views import WINDOWS_TASK_TIMEOUT
+    from qsys.ops.service_console import WINDOWS_TASK_TIMEOUT
 
     assert WINDOWS_TASK_TIMEOUT >= 15.0
 

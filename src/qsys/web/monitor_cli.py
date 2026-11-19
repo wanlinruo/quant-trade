@@ -33,7 +33,7 @@ from qsys.research.limit_up_research_store import (
     HistoricalSecurityNameLookup,
     LimitUpResearchReader,
 )
-from qsys.web.service_views import ServiceConsole
+from qsys.ops.service_console import ServiceConsole
 from qsys.research.job_console import ResearchJobConsole, ResearchSubmissionProfile
 from qsys.web.views import MonitorService
 from qsys.backtest.workbench import WorkbenchStore
