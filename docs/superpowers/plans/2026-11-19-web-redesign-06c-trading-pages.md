@@ -41,7 +41,7 @@
 - [x] `monitor_cli` 显式传入只读事实源、风险配置和核对记录路径；新增参数保持默认兼容。
 - [x] 后端专项、前端单测、typecheck、build、Playwright 与全量 pytest 通过。
 - [x] 本地只读预览冒烟；不得连接真实委托流或执行实盘动作。
-- [ ] 推送 `feat/web-redesign` 并在 #662 留完成记录；不合入 `test/main`，不发布生产。
+- [x] 推送 `feat/web-redesign` 并在 #662 留完成记录；不合入 `test/main`，不发布生产。
 
 ## Review Focus
 
