@@ -451,12 +451,11 @@ def test_backtest_worker_component_is_separate_from_web_and_write_bounded() -> N
 
     assert worker["entrypoint"] == {
         "command": "qsys-backtest-worker",
-        "target": "qsys.web.backtest_worker_cli:main",
+        "target": "qsys.backtest.worker_cli:main",
     }
     assert worker["scan_roots"] == [
         "src/qsys/backtest", "src/qsys/core", "src/qsys/data",
-        "src/qsys/markets", "src/qsys/strategy", "src/qsys/web/workbench.py",
-        "src/qsys/web/backtest_worker_cli.py",
+        "src/qsys/markets", "src/qsys/strategy",
     ]
     assert worker["release_root"] == "/opt/qsys/components/backtest-worker/releases"
     assert worker["current"] == "/opt/qsys/components/backtest-worker/current"

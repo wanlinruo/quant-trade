@@ -46,10 +46,10 @@ def _repo(tmp_path: Path) -> tuple[Path, str]:
         (repo / f"src/qsys/{package}/example.py").write_text(
             f"PACKAGE = {package!r}\n", encoding="utf-8",
         )
-    (repo / "src/qsys/web/workbench.py").write_text(
+    (repo / "src/qsys/backtest/workbench.py").write_text(
         "WORKBENCH = 1\n", encoding="utf-8",
     )
-    (repo / "src/qsys/web/backtest_worker_cli.py").write_text(
+    (repo / "src/qsys/backtest/worker_cli.py").write_text(
         "WORKER_CLI = 1\n", encoding="utf-8",
     )
     (repo / "scripts").mkdir()
@@ -219,7 +219,7 @@ def test_backtest_worker_release_binds_worker_dependencies(tmp_path: Path) -> No
     wheel = _wheel(
         tmp_path / "dist-worker" / "qsys-0.1.0-py3-none-any.whl",
         command="qsys-backtest-worker",
-        entrypoint="qsys.web.backtest_worker_cli:main",
+        entrypoint="qsys.backtest.worker_cli:main",
     )
     release = tmp_path / "worker-release"
 
@@ -230,14 +230,14 @@ def test_backtest_worker_release_binds_worker_dependencies(tmp_path: Path) -> No
 
     assert value["entrypoint"] == {
         "command": "qsys-backtest-worker",
-        "target": "qsys.web.backtest_worker_cli:main",
+        "target": "qsys.backtest.worker_cli:main",
     }
     paths = {record["path"] for record in value["scan_files"]}
     assert {path.split("/")[2] for path in paths} == {
-        "backtest", "core", "data", "markets", "strategy", "web",
+        "backtest", "core", "data", "markets", "strategy",
     }
-    assert "src/qsys/web/workbench.py" in paths
-    assert "src/qsys/web/backtest_worker_cli.py" in paths
+    assert "src/qsys/backtest/workbench.py" in paths
+    assert "src/qsys/backtest/worker_cli.py" in paths
     assert "src/qsys/web/example.py" not in paths
     assert verify(repo, sha, "backtest-worker", release) == value
 
