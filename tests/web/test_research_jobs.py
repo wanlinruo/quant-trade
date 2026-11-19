@@ -11,7 +11,7 @@ from qsys.ops.journal import SessionJournal
 from qsys.research.jobs import JobLimits
 from qsys.web.app import create_app
 from qsys.web.config import WebConfig
-from qsys.web.research_jobs import ResearchJobConsole, ResearchSubmissionProfile
+from qsys.research.job_console import ResearchJobConsole, ResearchSubmissionProfile
 from qsys.web.views import MonitorService
 
 

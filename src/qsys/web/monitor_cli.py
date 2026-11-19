@@ -34,7 +34,7 @@ from qsys.web.limit_up_research import (
     LimitUpResearchReader,
 )
 from qsys.web.service_views import ServiceConsole
-from qsys.web.research_jobs import ResearchJobConsole, ResearchSubmissionProfile
+from qsys.research.job_console import ResearchJobConsole, ResearchSubmissionProfile
 from qsys.web.views import MonitorService
 from qsys.backtest.workbench import WorkbenchStore
 from qsys.research.jobs import JobLimits

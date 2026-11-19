@@ -11,7 +11,7 @@ import pytest
 from qsys.data.snapshots import create_snapshot
 from qsys.research import monthly_submit_cli, monthly_tasks, task_worker
 from qsys.research.jobs import JobLimits, JobRequest, JobStore
-from qsys.web.research_jobs import ResearchSubmissionProfile
+from qsys.research.job_console import ResearchSubmissionProfile
 
 
 @pytest.fixture

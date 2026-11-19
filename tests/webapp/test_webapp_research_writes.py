@@ -132,7 +132,7 @@ def test_resubmit_rejected_when_submission_disabled_or_job_active(env, tmp_path)
     active = c.post("/api/app/research-jobs", json={"task": "verify-snapshot", "parameters": {}}).json()["id"]
     assert c.post(f"/api/app/research-jobs/{active}/resubmit").status_code == 409
     assert c.post("/api/app/research-jobs/nope/resubmit").status_code == 404
-    from qsys.web.research_jobs import ResearchJobConsole
+    from qsys.research.job_console import ResearchJobConsole
     env.research = ResearchJobConsole(env.research.root)
     ro = env.client()
     assert ro.get("/api/app/research-jobs").json()["submission_enabled"] is False
