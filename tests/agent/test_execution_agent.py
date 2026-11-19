@@ -420,3 +420,58 @@ def test_a_core_heartbeat_gap_over_30_seconds_still_fails_closed(tmp_path):
     assert agent.enforce_core_heartbeat() is False
     assert (tmp_path / "K").read_text() == "core heartbeat timeout"
     assert adapter.cancelled is True
+
+
+# ---- 执行器状态进心跳（#662 计划 03b）----
+
+def _agent_with(adapter):
+    transport = MemoryTransport()
+    return ExecutionAgent(transport, adapter, STREAMS), transport
+
+
+def _beat(transport):
+    return Heartbeat.model_validate_json(transport.get_key(f"{STREAMS.heartbeat}:agent"))
+
+
+def test_beat_carries_executor_status():
+    from qsys.agent.qmt.adapter import ExecutorStatus
+
+    class WithExecutor(FakeAdapter):
+        def executor_status(self):
+            return ExecutorStatus(epoch="E9", heartbeat_at=datetime(2026, 11, 18, 10, 0, 1),
+                                  started_at=datetime(2026, 11, 18, 9, 0), latest_seq=42, ring_full=False)
+    agent, t = _agent_with(WithExecutor())
+    agent.beat()
+    b = _beat(t)
+    assert (b.executor_epoch, b.executor_latest_seq, b.executor_ring_full) == ("E9", 42, False)
+    assert b.executor_heartbeat_at == datetime(2026, 11, 18, 10, 0, 1)
+    assert b.executor_started_at == datetime(2026, 11, 18, 9, 0)
+
+
+def test_beat_without_executor_capability_leaves_fields_none():
+    agent, t = _agent_with(FakeAdapter())
+    agent.beat()
+    b = _beat(t)
+    assert (b.executor_epoch, b.executor_heartbeat_at, b.executor_started_at, b.executor_latest_seq,
+            b.executor_ring_full) == (None, None, None, None, None)
+
+
+def test_executor_status_failure_never_blocks_heartbeat():
+    class Broken(FakeAdapter):
+        def executor_status(self):
+            raise OSError("mapping gone")
+    agent, t = _agent_with(Broken())
+    agent.beat()
+    b = _beat(t)
+    assert b.source == "agent" and b.executor_epoch is None and b.executor_heartbeat_at is None
+
+
+def test_old_reader_ignores_new_heartbeat_fields():
+    """N-1：未升级的 Linux 读者（旧 Heartbeat 模型）能解析带执行器字段的新心跳。"""
+    from qsys.live.messages import Message
+    fields = {k: (v.annotation, v) for k, v in Heartbeat.model_fields.items() if not k.startswith("executor_")}
+    from pydantic import create_model
+    OldHeartbeat = create_model("OldHeartbeat", __base__=Message, **fields)
+    new = Heartbeat(source="agent", at=datetime(2026, 11, 18, 10, 0), executor_epoch="E1", executor_latest_seq=3)
+    old = OldHeartbeat.model_validate_json(new.model_dump_json())
+    assert old.source == "agent" and not hasattr(old, "executor_epoch")

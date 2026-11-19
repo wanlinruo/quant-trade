@@ -184,6 +184,13 @@ class Heartbeat(Message):
     # 买一或卖一价 > 0 的比例及对应快照时刻；未统计时为空，不得视为正常。
     order_book_ratio: float | None = Field(default=None, ge=0, le=1)
     order_book_at: datetime | None = None
+    # 执行网关（source=agent）上报 QMT 内置执行器状态（#662 计划 03b）。时刻按网关本机时钟，
+    # 与 at 同一时钟：读者以 at - executor_heartbeat_at 得执行器心跳年龄。读不到为 None（未知）。
+    executor_epoch: str | None = None
+    executor_heartbeat_at: datetime | None = None
+    executor_started_at: datetime | None = None
+    executor_latest_seq: int | None = None
+    executor_ring_full: bool | None = None
 
 
 class QuoteRequest(Message):
