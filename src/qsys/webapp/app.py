@@ -7,10 +7,11 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel
 
 from qsys.webapp.errors import install_error_handlers
+from qsys.webapp.config import WebConfig
 from qsys.webapp.spa import SPA_DIST, mount_spa
 
 NO_STORE = {"Cache-Control": "no-store"}
@@ -48,6 +49,25 @@ class WebappDeps:
     operations: Any | None = None    # queries.operations.OperationsQuery
     health: Any | None = None        # HealthStoreReader（06b 链路采样）
     spa_root: Path | None = None
+
+
+def create_app(deps: WebappDeps, config: WebConfig | None = None) -> FastAPI:
+    """构造唯一的新 Web 应用，不装载旧模板或旧视图服务。"""
+    settings = config or WebConfig()
+    app = FastAPI(title=settings.title, docs_url=None, redoc_url=None)
+    app.state.live_kill = deps.live_kill
+    app.state.research_jobs_enabled = deps.research_jobs is not None
+
+    @app.get("/healthz")
+    def healthz() -> dict[str, str]:
+        return {"status": "ok"}
+
+    @app.get("/", include_in_schema=False)
+    def root() -> RedirectResponse:
+        return RedirectResponse("/app/today", status_code=308)
+
+    mount_webapp(app, deps)
+    return app
 
 
 def mount_webapp(app: FastAPI, deps: WebappDeps) -> None:

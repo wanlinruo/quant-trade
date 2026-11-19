@@ -9,10 +9,9 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from qsys.ops.journal import SessionJournal
-from qsys.web.app import create_app
-from qsys.web.config import WebConfig
-from qsys.web.views import MonitorService
+from qsys.webapp.app import WebappDeps, create_app
+from qsys.webapp.config import WebConfig
+from qsys.webapp.live_kill_status import LiveKillReader
 
 INDEX = b"<!doctype html><html><div id=root></div></html>"
 JS = b"console.log('app')"
@@ -38,11 +37,13 @@ def spa_tmp(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def client_factory(warehouse):
+def client_factory():
     def make(spa_root: Path) -> TestClient:
-        cfg = WebConfig()
-        service = MonitorService(SessionJournal(warehouse), config=cfg)
-        return TestClient(create_app(service, cfg, spa_root=spa_root))
+        deps = WebappDeps(
+            live_kill=LiveKillReader(None, None),
+            spa_root=spa_root,
+        )
+        return TestClient(create_app(deps, WebConfig()))
 
     return make
 
@@ -103,7 +104,7 @@ def test_only_get_and_head_allowed(spa_tmp, client_factory) -> None:
     assert c.post("/app/orders").status_code == 405
 
 
-def test_app_missing_build_returns_503_and_old_pages_still_work(tmp_path, client_factory) -> None:
+def test_app_missing_build_returns_503_but_health_still_works(tmp_path, client_factory) -> None:
     c = client_factory(tmp_path / "none")
     for url in ("/app", "/app/orders", "/app/assets/index-abc.js"):
         r = c.get(url)
@@ -111,6 +112,12 @@ def test_app_missing_build_returns_503_and_old_pages_still_work(tmp_path, client
         assert "前端构建产物缺失" in r.text
         assert r.headers["cache-control"] == "no-store"
     assert c.get("/healthz").status_code == 200
+
+
+def test_root_permanently_redirects_to_today(spa_tmp, client_factory) -> None:
+    response = client_factory(spa_tmp).get("/", follow_redirects=False)
+    assert response.status_code == 308
+    assert response.headers["location"] == "/app/today"
 
 
 def test_tampered_build_returns_503(spa_tmp, client_factory) -> None:

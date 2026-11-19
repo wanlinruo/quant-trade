@@ -248,7 +248,7 @@ def test_web_release_binds_packaged_entrypoint_and_all_runtime_sources(
     repo, sha = _repo(tmp_path)
     wheel = _wheel(
         tmp_path / "dist-web" / "qsys-0.1.0-py3-none-any.whl",
-        command="qsys-web", entrypoint="qsys.web.monitor_cli:main",
+        command="qsys-web", entrypoint="qsys.webapp.cli:main",
         extra=_spa_members(),
     )
     release = tmp_path / "web-release"
@@ -259,7 +259,7 @@ def test_web_release_binds_packaged_entrypoint_and_all_runtime_sources(
     )
 
     assert value["entrypoint"] == {
-        "command": "qsys-web", "target": "qsys.web.monitor_cli:main",
+        "command": "qsys-web", "target": "qsys.webapp.cli:main",
     }
     paths = {record["path"] for record in value["scan_files"]}
     assert "src/qsys/web/example.py" in paths
@@ -469,7 +469,7 @@ def test_web_release_rejects_wheel_without_spa(tmp_path: Path) -> None:
     repo, sha = _repo(tmp_path)
     wheel = _wheel(
         tmp_path / "dist-web" / "qsys-0.1.0-py3-none-any.whl",
-        command="qsys-web", entrypoint="qsys.web.monitor_cli:main",
+        command="qsys-web", entrypoint="qsys.webapp.cli:main",
     )
     with pytest.raises(ValueError, match="wheel does not contain the web frontend build"):
         build(repo, sha, "web", wheel.parent, tmp_path / "web-release",
@@ -480,7 +480,7 @@ def test_web_release_rejects_spa_that_does_not_match_build_info(tmp_path: Path) 
     repo, sha = _repo(tmp_path)
     wheel = _wheel(
         tmp_path / "dist-web" / "qsys-0.1.0-py3-none-any.whl",
-        command="qsys-web", entrypoint="qsys.web.monitor_cli:main",
+        command="qsys-web", entrypoint="qsys.webapp.cli:main",
         extra=_spa_members(tamper=True),
     )
     with pytest.raises(ValueError, match="web frontend build does not match build-info"):

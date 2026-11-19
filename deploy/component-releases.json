@@ -61,7 +61,7 @@
     "web": {
       "entrypoint": {
         "command": "qsys-web",
-        "target": "qsys.web.monitor_cli:main"
+        "target": "qsys.webapp.cli:main"
       },
       "scan_roots": [
         "src/qsys"

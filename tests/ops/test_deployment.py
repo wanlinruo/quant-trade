@@ -491,7 +491,7 @@ def test_web_component_has_an_isolated_release_and_minimal_write_boundary() -> N
     web = specs["components"]["web"]
 
     assert web["entrypoint"] == {
-        "command": "qsys-web", "target": "qsys.web.monitor_cli:main",
+        "command": "qsys-web", "target": "qsys.webapp.cli:main",
     }
     assert web["scan_roots"] == ["src/qsys"]
     assert web["release_root"] == "/opt/qsys/components/web/releases"

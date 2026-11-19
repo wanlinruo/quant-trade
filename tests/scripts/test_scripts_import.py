@@ -66,16 +66,31 @@ def test_tushare_sync_legacy_script_delegates_to_packaged_entrypoint():
 
 def test_monitor_cannot_host_the_backtest_worker():
     monitor = Path("scripts/run_monitor.py").read_text(encoding="utf-8")
-    app = Path("src/qsys/web/app.py").read_text(encoding="utf-8")
+    app = Path("src/qsys/webapp/app.py").read_text(encoding="utf-8")
 
     assert "BacktestQueue" not in monitor
     assert "BacktestQueue" not in app
     assert "queue.start()" not in app
 
 
+def test_packaged_monitor_uses_only_the_new_application_factory():
+    source = Path("src/qsys/webapp/cli.py").read_text(encoding="utf-8")
+
+    assert "qsys.web." not in source
+    for old_service in (
+        "MonitorService",
+        "DataService",
+        "MarketService",
+        "CatalogService",
+        "DataAssetService",
+        "ServiceConsole",
+    ):
+        assert old_service not in source
+
+
 def test_monitor_legacy_script_delegates_to_packaged_entrypoint():
     legacy = importlib.import_module("scripts.run_monitor")
-    packaged = importlib.import_module("qsys.web.monitor_cli")
+    packaged = importlib.import_module("qsys.webapp.cli")
 
     assert legacy.main is packaged.main
     assert legacy.build_app is packaged.build_app
