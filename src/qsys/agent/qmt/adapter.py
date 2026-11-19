@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 
 import structlog
@@ -25,6 +26,21 @@ def _symbol(row: dict) -> str | None:
     return f'{code}.{exchange}' if code and exchange else None
 
 
+@dataclass(frozen=True)
+class ExecutorStatus:
+    """QMT 内置执行器写在共享内存里的状态（#662 计划 03b）。0 时刻与空 epoch 为未知（None）。"""
+
+    epoch: str | None
+    heartbeat_at: datetime | None
+    started_at: datetime | None
+    latest_seq: int
+    ring_full: bool
+
+
+def _ms_to_local(ms: int) -> datetime | None:
+    return datetime.fromtimestamp(ms / 1000) if ms > 0 else None
+
+
 class QmtIpcAdapter:
     def __init__(self, memory: SharedMemory, port: QmtIpcPort) -> None:
         self._memory, self._port = memory, port
@@ -34,6 +50,12 @@ class QmtIpcAdapter:
         self._account: dict | None = None
         self.epochs: set[str] = set()
         self.last_snapshot: dict = {}
+
+    def executor_status(self) -> ExecutorStatus:
+        state = self._memory.executor_state()
+        return ExecutorStatus(epoch=state.epoch or None, heartbeat_at=_ms_to_local(state.heartbeat_ms),
+                              started_at=_ms_to_local(state.started_ms), latest_seq=state.latest_seq,
+                              ring_full=state.ring_full)
 
     # -- report ingestion -------------------------------------------------
     def ingest(self) -> int:

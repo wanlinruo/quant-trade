@@ -95,3 +95,30 @@ def test_cancel_all_goes_through_executor():
     api.order(CID, status=50)
     adapter.cancel_all()
     assert [c[0] for c in api.calls] == ['cancel']
+
+
+# ---- 执行器状态进心跳（#662 计划 03b）----
+
+def _executor_buf(epoch=b"E1", heartbeat_ms=NOW, seq=7, ring_full=1, started_ms=NOW - 60_000):
+    buf = bytearray(protocol.MAP_SIZE)
+    o = protocol.EXECUTOR_OFFSET
+    buf[o:o + len(epoch)] = epoch
+    buf[o + 32:o + 40] = heartbeat_ms.to_bytes(8, "little")
+    buf[o + 40:o + 48] = seq.to_bytes(8, "little")
+    buf[o + 48:o + 52] = ring_full.to_bytes(4, "little")
+    buf[o + 56:o + 64] = started_ms.to_bytes(8, "little")
+    return buf
+
+
+def test_executor_status_reads_shared_memory():
+    mem = SharedMemory(_executor_buf())
+    s = QmtIpcAdapter(mem, None).executor_status()
+    assert s.epoch == "E1" and s.latest_seq == 7 and s.ring_full is True
+    assert s.heartbeat_at == datetime.fromtimestamp(NOW / 1000)
+    assert s.started_at == datetime.fromtimestamp((NOW - 60_000) / 1000)
+
+
+def test_zeroed_executor_memory_is_unknown():
+    s = QmtIpcAdapter(SharedMemory(bytearray(protocol.MAP_SIZE)), None).executor_status()
+    assert (s.epoch, s.heartbeat_at, s.started_at) == (None, None, None)
+    assert s.latest_seq == 0 and s.ring_full is False

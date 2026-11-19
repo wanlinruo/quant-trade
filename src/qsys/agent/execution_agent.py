@@ -396,6 +396,22 @@ class ExecutionAgent:
         )
         self._t.set_key(self._s.account, snapshot.model_dump_json())
 
+    def _executor_fields(self) -> dict:
+        """执行器状态是适配器的可选能力；读不到（不支持或异常）一律为 None，绝不影响心跳。"""
+        probe = getattr(self._adapter, "executor_status", None)
+        if probe is None:
+            return {}
+        try:
+            status = probe()
+        except Exception as exc:  # noqa: BLE001
+            log.warning("agent.executor_status_unavailable", error_type=type(exc).__name__)
+            return {}
+        if status is None:
+            return {}
+        return {"executor_epoch": status.epoch, "executor_heartbeat_at": status.heartbeat_at,
+                "executor_started_at": status.started_at, "executor_latest_seq": status.latest_seq,
+                "executor_ring_full": status.ring_full}
+
     def beat(self) -> None:
         safety = self._safety
         self._t.set_key(
@@ -415,6 +431,7 @@ class ExecutionAgent:
                 commissioning_lease_active=(
                     read_commissioning_lease(self._t) is not None
                 ),
+                **self._executor_fields(),
             ).model_dump_json(),
         )
 
