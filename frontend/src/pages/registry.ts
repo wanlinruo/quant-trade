@@ -14,6 +14,9 @@ import { OrdersPage } from './trading/OrdersPage'
 import { PaperPage } from './trading/PaperPage'
 import { ReconciliationPage } from './trading/ReconciliationPage'
 import { RunsPage } from './trading/RunsPage'
+import { ServicesPage } from './operations/ServicesPage'
+import { NodesPage } from './operations/NodesPage'
+import { ReleasesPage } from './operations/ReleasesPage'
 
 /** 已上线的新页面；没有登记的页面显示占位并链接旧页。 */
 export const PAGE_COMPONENTS: Partial<Record<string, ComponentType>> = {
@@ -32,4 +35,7 @@ export const PAGE_COMPONENTS: Partial<Record<string, ComponentType>> = {
   tables: TablesPage,
   catalog: CatalogPage,
   quality: QualityPage,
+  services: ServicesPage,
+  nodes: NodesPage,
+  releases: ReleasesPage,
 }

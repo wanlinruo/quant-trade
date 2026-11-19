@@ -19,6 +19,7 @@ import dQuality from './fixtures/data-quality.json' with { type: 'json' }
 import dRule from './fixtures/data-rule.json' with { type: 'json' }
 import alerts from './fixtures/alerts.json' with { type: 'json' }
 import trading from './fixtures/trading.json' with { type: 'json' }
+import operations from './fixtures/operations.json' with { type: 'json' }
 
 const CLEAR = {
   schema_version: 1, checked_at: '2026-11-17T10:40:00+08:00',
@@ -54,6 +55,9 @@ test.beforeEach(async ({ page }) => {
   await page.route(/\/api\/app\/trading\/runs(\?.*)?$/, (r) => r.fulfill({ json: trading.runs }))
   await page.route(/\/api\/app\/trading\/paper$/, (r) => r.fulfill({ json: trading.paperAccounts }))
   await page.route(/\/api\/app\/trading\/paper\/[^/?]+(\?.*)?$/, (r) => r.fulfill({ json: trading.paper }))
+  await page.route(/\/api\/app\/operations\/services(\?.*)?$/, (r) => r.fulfill({ json: operations.services }))
+  await page.route('**/api/app/operations/nodes', (r) => r.fulfill({ json: operations.nodes }))
+  await page.route('**/api/app/operations/releases', (r) => r.fulfill({ json: operations.releases }))
 })
 
 async function noOverflow(page: import('@playwright/test').Page) {
@@ -142,6 +146,18 @@ for (const width of [390, 1280, 1600]) {
     const pages: [string, string][] = [
       ['live', '可下单'], ['orders', '1 笔委托'], ['recon', '解除停机闸前还差什么？'],
       ['runs', '1 个策略事件已记录'], ['paper', '模拟一号'],
+    ]
+    for (const [path, text] of pages) {
+      await page.goto(`/app/${path}`)
+      await expect(page.getByText(text, { exact: false }).first()).toBeVisible()
+      await noOverflow(page)
+    }
+  })
+
+  test(`operations pages have no horizontal overflow at ${width}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    const pages: [string, string][] = [
+      ['services', '服务运行正常'], ['nodes', '节点与链路正常'], ['releases', '1/1 个组件三方一致'],
     ]
     for (const [path, text] of pages) {
       await page.goto(`/app/${path}`)
