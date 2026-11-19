@@ -28,7 +28,7 @@ from qsys.web.catalog_views import CatalogService
 from qsys.web.config import WebConfig
 from qsys.web.data_views import DataService, MarketService
 from qsys.webapp.queries.board_reader import LimitUpBoardReader
-from qsys.web.limit_up_shadow import LimitUpShadowReader
+from qsys.research.limit_up_shadow_store import LimitUpShadowReader
 from qsys.web.limit_up_research import (
     HistoricalSecurityNameLookup,
     LimitUpResearchReader,

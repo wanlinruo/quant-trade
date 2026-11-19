@@ -14,7 +14,7 @@ from qsys.web.limit_up_research import (
     LimitUpResearchDay, LimitUpResearchEntry, LimitUpResearchHistory, LimitUpResearchMonth,
     LimitUpResearchSummary, LimitUpResearchView,
 )
-from qsys.web.limit_up_shadow import (
+from qsys.research.limit_up_shadow_store import (
     LimitUpShadowEntry, LimitUpShadowHistory, LimitUpShadowSnapshot, LimitUpShadowView,
 )
 from qsys.web.live_kill_status import LiveKillReader

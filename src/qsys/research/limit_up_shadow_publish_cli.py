@@ -9,7 +9,7 @@ from pathlib import Path
 
 from qsys.paper.calendar import load_trading_calendar
 from qsys.research.limit_up_shadow import build_daily_snapshot, latest_feature_session
-from qsys.web.limit_up_shadow import LimitUpShadowPublisher, LimitUpShadowReader
+from qsys.research.limit_up_shadow_store import LimitUpShadowPublisher, LimitUpShadowReader
 
 
 def main() -> int:

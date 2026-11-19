@@ -12,7 +12,7 @@ from qsys.live.transport import MemoryTransport
 from qsys.web.app import create_app
 from qsys.web.config import WebConfig
 from qsys.web.data_views import MarketService
-from qsys.web.limit_up_shadow import (
+from qsys.research.limit_up_shadow_store import (
     LimitUpShadowPublisher,
     LimitUpShadowReader,
     LimitUpShadowOutcome,
