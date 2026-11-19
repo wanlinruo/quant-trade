@@ -1,5 +1,25 @@
 # 项目交接入口
 
+## 11-19：页面改版（#662）进展——代码已进 main，生产未发布（改版状态以本节为准）
+
+- **生产状态未因改版变化**：03–05、03b 都**没有发布到任何生产组件**；生产现状仍以下方 11-17 一节、
+  #137 / #670 / #677 / #666 最新评论为准。维护者 11-18 明确：观察期不影响改版开发，发布另行请示。
+- **main `d9e73dd`（PR #679，11-18 合并）**：计划 03 结构化告警事件、04 告警汇总与已知警告清单、
+  05 `kill.py review live` 停机闸只读核对。test CI 44333187754、测试部署 44333613269 成功，
+  Align / Direct push audit 成功，test 与 main 同一提交。
+- **03b（执行器状态进心跳 + 健康观察链路采样表）**：本地 test 已 squash 为一个提交，**等收盘后推送**
+  （推送 test 会触发测试部署，盘中不推）；之后建 test→main 发布 PR，合并前问维护者。
+- **Web 需求分支 `feat/web-redesign`**（只从 main 同步，不合 test/main）：已同步 main，完成计划 06a
+  告警中心（`/app/alerts`，含“确认已知悉”只记录存储与顶栏未处理数）。下一份 06b 今日运行（依赖 03b）、
+  06c 交易组 5 页（含停机闸核对清单）。
+- **生产发布顺序（每步另行请示）**：先 daily-digest → health-observer / service-checks / reboot-drill / paper
+  → live-core 收盘后（按 #670 先解闸后发布）；03b 的 Windows 执行网关只能收盘后发布。发布 Web 前须用真实
+  账号实测：Web 对各告警目录只读、对 `var/web` 可写（AGENTS.md §2.2）。
+- **待维护者决定**：`resume live` 是否以 `review` 结论为硬门槛（当前未改）；03–05 发布后用
+  `scripts/known_warnings_baseline.py` 在节点只读生成 #594 已知警告候选。
+- 计划文档：03/04/05 在 main 的 `docs/superpowers/plans/2026-11-18-web-redesign-0*.md`，03b 随其
+  squash 提交进入 test；R1–R4、06a 与总路线 v2 在需求分支。逐份完成记录见 #662 评论。
+
 ## 11-17：竞价熔断（#670）——两处修复已发布，急停已解除（以本节为准）
 
 - **现状（18:18）**：live-core current `d540c86`（release `issue670-live-core-20261117-r3`，

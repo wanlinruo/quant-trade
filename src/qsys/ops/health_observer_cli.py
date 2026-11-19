@@ -25,6 +25,7 @@ from qsys.ops.health import (
     HealthObservation,
     HealthStore,
     HeartbeatPolicy,
+    LinkSample,
     trading_phase,
 )
 from qsys.ops.alerts import AlertBus, LogAlertSink, Severity, WebhookAlertSink, ledger
@@ -276,6 +277,47 @@ def ops_sinks(deploy) -> list:
             deploy.alerts.ops_url, timeout=deploy.alerts.timeout_seconds,
         ))
     return sinks
+
+
+def link_rows(transport, prefix: str, now: datetime) -> list[LinkSample]:
+    """一轮链路采样（#662 计划 03b）：只读 agent、market 两个小心跳键，派生执行器一行。
+
+    读不到的来源也记一行（年龄、新鲜度为 None），缺行会被误读为没有采样。
+    执行器年龄 = agent 心跳 at − executor_heartbeat_at，两者同为网关本机时钟。
+    """
+    from qsys.agent.qmt.port import EXECUTOR_FRESH_MS
+    from qsys.live.messages import Heartbeat
+    from qsys.live.preflight_cli import heartbeat_freshness
+
+    beats: dict[str, Heartbeat | None] = {}
+    try:
+        for source in ("agent", "market"):
+            raw = transport.get_key(f"{prefix}:{source}")
+            beats[source] = Heartbeat.model_validate_json(raw) if raw else None
+    except Exception as exc:  # noqa: BLE001 —— 采样失败不能影响观察循环
+        error = {"error": type(exc).__name__}
+        return [LinkSample(s, None, None, None, None, dict(error)) for s in ("agent", "market", "executor")]
+    rows = []
+    for source in ("agent", "market"):
+        beat = beats[source]
+        if beat is None:
+            rows.append(LinkSample(source, None, None, None, None, {}))
+            continue
+        fresh, age, threshold = heartbeat_freshness(beat, now)
+        details = ({"trading_mode": beat.trading_mode, "local_kill_engaged": beat.local_kill_engaged}
+                   if source == "agent" else {"order_book_ratio": beat.order_book_ratio})
+        rows.append(LinkSample(source, beat.at, round(age, 3), threshold, fresh, details))
+    agent = beats["agent"]
+    if agent is None or agent.executor_heartbeat_at is None:
+        rows.append(LinkSample("executor", None, None, None, None, {}))
+    else:
+        age = (agent.at - agent.executor_heartbeat_at).total_seconds()
+        threshold = EXECUTOR_FRESH_MS / 1000
+        rows.append(LinkSample("executor", agent.executor_heartbeat_at, round(age, 3), threshold,
+                               -1 <= age <= threshold,
+                               {"epoch": agent.executor_epoch, "latest_seq": agent.executor_latest_seq,
+                                "ring_full": agent.executor_ring_full}))
+    return rows
 
 
 class BusinessAlertTracker:
@@ -615,6 +657,9 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as exc:
             # 采样失败不能影响被观测服务；下一轮继续并由缺测区间呈灰色。
             log.error("health_observer.sample_failed", error=str(exc))
+        if transport is not None:
+            # 链路时间序列（#662 计划 03b）：每轮两个小心跳键，读不到也记未知行
+            store.record_link_samples(link_rows(transport, deploy.streams.heartbeat, now), now=now)
         if infra_alerts.due(started):
             infra_alerts.run(started, transport)
         active = phase in (PREPARE, MORNING, AFTERNOON, CALENDAR_UNKNOWN)
