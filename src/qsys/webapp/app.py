@@ -46,6 +46,7 @@ class WebappDeps:
     trading: Any | None = None       # queries.trading.TradingQuery
     paper_activation: Any | None = None  # 恢复模拟账户时计算下一生效交易日
     operations: Any | None = None    # queries.operations.OperationsQuery
+    health: Any | None = None        # HealthStoreReader（06b 链路采样）
     spa_root: Path | None = None
 
 
@@ -69,6 +70,10 @@ def mount_webapp(app: FastAPI, deps: WebappDeps) -> None:
     alerts = (AlertCenterQuery(deps.alert_roots, AlertAckStore(deps.alert_acks) if deps.alert_acks else None)
               if deps.alert_roots else None)
     app.state.alert_center = alerts
+    from qsys.webapp.queries.today import TodayQuery
+    from qsys.webapp.routes.today import today_router
+    app.include_router(today_router(TodayQuery(
+        trading=deps.trading, market=deps.market, alerts=alerts, health=deps.health)))
     app.include_router(shell_router(ShellQuery(deps.live_kill, alerts=alerts.unhandled_count if alerts else None)))
     app.include_router(alerts_router(alerts))
     app.include_router(market_router(deps.market))

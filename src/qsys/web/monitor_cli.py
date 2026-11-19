@@ -148,6 +148,14 @@ def build_app(
     from qsys.webapp.queries.backtest_runs import BacktestRuns
     from qsys.webapp.queries.trading import TradingQuery
     from qsys.webapp.queries.operations import OperationsQuery
+    health_reader = (
+        HealthStoreReader(tuple(dict.fromkeys((
+            Path(health_state_path), workspace.parent / "service-health.sqlite3",
+        )))) if health_state_path else HealthStoreReader((
+            Path("var/health-observer/service-health.sqlite3"),
+            Path("var/service-health.sqlite3"),
+        ))
+    )
     # 数据组（R4）：覆盖统计后台刷新，避免表清单请求同步做全仓统计（#442）
     data_assets = DataAssets(warehouse, background_coverage=True)
     # 新后端（#662 总路线 v2）：市场查询直接读同一 transport 与仓库，不经旧视图服务
@@ -171,14 +179,10 @@ def build_app(
         paper_activation=lambda: _paper_activation(datetime.now(), trading_calendar),
         operations=OperationsQuery(
             service_runs_dir or Path("var/service-runs"),
-            HealthStoreReader(tuple(dict.fromkeys((
-                Path(health_state_path), workspace.parent / "service-health.sqlite3",
-            )))) if health_state_path else HealthStoreReader((
-                Path("var/health-observer/service-health.sqlite3"),
-                Path("var/service-health.sqlite3"),
-            )),
+            health_reader,
             ops_snapshot_root,
         ),
+        health=health_reader,
     )
     return create_app(
         monitor,
@@ -203,15 +207,7 @@ def build_app(
             # 没有 Redis 时不判心跳（显示未知），不能把「查不到」当成「进程已死」
             heartbeat=monitor.heartbeat_status if transport is not None else None,
             # Web只读observer记录；缺失或过期显示未知，不回退SSH探测。
-            health_store=(
-                HealthStoreReader(tuple(dict.fromkeys((
-                    Path(health_state_path), workspace.parent / "service-health.sqlite3",
-                )))) if health_state_path else
-                HealthStoreReader((
-                    Path("var/health-observer/service-health.sqlite3"),
-                    Path("var/service-health.sqlite3"),
-                ))
-            ),
+            health_store=health_reader,
             core_service_id={
                 "shadow": "shadow-core", "live": "live-core",
             }.get(strategy_mode),

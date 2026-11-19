@@ -21,6 +21,7 @@ from qsys.webapp.contracts.research import (
     Resubmitted, StrategyDetail, StrategyList,
 )
 from qsys.webapp.contracts.shell import ShellStatus
+from qsys.webapp.contracts.today import TodayDisabled, TodayView
 from qsys.webapp.contracts.trading import (
     LiveTradingOverview, PaperAccountDetail, PaperAccounts, PaperActionResult,
     TradingDisabled, TradingOrders, TradingReconciliation, TradingRuns,
@@ -71,4 +72,6 @@ EXPORTED: tuple[type[Contract], ...] = (
     ServicesView,
     NodesView,
     ReleasesView,
+    TodayDisabled,
+    TodayView,
 )

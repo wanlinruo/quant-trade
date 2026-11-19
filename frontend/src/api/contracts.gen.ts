@@ -1452,6 +1452,90 @@ export interface TableSample {
   limit: number
 }
 
+export interface TodayConcern {
+  id: string
+  severity: "critical" | "warning" | "info" | "unknown"
+  label: string
+  detail: string | null
+  page: string
+}
+
+export interface TodayDisabled {
+  schema_version: 1
+  enabled: false
+}
+
+export interface TodayEvent {
+  event_key: string
+  phase: string
+  scheduled_at: string | null
+  started_at: string | null
+  finished_at: string | null
+  state: "completed" | "failed"
+  summary: string
+  detail: string | null
+}
+
+export interface TodayKpis {
+  account_total: number | null
+  account_at: string | null
+  index_name: string | null
+  index_price: number | null
+  index_change_ratio: number | null
+  limit_up: number | null
+  limit_down: number | null
+  seal_ratio: number | null
+  link_max_age_seconds: number | null
+  link_fresh: number | null
+  link_total: number | null
+}
+
+export interface TodayLink {
+  source: string
+  points: TodayLinkPoint[]
+}
+
+export interface TodayLinkPoint {
+  sampled_at: string
+  age_seconds: number | null
+  threshold_seconds: number | null
+  fresh: boolean | null
+}
+
+export interface TodayPhase {
+  id: string
+  label: string
+  time_label: string
+  state: "ok" | "warning" | "failed" | "running" | "not_started" | "unknown"
+  completed: number
+  recorded: number
+}
+
+export interface TodaySentimentPoint {
+  day: string
+  limit_up: number | null
+  limit_down: number | null
+  broken_board_ratio: number | null
+  prior_limitup_return_ratio: number | null
+}
+
+export interface TodayView {
+  schema_version: 1
+  enabled: true
+  day: string
+  days: string[]
+  state: "running" | "closed" | "reduce_only" | "waiting" | "unknown"
+  title: string
+  kill: KillStatus | null
+  concerns: TodayConcern[]
+  kpis: TodayKpis
+  phases: TodayPhase[]
+  events: TodayEvent[]
+  links: TodayLink[]
+  sentiment: TodaySentimentPoint[]
+  missing: Record<string, string>
+}
+
 export interface TradingDayInfo {
   selected: string | null
   available: string[]
