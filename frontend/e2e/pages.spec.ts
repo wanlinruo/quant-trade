@@ -18,6 +18,7 @@ import dMetric from './fixtures/data-metric.json' with { type: 'json' }
 import dQuality from './fixtures/data-quality.json' with { type: 'json' }
 import dRule from './fixtures/data-rule.json' with { type: 'json' }
 import alerts from './fixtures/alerts.json' with { type: 'json' }
+import trading from './fixtures/trading.json' with { type: 'json' }
 
 const CLEAR = {
   schema_version: 1, checked_at: '2026-11-17T10:40:00+08:00',
@@ -47,6 +48,12 @@ test.beforeEach(async ({ page }) => {
   await page.route(/\/api\/app\/data\/catalog\/[^/?]+$/, (r) => r.fulfill({ json: dMetric }))
   await page.route('**/api/app/data/quality', (r) => r.fulfill({ json: dQuality }))
   await page.route('**/api/app/data/quality/rules/*', (r) => r.fulfill({ json: dRule }))
+  await page.route(/\/api\/app\/trading\/live(\?.*)?$/, (r) => r.fulfill({ json: trading.live }))
+  await page.route(/\/api\/app\/trading\/orders(\?.*)?$/, (r) => r.fulfill({ json: trading.orders }))
+  await page.route(/\/api\/app\/trading\/reconciliation(\?.*)?$/, (r) => r.fulfill({ json: trading.reconciliation }))
+  await page.route(/\/api\/app\/trading\/runs(\?.*)?$/, (r) => r.fulfill({ json: trading.runs }))
+  await page.route(/\/api\/app\/trading\/paper$/, (r) => r.fulfill({ json: trading.paperAccounts }))
+  await page.route(/\/api\/app\/trading\/paper\/[^/?]+(\?.*)?$/, (r) => r.fulfill({ json: trading.paper }))
 })
 
 async function noOverflow(page: import('@playwright/test').Page) {
@@ -128,5 +135,18 @@ for (const width of [390, 1280, 1600]) {
     await page.goto('/app/quality?rule=c.rule')
     await expect(page.getByRole('link', { name: '下载违规样本' })).toBeVisible()
     await noOverflow(page)
+  })
+
+  test(`trading pages have no horizontal overflow at ${width}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    const pages: [string, string][] = [
+      ['live', '可下单'], ['orders', '1 笔委托'], ['recon', '解除停机闸前还差什么？'],
+      ['runs', '1 个策略事件已记录'], ['paper', '模拟一号'],
+    ]
+    for (const [path, text] of pages) {
+      await page.goto(`/app/${path}`)
+      await expect(page.getByText(text, { exact: false }).first()).toBeVisible()
+      await noOverflow(page)
+    }
   })
 }

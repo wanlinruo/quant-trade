@@ -9,6 +9,11 @@ import { MarketPage } from './market/MarketPage'
 import { QualityPage } from './data/QualityPage'
 import { TablesPage } from './data/TablesPage'
 import { StrategiesPage } from './strategies/StrategiesPage'
+import { LivePage } from './trading/LivePage'
+import { OrdersPage } from './trading/OrdersPage'
+import { PaperPage } from './trading/PaperPage'
+import { ReconciliationPage } from './trading/ReconciliationPage'
+import { RunsPage } from './trading/RunsPage'
 
 /** 已上线的新页面；没有登记的页面显示占位并链接旧页。 */
 export const PAGE_COMPONENTS: Partial<Record<string, ComponentType>> = {
@@ -18,6 +23,11 @@ export const PAGE_COMPONENTS: Partial<Record<string, ComponentType>> = {
   board: BoardPage,
   strategies: StrategiesPage,
   backtest: BacktestPage,
+  live: LivePage,
+  orders: OrdersPage,
+  recon: ReconciliationPage,
+  runs: RunsPage,
+  paper: PaperPage,
   dataov: DataOverviewPage,
   tables: TablesPage,
   catalog: CatalogPage,
