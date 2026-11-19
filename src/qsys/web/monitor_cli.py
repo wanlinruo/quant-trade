@@ -29,7 +29,7 @@ from qsys.web.config import WebConfig
 from qsys.web.data_views import DataService, MarketService
 from qsys.webapp.queries.board_reader import LimitUpBoardReader
 from qsys.research.limit_up_shadow_store import LimitUpShadowReader
-from qsys.web.limit_up_research import (
+from qsys.research.limit_up_research_store import (
     HistoricalSecurityNameLookup,
     LimitUpResearchReader,
 )

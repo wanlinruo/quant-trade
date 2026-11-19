@@ -32,7 +32,7 @@ from qsys.web.domain_views import DOMAIN_LABELS, NOT_INGESTED, STATUS_LABELS, Do
 from qsys.web.data_views import DataService, MarketService
 from qsys.webapp.queries.board_reader import BoardView, LimitUpBoardReader, SeriesView
 from qsys.research.limit_up_shadow_store import LimitUpShadowReader, LimitUpShadowView
-from qsys.web.limit_up_research import LimitUpResearchReader, LimitUpResearchView
+from qsys.research.limit_up_research_store import LimitUpResearchReader, LimitUpResearchView
 from qsys.web.paper_chart import history_series, intraday_series
 from qsys.research.job_console import ResearchJobConsole
 from qsys.web.service_views import ServiceConsole

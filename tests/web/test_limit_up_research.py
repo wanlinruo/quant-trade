@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from qsys.ops.journal import SessionJournal
 from qsys.web.app import create_app
 from qsys.web.config import WebConfig
-from qsys.web.limit_up_research import (
+from qsys.research.limit_up_research_store import (
     HistoricalSecurityNameLookup,
     LimitUpResearchReader,
 )
