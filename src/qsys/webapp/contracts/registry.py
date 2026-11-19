@@ -20,6 +20,10 @@ from qsys.webapp.contracts.research import (
     Resubmitted, StrategyDetail, StrategyList,
 )
 from qsys.webapp.contracts.shell import ShellStatus
+from qsys.webapp.contracts.trading import (
+    LiveTradingOverview, PaperAccountDetail, PaperAccounts, PaperActionResult,
+    TradingDisabled, TradingOrders, TradingReconciliation, TradingRuns,
+)
 
 EXPORTED: tuple[type[Contract], ...] = (
     ErrorBody,
@@ -54,4 +58,12 @@ EXPORTED: tuple[type[Contract], ...] = (
     AlertCenter,
     AlertDetail,
     AckResult,
+    TradingDisabled,
+    LiveTradingOverview,
+    TradingOrders,
+    TradingReconciliation,
+    TradingRuns,
+    PaperAccounts,
+    PaperAccountDetail,
+    PaperActionResult,
 )

@@ -42,6 +42,9 @@ class WebappDeps:
     # 告警中心（06a）
     alert_roots: tuple[Path, ...] = ()
     alert_acks: Path | None = None
+    # 交易组（06c）
+    trading: Any | None = None       # queries.trading.TradingQuery
+    paper_activation: Any | None = None  # 恢复模拟账户时计算下一生效交易日
     spa_root: Path | None = None
 
 
@@ -74,6 +77,8 @@ def mount_webapp(app: FastAPI, deps: WebappDeps) -> None:
         workbench=deps.workbench, runs=deps.runs, paper=deps.paper, research_jobs=deps.research_jobs,
         strategy_templates=deps.strategy_templates, shadow_lineage=deps.shadow_lineage,
         core_label=deps.core_label)))
+    from qsys.webapp.routes.trading import trading_router
+    app.include_router(trading_router(deps.trading, activation=deps.paper_activation))
     data = data_router(deps.data_assets, deps.data_catalog, deps.data_quality)
     app.state.webapp_routers = [data]
     app.include_router(data)

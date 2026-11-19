@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import argparse
 import os
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import structlog
@@ -21,7 +21,7 @@ from qsys.data.storage import Warehouse
 from qsys.ops.journal import SessionJournal
 from qsys.ops.health import HealthStoreReader
 from qsys.live.store import LiveStore
-from qsys.web.app import create_app
+from qsys.web.app import _paper_activation, create_app
 from qsys.web.backtest_views import BacktestService
 from qsys.web.asset_views import DataAssetService
 from qsys.web.catalog_views import CatalogService
@@ -63,6 +63,7 @@ def build_app(
     limit_up_board_root: Path | None = None,
     alert_roots: tuple[Path, ...] = (Path("var/alerts"),),
     alert_acks: Path | None = Path("var/web/alert-acks.sqlite3"),
+    kill_review_path: Path | None = Path("var/web/live-kill-review.json"),
 ):
     warehouse = Warehouse(warehouse_root)
     journal = SessionJournal(warehouse)
@@ -73,6 +74,10 @@ def build_app(
     market_snapshot_key = "state:market_overview"
     market_schedule_key = "state:market_schedule"
     limits_prefix = "state:price_limits"
+    heartbeat_prefix = config.heartbeat_prefix
+    account_key = config.account_key
+    from qsys.live.config import RiskConfig
+    risk_config = RiskConfig()
     try:
         from qsys.live.config import load_deploy_config
         from qsys.live.readonly_transport import readonly_from_config
@@ -84,6 +89,9 @@ def build_app(
         market_snapshot_key = deploy.streams.market_snapshot
         market_schedule_key = deploy.streams.market_schedule
         limits_prefix = deploy.streams.price_limits
+        heartbeat_prefix = deploy.streams.heartbeat
+        account_key = deploy.streams.account
+        risk_config = deploy.risk
     except Exception as exc:
         # Redis 不可用时监控台仍应能打开——历史数据来自仓库，不依赖 Redis
         log.warning("monitor.redis_unavailable", error=str(exc))
@@ -95,11 +103,12 @@ def build_app(
     selected_state = state_path or Path("var/shadow-state.sqlite3")
     if strategy_mode == "live" and selected_state.name == "shadow-state.sqlite3":
         selected_state = selected_state.with_name("live-state.sqlite3")
+    live_store = LiveStore(selected_state.resolve(), read_only=True) if selected_state.is_file() else None
     monitor = MonitorService(
         journal,
         config=config,
         transport=transport,
-        store=LiveStore(selected_state.resolve(), read_only=True) if selected_state.is_file() else None,
+        store=live_store,
     )
     trading_calendar = _daily_trading_calendar(tushare_config_path or config_path)
     research_console = None
@@ -135,6 +144,8 @@ def build_app(
     from qsys.webapp.queries.data_assets import DataAssets
     from qsys.webapp.queries.data_catalog import DataCatalog
     from qsys.webapp.queries.data_quality import DataQuality
+    from qsys.webapp.queries.backtest_runs import BacktestRuns
+    from qsys.webapp.queries.trading import TradingQuery
     # 数据组（R4）：覆盖统计后台刷新，避免表清单请求同步做全仓统计（#442）
     data_assets = DataAssets(warehouse, background_coverage=True)
     # 新后端（#662 总路线 v2）：市场查询直接读同一 transport 与仓库，不经旧视图服务
@@ -147,6 +158,15 @@ def build_app(
         data_assets=data_assets, data_catalog=DataCatalog(data_assets.query),
         data_quality=DataQuality(data_assets.query, sample_root),
         alert_roots=tuple(alert_roots), alert_acks=alert_acks,
+        trading=TradingQuery(
+            journal=journal, store=live_store, transport=transport,
+            heartbeat_prefix=heartbeat_prefix, account_key=account_key,
+            heartbeat_max_age=config.heartbeat_max_age, kill_reader=live_kill,
+            risk=risk_config, paper=paper, review_path=kill_review_path,
+            live_mode=strategy_mode == "live",
+            workbench=workbench, backtests=BacktestRuns(runs_root),
+        ),
+        paper_activation=lambda: _paper_activation(datetime.now(), trading_calendar),
     )
     return create_app(
         monitor,
@@ -288,6 +308,8 @@ def main() -> int:
                         help="告警事件根目录（可重复；各含组件命名空间），默认 var/alerts（#662 06a）")
     parser.add_argument("--alert-acks", default="var/web/alert-acks.sqlite3",
                         help="告警“确认已知悉”存储（Web 自有，只追加）")
+    parser.add_argument("--kill-review-record", default="var/web/live-kill-review.json",
+                        help="kill.py review live --record 的只读输出（06c 对账页）")
     add_facade_argument(parser)
     args = parser.parse_args()
     apply_facade_argument(args.market_data_facade)
@@ -311,6 +333,7 @@ def main() -> int:
         limit_up_board_root=Path(args.limit_up_board_state),
         alert_roots=tuple(Path(p) for p in (args.alert_root or ["var/alerts"])),
         alert_acks=Path(args.alert_acks) if args.alert_acks else None,
+        kill_review_path=Path(args.kill_review_record) if args.kill_review_record else None,
     )
     log.info("monitor.started", host=args.host, port=args.port)
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")

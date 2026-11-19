@@ -453,6 +453,11 @@ export interface Episode {
   depth: number
 }
 
+export interface EquityPoint {
+  day: string
+  total_value: number | null
+}
+
 export interface ErrorBody {
   error: ErrorDetail
 }
@@ -505,6 +510,22 @@ export interface IndexQuote {
 }
 
 export type JsonValue = unknown
+
+export interface KillReviewInfo {
+  reviewed_at: string
+  overall: "ready" | "blocked" | "needs_confirmation"
+  engaged: boolean
+  stale: boolean
+  items: KillReviewItemInfo[]
+}
+
+export interface KillReviewItemInfo {
+  id: string
+  label: string
+  state: "pass" | "fail" | "unknown" | "confirm" | "info"
+  detail: string
+  observed: Record<string, JsonValue>
+}
 
 export interface KillSource {
   id: string
@@ -595,6 +616,22 @@ export interface LiveMarket {
 export interface LivePosture {
   state: "trading" | "reduce_only" | "unknown"
   label: string
+}
+
+export interface LiveTradingOverview {
+  schema_version: 1
+  enabled: true
+  day: TradingDayInfo
+  posture: "trading" | "reduce_only" | "closed" | "unknown"
+  posture_label: string
+  observation: MoneyObservation
+  positions: TradingPosition[]
+  heartbeats: TradingHeartbeat[]
+  kill: KillStatus
+  risks: RiskLimit[]
+  equity: EquityPoint[]
+  order_count: number | null
+  missing: Record<string, string>
 }
 
 export interface MarketCoverage {
@@ -731,9 +768,23 @@ export interface MoneyEffect {
   top_items: EffectItem[]
 }
 
+export interface MoneyObservation {
+  at: string | null
+  cash: number | null
+  market_value: number | null
+  total_value: number | null
+  return_ratio: null
+}
+
 export interface MonthReturn {
   month: string
   value: number | null
+}
+
+export interface OrderStage {
+  state: string
+  at: string | null
+  detail: string | null
 }
 
 export interface OverviewTable {
@@ -743,6 +794,79 @@ export interface OverviewTable {
   domain: DomainRef
   status: "red" | "yellow" | "green" | "gray"
   dimensions: Record<string, "red" | "yellow" | "green" | "gray">
+}
+
+export interface PaperAccountDetail {
+  id: string
+  name: string
+  strategy_name: string
+  version_id: string
+  status: string
+  activation_date: string
+  error: string | null
+  total_value: number | null
+  return_ratio: number | null
+  max_drawdown_ratio: number | null
+  position_count: number | null
+  schema_version: 1
+  enabled: true
+  backtest_id: string
+  strategy_id: string
+  initial_cash: number
+  cash: number
+  notify_mask: string | null
+  positions: Record<string, JsonValue>[]
+  orders: Record<string, JsonValue>[]
+  fills: Record<string, JsonValue>[]
+  rejects: Record<string, JsonValue>[]
+  events: Record<string, JsonValue>[]
+  logs: Record<string, JsonValue>[]
+  runs: StrategyRunInfo[]
+  equity: PaperEquityPoint[]
+  source_backtest: PaperBacktestPoint[]
+  day: TradingDayInfo
+  missing: Record<string, string>
+}
+
+export interface PaperAccountRow {
+  id: string
+  name: string
+  strategy_name: string
+  version_id: string
+  status: string
+  activation_date: string
+  error: string | null
+  total_value: number | null
+  return_ratio: number | null
+  max_drawdown_ratio: number | null
+  position_count: number | null
+}
+
+export interface PaperAccounts {
+  schema_version: 1
+  enabled: true
+  accounts: PaperAccountRow[]
+}
+
+export interface PaperActionResult {
+  schema_version: 1
+  id: string
+  status: string
+  notify_mask: string | null
+}
+
+export interface PaperBacktestPoint {
+  day: string
+  total_value: number | null
+  return_ratio: number | null
+}
+
+export interface PaperEquityPoint {
+  at: string | null
+  day: string
+  total_value: number
+  strategy_ratio: number | null
+  benchmark_ratio: number | null
 }
 
 export interface ParameterSpec {
@@ -769,6 +893,24 @@ export interface QualitySummary {
   runs: QualityRun[]
   warning_sources: WarningSource[]
   rules: RuleRow[]
+}
+
+export interface ReconCell {
+  day: string
+  layer: "cash" | "positions" | "orders"
+  state: "consistent" | "inconsistent" | "unknown" | "not_started"
+  at: string | null
+  detail: string | null
+}
+
+export interface ReconciliationRecord {
+  at: string
+  layer: string
+  mode: string
+  consistent: boolean
+  cash_diff: number | null
+  mismatches: number
+  detail: string
 }
 
 export interface RegimeDay {
@@ -893,6 +1035,16 @@ export interface ReturnPoint {
   benchmark: number | null
   excess: number | null
   drawdown: number | null
+}
+
+export interface RiskLimit {
+  id: string
+  label: string
+  value: number | null
+  limit: number
+  ratio: number | null
+  unit: "ratio" | "yuan"
+  state: "ok" | "warning" | "blocked" | "unknown"
 }
 
 export interface RuleDetail {
@@ -1081,6 +1233,27 @@ export interface StrategyRow {
   latest_backtest: BacktestRow | null
 }
 
+export interface StrategyRunInfo {
+  event_key: string
+  phase: string
+  scheduled_at: string | null
+  started_at: string | null
+  finished_at: string | null
+  duration_ms: number
+  status: "completed" | "failed"
+  candidates: number | null
+  routed: number | null
+  passed: number | null
+  orders: number
+  rejects: number
+  summary: string
+  reasons: Record<string, number>
+  note: string
+  error: string
+  event_status: string | null
+  event_detail: string | null
+}
+
 export interface StrategyVersion {
   id: string
   created_at: string | null
@@ -1096,6 +1269,105 @@ export interface TableSample {
   columns: string[]
   rows: Record<string, JsonValue>[]
   limit: number
+}
+
+export interface TradingDayInfo {
+  selected: string | null
+  available: string[]
+}
+
+export interface TradingDisabled {
+  schema_version: 1
+  enabled: false
+}
+
+export interface TradingFill {
+  order_id: string
+  symbol: string
+  side: string
+  qty: number
+  price: number
+  fee: number
+  filled_at: string
+  broker_order_id: string | null
+  broker_trade_id: string | null
+}
+
+export interface TradingHeartbeat {
+  source: string
+  at: string | null
+  age_seconds: number | null
+  threshold_seconds: number | null
+  fresh: boolean | null
+  detail: string | null
+}
+
+export interface TradingOrder {
+  id: string
+  event_key: string
+  symbol: string
+  side: string
+  qty: number
+  remaining_qty: number
+  order_type: string
+  limit_price: number | null
+  status: string
+  created_at: string
+  updated_at: string | null
+  broker_order_id: string | null
+  broker_accepted_at: string | null
+  unknown_no_retry: boolean
+  stages: OrderStage[]
+}
+
+export interface TradingOrders {
+  schema_version: 1
+  enabled: true
+  day: TradingDayInfo
+  orders: TradingOrder[]
+  fills: TradingFill[]
+  rejects: TradingReject[]
+  missing: Record<string, string>
+}
+
+export interface TradingPosition {
+  symbol: string
+  total_qty: number
+  available_qty: number
+  avg_cost: number | null
+  last_price: number | null
+  market_value: number | null
+  reserved_qty: number | null
+}
+
+export interface TradingReconciliation {
+  schema_version: 1
+  enabled: true
+  day: TradingDayInfo
+  heatmap: ReconCell[]
+  records: ReconciliationRecord[]
+  risks: RiskLimit[]
+  kill: KillStatus
+  review: KillReviewInfo | null
+  missing: Record<string, string>
+}
+
+export interface TradingReject {
+  order_id: string
+  symbol: string
+  side: string
+  qty: number
+  reason: string
+  at: string
+}
+
+export interface TradingRuns {
+  schema_version: 1
+  enabled: true
+  day: TradingDayInfo
+  runs: StrategyRunInfo[]
+  report_text: string | null
+  missing: Record<string, string>
 }
 
 export interface WarningSample {
