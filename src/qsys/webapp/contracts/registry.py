@@ -15,6 +15,7 @@ from qsys.webapp.contracts.data import (
     TableSample,
 )
 from qsys.webapp.contracts.market import MarketDisabled, MarketOverview
+from qsys.webapp.contracts.operations import NodesView, OperationsDisabled, ReleasesView, ServicesView
 from qsys.webapp.contracts.research import (
     BacktestList, BacktestPending, BacktestReport, Cancelled, Created, ResearchDisabled, ResearchJobList,
     Resubmitted, StrategyDetail, StrategyList,
@@ -66,4 +67,8 @@ EXPORTED: tuple[type[Contract], ...] = (
     PaperAccounts,
     PaperAccountDetail,
     PaperActionResult,
+    OperationsDisabled,
+    ServicesView,
+    NodesView,
+    ReleasesView,
 )

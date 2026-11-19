@@ -45,6 +45,7 @@ class WebappDeps:
     # 交易组（06c）
     trading: Any | None = None       # queries.trading.TradingQuery
     paper_activation: Any | None = None  # 恢复模拟账户时计算下一生效交易日
+    operations: Any | None = None    # queries.operations.OperationsQuery
     spa_root: Path | None = None
 
 
@@ -79,6 +80,8 @@ def mount_webapp(app: FastAPI, deps: WebappDeps) -> None:
         core_label=deps.core_label)))
     from qsys.webapp.routes.trading import trading_router
     app.include_router(trading_router(deps.trading, activation=deps.paper_activation))
+    from qsys.webapp.routes.operations import operations_router
+    app.include_router(operations_router(deps.operations))
     data = data_router(deps.data_assets, deps.data_catalog, deps.data_quality)
     app.state.webapp_routers = [data]
     app.include_router(data)

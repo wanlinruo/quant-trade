@@ -314,6 +314,20 @@ export interface CompareItem {
   prediction: number | null
 }
 
+export interface ComponentRelease {
+  id: string
+  label: string
+  current_sha: string | null
+  rollback_sha: string | null
+  released_at: string | null
+  state: "ok" | "warning" | "failed" | "running" | "fixed" | "paused" | "unknown" | "not_due"
+  three_way_consistent: boolean | null
+  workflow_id: string | null
+  deployment_id: string | null
+  record_id: string | null
+  steps: ReleaseStep[]
+}
+
 export interface ConceptCurve {
   code: string
   name: string
@@ -425,6 +439,16 @@ export interface DirectLineage {
   api: string | null
   field: string
   multiplier: number
+}
+
+export interface DiskInfo {
+  id: string
+  label: string
+  mount: string
+  free_bytes: number | null
+  total_bytes: number | null
+  fail_below_bytes: number | null
+  state: "ok" | "warning" | "failed" | "running" | "fixed" | "paused" | "unknown" | "not_due"
 }
 
 export interface DomainRef {
@@ -607,6 +631,15 @@ export interface LineageNode {
   status: "red" | "yellow" | "green" | "gray" | null
 }
 
+export interface LinkInfo {
+  id: string
+  label: string
+  state: "ok" | "warning" | "failed" | "running" | "fixed" | "paused" | "unknown" | "not_due"
+  last_ok_at: string | null
+  latency_ms: MetricPoint[]
+  last_error: string | null
+}
+
 export interface LiveMarket {
   available: boolean
   stale: boolean
@@ -743,6 +776,11 @@ export interface MetricList {
   kinds: string[]
 }
 
+export interface MetricPoint {
+  at: string
+  value: number | null
+}
+
 export interface MetricRow {
   id: string
   dataset: string
@@ -779,6 +817,35 @@ export interface MoneyObservation {
 export interface MonthReturn {
   month: string
   value: number | null
+}
+
+export interface NodeInfo {
+  id: string
+  label: string
+  platform: string
+  state: "ok" | "warning" | "failed" | "running" | "fixed" | "paused" | "unknown" | "not_due"
+  cpu: MetricPoint[]
+  memory: MetricPoint[]
+  io: MetricPoint[]
+  disks: DiskInfo[]
+}
+
+export interface NodesView {
+  schema_version: 1
+  enabled: true
+  captured_at: string
+  ttl_seconds: number
+  stale: boolean
+  nodes: NodeInfo[]
+  links: LinkInfo[]
+  processes: ProcessInfo[]
+  security: SecurityCheck[]
+  missing: Record<string, string>
+}
+
+export interface OperationsDisabled {
+  schema_version: 1
+  enabled: false
 }
 
 export interface OrderStage {
@@ -880,6 +947,18 @@ export interface ParameterSpec {
   choices: (number | boolean | string)[]
 }
 
+export interface ProcessInfo {
+  id: string
+  label: string
+  node_id: string
+  state: "ok" | "warning" | "failed" | "running" | "fixed" | "paused" | "unknown" | "not_due"
+  pid: number | null
+  restart_count: number | null
+  identity: string | null
+  resource_limit: string | null
+  last_log: string | null
+}
+
 export interface QualityRun {
   run_id: string
   checked_at: string | null
@@ -929,6 +1008,38 @@ export interface RegimeDay {
   prior_limitup_nextday_return_median: number | null
   valid_stock_count: number | null
   index_ma20_slope_5d: number | null
+}
+
+export interface ReleaseEvent {
+  id: string
+  component_id: string
+  at: string
+  sha: string | null
+  state: "ok" | "warning" | "failed" | "running" | "fixed" | "paused" | "unknown" | "not_due"
+  current: boolean
+  detail: string | null
+}
+
+export interface ReleaseStep {
+  id: string
+  label: string
+  state: "ok" | "warning" | "failed" | "running" | "fixed" | "paused" | "unknown" | "not_due"
+  at: string | null
+  detail: string | null
+}
+
+export interface ReleasesView {
+  schema_version: 1
+  enabled: true
+  captured_at: string
+  ttl_seconds: number
+  stale: boolean
+  main_sha: string | null
+  consistent_components: number | null
+  component_count: number | null
+  components: ComponentRelease[]
+  events: ReleaseEvent[]
+  missing: Record<string, string>
 }
 
 export interface ResearchBoard {
@@ -1124,6 +1235,76 @@ export interface RunSummary {
   params: Record<string, JsonValue>
   generated_at: string | null
   source: "web" | "cli"
+}
+
+export interface SecurityCheck {
+  id: string
+  label: string
+  state: "ok" | "warning" | "failed" | "running" | "fixed" | "paused" | "unknown" | "not_due"
+  mismatches: string[]
+  failed_logins_24h: number | null
+  rejected_unauthenticated_24h: number | null
+}
+
+export interface ServiceCell {
+  day: string
+  state: "ok" | "warning" | "failed" | "running" | "fixed" | "paused" | "unknown" | "not_due"
+  run_id: string | null
+  detail: string | null
+}
+
+export interface ServiceHealthItem {
+  service_id: string
+  observed_at: string
+  state: "ok" | "warning" | "failed" | "running" | "fixed" | "paused" | "unknown" | "not_due"
+  process_state: string
+  business_state: string
+  reason_code: string
+}
+
+export interface ServiceRow {
+  id: string
+  name: string
+  kind: string
+  node: string
+  schedule: string
+  latest_state: "ok" | "warning" | "failed" | "running" | "fixed" | "paused" | "unknown" | "not_due"
+  latest_at: string | null
+  completion_ratio_30d: number | null
+  duration_seconds: number | null
+  cells: ServiceCell[]
+}
+
+export interface ServiceRunItem {
+  run_id: string
+  service_id: string
+  session: string | null
+  started_at: string
+  finished_at: string | null
+  state: string
+  note: string
+  error: string
+  steps: ServiceStep[]
+}
+
+export interface ServiceStep {
+  name: string
+  state: string
+  started_at: string | null
+  finished_at: string | null
+  detail: string
+  affects_run: boolean
+}
+
+export interface ServicesView {
+  schema_version: 1
+  enabled: true
+  selected_day: string
+  days: string[]
+  services: ServiceRow[]
+  health: ServiceHealthItem[]
+  runs: ServiceRunItem[]
+  missing: Record<string, string>
 }
 
 export interface ShadowBoard {

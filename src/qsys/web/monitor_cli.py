@@ -64,6 +64,7 @@ def build_app(
     alert_roots: tuple[Path, ...] = (Path("var/alerts"),),
     alert_acks: Path | None = Path("var/web/alert-acks.sqlite3"),
     kill_review_path: Path | None = Path("var/web/live-kill-review.json"),
+    ops_snapshot_root: Path | None = Path("var/ops-snapshots"),
 ):
     warehouse = Warehouse(warehouse_root)
     journal = SessionJournal(warehouse)
@@ -146,6 +147,7 @@ def build_app(
     from qsys.webapp.queries.data_quality import DataQuality
     from qsys.webapp.queries.backtest_runs import BacktestRuns
     from qsys.webapp.queries.trading import TradingQuery
+    from qsys.webapp.queries.operations import OperationsQuery
     # 数据组（R4）：覆盖统计后台刷新，避免表清单请求同步做全仓统计（#442）
     data_assets = DataAssets(warehouse, background_coverage=True)
     # 新后端（#662 总路线 v2）：市场查询直接读同一 transport 与仓库，不经旧视图服务
@@ -167,6 +169,16 @@ def build_app(
             workbench=workbench, backtests=BacktestRuns(runs_root),
         ),
         paper_activation=lambda: _paper_activation(datetime.now(), trading_calendar),
+        operations=OperationsQuery(
+            service_runs_dir or Path("var/service-runs"),
+            HealthStoreReader(tuple(dict.fromkeys((
+                Path(health_state_path), workspace.parent / "service-health.sqlite3",
+            )))) if health_state_path else HealthStoreReader((
+                Path("var/health-observer/service-health.sqlite3"),
+                Path("var/service-health.sqlite3"),
+            )),
+            ops_snapshot_root,
+        ),
     )
     return create_app(
         monitor,
@@ -310,6 +322,8 @@ def main() -> int:
                         help="告警“确认已知悉”存储（Web 自有，只追加）")
     parser.add_argument("--kill-review-record", default="var/web/live-kill-review.json",
                         help="kill.py review live --record 的只读输出（06c 对账页）")
+    parser.add_argument("--ops-snapshot-root", default="var/ops-snapshots",
+                        help="运维采集器发布的节点、链路和版本只读快照根（计划 07）")
     add_facade_argument(parser)
     args = parser.parse_args()
     apply_facade_argument(args.market_data_facade)
@@ -334,6 +348,7 @@ def main() -> int:
         alert_roots=tuple(Path(p) for p in (args.alert_root or ["var/alerts"])),
         alert_acks=Path(args.alert_acks) if args.alert_acks else None,
         kill_review_path=Path(args.kill_review_record) if args.kill_review_record else None,
+        ops_snapshot_root=Path(args.ops_snapshot_root) if args.ops_snapshot_root else None,
     )
     log.info("monitor.started", host=args.host, port=args.port)
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
