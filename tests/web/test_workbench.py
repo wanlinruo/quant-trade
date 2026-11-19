@@ -8,7 +8,7 @@ from qsys.web.app import _backtest_rows, create_app
 from qsys.web.backtest_views import BacktestService
 from qsys.web.config import WebConfig
 from qsys.web.views import MonitorService
-from qsys.web.workbench import BacktestQueue, WorkbenchStore
+from qsys.backtest.workbench import BacktestQueue, WorkbenchStore
 
 
 SOURCE = '''

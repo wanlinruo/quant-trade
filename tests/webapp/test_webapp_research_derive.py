@@ -13,7 +13,7 @@ from qsys.webapp.queries.research_derive import (
     in_use_versions,
     strategy_stage,
 )
-from qsys.web.workbench import WorkbenchStore, version_id_for
+from qsys.backtest.workbench import WorkbenchStore, version_id_for
 
 SOURCE = "from qsys.strategy.base import Strategy\nclass Demo(Strategy):\n    pass\n"
 

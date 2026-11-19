@@ -6,7 +6,7 @@ import argparse
 import signal
 from pathlib import Path
 
-from qsys.web.workbench import BacktestQueue, WorkbenchStore
+from qsys.backtest.workbench import BacktestQueue, WorkbenchStore
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -150,7 +150,7 @@ class ResearchQuery:
 
     # ---- 策略 ----
     def _strategy_row(self, s, *, rows, used, succeeded, accts, lin) -> dict:
-        from qsys.web.workbench import version_id_for
+        from qsys.backtest.workbench import version_id_for
 
         version = version_id_for(s.id, s.draft)
         stage = strategy_stage(s.id, succeeded_strategy_ids=succeeded, active_accounts=accts,
@@ -303,7 +303,7 @@ class ResearchWrites:
         return Created(id=s.id)
 
     def save_strategy(self, ident: str, body: StrategyInput) -> Created:
-        from qsys.web.workbench import version_id_for
+        from qsys.backtest.workbench import version_id_for
 
         s = self.q.workbench.strategy(ident)
         if s is None:

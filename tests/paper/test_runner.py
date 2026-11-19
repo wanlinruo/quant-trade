@@ -7,7 +7,7 @@ import pytest
 
 from qsys.paper.quotes import QuoteTimeout, QuoteUnavailable
 from qsys.paper.store import PaperStore
-from qsys.web.workbench import WorkbenchStore
+from qsys.backtest.workbench import WorkbenchStore
 from scripts.run_paper import run_account_loop
 
 SOURCE = """

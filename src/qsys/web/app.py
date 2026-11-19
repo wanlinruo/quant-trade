@@ -39,7 +39,7 @@ from qsys.web.service_views import ServiceConsole
 from qsys.webapp.app import WebappDeps, mount_webapp
 from qsys.web.svg import line_chart, multi_line_chart
 from qsys.web.views import MonitorService
-from qsys.web.workbench import WorkbenchStore
+from qsys.backtest.workbench import WorkbenchStore
 from qsys.backtest.runner import ENTRY_FILL_LABELS, ENTRY_FILL_MODES
 from qsys.strategy.parameters import validate_parameters
 from qsys.core.calendar import AShareCalendar

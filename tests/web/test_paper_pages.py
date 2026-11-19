@@ -11,7 +11,7 @@ from qsys.web.app import create_app
 from qsys.web.backtest_views import BacktestService
 from qsys.web.config import WebConfig
 from qsys.web.views import MonitorService
-from qsys.web.workbench import WorkbenchStore
+from qsys.backtest.workbench import WorkbenchStore
 
 
 SOURCE = """

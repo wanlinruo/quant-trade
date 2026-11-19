@@ -21,7 +21,7 @@ from qsys.web.live_kill_status import LiveKillReader
 from qsys.webapp.contracts.research import (
     BacktestList, BacktestPending, BacktestReport, ResearchJobList, StrategyDetail, StrategyList,
 )
-from qsys.web.workbench import WorkbenchStore
+from qsys.backtest.workbench import WorkbenchStore
 from tests.web.test_research_jobs import _console
 
 SOURCE = '''
