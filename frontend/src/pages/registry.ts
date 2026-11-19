@@ -17,9 +17,11 @@ import { RunsPage } from './trading/RunsPage'
 import { ServicesPage } from './operations/ServicesPage'
 import { NodesPage } from './operations/NodesPage'
 import { ReleasesPage } from './operations/ReleasesPage'
+import { TodayPage } from './today/TodayPage'
 
 /** 已上线的新页面；没有登记的页面显示占位并链接旧页。 */
 export const PAGE_COMPONENTS: Partial<Record<string, ComponentType>> = {
+  today: TodayPage,
   alerts: AlertsPage,
   market: MarketPage,
   ailu: AiluPage,

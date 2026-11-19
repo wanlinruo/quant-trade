@@ -20,6 +20,7 @@ import dRule from './fixtures/data-rule.json' with { type: 'json' }
 import alerts from './fixtures/alerts.json' with { type: 'json' }
 import trading from './fixtures/trading.json' with { type: 'json' }
 import operations from './fixtures/operations.json' with { type: 'json' }
+import today from './fixtures/today.json' with { type: 'json' }
 
 const CLEAR = {
   schema_version: 1, checked_at: '2026-11-17T10:40:00+08:00',
@@ -58,6 +59,7 @@ test.beforeEach(async ({ page }) => {
   await page.route(/\/api\/app\/operations\/services(\?.*)?$/, (r) => r.fulfill({ json: operations.services }))
   await page.route('**/api/app/operations/nodes', (r) => r.fulfill({ json: operations.nodes }))
   await page.route('**/api/app/operations/releases', (r) => r.fulfill({ json: operations.releases }))
+  await page.route(/\/api\/app\/today(\?.*)?$/, (r) => r.fulfill({ json: today }))
 })
 
 async function noOverflow(page: import('@playwright/test').Page) {
@@ -66,6 +68,14 @@ async function noOverflow(page: import('@playwright/test').Page) {
 }
 
 for (const width of [390, 1280, 1600]) {
+  test(`today page has no horizontal overflow at ${width}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto('/app/today')
+    await expect(page.getByTestId('hero-title')).toContainText('已收盘')
+    await expect(page.getByText(/不从当前价生成曲线/)).toBeVisible()
+    await noOverflow(page)
+  })
+
   test(`market page has no horizontal overflow at ${width}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
     await page.goto('/app/market')
