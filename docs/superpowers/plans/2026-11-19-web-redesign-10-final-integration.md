@@ -23,11 +23,13 @@
 
 ## Task 1：业务模块搬家（兼容阶段）
 
-- [ ] `web.workbench` 搬到 `qsys.backtest.workbench`，更新 backtest worker、paper 与新查询层消费者。
-- [ ] `web.research_jobs` 搬到 `qsys.research.job_console`，更新 monthly submit 与新查询层消费者。
-- [ ] `web.limit_up_shadow`、`web.limit_up_research` 搬到 `qsys.research`，更新发布/观察入口和新查询层消费者。
-- [ ] `web.service_views` 中观察器使用的服务状态与 Windows 任务查询搬到 `qsys.ops.service_console`，更新 health-observer。
-- [ ] 每次搬家先保留薄兼容转发，运行对应组件专项测试与导入清单，确认无循环导入和序列化变化。
+- [x] `web.workbench` 搬到 `qsys.backtest.workbench`，更新 backtest worker、paper 与新查询层消费者。
+- [x] `web.research_jobs` 搬到 `qsys.research.job_console`，更新 monthly submit 与新查询层消费者。
+- [x] `web.limit_up_shadow`、`web.limit_up_research` 搬到 `qsys.research`，更新发布/观察入口和新查询层消费者。
+- [x] `web.service_views` 中观察器使用的服务状态与 Windows 任务查询搬到 `qsys.ops.service_console`，更新 health-observer。
+- [x] 每次搬家先保留薄兼容转发，运行对应组件专项测试与导入清单，确认无循环导入和序列化变化。
+
+完成证据：五类权威实现均已移出 `qsys.web`，旧模块只做同一类对象的符号转发；组件专项、入口导入与部署分类测试通过。首次全量回归仅发现三个新增研究路径未分类，已按真实消费者精确加入 Web、数据任务和 Research Runner，不使用宽泛通配。
 
 ## Task 2：唯一新应用入口
 
