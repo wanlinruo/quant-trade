@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from qsys.live.messages import Heartbeat
 from qsys.live.transport import MemoryTransport
-from qsys.web.live_kill_status import LiveKillReader
+from qsys.webapp.live_kill_status import LiveKillReader
 from qsys.web.app import create_app
 from qsys.web.config import WebConfig
 from qsys.web.views import MonitorService
@@ -124,7 +124,7 @@ def test_api_and_global_navigation_escape_reasons_and_track_live_state(warehouse
 
 
 def test_slow_read_cannot_publish_a_fresh_green_snapshot(tmp_path, monkeypatch):
-    import qsys.web.live_kill_status as module
+    import qsys.webapp.live_kill_status as module
     reader, _ = setup_reader(tmp_path)
     times = iter([0.0, 11.0])
     monkeypatch.setattr(module, 'monotonic', lambda: next(times))

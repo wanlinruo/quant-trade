@@ -18,7 +18,7 @@ from qsys.live.store import LiveStore
 from qsys.live.transport import Transport
 from qsys.ops.daily_report import DailyReport, EquityLine, build_daily_report
 from qsys.ops.journal import SessionJournal
-from qsys.web.config import WebConfig
+from qsys.webapp.config import WebConfig
 
 log = structlog.get_logger(__name__)
 

@@ -12,7 +12,7 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import Protocol
 
-from qsys.web.live_kill_status import LiveKillStatus
+from qsys.webapp.live_kill_status import LiveKillStatus
 from qsys.webapp.contracts.shell import KillSource, KillStatus, LivePosture, ShellStatus
 
 MISSING = {

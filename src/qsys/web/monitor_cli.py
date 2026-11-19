@@ -25,7 +25,7 @@ from qsys.web.app import _paper_activation, create_app
 from qsys.web.backtest_views import BacktestService
 from qsys.web.asset_views import DataAssetService
 from qsys.web.catalog_views import CatalogService
-from qsys.web.config import WebConfig
+from qsys.webapp.config import WebConfig
 from qsys.web.data_views import DataService, MarketService
 from qsys.webapp.queries.board_reader import LimitUpBoardReader
 from qsys.research.limit_up_shadow_store import LimitUpShadowReader
@@ -121,7 +121,7 @@ def build_app(
                 JobLimits(4096, 100, 10, 14_400),
             )
         research_console = ResearchJobConsole(research_jobs_path, profile=profile)
-    from qsys.web.live_kill_status import LiveKillReader
+    from qsys.webapp.live_kill_status import LiveKillReader
     from qsys.webapp.app import WebappDeps
     from qsys.webapp.queries.market import MarketQuery
 

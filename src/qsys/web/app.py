@@ -26,8 +26,8 @@ from fastapi.templating import Jinja2Templates
 from qsys.web.backtest_views import BacktestService, param_rows
 from qsys.web.asset_views import DataAssetService
 from qsys.web.catalog_views import CatalogService, Status
-from qsys.web.live_kill_status import LiveKillReader
-from qsys.web.config import WebConfig
+from qsys.webapp.live_kill_status import LiveKillReader
+from qsys.webapp.config import WebConfig
 from qsys.web.domain_views import DOMAIN_LABELS, NOT_INGESTED, STATUS_LABELS, DomainService
 from qsys.web.data_views import DataService, MarketService
 from qsys.webapp.queries.board_reader import BoardView, LimitUpBoardReader, SeriesView
