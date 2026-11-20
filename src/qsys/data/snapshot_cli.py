@@ -64,3 +64,7 @@ def main() -> int:
         snapshot = current_snapshot(args.store)
     print(json.dumps(snapshot.manifest, ensure_ascii=False, sort_keys=True))
     return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
