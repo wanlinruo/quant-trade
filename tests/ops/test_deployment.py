@@ -1694,6 +1694,23 @@ def test_production_failure_detail_keeps_captured_stderr() -> None:
     assert "less useful stdout" not in detail
 
 
+def test_test_failure_detail_keeps_captured_stderr_and_is_bounded() -> None:
+    entrypoint = _entrypoint_module()
+    error = subprocess.CalledProcessError(
+        1,
+        ["python", "-m", "qsys.data.snapshot_cli"],
+        output="less useful stdout",
+        stderr="snapshot failed: " + "x" * 600,
+    )
+
+    detail = entrypoint._failure_detail(error)
+
+    assert "returned non-zero exit status 1" in detail
+    assert "snapshot failed" in detail
+    assert "less useful stdout" not in detail
+    assert len(detail) == 500
+
+
 def test_live_identity_binds_pid_start_time_and_checkout(monkeypatch, tmp_path) -> None:
     entrypoint = _production_entrypoint_module()
     monkeypatch.setattr(entrypoint, "_head", lambda repo: "a" * 40)

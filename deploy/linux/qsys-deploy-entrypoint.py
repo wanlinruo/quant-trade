@@ -88,6 +88,16 @@ def _run(
     )
 
 
+def _failure_detail(exc: BaseException) -> str:
+    """Keep the first actionable subprocess diagnostic in the audit record."""
+    parts = [str(exc)]
+    if isinstance(exc, subprocess.CalledProcessError):
+        diagnostic = (exc.stderr or exc.stdout or "").strip()
+        if diagnostic:
+            parts.append(diagnostic)
+    return " | ".join(parts)[:500]
+
+
 def _head(repo: Path) -> str:
     return _run(["git", "rev-parse", "HEAD"], cwd=repo).stdout.strip()
 
@@ -1116,7 +1126,7 @@ def web_data_refresh(args: argparse.Namespace, config: dict[str, object]) -> int
         if not _test_web_data_healthy(config):
             raise ValueError("test Web data APIs did not become healthy")
     except (OSError, ValueError, subprocess.CalledProcessError, json.JSONDecodeError) as exc:
-        error = str(exc)[:500]
+        error = _failure_detail(exc)
         warehouse_restored = _activate_snapshot_pointer(
             RESEARCH_SNAPSHOT_STORE, before_warehouse_snapshot,
         )
