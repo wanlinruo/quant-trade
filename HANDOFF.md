@@ -1,21 +1,28 @@
 # 项目交接入口
 
-## 11-20：页面改版（#662）进展——19 页完成，等待测试控制面引导（改版状态以本节为准）
+## 11-20：页面改版与测试数据快照（#662 / #683）——等待 PR #684 自审（以本节为准）
 
-- **生产状态未因改版变化**：03–05、03b 和 19 个新页面都**没有发布到任何生产组件**；生产现状仍以
+- **生产状态未变**：03–05、03b 和 19 个新页面都**没有发布到任何生产组件**；生产现状仍以
   下方 11-17 一节及 #137 / #670 / #677 / #666 最新评论为准。生产发布仍逐组件另行请示。
-- **main/test `487e170`（PR #680）**：03b 已合入，CI、测试部署、Align 与 Direct push audit 均成功；
-  执行器状态进心跳及健康观察链路采样尚未发布生产。
-- **Web 需求分支 `feat/web-redesign`**：19/19 页面及新契约、查询层、前端均完成；唯一入口已切到
-  `qsys.webapp`，旧页面 GET/HEAD 只做固定 308，旧写接口不重定向，整个 `qsys.web` 已删除。
-  领域模块已分别迁到 `qsys.backtest`、`qsys.research`、`qsys.ops`，真实消费者和组件路径已同步。
-- **本地验收**：后端全量通过（仅既有 3 条 deprecation warning 与条件 skip）；前端 34 文件/137 项、
-  typecheck、build、390/1280/1600 三档 Playwright 34/34 通过；真实 wheel 安装探针与 Web release 的
-  严格解包、目标 SHA verifier、不可变安装及原子指针切换通过。secret scan 通过。
-- **当前门槛**：测试部署原先不消费 CI Web wheel。需求分支已准备最小控制面提交 `dcd2921`：精确下载
-  上游 `qsys-web-<sha>`、受限 SSH 流式传输、节点复验、测试专用不可变 release 与回滚。因 workflow
-  从可信 main 运行，须先把该控制面变更单独引导进 main，并从已合并 main 安装节点入口；未完成前
-  不推整份页面改版到 test。该引导会触发测试部署，执行前再次向维护者汇报。
+- **当前分支**：main `e0c55a4`；test `deab276`（tree `e42b303`）。PR #684 是唯一
+  `test -> main` 发布 PR，包含页面改版与 #683 第一阶段测试数据快照；等待维护者逐文件自审，
+  尚未合并。
+- **页面改版**：19/19 页面及新契约、查询层、前端均完成；唯一入口已切到 `qsys.webapp`，旧页面
+  GET/HEAD 只做固定 308，旧写接口不重定向，整个 `qsys.web` 已删除。领域模块已分别迁到
+  `qsys.backtest`、`qsys.research`、`qsys.ops`，真实消费者和组件路径已同步。
+- **测试部署证据**：CI `44708796944` 全绿；测试部署 `44709070265`、Deployment `7937846326`、
+  节点 record `github-44709070265-1` 成功，`qsys-web-test` 已到 `deab276`。PR CI `44709621469`
+  全绿。此前真实 Chrome 已逐页加载 6 组 19 页，全部 HTTP 200、已渲染且无 4xx/5xx。
+- **测试数据面现状**：部署成功不等于业务数据验收。warehouse 仍是主要截至 2026-09-18 的旧隔离快照；
+  paper 0 账户，ServiceRun/health/board/alerts 空或未接线，nodes/releases 无生产者；live/委托/对账按
+  隔离设计保持 disabled。不能据此批准生产页面切换。
+- **#683 第一阶段已实现但未执行刷新**：生产 warehouse、近 35 天 ServiceRun、health SQLite backup、
+  board 长期库/status、alerts 可生成测试专用不可变快照；manifest 绑定逐文件 hash，失败恢复旧指针。
+  明确排除 live/orders/fills/reconciliation/paper/board raw。手工 workflow 默认 dry-run，正式运行须
+  `REFRESH_TEST_WEB_DATA`。本轮测试部署没有读取或修改生产数据。
+- **当前门槛**：维护者自审并确认合并 PR #684 → 核对 Align / Direct push audit → 从精确 main 安装
+  新固定测试入口并确认 `web-data-refresh-v1` → 收盘后先 dry-run、再正式刷新 → 重做 19 页数据矩阵。
+  paper 与 nodes/releases 仍需后续阶段；#675/#676 独立承接。生产 Web 发布继续逐组件另行请示。
 - **生产发布顺序（每步另行请示）**：先 daily-digest → health-observer / service-checks / reboot-drill / paper
   → live-core 收盘后（按 #670 先解闸后发布）；03b 的 Windows 执行网关只能收盘后发布。发布 Web 前须用真实
   账号实测：Web 对各告警目录只读、对 `var/web` 可写（AGENTS.md §2.2）。
