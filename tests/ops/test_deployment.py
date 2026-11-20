@@ -1220,11 +1220,54 @@ def test_restricted_ssh_dispatcher_never_invokes_a_shell(monkeypatch) -> None:
         "/usr/local/libexec/qsys-deploy-entrypoint", "research-stage",
     ]
     monkeypatch.setenv(
+        "SSH_ORIGINAL_COMMAND", "web-data-refresh --sha " + "a" * 40,
+    )
+    assert dispatcher.command_from_environment()[:2] == [
+        "/usr/local/libexec/qsys-deploy-entrypoint", "web-data-refresh",
+    ]
+    monkeypatch.setenv(
         "SSH_ORIGINAL_COMMAND", "research-drill --sha " + "a" * 40,
     )
     assert dispatcher.command_from_environment()[:2] == [
         "/usr/local/libexec/qsys-deploy-entrypoint", "research-drill",
     ]
+
+
+def test_test_web_data_refresh_is_manual_allowlisted_and_rollback_capable() -> None:
+    workflow = Path(".github/workflows/refresh-test-web-data.yml").read_text(
+        encoding="utf-8",
+    )
+    entrypoint = Path("deploy/linux/qsys-deploy-entrypoint.py").read_text(encoding="utf-8")
+    unit = Path("deploy/systemd/qsys-web-test.service").read_text(encoding="utf-8")
+
+    assert "workflow_dispatch:" in workflow
+    assert "REFRESH_TEST_WEB_DATA" in workflow
+    assert "web-data-refresh-v1" in workflow
+    assert "timeout-minutes: 45" in workflow
+    assert "cancel-in-progress: false" in workflow
+    assert 'test -n "$ci_run"' in workflow
+    assert "web-data-refresh --sha $TARGET_SHA" in workflow
+    assert "Production mutation: none" in workflow
+    for source in (
+        'PRODUCTION_WAREHOUSE = Path("/data/qsys/warehouse")',
+        'PRODUCTION_WAREHOUSE_LOCK = Path("/home/ubuntu/qsys/var/warehouse-write.lock")',
+        'PRODUCTION_REPO = Path("/home/ubuntu/qsys")',
+        'PRODUCTION_SERVICE_RUNS = PRODUCTION_REPO / "var/service-runs"',
+        'PRODUCTION_HEALTH_STATE = PRODUCTION_REPO / "var/health-observer/service-health.sqlite3"',
+        'PRODUCTION_ALERTS = PRODUCTION_REPO / "var/alerts"',
+        'PRODUCTION_BOARD = Path("/data/qsys/var-prod/limit-up-board")',
+    ):
+        assert source in entrypoint
+    assert "fcntl.LOCK_SH" in entrypoint
+    assert "time.monotonic() + 120" in entrypoint
+    assert "production warehouse write lock remained busy" in entrypoint
+    assert "_activate_snapshot_pointer" in entrypoint
+    assert "_restore_symlink" in entrypoint
+    assert '"test-web-data"' in entrypoint
+    assert "web-ops-snapshot-store/current/service-runs" in unit
+    assert "web-ops-snapshot-store/current/service-health.sqlite3" in unit
+    assert "web-ops-snapshot-store/current/limit-up-board" in unit
+    assert "web-ops-snapshot-store/current/alerts/production" in unit
 
 
 def test_test_deploy_key_is_forced_and_rotated_atomically(tmp_path) -> None:

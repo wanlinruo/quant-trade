@@ -49,6 +49,7 @@ qsys-submit-monthly-research = "qsys.research.monthly_submit_cli:main"
 qsys-research-runner = "qsys.research.runner_cli:main"
 qsys-research-test-drill = "qsys.research.drill_cli:main"
 qsys-warehouse-snapshot = "qsys.data.snapshot_cli:main"
+qsys-test-web-snapshot = "qsys.ops.test_web_snapshot_cli:main"
 
 [dependency-groups]
 dev = [

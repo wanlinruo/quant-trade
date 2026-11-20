@@ -1,0 +1,142 @@
+name: Refresh test Web data snapshots
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Exact deployed test commit SHA
+        required: true
+        type: string
+      complete_through:
+        description: Last complete session in the production warehouse (YYYY-MM-DD)
+        required: true
+        type: string
+      refresh_id:
+        description: Auditable refresh identifier
+        required: true
+        type: string
+      dry_run:
+        description: Validate sources and gates without writing snapshots
+        required: true
+        default: true
+        type: boolean
+      confirmation:
+        description: Enter REFRESH_TEST_WEB_DATA for a real refresh
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  checks: read
+  contents: read
+
+concurrency:
+  group: refresh-test-web-data
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: testing
+    env:
+      TARGET_SHA: ${{ inputs.target_sha }}
+      COMPLETE_THROUGH: ${{ inputs.complete_through }}
+      REFRESH_ID: ${{ inputs.refresh_id }}
+      DRY_RUN: ${{ inputs.dry_run }}
+      CONFIRMATION: ${{ inputs.confirmation }}
+      DEPLOY_HOST: ${{ vars.TEST_DEPLOY_HOST }}
+      DEPLOY_USER: ${{ vars.TEST_DEPLOY_USER }}
+      RUN_KEY: ${{ inputs.refresh_id }}-test-web-data
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out trusted controller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Install dedicated test SSH identity
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.TEST_DEPLOY_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.TEST_DEPLOY_KNOWN_HOSTS }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          root = Path.home() / ".ssh"
+          root.mkdir(mode=0o700, exist_ok=True)
+          key = root / "test-deploy"
+          key.write_text(os.environ["SSH_PRIVATE_KEY"].rstrip() + "\n", encoding="utf-8")
+          key.chmod(0o600)
+          known = root / "known_hosts"
+          known.write_text(os.environ["SSH_KNOWN_HOSTS"].rstrip() + "\n", encoding="utf-8")
+          known.chmod(0o600)
+          PY
+
+      - name: Validate exact source, CI and node gates
+        run: |
+          set -euo pipefail
+          if [ "$DRY_RUN" != true ]; then test "$CONFIRMATION" = REFRESH_TEST_WEB_DATA; fi
+          printf '%s' "$TARGET_SHA" | grep -Eq '^[0-9a-f]{40}$'
+          printf '%s' "$COMPLETE_THROUGH" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+          printf '%s' "$REFRESH_ID" | grep -Eq '^[A-Za-z0-9._-]{1,100}$'
+          remote_sha=$(git ls-remote origin refs/heads/test | awk '{print $1}')
+          test "$remote_sha" = "$TARGET_SHA"
+          ci_run=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$TARGET_SHA&event=push&per_page=100" \
+            --jq '[.workflow_runs[] | select(.head_branch == "test" and .conclusion == "success")] | max_by(.id)')
+          test -n "$ci_run"
+          test "$ci_run" != null
+          node_json=$(ssh -i ~/.ssh/test-deploy -o BatchMode=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" 'status --environment test')
+          NODE_JSON="$node_json" python3 - <<'PY'
+          import json, os
+          state = json.loads(os.environ["NODE_JSON"])
+          if state["sha"] != os.environ["TARGET_SHA"] or state["branch"] != "test":
+              raise SystemExit(f"test node is not at the exact target: {state}")
+          if state["dirty"] or not state["healthy"] or not state["isolated"]:
+              raise SystemExit(f"test node is not healthy and isolated: {state}")
+          if state.get("entrypoint_version", 0) < 5 or "web-data-refresh-v1" not in state.get("capabilities", []):
+              raise SystemExit("test entrypoint lacks Web data refresh capability")
+          PY
+
+      - name: Validate refresh plan
+        if: inputs.dry_run == true
+        run: >-
+          ssh -i ~/.ssh/test-deploy -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST"
+          "web-data-refresh --sha $TARGET_SHA --complete-through $COMPLETE_THROUGH
+          --run-id $RUN_KEY --actor $GITHUB_ACTOR --repository $GITHUB_REPOSITORY --dry-run"
+
+      - name: Refresh immutable snapshots
+        if: inputs.dry_run == false
+        run: |
+          ssh -i ~/.ssh/test-deploy -o BatchMode=yes \
+            -o ServerAliveInterval=30 -o ServerAliveCountMax=30 \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "web-data-refresh --sha $TARGET_SHA --complete-through $COMPLETE_THROUGH --run-id $RUN_KEY --actor $GITHUB_ACTOR --repository $GITHUB_REPOSITORY" \
+            | tee result.json
+          jq -e '.ok == true and .status == "success"' result.json >/dev/null
+
+      - name: Verify refresh record
+        if: inputs.dry_run == false
+        run: |
+          ssh -i ~/.ssh/test-deploy -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "record --environment test --run-id $RUN_KEY" >record.json
+          PYTHONPATH=src python3 scripts/deployment_contract.py validate-record record.json
+          jq -e --arg sha "$TARGET_SHA" '
+            .source_sha == $sha and .status == "success"
+            and .components == ["test-web-data"]
+            and .before.linux == .after.linux
+          ' record.json >/dev/null
+
+      - name: Write summary
+        if: always()
+        run: |
+          {
+            echo "## Test Web data snapshot refresh"
+            echo "- Target: \`$TARGET_SHA\`"
+            echo "- Complete through: \`$COMPLETE_THROUGH\`"
+            echo "- Dry run: \`$DRY_RUN\`"
+            echo "- Node record: \`$RUN_KEY\`"
+            echo "- Production mutation: none; approved sources are read-only"
+          } >>"$GITHUB_STEP_SUMMARY"

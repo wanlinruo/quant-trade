@@ -26,6 +26,7 @@ PRIVILEGED_WORKFLOWS = {
     "direct-push-audit.yml",
     "drill-test-research-runner.yml",
     "stage-test-research-runner.yml",
+    "refresh-test-web-data.yml",
 }
 
 
