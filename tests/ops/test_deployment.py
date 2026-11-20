@@ -1104,6 +1104,40 @@ def test_test_research_artifact_extraction_rejects_unexpected_files(tmp_path) ->
         entrypoint._extract_research_archive(archive, destination)
 
 
+def test_test_web_artifact_extraction_is_strict(tmp_path) -> None:
+    entrypoint = _entrypoint_module()
+    destination = tmp_path / "release"
+    destination.mkdir()
+    archive = tmp_path / "web.zip"
+    with zipfile.ZipFile(archive, "w") as value:
+        value.writestr("release.json", "{}")
+        value.writestr("dist/qsys.whl", b"wheel")
+        value.writestr("source/src/qsys/webapp/app.py", b"source")
+    entrypoint._extract_web_archive(archive, destination)
+    assert (destination / "dist" / "qsys.whl").read_bytes() == b"wheel"
+
+    planted = tmp_path / "planted.zip"
+    with zipfile.ZipFile(planted, "w") as value:
+        value.writestr("release.json", "{}")
+        value.writestr("unexpected", b"no")
+    with pytest.raises(ValueError, match="unexpected path"):
+        entrypoint._extract_web_archive(planted, tmp_path / "unused")
+
+
+def test_test_web_release_pointer_switches_atomically(monkeypatch, tmp_path) -> None:
+    entrypoint = _entrypoint_module()
+    root = tmp_path / "web-releases"
+    sha = "a" * 40
+    (root / sha).mkdir(parents=True)
+    config = {"test_web_release_root": str(root)}
+
+    assert entrypoint._activate_web_release(config, sha) is True
+    assert entrypoint._current_web_release(config) == sha
+    assert (root / "current").resolve() == root / sha
+    assert entrypoint._activate_web_release(config, "uninstalled") is True
+    assert entrypoint._current_web_release(config) == "uninstalled"
+
+
 def test_test_research_release_does_not_hardlink_shared_uv_cache() -> None:
     source = Path("deploy/linux/qsys-deploy-entrypoint.py").read_text(encoding="utf-8")
 
@@ -2385,9 +2419,10 @@ def test_failed_deployment_rollback_restores_code_dependencies_and_service(monke
 
     monkeypatch.setattr(entrypoint, "_run", fake_run)
     monkeypatch.setattr(entrypoint, "_healthy", lambda config, repo: True)
+    monkeypatch.setattr(entrypoint, "_activate_web_release", lambda config, identity: True)
     config = {"uv_bin": "/opt/uv", "test_service": "qsys-web-test.service"}
 
-    assert entrypoint._rollback(config, tmp_path, "b" * 40) is True
+    assert entrypoint._rollback(config, tmp_path, "b" * 40, "a" * 40) is True
     assert calls == [
         ["git", "reset", "--hard", "b" * 40],
         ["/opt/uv", "sync", "--frozen"],
@@ -2575,6 +2610,20 @@ def test_test_research_workflow_streams_ci_artifact_without_activation() -> None
     assert "Runner activation: never performed" in workflow
 
 
+def test_test_deploy_workflow_streams_exact_web_artifact() -> None:
+    workflow = Path(".github/workflows/deploy-test.yml").read_text(encoding="utf-8")
+
+    assert 'gh run download "$UPSTREAM_RUN_ID"' in workflow
+    assert '--name "qsys-web-$TARGET_SHA"' in workflow
+    assert "web-artifact-deploy-v1" in workflow
+    assert "--artifact-sha256 $WEB_ARTIFACT_SHA256" in workflow
+    assert "<web-release.zip" in workflow
+    assert "Bootstrap exact trusted controller through N-1 gateway" in workflow
+    assert 'CONTROLLER_SHA: ${{ steps.source.outputs.controller_sha }}' in workflow
+    assert 'test "$TARGET_SHA" = "$CONTROLLER_SHA"' in workflow
+    assert "lacks Web artifact capability for a non-bootstrap target" in workflow
+
+
 def test_test_research_drill_is_manual_bounded_and_preserves_service_identity() -> None:
     workflow = Path(".github/workflows/drill-test-research-runner.yml").read_text(
         encoding="utf-8",
@@ -2628,26 +2677,15 @@ def test_windows_coordinator_config_is_readable_by_forced_command_user() -> None
     assert "-m 0600" not in installer
 
 
-def test_repeated_test_deployment_is_a_noop(tmp_path) -> None:
-    repo = tmp_path / "repo"
-    repo.mkdir()
+def test_test_deployment_verifies_web_release_and_supports_control_plane_bootstrap() -> None:
     script = Path("scripts/deploy_test_linux.sh").read_text(encoding="utf-8")
-    (repo / "deploy.sh").write_text(script, encoding="utf-8")
-    subprocess.run(["git", "init", "-b", "test"], cwd=repo, check=True, capture_output=True)
-    subprocess.run(["git", "add", "deploy.sh"], cwd=repo, check=True)
-    subprocess.run(
-        ["git", "-c", "user.name=test", "-c", "user.email=test@example.invalid",
-         "commit", "-m", "fixture"],
-        cwd=repo, check=True, capture_output=True,
-    )
-    sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
 
-    completed = subprocess.run(
-        ["/bin/sh", "deploy.sh", sha], cwd=repo, text=True, capture_output=True,
-    )
-
-    assert completed.returncode == 0
-    assert completed.stdout.strip() == f"test deployment already at target: {sha}"
+    assert 'if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then' in script
+    assert 'web_release=${2:-}' in script
+    assert 'artifact_mode=false' in script
+    assert '"$web_release/spa_dist/build-info.json"' in script
+    assert "test deployment already at target" not in script
+    assert "http://127.0.0.1:8421/app/today" in script
 
 
 def test_test_deployment_switches_to_the_verified_exact_sha() -> None:
@@ -2671,6 +2709,8 @@ def test_test_deployment_installs_and_rolls_back_its_web_unit() -> None:
     assert "systemctl daemon-reload" in script
     assert "trap cleanup EXIT" in script
     assert "trap 'exit 143' TERM" in script
+    unit = Path("deploy/systemd/qsys-web-test.service").read_text(encoding="utf-8")
+    assert "QSYS_WEB_SPA_ROOT=/data/qsys-test/var/web-releases/current/spa_dist" in unit
 
 
 def test_test_plan_never_targets_windows() -> None:

@@ -2,6 +2,7 @@
   "schema_version": 1,
   "test_repo": "/home/ubuntu/qsys-test",
   "test_record_root": "/data/qsys-test/var/deployments",
+  "test_web_release_root": "/data/qsys-test/var/web-releases",
   "fingerprint_key": "/etc/qsys/config-fingerprint.key",
   "uv_bin": "/home/ubuntu/.local/bin/uv",
   "test_service": "qsys-web-test.service",
