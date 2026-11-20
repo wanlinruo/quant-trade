@@ -19,6 +19,7 @@
 4. 通过验证后，把 release 与从 wheel 提取并再次核对的 `spa_dist` 安装到测试专用不可变目录 `<web_release_root>/<sha>`；`current` 仅作原子指针切换。
 5. 新应用可通过 `QSYS_WEB_SPA_ROOT` 选择外部静态资源。测试 unit 指向 `current/spa_dist`；生产 unit 不设置该变量，继续读取已安装 wheel 内资源。
 6. 失败时恢复部署前的 `current` 指针、Git SHA、依赖和 unit；部署记录写入 Web 制品 SHA-256 与当前 release 身份。`/healthz` 和 `/app/today` 都必须返回 200。
+7. bootstrap 对 N-1 节点只开放一个有界例外：目标 SHA 必须等于可信 `main` 控制器 SHA，沿用旧 deploy 命令完成控制面自身对齐；任何其他目标在 capability 缺失时直接拒绝。对齐后从已合并 main 安装新节点入口，后续目标一律走制品链路。
 
 ## 实施清单
 

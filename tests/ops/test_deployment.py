@@ -2647,6 +2647,9 @@ def test_test_deploy_workflow_streams_exact_web_artifact() -> None:
     assert "web-artifact-deploy-v1" in workflow
     assert "--artifact-sha256 $WEB_ARTIFACT_SHA256" in workflow
     assert "<web-release.zip" in workflow
+    assert "Bootstrap exact trusted controller through N-1 gateway" in workflow
+    assert 'test "$TARGET_SHA" = "${{ steps.source.outputs.controller_sha }}"' in workflow
+    assert "lacks Web artifact capability for a non-bootstrap target" in workflow
 
 
 def test_test_research_drill_is_manual_bounded_and_preserves_service_identity() -> None:

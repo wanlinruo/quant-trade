@@ -95,12 +95,19 @@ jobs:
               or not state["healthy"] or not state["isolated"]
           ):
               raise SystemExit(f"test node is not deployable: {state}")
-          if "web-artifact-deploy-v1" not in state.get("capabilities", []):
-              raise SystemExit("test node does not support verified Web artifacts")
+          capable = "web-artifact-deploy-v1" in state.get("capabilities", [])
           print(f'before_sha={state["sha"]}')
+          print(f'artifact_capable={str(capable).lower()}')
           PY
           echo "source_tree=$(git rev-parse "$TARGET_SHA^{tree}")" >>"$GITHUB_OUTPUT"
-          echo "controller_sha=$(git rev-parse HEAD)" >>"$GITHUB_OUTPUT"
+          controller_sha=$(git rev-parse HEAD)
+          echo "controller_sha=$controller_sha" >>"$GITHUB_OUTPUT"
+          artifact_capable=$(printf '%s' "$node_json" | jq -r \
+            '.capabilities | index("web-artifact-deploy-v1") != null')
+          if [ "$artifact_capable" != true ] && [ "$TARGET_SHA" != "$controller_sha" ]; then
+            echo "test node lacks Web artifact capability for a non-bootstrap target" >&2
+            exit 1
+          fi
 
       - name: Plan from trusted main controller
         id: plan
@@ -141,7 +148,9 @@ jobs:
 
       - name: Download exact immutable Web release
         id: web_artifact
-        if: steps.plan.outputs.deployable == 'true'
+        if: >-
+          steps.plan.outputs.deployable == 'true' &&
+          steps.source.outputs.artifact_capable == 'true'
         run: |
           set -eu
           mkdir web-release
@@ -164,7 +173,9 @@ jobs:
 
       - name: Deploy exact SHA through restricted gateway
         id: deploy
-        if: steps.plan.outputs.deployable == 'true'
+        if: >-
+          steps.plan.outputs.deployable == 'true' &&
+          steps.source.outputs.artifact_capable == 'true'
         env:
           WEB_ARTIFACT_SHA256: ${{ steps.web_artifact.outputs.sha256 }}
         run: |
@@ -172,6 +183,15 @@ jobs:
             -o ServerAliveInterval=30 -o ServerAliveCountMax=30 "$DEPLOY_USER@$DEPLOY_HOST" \
             "deploy --environment test --sha $TARGET_SHA --component test-runtime --artifact-sha256 $WEB_ARTIFACT_SHA256 --run-id $RUN_KEY --actor $GITHUB_ACTOR --repository $GITHUB_REPOSITORY" \
             <web-release.zip
+
+      - name: Bootstrap exact trusted controller through N-1 gateway
+        if: >-
+          steps.plan.outputs.deployable == 'true' &&
+          steps.source.outputs.artifact_capable == 'false'
+        run: |
+          test "$TARGET_SHA" = "${{ steps.source.outputs.controller_sha }}"
+          ssh -i ~/.ssh/test-deploy -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "deploy --environment test --sha $TARGET_SHA --component test-runtime --run-id $RUN_KEY --actor $GITHUB_ACTOR --repository $GITHUB_REPOSITORY"
 
       - name: Attest control-plane-only target
         if: steps.plan.outputs.deployable == 'false'
