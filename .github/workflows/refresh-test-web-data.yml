@@ -83,8 +83,12 @@ jobs:
           printf '%s' "$REFRESH_ID" | grep -Eq '^[A-Za-z0-9._-]{1,100}$'
           remote_sha=$(git ls-remote origin refs/heads/test | awk '{print $1}')
           test "$remote_sha" = "$TARGET_SHA"
-          ci_run=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$TARGET_SHA&event=push&per_page=100" \
-            --jq '[.workflow_runs[] | select(.head_branch == "test" and .conclusion == "success")] | max_by(.id)')
+          ci_run=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$TARGET_SHA&per_page=100" \
+            --jq '[.workflow_runs[] | select(
+              .head_branch == "test"
+              and (.event == "push" or .event == "workflow_dispatch")
+              and .conclusion == "success"
+            )] | max_by(.id)')
           test -n "$ci_run"
           test "$ci_run" != null
           node_json=$(ssh -i ~/.ssh/test-deploy -o BatchMode=yes \
