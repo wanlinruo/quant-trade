@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "item": {
+    "key": "observer.process.down",
+    "subject": "web",
+    "source": "health-observer",
+    "kind": "incident",
+    "severity": "CRITICAL",
+    "status": "resolved",
+    "first_at": "2026-11-17T09:30:00+08:00",
+    "last_at": "2026-11-17T09:30:00+08:00",
+    "resolved_at": "2026-11-17T09:33:00+08:00",
+    "count": 1,
+    "title": "Web 已恢复",
+    "detail": "",
+    "description": "服务进程停止",
+    "ack": null
+  },
+  "events": [
+    {
+      "event_id": "ac8289ab9d89419594f343cbf66671b6",
+      "occurred_at": "2026-11-17T09:30:00+08:00",
+      "severity": "CRITICAL",
+      "state": "firing",
+      "title": "Web 已停止",
+      "detail": "",
+      "evidence": {},
+      "delivered": 1,
+      "failed": []
+    },
+    {
+      "event_id": "bda4e5902a4c463a8fb9d34e0d9d95d2",
+      "occurred_at": "2026-11-17T09:33:00+08:00",
+      "severity": "INFO",
+      "state": "resolved",
+      "title": "Web 已恢复",
+      "detail": "",
+      "evidence": {},
+      "delivered": 1,
+      "failed": []
+    }
+  ]
+}

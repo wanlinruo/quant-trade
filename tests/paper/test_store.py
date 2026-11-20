@@ -6,7 +6,7 @@ from qsys.core.portfolio import Portfolio
 from qsys.core.trading import Order, OrderType, Side
 from qsys.core.types import Symbol
 from qsys.paper.store import PaperStore
-from qsys.web.workbench import WorkbenchStore
+from qsys.backtest.workbench import WorkbenchStore
 
 
 SOURCE = """

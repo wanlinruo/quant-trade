@@ -1,0 +1,100 @@
+{
+  "id": "b5715c156ffc446a91c7c5fae70ff134",
+  "name": "首板打板",
+  "updated_at": "2026-11-18T19:07:14+08:00",
+  "version_id": "75080db3fbf96352",
+  "stage": "paper",
+  "stage_label": "模拟",
+  "stage_detail": "模拟一号",
+  "in_use": true,
+  "used_by": [
+    "模拟账户 模拟一号"
+  ],
+  "latest_backtest": {
+    "id": "341fb9408ec74ce8",
+    "strategy": "首板打板",
+    "strategy_id": "b5715c156ffc446a91c7c5fae70ff134",
+    "start": "2024-01-02",
+    "end": "2024-01-05",
+    "created_at": "2026-11-18T19:07:14+08:00",
+    "started_at": "2026-11-18T19:07:14+08:00",
+    "finished_at": "2026-11-18T19:07:14+08:00",
+    "duration_seconds": 0,
+    "status": "succeeded",
+    "cost_model": "qsys 实盘档位",
+    "total_return": -0.01,
+    "benchmark_return": 0.1,
+    "max_drawdown": -0.2,
+    "has_report": true,
+    "source": "web",
+    "progress": 0,
+    "total": 0,
+    "current_session": null
+  },
+  "schema_version": 1,
+  "enabled": true,
+  "core_label": "影子盘",
+  "source": "\nfrom qsys.strategy.base import Strategy\nPARAMETERS = {\"window\": {\"type\": \"int\", \"default\": 20, \"min\": 2}}\nclass Demo(Strategy):\n    pass\n",
+  "parameters": [
+    {
+      "name": "window",
+      "type": "int",
+      "default": 20,
+      "label": "window",
+      "description": "",
+      "minimum": 2.0,
+      "maximum": null,
+      "choices": []
+    }
+  ],
+  "versions": [
+    {
+      "id": "75080db3fbf96352",
+      "created_at": "2026-11-18T19:07:14+08:00"
+    }
+  ],
+  "backtests": [
+    {
+      "id": "341fb9408ec74ce8",
+      "strategy": "首板打板",
+      "strategy_id": "b5715c156ffc446a91c7c5fae70ff134",
+      "start": "2024-01-02",
+      "end": "2024-01-05",
+      "created_at": "2026-11-18T19:07:14+08:00",
+      "started_at": "2026-11-18T19:07:14+08:00",
+      "finished_at": "2026-11-18T19:07:14+08:00",
+      "duration_seconds": 0,
+      "status": "succeeded",
+      "cost_model": "qsys 实盘档位",
+      "total_return": -0.01,
+      "benchmark_return": 0.1,
+      "max_drawdown": -0.2,
+      "has_report": true,
+      "source": "web",
+      "progress": 0,
+      "total": 0,
+      "current_session": null
+    },
+    {
+      "id": "b6866bcc4e954866",
+      "strategy": "首板打板",
+      "strategy_id": "b5715c156ffc446a91c7c5fae70ff134",
+      "start": "2024-01-02",
+      "end": "2024-03-29",
+      "created_at": "2026-11-18T19:07:14+08:00",
+      "started_at": null,
+      "finished_at": null,
+      "duration_seconds": null,
+      "status": "queued",
+      "cost_model": "qsys 实盘档位",
+      "total_return": null,
+      "benchmark_return": null,
+      "max_drawdown": null,
+      "has_report": false,
+      "source": "web",
+      "progress": 0,
+      "total": 0,
+      "current_session": null
+    }
+  ]
+}

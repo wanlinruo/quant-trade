@@ -435,7 +435,7 @@ def test_limit_up_activation_seeds_history_before_switching_pointer(monkeypatch,
 
 def test_seeded_history_is_visible_to_the_existing_web_reader(monkeypatch,tmp_path):
     from datetime import date
-    from qsys.web.limit_up_shadow import LimitUpShadowPublisher, LimitUpShadowReader, LimitUpShadowSnapshot
+    from qsys.research.limit_up_shadow_store import LimitUpShadowPublisher, LimitUpShadowReader, LimitUpShadowSnapshot
 
     source=tmp_path/"legacy.sqlite3"
     target=tmp_path/"isolated.sqlite3"

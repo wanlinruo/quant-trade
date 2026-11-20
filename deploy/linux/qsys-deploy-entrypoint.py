@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import hashlib
 import json
 import os
@@ -26,15 +27,24 @@ RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 REPOSITORY_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 ACTOR_PATTERN = re.compile(r"^[A-Za-z0-9_.-]{1,128}$")
 ALLOWED_COMPONENTS = {"test": frozenset({"test-runtime"})}
-ENTRYPOINT_VERSION = 4
+ENTRYPOINT_VERSION = 5
 ENTRYPOINT_CAPABILITIES = (
     "research-stage-v1", "research-drill-v1", "web-artifact-deploy-v1",
+    "web-data-refresh-v1",
 )
 RESEARCH_RELEASE_ROOT = Path("/opt/qsys-research-test/releases")
 RESEARCH_CURRENT = Path("/opt/qsys-research-test/current")
 RESEARCH_SNAPSHOT_STORE = Path("/data/qsys-test/warehouse-snapshot-store")
 RESEARCH_ARCHIVE_LIMIT = 256 * 1024 * 1024
 WEB_ARCHIVE_LIMIT = 256 * 1024 * 1024
+WEB_OPS_SNAPSHOT_STORE = Path("/data/qsys-test/web-ops-snapshot-store")
+PRODUCTION_WAREHOUSE = Path("/data/qsys/warehouse")
+PRODUCTION_WAREHOUSE_LOCK = Path("/home/ubuntu/qsys/var/warehouse-write.lock")
+PRODUCTION_REPO = Path("/home/ubuntu/qsys")
+PRODUCTION_SERVICE_RUNS = PRODUCTION_REPO / "var/service-runs"
+PRODUCTION_HEALTH_STATE = PRODUCTION_REPO / "var/health-observer/service-health.sqlite3"
+PRODUCTION_ALERTS = PRODUCTION_REPO / "var/alerts"
+PRODUCTION_BOARD = Path("/data/qsys/var-prod/limit-up-board")
 
 
 def validate_request(environment: str, sha: str, components: list[str]) -> None:
@@ -169,6 +179,53 @@ def _current_research_sha() -> str:
         except OSError:
             research_sha = "broken"
     return research_sha
+
+
+def _snapshot_pointer(store: Path) -> str:
+    current = store / "current"
+    if not current.is_symlink():
+        return "uninstalled"
+    try:
+        resolved = current.resolve(strict=True)
+        snapshots = (store / "snapshots").resolve(strict=True)
+        return resolved.name if resolved.parent == snapshots else "unknown"
+    except OSError:
+        return "broken"
+
+
+def _activate_snapshot_pointer(store: Path, identity: str) -> bool:
+    current = store / "current"
+    try:
+        if identity == "uninstalled":
+            current.unlink(missing_ok=True)
+        elif RUN_ID_PATTERN.fullmatch(identity):
+            target = store / "snapshots" / identity
+            if target.is_symlink() or not target.is_dir():
+                return False
+            temporary = store / f".current-{os.getpid()}-{uuid.uuid4().hex}"
+            temporary.symlink_to(Path("snapshots") / identity, target_is_directory=True)
+            temporary.replace(current)
+        else:
+            return False
+        return _snapshot_pointer(store) == identity
+    except OSError:
+        return False
+
+
+def _activate_test_warehouse(snapshot_id: str) -> bool:
+    link = Path("/data/qsys-test/warehouse-current")
+    snapshot = RESEARCH_SNAPSHOT_STORE / "snapshots" / snapshot_id / "warehouse"
+    if not snapshot.is_dir() or snapshot.is_symlink():
+        return False
+    temporary = link.parent / f".warehouse-current-{os.getpid()}-{uuid.uuid4().hex}"
+    try:
+        temporary.symlink_to(snapshot, target_is_directory=True)
+        temporary.replace(link)
+        return link.is_symlink() and link.resolve(strict=True) == snapshot.resolve(strict=True)
+    except OSError:
+        return False
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def _service_identity(
@@ -922,6 +979,194 @@ def research_drill(args: argparse.Namespace, config: dict[str, object]) -> int:
     return 0 if success else 1
 
 
+def _raw_symlink_target(path: Path) -> str:
+    if not path.is_symlink():
+        return "uninstalled"
+    try:
+        return os.readlink(path)
+    except OSError:
+        return "broken"
+
+
+def _restore_symlink(path: Path, target: str) -> bool:
+    temporary = path.parent / f".{path.name}-restore-{os.getpid()}-{uuid.uuid4().hex}"
+    try:
+        if target == "uninstalled":
+            path.unlink(missing_ok=True)
+            return not path.exists() and not path.is_symlink()
+        if target == "broken":
+            return False
+        temporary.symlink_to(target, target_is_directory=True)
+        temporary.replace(path)
+        return path.is_symlink() and os.readlink(path) == target
+    except OSError:
+        return False
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _test_web_data_healthy(config: dict[str, object]) -> bool:
+    if not _wait_healthy(config, Path(str(config["test_repo"]))):
+        return False
+    base = str(config["test_health_url"]).removesuffix("/healthz")
+    for path in ("/api/app/services", "/api/app/board", "/api/app/alerts"):
+        try:
+            with urllib.request.urlopen(base + path, timeout=10) as response:
+                if response.status != 200:
+                    return False
+        except OSError:
+            return False
+    return True
+
+
+def web_data_refresh(args: argparse.Namespace, config: dict[str, object]) -> int:
+    """Refresh test-only read models from an approved production allowlist."""
+    if not SHA_PATTERN.fullmatch(args.sha):
+        raise ValueError("sha must be a full 40-character lowercase commit SHA")
+    if not RUN_ID_PATTERN.fullmatch(args.run_id):
+        raise ValueError("run-id contains unsupported characters")
+    if not ACTOR_PATTERN.fullmatch(args.actor):
+        raise ValueError("actor contains unsupported characters")
+    if not REPOSITORY_PATTERN.fullmatch(args.repository):
+        raise ValueError("repository must be owner/name")
+    complete_through = date.fromisoformat(args.complete_through).isoformat()
+    repo = Path(str(config["test_repo"])).resolve(strict=True)
+    node = status(config)
+    if node["dirty"] or not node["healthy"] or not node["isolated"]:
+        raise ValueError("test node is not healthy and isolated")
+    _run(["git", "fetch", "--no-tags", "origin", "test"], cwd=repo)
+    if _run(["git", "rev-parse", "origin/test"], cwd=repo).stdout.strip() != args.sha:
+        raise ValueError("requested SHA is not the exact test branch head")
+    if _head(repo) != args.sha:
+        raise ValueError("test runtime is not deployed at the requested SHA")
+    source_tree = _run(["git", "rev-parse", f"{args.sha}^{{tree}}"], cwd=repo).stdout.strip()
+    production_sha = _head(PRODUCTION_REPO.resolve(strict=True))
+    sources = (
+        PRODUCTION_WAREHOUSE, PRODUCTION_WAREHOUSE_LOCK, PRODUCTION_SERVICE_RUNS,
+        PRODUCTION_HEALTH_STATE, PRODUCTION_ALERTS, PRODUCTION_BOARD,
+    )
+    if not all(path.exists() for path in sources):
+        missing = [str(path) for path in sources if not path.exists()]
+        raise ValueError(f"approved snapshot source is missing: {missing}")
+    before_warehouse_snapshot = _snapshot_pointer(RESEARCH_SNAPSHOT_STORE)
+    before_ops_snapshot = _snapshot_pointer(WEB_OPS_SNAPSHOT_STORE)
+    warehouse_link = Path("/data/qsys-test/warehouse-current")
+    before_warehouse_link = _raw_symlink_target(warehouse_link)
+    if args.dry_run:
+        print(json.dumps({
+            "ok": True, "dry_run": True, "source_tree": source_tree,
+            "production_sha": production_sha,
+            "before_warehouse_snapshot": before_warehouse_snapshot,
+            "before_ops_snapshot": before_ops_snapshot,
+            "complete_through": complete_through,
+        }))
+        return 0
+
+    started = datetime.now(UTC).isoformat()
+    snapshot_key = hashlib.sha256(args.run_id.encode()).hexdigest()[:16]
+    warehouse_snapshot = f"web-{complete_through.replace('-', '')}-{snapshot_key}"
+    ops_snapshot = f"web-{snapshot_key}"
+    switched = False
+    rollback_ok = False
+    error = ""
+    warehouse_manifest: dict[str, Any] = {}
+    ops_manifest: dict[str, Any] = {}
+    try:
+        environment = dict(os.environ)
+        environment["PYTHONDONTWRITEBYTECODE"] = "1"
+        python = repo / ".venv/bin/python"
+        with PRODUCTION_WAREHOUSE_LOCK.open("rb") as lock:
+            deadline = time.monotonic() + 120
+            while True:
+                try:
+                    fcntl.flock(lock.fileno(), fcntl.LOCK_SH | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError("production warehouse write lock remained busy") from None
+                    time.sleep(1)
+            created = _run([
+                str(python), "-m", "qsys.data.snapshot_cli", "create",
+                "--warehouse", str(PRODUCTION_WAREHOUSE),
+                "--store", str(RESEARCH_SNAPSHOT_STORE),
+                "--complete-through", complete_through,
+                "--schema-version", "qsys-data-v1",
+                "--snapshot-id", warehouse_snapshot,
+                "--source-revision", production_sha,
+                "--publish-current",
+            ], cwd=repo, env=environment)
+            warehouse_manifest = json.loads(created.stdout)
+        created = _run([
+            str(python), "-m", "qsys.ops.test_web_snapshot_cli", "create",
+            "--store", str(WEB_OPS_SNAPSHOT_STORE),
+            "--service-runs", str(PRODUCTION_SERVICE_RUNS),
+            "--health-state", str(PRODUCTION_HEALTH_STATE),
+            "--board-root", str(PRODUCTION_BOARD),
+            "--alert-root", f"production={PRODUCTION_ALERTS}",
+            "--source-revision", production_sha,
+            "--retained-days", "35", "--snapshot-id", ops_snapshot,
+            "--publish-current",
+        ], cwd=repo, env=environment)
+        ops_manifest = json.loads(created.stdout)
+        if not _activate_test_warehouse(warehouse_snapshot):
+            raise ValueError("failed to activate the refreshed test warehouse")
+        switched = True
+        _run(["sudo", "-n", "systemctl", "restart", str(config["test_service"])], cwd=repo)
+        if not _test_web_data_healthy(config):
+            raise ValueError("test Web data APIs did not become healthy")
+    except (OSError, ValueError, subprocess.CalledProcessError, json.JSONDecodeError) as exc:
+        error = str(exc)[:500]
+        warehouse_restored = _activate_snapshot_pointer(
+            RESEARCH_SNAPSHOT_STORE, before_warehouse_snapshot,
+        )
+        ops_restored = _activate_snapshot_pointer(WEB_OPS_SNAPSHOT_STORE, before_ops_snapshot)
+        link_restored = _restore_symlink(warehouse_link, before_warehouse_link)
+        service_restored = False
+        try:
+            _run(["sudo", "-n", "systemctl", "restart", str(config["test_service"])], cwd=repo)
+            service_restored = _wait_healthy(config, repo)
+        except subprocess.CalledProcessError:
+            pass
+        rollback_ok = warehouse_restored and ops_restored and link_restored and service_restored
+
+    success = (
+        not error and _snapshot_pointer(RESEARCH_SNAPSHOT_STORE) == warehouse_snapshot
+        and _snapshot_pointer(WEB_OPS_SNAPSHOT_STORE) == ops_snapshot
+        and _test_web_data_healthy(config)
+    )
+    state = "success" if success else ("rolled_back" if rollback_ok else "failure")
+    checks = [
+        {"name": "production-readonly-sources", "status": "passed" if warehouse_manifest else "failed",
+         "detail": f"production_sha={production_sha}"},
+        {"name": "warehouse-snapshot", "status": "passed" if warehouse_manifest else "failed",
+         "detail": f"snapshot_id={warehouse_snapshot}; complete_through={complete_through}"},
+        {"name": "ops-snapshot", "status": "passed" if ops_manifest else "failed",
+         "detail": f"snapshot_id={ops_snapshot}; retained_days=35"},
+        {"name": "test-web-data-health", "status": "passed" if success else "failed",
+         "detail": error or "health, services, board and alerts APIs returned HTTP 200"},
+    ]
+    record = {
+        "schema_version": 1, "run_id": args.run_id, "environment": "test",
+        "status": state, "actor": args.actor, "started_at": started,
+        "completed_at": datetime.now(UTC).isoformat(), "repository": args.repository,
+        "pr_number": args.pr_number, "source_sha": args.sha, "source_tree": source_tree,
+        "components": ["test-web-data"],
+        "before": {"linux": args.sha, "warehouse-snapshot": before_warehouse_snapshot,
+                   "ops-snapshot": before_ops_snapshot},
+        "after": {"linux": _head(repo),
+                  "warehouse-snapshot": _snapshot_pointer(RESEARCH_SNAPSHOT_STORE),
+                  "ops-snapshot": _snapshot_pointer(WEB_OPS_SNAPSHOT_STORE)},
+        "config_fingerprints": {}, "checks": checks,
+        "rollback_targets": {"warehouse-snapshot": before_warehouse_snapshot,
+                             "ops-snapshot": before_ops_snapshot},
+        "migration_summary": "read-only production facts to isolated test Web snapshots",
+    }
+    record_path = _write_record(config, args.run_id, record)
+    print(json.dumps({"ok": success, "status": state, "record": str(record_path),
+                      "error": error, "switched": switched}))
+    return 0 if success else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -962,6 +1207,14 @@ def build_parser() -> argparse.ArgumentParser:
     drill_parser.add_argument("--repository", required=True)
     drill_parser.add_argument("--pr-number", type=int)
     drill_parser.add_argument("--dry-run", action="store_true")
+    refresh_parser = commands.add_parser("web-data-refresh")
+    refresh_parser.add_argument("--sha", required=True)
+    refresh_parser.add_argument("--complete-through", required=True)
+    refresh_parser.add_argument("--run-id", required=True)
+    refresh_parser.add_argument("--actor", required=True)
+    refresh_parser.add_argument("--repository", required=True)
+    refresh_parser.add_argument("--pr-number", type=int)
+    refresh_parser.add_argument("--dry-run", action="store_true")
     return parser
 
 
@@ -981,6 +1234,8 @@ def main(argv: list[str] | None = None) -> int:
             return research_stage(args, config)
         if args.command == "research-drill":
             return research_drill(args, config)
+        if args.command == "web-data-refresh":
+            return web_data_refresh(args, config)
         return deploy(args, config)
     except (OSError, ValueError, json.JSONDecodeError, subprocess.CalledProcessError) as exc:
         print(json.dumps({"ok": False, "error": str(exc)}), file=sys.stderr)

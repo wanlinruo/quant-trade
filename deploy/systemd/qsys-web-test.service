@@ -16,12 +16,13 @@ ExecStart=/home/ubuntu/qsys-test/.venv/bin/python scripts/run_monitor.py \
           --warehouse /data/qsys-test/warehouse-current \
           --workspace /data/qsys-test/var/workbench \
           --state /data/qsys-test/var/shadow-state.sqlite3 \
-          --health-state /data/qsys-test/var/service-health.sqlite3 \
+          --health-state /data/qsys-test/web-ops-snapshot-store/current/service-health.sqlite3 \
           --limit-up-shadow-state /data/qsys-test/var/limit-up-shadow.sqlite3 \
           --limit-up-research-run /data/qsys/research/issue-210/run-20261010 \
-          --limit-up-board-state /data/qsys-test/var/limit-up-board \
+          --limit-up-board-state /data/qsys-test/web-ops-snapshot-store/current/limit-up-board \
           --runs /data/qsys-test/var/runs \
-          --service-runs /data/qsys-test/var/service-runs \
+          --service-runs /data/qsys-test/web-ops-snapshot-store/current/service-runs \
+          --alert-root /data/qsys-test/web-ops-snapshot-store/current/alerts/production \
           --tushare-config /data/qsys-test/var/tushare-only.toml
 Restart=on-failure
 RestartSec=5
@@ -32,6 +33,7 @@ PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
 ReadOnlyPaths=/data/qsys-test/warehouse-current /data/qsys/research/issue-210/run-20261010
+ReadOnlyPaths=-/data/qsys-test/web-ops-snapshot-store/current
 ReadWritePaths=/data/qsys-test/var
 
 [Install]

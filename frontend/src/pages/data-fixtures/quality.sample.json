@@ -1,0 +1,1232 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "runs": [
+    {
+      "run_id": "r2",
+      "checked_at": "2026-11-02T20:00:00+08:00",
+      "fields": {
+        "total": 3,
+        "passed": 0,
+        "blocking": 1,
+        "warning": 2
+      },
+      "tables": null
+    },
+    {
+      "run_id": "r1",
+      "checked_at": "2026-11-01T20:00:00+08:00",
+      "fields": {
+        "total": 1,
+        "passed": 1,
+        "blocking": 0,
+        "warning": 0
+      },
+      "tables": null
+    }
+  ],
+  "warning_sources": [
+    {
+      "key": "upstream",
+      "issue": "#653",
+      "count": 1,
+      "samples": [
+        {
+          "metric_id": "tushare_daily.dt",
+          "check_id": "c.rule",
+          "detail": "样本",
+          "known_issue": "上游数据自相矛盾"
+        }
+      ]
+    },
+    {
+      "key": "registered",
+      "issue": "#594",
+      "count": 0,
+      "samples": []
+    },
+    {
+      "key": "unclassified",
+      "issue": null,
+      "count": 1,
+      "samples": [
+        {
+          "metric_id": "tushare_daily.dt",
+          "check_id": "c.third",
+          "detail": "样本",
+          "known_issue": null
+        }
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "c.other",
+      "name": "c.other",
+      "category": "persisted",
+      "scope": "仅有历史结果",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "blocking"
+    },
+    {
+      "id": "c.rule",
+      "name": "c.rule",
+      "category": "persisted",
+      "scope": "仅有历史结果",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "warning"
+    },
+    {
+      "id": "c.third",
+      "name": "c.third",
+      "category": "persisted",
+      "scope": "仅有历史结果",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "warning"
+    },
+    {
+      "id": "A1.dimension.amount_vs_volume_block_explained",
+      "name": "总成交含大宗交易的量纲差异：仅当日有直取大宗且扣除后均价回到区间时降为已解释警告",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [
+        "#608"
+      ],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A1.dimension.amount_vs_volume_close",
+      "name": "成交额/成交量所得均价必须落在当日最低价和最高价之间",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A2.recompute.adj_prev_close",
+      "name": "独立重算 daily_flags.adj_prev_close",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A2.recompute.broken_board_count",
+      "name": "独立重算 market_regime.broken_board_count",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A2.recompute.broken_board_rate",
+      "name": "独立重算 market_regime.broken_board_rate",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A2.recompute.circulating_market_cap",
+      "name": "独立重算 valuation_snapshot.circulating_market_cap",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A2.recompute.first_board_count",
+      "name": "独立重算 market_regime.first_board_count",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A2.recompute.index_ma20_slope_5d",
+      "name": "独立重算 market_regime.index_ma20_slope_5d",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A2.recompute.is_broken_board",
+      "name": "独立重算 daily_flags.is_broken_board",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A2.recompute.is_first_board",
+      "name": "独立重算 daily_flags.is_first_board",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A2.recompute.is_limit_down",
+      "name": "独立重算 daily_flags.is_limit_down",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A2.recompute.is_limit_up",
+      "name": "独立重算 daily_flags.is_limit_up",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A2.recompute.is_st",
+      "name": "独立重算 daily_flags.is_st",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A2.recompute.limit_down",
+      "name": "独立重算 daily_flags.limit_down",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A2.recompute.limit_down_count",
+      "name": "独立重算 market_regime.limit_down_count",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A2.recompute.limit_pct",
+      "name": "独立重算 daily_flags.limit_pct",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A2.recompute.limit_up",
+      "name": "独立重算 daily_flags.limit_up",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A2.recompute.limit_up_count",
+      "name": "独立重算 market_regime.limit_up_count",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A2.recompute.limit_up_down_ratio",
+      "name": "独立重算 market_regime.limit_up_down_ratio",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A2.recompute.live_total_value",
+      "name": "独立重算 live_equity.total_value",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A2.recompute.market_advance_ratio",
+      "name": "独立重算 market_regime.market_advance_ratio",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A2.recompute.market_cap",
+      "name": "独立重算 valuation_snapshot.market_cap",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A2.recompute.market_median_return_1d",
+      "name": "独立重算 market_regime.market_median_return_1d",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A2.recompute.market_total_money",
+      "name": "独立重算 market_regime.market_total_money",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A2.recompute.prev_close",
+      "name": "独立重算 daily_flags.prev_close",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A2.recompute.prior_limitup_nextday_return_mean",
+      "name": "独立重算 market_regime.prior_limitup_nextday_return_mean",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A2.recompute.prior_limitup_nextday_return_median",
+      "name": "独立重算 market_regime.prior_limitup_nextday_return_median",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A2.recompute.st_source",
+      "name": "独立重算 daily_flags.st_source",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A2.recompute.touched_limit_up",
+      "name": "独立重算 daily_flags.touched_limit_up",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A2.recompute.touched_limit_up_count",
+      "name": "独立重算 market_regime.touched_limit_up_count",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A2.recompute.turnover_ratio",
+      "name": "独立重算 valuation_snapshot.turnover_ratio",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A2.recompute.valid_stock_count",
+      "name": "独立重算 market_regime.valid_stock_count",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A3.change_identity",
+      "name": "涨跌额 = 收盘价 − 前收价",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": true,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A3.limit_list_vs_selfcalc",
+      "name": "自算涨停与 limit_list_d 的差集只能是 ST",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [
+        "D-11"
+      ],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A3.limit_pct_reproduces_price",
+      "name": "档位必须能精确还原出同一行的涨跌停价",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A3.limit_price_vs_selfcalc",
+      "name": "daily_flags 的涨跌停价与 stk_limit 直取值一致——验的是接线没断，不是自算对不对",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A3.market_cap_vs_shares",
+      "name": "市值计价股本满足包含边界，且流通市值 = 收盘价 × 流通股本",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": true,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A3.minute_known_source_difference",
+      "name": "精确登记的 QMT 分钟源差异保持可见，但不放宽其它差异的门禁",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [
+        "D-24"
+      ],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A3.minute_vs_daily",
+      "name": "分钟聚合与独立日线的开盘、最高和成交量一致",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A3.missed_exdiv",
+      "name": "价格除权缺口必须有匹配的因子跳变",
+      "category": "truthfulness",
+      "scope": "full",
+      "known_issues": [
+        "D-1",
+        "D-2"
+      ],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A3.paid_minute_amount_vs_daily",
+      "name": "分钟成交额汇总与付费日线一致",
+      "category": "truthfulness",
+      "scope": "full",
+      "known_issues": [
+        "D-20"
+      ],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A3.paid_minute_ohlc_vs_daily",
+      "name": "分钟聚合 OHLC 与付费日线一致",
+      "category": "truthfulness",
+      "scope": "full",
+      "known_issues": [
+        "D-20"
+      ],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A3.paid_minute_override_gross_vs_daily",
+      "name": "日期覆盖与日线无粗大偏差（缺日线或量/额/价相对偏差超过 5%）",
+      "category": "truthfulness",
+      "scope": "full",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A3.paid_minute_override_vs_daily",
+      "name": "日期覆盖汇总与日线在年度验收容差内一致",
+      "category": "truthfulness",
+      "scope": "full",
+      "known_issues": [
+        "D-20"
+      ],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A3.paid_minute_volume_vs_daily",
+      "name": "分钟成交量汇总与付费日线一致",
+      "category": "truthfulness",
+      "scope": "full",
+      "known_issues": [
+        "D-20"
+      ],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A3.pct_change_identity",
+      "name": "涨跌幅（%）= (收盘价/前收价−1)×100",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": true,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A3.regime_legacy_vs_canonical",
+      "name": "legacy market_regime 与 canonical market_regime_daily 逐日逐列一致",
+      "category": "truthfulness",
+      "scope": "full",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "A3.turnover_identity",
+      "name": "换手率（%）= 成交量（手）×100/流通股本×100",
+      "category": "truthfulness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": true,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "B1.calendar",
+      "name": "日频表日期与仓库交易日基准对齐",
+      "category": "completeness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "B2.canonical_minute_override_inclusion",
+      "name": "Tushare/聚宽分钟覆盖的每个标的日都按优先级进入规范一分钟线",
+      "category": "completeness",
+      "scope": "full",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "B2.canonical_qmt_leading_padding",
+      "name": "前导零量/零额/平价必须与直取参考价及首个成交开盘一致，缺证据或矛盾阻断",
+      "category": "completeness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "B2.holes",
+      "name": "每只标的首末记录之间不应有无法解释的交易日空洞（直取停牌日除外）",
+      "category": "completeness",
+      "scope": "full",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "B2.paid_minute_known_symbol_gap",
+      "name": "D-21：卖家源包缺失的 13 只沪市证券仍然缺失",
+      "category": "completeness",
+      "scope": "full",
+      "known_issues": [
+        "D-21"
+      ],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "B2.paid_minute_override_structure",
+      "name": "日期覆盖逐标的日满足 241 根标准网格与数值有效",
+      "category": "completeness",
+      "scope": "full",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "B2.paid_minute_structure",
+      "name": "年度分片均有摘要且已发布、交易时段完整、日级键不缺失、因子日内唯一",
+      "category": "completeness",
+      "scope": "full",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "B2.paid_minute_symbol_coverage",
+      "name": "Tushare 有成交的证券不能在付费分钟年度中整只缺失（D-21 名单除外）",
+      "category": "completeness",
+      "scope": "full",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "B3.null_rate",
+      "name": "空值率同时按行和受影响标的统计",
+      "category": "completeness",
+      "scope": "incremental",
+      "known_issues": [
+        "D-10"
+      ],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "B4.arrival",
+      "name": "事实表到货后派生消费者也必须到货，实盘对账不得不一致",
+      "category": "completeness",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "B4.zero_limit_up",
+      "name": "全市场零涨停通常意味着接口尚未发布",
+      "category": "completeness",
+      "scope": "incremental",
+      "known_issues": [
+        "D-12"
+      ],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "B5.span",
+      "name": "历史数据首末日期覆盖声明区间",
+      "category": "completeness",
+      "scope": "full",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C1.no_fill",
+      "name": "数据与策略链路不得有未登记的默认值填充",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C2.pit_join",
+      "name": "点观测必须按 (symbol, dt) 精确连接",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C3.span_gaps",
+      "name": "区间表不得提前终止且没有后继区间",
+      "category": "validity",
+      "scope": "full",
+      "known_issues": [
+        "D-10"
+      ],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C4.frozen_unchanged",
+      "name": "冻结表的行数与内容指纹不得改变",
+      "category": "validity",
+      "scope": "full",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C5.credential_expiry",
+      "name": "源凭据到期提醒",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.adj_factors",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.adjustment_factor_daily",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.auction_open_daily",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.auction_ticks",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.bar_daily",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.bar_minute_1m",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.bars_daily",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.block_trade_daily",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.corporate_actions",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.daily_flags",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.dataset_checks",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.delisting_pool",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.index_bars",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.industry_membership",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.ingest_log",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.instruments",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.joinquant_minute_bars",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.limit_list_daily",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.live_equity",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.live_fills",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.live_recon",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.live_rejects",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.market_flags_daily",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.market_regime",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.market_regime_daily",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.metric_checks",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.metric_evidence",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.minute_bars",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.moneyflow_daily",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.name_history",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.name_snapshots",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.paid_daily",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.paid_minute_bars",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.price_limit_daily",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.price_limits_daily",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.relation_checks",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.security_master",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.security_name_history",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.security_status_daily",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.share_capital",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.share_capital_history",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.stock_st_daily",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.suspend_daily",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.trading_calendar",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.tushare_daily",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.tushare_minute_bars",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.valuation_daily",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C6.storage_contract.valuation_snapshot",
+      "name": "Parquet 可读、当前 schema 可满足且身份键无已知 null",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "C7.catalog_contract.strategy",
+      "name": "不落盘策略因子的公式、上游与消费方定义完整",
+      "category": "validity",
+      "scope": "incremental",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "R1.join_integrity",
+      "name": "关系完整性",
+      "category": "dataset/relation",
+      "scope": "表/关系",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "R1.relation_contract",
+      "name": "关系元数据",
+      "category": "dataset/relation",
+      "scope": "表/关系",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "R2.independent_recompute",
+      "name": "独立重算",
+      "category": "dataset/relation",
+      "scope": "表/关系",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "T1.table_contract",
+      "name": "表结构与主键契约",
+      "category": "dataset/relation",
+      "scope": "表/关系",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "T2.table_completeness",
+      "name": "表完整性",
+      "category": "dataset/relation",
+      "scope": "表/关系",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "T3.freshness",
+      "name": "发布时效",
+      "category": "dataset/relation",
+      "scope": "表/关系",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "T4.field_status",
+      "name": "字段真实性汇总",
+      "category": "dataset/relation",
+      "scope": "表/关系",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "T5.frozen_checksum",
+      "name": "冻结文件校验和",
+      "category": "dataset/relation",
+      "scope": "表/关系",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "T6.partition_layout",
+      "name": "分区布局",
+      "category": "dataset/relation",
+      "scope": "表/关系",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "unknown"
+    },
+    {
+      "id": "c.base",
+      "name": "c.base",
+      "category": "persisted",
+      "scope": "仅有历史结果",
+      "known_issues": [],
+      "upstream_self_consistency": false,
+      "latest_status": "passed"
+    }
+  ]
+}

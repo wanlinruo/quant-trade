@@ -1,0 +1,46 @@
+html, body, #root { margin: 0; min-height: 100%; }
+body { -webkit-font-smoothing: antialiased; }
+.ant-table-wrapper .ant-table-tbody > tr > td { font-variant-numeric: tabular-nums; }
+.ant-menu-light .ant-menu-item-selected, .ant-menu-dark .ant-menu-item-selected { box-shadow: inset 2px 0 0 var(--qs-accent, #ff9830); }
+.ant-menu-item .ant-menu-title-content { flex: 1; }
+
+/* 页面切换：轻微淡入，不做位移以免图表重排 */
+.qs-page { animation: qs-fade .18s ease-out; }
+@keyframes qs-fade { from { opacity: 0 } to { opacity: 1 } }
+
+/* 顶栏状态：可点击，悬停有反馈 */
+.qs-pill, .qs-stat { transition: background .15s, opacity .15s; border-radius: 3px; }
+.qs-stat { padding: 1px 4px; }
+.qs-pill:hover, .qs-stat:hover { background: rgba(127,127,127,.14); }
+
+/* 可点击的表格行；抽屉打开时当前行保持高亮 */
+.qs-click .ant-table-tbody > tr.ant-table-row { cursor: pointer; }
+.ant-table-wrapper .ant-table-tbody > tr.qs-row-sel > td { background: var(--qs-sel) !important; }
+.ant-table-wrapper .ant-table-tbody > tr.qs-row-sel > td:first-child { box-shadow: inset 2px 0 0 var(--qs-accent); }
+
+/* 键盘焦点可见 */
+a:focus-visible, button:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--qs-accent); outline-offset: 1px; }
+
+/* 快捷键样式 */
+.qs-kbd { display: inline-block; min-width: 20px; padding: 0 6px; margin: 0 2px; border: 1px solid var(--qs-border); border-bottom-width: 2px; border-radius: 3px; font: 11px/18px Menlo, monospace; text-align: center; }
+
+/* 黑暗模式滚动条 */
+html[data-mode="dark"] ::-webkit-scrollbar { width: 10px; height: 10px; }
+html[data-mode="dark"] ::-webkit-scrollbar-thumb { background: #2c3235; border-radius: 5px; border: 2px solid #111217; }
+html[data-mode="dark"] ::-webkit-scrollbar-track { background: transparent; }
+
+/* 可复制的编号 */
+.qs-copy { cursor: copy; border-bottom: 1px dotted transparent; }
+.qs-copy:hover { border-bottom-color: currentColor; }
+
+/* KPI 可点击 */
+.qs-kpi-link { cursor: pointer; transition: background .15s; }
+.qs-kpi-link:hover { background: rgba(127,127,127,.08); }
+
+/* 顶栏：不换行；窗口变窄时依次收起次要内容，不把整页撑出横向滚动 */
+.ant-layout-header { overflow: hidden; }
+.ant-layout-header > * { white-space: nowrap; flex-shrink: 0; }
+.qs-h-search { width: 150px; }
+.qs-h-short { display: none; }
+@media (max-width: 1560px) { .qs-h-opt { display: none; } }
+@media (max-width: 1400px) { .qs-h-search { width: auto; } .qs-h-long { display: none; } .qs-h-short { display: inline; } }

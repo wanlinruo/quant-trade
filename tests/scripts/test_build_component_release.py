@@ -41,15 +41,15 @@ def _repo(tmp_path: Path) -> tuple[Path, str]:
     (repo / "src/qsys/strategy/example.py").write_text(
         "STRATEGY = 1\n", encoding="utf-8",
     )
-    for package in ("backtest", "core", "live", "markets", "ops", "paper", "web"):
+    for package in ("backtest", "core", "live", "markets", "ops", "paper", "webapp"):
         (repo / f"src/qsys/{package}").mkdir(parents=True)
         (repo / f"src/qsys/{package}/example.py").write_text(
             f"PACKAGE = {package!r}\n", encoding="utf-8",
         )
-    (repo / "src/qsys/web/workbench.py").write_text(
+    (repo / "src/qsys/backtest/workbench.py").write_text(
         "WORKBENCH = 1\n", encoding="utf-8",
     )
-    (repo / "src/qsys/web/backtest_worker_cli.py").write_text(
+    (repo / "src/qsys/backtest/worker_cli.py").write_text(
         "WORKER_CLI = 1\n", encoding="utf-8",
     )
     (repo / "scripts").mkdir()
@@ -81,9 +81,28 @@ def _repo(tmp_path: Path) -> tuple[Path, str]:
     return repo, sha
 
 
+SPA_INDEX = b"<!doctype html><div id=root></div>"
+SPA_JS = b"console.log(1)"
+
+
+def _spa_members(*, tamper: bool = False) -> dict[str, bytes]:
+    files = {"index.html": SPA_INDEX, "assets/index-abc.js": SPA_JS}
+    info = {
+        "schema_version": 1,
+        "files": {name: hashlib.sha256(data).hexdigest() for name, data in files.items()},
+        "index_sha256": hashlib.sha256(SPA_INDEX).hexdigest(),
+    }
+    members = {f"qsys/webapp/spa_dist/{name}": data for name, data in files.items()}
+    if tamper:
+        members["qsys/webapp/spa_dist/assets/index-abc.js"] = b"tampered"
+    members["qsys/webapp/spa_dist/build-info.json"] = json.dumps(info).encode()
+    return members
+
+
 def _wheel(
     path: Path, *, command: str = "qsys-catalog-verify",
     entrypoint: str = "qsys.data.catalog_verify_cli:main",
+    extra: dict[str, bytes] | None = None,
 ) -> Path:
     path.parent.mkdir(parents=True)
     with zipfile.ZipFile(path, "w") as archive:
@@ -93,6 +112,8 @@ def _wheel(
             f"[console_scripts]\n{command} = {entrypoint}\n",
         )
         archive.writestr("qsys/__init__.py", "")
+        for name, data in (extra or {}).items():
+            archive.writestr(name, data)
     return path
 
 
@@ -198,7 +219,7 @@ def test_backtest_worker_release_binds_worker_dependencies(tmp_path: Path) -> No
     wheel = _wheel(
         tmp_path / "dist-worker" / "qsys-0.1.0-py3-none-any.whl",
         command="qsys-backtest-worker",
-        entrypoint="qsys.web.backtest_worker_cli:main",
+        entrypoint="qsys.backtest.worker_cli:main",
     )
     release = tmp_path / "worker-release"
 
@@ -209,15 +230,15 @@ def test_backtest_worker_release_binds_worker_dependencies(tmp_path: Path) -> No
 
     assert value["entrypoint"] == {
         "command": "qsys-backtest-worker",
-        "target": "qsys.web.backtest_worker_cli:main",
+        "target": "qsys.backtest.worker_cli:main",
     }
     paths = {record["path"] for record in value["scan_files"]}
     assert {path.split("/")[2] for path in paths} == {
-        "backtest", "core", "data", "markets", "strategy", "web",
+        "backtest", "core", "data", "markets", "strategy",
     }
-    assert "src/qsys/web/workbench.py" in paths
-    assert "src/qsys/web/backtest_worker_cli.py" in paths
-    assert "src/qsys/web/example.py" not in paths
+    assert "src/qsys/backtest/workbench.py" in paths
+    assert "src/qsys/backtest/worker_cli.py" in paths
+    assert "src/qsys/webapp/example.py" not in paths
     assert verify(repo, sha, "backtest-worker", release) == value
 
 
@@ -227,7 +248,8 @@ def test_web_release_binds_packaged_entrypoint_and_all_runtime_sources(
     repo, sha = _repo(tmp_path)
     wheel = _wheel(
         tmp_path / "dist-web" / "qsys-0.1.0-py3-none-any.whl",
-        command="qsys-web", entrypoint="qsys.web.monitor_cli:main",
+        command="qsys-web", entrypoint="qsys.webapp.cli:main",
+        extra=_spa_members(),
     )
     release = tmp_path / "web-release"
 
@@ -237,10 +259,10 @@ def test_web_release_binds_packaged_entrypoint_and_all_runtime_sources(
     )
 
     assert value["entrypoint"] == {
-        "command": "qsys-web", "target": "qsys.web.monitor_cli:main",
+        "command": "qsys-web", "target": "qsys.webapp.cli:main",
     }
     paths = {record["path"] for record in value["scan_files"]}
-    assert "src/qsys/web/example.py" in paths
+    assert "src/qsys/webapp/example.py" in paths
     assert "src/qsys/live/example.py" in paths
     assert "scripts/run_monitor.py" not in paths
     assert verify(repo, sha, "web", release) == value
@@ -312,7 +334,7 @@ def test_health_observer_release_binds_its_resident_dependency_roots(
         "target": "qsys.ops.health_observer_cli:main",
     }
     assert {record["path"].split("/")[2] for record in value["scan_files"]} == {
-        "data", "live", "ops", "paper", "web",
+        "data", "live", "ops", "paper",
     }
     assert verify(repo, sha, "health-observer", release) == value
 
@@ -441,3 +463,34 @@ def test_live_release_binds_entrypoint_and_runtime_sources(tmp_path):
     (release/'source/src/qsys/live/example.py').write_text('CHANGED=True\n')
     with pytest.raises(ValueError):
         verify(repo,sha,'live-core',release)
+
+
+def test_web_release_rejects_wheel_without_spa(tmp_path: Path) -> None:
+    repo, sha = _repo(tmp_path)
+    wheel = _wheel(
+        tmp_path / "dist-web" / "qsys-0.1.0-py3-none-any.whl",
+        command="qsys-web", entrypoint="qsys.webapp.cli:main",
+    )
+    with pytest.raises(ValueError, match="wheel does not contain the web frontend build"):
+        build(repo, sha, "web", wheel.parent, tmp_path / "web-release",
+              repository="owner/repo", run_id="1", run_attempt="1")
+
+
+def test_web_release_rejects_spa_that_does_not_match_build_info(tmp_path: Path) -> None:
+    repo, sha = _repo(tmp_path)
+    wheel = _wheel(
+        tmp_path / "dist-web" / "qsys-0.1.0-py3-none-any.whl",
+        command="qsys-web", entrypoint="qsys.webapp.cli:main",
+        extra=_spa_members(tamper=True),
+    )
+    with pytest.raises(ValueError, match="web frontend build does not match build-info"):
+        build(repo, sha, "web", wheel.parent, tmp_path / "web-release",
+              repository="owner/repo", run_id="1", run_attempt="1")
+
+
+def test_non_web_component_does_not_require_spa(tmp_path: Path) -> None:
+    repo, sha = _repo(tmp_path)
+    wheel = _wheel(tmp_path / "dist" / "qsys-0.1.0-py3-none-any.whl")
+    value = build(repo, sha, "catalog-verify", wheel.parent, tmp_path / "release",
+                  repository="owner/repo", run_id="1", run_attempt="1")
+    assert value["component"] == "catalog-verify"

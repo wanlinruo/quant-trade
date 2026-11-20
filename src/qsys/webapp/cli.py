@@ -1,0 +1,333 @@
+"""量化工作台新应用的可安装启动入口。
+
+默认只监听 127.0.0.1 —— 通过 Tailscale / WireGuard 私有网络访问。
+**绝不要绑到 0.0.0.0 并开放安全组**：这个页面能看到你的全部持仓。
+
+用法：
+  qsys-web --warehouse warehouse
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+from datetime import date, datetime
+from pathlib import Path
+
+import structlog
+import uvicorn
+
+from qsys.data.storage import Warehouse
+from qsys.ops.journal import SessionJournal
+from qsys.ops.health import HealthStoreReader
+from qsys.live.store import LiveStore
+from qsys.webapp.config import WebConfig
+from qsys.webapp.activation import paper_activation
+from qsys.webapp.app import WebappDeps, create_app
+from qsys.webapp.queries.board_reader import LimitUpBoardReader
+from qsys.research.limit_up_shadow_store import LimitUpShadowReader
+from qsys.research.limit_up_research_store import (
+    HistoricalSecurityNameLookup,
+    LimitUpResearchReader,
+)
+from qsys.research.job_console import ResearchJobConsole, ResearchSubmissionProfile
+from qsys.backtest.workbench import WorkbenchStore
+from qsys.research.jobs import JobLimits
+from qsys.paper.store import PaperStore
+
+log = structlog.get_logger("monitor")
+
+
+def build_app(
+    warehouse_root: Path,
+    config: WebConfig,
+    config_path: str | None,
+    runs_dir: Path | None = None,
+    workspace_dir: Path | None = None,
+    service_runs_dir: Path | None = None,
+    tushare_config_path: str | None = None,
+    state_path: Path | None = None,
+    health_state_path: Path | None = None,
+    limit_up_shadow_state_path: Path | None = None,
+    limit_up_research_run_path: Path | None = None,
+    research_jobs_path: Path | None = None,
+    research_release_path: Path | None = None,
+    research_snapshots_path: Path | None = None,
+    strategies_path: Path | None = None,
+    live_kill_path: Path | None = None,
+    limit_up_board_root: Path | None = None,
+    alert_roots: tuple[Path, ...] = (Path("var/alerts"),),
+    alert_acks: Path | None = Path("var/web/alert-acks.sqlite3"),
+    kill_review_path: Path | None = Path("var/web/live-kill-review.json"),
+    ops_snapshot_root: Path | None = Path("var/ops-snapshots"),
+    spa_root: Path | None = None,
+):
+    warehouse = Warehouse(warehouse_root)
+    journal = SessionJournal(warehouse)
+
+    transport = None
+    strategy_cfg = None
+    strategy_mode = "shadow"
+    market_snapshot_key = "state:market_overview"
+    market_schedule_key = "state:market_schedule"
+    limits_prefix = "state:price_limits"
+    heartbeat_prefix = config.heartbeat_prefix
+    account_key = config.account_key
+    from qsys.live.config import RiskConfig
+    risk_config = RiskConfig()
+    try:
+        from qsys.live.config import load_deploy_config
+        from qsys.live.readonly_transport import readonly_from_config
+
+        deploy = load_deploy_config(config_path)
+        strategy_cfg = deploy.strategy
+        strategy_mode = deploy.safety.mode
+        transport = readonly_from_config(deploy)
+        market_snapshot_key = deploy.streams.market_snapshot
+        market_schedule_key = deploy.streams.market_schedule
+        limits_prefix = deploy.streams.price_limits
+        heartbeat_prefix = deploy.streams.heartbeat
+        account_key = deploy.streams.account
+        risk_config = deploy.risk
+    except Exception as exc:
+        # Redis 不可用时监控台仍应能打开——历史数据来自仓库，不依赖 Redis
+        log.warning("monitor.redis_unavailable", error=str(exc))
+
+    runs_root = runs_dir or Path("var/runs")
+    workspace = workspace_dir or Path("var/workbench")
+    workbench = WorkbenchStore(workspace / "workbench.sqlite3")
+    paper = PaperStore(workspace / "workbench.sqlite3")
+    selected_state = state_path or Path("var/shadow-state.sqlite3")
+    if strategy_mode == "live" and selected_state.name == "shadow-state.sqlite3":
+        selected_state = selected_state.with_name("live-state.sqlite3")
+    live_store = LiveStore(selected_state.resolve(), read_only=True) if selected_state.is_file() else None
+    trading_calendar = _daily_trading_calendar(tushare_config_path or config_path)
+    research_console = None
+    if research_jobs_path is not None:
+        profile = None
+        if research_release_path is not None and research_snapshots_path is not None:
+            profile = ResearchSubmissionProfile.from_release(
+                research_release_path, research_snapshots_path,
+                JobLimits(4096, 100, 10, 14_400),
+            )
+        research_console = ResearchJobConsole(research_jobs_path, profile=profile)
+    from qsys.webapp.live_kill_status import LiveKillReader
+    from qsys.webapp.queries.market import MarketQuery
+
+    names = HistoricalSecurityNameLookup(warehouse_root)
+    shadow_reader = LimitUpShadowReader(
+        limit_up_shadow_state_path or Path("var/limit-up-shadow.sqlite3")
+    )
+    live_kill = LiveKillReader(
+        transport if strategy_mode == "live" else None,
+        live_kill_path if strategy_mode == "live" else None,
+        heartbeat_prefix=(deploy.streams.heartbeat
+                          if transport is not None and strategy_mode == "live"
+                          else config.heartbeat_prefix),
+    )
+    research_reader = LimitUpResearchReader(
+        limit_up_research_run_path or Path("var/research/issue-210"),
+        name_lookup=names,
+    )
+    sample_root = ((service_runs_dir or Path("var/service-runs"))
+                   .resolve().parent.parent / "artifacts/metric_checks")
+    from qsys.webapp.queries.data_assets import DataAssets
+    from qsys.webapp.queries.data_catalog import DataCatalog
+    from qsys.webapp.queries.data_quality import DataQuality
+    from qsys.webapp.queries.backtest_runs import BacktestRuns
+    from qsys.webapp.queries.trading import TradingQuery
+    from qsys.webapp.queries.operations import OperationsQuery
+    health_reader = (
+        HealthStoreReader(tuple(dict.fromkeys((
+            Path(health_state_path), workspace.parent / "service-health.sqlite3",
+        )))) if health_state_path else HealthStoreReader((
+            Path("var/health-observer/service-health.sqlite3"),
+            Path("var/service-health.sqlite3"),
+        ))
+    )
+    # 数据组（R4）：覆盖统计后台刷新，避免表清单请求同步做全仓统计（#442）
+    data_assets = DataAssets(warehouse, background_coverage=True)
+    # 新后端（#662 总路线 v2）：全部查询直接读领域存储，不构造旧视图服务。
+    backtests = BacktestRuns(runs_root)
+    webapp = WebappDeps(
+        live_kill=live_kill,
+        market=MarketQuery.from_warehouse(
+            transport, warehouse, snapshot_key=market_snapshot_key,
+            schedule_key=market_schedule_key, limit_check_prefix=f"{limits_prefix}_check"),
+        shadow=shadow_reader, research=research_reader,
+        board=LimitUpBoardReader(
+            limit_up_board_root or Path("var/limit-up-board"),
+            names=names,
+            shadow=shadow_reader,
+        ),
+        workbench=workbench,
+        runs=backtests,
+        paper=paper,
+        research_jobs=research_console,
+        strategy_templates=strategies_path or Path("strategies"),
+        shadow_lineage=lambda: _shadow_lineage(strategy_cfg),
+        core_label="实盘" if strategy_mode == "live" else "影子盘",
+        data_assets=data_assets, data_catalog=DataCatalog(data_assets.query),
+        data_quality=DataQuality(data_assets.query, sample_root),
+        alert_roots=tuple(alert_roots), alert_acks=alert_acks,
+        trading=TradingQuery(
+            journal=journal, store=live_store, transport=transport,
+            heartbeat_prefix=heartbeat_prefix, account_key=account_key,
+            heartbeat_max_age=config.heartbeat_max_age, kill_reader=live_kill,
+            risk=risk_config, paper=paper, review_path=kill_review_path,
+            live_mode=strategy_mode == "live",
+            workbench=workbench, backtests=backtests,
+        ),
+        paper_activation=lambda: paper_activation(datetime.now(), trading_calendar),
+        operations=OperationsQuery(
+            service_runs_dir or Path("var/service-runs"),
+            health_reader,
+            ops_snapshot_root,
+        ),
+        health=health_reader,
+        spa_root=spa_root,
+    )
+    return create_app(webapp, config)
+
+
+def _spa_root_from_environment() -> Path | None:
+    """测试部署可选择已验证制品；生产默认继续使用 wheel 内资源。"""
+    value = os.environ.get("QSYS_WEB_SPA_ROOT")
+    if not value:
+        return None
+    root = Path(value)
+    if not root.is_absolute():
+        raise ValueError("QSYS_WEB_SPA_ROOT must be an absolute path")
+    return root
+
+
+def _daily_trading_calendar(config_path: str | None):
+    """每个自然日向 Tushare 取一次交易日历；取不到就抛错，由页面报 503。"""
+    from qsys.paper.calendar import load_trading_calendar
+
+    cache: dict[date, object] = {}
+
+    def get():
+        today = date.today()
+        if today not in cache:
+            cache.clear()
+            cache[today] = load_trading_calendar(config_path)
+        return cache[today]
+
+    return get
+
+
+def _shadow_lineage(strategy_cfg):
+    """只读查询影子核心承袭的模拟账户；查不到就不展示，不让监控台因此报错。"""
+    if strategy_cfg is None:
+        return None
+    from qsys.live.lineage import paper_lineage
+
+    try:
+        return paper_lineage(strategy_cfg)
+    except Exception as exc:  # 配置写错或账户被删：页面少一块，不影响监控
+        log.warning("monitor.shadow_lineage_unavailable", error=str(exc))
+        return None
+
+
+def main() -> int:
+    from qsys.data.cutover import add_facade_argument, apply_facade_argument
+
+    parser = argparse.ArgumentParser(description="量化监控与回测工作台")
+    parser.add_argument("--live-kill-path", type=Path,
+                        default=os.environ.get("QSYS_LIVE_KILL_PATH"),
+                        help="实盘 Linux 停机标记的明确路径；未配置时显示未知")
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--warehouse", default="warehouse")
+    parser.add_argument("--config", default=None)
+    parser.add_argument("--workspace", default="var/workbench",
+                        help="策略草稿、不可变版本与任务数据库")
+    parser.add_argument(
+        "--strategies", default="strategies",
+        help="Web 可编辑策略目录；独立发布时必须位于专用状态目录",
+    )
+    parser.add_argument(
+        "--runs", default="var/runs",
+        help="回测运行的落盘根目录，回测页用它列出与下载",
+    )
+    parser.add_argument("--service-runs", default="var/service-runs",
+                        help="定时任务运行记录目录，服务管理页只读")
+    parser.add_argument(
+        "--state",
+        default="var/shadow-state.sqlite3",
+        help="影子盘状态库，实盘运行日志页面只读",
+    )
+    parser.add_argument(
+        "--health-state", default="var/service-health.sqlite3",
+        help="服务健康状态变更与检查点 SQLite",
+    )
+    parser.add_argument(
+        "--limit-up-shadow-state", default="var/limit-up-shadow.sqlite3",
+        help="T+1 涨停概率影子榜单 SQLite（监控台严格只读）",
+    )
+    parser.add_argument(
+        "--limit-up-board-state", default="var/limit-up-board",
+        help="打板看板采集器状态目录（board.sqlite3 与当日临时全量，监控台严格只读）",
+    )
+    parser.add_argument(
+        "--limit-up-research-run", default="var/research/issue-210",
+        help="#210 冻结研究回测目录（监控台只读紧凑证据）",
+    )
+    parser.add_argument(
+        "--research-jobs", default=None,
+        help="隔离 Research Runner 作业目录；不给则不注册相关页面和 API",
+    )
+    parser.add_argument(
+        "--research-release", default=None,
+        help="已验证的版本化 Runner release；与 --research-snapshots 同时给出才开放提交",
+    )
+    parser.add_argument(
+        "--research-snapshots", default=None,
+        help="不可变 snapshot store；与 --research-release 同时给出才开放提交",
+    )
+    parser.add_argument("--tushare-config", default=None,
+                        help="只取 [tushare] 凭据查交易日历；不给则用 --config。"
+                             "测试环境用它避免连到生产 Redis")
+    parser.add_argument("--alert-root", action="append", default=None,
+                        help="告警事件根目录（可重复；各含组件命名空间），默认 var/alerts（#662 06a）")
+    parser.add_argument("--alert-acks", default="var/web/alert-acks.sqlite3",
+                        help="告警“确认已知悉”存储（Web 自有，只追加）")
+    parser.add_argument("--kill-review-record", default="var/web/live-kill-review.json",
+                        help="kill.py review live --record 的只读输出（06c 对账页）")
+    parser.add_argument("--ops-snapshot-root", default="var/ops-snapshots",
+                        help="运维采集器发布的节点、链路和版本只读快照根（计划 07）")
+    add_facade_argument(parser)
+    args = parser.parse_args()
+    apply_facade_argument(args.market_data_facade)
+
+    if args.host == "0.0.0.0":  # noqa: S104 - 刻意检查
+        log.warning(
+            "monitor.public_bind",
+            hint="监控台可看到全部持仓，应通过 Tailscale/WireGuard 私有网络访问",
+        )
+
+    config = WebConfig(host=args.host, port=args.port)
+    app = build_app(
+        Path(args.warehouse), config, args.config,
+        Path(args.runs), Path(args.workspace), Path(args.service_runs),
+        args.tushare_config, Path(args.state), Path(args.health_state),
+        Path(args.limit_up_shadow_state), Path(args.limit_up_research_run),
+        Path(args.research_jobs) if args.research_jobs else None,
+        Path(args.research_release) if args.research_release else None,
+        Path(args.research_snapshots) if args.research_snapshots else None,
+        Path(args.strategies), args.live_kill_path,
+        limit_up_board_root=Path(args.limit_up_board_state),
+        alert_roots=tuple(Path(p) for p in (args.alert_root or ["var/alerts"])),
+        alert_acks=Path(args.alert_acks) if args.alert_acks else None,
+        kill_review_path=Path(args.kill_review_record) if args.kill_review_record else None,
+        ops_snapshot_root=Path(args.ops_snapshot_root) if args.ops_snapshot_root else None,
+        spa_root=_spa_root_from_environment(),
+    )
+    log.info("monitor.started", host=args.host, port=args.port)
+    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

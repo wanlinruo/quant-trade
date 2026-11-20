@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import argparse
 import base64
+import io
 import json
 import importlib.util
 import shutil
+import stat
 import subprocess
 import zipfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -451,12 +454,11 @@ def test_backtest_worker_component_is_separate_from_web_and_write_bounded() -> N
 
     assert worker["entrypoint"] == {
         "command": "qsys-backtest-worker",
-        "target": "qsys.web.backtest_worker_cli:main",
+        "target": "qsys.backtest.worker_cli:main",
     }
     assert worker["scan_roots"] == [
         "src/qsys/backtest", "src/qsys/core", "src/qsys/data",
-        "src/qsys/markets", "src/qsys/strategy", "src/qsys/web/workbench.py",
-        "src/qsys/web/backtest_worker_cli.py",
+        "src/qsys/markets", "src/qsys/strategy",
     ]
     assert worker["release_root"] == "/opt/qsys/components/backtest-worker/releases"
     assert worker["current"] == "/opt/qsys/components/backtest-worker/current"
@@ -491,7 +493,7 @@ def test_web_component_has_an_isolated_release_and_minimal_write_boundary() -> N
     web = specs["components"]["web"]
 
     assert web["entrypoint"] == {
-        "command": "qsys-web", "target": "qsys.web.monitor_cli:main",
+        "command": "qsys-web", "target": "qsys.webapp.cli:main",
     }
     assert web["scan_roots"] == ["src/qsys"]
     assert web["release_root"] == "/opt/qsys/components/web/releases"
@@ -869,7 +871,6 @@ def test_health_observer_component_owns_only_timeline_and_alert_namespaces() -> 
     }
     assert observer["scan_roots"] == [
         "src/qsys/data", "src/qsys/live", "src/qsys/ops", "src/qsys/paper",
-        "src/qsys/web",
     ]
     assert observer["release_root"] == "/opt/qsys/components/health-observer/releases"
     assert observer["current"] == "/opt/qsys/components/health-observer/current"
@@ -1123,6 +1124,33 @@ def test_test_web_artifact_extraction_is_strict(tmp_path) -> None:
     with pytest.raises(ValueError, match="unexpected path"):
         entrypoint._extract_web_archive(planted, tmp_path / "unused")
 
+    duplicate = tmp_path / "duplicate.zip"
+    with pytest.warns(UserWarning, match="Duplicate name"):
+        with zipfile.ZipFile(duplicate, "w") as value:
+            value.writestr("release.json", "{}")
+            value.writestr("release.json", "{}")
+    with pytest.raises(ValueError, match="duplicate files"):
+        entrypoint._extract_web_archive(duplicate, tmp_path / "duplicate")
+
+    linked = tmp_path / "linked.zip"
+    item = zipfile.ZipInfo("source/link.py")
+    item.create_system = 3
+    item.external_attr = (stat.S_IFLNK | 0o777) << 16
+    with zipfile.ZipFile(linked, "w") as value:
+        value.writestr("release.json", "{}")
+        value.writestr(item, "target")
+    with pytest.raises(ValueError, match="must not contain symlinks"):
+        entrypoint._extract_web_archive(linked, tmp_path / "linked")
+
+
+def test_test_web_artifact_receive_binds_exact_hash(monkeypatch, tmp_path) -> None:
+    entrypoint = _entrypoint_module()
+    monkeypatch.setattr(entrypoint.sys, "stdin", SimpleNamespace(buffer=io.BytesIO(b"web")))
+
+    with pytest.raises(ValueError, match="SHA-256 mismatch"):
+        entrypoint._receive_archive(
+            "0" * 64, tmp_path / "web.zip", limit=1024, label="web",
+        )
 
 def test_test_web_release_pointer_switches_atomically(monkeypatch, tmp_path) -> None:
     entrypoint = _entrypoint_module()
@@ -1192,11 +1220,54 @@ def test_restricted_ssh_dispatcher_never_invokes_a_shell(monkeypatch) -> None:
         "/usr/local/libexec/qsys-deploy-entrypoint", "research-stage",
     ]
     monkeypatch.setenv(
+        "SSH_ORIGINAL_COMMAND", "web-data-refresh --sha " + "a" * 40,
+    )
+    assert dispatcher.command_from_environment()[:2] == [
+        "/usr/local/libexec/qsys-deploy-entrypoint", "web-data-refresh",
+    ]
+    monkeypatch.setenv(
         "SSH_ORIGINAL_COMMAND", "research-drill --sha " + "a" * 40,
     )
     assert dispatcher.command_from_environment()[:2] == [
         "/usr/local/libexec/qsys-deploy-entrypoint", "research-drill",
     ]
+
+
+def test_test_web_data_refresh_is_manual_allowlisted_and_rollback_capable() -> None:
+    workflow = Path(".github/workflows/refresh-test-web-data.yml").read_text(
+        encoding="utf-8",
+    )
+    entrypoint = Path("deploy/linux/qsys-deploy-entrypoint.py").read_text(encoding="utf-8")
+    unit = Path("deploy/systemd/qsys-web-test.service").read_text(encoding="utf-8")
+
+    assert "workflow_dispatch:" in workflow
+    assert "REFRESH_TEST_WEB_DATA" in workflow
+    assert "web-data-refresh-v1" in workflow
+    assert "timeout-minutes: 45" in workflow
+    assert "cancel-in-progress: false" in workflow
+    assert 'test -n "$ci_run"' in workflow
+    assert "web-data-refresh --sha $TARGET_SHA" in workflow
+    assert "Production mutation: none" in workflow
+    for source in (
+        'PRODUCTION_WAREHOUSE = Path("/data/qsys/warehouse")',
+        'PRODUCTION_WAREHOUSE_LOCK = Path("/home/ubuntu/qsys/var/warehouse-write.lock")',
+        'PRODUCTION_REPO = Path("/home/ubuntu/qsys")',
+        'PRODUCTION_SERVICE_RUNS = PRODUCTION_REPO / "var/service-runs"',
+        'PRODUCTION_HEALTH_STATE = PRODUCTION_REPO / "var/health-observer/service-health.sqlite3"',
+        'PRODUCTION_ALERTS = PRODUCTION_REPO / "var/alerts"',
+        'PRODUCTION_BOARD = Path("/data/qsys/var-prod/limit-up-board")',
+    ):
+        assert source in entrypoint
+    assert "fcntl.LOCK_SH" in entrypoint
+    assert "time.monotonic() + 120" in entrypoint
+    assert "production warehouse write lock remained busy" in entrypoint
+    assert "_activate_snapshot_pointer" in entrypoint
+    assert "_restore_symlink" in entrypoint
+    assert '"test-web-data"' in entrypoint
+    assert "web-ops-snapshot-store/current/service-runs" in unit
+    assert "web-ops-snapshot-store/current/service-health.sqlite3" in unit
+    assert "web-ops-snapshot-store/current/limit-up-board" in unit
+    assert "web-ops-snapshot-store/current/alerts/production" in unit
 
 
 def test_test_deploy_key_is_forced_and_rotated_atomically(tmp_path) -> None:
@@ -1437,7 +1508,7 @@ def test_component_artifact_extraction_is_exact_and_rejects_traversal(tmp_path) 
     with zipfile.ZipFile(wrong_root, "w") as output:
         output.writestr("release.json", "{}")
         output.writestr("dist/qsys-0.1.0-py3-none-any.whl", b"wheel")
-        output.writestr("source/src/qsys/web/example.py", b"WEB = 1\n")
+        output.writestr("source/src/qsys/webapp/example.py", b"WEB = 1\n")
     with pytest.raises(ValueError, match="manifest, one wheel and scan sources"):
         entrypoint._extract_component_archive(
             wrong_root, tmp_path / "wrong-root-release", "catalog-verify",
@@ -3122,13 +3193,13 @@ def test_first_live_migration_requires_installed_consumers_but_upgrades_do_not_r
     e = _production_entrypoint_module()
     monkeypatch.setattr(e, '_restart_window', lambda repo:{'restart_allowed':True})
     critical=('src/qsys/live/state_binding.py','src/qsys/live/store.py','src/qsys/live/core_cli.py',
-              'scripts/kill.py','scripts/prepare_live_core_release.py','src/qsys/web/live_kill_status.py')
+              'scripts/kill.py','scripts/prepare_live_core_release.py','src/qsys/webapp/live_kill_status.py')
     for relative in critical:
         path=tmp_path/relative;path.parent.mkdir(parents=True,exist_ok=True);path.write_text('exact source\n')
     specs={}
     for name in ('web','daily-digest','health-observer','service-checks'):
         current=tmp_path/name;specs[name]={'current':str(current)}
-        for module in ('live/state_binding.py','live/store.py','web/live_kill_status.py'):
+        for module in ('live/state_binding.py','live/store.py','webapp/live_kill_status.py'):
             path=current/'venv/lib/python3.12/site-packages/qsys'/module
             path.parent.mkdir(parents=True,exist_ok=True);path.write_text('exact source\n')
     monkeypatch.setattr(e,'COMPONENT_RELEASES',specs)

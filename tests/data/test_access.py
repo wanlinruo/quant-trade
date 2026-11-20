@@ -89,10 +89,9 @@ def test_historical_minute_facade_rejects_unpublished_trading_sessions(warehouse
         raise AssertionError("未发布的 canonical 交易日不应返回假空表")
 
 
-def test_data_page_read_only_entry_uses_the_stable_facade(warehouse):
-    from qsys.web.data_views import DataService
+def test_read_only_entry_uses_the_stable_facade(warehouse):
     _seed_canonical_daily(warehouse)
-    got = DataService(warehouse).historical_daily_bars([SYMBOL], DAY, DAY)
+    got = StableMarketData(WarehouseQuery(warehouse)).historical_daily_bars([SYMBOL], DAY, DAY)
     assert got["close"].to_list() == [10.0]
 
 

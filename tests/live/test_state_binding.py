@@ -6,7 +6,7 @@ import pytest
 
 from qsys.live import state_binding as binding
 from qsys.live.transport import MemoryTransport
-from qsys.web.live_kill_status import LiveKillReader
+from qsys.webapp.live_kill_status import LiveKillReader
 
 
 def test_absent_binding_keeps_legacy_and_explicit_paths(tmp_path, monkeypatch):

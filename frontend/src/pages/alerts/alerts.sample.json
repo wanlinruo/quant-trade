@@ -1,0 +1,199 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "state": "ok",
+  "day": "2026-11-18",
+  "window_start": "2026-11-05",
+  "window_end": "2026-11-18",
+  "unhandled": 2,
+  "unhandled_critical": 2,
+  "acknowledged": 1,
+  "notices": 1,
+  "items": [
+    {
+      "key": "observer.process.down",
+      "subject": "paper",
+      "source": "health-observer",
+      "kind": "incident",
+      "severity": "CRITICAL",
+      "status": "unhandled",
+      "first_at": "2026-11-18T09:30:00+08:00",
+      "last_at": "2026-11-18T09:30:00+08:00",
+      "resolved_at": null,
+      "count": 1,
+      "title": "模拟交易已停止",
+      "detail": "",
+      "description": "服务进程停止",
+      "ack": null
+    },
+    {
+      "key": "unregistered:nope.never.used",
+      "subject": "",
+      "source": "health-observer",
+      "kind": "unregistered",
+      "severity": "CRITICAL",
+      "status": "unhandled",
+      "first_at": "2026-11-18T08:30:00+08:00",
+      "last_at": "2026-11-18T08:30:00+08:00",
+      "resolved_at": null,
+      "count": 1,
+      "title": "未登记的告警",
+      "detail": "",
+      "description": null,
+      "ack": null
+    },
+    {
+      "key": "infra.disk.data",
+      "subject": "",
+      "source": "health-observer",
+      "kind": "incident",
+      "severity": "WARNING",
+      "status": "acknowledged",
+      "first_at": "2026-11-16T09:30:00+08:00",
+      "last_at": "2026-11-16T09:30:00+08:00",
+      "resolved_at": null,
+      "count": 1,
+      "title": "磁盘余量偏低",
+      "detail": "",
+      "description": "数据盘余量；subject 为空",
+      "ack": {
+        "by": "维护者",
+        "acked_at": "2026-11-17T09:30:00+08:00",
+        "through": "2026-11-16T09:30:00+08:00"
+      }
+    },
+    {
+      "key": "strategy.run.report",
+      "subject": "模拟｜A",
+      "source": "paper",
+      "kind": "notice",
+      "severity": "INFO",
+      "status": "notice",
+      "first_at": "2026-11-18T09:30:00+08:00",
+      "last_at": "2026-11-18T09:30:00+08:00",
+      "resolved_at": null,
+      "count": 1,
+      "title": "模拟｜A 竞价决策",
+      "detail": "",
+      "description": "竞价决策、买卖与收盘汇总",
+      "ack": null
+    },
+    {
+      "key": "observer.process.down",
+      "subject": "web",
+      "source": "health-observer",
+      "kind": "incident",
+      "severity": "CRITICAL",
+      "status": "resolved",
+      "first_at": "2026-11-17T09:30:00+08:00",
+      "last_at": "2026-11-17T09:30:00+08:00",
+      "resolved_at": "2026-11-17T09:33:00+08:00",
+      "count": 1,
+      "title": "Web 已恢复",
+      "detail": "",
+      "description": "服务进程停止",
+      "ack": null
+    }
+  ],
+  "trend": [
+    {
+      "day": "2026-11-05",
+      "critical": 0,
+      "warning": 0,
+      "info": 0,
+      "resolved": 0
+    },
+    {
+      "day": "2026-11-06",
+      "critical": 0,
+      "warning": 0,
+      "info": 0,
+      "resolved": 0
+    },
+    {
+      "day": "2026-11-07",
+      "critical": 0,
+      "warning": 0,
+      "info": 0,
+      "resolved": 0
+    },
+    {
+      "day": "2026-11-08",
+      "critical": 0,
+      "warning": 0,
+      "info": 0,
+      "resolved": 0
+    },
+    {
+      "day": "2026-11-09",
+      "critical": 0,
+      "warning": 0,
+      "info": 0,
+      "resolved": 0
+    },
+    {
+      "day": "2026-11-10",
+      "critical": 0,
+      "warning": 0,
+      "info": 0,
+      "resolved": 0
+    },
+    {
+      "day": "2026-11-11",
+      "critical": 0,
+      "warning": 0,
+      "info": 0,
+      "resolved": 0
+    },
+    {
+      "day": "2026-11-12",
+      "critical": 0,
+      "warning": 0,
+      "info": 0,
+      "resolved": 0
+    },
+    {
+      "day": "2026-11-13",
+      "critical": 0,
+      "warning": 0,
+      "info": 0,
+      "resolved": 0
+    },
+    {
+      "day": "2026-11-14",
+      "critical": 0,
+      "warning": 0,
+      "info": 0,
+      "resolved": 0
+    },
+    {
+      "day": "2026-11-15",
+      "critical": 0,
+      "warning": 0,
+      "info": 0,
+      "resolved": 0
+    },
+    {
+      "day": "2026-11-16",
+      "critical": 0,
+      "warning": 1,
+      "info": 0,
+      "resolved": 0
+    },
+    {
+      "day": "2026-11-17",
+      "critical": 1,
+      "warning": 0,
+      "info": 0,
+      "resolved": 1
+    },
+    {
+      "day": "2026-11-18",
+      "critical": 2,
+      "warning": 0,
+      "info": 1,
+      "resolved": 0
+    }
+  ],
+  "missing": {}
+}

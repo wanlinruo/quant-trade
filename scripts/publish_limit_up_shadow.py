@@ -7,7 +7,7 @@ import json
 import sys
 from pathlib import Path
 
-from qsys.web.limit_up_shadow import LimitUpShadowPublisher, LimitUpShadowSnapshot
+from qsys.research.limit_up_shadow_store import LimitUpShadowPublisher, LimitUpShadowSnapshot
 
 
 def main() -> int:

@@ -1,24 +1,35 @@
 # 项目交接入口
 
-## 11-19：页面改版（#662）进展——代码已进 main，生产未发布（改版状态以本节为准）
+## 11-20：页面改版与测试数据快照（#662 / #683）——等待 PR #684 自审（以本节为准）
 
-- **生产状态未因改版变化**：03–05、03b 都**没有发布到任何生产组件**；生产现状仍以下方 11-17 一节、
-  #137 / #670 / #677 / #666 最新评论为准。维护者 11-18 明确：观察期不影响改版开发，发布另行请示。
-- **main `d9e73dd`（PR #679，11-18 合并）**：计划 03 结构化告警事件、04 告警汇总与已知警告清单、
-  05 `kill.py review live` 停机闸只读核对。test CI 44333187754、测试部署 44333613269 成功，
-  Align / Direct push audit 成功，test 与 main 同一提交。
-- **03b（执行器状态进心跳 + 健康观察链路采样表）**：本地 test 已 squash 为一个提交，**等收盘后推送**
-  （推送 test 会触发测试部署，盘中不推）；之后建 test→main 发布 PR，合并前问维护者。
-- **Web 需求分支 `feat/web-redesign`**（只从 main 同步，不合 test/main）：已同步 main，完成计划 06a
-  告警中心（`/app/alerts`，含“确认已知悉”只记录存储与顶栏未处理数）。下一份 06b 今日运行（依赖 03b）、
-  06c 交易组 5 页（含停机闸核对清单）。
+- **生产状态未变**：03–05、03b 和 19 个新页面都**没有发布到任何生产组件**；生产现状仍以
+  下方 11-17 一节及 #137 / #670 / #677 / #666 最新评论为准。生产发布仍逐组件另行请示。
+- **当前分支**：main `e0c55a4`；测试运行时代码已部署到 `deab276`（tree `e42b303`），test 后续只追加
+  本节交接文档。PR #684 是唯一 `test -> main` 发布 PR，包含页面改版与 #683 第一阶段测试数据快照；
+  等待维护者逐文件自审，尚未合并。
+- **页面改版**：19/19 页面及新契约、查询层、前端均完成；唯一入口已切到 `qsys.webapp`，旧页面
+  GET/HEAD 只做固定 308，旧写接口不重定向，整个 `qsys.web` 已删除。领域模块已分别迁到
+  `qsys.backtest`、`qsys.research`、`qsys.ops`，真实消费者和组件路径已同步。
+- **测试部署证据**：CI `44708796944` 全绿；测试部署 `44709070265`、Deployment `7937846326`、
+  节点 record `github-44709070265-1` 成功，`qsys-web-test` 已到 `deab276`。PR CI `44709621469`
+  全绿。此前真实 Chrome 已逐页加载 6 组 19 页，全部 HTTP 200、已渲染且无 4xx/5xx。
+- **测试数据面现状**：部署成功不等于业务数据验收。warehouse 仍是主要截至 2026-09-18 的旧隔离快照；
+  paper 0 账户，ServiceRun/health/board/alerts 空或未接线，nodes/releases 无生产者；live/委托/对账按
+  隔离设计保持 disabled。不能据此批准生产页面切换。
+- **#683 第一阶段已实现但未执行刷新**：生产 warehouse、近 35 天 ServiceRun、health SQLite backup、
+  board 长期库/status、alerts 可生成测试专用不可变快照；manifest 绑定逐文件 hash，失败恢复旧指针。
+  明确排除 live/orders/fills/reconciliation/paper/board raw。手工 workflow 默认 dry-run，正式运行须
+  `REFRESH_TEST_WEB_DATA`。本轮测试部署没有读取或修改生产数据。
+- **当前门槛**：维护者自审并确认合并 PR #684 → 核对 Align / Direct push audit → 从精确 main 安装
+  新固定测试入口并确认 `web-data-refresh-v1` → 收盘后先 dry-run、再正式刷新 → 重做 19 页数据矩阵。
+  paper 与 nodes/releases 仍需后续阶段；#675/#676 独立承接。生产 Web 发布继续逐组件另行请示。
 - **生产发布顺序（每步另行请示）**：先 daily-digest → health-observer / service-checks / reboot-drill / paper
   → live-core 收盘后（按 #670 先解闸后发布）；03b 的 Windows 执行网关只能收盘后发布。发布 Web 前须用真实
   账号实测：Web 对各告警目录只读、对 `var/web` 可写（AGENTS.md §2.2）。
 - **待维护者决定**：`resume live` 是否以 `review` 结论为硬门槛（当前未改）；03–05 发布后用
   `scripts/known_warnings_baseline.py` 在节点只读生成 #594 已知警告候选。
-- 计划文档：03/04/05 在 main 的 `docs/superpowers/plans/2026-11-18-web-redesign-0*.md`，03b 随其
-  squash 提交进入 test；R1–R4、06a 与总路线 v2 在需求分支。逐份完成记录见 #662 评论。
+- 计划文档：最终集成见 `2026-11-19-web-redesign-10-final-integration.md`，测试制品闭环见
+  `2026-11-20-web-redesign-02-test-artifact.md`；逐份完成记录见 #662 评论。
 
 ## 11-17：竞价熔断（#670）——两处修复已发布，急停已解除（以本节为准）
 

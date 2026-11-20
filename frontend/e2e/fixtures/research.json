@@ -1,0 +1,250 @@
+{
+ "state": "ready",
+ "message": "研究回测结果（冻结）",
+ "selected": null,
+ "summary": {
+  "generated_at": "2026-11-01T10:00:00+08:00",
+  "source_sha": "0123456789abcdef0123456789abcdef01234567",
+  "data_sha": "fedcba9876543210fedcba9876543210fedcba98",
+  "first_prediction_date": "2024-01-02",
+  "last_prediction_date": "2026-10-31",
+  "sessions": 690,
+  "test_sessions": 480,
+  "obs_sessions": 210,
+  "test_precision_at_20": 0.33,
+  "obs_precision_at_20": 0.29,
+  "obs_baseline_precision_at_20": 0.12,
+  "obs_lift_at_20": 2.4,
+  "obs_month_win_rate": 0.8,
+  "promoted_to_shadow": true
+ },
+ "history": [
+  {
+   "prediction_date": "2026-10-16",
+   "target_session": "2026-10-16",
+   "split": "OBS",
+   "precision_at_20": 0.3,
+   "touch_precision_at_20": 0.5
+  },
+  {
+   "prediction_date": "2026-10-19",
+   "target_session": "2026-10-19",
+   "split": "OBS",
+   "precision_at_20": 0.3,
+   "touch_precision_at_20": 0.5
+  },
+  {
+   "prediction_date": "2026-10-20",
+   "target_session": "2026-10-20",
+   "split": "OBS",
+   "precision_at_20": 0.3,
+   "touch_precision_at_20": 0.5
+  },
+  {
+   "prediction_date": "2026-10-21",
+   "target_session": "2026-10-21",
+   "split": "OBS",
+   "precision_at_20": 0.3,
+   "touch_precision_at_20": 0.5
+  },
+  {
+   "prediction_date": "2026-10-22",
+   "target_session": "2026-10-22",
+   "split": "OBS",
+   "precision_at_20": 0.3,
+   "touch_precision_at_20": 0.5
+  },
+  {
+   "prediction_date": "2026-10-23",
+   "target_session": "2026-10-23",
+   "split": "OBS",
+   "precision_at_20": 0.3,
+   "touch_precision_at_20": 0.5
+  },
+  {
+   "prediction_date": "2026-10-26",
+   "target_session": "2026-10-26",
+   "split": "OBS",
+   "precision_at_20": 0.3,
+   "touch_precision_at_20": 0.5
+  },
+  {
+   "prediction_date": "2026-10-27",
+   "target_session": "2026-10-27",
+   "split": "OBS",
+   "precision_at_20": 0.3,
+   "touch_precision_at_20": 0.5
+  },
+  {
+   "prediction_date": "2026-10-28",
+   "target_session": "2026-10-28",
+   "split": "OBS",
+   "precision_at_20": 0.3,
+   "touch_precision_at_20": 0.5
+  },
+  {
+   "prediction_date": "2026-10-29",
+   "target_session": "2026-10-29",
+   "split": "OBS",
+   "precision_at_20": 0.3,
+   "touch_precision_at_20": 0.5
+  },
+  {
+   "prediction_date": "2026-10-30",
+   "target_session": "2026-10-30",
+   "split": "OBS",
+   "precision_at_20": 0.3,
+   "touch_precision_at_20": 0.5
+  },
+  {
+   "prediction_date": "2026-11-02",
+   "target_session": "2026-11-02",
+   "split": "OBS",
+   "precision_at_20": 0.3,
+   "touch_precision_at_20": 0.5
+  },
+  {
+   "prediction_date": "2026-11-03",
+   "target_session": "2026-11-03",
+   "split": "OBS",
+   "precision_at_20": 0.3,
+   "touch_precision_at_20": 0.5
+  },
+  {
+   "prediction_date": "2026-11-04",
+   "target_session": "2026-11-04",
+   "split": "OBS",
+   "precision_at_20": 0.3,
+   "touch_precision_at_20": 0.5
+  },
+  {
+   "prediction_date": "2026-11-05",
+   "target_session": "2026-11-05",
+   "split": "OBS",
+   "precision_at_20": 0.3,
+   "touch_precision_at_20": 0.5
+  },
+  {
+   "prediction_date": "2026-11-06",
+   "target_session": "2026-11-06",
+   "split": "OBS",
+   "precision_at_20": 0.3,
+   "touch_precision_at_20": 0.5
+  },
+  {
+   "prediction_date": "2026-11-09",
+   "target_session": "2026-11-09",
+   "split": "OBS",
+   "precision_at_20": 0.3,
+   "touch_precision_at_20": 0.5
+  },
+  {
+   "prediction_date": "2026-11-10",
+   "target_session": "2026-11-10",
+   "split": "OBS",
+   "precision_at_20": 0.3,
+   "touch_precision_at_20": 0.5
+  },
+  {
+   "prediction_date": "2026-11-11",
+   "target_session": "2026-11-11",
+   "split": "OBS",
+   "precision_at_20": 0.3,
+   "touch_precision_at_20": 0.5
+  },
+  {
+   "prediction_date": "2026-11-12",
+   "target_session": "2026-11-12",
+   "split": "OBS",
+   "precision_at_20": 0.3,
+   "touch_precision_at_20": 0.5
+  }
+ ],
+ "monthly": [
+  {
+   "month": "2025-11-01",
+   "split": "TEST",
+   "precision_at_20": 0.3,
+   "predictions": 400,
+   "hits": 100
+  },
+  {
+   "month": "2025-12-01",
+   "split": "TEST",
+   "precision_at_20": 0.3,
+   "predictions": 401,
+   "hits": 103
+  },
+  {
+   "month": "2026-01-01",
+   "split": "TEST",
+   "precision_at_20": 0.3,
+   "predictions": 402,
+   "hits": 106
+  },
+  {
+   "month": "2026-02-01",
+   "split": "TEST",
+   "precision_at_20": 0.3,
+   "predictions": 403,
+   "hits": 109
+  },
+  {
+   "month": "2026-03-01",
+   "split": "TEST",
+   "precision_at_20": 0.3,
+   "predictions": 404,
+   "hits": 112
+  },
+  {
+   "month": "2026-04-01",
+   "split": "TEST",
+   "precision_at_20": 0.3,
+   "predictions": 405,
+   "hits": 115
+  },
+  {
+   "month": "2026-05-01",
+   "split": "OBS",
+   "precision_at_20": 0.3,
+   "predictions": 406,
+   "hits": 118
+  },
+  {
+   "month": "2026-06-01",
+   "split": "OBS",
+   "precision_at_20": 0.3,
+   "predictions": 407,
+   "hits": 121
+  },
+  {
+   "month": "2026-07-01",
+   "split": "OBS",
+   "precision_at_20": 0.3,
+   "predictions": 408,
+   "hits": 124
+  },
+  {
+   "month": "2026-08-01",
+   "split": "OBS",
+   "precision_at_20": 0.3,
+   "predictions": 409,
+   "hits": 127
+  },
+  {
+   "month": "2026-09-01",
+   "split": "OBS",
+   "precision_at_20": 0.3,
+   "predictions": 410,
+   "hits": 130
+  },
+  {
+   "month": "2026-10-01",
+   "split": "OBS",
+   "precision_at_20": 0.3,
+   "predictions": 411,
+   "hits": 133
+  }
+ ],
+ "schema_version": 1
+}
