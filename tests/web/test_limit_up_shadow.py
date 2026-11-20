@@ -4,21 +4,14 @@ from pathlib import Path
 
 import pytest
 from structlog.testing import capture_logs
-from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from qsys.ops.journal import SessionJournal
-from qsys.live.transport import MemoryTransport
-from qsys.web.app import create_app
-from qsys.web.config import WebConfig
-from qsys.web.data_views import MarketService
-from qsys.web.limit_up_shadow import (
+from qsys.research.limit_up_shadow_store import (
     LimitUpShadowPublisher,
     LimitUpShadowReader,
     LimitUpShadowOutcome,
     LimitUpShadowSnapshot,
 )
-from qsys.web.views import MonitorService
 
 def _payload(**overrides):
     payload = {
@@ -54,13 +47,7 @@ def _payload(**overrides):
     return payload
 
 
-def _client(warehouse, reader: LimitUpShadowReader) -> TestClient:
-    config = WebConfig()
-    monitor = MonitorService(SessionJournal(warehouse), config=config)
-    return TestClient(create_app(monitor, config, limit_up_shadow=reader))
-
-
-def test_reader_and_page_expose_ready_snapshot(warehouse, tmp_path: Path):
+def test_reader_exposes_ready_snapshot(tmp_path: Path):
     path = tmp_path / "limit-up-shadow.sqlite3"
     today = date.today()
     snapshot = LimitUpShadowSnapshot.model_validate(_payload(
@@ -68,33 +55,22 @@ def test_reader_and_page_expose_ready_snapshot(warehouse, tmp_path: Path):
         target_session=today.isoformat(),
     ))
     LimitUpShadowPublisher(path).publish(snapshot)
-    client = _client(warehouse, LimitUpShadowReader(path))
+    payload = LimitUpShadowReader(path).view(today=today)
 
-    page = client.get("/market/limit-up-shadow")
-    payload = client.get("/api/market/limit-up-shadow").json()
-
-    assert page.status_code == 200
-    assert "AI 涨停观察" in page.text and "只读影子" in page.text
-    assert "平安银行" in page.text and "40.0%" in page.text
-    assert "漂移分数（PSI）" in page.text and "稳定" in page.text
-    assert "买入" not in page.text
-    assert payload["state"] == "ready" and payload["available"] is True
-    assert payload["snapshot"]["entries"][0]["p_close_limit"] == 0.4
+    assert payload.state == "ready" and payload.available is True
+    assert payload.snapshot.entries[0].p_close_limit == 0.4
 
 
-def test_missing_store_fails_closed_without_creating_a_file(warehouse, tmp_path: Path):
+def test_missing_store_fails_closed_without_creating_a_file(tmp_path: Path):
     path = tmp_path / "missing.sqlite3"
-    client = _client(warehouse, LimitUpShadowReader(path))
-
     with capture_logs() as logs:
-        payload = client.get("/api/market/limit-up-shadow").json()
+        payload = LimitUpShadowReader(path).view()
 
-    assert payload["state"] == "unavailable"
-    assert payload["available"] is False
+    assert payload.state == "unavailable"
+    assert payload.available is False
     assert not path.exists()
     assert logs[-1]["event"] == "limit_up_shadow.read_failed"
     assert logs[-1]["error_type"] == "OperationalError"
-    assert "不会用旧数据" in client.get("/market/limit-up-shadow").text
 
 
 def test_published_store_needs_no_wal_sidecars_for_read_only_consumer(tmp_path: Path):
@@ -194,22 +170,6 @@ def test_generated_at_requires_timezone():
         LimitUpShadowSnapshot.model_validate(_payload(
             generated_at=datetime(2026, 10, 9, 17, 10),
         ))
-
-
-def test_market_overview_links_to_shadow_top_three(warehouse, tmp_path: Path):
-    path = tmp_path / "shadow.sqlite3"
-    LimitUpShadowPublisher(path).publish(LimitUpShadowSnapshot.model_validate(_payload()))
-    config = WebConfig()
-    monitor = MonitorService(SessionJournal(warehouse), config=config)
-    client = TestClient(create_app(
-        monitor, config, market=MarketService(warehouse, MemoryTransport()),
-        limit_up_shadow=LimitUpShadowReader(path),
-    ))
-
-    body = client.get("/market").text
-
-    assert "/market/limit-up-shadow" in body
-    assert "AI 涨停观察" in body and "平安银行" in body
 
 
 def test_outcomes_are_separate_immutable_and_drive_rolling_metrics(tmp_path: Path):

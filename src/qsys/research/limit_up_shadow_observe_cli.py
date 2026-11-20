@@ -9,7 +9,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from qsys.research.limit_up_shadow import latest_truth_session, outcome_truth
-from qsys.web.limit_up_shadow import LimitUpShadowPublisher, LimitUpShadowReader
+from qsys.research.limit_up_shadow_store import LimitUpShadowPublisher, LimitUpShadowReader
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
 

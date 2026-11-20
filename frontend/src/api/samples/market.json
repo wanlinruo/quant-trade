@@ -1,0 +1,192 @@
+{
+ "schema_version": 1,
+ "enabled": true,
+ "live": {
+  "available": true,
+  "stale": false,
+  "snapshot": {
+   "session": "2026-11-17",
+   "published_at": "2026-11-17T10:42:00+08:00",
+   "indices": [
+    {
+     "symbol": "000001.SH",
+     "name": "上证指数",
+     "price": 3401.2,
+     "change_pct": 0.0081,
+     "amount": 410000000000.0
+    },
+    {
+     "symbol": "399001.SZ",
+     "name": "深证成指",
+     "price": 10800.5,
+     "change_pct": -0.0042,
+     "amount": 500000000000.0
+    }
+   ],
+   "valid_stock_count": 5438,
+   "advance_count": 3000,
+   "decline_count": 2000,
+   "flat_count": 438,
+   "limit_up_count": 54,
+   "limit_down_count": 3,
+   "touched_limit_up_count": 70,
+   "broken_board_count": 16,
+   "broken_board_rate": 0.2286,
+   "market_advance_ratio": 0.623,
+   "market_median_return_1d": 0.0081,
+   "market_total_money": 1200000000000.0,
+   "limit_price_missing_count": 2,
+   "limit_up_unknown_count": null,
+   "limit_down_unknown_count": 1,
+   "coverage": {
+    "status": "complete",
+    "universe_source": "stock_basic",
+    "universe_session": "2026-11-17",
+    "expected": 5441,
+    "excluded_non_a": 0,
+    "invalid_identity_count": 0,
+    "unexpected_count": 0,
+    "by_market": [
+     {
+      "market": "SH",
+      "expected": 2300,
+      "received": 2300,
+      "valid": 2299,
+      "suspended": 1,
+      "missing": 0,
+      "invalid": 0,
+      "other_session": 0,
+      "missing_samples": [],
+      "source_at_min": "2026-11-17T10:41:58+08:00",
+      "source_at_max": "2026-11-17T10:42:00+08:00"
+     },
+     {
+      "market": "BJ",
+      "expected": 270,
+      "received": 268,
+      "valid": 268,
+      "suspended": 0,
+      "missing": 2,
+      "invalid": 0,
+      "other_session": 0,
+      "missing_samples": [
+       "920001.BJ"
+      ],
+      "source_at_min": null,
+      "source_at_max": null
+     }
+    ]
+   }
+  }
+ },
+ "schedule": {
+  "checked_at": "2026-11-17T10:42:20+08:00",
+  "is_trading_day": true,
+  "is_open": true,
+  "next_open_at": null
+ },
+ "limit_check": {
+  "session": "2026-11-17",
+  "checked_at": "2026-11-17T09:00:05+08:00",
+  "checked": 5441,
+  "mismatched": 1,
+  "unbounded_equivalent": 3,
+  "missing_in_qmt": 2,
+  "samples": [
+   {
+    "symbol": "600000.SH",
+    "tushare": {
+     "up": 11.11,
+     "down": 9.09
+    },
+    "qmt": {
+     "up": 11.12,
+     "down": 9.09
+    }
+   }
+  ],
+  "missing_samples": [
+   {
+    "symbol": "600001.SH",
+    "tushare": {
+     "up": 11.0,
+     "down": 9.0
+    },
+    "qmt": null
+   },
+   {
+    "symbol": "200001.SH",
+    "tushare": {
+     "up": 5.0,
+     "down": 4.0
+    },
+    "qmt": null
+   }
+  ],
+  "missing_in_roster": [
+   "600001.SH"
+  ],
+  "missing_outside_roster": [
+   "200001.SH"
+  ],
+  "missing_split_complete": true
+ },
+ "regime": [
+  {
+   "dt": "2026-11-13",
+   "limit_up_count": 50,
+   "limit_down_count": null,
+   "limit_up_down_ratio": null,
+   "touched_limit_up_count": null,
+   "broken_board_count": null,
+   "broken_board_rate": null,
+   "first_board_count": null,
+   "market_advance_ratio": null,
+   "market_median_return_1d": null,
+   "market_total_money": null,
+   "prior_limitup_nextday_return_mean": null,
+   "prior_limitup_nextday_return_median": null,
+   "valid_stock_count": null,
+   "index_ma20_slope_5d": 0.1
+  },
+  {
+   "dt": "2026-11-14",
+   "limit_up_count": 50,
+   "limit_down_count": null,
+   "limit_up_down_ratio": null,
+   "touched_limit_up_count": null,
+   "broken_board_count": null,
+   "broken_board_rate": null,
+   "first_board_count": null,
+   "market_advance_ratio": null,
+   "market_median_return_1d": null,
+   "market_total_money": null,
+   "prior_limitup_nextday_return_mean": null,
+   "prior_limitup_nextday_return_median": null,
+   "valid_stock_count": null,
+   "index_ma20_slope_5d": null
+  },
+  {
+   "dt": "2026-11-16",
+   "limit_up_count": 50,
+   "limit_down_count": null,
+   "limit_up_down_ratio": null,
+   "touched_limit_up_count": null,
+   "broken_board_count": null,
+   "broken_board_rate": null,
+   "first_board_count": null,
+   "market_advance_ratio": null,
+   "market_median_return_1d": null,
+   "market_total_money": null,
+   "prior_limitup_nextday_return_mean": null,
+   "prior_limitup_nextday_return_median": null,
+   "valid_stock_count": null,
+   "index_ma20_slope_5d": 0.2
+  }
+ ],
+ "missing": {
+  "index_intraday": "行情快照只保存当前值，没有指数分时序列；需采集器保存（见 #675）",
+  "return_distribution": "行情快照没有涨跌幅分布；需采集器提供（见 #675）"
+ },
+ "errors": {}
+}

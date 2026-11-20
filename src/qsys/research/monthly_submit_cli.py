@@ -8,7 +8,7 @@ from pathlib import Path
 
 from qsys.research.jobs import JobLimits, JobRequest, JobStore
 from qsys.research.monthly_tasks import MONTHLY_TIMEOUTS, validate_monthly_request
-from qsys.web.research_jobs import ResearchSubmissionProfile
+from qsys.research.job_console import ResearchSubmissionProfile
 
 
 def main(argv: list[str] | None = None) -> int:

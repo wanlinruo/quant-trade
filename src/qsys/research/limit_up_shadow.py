@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 import polars as pl
 
 from qsys.research.limit_up_ranking import FEATURE_COLUMNS, file_sha256, scoring_frame
-from qsys.web.limit_up_shadow import (
+from qsys.research.limit_up_shadow_store import (
     LimitUpShadowEntry,
     LimitUpShadowScore,
     LimitUpShadowOutcome,

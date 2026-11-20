@@ -1,6 +1,6 @@
 """Compatibility wrapper for the packaged qsys Web entrypoint."""
 
-from qsys.web.monitor_cli import build_app, main
+from qsys.webapp.cli import build_app, main
 
 __all__ = ["build_app", "main"]
 

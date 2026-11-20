@@ -1,0 +1,2 @@
+.qs-board-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 12px; align-items: start; }
+@media (min-width: 1280px) { .qs-board-grid { grid-template-columns: minmax(0, 1fr) 340px; } }

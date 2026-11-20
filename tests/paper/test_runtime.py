@@ -7,7 +7,7 @@ from qsys.data.cutover import FacadeMode
 from qsys.live.messages import MarketQuote
 from qsys.paper.runtime import PaperRuntime
 from qsys.paper.store import PaperStore
-from qsys.web.workbench import WorkbenchStore
+from qsys.backtest.workbench import WorkbenchStore
 
 
 SOURCE = """

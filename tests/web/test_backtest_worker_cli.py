@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from qsys.web import backtest_worker_cli
+from qsys.backtest import worker_cli as backtest_worker_cli
 
 
 def test_worker_cli_owns_the_queue_lifecycle(tmp_path, monkeypatch):

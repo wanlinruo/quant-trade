@@ -1,0 +1,49 @@
+{
+ "schema_version": 1,
+ "state": "ready",
+ "message": "只读影子结果已就绪",
+ "historical": false,
+ "snapshot": {
+  "prediction_date": "2026-11-16",
+  "target_session": "2026-11-17",
+  "generated_at": "2026-11-16T19:36:00+08:00",
+  "status": "ready",
+  "model_version": "v3",
+  "eligible_count": 87,
+  "rolling_precision_at_20": 0.31,
+  "calibration_error": null,
+  "drift_score": null,
+  "entries": [
+   {
+    "rank": 1,
+    "symbol": "600000.SH",
+    "name": "甲",
+    "board": "主板",
+    "p_touch": 0.5,
+    "p_seal_given_touch": 0.6,
+    "p_close_limit": 0.3,
+    "actual_touched": null,
+    "actual_closed_limit": null,
+    "opened_at_limit": null,
+    "one_price_limit": null
+   }
+  ]
+ },
+ "history": [
+  {
+   "prediction_date": "2026-11-16",
+   "target_session": "2026-11-17",
+   "generated_at": "2026-11-16T19:36:00+08:00",
+   "status": "ready",
+   "model_version": "v3",
+   "entry_count": 20,
+   "precision_at_20": null
+  }
+ ],
+ "missing": {
+  "baseline": "影子榜单记录尚未提供基线与分桶校准数据（见 #676）",
+  "rolling_10d": "影子榜单记录尚未提供基线与分桶校准数据（见 #676）",
+  "calibration_curve": "影子榜单记录尚未提供基线与分桶校准数据（见 #676）",
+  "drift_series": "影子榜单记录尚未提供基线与分桶校准数据（见 #676）"
+ }
+}

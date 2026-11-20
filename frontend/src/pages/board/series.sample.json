@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "available": true,
+  "message": "",
+  "symbol": "A.SH",
+  "name": "甲科技",
+  "limit_up": 11.0,
+  "prev_close": 10.0,
+  "first_seal": "2026-11-13T09:30:58+08:00",
+  "points": [
+    {
+      "at": "2026-11-13T09:30:58+08:00",
+      "price": 11.0,
+      "volume": null
+    },
+    {
+      "at": "2026-11-13T09:31:13+08:00",
+      "price": 10.9,
+      "volume": 80
+    },
+    {
+      "at": "2026-11-13T09:31:28+08:00",
+      "price": 11.0,
+      "volume": 20
+    }
+  ],
+  "events": [
+    {
+      "at": "2026-11-13T09:30:58+08:00",
+      "kind": "seal",
+      "detail": "第1家"
+    },
+    {
+      "at": "2026-11-13T09:31:13+08:00",
+      "kind": "open",
+      "detail": ""
+    },
+    {
+      "at": "2026-11-13T09:31:28+08:00",
+      "kind": "reseal",
+      "detail": ""
+    }
+  ]
+}
