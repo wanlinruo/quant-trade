@@ -16,6 +16,7 @@ import sys
 import tempfile
 import time
 import urllib.request
+import uuid
 import zipfile
 from datetime import UTC, date, datetime
 from pathlib import Path
