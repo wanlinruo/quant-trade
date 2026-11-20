@@ -1247,6 +1247,9 @@ def test_test_web_data_refresh_is_manual_allowlisted_and_rollback_capable() -> N
     assert "timeout-minutes: 45" in workflow
     assert "cancel-in-progress: false" in workflow
     assert 'test -n "$ci_run"' in workflow
+    assert "head_sha=$TARGET_SHA&per_page=100" in workflow
+    assert '(.event == "push" or .event == "workflow_dispatch")' in workflow
+    assert "head_sha=$TARGET_SHA&event=push" not in workflow
     assert "web-data-refresh --sha $TARGET_SHA" in workflow
     assert "Production mutation: none" in workflow
     for source in (
