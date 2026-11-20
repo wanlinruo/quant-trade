@@ -11,6 +11,7 @@ import sys
 ENTRYPOINT = "/usr/local/libexec/qsys-deploy-entrypoint"
 ALLOWED_COMMANDS = {
     "status", "deploy", "attest", "record", "research-stage", "research-drill",
+    "web-data-refresh",
 }
 
 
