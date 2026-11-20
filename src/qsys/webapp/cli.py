@@ -60,6 +60,7 @@ def build_app(
     alert_acks: Path | None = Path("var/web/alert-acks.sqlite3"),
     kill_review_path: Path | None = Path("var/web/live-kill-review.json"),
     ops_snapshot_root: Path | None = Path("var/ops-snapshots"),
+    spa_root: Path | None = None,
 ):
     warehouse = Warehouse(warehouse_root)
     journal = SessionJournal(warehouse)
@@ -184,8 +185,20 @@ def build_app(
             ops_snapshot_root,
         ),
         health=health_reader,
+        spa_root=spa_root,
     )
     return create_app(webapp, config)
+
+
+def _spa_root_from_environment() -> Path | None:
+    """测试部署可选择已验证制品；生产默认继续使用 wheel 内资源。"""
+    value = os.environ.get("QSYS_WEB_SPA_ROOT")
+    if not value:
+        return None
+    root = Path(value)
+    if not root.is_absolute():
+        raise ValueError("QSYS_WEB_SPA_ROOT must be an absolute path")
+    return root
 
 
 def _daily_trading_calendar(config_path: str | None):
@@ -309,6 +322,7 @@ def main() -> int:
         alert_acks=Path(args.alert_acks) if args.alert_acks else None,
         kill_review_path=Path(args.kill_review_record) if args.kill_review_record else None,
         ops_snapshot_root=Path(args.ops_snapshot_root) if args.ops_snapshot_root else None,
+        spa_root=_spa_root_from_environment(),
     )
     log.info("monitor.started", host=args.host, port=args.port)
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")

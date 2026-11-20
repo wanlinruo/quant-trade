@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from qsys.webapp.app import WebappDeps, create_app
 from qsys.webapp.config import WebConfig
 from qsys.webapp.live_kill_status import LiveKillReader
+from qsys.webapp.cli import _spa_root_from_environment
 
 INDEX = b"<!doctype html><html><div id=root></div></html>"
 JS = b"console.log('app')"
@@ -123,3 +124,13 @@ def test_root_permanently_redirects_to_today(spa_tmp, client_factory) -> None:
 def test_tampered_build_returns_503(spa_tmp, client_factory) -> None:
     (spa_tmp / "assets" / "index-abc.js").write_bytes(b"tampered")
     assert client_factory(spa_tmp).get("/app").status_code == 503
+
+
+def test_external_spa_root_requires_an_absolute_path(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("QSYS_WEB_SPA_ROOT", raising=False)
+    assert _spa_root_from_environment() is None
+    monkeypatch.setenv("QSYS_WEB_SPA_ROOT", str(tmp_path))
+    assert _spa_root_from_environment() == tmp_path
+    monkeypatch.setenv("QSYS_WEB_SPA_ROOT", "relative/spa")
+    with pytest.raises(ValueError, match="absolute path"):
+        _spa_root_from_environment()
