@@ -1,12 +1,14 @@
 #!/bin/sh
 set -eu
 
-if [ "$#" -ne 1 ]; then
-    echo "usage: $0 <40-character-test-commit-sha>" >&2
+if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
+    echo "usage: $0 <40-character-test-commit-sha> [verified-web-release]" >&2
     exit 2
 fi
 
 target_sha=$1
+web_release=${2:-}
+artifact_mode=false
 if [ "${#target_sha}" -ne 40 ]; then
     echo "target must be an exact 40-character lowercase commit SHA" >&2
     exit 2
@@ -17,6 +19,17 @@ case "$target_sha" in
         exit 2
         ;;
 esac
+if [ -n "$web_release" ]; then
+    artifact_mode=true
+    if [ ! -f "$web_release/release.json" ] || [ ! -f "$web_release/spa_dist/build-info.json" ]; then
+        echo "verified Web release is incomplete: $web_release" >&2
+        exit 1
+    fi
+    if [ "$(basename "$(readlink -f "$web_release")")" != "$target_sha" ]; then
+        echo "verified Web release does not match target SHA" >&2
+        exit 1
+    fi
+fi
 
 repo=$(git rev-parse --show-toplevel)
 cd "$repo"
@@ -62,12 +75,6 @@ if [ -n "$(git status --porcelain --untracked-files=normal)" ]; then
     exit 1
 fi
 
-current_sha=$(git rev-parse HEAD)
-if [ "$current_sha" = "$target_sha" ]; then
-    echo "test deployment already at target: $target_sha"
-    exit 0
-fi
-
 git fetch --prune origin test
 remote_sha=$(git rev-parse origin/test)
 if [ "$remote_sha" != "$target_sha" ]; then
@@ -104,7 +111,9 @@ sudo -n systemctl daemon-reload
 sudo -n systemctl restart qsys-web-test.service
 
 attempt=0
-until curl --fail --silent --show-error http://127.0.0.1:8421/healthz >/dev/null; do
+until curl --fail --silent --show-error http://127.0.0.1:8421/healthz >/dev/null \
+    && { [ "$artifact_mode" != true ] \
+        || curl --fail --silent --show-error http://127.0.0.1:8421/app/today >/dev/null; }; do
     attempt=$((attempt + 1))
     if [ "$attempt" -ge 20 ]; then
         sudo -n systemctl status qsys-web-test.service --no-pager >&2 || true

@@ -95,6 +95,8 @@ jobs:
               or not state["healthy"] or not state["isolated"]
           ):
               raise SystemExit(f"test node is not deployable: {state}")
+          if "web-artifact-deploy-v1" not in state.get("capabilities", []):
+              raise SystemExit("test node does not support verified Web artifacts")
           print(f'before_sha={state["sha"]}')
           PY
           echo "source_tree=$(git rev-parse "$TARGET_SHA^{tree}")" >>"$GITHUB_OUTPUT"
@@ -137,12 +139,39 @@ jobs:
             -f state=in_progress \
             -f log_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" >/dev/null
 
+      - name: Download exact immutable Web release
+        id: web_artifact
+        if: steps.plan.outputs.deployable == 'true'
+        run: |
+          set -eu
+          mkdir web-release
+          gh run download "$UPSTREAM_RUN_ID" \
+            --name "qsys-web-$TARGET_SHA" --dir web-release
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile
+
+          root = Path("web-release")
+          files = sorted(path for path in root.rglob("*") if path.is_file())
+          if not files or any(path.is_symlink() for path in root.rglob("*")):
+              raise SystemExit("downloaded Web release is empty or contains a symlink")
+          with zipfile.ZipFile("web-release.zip", "w", zipfile.ZIP_DEFLATED) as archive:
+              for path in files:
+                  archive.write(path, path.relative_to(root).as_posix())
+          PY
+          artifact_sha256=$(sha256sum web-release.zip | awk '{print $1}')
+          echo "sha256=$artifact_sha256" >>"$GITHUB_OUTPUT"
+
       - name: Deploy exact SHA through restricted gateway
         id: deploy
         if: steps.plan.outputs.deployable == 'true'
+        env:
+          WEB_ARTIFACT_SHA256: ${{ steps.web_artifact.outputs.sha256 }}
         run: |
-          ssh -i ~/.ssh/test-deploy -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
-            "deploy --environment test --sha $TARGET_SHA --component test-runtime --run-id $RUN_KEY --actor $GITHUB_ACTOR --repository $GITHUB_REPOSITORY"
+          ssh -i ~/.ssh/test-deploy -o BatchMode=yes -o ConnectTimeout=20 \
+            -o ServerAliveInterval=30 -o ServerAliveCountMax=30 "$DEPLOY_USER@$DEPLOY_HOST" \
+            "deploy --environment test --sha $TARGET_SHA --component test-runtime --artifact-sha256 $WEB_ARTIFACT_SHA256 --run-id $RUN_KEY --actor $GITHUB_ACTOR --repository $GITHUB_REPOSITORY" \
+            <web-release.zip
 
       - name: Attest control-plane-only target
         if: steps.plan.outputs.deployable == 'false'
