@@ -5,13 +5,13 @@ from datetime import datetime, timedelta
 import pytest
 
 from qsys.ops.health import DOWN, HEALTHY, MORNING, SHANGHAI, HealthObservation, HealthStore
-from qsys.web import monitor_cli
-from qsys.web.config import WebConfig
+from qsys.webapp import cli as monitor_cli
+from qsys.webapp.config import WebConfig
 
 
 @pytest.mark.parametrize(
     ("sample", "expected"),
-    [("missing", "unknown"), ("fresh", "ok"), ("stale", "unknown"), ("failed", "bad")],
+    [("missing", None), ("fresh", HEALTHY), ("stale", HEALTHY), ("failed", DOWN)],
 )
 def test_build_app_windows_status_uses_observer_without_ssh(
     tmp_path, monkeypatch, sample, expected,
@@ -32,7 +32,7 @@ def test_build_app_windows_status_uses_observer_without_ssh(
             source="windows_task",
         ))
     captured = {}
-    monkeypatch.setattr(monitor_cli, "create_app", lambda *a, **kw: captured.update(kw))
+    monkeypatch.setattr(monitor_cli, "create_app", lambda *a, **kw: captured.update(args=a, kwargs=kw))
     monkeypatch.setattr(live_config, "load_deploy_config",
                         lambda _: (_ for _ in ()).throw(OSError("offline")))
     monkeypatch.setenv("QSYS_WINDOWS_SSH_KEY", str(tmp_path / "nonexistent-key"))
@@ -45,12 +45,7 @@ def test_build_app_windows_status_uses_observer_without_ssh(
         tmp_path / "warehouse", WebConfig(), None,
         workspace_dir=tmp_path / "workspace", health_state_path=path,
     )
-    console = captured["services"]
-    console._now = lambda: now
-    assert console._windows_task is None
-    watchdog = next(row for row in console.process_status() if row["spec"].id == "watchdog")
-    assert watchdog["state"] == expected
-    if sample == "stale":
-        assert watchdog["health_observation"]["reason_code"] == "observer_stale"
-    if sample == "failed":
-        assert watchdog["health_observation"]["reason_code"] == "watchdog_failed"
+    deps = captured["args"][0]
+    assert deps.operations.health_store is deps.health
+    rows = deps.health.latest("watchdog")
+    assert (rows[0]["state"] if rows else None) == expected

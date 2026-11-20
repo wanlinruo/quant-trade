@@ -868,7 +868,6 @@ def test_health_observer_component_owns_only_timeline_and_alert_namespaces() -> 
     }
     assert observer["scan_roots"] == [
         "src/qsys/data", "src/qsys/live", "src/qsys/ops", "src/qsys/paper",
-        "src/qsys/web",
     ]
     assert observer["release_root"] == "/opt/qsys/components/health-observer/releases"
     assert observer["current"] == "/opt/qsys/components/health-observer/current"
@@ -1402,7 +1401,7 @@ def test_component_artifact_extraction_is_exact_and_rejects_traversal(tmp_path) 
     with zipfile.ZipFile(wrong_root, "w") as output:
         output.writestr("release.json", "{}")
         output.writestr("dist/qsys-0.1.0-py3-none-any.whl", b"wheel")
-        output.writestr("source/src/qsys/web/example.py", b"WEB = 1\n")
+        output.writestr("source/src/qsys/webapp/example.py", b"WEB = 1\n")
     with pytest.raises(ValueError, match="manifest, one wheel and scan sources"):
         entrypoint._extract_component_archive(
             wrong_root, tmp_path / "wrong-root-release", "catalog-verify",
@@ -3081,13 +3080,13 @@ def test_first_live_migration_requires_installed_consumers_but_upgrades_do_not_r
     e = _production_entrypoint_module()
     monkeypatch.setattr(e, '_restart_window', lambda repo:{'restart_allowed':True})
     critical=('src/qsys/live/state_binding.py','src/qsys/live/store.py','src/qsys/live/core_cli.py',
-              'scripts/kill.py','scripts/prepare_live_core_release.py','src/qsys/web/live_kill_status.py')
+              'scripts/kill.py','scripts/prepare_live_core_release.py','src/qsys/webapp/live_kill_status.py')
     for relative in critical:
         path=tmp_path/relative;path.parent.mkdir(parents=True,exist_ok=True);path.write_text('exact source\n')
     specs={}
     for name in ('web','daily-digest','health-observer','service-checks'):
         current=tmp_path/name;specs[name]={'current':str(current)}
-        for module in ('live/state_binding.py','live/store.py','web/live_kill_status.py'):
+        for module in ('live/state_binding.py','live/store.py','webapp/live_kill_status.py'):
             path=current/'venv/lib/python3.12/site-packages/qsys'/module
             path.parent.mkdir(parents=True,exist_ok=True);path.write_text('exact source\n')
     monkeypatch.setattr(e,'COMPONENT_RELEASES',specs)

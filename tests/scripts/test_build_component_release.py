@@ -41,7 +41,7 @@ def _repo(tmp_path: Path) -> tuple[Path, str]:
     (repo / "src/qsys/strategy/example.py").write_text(
         "STRATEGY = 1\n", encoding="utf-8",
     )
-    for package in ("backtest", "core", "live", "markets", "ops", "paper", "web"):
+    for package in ("backtest", "core", "live", "markets", "ops", "paper", "webapp"):
         (repo / f"src/qsys/{package}").mkdir(parents=True)
         (repo / f"src/qsys/{package}/example.py").write_text(
             f"PACKAGE = {package!r}\n", encoding="utf-8",
@@ -238,7 +238,7 @@ def test_backtest_worker_release_binds_worker_dependencies(tmp_path: Path) -> No
     }
     assert "src/qsys/backtest/workbench.py" in paths
     assert "src/qsys/backtest/worker_cli.py" in paths
-    assert "src/qsys/web/example.py" not in paths
+    assert "src/qsys/webapp/example.py" not in paths
     assert verify(repo, sha, "backtest-worker", release) == value
 
 
@@ -262,7 +262,7 @@ def test_web_release_binds_packaged_entrypoint_and_all_runtime_sources(
         "command": "qsys-web", "target": "qsys.webapp.cli:main",
     }
     paths = {record["path"] for record in value["scan_files"]}
-    assert "src/qsys/web/example.py" in paths
+    assert "src/qsys/webapp/example.py" in paths
     assert "src/qsys/live/example.py" in paths
     assert "scripts/run_monitor.py" not in paths
     assert verify(repo, sha, "web", release) == value
@@ -334,7 +334,7 @@ def test_health_observer_release_binds_its_resident_dependency_roots(
         "target": "qsys.ops.health_observer_cli:main",
     }
     assert {record["path"].split("/")[2] for record in value["scan_files"]} == {
-        "data", "live", "ops", "paper", "web",
+        "data", "live", "ops", "paper",
     }
     assert verify(repo, sha, "health-observer", release) == value
 

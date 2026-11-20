@@ -562,8 +562,7 @@
         "src/qsys/data",
         "src/qsys/live",
         "src/qsys/ops",
-        "src/qsys/paper",
-        "src/qsys/web"
+        "src/qsys/paper"
       ],
       "release_root": "/opt/qsys/components/health-observer/releases",
       "current": "/opt/qsys/components/health-observer/current",

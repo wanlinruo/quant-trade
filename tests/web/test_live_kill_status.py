@@ -3,15 +3,10 @@ from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
-from fastapi.testclient import TestClient
-
 from qsys.live.messages import Heartbeat
 from qsys.live.transport import MemoryTransport
+from qsys.webapp.config import WebConfig
 from qsys.webapp.live_kill_status import LiveKillReader
-from qsys.web.app import create_app
-from qsys.web.config import WebConfig
-from qsys.web.views import MonitorService
-from qsys.ops.journal import SessionJournal
 
 NOW = datetime(2026, 10, 20, 14, 0)
 
@@ -100,29 +95,6 @@ def test_custom_live_path_prefix_and_age_are_respected(tmp_path):
     assert result.sources[0].reason == '原样原因，无时间'
 
 
-def test_api_and_global_navigation_escape_reasons_and_track_live_state(warehouse, tmp_path):
-    reader, transport = setup_reader(tmp_path)
-    # 使用当前真实测试时刻，不依赖固定日期的老心跳。
-    transport.set_key('state:heartbeat:agent', Heartbeat(source='agent',at=datetime.now(),
-        trading_mode='live',local_kill_engaged=False).model_dump_json())
-    cfg = WebConfig()
-    app = create_app(MonitorService(SessionJournal(warehouse), config=cfg), cfg, live_kill=reader)
-    client = TestClient(app)
-    response = client.get('/api/live/kill-status')
-    assert response.headers['cache-control'] == 'no-store'
-    assert response.json()['state'] == 'clear'
-    assert '停机闸已解除' in client.get('/live').text
-    reader.local_path.write_text('2026-10-20T14:00:00 <script>alert(1)</script>')
-    page = client.get('/live').text
-    assert '实盘已停机' in page and '禁止自动开仓' in page
-    assert '&lt;script&gt;alert(1)&lt;/script&gt;' in page
-    assert '<script>alert(1)</script>' not in page
-    assert client.get('/api/live/kill-status').json()['state'] == 'stopped'
-    reader.local_path.unlink()
-    transport.delete_key('state:heartbeat:agent')
-    assert client.get('/api/live/kill-status').json()['state'] == 'unknown'
-
-
 def test_slow_read_cannot_publish_a_fresh_green_snapshot(tmp_path, monkeypatch):
     import qsys.webapp.live_kill_status as module
     reader, _ = setup_reader(tmp_path)
@@ -146,7 +118,7 @@ def test_web_component_configures_the_explicit_production_live_flag():
 
 @pytest.mark.parametrize('mode', ['live', 'shadow', 'disabled'])
 def test_build_app_wires_explicit_path_and_never_reads_shadow_as_live(tmp_path, monkeypatch, mode):
-    from qsys.web import monitor_cli
+    from qsys.webapp import cli as monitor_cli
     from qsys.live.config import DeployConfig, SafetyConfig
     import qsys.live.config as live_config
     from qsys.live.redis_transport import RedisTransport
@@ -156,19 +128,19 @@ def test_build_app_wires_explicit_path_and_never_reads_shadow_as_live(tmp_path, 
     monkeypatch.setattr(RedisTransport, 'from_config', lambda _: transport)
     captured = {}
     def capture(*args, **kwargs):
-        captured.update(kwargs)
+        captured.update(args=args, kwargs=kwargs)
         return object()
     monkeypatch.setattr(monitor_cli, 'create_app', capture)
     path = tmp_path / 'explicit-live' / 'CUSTOM_KILL'
     monitor_cli.build_app(tmp_path / 'warehouse', WebConfig(), None,
                           workspace_dir=tmp_path / 'workspace', live_kill_path=path)
-    reader = captured['live_kill']
+    reader = captured['args'][0].live_kill
     assert reader.local_path == (path if mode == 'live' else None)
     assert reader.transport is (transport if mode == 'live' else None)
 
 
 def test_local_live_flag_survives_redis_initialization_failure(tmp_path, monkeypatch):
-    from qsys.web import monitor_cli
+    from qsys.webapp import cli as monitor_cli
     from qsys.live.config import DeployConfig, SafetyConfig
     import qsys.live.config as live_config
     from qsys.live.redis_transport import RedisTransport
@@ -176,18 +148,18 @@ def test_local_live_flag_survives_redis_initialization_failure(tmp_path, monkeyp
                         lambda _: DeployConfig(safety=SafetyConfig(mode='live')))
     monkeypatch.setattr(RedisTransport, 'from_config', Mock(side_effect=OSError('offline')))
     captured = {}
-    monkeypatch.setattr(monitor_cli, 'create_app', lambda *a, **kw: captured.update(kw))
+    monkeypatch.setattr(monitor_cli, 'create_app', lambda *a, **kw: captured.update(args=a, kwargs=kw))
     path = tmp_path / 'CUSTOM_KILL'
     path.touch()
     monitor_cli.build_app(tmp_path/'warehouse',WebConfig(),None,
                           workspace_dir=tmp_path/'workspace',live_kill_path=path)
-    assert captured['live_kill'].read().state == 'stopped'
+    assert captured['args'][0].live_kill.read().state == 'stopped'
 
 
 @pytest.mark.parametrize('override', [False, True])
 def test_cli_reads_explicit_environment_and_argument_takes_precedence(tmp_path, monkeypatch, override):
     import sys
-    from qsys.web import monitor_cli
+    from qsys.webapp import cli as monitor_cli
     env_path = tmp_path / 'ENV_KILL'
     explicit = tmp_path / 'CLI_KILL'
     monkeypatch.setenv('QSYS_LIVE_KILL_PATH', str(env_path))

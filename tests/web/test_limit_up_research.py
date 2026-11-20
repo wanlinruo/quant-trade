@@ -4,16 +4,10 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
-
-from qsys.ops.journal import SessionJournal
-from qsys.web.app import create_app
-from qsys.web.config import WebConfig
 from qsys.research.limit_up_research_store import (
     HistoricalSecurityNameLookup,
     LimitUpResearchReader,
 )
-from qsys.web.views import MonitorService
 
 
 def _write_csv(path: Path, fields: list[str], rows: list[dict[str, object]]) -> None:
@@ -93,77 +87,49 @@ def _research_run(root: Path, *, promoted: bool = True) -> Path:
     return root
 
 
-def _client(warehouse, reader: LimitUpResearchReader) -> TestClient:
-    config = WebConfig()
-    monitor = MonitorService(SessionJournal(warehouse), config=config)
-    return TestClient(create_app(monitor, config, limit_up_research=reader))
-
-
-def test_research_page_exposes_frozen_history_and_daily_top20(warehouse, tmp_path):
+def test_research_reader_exposes_frozen_history_and_daily_top20(tmp_path):
     reader = LimitUpResearchReader(
         _research_run(tmp_path / "research"),
         name_lookup=lambda symbol, day: f"示例股份{symbol[-6:-3]}",
     )
-    client = _client(warehouse, reader)
-
-    response = client.get("/api/market/limit-up-research")
-    page = client.get("/market/limit-up-research")
-
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["available"] is True and payload["state"] == "ready"
-    assert payload["summary"]["sessions"] == 307
-    assert payload["summary"]["test_sessions"] == 126
-    assert payload["summary"]["obs_sessions"] == 181
-    assert payload["summary"]["obs_precision_at_20"] == 0.305525
-    assert len(payload["selected"]["entries"]) == 20
-    assert len(payload["history"]) == 307
-    assert "AI 涨停研究回测" in page.text
-    assert "冻结研究" in page.text and "307 日研究历史" in page.text
-    assert "示例股份" in page.text
-    assert payload["selected"]["entries"][0]["name"].startswith("示例股份")
-    assert "买入" not in page.text
+    payload = reader.view()
+    assert payload.available is True and payload.state == "ready"
+    assert payload.summary.sessions == 307
+    assert payload.summary.test_sessions == 126
+    assert payload.summary.obs_sessions == 181
+    assert payload.summary.obs_precision_at_20 == 0.305525
+    assert len(payload.selected.entries) == 20
+    assert len(payload.history) == 307
+    assert payload.selected.entries[0].name.startswith("示例股份")
 
 
-def test_research_page_selects_an_explicit_test_day(warehouse, tmp_path):
+def test_research_reader_selects_an_explicit_test_day(tmp_path):
     reader = LimitUpResearchReader(_research_run(tmp_path / "research"))
-    client = _client(warehouse, reader)
-
-    payload = client.get(
-        "/api/market/limit-up-research?day=2025-07-01"
-    ).json()
-
-    assert payload["selected"]["prediction_date"] == "2025-07-01"
-    assert payload["selected"]["split"] == "TEST"
-    assert payload["selected"]["precision_at_20"] == 0.3
-    assert payload["selected"]["touch_precision_at_20"] == 0.5
+    payload = reader.view(date(2025, 7, 1))
+    assert payload.selected.prediction_date == date(2025, 7, 1)
+    assert payload.selected.split == "TEST"
+    assert payload.selected.precision_at_20 == 0.3
+    assert payload.selected.touch_precision_at_20 == 0.5
 
 
 def test_missing_research_evidence_fails_closed_without_creating_files(
-    warehouse, tmp_path,
+    tmp_path,
 ):
     root = tmp_path / "missing"
-    client = _client(warehouse, LimitUpResearchReader(root))
-
-    payload = client.get("/api/market/limit-up-research").json()
-
-    assert payload["available"] is False
-    assert payload["state"] == "unavailable"
+    payload = LimitUpResearchReader(root).view()
+    assert payload.available is False
+    assert payload.state == "unavailable"
     assert not root.exists()
-    assert "不会用生产影子数据" in client.get("/market/limit-up-research").text
 
 
-def test_unpromoted_research_fails_closed(warehouse, tmp_path):
+def test_unpromoted_research_fails_closed(tmp_path):
     reader = LimitUpResearchReader(
         _research_run(tmp_path / "research", promoted=False)
     )
 
-    payload = _client(warehouse, reader).get(
-        "/api/market/limit-up-research"
-    ).json()
-
-    assert payload["available"] is False
-    assert payload["state"] == "unavailable"
+    payload = reader.view()
+    assert payload.available is False
+    assert payload.state == "unavailable"
 
 
 def test_security_names_use_historical_interval_then_current_fallback(tmp_path):
