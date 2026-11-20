@@ -5,6 +5,7 @@ import base64
 import io
 import json
 import importlib.util
+import os
 import shutil
 import stat
 import subprocess
@@ -1268,6 +1269,18 @@ def test_test_web_data_refresh_is_manual_allowlisted_and_rollback_capable() -> N
     assert "web-ops-snapshot-store/current/service-health.sqlite3" in unit
     assert "web-ops-snapshot-store/current/limit-up-board" in unit
     assert "web-ops-snapshot-store/current/alerts/production" in unit
+
+
+def test_test_web_snapshot_pointer_can_be_activated_and_restored(tmp_path: Path) -> None:
+    entrypoint = _entrypoint_module()
+    store = tmp_path / "store"
+    (store / "snapshots" / "new").mkdir(parents=True)
+
+    assert entrypoint._activate_snapshot_pointer(store, "new")
+    assert (store / "current").is_symlink()
+    assert os.readlink(store / "current") == "snapshots/new"
+    assert entrypoint._activate_snapshot_pointer(store, "uninstalled")
+    assert not (store / "current").exists()
 
 
 def test_test_deploy_key_is_forced_and_rotated_atomically(tmp_path) -> None:

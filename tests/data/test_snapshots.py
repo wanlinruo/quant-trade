@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import runpy
+import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -174,3 +176,28 @@ def test_rejects_empty_warehouse(tmp_path: Path):
             publish_current=True,
         )
     assert not (tmp_path / "store" / "current").exists()
+
+
+def test_snapshot_cli_runs_as_a_python_module(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+):
+    warehouse = _warehouse(tmp_path)
+    store = tmp_path / "store"
+    monkeypatch.setattr(sys, "argv", [
+        "qsys.data.snapshot_cli", "create",
+        "--warehouse", str(warehouse),
+        "--store", str(store),
+        "--complete-through", "2026-10-13",
+        "--schema-version", "qsys-data-v1",
+        "--snapshot-id", "module-entrypoint",
+        "--source-revision", "a" * 40,
+        "--publish-current",
+    ])
+
+    with pytest.raises(SystemExit) as exited:
+        runpy.run_module("qsys.data.snapshot_cli", run_name="__main__")
+
+    assert exited.value.code == 0
+    manifest = json.loads(capsys.readouterr().out)
+    assert manifest["snapshot_id"] == "module-entrypoint"
+    assert current_snapshot(store).snapshot_id == "module-entrypoint"
