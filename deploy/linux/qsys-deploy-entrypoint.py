@@ -90,12 +90,15 @@ def _run(
 
 def _failure_detail(exc: BaseException) -> str:
     """Keep the first actionable subprocess diagnostic in the audit record."""
-    parts = [str(exc)]
     if isinstance(exc, subprocess.CalledProcessError):
         diagnostic = (exc.stderr or exc.stdout or "").strip()
         if diagnostic:
-            parts.append(diagnostic)
-    return " | ".join(parts)[:500]
+            prefix = f"command failed with exit status {exc.returncode} | "
+            available = 500 - len(prefix)
+            if len(diagnostic) > available:
+                diagnostic = "..." + diagnostic[-(available - 3):]
+            return prefix + diagnostic
+    return str(exc)[:500]
 
 
 def _head(repo: Path) -> str:
