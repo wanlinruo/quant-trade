@@ -1525,7 +1525,7 @@ def _require_live_release_ready(repo: Path, sha: str, *, initial: bool) -> dict[
             current = Path(str(COMPONENT_RELEASES[component]["current"]))
             paths = ["live/state_binding.py", "live/store.py"]
             if component == "web":
-                paths.append("web/live_kill_status.py")
+                paths.append("webapp/live_kill_status.py")
             for relative in paths:
                 files = list((current / "venv/lib").glob(f"python*/site-packages/qsys/{relative}"))
                 if len(files) != 1 or _sha256(files[0]) != _sha256(repo / "src/qsys" / relative):

@@ -32,7 +32,7 @@ from qsys.ops.alerts import AlertBus, LogAlertSink, Severity, WebhookAlertSink, 
 from qsys.ops.infra_watch import EdgeTracker, event_key, survey
 from qsys.ops.services import CORE_SERVICE_IDS, SERVICE_BY_ID, active_core_service
 from qsys.ops.trading_chain import ChainAssessment, assess_paper, assess_shadow
-from qsys.web.service_views import ServiceConsole, windows_task_show
+from qsys.ops.service_console import ServiceConsole, windows_task_show
 
 log = structlog.get_logger("health-observer")
 

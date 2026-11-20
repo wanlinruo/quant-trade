@@ -1,0 +1,28 @@
+{
+  "services": {
+    "schema_version": 1, "enabled": true, "selected_day": "2026-11-19",
+    "days": ["2026-11-18", "2026-11-19"],
+    "services": [{
+      "id": "tushare-sync", "name": "Tushare 同步", "kind": "timer", "node": "Linux", "schedule": "17:00",
+      "latest_state": "fixed", "latest_at": "2026-11-19T17:05:00+08:00", "completion_ratio_30d": 1, "duration_seconds": 120,
+      "cells": [{"day": "2026-11-18", "state": "failed", "run_id": "r1", "detail": "源失败"}, {"day": "2026-11-19", "state": "fixed", "run_id": "r2", "detail": "补跑成功"}]
+    }],
+    "health": [], "runs": [], "missing": {}
+  },
+  "nodes": {
+    "schema_version": 1, "enabled": true, "captured_at": "2026-11-19T17:30:00+08:00", "ttl_seconds": 300, "stale": false,
+    "nodes": [{"id": "linux", "label": "Linux", "platform": "linux", "state": "ok", "cpu": [], "memory": [], "io": [], "disks": [
+      {"id": "system", "label": "系统盘", "mount": "/opt", "free_bytes": 21474836480, "total_bytes": 53687091200, "fail_below_bytes": 10737418240, "state": "ok"},
+      {"id": "data", "label": "数据盘", "mount": "/data", "free_bytes": 16106127360, "total_bytes": 107374182400, "fail_below_bytes": 10737418240, "state": "ok"}
+    ]}],
+    "links": [{"id": "redis", "label": "Redis 隧道", "state": "ok", "last_ok_at": "2026-11-19T17:29:58+08:00", "latency_ms": [], "last_error": null}],
+    "processes": [{"id": "qmt", "label": "QMT 客户端", "node_id": "windows", "state": "ok", "pid": 1234, "restart_count": 0, "identity": "Administrator", "resource_limit": null, "last_log": "运行中"}],
+    "security": [{"id": "ssh", "label": "SSH 受管配置", "state": "ok", "mismatches": [], "failed_logins_24h": 2, "rejected_unauthenticated_24h": 3}], "missing": {}
+  },
+  "releases": {
+    "schema_version": 1, "enabled": true, "captured_at": "2026-11-19T17:30:00+08:00", "ttl_seconds": 300, "stale": false,
+    "main_sha": "d9e73dd", "consistent_components": 1, "component_count": 1,
+    "components": [{"id": "web", "label": "Web", "current_sha": "d9e73dd", "rollback_sha": "ddfdb33", "released_at": "2026-11-18T18:00:00+08:00", "state": "ok", "three_way_consistent": true, "workflow_id": "1", "deployment_id": "2", "record_id": "3", "steps": [{"id": "verify", "label": "三方核验", "state": "ok", "at": "2026-11-18T18:05:00+08:00", "detail": "一致"}]}],
+    "events": [{"id": "e1", "component_id": "web", "at": "2026-11-18T18:00:00+08:00", "sha": "d9e73dd", "state": "ok", "current": true, "detail": null}], "missing": {}
+  }
+}

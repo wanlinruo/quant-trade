@@ -4,16 +4,14 @@
     "backtest-worker": {
       "entrypoint": {
         "command": "qsys-backtest-worker",
-        "target": "qsys.web.backtest_worker_cli:main"
+        "target": "qsys.backtest.worker_cli:main"
       },
       "scan_roots": [
         "src/qsys/backtest",
         "src/qsys/core",
         "src/qsys/data",
         "src/qsys/markets",
-        "src/qsys/strategy",
-        "src/qsys/web/workbench.py",
-        "src/qsys/web/backtest_worker_cli.py"
+        "src/qsys/strategy"
       ],
       "release_root": "/opt/qsys/components/backtest-worker/releases",
       "current": "/opt/qsys/components/backtest-worker/current",
@@ -61,7 +59,7 @@
     "web": {
       "entrypoint": {
         "command": "qsys-web",
-        "target": "qsys.web.monitor_cli:main"
+        "target": "qsys.webapp.cli:main"
       },
       "scan_roots": [
         "src/qsys"
@@ -564,8 +562,7 @@
         "src/qsys/data",
         "src/qsys/live",
         "src/qsys/ops",
-        "src/qsys/paper",
-        "src/qsys/web"
+        "src/qsys/paper"
       ],
       "release_root": "/opt/qsys/components/health-observer/releases",
       "current": "/opt/qsys/components/health-observer/current",

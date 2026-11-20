@@ -103,15 +103,20 @@ rollback = "previous-successful-sha"
 name = "linux-web"
 environments = ["production"]
 paths = [
+  "frontend/**",
   "src/qsys/__init__.py",
   "src/qsys/backtest/**",
   "src/qsys/core/**",
   "src/qsys/markets/**",
   "src/qsys/strategy/**",
-  "src/qsys/web/**",
+  "src/qsys/webapp/**",
   "src/qsys/research/__init__.py",
+  "src/qsys/research/job_console.py",
+  "src/qsys/research/limit_up_research_store.py",
   "src/qsys/research/limit_up_ranking.py",
   "src/qsys/research/limit_up_shadow.py",
+  "src/qsys/research/limit_up_shadow_store.py",
+  "src/qsys/ops/service_console.py",
   "scripts/run_backtest.py",
   "scripts/run_limit_up_shadow.py",
   "scripts/observe_limit_up_shadow.py",
@@ -156,6 +161,7 @@ paths = [
   "src/qsys/research/limit_up_shadow_cli.py",
   "src/qsys/research/limit_up_shadow_publish_cli.py",
   "src/qsys/research/limit_up_shadow_observe_cli.py",
+  "src/qsys/research/limit_up_shadow_store.py",
   "scripts/*.py",
   "scripts/*.sh",
 ]
@@ -169,6 +175,7 @@ name = "linux-research-runner"
 environments = ["production"]
 paths = [
   "src/qsys/research/jobs.py",
+  "src/qsys/research/job_console.py",
   "src/qsys/research/runner.py",
   "src/qsys/research/runner_cli.py",
   "src/qsys/research/drill_cli.py",
@@ -257,6 +264,7 @@ environments = ["test"]
 paths = [
   "deploy/systemd/**",
   "deploy/windows/**",
+  "frontend/**",
   "pyproject.toml",
   "scripts/*.py",
   "scripts/*.sh",

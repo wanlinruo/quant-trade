@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import argparse
 import base64
+import io
 import json
 import importlib.util
 import shutil
+import stat
 import subprocess
 import zipfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -451,12 +454,11 @@ def test_backtest_worker_component_is_separate_from_web_and_write_bounded() -> N
 
     assert worker["entrypoint"] == {
         "command": "qsys-backtest-worker",
-        "target": "qsys.web.backtest_worker_cli:main",
+        "target": "qsys.backtest.worker_cli:main",
     }
     assert worker["scan_roots"] == [
         "src/qsys/backtest", "src/qsys/core", "src/qsys/data",
-        "src/qsys/markets", "src/qsys/strategy", "src/qsys/web/workbench.py",
-        "src/qsys/web/backtest_worker_cli.py",
+        "src/qsys/markets", "src/qsys/strategy",
     ]
     assert worker["release_root"] == "/opt/qsys/components/backtest-worker/releases"
     assert worker["current"] == "/opt/qsys/components/backtest-worker/current"
@@ -491,7 +493,7 @@ def test_web_component_has_an_isolated_release_and_minimal_write_boundary() -> N
     web = specs["components"]["web"]
 
     assert web["entrypoint"] == {
-        "command": "qsys-web", "target": "qsys.web.monitor_cli:main",
+        "command": "qsys-web", "target": "qsys.webapp.cli:main",
     }
     assert web["scan_roots"] == ["src/qsys"]
     assert web["release_root"] == "/opt/qsys/components/web/releases"
@@ -869,7 +871,6 @@ def test_health_observer_component_owns_only_timeline_and_alert_namespaces() -> 
     }
     assert observer["scan_roots"] == [
         "src/qsys/data", "src/qsys/live", "src/qsys/ops", "src/qsys/paper",
-        "src/qsys/web",
     ]
     assert observer["release_root"] == "/opt/qsys/components/health-observer/releases"
     assert observer["current"] == "/opt/qsys/components/health-observer/current"
@@ -1123,6 +1124,33 @@ def test_test_web_artifact_extraction_is_strict(tmp_path) -> None:
     with pytest.raises(ValueError, match="unexpected path"):
         entrypoint._extract_web_archive(planted, tmp_path / "unused")
 
+    duplicate = tmp_path / "duplicate.zip"
+    with pytest.warns(UserWarning, match="Duplicate name"):
+        with zipfile.ZipFile(duplicate, "w") as value:
+            value.writestr("release.json", "{}")
+            value.writestr("release.json", "{}")
+    with pytest.raises(ValueError, match="duplicate files"):
+        entrypoint._extract_web_archive(duplicate, tmp_path / "duplicate")
+
+    linked = tmp_path / "linked.zip"
+    item = zipfile.ZipInfo("source/link.py")
+    item.create_system = 3
+    item.external_attr = (stat.S_IFLNK | 0o777) << 16
+    with zipfile.ZipFile(linked, "w") as value:
+        value.writestr("release.json", "{}")
+        value.writestr(item, "target")
+    with pytest.raises(ValueError, match="must not contain symlinks"):
+        entrypoint._extract_web_archive(linked, tmp_path / "linked")
+
+
+def test_test_web_artifact_receive_binds_exact_hash(monkeypatch, tmp_path) -> None:
+    entrypoint = _entrypoint_module()
+    monkeypatch.setattr(entrypoint.sys, "stdin", SimpleNamespace(buffer=io.BytesIO(b"web")))
+
+    with pytest.raises(ValueError, match="SHA-256 mismatch"):
+        entrypoint._receive_archive(
+            "0" * 64, tmp_path / "web.zip", limit=1024, label="web",
+        )
 
 def test_test_web_release_pointer_switches_atomically(monkeypatch, tmp_path) -> None:
     entrypoint = _entrypoint_module()
@@ -1437,7 +1465,7 @@ def test_component_artifact_extraction_is_exact_and_rejects_traversal(tmp_path) 
     with zipfile.ZipFile(wrong_root, "w") as output:
         output.writestr("release.json", "{}")
         output.writestr("dist/qsys-0.1.0-py3-none-any.whl", b"wheel")
-        output.writestr("source/src/qsys/web/example.py", b"WEB = 1\n")
+        output.writestr("source/src/qsys/webapp/example.py", b"WEB = 1\n")
     with pytest.raises(ValueError, match="manifest, one wheel and scan sources"):
         entrypoint._extract_component_archive(
             wrong_root, tmp_path / "wrong-root-release", "catalog-verify",
@@ -3122,13 +3150,13 @@ def test_first_live_migration_requires_installed_consumers_but_upgrades_do_not_r
     e = _production_entrypoint_module()
     monkeypatch.setattr(e, '_restart_window', lambda repo:{'restart_allowed':True})
     critical=('src/qsys/live/state_binding.py','src/qsys/live/store.py','src/qsys/live/core_cli.py',
-              'scripts/kill.py','scripts/prepare_live_core_release.py','src/qsys/web/live_kill_status.py')
+              'scripts/kill.py','scripts/prepare_live_core_release.py','src/qsys/webapp/live_kill_status.py')
     for relative in critical:
         path=tmp_path/relative;path.parent.mkdir(parents=True,exist_ok=True);path.write_text('exact source\n')
     specs={}
     for name in ('web','daily-digest','health-observer','service-checks'):
         current=tmp_path/name;specs[name]={'current':str(current)}
-        for module in ('live/state_binding.py','live/store.py','web/live_kill_status.py'):
+        for module in ('live/state_binding.py','live/store.py','webapp/live_kill_status.py'):
             path=current/'venv/lib/python3.12/site-packages/qsys'/module
             path.parent.mkdir(parents=True,exist_ok=True);path.write_text('exact source\n')
     monkeypatch.setattr(e,'COMPONENT_RELEASES',specs)
@@ -3157,3 +3185,14 @@ def test_restart_calendar_probe_has_budgets_and_runs_outside_checkout(monkeypatc
     assert not e._restart_window(tmp_path)['restart_allowed']
     assert seen[0][0][:6]==['nice','-n','10','ionice','-c3','timeout']
     assert seen[0][1]['cwd']==Path('/data/qsys/var-deployments')
+
+
+def test_frontend_paths_belong_to_web_components() -> None:
+    # 新前端源码随 web 组件发布；测试部署由可信 main 的 planner 规划，未分类路径会失败（#662）。
+    manifest = DeploymentManifest.load(MANIFEST)
+    prod = manifest.plan(["frontend/src/main.tsx", "frontend/package-lock.json"], environment="production")
+    assert set(prod.components) == {"linux-web"}
+    assert prod.unknown_paths == ()
+    test = manifest.plan(["frontend/src/main.tsx"], environment="test")
+    assert set(test.components) == {"test-runtime"}
+    assert test.unknown_paths == ()

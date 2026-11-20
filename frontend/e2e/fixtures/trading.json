@@ -1,0 +1,40 @@
+{
+  "live": {
+    "schema_version": 1, "enabled": true,
+    "day": { "selected": "2026-11-19", "available": ["2026-11-19"] },
+    "posture": "trading", "posture_label": "可下单",
+    "observation": { "at": "2026-11-19T14:00:00+08:00", "cash": 90000, "market_value": 10000, "total_value": 100000, "return_ratio": null },
+    "positions": [{ "symbol": "600000.SH", "total_qty": 1000, "available_qty": 1000, "avg_cost": 10, "last_price": null, "market_value": 10000, "reserved_qty": 0 }],
+    "heartbeats": [{ "source": "agent", "at": "2026-11-19T14:00:00+08:00", "age_seconds": 0.2, "threshold_seconds": 15, "fresh": true, "detail": "live" }],
+    "kill": { "state": "clear", "label": "停机闸已解除", "message": "只表示三道闸未生效", "sources": [] },
+    "risks": [{ "id": "max_gross_exposure", "label": "总敞口", "value": 0.1, "limit": 0.1, "ratio": 1, "unit": "ratio", "state": "ok" }],
+    "equity": [{ "day": "2026-11-19", "total_value": 100000 }], "order_count": 0,
+    "missing": { "return_ratio": "缺少完整资金变动流水，不从总资产跳变计算收益" }
+  },
+  "orders": {
+    "schema_version": 1, "enabled": true, "day": { "selected": "2026-11-19", "available": ["2026-11-19"] },
+    "orders": [{ "id": "o1", "event_key": "auction", "symbol": "600000.SH", "side": "buy", "qty": 100, "remaining_qty": 100, "order_type": "limit", "limit_price": 10, "status": "unknown", "created_at": "2026-11-19T09:25:00+08:00", "updated_at": null, "broker_order_id": null, "broker_accepted_at": null, "unknown_no_retry": true, "stages": [{ "state": "dispatch:unknown", "at": "2026-11-19T09:25:01+08:00", "detail": "timeout" }] }],
+    "fills": [], "rejects": [], "missing": { "broker_accepted_at": "未记录，不用成交时刻反推" }
+  },
+  "reconciliation": {
+    "schema_version": 1, "enabled": true, "day": { "selected": "2026-11-19", "available": ["2026-11-19"] },
+    "heatmap": [{ "day": "2026-11-19", "layer": "cash", "state": "consistent", "at": "2026-11-19T15:30:00+08:00", "detail": "" }, { "day": "2026-11-19", "layer": "positions", "state": "consistent", "at": "2026-11-19T15:30:00+08:00", "detail": "" }, { "day": "2026-11-19", "layer": "orders", "state": "unknown", "at": null, "detail": null }],
+    "records": [], "risks": [], "kill": { "state": "clear", "label": "停机闸已解除", "message": "", "sources": [] },
+    "review": { "reviewed_at": "2026-11-19T16:00:00+08:00", "overall": "needs_confirmation", "engaged": true, "stale": false, "items": [{ "id": "maintainer.confirmation", "label": "维护者确认", "state": "confirm", "detail": "尚未确认", "observed": {} }] }, "missing": {}
+  },
+  "runs": {
+    "schema_version": 1, "enabled": true, "day": { "selected": "2026-11-19", "available": ["2026-11-19"] },
+    "runs": [{ "event_key": "auction", "phase": "auction", "scheduled_at": "2026-11-19T09:25:00+08:00", "started_at": "2026-11-19T09:25:01+08:00", "finished_at": "2026-11-19T09:25:02+08:00", "duration_ms": 1000, "status": "completed", "candidates": 3, "routed": 2, "passed": 1, "orders": 0, "rejects": 0, "summary": "未下单", "reasons": {}, "note": "", "error": "", "event_status": "completed", "event_detail": "" }],
+    "report_text": "每日运行报告 2026-11-19", "missing": {}
+  },
+  "paperAccounts": {
+    "schema_version": 1, "enabled": true, "accounts": [{ "id": "p1", "name": "模拟一号", "strategy_name": "S", "version_id": "v1", "status": "running", "activation_date": "2026-11-19", "error": null, "total_value": 100001, "return_ratio": 0.00001, "max_drawdown_ratio": 0, "position_count": 0 }]
+  },
+  "paper": {
+    "schema_version": 1, "enabled": true, "id": "p1", "name": "模拟一号", "strategy_name": "S", "version_id": "v1", "status": "running", "activation_date": "2026-11-19", "error": null, "total_value": 100001, "return_ratio": 0.00001, "max_drawdown_ratio": 0, "position_count": 0,
+    "backtest_id": "b1", "strategy_id": "s1", "initial_cash": 100000, "cash": 100001, "notify_mask": "••••••abcdef", "positions": [], "orders": [], "fills": [], "rejects": [], "events": [], "logs": [], "runs": [],
+    "equity": [{ "at": "2026-11-19T15:30:00+08:00", "day": "2026-11-19", "total_value": 100001, "strategy_ratio": 0.00001, "benchmark_ratio": null }],
+    "source_backtest": [{ "day": "2026-11-19", "total_value": 100000, "return_ratio": 0 }],
+    "day": { "selected": "2026-11-19", "available": ["2026-11-19"] }, "missing": { "fill_reference": "模拟成交尚未记录独立参考价" }
+  }
+}

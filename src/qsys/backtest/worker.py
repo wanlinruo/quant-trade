@@ -8,7 +8,7 @@ from datetime import date
 from pathlib import Path
 
 from qsys.backtest.runner import execute_backtest
-from qsys.web.workbench import WorkbenchStore
+from qsys.backtest.workbench import WorkbenchStore
 
 
 def main() -> int:

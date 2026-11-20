@@ -34,8 +34,8 @@ qsys-live-state-reader = "qsys.ops.sqlite_reader_anchor:main"
 qsys-daily-archive = "qsys.data.daily_archive_cli:main"
 qsys-premarket-limits = "qsys.data.premarket_limits_cli:main"
 qsys-tushare-sync = "qsys.data.tushare_sync_cli:main"
-qsys-backtest-worker = "qsys.web.backtest_worker_cli:main"
-qsys-web = "qsys.web.monitor_cli:main"
+qsys-backtest-worker = "qsys.backtest.worker_cli:main"
+qsys-web = "qsys.webapp.cli:main"
 qsys-paper = "qsys.paper.runner_cli:main"
 qsys-limit-up-shadow = "qsys.research.limit_up_shadow_cli:main"
 qsys-limit-up-board = "qsys.data.board.collector_cli:main"
@@ -71,6 +71,12 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/qsys"]
+# 新前端构建产物（gitignored，由 CI 构建后打进 wheel；#662）
+artifacts = ["src/qsys/webapp/spa_dist/**"]
+
+[tool.hatch.build.targets.sdist]
+# `uv build` 从 sdist 构建 wheel，被 git 忽略的构建产物须在 sdist 中同样声明。
+artifacts = ["src/qsys/webapp/spa_dist/**"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

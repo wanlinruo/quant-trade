@@ -16,7 +16,7 @@ from qsys.data.catalog.input_versions import (
     dataset_binding, require_unchanged,
 )
 from qsys.data.query import WarehouseQuery
-from qsys.web.asset_views import DataAssetService
+from qsys.webapp.queries.data_assets import DataAssets
 
 DAY = date(2026, 10, 28)
 NOW = datetime(2026, 10, 28, 21)
@@ -36,15 +36,15 @@ def test_replacing_same_values_invalidates_source_and_preserves_history(warehous
     warehouse.write('tushare_daily', schema.TUSHARE_DAILY.empty_table(), year=DAY.year)
     old = _frame(warehouse, status=HealthStatus.RED)
     write_dataset_checks(warehouse, old)
-    service = DataAssetService(warehouse)
-    assert service._assessment('valuation_daily', NOW).status is HealthStatus.RED
+    service = DataAssets(warehouse)
+    assert service.assessment('valuation_daily', NOW).status is HealthStatus.RED
     warehouse.write('tushare_daily', schema.TUSHARE_DAILY.empty_table(), year=DAY.year)
-    assert service._assessment('valuation_daily', NOW).status is HealthStatus.GRAY
+    assert service.assessment('valuation_daily', NOW).status is HealthStatus.GRAY
     assert WarehouseQuery(warehouse).dataset_checks().equals(old)
     # New real evidence may pass; old red records remain exactly once each.
     new = _frame(warehouse, now=NOW+timedelta(minutes=1))
     write_dataset_checks(warehouse, new)
-    assert service._assessment('valuation_daily', NOW+timedelta(minutes=2)).status is HealthStatus.GREEN
+    assert service.assessment('valuation_daily', NOW+timedelta(minutes=2)).status is HealthStatus.GREEN
     stored = WarehouseQuery(warehouse).dataset_checks()
     assert stored.filter(pl.col('run_id')==old['run_id'][0]).equals(old)
 
@@ -64,8 +64,8 @@ def test_unrelated_dataset_and_quality_appends_do_not_invalidate(warehouse):
     warehouse.write('daily_flags', schema.DAILY_FLAGS.empty_table(), year=DAY.year)
     write_dataset_checks(warehouse, frame)
     assert binding_status(warehouse, frame['input_version'][0]) is None
-    assert DataAssetService(warehouse)._assessment('valuation_daily', NOW).status is HealthStatus.GREEN
-    assert DataAssetService(warehouse)._assessment('valuation_daily', NOW+timedelta(days=2)).status is HealthStatus.GRAY
+    assert DataAssets(warehouse).assessment('valuation_daily', NOW).status is HealthStatus.GREEN
+    assert DataAssets(warehouse).assessment('valuation_daily', NOW+timedelta(days=2)).status is HealthStatus.GRAY
 
 
 def test_legacy_schema_remains_readable_and_old_rows_are_not_upgraded(warehouse):
@@ -74,7 +74,7 @@ def test_legacy_schema_remains_readable_and_old_rows_are_not_upgraded(warehouse)
     path.parent.mkdir(parents=True)
     pq.write_table(old.to_arrow(), path)
     assert WarehouseQuery(warehouse).dataset_checks()['input_version'].null_count()==old.height
-    assert DataAssetService(warehouse)._assessment('valuation_daily', NOW).status is HealthStatus.GRAY
+    assert DataAssets(warehouse).assessment('valuation_daily', NOW).status is HealthStatus.GRAY
     write_dataset_checks(warehouse, _frame(warehouse, now=NOW+timedelta(minutes=1)))
     stored = WarehouseQuery(warehouse).dataset_checks()
     assert stored.filter(pl.col('run_id')==old['run_id'][0]).drop('input_version').equals(old)

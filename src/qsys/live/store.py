@@ -162,6 +162,30 @@ class LiveStore:
             ).fetchall()
         return [date.fromisoformat(row["session"]) for row in rows]
 
+    def read_rows(self, table: str, *, limit: int = 1000) -> list[dict[str, Any]]:
+        """给只读运维查询返回受控表，不暴露任意 SQL。
+
+        页面只转述账本事实；表名和排序固定，避免查询层依赖私有连接或拼接用户输入。
+        """
+        allowed = {
+            "state": ("live_state", "updated_at DESC"),
+            "positions": ("live_positions", "symbol"),
+            "events": ("live_events", "scheduled_at DESC"),
+            "orders": ("live_orders", "created_at DESC"),
+            # 先取最新窗口；查询层再按 id 正序还原单笔生命周期。
+            "transitions": ("live_order_transitions", "id DESC"),
+            "fills": ("live_runtime_fills", "filled_at DESC"),
+            "rejects": ("live_runtime_rejects", "at DESC"),
+        }
+        if table not in allowed:
+            raise ValueError("unknown live table")
+        name, order = allowed[table]
+        with self._connect() as con:
+            rows = con.execute(
+                f"SELECT * FROM {name} ORDER BY {order} LIMIT ?", (max(0, limit),)
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def initialize(self, remote: AccountSnapshot) -> None:
         if self.exists():
             return

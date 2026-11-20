@@ -1,0 +1,2483 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "tables": [
+    {
+      "id": "adj_factors",
+      "name": "复权因子",
+      "layer": "canonical",
+      "domain": {
+        "code": "factor",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "adjustment_factor_daily",
+      "name": "规范每日复权因子",
+      "layer": "canonical",
+      "domain": {
+        "code": "factor",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "auction_open_daily",
+      "name": "历史开盘集合竞价",
+      "layer": "canonical",
+      "domain": {
+        "code": "market",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "auction_ticks",
+      "name": "集合竞价快照",
+      "layer": "canonical",
+      "domain": {
+        "code": "market",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "bar_daily",
+      "name": "规范历史日线",
+      "layer": "canonical",
+      "domain": {
+        "code": "market",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "bar_daily_realtime",
+      "name": "实时当日日线",
+      "layer": "realtime",
+      "domain": {
+        "code": "market",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "bar_minute_1m",
+      "name": "规范一分钟线",
+      "layer": "canonical",
+      "domain": {
+        "code": "market",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "bar_minute_realtime",
+      "name": "实时一分钟线",
+      "layer": "realtime",
+      "domain": {
+        "code": "market",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "block_trade_daily",
+      "name": "大宗交易",
+      "layer": "canonical",
+      "domain": {
+        "code": "market",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "corporate_actions",
+      "name": "公司行为",
+      "layer": "canonical",
+      "domain": {
+        "code": "reference",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "daily_bars",
+      "name": "生产日线查询视图",
+      "layer": "canonical",
+      "domain": {
+        "code": "market",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "daily_flags",
+      "name": "每日市场标志",
+      "layer": "derived",
+      "domain": {
+        "code": "factor",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "dataset_checks",
+      "name": "表级健康结果",
+      "layer": "operational",
+      "domain": {
+        "code": "runtime",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "delisting_pool",
+      "name": "退市整理池",
+      "layer": "derived",
+      "domain": {
+        "code": "reference",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "index_bars",
+      "name": "指数日线",
+      "layer": "canonical",
+      "domain": {
+        "code": "market",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "industry_membership",
+      "name": "申万行业历史归属",
+      "layer": "canonical",
+      "domain": {
+        "code": "reference",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "ingest_log",
+      "name": "采集运行日志",
+      "layer": "operational",
+      "domain": {
+        "code": "runtime",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "instruments",
+      "name": "证券主数据快照",
+      "layer": "canonical",
+      "domain": {
+        "code": "reference",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "joinquant_minute_bars",
+      "name": "聚宽分钟覆盖",
+      "layer": "canonical",
+      "domain": {
+        "code": "market",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "limit_list_daily",
+      "name": "涨跌停榜事件",
+      "layer": "canonical",
+      "domain": {
+        "code": "market",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "live_equity",
+      "name": "实盘净值日志",
+      "layer": "operational",
+      "domain": {
+        "code": "runtime",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "live_fills",
+      "name": "实盘成交日志",
+      "layer": "operational",
+      "domain": {
+        "code": "runtime",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "live_recon",
+      "name": "实盘对账日志",
+      "layer": "operational",
+      "domain": {
+        "code": "runtime",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "live_rejects",
+      "name": "实盘拒单日志",
+      "layer": "operational",
+      "domain": {
+        "code": "runtime",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "market_flags_daily",
+      "name": "规范每日市场标志",
+      "layer": "derived",
+      "domain": {
+        "code": "factor",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "market_regime",
+      "name": "市场生态因子",
+      "layer": "derived",
+      "domain": {
+        "code": "factor",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "market_regime_daily",
+      "name": "规范每日市场生态",
+      "layer": "derived",
+      "domain": {
+        "code": "factor",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "metric_checks",
+      "name": "字段质检结果",
+      "layer": "operational",
+      "domain": {
+        "code": "runtime",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "metric_evidence",
+      "name": "人工质检证据",
+      "layer": "operational",
+      "domain": {
+        "code": "runtime",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "minute_bars",
+      "name": "QMT 分钟线",
+      "layer": "canonical",
+      "domain": {
+        "code": "market",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "moneyflow_daily",
+      "name": "个股资金流",
+      "layer": "canonical",
+      "domain": {
+        "code": "alternative",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "name_history",
+      "name": "证券名称历史",
+      "layer": "canonical",
+      "domain": {
+        "code": "reference",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "name_snapshots",
+      "name": "证券名称点观测",
+      "layer": "canonical",
+      "domain": {
+        "code": "reference",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "paid_minute_bars",
+      "name": "冻结付费分钟线",
+      "layer": "canonical",
+      "domain": {
+        "code": "market",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "price_limit_daily",
+      "name": "规范每日涨跌停价",
+      "layer": "canonical",
+      "domain": {
+        "code": "market",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "price_limits_daily",
+      "name": "每日涨跌停价",
+      "layer": "canonical",
+      "domain": {
+        "code": "market",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "quote_realtime_latest",
+      "name": "最新实时行情",
+      "layer": "realtime",
+      "domain": {
+        "code": "market",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "relation_checks",
+      "name": "关系健康结果",
+      "layer": "operational",
+      "domain": {
+        "code": "runtime",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "security_master",
+      "name": "规范证券主数据",
+      "layer": "canonical",
+      "domain": {
+        "code": "reference",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "security_name_history",
+      "name": "规范证券名称历史",
+      "layer": "canonical",
+      "domain": {
+        "code": "reference",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "security_status_daily",
+      "name": "规范每日证券状态",
+      "layer": "canonical",
+      "domain": {
+        "code": "reference",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "share_capital",
+      "name": "QMT 股本历史",
+      "layer": "canonical",
+      "domain": {
+        "code": "fundamental",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "share_capital_history",
+      "name": "规范股本历史",
+      "layer": "canonical",
+      "domain": {
+        "code": "fundamental",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "stock_st_daily",
+      "name": "每日 ST 状态",
+      "layer": "canonical",
+      "domain": {
+        "code": "reference",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "strategy",
+      "name": "策略决策量",
+      "layer": "derived",
+      "domain": {
+        "code": "runtime",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "suspend_daily",
+      "name": "停复牌事件",
+      "layer": "canonical",
+      "domain": {
+        "code": "reference",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "trading_calendar",
+      "name": "规范交易日历",
+      "layer": "canonical",
+      "domain": {
+        "code": "reference",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "tushare_daily",
+      "name": "生产组合日线",
+      "layer": "canonical",
+      "domain": {
+        "code": "market",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "tushare_minute_bars",
+      "name": "Tushare 分钟覆盖",
+      "layer": "canonical",
+      "domain": {
+        "code": "market",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "valuation_daily",
+      "name": "规范每日估值",
+      "layer": "canonical",
+      "domain": {
+        "code": "fundamental",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    },
+    {
+      "id": "valuation_snapshot",
+      "name": "估值快照",
+      "layer": "derived",
+      "domain": {
+        "code": "fundamental",
+        "unclassified_reason": null
+      },
+      "status": "gray",
+      "dimensions": {
+        "freshness": "gray",
+        "completeness": "gray",
+        "structure": "gray",
+        "validity": "gray",
+        "lineage": "gray"
+      }
+    }
+  ],
+  "domains": [
+    {
+      "domain": {
+        "code": "alternative",
+        "unclassified_reason": null
+      },
+      "tables": 1,
+      "sources": 1,
+      "status_counts": {
+        "red": 0,
+        "yellow": 0,
+        "gray": 1,
+        "green": 0
+      }
+    },
+    {
+      "domain": {
+        "code": "factor",
+        "unclassified_reason": null
+      },
+      "tables": 6,
+      "sources": 13,
+      "status_counts": {
+        "red": 0,
+        "yellow": 0,
+        "gray": 6,
+        "green": 0
+      }
+    },
+    {
+      "domain": {
+        "code": "fundamental",
+        "unclassified_reason": null
+      },
+      "tables": 4,
+      "sources": 2,
+      "status_counts": {
+        "red": 0,
+        "yellow": 0,
+        "gray": 4,
+        "green": 0
+      }
+    },
+    {
+      "domain": {
+        "code": "market",
+        "unclassified_reason": null
+      },
+      "tables": 18,
+      "sources": 20,
+      "status_counts": {
+        "red": 0,
+        "yellow": 0,
+        "gray": 18,
+        "green": 0
+      }
+    },
+    {
+      "domain": {
+        "code": "reference",
+        "unclassified_reason": null
+      },
+      "tables": 12,
+      "sources": 15,
+      "status_counts": {
+        "red": 0,
+        "yellow": 0,
+        "gray": 12,
+        "green": 0
+      }
+    },
+    {
+      "domain": {
+        "code": "runtime",
+        "unclassified_reason": null
+      },
+      "tables": 10,
+      "sources": 3,
+      "status_counts": {
+        "red": 0,
+        "yellow": 0,
+        "gray": 10,
+        "green": 0
+      }
+    }
+  ],
+  "lineage": {
+    "nodes": [
+      {
+        "id": "dataset:instruments",
+        "label": "证券主数据快照",
+        "kind": "canonical",
+        "ref": "instruments",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:name_snapshots",
+        "label": "证券名称点观测",
+        "kind": "canonical",
+        "ref": "name_snapshots",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:name_history",
+        "label": "证券名称历史",
+        "kind": "canonical",
+        "ref": "name_history",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:security_master",
+        "label": "规范证券主数据",
+        "kind": "canonical",
+        "ref": "security_master",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:security_name_history",
+        "label": "规范证券名称历史",
+        "kind": "canonical",
+        "ref": "security_name_history",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:trading_calendar",
+        "label": "规范交易日历",
+        "kind": "canonical",
+        "ref": "trading_calendar",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:bars_daily",
+        "label": "冻结旧日线",
+        "kind": "raw",
+        "ref": "bars_daily",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:tushare_daily",
+        "label": "生产组合日线",
+        "kind": "canonical",
+        "ref": "tushare_daily",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:bar_daily",
+        "label": "规范历史日线",
+        "kind": "canonical",
+        "ref": "bar_daily",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:valuation_daily",
+        "label": "规范每日估值",
+        "kind": "canonical",
+        "ref": "valuation_daily",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:paid_daily",
+        "label": "冻结付费日线",
+        "kind": "raw",
+        "ref": "paid_daily",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:index_bars",
+        "label": "指数日线",
+        "kind": "canonical",
+        "ref": "index_bars",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:minute_bars",
+        "label": "QMT 分钟线",
+        "kind": "canonical",
+        "ref": "minute_bars",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:tushare_minute_bars",
+        "label": "Tushare 分钟覆盖",
+        "kind": "canonical",
+        "ref": "tushare_minute_bars",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:joinquant_minute_bars",
+        "label": "聚宽分钟覆盖",
+        "kind": "canonical",
+        "ref": "joinquant_minute_bars",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:bar_minute_1m",
+        "label": "规范一分钟线",
+        "kind": "canonical",
+        "ref": "bar_minute_1m",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:paid_minute_bars",
+        "label": "冻结付费分钟线",
+        "kind": "canonical",
+        "ref": "paid_minute_bars",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:auction_ticks",
+        "label": "集合竞价快照",
+        "kind": "canonical",
+        "ref": "auction_ticks",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:price_limits_daily",
+        "label": "每日涨跌停价",
+        "kind": "canonical",
+        "ref": "price_limits_daily",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:suspend_daily",
+        "label": "停复牌事件",
+        "kind": "canonical",
+        "ref": "suspend_daily",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:stock_st_daily",
+        "label": "每日 ST 状态",
+        "kind": "canonical",
+        "ref": "stock_st_daily",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:limit_list_daily",
+        "label": "涨跌停榜事件",
+        "kind": "canonical",
+        "ref": "limit_list_daily",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:moneyflow_daily",
+        "label": "个股资金流",
+        "kind": "canonical",
+        "ref": "moneyflow_daily",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:block_trade_daily",
+        "label": "大宗交易",
+        "kind": "canonical",
+        "ref": "block_trade_daily",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:industry_membership",
+        "label": "申万行业历史归属",
+        "kind": "canonical",
+        "ref": "industry_membership",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:auction_open_daily",
+        "label": "历史开盘集合竞价",
+        "kind": "canonical",
+        "ref": "auction_open_daily",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:corporate_actions",
+        "label": "公司行为",
+        "kind": "canonical",
+        "ref": "corporate_actions",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:share_capital",
+        "label": "QMT 股本历史",
+        "kind": "canonical",
+        "ref": "share_capital",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:share_capital_history",
+        "label": "规范股本历史",
+        "kind": "canonical",
+        "ref": "share_capital_history",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:adj_factors",
+        "label": "复权因子",
+        "kind": "canonical",
+        "ref": "adj_factors",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:adjustment_factor_daily",
+        "label": "规范每日复权因子",
+        "kind": "canonical",
+        "ref": "adjustment_factor_daily",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:price_limit_daily",
+        "label": "规范每日涨跌停价",
+        "kind": "canonical",
+        "ref": "price_limit_daily",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:security_status_daily",
+        "label": "规范每日证券状态",
+        "kind": "canonical",
+        "ref": "security_status_daily",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:market_flags_daily",
+        "label": "规范每日市场标志",
+        "kind": "derived",
+        "ref": "market_flags_daily",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:market_regime_daily",
+        "label": "规范每日市场生态",
+        "kind": "derived",
+        "ref": "market_regime_daily",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:daily_flags",
+        "label": "每日市场标志",
+        "kind": "derived",
+        "ref": "daily_flags",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:delisting_pool",
+        "label": "退市整理池",
+        "kind": "derived",
+        "ref": "delisting_pool",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:valuation_snapshot",
+        "label": "估值快照",
+        "kind": "derived",
+        "ref": "valuation_snapshot",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:market_regime",
+        "label": "市场生态因子",
+        "kind": "derived",
+        "ref": "market_regime",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:ingest_log",
+        "label": "采集运行日志",
+        "kind": "operational",
+        "ref": "ingest_log",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:metric_checks",
+        "label": "字段质检结果",
+        "kind": "operational",
+        "ref": "metric_checks",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:metric_evidence",
+        "label": "人工质检证据",
+        "kind": "operational",
+        "ref": "metric_evidence",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:dataset_checks",
+        "label": "表级健康结果",
+        "kind": "operational",
+        "ref": "dataset_checks",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:relation_checks",
+        "label": "关系健康结果",
+        "kind": "operational",
+        "ref": "relation_checks",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:live_equity",
+        "label": "实盘净值日志",
+        "kind": "operational",
+        "ref": "live_equity",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:live_fills",
+        "label": "实盘成交日志",
+        "kind": "operational",
+        "ref": "live_fills",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:live_rejects",
+        "label": "实盘拒单日志",
+        "kind": "operational",
+        "ref": "live_rejects",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:live_recon",
+        "label": "实盘对账日志",
+        "kind": "operational",
+        "ref": "live_recon",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:daily_bars",
+        "label": "生产日线查询视图",
+        "kind": "canonical",
+        "ref": "daily_bars",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:strategy",
+        "label": "策略决策量",
+        "kind": "derived",
+        "ref": "strategy",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:quote_realtime_latest",
+        "label": "最新实时行情",
+        "kind": "realtime",
+        "ref": "quote_realtime_latest",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:bar_daily_realtime",
+        "label": "实时当日日线",
+        "kind": "realtime",
+        "ref": "bar_daily_realtime",
+        "status": "gray"
+      },
+      {
+        "id": "dataset:bar_minute_realtime",
+        "label": "实时一分钟线",
+        "kind": "realtime",
+        "ref": "bar_minute_realtime",
+        "status": "gray"
+      },
+      {
+        "id": "source:tushare.stock_basic",
+        "label": "Tushare Pro stock_basic",
+        "kind": "source",
+        "ref": "tushare.stock_basic",
+        "status": null
+      },
+      {
+        "id": "consumer:策略股票池",
+        "label": "策略股票池",
+        "kind": "consumer",
+        "ref": "策略股票池",
+        "status": null
+      },
+      {
+        "id": "consumer:Web 数据页",
+        "label": "Web 数据页",
+        "kind": "consumer",
+        "ref": "Web 数据页",
+        "status": null
+      },
+      {
+        "id": "consumer:既有 daily_flags 来源追溯",
+        "label": "既有 daily_flags 来源追溯",
+        "kind": "consumer",
+        "ref": "既有 daily_flags 来源追溯",
+        "status": null
+      },
+      {
+        "id": "source:tushare.namechange",
+        "label": "Tushare Pro namechange",
+        "kind": "source",
+        "ref": "tushare.namechange",
+        "status": null
+      },
+      {
+        "id": "consumer:阶段 3 对账与只读诊断",
+        "label": "阶段 3 对账与只读诊断",
+        "kind": "consumer",
+        "ref": "阶段 3 对账与只读诊断",
+        "status": null
+      },
+      {
+        "id": "source:tushare.trade_cal",
+        "label": "Tushare Pro trade_cal",
+        "kind": "source",
+        "ref": "tushare.trade_cal",
+        "status": null
+      },
+      {
+        "id": "source:mootdx.kline",
+        "label": "mootdx kline",
+        "kind": "source",
+        "ref": "mootdx.kline",
+        "status": null
+      },
+      {
+        "id": "consumer:换源回归",
+        "label": "换源回归",
+        "kind": "consumer",
+        "ref": "换源回归",
+        "status": null
+      },
+      {
+        "id": "source:tushare.daily",
+        "label": "Tushare Pro daily",
+        "kind": "source",
+        "ref": "tushare.daily",
+        "status": null
+      },
+      {
+        "id": "source:tushare.daily_basic",
+        "label": "Tushare Pro daily_basic",
+        "kind": "source",
+        "ref": "tushare.daily_basic",
+        "status": null
+      },
+      {
+        "id": "source:tushare.adj_factor",
+        "label": "Tushare Pro adj_factor",
+        "kind": "source",
+        "ref": "tushare.adj_factor",
+        "status": null
+      },
+      {
+        "id": "consumer:策略与回测",
+        "label": "策略与回测",
+        "kind": "consumer",
+        "ref": "策略与回测",
+        "status": null
+      },
+      {
+        "id": "consumer:阶段 4 对账与只读诊断",
+        "label": "阶段 4 对账与只读诊断",
+        "kind": "consumer",
+        "ref": "阶段 4 对账与只读诊断",
+        "status": null
+      },
+      {
+        "id": "source:baidupan.daily",
+        "label": "百度网盘付费源（余哈哈数据仓库） daily",
+        "kind": "source",
+        "ref": "baidupan.daily",
+        "status": null
+      },
+      {
+        "id": "consumer:换源对账",
+        "label": "换源对账",
+        "kind": "consumer",
+        "ref": "换源对账",
+        "status": null
+      },
+      {
+        "id": "source:tushare.index_daily",
+        "label": "Tushare Pro index_daily",
+        "kind": "source",
+        "ref": "tushare.index_daily",
+        "status": null
+      },
+      {
+        "id": "source:qmt.minute",
+        "label": "QMT minute",
+        "kind": "source",
+        "ref": "qmt.minute",
+        "status": null
+      },
+      {
+        "id": "consumer:统一日内查询",
+        "label": "统一日内查询",
+        "kind": "consumer",
+        "ref": "统一日内查询",
+        "status": null
+      },
+      {
+        "id": "source:tushare.minute",
+        "label": "Tushare Pro minute",
+        "kind": "source",
+        "ref": "tushare.minute",
+        "status": null
+      },
+      {
+        "id": "consumer:分钟质量对账",
+        "label": "分钟质量对账",
+        "kind": "consumer",
+        "ref": "分钟质量对账",
+        "status": null
+      },
+      {
+        "id": "source:joinquant.minute",
+        "label": "聚宽（JQData） minute",
+        "kind": "source",
+        "ref": "joinquant.minute",
+        "status": null
+      },
+      {
+        "id": "consumer:阶段 6 对账与只读诊断",
+        "label": "阶段 6 对账与只读诊断",
+        "kind": "consumer",
+        "ref": "阶段 6 对账与只读诊断",
+        "status": null
+      },
+      {
+        "id": "source:baidupan.minute",
+        "label": "百度网盘付费源（余哈哈数据仓库） minute",
+        "kind": "source",
+        "ref": "baidupan.minute",
+        "status": null
+      },
+      {
+        "id": "source:qmt.tick",
+        "label": "QMT tick",
+        "kind": "source",
+        "ref": "qmt.tick",
+        "status": null
+      },
+      {
+        "id": "consumer:结构策略竞价入场",
+        "label": "结构策略竞价入场",
+        "kind": "consumer",
+        "ref": "结构策略竞价入场",
+        "status": null
+      },
+      {
+        "id": "consumer:回测",
+        "label": "回测",
+        "kind": "consumer",
+        "ref": "回测",
+        "status": null
+      },
+      {
+        "id": "source:tushare.stk_limit",
+        "label": "Tushare Pro stk_limit",
+        "kind": "source",
+        "ref": "tushare.stk_limit",
+        "status": null
+      },
+      {
+        "id": "consumer:撮合与风控",
+        "label": "撮合与风控",
+        "kind": "consumer",
+        "ref": "撮合与风控",
+        "status": null
+      },
+      {
+        "id": "source:tushare.suspend_d",
+        "label": "Tushare Pro suspend_d",
+        "kind": "source",
+        "ref": "tushare.suspend_d",
+        "status": null
+      },
+      {
+        "id": "consumer:可交易性判断",
+        "label": "可交易性判断",
+        "kind": "consumer",
+        "ref": "可交易性判断",
+        "status": null
+      },
+      {
+        "id": "source:tushare.stock_st",
+        "label": "Tushare Pro stock_st",
+        "kind": "source",
+        "ref": "tushare.stock_st",
+        "status": null
+      },
+      {
+        "id": "source:tushare.limit_list_d",
+        "label": "Tushare Pro limit_list_d",
+        "kind": "source",
+        "ref": "tushare.limit_list_d",
+        "status": null
+      },
+      {
+        "id": "source:tushare.moneyflow",
+        "label": "Tushare Pro moneyflow",
+        "kind": "source",
+        "ref": "tushare.moneyflow",
+        "status": null
+      },
+      {
+        "id": "consumer:首板研究",
+        "label": "首板研究",
+        "kind": "consumer",
+        "ref": "首板研究",
+        "status": null
+      },
+      {
+        "id": "source:tushare.block_trade",
+        "label": "Tushare Pro block_trade",
+        "kind": "source",
+        "ref": "tushare.block_trade",
+        "status": null
+      },
+      {
+        "id": "consumer:A1 量纲规则（#608）",
+        "label": "A1 量纲规则（#608）",
+        "kind": "consumer",
+        "ref": "A1 量纲规则（#608）",
+        "status": null
+      },
+      {
+        "id": "source:tushare.index_member_all",
+        "label": "Tushare Pro index_member_all",
+        "kind": "source",
+        "ref": "tushare.index_member_all",
+        "status": null
+      },
+      {
+        "id": "source:tushare.stk_auction_o",
+        "label": "Tushare Pro stk_auction_o",
+        "kind": "source",
+        "ref": "tushare.stk_auction_o",
+        "status": null
+      },
+      {
+        "id": "consumer:首板竞价研究",
+        "label": "首板竞价研究",
+        "kind": "consumer",
+        "ref": "首板竞价研究",
+        "status": null
+      },
+      {
+        "id": "source:qmt.dividends",
+        "label": "QMT dividends",
+        "kind": "source",
+        "ref": "qmt.dividends",
+        "status": null
+      },
+      {
+        "id": "consumer:回测持仓调整",
+        "label": "回测持仓调整",
+        "kind": "consumer",
+        "ref": "回测持仓调整",
+        "status": null
+      },
+      {
+        "id": "source:qmt.capital",
+        "label": "QMT capital",
+        "kind": "source",
+        "ref": "qmt.capital",
+        "status": null
+      },
+      {
+        "id": "consumer:历史换源对照",
+        "label": "历史换源对照",
+        "kind": "consumer",
+        "ref": "历史换源对照",
+        "status": null
+      },
+      {
+        "id": "consumer:复权行情",
+        "label": "复权行情",
+        "kind": "consumer",
+        "ref": "复权行情",
+        "status": null
+      },
+      {
+        "id": "consumer:策略",
+        "label": "策略",
+        "kind": "consumer",
+        "ref": "策略",
+        "status": null
+      },
+      {
+        "id": "consumer:阶段 5 对账与只读诊断",
+        "label": "阶段 5 对账与只读诊断",
+        "kind": "consumer",
+        "ref": "阶段 5 对账与只读诊断",
+        "status": null
+      },
+      {
+        "id": "source:规范日线与状态事实",
+        "label": "规范日线与状态事实",
+        "kind": "source",
+        "ref": "规范日线与状态事实",
+        "status": null
+      },
+      {
+        "id": "consumer:候选池",
+        "label": "候选池",
+        "kind": "consumer",
+        "ref": "候选池",
+        "status": null
+      },
+      {
+        "id": "consumer:策略估值 Gate",
+        "label": "策略估值 Gate",
+        "kind": "consumer",
+        "ref": "策略估值 Gate",
+        "status": null
+      },
+      {
+        "id": "consumer:S6 分类",
+        "label": "S6 分类",
+        "kind": "consumer",
+        "ref": "S6 分类",
+        "status": null
+      },
+      {
+        "id": "consumer:S7 Gate",
+        "label": "S7 Gate",
+        "kind": "consumer",
+        "ref": "S7 Gate",
+        "status": null
+      },
+      {
+        "id": "source:qsys.runtime",
+        "label": "qsys runtime",
+        "kind": "source",
+        "ref": "qsys.runtime",
+        "status": null
+      },
+      {
+        "id": "consumer:历史采集审计",
+        "label": "历史采集审计",
+        "kind": "consumer",
+        "ref": "历史采集审计",
+        "status": null
+      },
+      {
+        "id": "consumer:数据质量页面",
+        "label": "数据质量页面",
+        "kind": "consumer",
+        "ref": "数据质量页面",
+        "status": null
+      },
+      {
+        "id": "consumer:发布门禁",
+        "label": "发布门禁",
+        "kind": "consumer",
+        "ref": "发布门禁",
+        "status": null
+      },
+      {
+        "id": "source:人工证据",
+        "label": "人工证据",
+        "kind": "source",
+        "ref": "人工证据",
+        "status": null
+      },
+      {
+        "id": "consumer:数据表页面",
+        "label": "数据表页面",
+        "kind": "consumer",
+        "ref": "数据表页面",
+        "status": null
+      },
+      {
+        "id": "consumer:关系页面",
+        "label": "关系页面",
+        "kind": "consumer",
+        "ref": "关系页面",
+        "status": null
+      },
+      {
+        "id": "consumer:监控台",
+        "label": "监控台",
+        "kind": "consumer",
+        "ref": "监控台",
+        "status": null
+      },
+      {
+        "id": "consumer:日报",
+        "label": "日报",
+        "kind": "consumer",
+        "ref": "日报",
+        "status": null
+      },
+      {
+        "id": "consumer:对账",
+        "label": "对账",
+        "kind": "consumer",
+        "ref": "对账",
+        "status": null
+      },
+      {
+        "id": "consumer:告警",
+        "label": "告警",
+        "kind": "consumer",
+        "ref": "告警",
+        "status": null
+      },
+      {
+        "id": "consumer:研究",
+        "label": "研究",
+        "kind": "consumer",
+        "ref": "研究",
+        "status": null
+      },
+      {
+        "id": "consumer:数据质量",
+        "label": "数据质量",
+        "kind": "consumer",
+        "ref": "数据质量",
+        "status": null
+      },
+      {
+        "id": "source:规范行情与因子",
+        "label": "规范行情与因子",
+        "kind": "source",
+        "ref": "规范行情与因子",
+        "status": null
+      },
+      {
+        "id": "consumer:结构策略",
+        "label": "结构策略",
+        "kind": "consumer",
+        "ref": "结构策略",
+        "status": null
+      },
+      {
+        "id": "consumer:实时日线",
+        "label": "实时日线",
+        "kind": "consumer",
+        "ref": "实时日线",
+        "status": null
+      },
+      {
+        "id": "consumer:实时分钟线",
+        "label": "实时分钟线",
+        "kind": "consumer",
+        "ref": "实时分钟线",
+        "status": null
+      },
+      {
+        "id": "consumer:模拟盘与实盘",
+        "label": "模拟盘与实盘",
+        "kind": "consumer",
+        "ref": "模拟盘与实盘",
+        "status": null
+      },
+      {
+        "id": "consumer:盘中展示",
+        "label": "盘中展示",
+        "kind": "consumer",
+        "ref": "盘中展示",
+        "status": null
+      },
+      {
+        "id": "consumer:显式 include_live 查询",
+        "label": "显式 include_live 查询",
+        "kind": "consumer",
+        "ref": "显式 include_live 查询",
+        "status": null
+      },
+      {
+        "id": "consumer:收盘发布候选",
+        "label": "收盘发布候选",
+        "kind": "consumer",
+        "ref": "收盘发布候选",
+        "status": null
+      }
+    ],
+    "edges": [
+      {
+        "source": "dataset:adj_factors",
+        "target": "consumer:复权行情"
+      },
+      {
+        "source": "dataset:adj_factors",
+        "target": "consumer:策略"
+      },
+      {
+        "source": "dataset:adj_factors",
+        "target": "dataset:adjustment_factor_daily"
+      },
+      {
+        "source": "dataset:adj_factors",
+        "target": "dataset:market_regime"
+      },
+      {
+        "source": "dataset:adj_factors",
+        "target": "dataset:strategy"
+      },
+      {
+        "source": "dataset:adjustment_factor_daily",
+        "target": "consumer:阶段 4 对账与只读诊断"
+      },
+      {
+        "source": "dataset:adjustment_factor_daily",
+        "target": "dataset:market_regime_daily"
+      },
+      {
+        "source": "dataset:auction_open_daily",
+        "target": "consumer:首板竞价研究"
+      },
+      {
+        "source": "dataset:auction_ticks",
+        "target": "consumer:回测"
+      },
+      {
+        "source": "dataset:auction_ticks",
+        "target": "consumer:结构策略竞价入场"
+      },
+      {
+        "source": "dataset:bar_daily",
+        "target": "consumer:阶段 4 对账与只读诊断"
+      },
+      {
+        "source": "dataset:bar_daily",
+        "target": "dataset:market_flags_daily"
+      },
+      {
+        "source": "dataset:bar_daily",
+        "target": "dataset:market_regime_daily"
+      },
+      {
+        "source": "dataset:bar_daily",
+        "target": "dataset:security_status_daily"
+      },
+      {
+        "source": "dataset:bar_daily_realtime",
+        "target": "consumer:显式 include_live 查询"
+      },
+      {
+        "source": "dataset:bar_daily_realtime",
+        "target": "consumer:盘中展示"
+      },
+      {
+        "source": "dataset:bar_minute_1m",
+        "target": "consumer:阶段 6 对账与只读诊断"
+      },
+      {
+        "source": "dataset:bar_minute_realtime",
+        "target": "consumer:收盘发布候选"
+      },
+      {
+        "source": "dataset:bar_minute_realtime",
+        "target": "consumer:盘中展示"
+      },
+      {
+        "source": "dataset:bars_daily",
+        "target": "consumer:换源回归"
+      },
+      {
+        "source": "dataset:block_trade_daily",
+        "target": "consumer:A1 量纲规则（#608）"
+      },
+      {
+        "source": "dataset:corporate_actions",
+        "target": "consumer:回测持仓调整"
+      },
+      {
+        "source": "dataset:corporate_actions",
+        "target": "dataset:adj_factors"
+      },
+      {
+        "source": "dataset:daily_bars",
+        "target": "consumer:回测"
+      },
+      {
+        "source": "dataset:daily_bars",
+        "target": "consumer:数据质量"
+      },
+      {
+        "source": "dataset:daily_bars",
+        "target": "consumer:研究"
+      },
+      {
+        "source": "dataset:daily_bars",
+        "target": "consumer:策略"
+      },
+      {
+        "source": "dataset:daily_flags",
+        "target": "consumer:候选池"
+      },
+      {
+        "source": "dataset:daily_flags",
+        "target": "consumer:策略"
+      },
+      {
+        "source": "dataset:daily_flags",
+        "target": "dataset:market_regime"
+      },
+      {
+        "source": "dataset:dataset_checks",
+        "target": "consumer:发布门禁"
+      },
+      {
+        "source": "dataset:dataset_checks",
+        "target": "consumer:数据表页面"
+      },
+      {
+        "source": "dataset:delisting_pool",
+        "target": "consumer:策略股票池"
+      },
+      {
+        "source": "dataset:delisting_pool",
+        "target": "dataset:daily_flags"
+      },
+      {
+        "source": "dataset:delisting_pool",
+        "target": "dataset:security_status_daily"
+      },
+      {
+        "source": "dataset:index_bars",
+        "target": "dataset:market_regime"
+      },
+      {
+        "source": "dataset:index_bars",
+        "target": "dataset:market_regime_daily"
+      },
+      {
+        "source": "dataset:industry_membership",
+        "target": "consumer:首板研究"
+      },
+      {
+        "source": "dataset:ingest_log",
+        "target": "consumer:历史采集审计"
+      },
+      {
+        "source": "dataset:instruments",
+        "target": "consumer:Web 数据页"
+      },
+      {
+        "source": "dataset:instruments",
+        "target": "consumer:策略股票池"
+      },
+      {
+        "source": "dataset:instruments",
+        "target": "dataset:daily_flags"
+      },
+      {
+        "source": "dataset:instruments",
+        "target": "dataset:name_snapshots"
+      },
+      {
+        "source": "dataset:instruments",
+        "target": "dataset:security_master"
+      },
+      {
+        "source": "dataset:joinquant_minute_bars",
+        "target": "consumer:分钟质量对账"
+      },
+      {
+        "source": "dataset:joinquant_minute_bars",
+        "target": "dataset:bar_minute_1m"
+      },
+      {
+        "source": "dataset:limit_list_daily",
+        "target": "dataset:daily_flags"
+      },
+      {
+        "source": "dataset:limit_list_daily",
+        "target": "dataset:market_flags_daily"
+      },
+      {
+        "source": "dataset:live_equity",
+        "target": "consumer:日报"
+      },
+      {
+        "source": "dataset:live_equity",
+        "target": "consumer:监控台"
+      },
+      {
+        "source": "dataset:live_fills",
+        "target": "consumer:对账"
+      },
+      {
+        "source": "dataset:live_fills",
+        "target": "consumer:日报"
+      },
+      {
+        "source": "dataset:live_fills",
+        "target": "consumer:监控台"
+      },
+      {
+        "source": "dataset:live_recon",
+        "target": "consumer:告警"
+      },
+      {
+        "source": "dataset:live_recon",
+        "target": "consumer:日报"
+      },
+      {
+        "source": "dataset:live_recon",
+        "target": "consumer:监控台"
+      },
+      {
+        "source": "dataset:live_rejects",
+        "target": "consumer:日报"
+      },
+      {
+        "source": "dataset:live_rejects",
+        "target": "consumer:监控台"
+      },
+      {
+        "source": "dataset:market_flags_daily",
+        "target": "consumer:阶段 5 对账与只读诊断"
+      },
+      {
+        "source": "dataset:market_flags_daily",
+        "target": "dataset:market_regime_daily"
+      },
+      {
+        "source": "dataset:market_regime",
+        "target": "consumer:S6 分类"
+      },
+      {
+        "source": "dataset:market_regime",
+        "target": "consumer:S7 Gate"
+      },
+      {
+        "source": "dataset:market_regime_daily",
+        "target": "consumer:阶段 5 对账与只读诊断"
+      },
+      {
+        "source": "dataset:metric_checks",
+        "target": "consumer:发布门禁"
+      },
+      {
+        "source": "dataset:metric_checks",
+        "target": "consumer:数据质量页面"
+      },
+      {
+        "source": "dataset:metric_evidence",
+        "target": "consumer:数据质量页面"
+      },
+      {
+        "source": "dataset:minute_bars",
+        "target": "consumer:策略与回测"
+      },
+      {
+        "source": "dataset:minute_bars",
+        "target": "consumer:统一日内查询"
+      },
+      {
+        "source": "dataset:minute_bars",
+        "target": "dataset:bar_minute_1m"
+      },
+      {
+        "source": "dataset:minute_bars",
+        "target": "dataset:strategy"
+      },
+      {
+        "source": "dataset:moneyflow_daily",
+        "target": "consumer:首板研究"
+      },
+      {
+        "source": "dataset:name_history",
+        "target": "consumer:Web 数据页"
+      },
+      {
+        "source": "dataset:name_history",
+        "target": "dataset:delisting_pool"
+      },
+      {
+        "source": "dataset:name_history",
+        "target": "dataset:security_name_history"
+      },
+      {
+        "source": "dataset:name_snapshots",
+        "target": "consumer:既有 daily_flags 来源追溯"
+      },
+      {
+        "source": "dataset:paid_daily",
+        "target": "consumer:换源对账"
+      },
+      {
+        "source": "dataset:paid_minute_bars",
+        "target": "consumer:分钟质量对账"
+      },
+      {
+        "source": "dataset:paid_minute_bars",
+        "target": "consumer:统一日内查询"
+      },
+      {
+        "source": "dataset:paid_minute_bars",
+        "target": "dataset:bar_minute_1m"
+      },
+      {
+        "source": "dataset:price_limit_daily",
+        "target": "dataset:market_flags_daily"
+      },
+      {
+        "source": "dataset:price_limits_daily",
+        "target": "consumer:撮合与风控"
+      },
+      {
+        "source": "dataset:price_limits_daily",
+        "target": "dataset:daily_flags"
+      },
+      {
+        "source": "dataset:price_limits_daily",
+        "target": "dataset:price_limit_daily"
+      },
+      {
+        "source": "dataset:quote_realtime_latest",
+        "target": "consumer:实时分钟线"
+      },
+      {
+        "source": "dataset:quote_realtime_latest",
+        "target": "consumer:实时日线"
+      },
+      {
+        "source": "dataset:quote_realtime_latest",
+        "target": "consumer:模拟盘与实盘"
+      },
+      {
+        "source": "dataset:quote_realtime_latest",
+        "target": "dataset:bar_daily_realtime"
+      },
+      {
+        "source": "dataset:quote_realtime_latest",
+        "target": "dataset:bar_minute_realtime"
+      },
+      {
+        "source": "dataset:relation_checks",
+        "target": "consumer:关系页面"
+      },
+      {
+        "source": "dataset:relation_checks",
+        "target": "consumer:发布门禁"
+      },
+      {
+        "source": "dataset:security_master",
+        "target": "consumer:阶段 3 对账与只读诊断"
+      },
+      {
+        "source": "dataset:security_master",
+        "target": "dataset:daily_flags"
+      },
+      {
+        "source": "dataset:security_master",
+        "target": "dataset:market_flags_daily"
+      },
+      {
+        "source": "dataset:security_name_history",
+        "target": "consumer:阶段 3 对账与只读诊断"
+      },
+      {
+        "source": "dataset:security_status_daily",
+        "target": "dataset:market_flags_daily"
+      },
+      {
+        "source": "dataset:share_capital",
+        "target": "consumer:历史换源对照"
+      },
+      {
+        "source": "dataset:share_capital_history",
+        "target": "consumer:阶段 4 对账与只读诊断"
+      },
+      {
+        "source": "dataset:stock_st_daily",
+        "target": "dataset:daily_flags"
+      },
+      {
+        "source": "dataset:stock_st_daily",
+        "target": "dataset:security_status_daily"
+      },
+      {
+        "source": "dataset:strategy",
+        "target": "consumer:结构策略"
+      },
+      {
+        "source": "dataset:suspend_daily",
+        "target": "consumer:可交易性判断"
+      },
+      {
+        "source": "dataset:suspend_daily",
+        "target": "dataset:security_status_daily"
+      },
+      {
+        "source": "dataset:trading_calendar",
+        "target": "consumer:阶段 3 对账与只读诊断"
+      },
+      {
+        "source": "dataset:tushare_daily",
+        "target": "consumer:策略与回测"
+      },
+      {
+        "source": "dataset:tushare_daily",
+        "target": "dataset:bar_daily"
+      },
+      {
+        "source": "dataset:tushare_daily",
+        "target": "dataset:daily_bars"
+      },
+      {
+        "source": "dataset:tushare_daily",
+        "target": "dataset:daily_flags"
+      },
+      {
+        "source": "dataset:tushare_daily",
+        "target": "dataset:delisting_pool"
+      },
+      {
+        "source": "dataset:tushare_daily",
+        "target": "dataset:market_regime"
+      },
+      {
+        "source": "dataset:tushare_daily",
+        "target": "dataset:price_limits_daily"
+      },
+      {
+        "source": "dataset:tushare_daily",
+        "target": "dataset:share_capital_history"
+      },
+      {
+        "source": "dataset:tushare_daily",
+        "target": "dataset:stock_st_daily"
+      },
+      {
+        "source": "dataset:tushare_daily",
+        "target": "dataset:strategy"
+      },
+      {
+        "source": "dataset:tushare_daily",
+        "target": "dataset:valuation_daily"
+      },
+      {
+        "source": "dataset:tushare_daily",
+        "target": "dataset:valuation_snapshot"
+      },
+      {
+        "source": "dataset:tushare_minute_bars",
+        "target": "consumer:分钟质量对账"
+      },
+      {
+        "source": "dataset:tushare_minute_bars",
+        "target": "dataset:bar_minute_1m"
+      },
+      {
+        "source": "dataset:valuation_daily",
+        "target": "consumer:阶段 4 对账与只读诊断"
+      },
+      {
+        "source": "dataset:valuation_snapshot",
+        "target": "consumer:策略估值 Gate"
+      },
+      {
+        "source": "source:baidupan.daily",
+        "target": "dataset:paid_daily"
+      },
+      {
+        "source": "source:baidupan.minute",
+        "target": "dataset:paid_minute_bars"
+      },
+      {
+        "source": "source:joinquant.minute",
+        "target": "dataset:joinquant_minute_bars"
+      },
+      {
+        "source": "source:mootdx.kline",
+        "target": "dataset:bars_daily"
+      },
+      {
+        "source": "source:qmt.capital",
+        "target": "dataset:share_capital"
+      },
+      {
+        "source": "source:qmt.dividends",
+        "target": "dataset:corporate_actions"
+      },
+      {
+        "source": "source:qmt.minute",
+        "target": "dataset:minute_bars"
+      },
+      {
+        "source": "source:qmt.minute",
+        "target": "dataset:quote_realtime_latest"
+      },
+      {
+        "source": "source:qmt.tick",
+        "target": "dataset:auction_ticks"
+      },
+      {
+        "source": "source:qsys.runtime",
+        "target": "dataset:dataset_checks"
+      },
+      {
+        "source": "source:qsys.runtime",
+        "target": "dataset:ingest_log"
+      },
+      {
+        "source": "source:qsys.runtime",
+        "target": "dataset:live_equity"
+      },
+      {
+        "source": "source:qsys.runtime",
+        "target": "dataset:live_fills"
+      },
+      {
+        "source": "source:qsys.runtime",
+        "target": "dataset:live_recon"
+      },
+      {
+        "source": "source:qsys.runtime",
+        "target": "dataset:live_rejects"
+      },
+      {
+        "source": "source:qsys.runtime",
+        "target": "dataset:metric_checks"
+      },
+      {
+        "source": "source:qsys.runtime",
+        "target": "dataset:relation_checks"
+      },
+      {
+        "source": "source:tushare.adj_factor",
+        "target": "dataset:adj_factors"
+      },
+      {
+        "source": "source:tushare.adj_factor",
+        "target": "dataset:tushare_daily"
+      },
+      {
+        "source": "source:tushare.block_trade",
+        "target": "dataset:block_trade_daily"
+      },
+      {
+        "source": "source:tushare.daily",
+        "target": "dataset:price_limits_daily"
+      },
+      {
+        "source": "source:tushare.daily",
+        "target": "dataset:stock_st_daily"
+      },
+      {
+        "source": "source:tushare.daily",
+        "target": "dataset:tushare_daily"
+      },
+      {
+        "source": "source:tushare.daily_basic",
+        "target": "dataset:tushare_daily"
+      },
+      {
+        "source": "source:tushare.index_daily",
+        "target": "dataset:index_bars"
+      },
+      {
+        "source": "source:tushare.index_member_all",
+        "target": "dataset:industry_membership"
+      },
+      {
+        "source": "source:tushare.limit_list_d",
+        "target": "dataset:limit_list_daily"
+      },
+      {
+        "source": "source:tushare.minute",
+        "target": "dataset:tushare_minute_bars"
+      },
+      {
+        "source": "source:tushare.moneyflow",
+        "target": "dataset:moneyflow_daily"
+      },
+      {
+        "source": "source:tushare.namechange",
+        "target": "dataset:name_history"
+      },
+      {
+        "source": "source:tushare.stk_auction_o",
+        "target": "dataset:auction_open_daily"
+      },
+      {
+        "source": "source:tushare.stk_limit",
+        "target": "dataset:price_limits_daily"
+      },
+      {
+        "source": "source:tushare.stock_basic",
+        "target": "dataset:instruments"
+      },
+      {
+        "source": "source:tushare.stock_basic",
+        "target": "dataset:name_snapshots"
+      },
+      {
+        "source": "source:tushare.stock_st",
+        "target": "dataset:stock_st_daily"
+      },
+      {
+        "source": "source:tushare.suspend_d",
+        "target": "dataset:suspend_daily"
+      },
+      {
+        "source": "source:tushare.trade_cal",
+        "target": "dataset:trading_calendar"
+      },
+      {
+        "source": "source:人工证据",
+        "target": "dataset:metric_evidence"
+      },
+      {
+        "source": "source:规范日线与状态事实",
+        "target": "dataset:daily_flags"
+      },
+      {
+        "source": "source:规范行情与因子",
+        "target": "dataset:strategy"
+      }
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "schema_version": 1, "enabled": true, "day": "2026-11-19", "days": ["2026-11-19"], "state": "closed", "title": "已收盘", "kill": null,
+  "concerns": [{"id": "late", "severity": "warning", "label": "调仓迟到", "detail": "44s", "page": "runs"}],
+  "kpis": {"account_total": 100011.98, "account_at": "2026-11-19T15:30:00+08:00", "index_name": "上证指数", "index_price": 3452.18, "index_change_ratio": 0.0094, "limit_up": 71, "limit_down": 6, "seal_ratio": 0.81, "link_max_age_seconds": 3, "link_fresh": 3, "link_total": 3},
+  "phases": [{"id": "pre", "label": "盘前", "time_label": "00:00–09:25", "state": "ok", "completed": 1, "recorded": 1}, {"id": "auction", "label": "竞价", "time_label": "09:25–09:30", "state": "ok", "completed": 1, "recorded": 1}, {"id": "intraday", "label": "盘中", "time_label": "09:30–15:00", "state": "ok", "completed": 3, "recorded": 3}, {"id": "close", "label": "收盘", "time_label": "15:00–15:40", "state": "ok", "completed": 1, "recorded": 1}, {"id": "evening", "label": "晚间任务", "time_label": "15:40–23:59", "state": "running", "completed": 2, "recorded": 3}],
+  "events": [{"event_key": "auction", "phase": "auction", "scheduled_at": "2026-11-19T09:25:00+08:00", "started_at": "2026-11-19T09:25:01+08:00", "finished_at": "2026-11-19T09:25:02+08:00", "state": "completed", "summary": "未下单", "detail": null}],
+  "links": [{"source": "agent", "points": [{"sampled_at": "2026-11-19T15:30:00+08:00", "age_seconds": 1, "threshold_seconds": 10, "fresh": true}]}, {"source": "executor", "points": [{"sampled_at": "2026-11-19T15:30:00+08:00", "age_seconds": 3, "threshold_seconds": 10, "fresh": true}]}, {"source": "market", "points": [{"sampled_at": "2026-11-19T15:30:00+08:00", "age_seconds": 2, "threshold_seconds": 90, "fresh": true}]}],
+  "sentiment": [{"day": "2026-11-18", "limit_up": 54, "limit_down": 3, "broken_board_ratio": 0.2, "prior_limitup_return_ratio": 0.01}, {"day": "2026-11-19", "limit_up": 71, "limit_down": 6, "broken_board_ratio": 0.19, "prior_limitup_return_ratio": null}],
+  "missing": {"index_intraday": "上证 1 分钟分时尚未采集，由 #675 承接；不从当前价生成曲线"}
+}
