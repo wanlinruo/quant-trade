@@ -188,8 +188,10 @@ jobs:
         if: >-
           steps.plan.outputs.deployable == 'true' &&
           steps.source.outputs.artifact_capable == 'false'
+        env:
+          CONTROLLER_SHA: ${{ steps.source.outputs.controller_sha }}
         run: |
-          test "$TARGET_SHA" = "${{ steps.source.outputs.controller_sha }}"
+          test "$TARGET_SHA" = "$CONTROLLER_SHA"
           ssh -i ~/.ssh/test-deploy -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
             "deploy --environment test --sha $TARGET_SHA --component test-runtime --run-id $RUN_KEY --actor $GITHUB_ACTOR --repository $GITHUB_REPOSITORY"
 
