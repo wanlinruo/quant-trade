@@ -33,31 +33,31 @@
 
 ## Task 2：唯一新应用入口
 
-- [ ] 在 `qsys.webapp` 提供完整应用工厂与 CLI；`qsys-web` 和 `scripts/run_monitor.py` 改指向新入口。
-- [ ] 直接构造全部新查询依赖，不再经旧 `MonitorService`、旧视图服务或旧 `create_app` 过渡接线。
-- [ ] 健康端点、监听默认值、N-1 私有配置兼容、查询资源限制和 systemd 参数保持不变。
-- [ ] 用实际 console script 从外部 cwd、仅安装 wheel 的环境启动，验证 `/healthz`、`/app`、静态资源和代表性 API。
+- [x] 在 `qsys.webapp` 提供完整应用工厂与 CLI；`qsys-web` 和 `scripts/run_monitor.py` 改指向新入口。
+- [x] 直接构造全部新查询依赖，不再经旧 `MonitorService`、旧视图服务或旧 `create_app` 过渡接线。
+- [x] 健康端点、监听默认值、N-1 私有配置兼容、查询资源限制和 systemd 参数保持不变。
+- [x] 用实际 console script 从外部 cwd、仅安装 wheel 的环境启动，验证 `/healthz`、`/app`、静态资源和代表性 API。
 
 ## Task 3：旧路径 308 与旧包删除
 
-- [ ] 建立显式旧路径到 19 个新页面的映射；保留 query string，仅允许站内固定目标。
-- [ ] 为旧 GET/HEAD 页面验证 308；旧写接口不重定向，返回明确的 404/410，避免方法和请求体误送。
-- [ ] 删除旧 `app.py`、模板、旧视图服务、兼容转发和整个 `qsys.web` 包。
-- [ ] 把仍需保留的配置、急停状态读取、图表纯函数、worker CLI 放入对应领域包，并更新全部测试导入。
-- [ ] `rg` 与 wheel 内容校验确认不再存在 `qsys.web` 导入、模板或旧路由。
+- [x] 建立显式旧路径到 19 个新页面的映射；保留 query string，仅允许站内固定目标。
+- [x] 为旧 GET/HEAD 页面验证 308；旧写接口不重定向，返回明确的 404/410，避免方法和请求体误送。
+- [x] 删除旧 `app.py`、模板、旧视图服务、兼容转发和整个 `qsys.web` 包。
+- [x] 把仍需保留的配置、急停状态读取、图表纯函数、worker CLI 放入对应领域包，并更新全部测试导入。
+- [x] `rg` 与 wheel 内容校验确认不再存在 `qsys.web` 导入、模板或旧路由。
 
 ## Task 4：测试部署与制品闭环
 
-- [ ] 测试部署在目标 SHA 上先构建前端，再以与组件制品相同的 wheel 校验器验证 `spa_dist`。
-- [ ] 测试服务从已验证安装产物启动，或提供等价的包内资源探针；不以源码目录中的 `frontend/dist` 冒充制品证据。
-- [ ] 保留现有回滚、健康检查和部署记录语义；失败记录不覆盖，重试使用新 run-id。
+- [x] 测试部署下载精确上游 CI 构建的前端制品，并以组件 wheel 校验器验证 `spa_dist`。
+- [x] 测试服务从测试专用不可变 release 的 `spa_dist` 读取；不以源码目录中的 `frontend/dist` 冒充制品证据。
+- [x] 保留现有回滚、健康检查和部署记录语义；失败记录不覆盖，重试使用新 run-id。
 - [ ] 核对可信 `main` planner 对新增/删除路径的分类；若需要 bootstrap，单独做最小控制面提交并先合入 main。
 
 ## Task 5：完整验收与合入门槛
 
 - [ ] 后端专项、全量 `uv run pytest`、入口导入清单、仓库政策与 secret scan 全部通过。
-- [ ] 前端单测、契约生成检查、typecheck、build、390/1280/1600 Playwright 全部通过。
-- [ ] 记录页面级人工验收：19 个页面、空态/错误态、旧路径重定向、下载与写接口门禁。
+- [x] 前端单测、契约生成检查、typecheck、build、390/1280/1600 Playwright 全部通过。
+- [x] 记录页面级人工验收：19 个页面、空态/错误态、旧路径重定向、下载与写接口门禁。
 - [ ] 推送稳定需求分支并在 #662 留证据；向维护者报告提交范围与剩余现场限制。
 - [ ] 维护者确认后才 squash 合入 `test`；取得稳定 SHA 的 CI 与测试部署证据后，再创建 `test -> main` PR。
 - [ ] PR 合并和每个生产组件发布分别再次确认；生产顺序至少覆盖受导入路径影响的 Web、backtest-worker、health-observer、limit-up-shadow 与 research-runner。

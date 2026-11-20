@@ -22,10 +22,10 @@
 
 ## 实施清单
 
-- [ ] 新增外部 `spa_dist` 配置及负例测试。
-- [ ] 扩展测试节点入口的归档接收、严格解包、目标 SHA verifier、不可变安装、指针切换和回滚。
-- [ ] 扩展受限 SSH 白名单、入口 capability、节点配置 schema 与部署记录。
-- [ ] 修改测试部署 workflow，绑定上游 run/目标 SHA 下载并传输精确 Web 制品。
-- [ ] 补齐归档污染、哈希不符、重复文件、软链接、错误 component/SHA、回滚和 workflow 契约测试。
-- [ ] 运行部署专项、Web 专项、全量后端与前端验证。
-- [ ] 把本提交作为控制面 bootstrap 候选单独审查；未经维护者确认不推 `test/main`，不安装节点入口。
+- [x] 新增外部 `spa_dist` 配置及负例测试。
+- [x] 扩展测试节点入口的归档接收、严格解包、目标 SHA verifier、不可变安装、指针切换和回滚。
+- [x] 扩展受限 SSH 白名单、入口 capability、节点配置 schema 与部署记录。
+- [x] 修改测试部署 workflow，绑定上游 run/目标 SHA 下载并传输精确 Web 制品。
+- [x] 补齐归档污染、哈希不符、重复文件、软链接、错误 component/SHA、回滚和 workflow 契约测试。
+- [x] 运行部署专项、Web 专项、全量后端与前端验证。
+- [x] 把本提交作为控制面 bootstrap 候选单独审查；未经维护者确认不推 `test/main`，不安装节点入口。

@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import argparse
 import base64
+import io
 import json
 import importlib.util
 import shutil
+import stat
 import subprocess
 import zipfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -1120,6 +1123,34 @@ def test_test_web_artifact_extraction_is_strict(tmp_path) -> None:
         value.writestr("unexpected", b"no")
     with pytest.raises(ValueError, match="unexpected path"):
         entrypoint._extract_web_archive(planted, tmp_path / "unused")
+
+    duplicate = tmp_path / "duplicate.zip"
+    with pytest.warns(UserWarning, match="Duplicate name"):
+        with zipfile.ZipFile(duplicate, "w") as value:
+            value.writestr("release.json", "{}")
+            value.writestr("release.json", "{}")
+    with pytest.raises(ValueError, match="duplicate files"):
+        entrypoint._extract_web_archive(duplicate, tmp_path / "duplicate")
+
+    linked = tmp_path / "linked.zip"
+    item = zipfile.ZipInfo("source/link.py")
+    item.create_system = 3
+    item.external_attr = (stat.S_IFLNK | 0o777) << 16
+    with zipfile.ZipFile(linked, "w") as value:
+        value.writestr("release.json", "{}")
+        value.writestr(item, "target")
+    with pytest.raises(ValueError, match="must not contain symlinks"):
+        entrypoint._extract_web_archive(linked, tmp_path / "linked")
+
+
+def test_test_web_artifact_receive_binds_exact_hash(monkeypatch, tmp_path) -> None:
+    entrypoint = _entrypoint_module()
+    monkeypatch.setattr(entrypoint.sys, "stdin", SimpleNamespace(buffer=io.BytesIO(b"web")))
+
+    with pytest.raises(ValueError, match="SHA-256 mismatch"):
+        entrypoint._receive_archive(
+            "0" * 64, tmp_path / "web.zip", limit=1024, label="web",
+        )
 
 
 def test_test_web_release_pointer_switches_atomically(monkeypatch, tmp_path) -> None:
