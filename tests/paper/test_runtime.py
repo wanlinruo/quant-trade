@@ -102,7 +102,7 @@ def test_notified_account_writes_actual_explicit_or_legacy_ledger(
     warehouse, tmp_path, monkeypatch, custom,
 ):
     from qsys.ops.alerts import RecordingAlertSink
-    from qsys.ops.alert_events import AlertEventLog
+    from qsys.ops.alert_events import AlertEventLog, now_shanghai
 
     monkeypatch.chdir(tmp_path)
     _, store, ident, today = _runtime(warehouse, tmp_path, Quotes())
@@ -116,7 +116,10 @@ def test_notified_account_writes_actual_explicit_or_legacy_ledger(
     )
     runtime.notifier._alerts.emit("strategy.run.report", params={"title": "local ledger verification"})
     target = explicit if custom else tmp_path / "var/alerts"
-    assert [e.title for e in AlertEventLog(target).read(today)] == ["local ledger verification"]
+    event_day = now_shanghai().date()
+    assert [e.title for e in AlertEventLog(target).read(event_day)] == [
+        "local ledger verification",
+    ]
     assert len(sink.events) == 1
     if custom:
         assert not (tmp_path / "var/alerts").exists()
