@@ -9,6 +9,7 @@ User=ubuntu
 Group=ubuntu
 WorkingDirectory=/home/ubuntu/qsys-test
 Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=QSYS_WEB_SPA_ROOT=/data/qsys-test/var/web-releases/current/spa_dist
 ExecStart=/home/ubuntu/qsys-test/.venv/bin/python scripts/run_monitor.py \
           --host 127.0.0.1 \
           --port 8421 \

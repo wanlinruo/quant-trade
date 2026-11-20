@@ -26,12 +26,15 @@ RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 REPOSITORY_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 ACTOR_PATTERN = re.compile(r"^[A-Za-z0-9_.-]{1,128}$")
 ALLOWED_COMPONENTS = {"test": frozenset({"test-runtime"})}
-ENTRYPOINT_VERSION = 3
-ENTRYPOINT_CAPABILITIES = ("research-stage-v1", "research-drill-v1")
+ENTRYPOINT_VERSION = 4
+ENTRYPOINT_CAPABILITIES = (
+    "research-stage-v1", "research-drill-v1", "web-artifact-deploy-v1",
+)
 RESEARCH_RELEASE_ROOT = Path("/opt/qsys-research-test/releases")
 RESEARCH_CURRENT = Path("/opt/qsys-research-test/current")
 RESEARCH_SNAPSHOT_STORE = Path("/data/qsys-test/warehouse-snapshot-store")
 RESEARCH_ARCHIVE_LIMIT = 256 * 1024 * 1024
+WEB_ARCHIVE_LIMIT = 256 * 1024 * 1024
 
 
 def validate_request(environment: str, sha: str, components: list[str]) -> None:
@@ -50,7 +53,7 @@ def load_config() -> dict[str, object]:
     config = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
     required = {
         "schema_version", "test_repo", "test_record_root", "fingerprint_key",
-        "uv_bin", "test_service", "test_health_url",
+        "uv_bin", "test_service", "test_health_url", "test_web_release_root",
     }
     if set(config) != required or config["schema_version"] != 1:
         raise ValueError("entrypoint config must match schema version 1")
@@ -138,7 +141,23 @@ def status(config: dict[str, object]) -> dict[str, object]:
         "entrypoint_version": ENTRYPOINT_VERSION,
         "capabilities": list(ENTRYPOINT_CAPABILITIES),
         "research_runner_test": research_sha,
+        "test_web_release": _current_web_release(config),
     }
+
+
+def _web_release_root(config: dict[str, object]) -> Path:
+    return Path(str(config["test_web_release_root"]))
+
+
+def _current_web_release(config: dict[str, object]) -> str:
+    current = _web_release_root(config) / "current"
+    if not current.is_symlink():
+        return "uninstalled"
+    try:
+        candidate = current.resolve(strict=True).name
+        return candidate if SHA_PATTERN.fullmatch(candidate) else "unknown"
+    except OSError:
+        return "broken"
 
 
 def _current_research_sha() -> str:
@@ -170,13 +189,17 @@ def _service_identity(
     return values
 
 
-def _rollback(config: dict[str, object], repo: Path, before: str) -> bool:
+def _rollback(
+    config: dict[str, object], repo: Path, before: str, before_web: str,
+) -> bool:
     commands = (
         ["git", "reset", "--hard", before],
         [str(config["uv_bin"]), "sync", "--frozen"],
         ["sudo", "-n", "systemctl", "restart", str(config["test_service"])],
     )
     try:
+        if not _activate_web_release(config, before_web):
+            return False
         for command in commands:
             _run(command, cwd=repo)
     except subprocess.CalledProcessError:
@@ -228,36 +251,204 @@ def _target_deployer(repo: Path, sha: str) -> str:
     return _run(["git", "show", f"{sha}:scripts/deploy_test_linux.sh"], cwd=repo).stdout
 
 
+def _receive_archive(expected: str, target: Path, *, limit: int, label: str) -> Path:
+    if not re.fullmatch(r"[0-9a-f]{64}", expected):
+        raise ValueError("artifact SHA-256 must be 64 lowercase hexadecimal characters")
+    digest = hashlib.sha256()
+    size = 0
+    with target.open("wb") as output:
+        while block := sys.stdin.buffer.read(1024 * 1024):
+            size += len(block)
+            if size > limit:
+                raise ValueError(f"{label} artifact exceeds the size limit")
+            digest.update(block)
+            output.write(block)
+    if size == 0 or digest.hexdigest() != expected:
+        raise ValueError(f"{label} artifact SHA-256 mismatch")
+    return target
+
+
+def _extract_web_archive(archive_path: Path, destination: Path) -> None:
+    """严格展开 CI Web release；完整内容稍后由目标 SHA verifier 复验。"""
+    with zipfile.ZipFile(archive_path) as archive:
+        seen: set[str] = set()
+        total = 0
+        for item in archive.infolist():
+            name = item.filename.rstrip("/")
+            path = Path(name)
+            if not name or path.is_absolute() or ".." in path.parts:
+                raise ValueError("web artifact contains an unsafe path")
+            mode = (item.external_attr >> 16) & 0o170000
+            if stat.S_ISLNK(mode):
+                raise ValueError("web artifact must not contain symlinks")
+            if item.is_dir():
+                continue
+            if name in seen:
+                raise ValueError("web artifact contains duplicate files")
+            if not (
+                name == "release.json" or name.startswith("dist/")
+                or name.startswith("source/")
+            ):
+                raise ValueError("web artifact contains an unexpected path")
+            seen.add(name)
+            total += item.file_size
+            if total > WEB_ARCHIVE_LIMIT:
+                raise ValueError("web artifact expands beyond the size limit")
+            target = destination / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with archive.open(item) as source, target.open("xb") as output:
+                shutil.copyfileobj(source, output)
+        if "release.json" not in seen:
+            raise ValueError("web artifact does not contain release.json")
+
+
+def _extract_verified_spa(wheel: Path, destination: Path) -> None:
+    prefix = "qsys/webapp/spa_dist/"
+    with zipfile.ZipFile(wheel) as archive:
+        members = [
+            item for item in archive.infolist()
+            if item.filename.startswith(prefix) and not item.is_dir()
+        ]
+        if not members:
+            raise ValueError("verified Web wheel does not contain spa_dist")
+        for item in members:
+            relative = Path(item.filename[len(prefix):])
+            if not relative.parts or relative.is_absolute() or ".." in relative.parts:
+                raise ValueError("Web wheel contains an unsafe SPA path")
+            mode = (item.external_attr >> 16) & 0o170000
+            if stat.S_ISLNK(mode):
+                raise ValueError("Web wheel SPA must not contain symlinks")
+            target = destination / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with archive.open(item) as source, target.open("xb") as output:
+                shutil.copyfileobj(source, output)
+
+
+def _stage_web_release(
+    config: dict[str, object], repo: Path, sha: str, extracted: Path,
+) -> Path:
+    root = _web_release_root(config)
+    release = root / sha
+    worktree = extracted.parent / "target"
+    _run(["git", "worktree", "add", "--detach", str(worktree), sha], cwd=repo)
+    try:
+        verifier = [
+            sys.executable, "scripts/build_component_release.py", "--repo", str(worktree),
+            "verify", "--sha", sha, "--component", "web", "--release",
+        ]
+        _run([*verifier, str(extracted)], cwd=worktree)
+        if release.is_symlink():
+            raise ValueError("existing Web release must not be a symlink")
+        if release.exists():
+            _run([*verifier, str(release)], cwd=worktree)
+            return release
+        root.mkdir(parents=True, exist_ok=True)
+        temporary = Path(tempfile.mkdtemp(prefix=f".{sha}.", dir=root))
+        try:
+            for name in ("release.json", "dist", "source"):
+                source = extracted / name
+                target = temporary / name
+                if source.is_dir():
+                    shutil.copytree(source, target)
+                else:
+                    shutil.copy2(source, target)
+            manifest = json.loads((temporary / "release.json").read_text(encoding="utf-8"))
+            wheel_name = manifest.get("wheel_filename")
+            if not isinstance(wheel_name, str) or Path(wheel_name).name != wheel_name:
+                raise ValueError("web release wheel filename is invalid")
+            _extract_verified_spa(temporary / "dist" / wheel_name, temporary / "spa_dist")
+            _run([*verifier, str(temporary)], cwd=worktree)
+            _run(["chmod", "-R", "go-w", str(temporary)], cwd=worktree)
+            temporary.replace(release)
+        except Exception:
+            shutil.rmtree(temporary, ignore_errors=True)
+            raise
+        return release
+    finally:
+        _run(["git", "worktree", "remove", "--force", str(worktree)], cwd=repo, check=False)
+
+
+def _activate_web_release(config: dict[str, object], identity: str) -> bool:
+    root = _web_release_root(config)
+    current = root / "current"
+    try:
+        if identity == "uninstalled":
+            current.unlink(missing_ok=True)
+        elif SHA_PATTERN.fullmatch(identity):
+            target = root / identity
+            if not target.is_dir():
+                return False
+            root.mkdir(parents=True, exist_ok=True)
+            temporary = root / f".current-{os.getpid()}"
+            temporary.unlink(missing_ok=True)
+            temporary.symlink_to(target)
+            temporary.replace(current)
+        else:
+            return False
+        return _current_web_release(config) == identity
+    except OSError:
+        return False
+
+
 def deploy(args: argparse.Namespace, config: dict[str, object]) -> int:
     validate_request(args.environment, args.sha, args.components)
     if not RUN_ID_PATTERN.fullmatch(args.run_id):
         raise ValueError("run-id contains unsupported characters")
     if not REPOSITORY_PATTERN.fullmatch(args.repository):
         raise ValueError("repository must be owner/name")
+    if not ACTOR_PATTERN.fullmatch(args.actor):
+        raise ValueError("actor contains unsupported characters")
     repo = Path(str(config["test_repo"])).resolve(strict=True)
     before = _head(repo)
-    if before == args.sha:
-        print(json.dumps({"ok": True, "noop": True, "sha": args.sha}))
-        return 0
+    before_web = _current_web_release(config)
     started = datetime.now(UTC).isoformat()
     deployer = _target_deployer(repo, args.sha)
-    completed = subprocess.run(
-        ["/bin/sh", "-s", "--", args.sha], cwd=repo, text=True, input=deployer,
-    )
+    tree = _run(["git", "rev-parse", f"{args.sha}^{{tree}}"], cwd=repo).stdout.strip()
+    completed_returncode = 1
+    artifact_ok = False
+    activated = False
+    activation_attempted = False
     rollback_ok = False
-    if completed.returncode != 0:
-        rollback_ok = _rollback(config, repo, before)
+    error = ""
+    try:
+        with tempfile.TemporaryDirectory(prefix="qsys-web-deploy-") as temporary:
+            root = Path(temporary)
+            archive = _receive_archive(
+                args.artifact_sha256, root / "web.zip",
+                limit=WEB_ARCHIVE_LIMIT, label="web",
+            )
+            extracted = root / "release"
+            extracted.mkdir()
+            _extract_web_archive(archive, extracted)
+            release = _stage_web_release(config, repo, args.sha, extracted)
+            artifact_ok = True
+            activation_attempted = True
+            activated = _activate_web_release(config, args.sha)
+            if not activated:
+                raise ValueError("failed to activate the verified Web release")
+            completed = subprocess.run(
+                ["/bin/sh", "-s", "--", args.sha, str(release)], cwd=repo,
+                text=True, input=deployer,
+            )
+            completed_returncode = completed.returncode
+    except (
+        OSError, ValueError, json.JSONDecodeError, subprocess.CalledProcessError,
+        zipfile.BadZipFile,
+    ) as exc:
+        error = str(exc)[:500]
+    if activation_attempted and completed_returncode != 0:
+        rollback_ok = _rollback(config, repo, before, before_web)
     after = _head(repo)
-    target_health = _wait_healthy(config, repo)
+    target_health = completed_returncode == 0 and _wait_healthy(config, repo)
     success = (
-        completed.returncode == 0 and after == args.sha
+        completed_returncode == 0 and after == args.sha
         and target_health and _isolated(config, repo)
+        and _current_web_release(config) == args.sha
     )
-    if not success and not rollback_ok and after != before:
-        rollback_ok = _rollback(config, repo, before)
+    if activation_attempted and not success and not rollback_ok:
+        rollback_ok = _rollback(config, repo, before, before_web)
         after = _head(repo)
     state = "success" if success else ("rolled_back" if rollback_ok else "failure")
-    tree = _run(["git", "rev-parse", f"{args.sha}^{{tree}}"], cwd=repo).stdout.strip()
     try:
         fingerprints = _fingerprints(config, repo)
     except (OSError, ValueError, subprocess.CalledProcessError):
@@ -277,19 +468,20 @@ def deploy(args: argparse.Namespace, config: dict[str, object]) -> int:
         "source_sha": args.sha,
         "source_tree": tree,
         "components": args.components,
-        "before": {"linux": before},
-        "after": {"linux": after},
+        "before": {"linux": before, "test-web-release": before_web},
+        "after": {"linux": after, "test-web-release": _current_web_release(config)},
         "config_fingerprints": fingerprints,
         "checks": [
-            {"name": "deploy-command", "status": "passed" if completed.returncode == 0 else "failed", "detail": f"exit {completed.returncode}"},
+            {"name": "deploy-command", "status": "passed" if completed_returncode == 0 else "failed", "detail": f"exit {completed_returncode}"},
+            {"name": "web-artifact", "status": "passed" if artifact_ok else "failed", "detail": f"sha256={args.artifact_sha256}" + (f"; {error}" if error else "")},
             {"name": "test-web-health", "status": "passed" if final_health else "failed", "detail": "service active and HTTP 200 required"},
             {"name": "test-storage-isolation", "status": "passed" if final_isolation else "failed", "detail": "test worktree, read-only warehouse and test-only write path required"},
         ],
-        "rollback_targets": {"linux": before},
+        "rollback_targets": {"linux": before, "test-web-release": before_web},
         "migration_summary": "none",
     }
     record_path = _write_record(config, args.run_id, record)
-    print(json.dumps({"ok": success, "status": state, "record": str(record_path)}))
+    print(json.dumps({"ok": success, "status": state, "record": str(record_path), "error": error}))
     return 0 if success else 1
 
 
@@ -740,6 +932,7 @@ def build_parser() -> argparse.ArgumentParser:
     deploy_parser.add_argument("--sha", required=True)
     deploy_parser.add_argument("--component", action="append", dest="components", required=True)
     deploy_parser.add_argument("--run-id", required=True)
+    deploy_parser.add_argument("--artifact-sha256", required=True)
     deploy_parser.add_argument("--actor", required=True)
     deploy_parser.add_argument("--repository", required=True)
     deploy_parser.add_argument("--pr-number", type=int)
