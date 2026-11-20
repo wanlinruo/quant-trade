@@ -13,12 +13,8 @@ from qsys.data import schema
 from qsys.data.catalog import REGISTRY
 from qsys.data.catalog.types import UNKNOWN, Computed, Direct, Uncovered
 from qsys.data.query import WarehouseQuery
-from qsys.ops.journal import SessionJournal
-from qsys.web.app import create_app
-from qsys.web.asset_views import DataAssetService
-from qsys.web.catalog_views import CatalogService
-from qsys.web.config import WebConfig
-from qsys.web.views import MonitorService
+from qsys.webapp.app import WebappDeps, create_app
+from qsys.webapp.live_kill_status import LiveKillReader
 from qsys.webapp.contracts.data import MetricDetail, MetricList
 from qsys.webapp.queries.data_catalog import DataCatalog
 
@@ -45,10 +41,11 @@ def check(metric, run="r1", at=datetime(2026, 11, 2, 20), cid="c.rule", passed=F
 @pytest.fixture
 def make(warehouse):
     def build(*, catalog=True) -> TestClient:
-        cfg = WebConfig()
-        return TestClient(create_app(
-            MonitorService(SessionJournal(warehouse), config=cfg), cfg,
-            assets=DataAssetService(warehouse), catalog=CatalogService(warehouse) if catalog else None))
+        query = DataCatalog(WarehouseQuery(warehouse)) if catalog else None
+        return TestClient(create_app(WebappDeps(
+            live_kill=LiveKillReader(None, None),
+            data_catalog=query,
+        )))
     return build
 
 

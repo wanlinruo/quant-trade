@@ -11,12 +11,11 @@ from fastapi.testclient import TestClient
 
 from qsys.data import schema
 from qsys.data.catalog import DATASETS, DEPENDENCIES, REGISTRY
-from qsys.ops.journal import SessionJournal
-from qsys.web.app import create_app
-from qsys.web.asset_views import DataAssetService
-from qsys.web.catalog_views import CatalogService
-from qsys.web.config import WebConfig
-from qsys.web.views import MonitorService
+from qsys.data.query import WarehouseQuery
+from qsys.webapp.app import WebappDeps, create_app
+from qsys.webapp.config import WebConfig
+from qsys.webapp.live_kill_status import LiveKillReader
+from qsys.webapp.queries.data_quality import DataQuality
 from qsys.webapp.contracts.data import QualitySummary, RuleDetail
 
 METRIC = next(iter(REGISTRY))
@@ -51,11 +50,11 @@ def make(warehouse, tmp_path):
     samples.mkdir()
 
     def build(*, assets=True, catalog=True) -> TestClient:
-        cfg = WebConfig()
-        return TestClient(create_app(
-            MonitorService(SessionJournal(warehouse), config=cfg), cfg,
-            assets=DataAssetService(warehouse) if assets else None,
-            catalog=CatalogService(warehouse, sample_root=samples) if catalog else None))
+        quality = DataQuality(WarehouseQuery(warehouse), samples) if assets and catalog else None
+        return TestClient(create_app(WebappDeps(
+            live_kill=LiveKillReader(None, None),
+            data_quality=quality,
+        )))
     build.samples = samples
     return build
 
@@ -134,17 +133,16 @@ def test_data_routes_disabled_and_no_write_methods(make):
 
 
 def test_monitor_cli_wires_data_queries_with_background_coverage(tmp_path, monkeypatch):
-    """生产入口显式构造数据组查询：覆盖统计后台刷新（#442），样本根与旧 CatalogService 相同。"""
+    """生产入口显式构造数据组查询：覆盖统计后台刷新，样本根按运行记录目录定位。"""
     from qsys.live.config import DeployConfig
     import qsys.live.config as live_config
-    from qsys.web import monitor_cli
+    from qsys.webapp import cli as monitor_cli
     monkeypatch.setattr(live_config, "load_deploy_config", lambda _: DeployConfig())
     captured = {}
-    monkeypatch.setattr(monitor_cli, "create_app", lambda *a, **kw: captured.update(kw, args=a))
+    monkeypatch.setattr(monitor_cli, "create_app", lambda *a, **kw: captured.update(kwargs=kw, args=a))
     monitor_cli.build_app(tmp_path / "warehouse", WebConfig(), None, workspace_dir=tmp_path / "workspace",
                           service_runs_dir=tmp_path / "var" / "service-runs")
-    deps = captured["webapp"]
+    deps = captured["args"][0]
     assert deps.data_assets._background is True
     assert deps.data_catalog is not None and deps.data_quality is not None
-    catalog = captured["args"][4]
-    assert deps.data_quality._sample_root == catalog._sample_root == (tmp_path / "artifacts/metric_checks").resolve()
+    assert deps.data_quality._sample_root == (tmp_path / "artifacts/metric_checks").resolve()

@@ -155,11 +155,11 @@ class DataAssets:
         return {row.dataset: row for row in (*previous, *ready)}, pending, failed
 
     # ---- 健康 ----
-    def assessment(self, dataset_id: str):
+    def assessment(self, dataset_id: str, now: datetime | None = None):
         cache: dict = {}
         rows = [current_result(self._warehouse, r, cache=cache)
                 for r in _latest_rows(self._query.dataset_checks(dataset_id).to_dicts())]
-        return aggregate_health(policy_for(dataset_id), _evidence(rows), datetime.now())
+        return aggregate_health(policy_for(dataset_id), _evidence(rows), now or datetime.now())
 
     @staticmethod
     def _dimensions(assessment) -> dict[str, str]:

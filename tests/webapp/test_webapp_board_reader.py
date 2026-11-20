@@ -1,13 +1,7 @@
 import sqlite3
 from datetime import date
 
-from fastapi.testclient import TestClient
-
 from qsys.data.board.reconcile import Mismatch
-from qsys.ops.journal import SessionJournal
-from qsys.web.app import create_app
-from qsys.web.config import WebConfig
-from qsys.web.views import MonitorService
 from tests.webapp.board_fixtures import DAY, PREV, build, reader, shadow, t
 
 
@@ -94,30 +88,3 @@ def test_reader_never_writes(tmp_path):
     assert (tmp_path / "board.sqlite3").read_bytes() == before
     con = sqlite3.connect(tmp_path / "board.sqlite3")
     assert con.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
-
-
-def _client(warehouse, board):
-    config = WebConfig()
-    monitor = MonitorService(SessionJournal(warehouse), config=config)
-    return TestClient(create_app(monitor, config, limit_up_board=board))
-
-
-def test_page_and_api_routes(warehouse, tmp_path):
-    build(tmp_path)
-    client = _client(warehouse, reader(tmp_path))
-    page = client.get("/market/limit-up-board")
-    assert page.status_code == 200 and "打板看板" in page.text and "题材梯队" in page.text
-    assert 'href="/market/limit-up-board"' in client.get("/market/limit-up-shadow").text
-    api = client.get("/api/market/limit-up-board", params={"at": "2026-11-13T09:31:20"})
-    body = api.json()
-    assert api.headers["cache-control"] == "no-store"
-    assert body["available"] and body["at"] == "2026-11-13T09:31:15"
-    series = client.get("/api/market/limit-up-board/series",
-                        params={"day": "2026-11-13", "symbol": "A.SH"}).json()
-    assert series["available"] and len(series["points"]) == 3
-
-
-def test_unconfigured_board_is_unavailable(warehouse):
-    client = _client(warehouse, None)
-    assert client.get("/api/market/limit-up-board").json()["available"] is False
-    assert client.get("/market/limit-up-board").status_code == 200

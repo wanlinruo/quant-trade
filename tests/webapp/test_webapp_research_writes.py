@@ -6,11 +6,10 @@ from datetime import date
 
 from fastapi.testclient import TestClient
 
-from qsys.ops.journal import SessionJournal
-from qsys.web.app import create_app
-from qsys.web.config import WebConfig
-from qsys.web.views import MonitorService
-from tests.web.test_research_jobs import _console
+from qsys.webapp.app import WebappDeps, create_app
+from qsys.webapp.config import WebConfig
+from qsys.webapp.live_kill_status import LiveKillReader
+from tests.webapp.research_helpers import research_console
 from tests.webapp.test_webapp_research import SOURCE, env, succeeded_backtest  # noqa: F401
 
 WORKER_KEYS = {"start", "end", "cash", "jq_compat", "params", "entry_fill"}
@@ -82,7 +81,7 @@ def test_backtest_enqueue_config_matches_worker_contract(env):
 
 
 def test_research_job_submit_cancel(env, tmp_path):
-    env.research = _console(tmp_path)
+    env.research = research_console(tmp_path)
     c = env.client()
     r = c.post("/api/app/research-jobs", json={"task": "verify-snapshot", "parameters": {}, "timeout_seconds": 600})
     assert r.status_code == 201
@@ -95,7 +94,7 @@ def test_research_job_submit_cancel(env, tmp_path):
 
 def test_no_write_routes_without_services(warehouse):
     cfg = WebConfig()
-    c = TestClient(create_app(MonitorService(SessionJournal(warehouse), config=cfg), cfg))
+    c = TestClient(create_app(WebappDeps(live_kill=LiveKillReader(None, None)), cfg))
     writes = [("post", "/api/app/strategies"), ("put", "/api/app/strategies/x"),
               ("post", "/api/app/strategies/import"), ("post", "/api/app/backtests"),
               ("post", "/api/app/backtests/x/cancel"), ("post", "/api/app/research-jobs"),
@@ -104,7 +103,7 @@ def test_no_write_routes_without_services(warehouse):
         assert getattr(c, method)(url, json={}).status_code in (404, 405), url
 
 def test_research_jobs_list_and_resubmit_creates_new_job_and_keeps_failed(env, tmp_path):
-    env.research = _console(tmp_path)
+    env.research = research_console(tmp_path)
     c = env.client()
     first = c.post("/api/app/research-jobs", json={"task": "verify-snapshot", "parameters": {"purpose": "x"}}).json()["id"]
     claimed = env.research.store.claim_next()
@@ -127,7 +126,7 @@ def test_research_jobs_list_and_resubmit_creates_new_job_and_keeps_failed(env, t
 
 
 def test_resubmit_rejected_when_submission_disabled_or_job_active(env, tmp_path):
-    env.research = _console(tmp_path)
+    env.research = research_console(tmp_path)
     c = env.client()
     active = c.post("/api/app/research-jobs", json={"task": "verify-snapshot", "parameters": {}}).json()["id"]
     assert c.post(f"/api/app/research-jobs/{active}/resubmit").status_code == 409

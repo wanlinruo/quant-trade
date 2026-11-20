@@ -9,12 +9,9 @@ from fastapi.testclient import TestClient
 
 from qsys.ops.alert_events import SHANGHAI, AlertEventLog, Severity
 from qsys.ops.alerts import AlertBus, RecordingAlertSink
-from qsys.ops.journal import SessionJournal
-from qsys.web.app import create_app
-from qsys.web.config import WebConfig
-from qsys.web.live_kill_status import LiveKillReader
-from qsys.web.views import MonitorService
-from qsys.webapp.app import WebappDeps
+from qsys.webapp.app import WebappDeps, create_app
+from qsys.webapp.config import WebConfig
+from qsys.webapp.live_kill_status import LiveKillReader
 from qsys.webapp.stores.alert_acks import AlertAckStore
 
 
@@ -29,7 +26,7 @@ def client(warehouse, tmp_path, acks=True):
     cfg = WebConfig()
     deps = WebappDeps(live_kill=LiveKillReader(None, None), alert_roots=(tmp_path / "alerts",),
                       alert_acks=tmp_path / "acks.sqlite3" if acks else None)
-    return TestClient(create_app(MonitorService(SessionJournal(warehouse), config=cfg), cfg, webapp=deps))
+    return TestClient(create_app(deps, cfg))
 
 
 def basic(user, password):

@@ -84,12 +84,11 @@ def _api_routes(routes):
 
 
 def test_every_route_response_model_is_exported(warehouse):
-    from qsys.ops.journal import SessionJournal
-    from qsys.web.app import create_app
-    from qsys.web.config import WebConfig
-    from qsys.web.views import MonitorService
+    from qsys.webapp.app import WebappDeps, create_app
+    from qsys.webapp.config import WebConfig
+    from qsys.webapp.live_kill_status import LiveKillReader
     cfg = WebConfig()
-    app = TestClient(create_app(MonitorService(SessionJournal(warehouse), config=cfg), cfg)).app
+    app = TestClient(create_app(WebappDeps(live_kill=LiveKillReader(None, None)), cfg)).app
     exported = set(EXPORTED)
     routes = list(_api_routes(app.routes))
     checked = [r for r in routes if str(getattr(r, "path", "")).startswith("/api/app/")

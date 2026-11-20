@@ -9,12 +9,9 @@ from fastapi.testclient import TestClient
 
 from qsys.ops.alert_events import SHANGHAI, AlertEventLog, Severity
 from qsys.ops.alerts import AlertBus, RecordingAlertSink
-from qsys.ops.journal import SessionJournal
-from qsys.web.app import create_app
-from qsys.web.config import WebConfig
-from qsys.web.live_kill_status import LiveKillReader
-from qsys.web.views import MonitorService
-from qsys.webapp.app import WebappDeps
+from qsys.webapp.app import WebappDeps, create_app
+from qsys.webapp.config import WebConfig
+from qsys.webapp.live_kill_status import LiveKillReader
 from qsys.webapp.contracts.alerts import AlertCenter, AlertDetail
 from qsys.webapp.queries.alerts import AlertCenterQuery
 from qsys.webapp.stores.alert_acks import AlertAckStore
@@ -148,7 +145,7 @@ def client(warehouse, tmp_path):
         cfg = WebConfig()
         deps = WebappDeps(live_kill=LiveKillReader(None, None), alert_roots=(tmp_path / "alerts",),
                           alert_acks=tmp_path / "acks.sqlite3" if acks else None)
-        return TestClient(create_app(MonitorService(SessionJournal(warehouse), config=cfg), cfg, webapp=deps))
+        return TestClient(create_app(deps, cfg))
     return make
 
 
@@ -171,8 +168,7 @@ def test_shell_alerts_open_from_query(client, tmp_path):
 
 def test_shell_alerts_open_unknown_without_roots(warehouse):
     cfg = WebConfig()
-    c = TestClient(create_app(MonitorService(SessionJournal(warehouse), config=cfg), cfg,
-                              webapp=WebappDeps(live_kill=LiveKillReader(None, None))))
+    c = TestClient(create_app(WebappDeps(live_kill=LiveKillReader(None, None)), cfg))
     shell = c.get("/api/app/shell/status").json()
     assert shell["alerts_open"] is None and shell["missing"]["alerts_open"] == "告警存储未配置"
     assert c.get("/api/app/alerts").json() == {"schema_version": 1, "enabled": False}
@@ -181,11 +177,11 @@ def test_shell_alerts_open_unknown_without_roots(warehouse):
 def test_monitor_cli_wires_alert_roots_and_acks(tmp_path, monkeypatch):
     from qsys.live.config import DeployConfig
     import qsys.live.config as live_config
-    from qsys.web import monitor_cli
+    from qsys.webapp import cli as monitor_cli
     monkeypatch.setattr(live_config, "load_deploy_config", lambda _: DeployConfig())
     captured = {}
-    monkeypatch.setattr(monitor_cli, "create_app", lambda *a, **kw: captured.update(kw))
+    monkeypatch.setattr(monitor_cli, "create_app", lambda *a, **kw: captured.update(args=a, kwargs=kw))
     monitor_cli.build_app(tmp_path / "warehouse", WebConfig(), None, workspace_dir=tmp_path / "workspace",
                           alert_roots=(tmp_path / "a", tmp_path / "b"), alert_acks=tmp_path / "acks.sqlite3")
-    deps = captured["webapp"]
+    deps = captured["args"][0]
     assert deps.alert_roots == (tmp_path / "a", tmp_path / "b") and deps.alert_acks == tmp_path / "acks.sqlite3"

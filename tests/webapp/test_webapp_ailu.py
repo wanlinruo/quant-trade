@@ -7,9 +7,8 @@ from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
-from qsys.ops.journal import SessionJournal
-from qsys.web.app import create_app
-from qsys.web.config import WebConfig
+from qsys.webapp.app import WebappDeps, create_app
+from qsys.webapp.config import WebConfig
 from qsys.research.limit_up_research_store import (
     LimitUpResearchDay, LimitUpResearchEntry, LimitUpResearchHistory, LimitUpResearchMonth,
     LimitUpResearchSummary, LimitUpResearchView,
@@ -17,9 +16,7 @@ from qsys.research.limit_up_research_store import (
 from qsys.research.limit_up_shadow_store import (
     LimitUpShadowEntry, LimitUpShadowHistory, LimitUpShadowSnapshot, LimitUpShadowView,
 )
-from qsys.web.live_kill_status import LiveKillReader
-from qsys.web.views import MonitorService
-from qsys.webapp.app import WebappDeps
+from qsys.webapp.live_kill_status import LiveKillReader
 from qsys.webapp.queries.ailu import MISSING, research_board, shadow_board
 
 GEN = datetime(2026, 11, 16, 11, 36, tzinfo=timezone.utc)
@@ -104,7 +101,7 @@ def test_research_unparseable_generated_at_is_null():
 def _client(warehouse, shadow=None, research=None) -> TestClient:
     cfg = WebConfig()
     deps = WebappDeps(live_kill=LiveKillReader(None, None), shadow=shadow, research=research)
-    return TestClient(create_app(MonitorService(SessionJournal(warehouse), config=cfg), cfg, webapp=deps))
+    return TestClient(create_app(deps, cfg))
 
 
 def test_routes_pass_day_and_validate(warehouse):

@@ -10,19 +10,16 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-from qsys.ops.journal import SessionJournal
 from qsys.paper.store import PaperStore
-from qsys.web.app import create_app
-from qsys.web.backtest_views import BacktestService
-from qsys.web.config import WebConfig
-from qsys.web.views import MonitorService
-from qsys.webapp.app import WebappDeps
-from qsys.web.live_kill_status import LiveKillReader
+from qsys.webapp.app import WebappDeps, create_app
+from qsys.webapp.config import WebConfig
+from qsys.webapp.live_kill_status import LiveKillReader
+from qsys.webapp.queries.backtest_runs import BacktestRuns
 from qsys.webapp.contracts.research import (
     BacktestList, BacktestPending, BacktestReport, ResearchJobList, StrategyDetail, StrategyList,
 )
 from qsys.backtest.workbench import WorkbenchStore
-from tests.web.test_research_jobs import _console
+from tests.webapp.research_helpers import research_console
 
 SOURCE = '''
 from qsys.strategy.base import Strategy
@@ -77,12 +74,16 @@ def env(warehouse, tmp_path):
 
     def client() -> TestClient:
         cfg = WebConfig()
-        return TestClient(create_app(
-            MonitorService(SessionJournal(warehouse), config=cfg), cfg,
-            backtests=BacktestService(runs), workbench=wb, paper=paper,
-            strategy_templates=templates, research_jobs=state.research,
-            shadow_lineage=lambda: state.lineage, core_label=state.core_label,
-            webapp=WebappDeps(live_kill=LiveKillReader(None, None))))
+        return TestClient(create_app(WebappDeps(
+            live_kill=LiveKillReader(None, None),
+            workbench=wb,
+            runs=BacktestRuns(runs),
+            paper=paper,
+            strategy_templates=templates,
+            research_jobs=state.research,
+            shadow_lineage=lambda: state.lineage,
+            core_label=state.core_label,
+        ), cfg))
     state.client = client
     return state
 
@@ -174,7 +175,7 @@ def test_backtest_detail_running_job(env):
 
 def test_endpoints_disabled_without_services(warehouse):
     cfg = WebConfig()
-    c = TestClient(create_app(MonitorService(SessionJournal(warehouse), config=cfg), cfg))
+    c = TestClient(create_app(WebappDeps(live_kill=LiveKillReader(None, None)), cfg))
     for url in ("/api/app/strategies", "/api/app/backtests", "/api/app/research-jobs"):
         r = c.get(url)
         assert r.status_code == 200 and r.json() == {"schema_version": 1, "enabled": False}
@@ -186,7 +187,7 @@ def test_endpoints_disabled_without_services(warehouse):
 
 
 def test_research_jobs_list(env, tmp_path):
-    env.research = _console(tmp_path)
+    env.research = research_console(tmp_path)
     first = env.research.submit("verify-snapshot", {"purpose": "x"}).job_id
     claimed = env.research.store.claim_next()
     env.research.store.transition(claimed, "running")
@@ -242,7 +243,7 @@ def test_backtest_file_download_via_new_route(env):
 
 def test_research_artifact_download_checks_manifest(env, tmp_path):
     import hashlib
-    env.research = _console(tmp_path)
+    env.research = research_console(tmp_path)
     job_id = env.research.submit("verify-snapshot", {}).job_id
     claimed = env.research.store.claim_next()
     env.research.store.transition(claimed, "running")

@@ -13,12 +13,9 @@ from fastapi.testclient import TestClient
 
 from qsys.data import schema
 from qsys.live.messages import MarketOverviewSnapshot, MarketSchedule
-from qsys.ops.journal import SessionJournal
-from qsys.web.app import create_app
-from qsys.web.config import WebConfig
-from qsys.web.live_kill_status import LiveKillReader
-from qsys.web.views import MonitorService
-from qsys.webapp.app import WebappDeps
+from qsys.webapp.app import WebappDeps, create_app
+from qsys.webapp.config import WebConfig
+from qsys.webapp.live_kill_status import LiveKillReader
 from qsys.webapp.contracts.market import MarketOverview
 from qsys.webapp.queries.market import MISSING, MarketQuery
 
@@ -154,7 +151,7 @@ def client(warehouse):
     def build(market) -> TestClient:
         cfg = WebConfig()
         deps = WebappDeps(live_kill=LiveKillReader(None, None), market=market)
-        return TestClient(create_app(MonitorService(SessionJournal(warehouse), config=cfg), cfg, webapp=deps))
+        return TestClient(create_app(deps, cfg))
     return build
 
 
@@ -170,9 +167,12 @@ def test_board_schedule_uses_market_query_cache(warehouse, tmp_path):
     t = FakeTransport()
     build(tmp_path)
     cfg = WebConfig()
-    deps = WebappDeps(live_kill=LiveKillReader(None, None), market=make(transport=t))
-    c = TestClient(create_app(MonitorService(SessionJournal(warehouse), config=cfg), cfg,
-                              limit_up_board=reader(tmp_path), webapp=deps))
+    deps = WebappDeps(
+        live_kill=LiveKillReader(None, None),
+        market=make(transport=t),
+        board=reader(tmp_path),
+    )
+    c = TestClient(create_app(deps, cfg))
     for _ in range(3):
         assert c.get("/api/app/board").json()["schedule"]["is_open"] is True
         c.get("/api/app/market")

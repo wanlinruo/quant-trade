@@ -9,13 +9,11 @@ from datetime import datetime
 
 from fastapi.testclient import TestClient
 
-from qsys.ops.journal import SessionJournal
-from qsys.web.app import create_app
-from qsys.web.config import WebConfig
-from qsys.web.live_kill_status import KillSource, LiveKillReader, LiveKillStatus
+from qsys.webapp.app import WebappDeps, create_app
+from qsys.webapp.config import WebConfig
+from qsys.webapp.live_kill_status import KillSource, LiveKillReader, LiveKillStatus
 from qsys.webapp.contracts.shell import ShellStatus
 from qsys.webapp.queries.shell import ShellQuery
-from qsys.web.views import MonitorService
 
 AT = "2026-11-17T10:00:00"
 
@@ -131,8 +129,7 @@ def test_shell_times_carry_offset() -> None:
 def test_endpoint_is_no_store_and_escapes_nothing_sensitive(warehouse, tmp_path) -> None:
     kill_root = tmp_path / "live-state-root"
     cfg = WebConfig()
-    app = create_app(MonitorService(SessionJournal(warehouse), config=cfg), cfg,
-                     live_kill=LiveKillReader(None, kill_root))
+    app = create_app(WebappDeps(live_kill=LiveKillReader(None, kill_root)), cfg)
     r = TestClient(app).get("/api/app/shell/status")
     assert r.status_code == 200
     assert r.headers["cache-control"] == "no-store"

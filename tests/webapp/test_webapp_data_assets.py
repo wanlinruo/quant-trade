@@ -8,12 +8,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from qsys.data.catalog import DATASETS
-from qsys.ops.journal import SessionJournal
-from qsys.web.app import create_app
-from qsys.web.asset_views import DataAssetService
-from qsys.web.catalog_views import CatalogService
-from qsys.web.config import WebConfig
-from qsys.web.views import MonitorService
+from qsys.webapp.app import WebappDeps, create_app
+from qsys.webapp.live_kill_status import LiveKillReader
 from qsys.webapp.contracts.data import DataOverview, DataTableDetail, DataTableList, TableSample
 from qsys.webapp.queries import data_assets as mod
 from qsys.webapp.queries.data_assets import DataAssets
@@ -25,11 +21,11 @@ DIMS = {"freshness", "completeness", "structure", "validity", "lineage"}
 @pytest.fixture
 def make(warehouse):
     def build(*, assets=True, catalog=True) -> TestClient:
-        cfg = WebConfig()
-        return TestClient(create_app(
-            MonitorService(SessionJournal(warehouse), config=cfg), cfg,
-            assets=DataAssetService(warehouse) if assets else None,
-            catalog=CatalogService(warehouse) if catalog else None))
+        query = DataAssets(warehouse) if assets else None
+        return TestClient(create_app(WebappDeps(
+            live_kill=LiveKillReader(None, None),
+            data_assets=query,
+        )))
     return build
 
 

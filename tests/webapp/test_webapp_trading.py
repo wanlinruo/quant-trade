@@ -15,7 +15,7 @@ from qsys.live.messages import AccountSnapshot, DispatchStatusEvent, Heartbeat, 
 from qsys.live.store import LiveStore
 from qsys.live.transport import MemoryTransport
 from qsys.ops.journal import SessionJournal
-from qsys.web.live_kill_status import KillSource, LiveKillStatus
+from qsys.webapp.live_kill_status import KillSource, LiveKillStatus
 from qsys.webapp.queries.trading import TradingQuery
 from qsys.webapp.routes.trading import trading_router
 

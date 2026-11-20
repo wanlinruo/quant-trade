@@ -8,12 +8,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from qsys.data.board.store import BoardStore
-from qsys.ops.journal import SessionJournal
-from qsys.web.app import create_app
-from qsys.web.config import WebConfig
-from qsys.web.live_kill_status import LiveKillReader
-from qsys.web.views import MonitorService
-from qsys.webapp.app import WebappDeps
+from qsys.webapp.app import WebappDeps, create_app
+from qsys.webapp.config import WebConfig
+from qsys.webapp.live_kill_status import LiveKillReader
 from qsys.webapp.contracts.board import Board, BoardMeta, BoardSeries, BoardUnavailable
 from qsys.webapp.queries.board_reader import BoardView, LimitUpBoardReader
 from tests.webapp.board_fixtures import DAY, NAMES, PREV, build, q
@@ -57,8 +54,7 @@ def make_client(warehouse):
     def make(board) -> TestClient:
         cfg = WebConfig()
         deps = WebappDeps(live_kill=LiveKillReader(None, None), board=board)
-        return TestClient(create_app(MonitorService(SessionJournal(warehouse), config=cfg), cfg,
-                                     webapp=deps))
+        return TestClient(create_app(deps, cfg))
     return make
 
 
