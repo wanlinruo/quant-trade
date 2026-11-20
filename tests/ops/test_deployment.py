@@ -3157,3 +3157,17 @@ def test_restart_calendar_probe_has_budgets_and_runs_outside_checkout(monkeypatc
     assert not e._restart_window(tmp_path)['restart_allowed']
     assert seen[0][0][:6]==['nice','-n','10','ionice','-c3','timeout']
     assert seen[0][1]['cwd']==Path('/data/qsys/var-deployments')
+
+
+def test_frontend_paths_belong_to_web_components() -> None:
+    # 新前端源码随 web 组件发布；测试部署由可信 main 的 planner 规划，未分类路径会失败（#662）。
+    manifest = DeploymentManifest.load(MANIFEST)
+    prod = manifest.plan(
+        ["frontend/src/main.tsx", "frontend/package-lock.json"],
+        environment="production",
+    )
+    assert set(prod.components) == {"linux-web"}
+    assert prod.unknown_paths == ()
+    test = manifest.plan(["frontend/src/main.tsx"], environment="test")
+    assert set(test.components) == {"test-runtime"}
+    assert test.unknown_paths == ()
