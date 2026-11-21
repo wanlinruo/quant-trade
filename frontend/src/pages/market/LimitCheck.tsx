@@ -1,5 +1,7 @@
 import type { LimitCheck as LC, LimitPair } from '../../api/market'
 import { usePalette } from '../../theme/context'
+import { dateTime } from '../../shell/time'
+import { Num } from '../../ui/Num'
 
 const pair = (v: LimitPair | null) => (v ? `${v.up ?? '未知'} / ${v.down ?? '未知'}` : '无')
 
@@ -9,8 +11,21 @@ export function LimitCheck({ check }: { check: LC | null }) {
   if (!check) return <div style={{ color: p.muted }}>今日核对结果未发布</div>
   const muted = { color: p.muted, fontSize: 12 }
   const split = check.missing_outside_roster !== null
+  const tile = (k: string, v: number | null | undefined, color: string, sub?: string) => (
+    <div data-testid="limit-tile" style={{ border: `1px solid ${p.border}`, borderRadius: 3, padding: '8px 10px', minWidth: 0 }}>
+      <div style={{ fontSize: 12, color: p.muted }}>{k}</div>
+      <Num size={18} weight={600} color={v ? color : p.head}>{v == null ? '—' : v.toLocaleString('zh-CN')}</Num>
+      {sub && <div style={{ fontSize: 11, color: p.muted }}>{sub}</div>}
+    </div>)
   return (
     <div style={{ fontSize: 13, lineHeight: 1.8 }}>
+      {/* 原型：四个统计格在上，明细在下 */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, marginBottom: 8, lineHeight: 1.4 }}>
+        {tile('已核对', check.checked, p.head, check.checked_at ? `核对于 ${dateTime(check.checked_at).slice(5, 16)}` : check.session)}
+        {tile('价格不一致', check.mismatched, p.bad, '以 Tushare 直取为准')}
+        {tile('QMT 未覆盖', check.missing_in_qmt, p.warn, '覆盖缺口，不是价格异常')}
+        {tile('无涨跌幅限制', check.unbounded_equivalent, p.muted, '两边语义一致，不计入不一致')}
+      </div>
       <div style={{ color: check.mismatched ? p.bad : p.text }}>
         {check.session} 核对 {check.checked ?? '未知'} 只：价格不一致 {check.mismatched ?? '未知'} 只
       </div>

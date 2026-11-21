@@ -1,5 +1,5 @@
-import { useMemo } from 'react'
-import { Alert, Collapse, Table } from 'antd'
+import { useMemo, useState } from 'react'
+import { Alert, Checkbox, Collapse, Segmented, Table } from 'antd'
 import { backtestFileUrl, type BacktestDetail } from '../../api/research'
 import { EChart, type EChartsOption } from '../../page/EChart'
 import { Hero } from '../../page/Hero'
@@ -10,6 +10,7 @@ import { usePalette } from '../../theme/context'
 import { MonthlyHeatmap } from './MonthlyHeatmap'
 
 type Report = Extract<BacktestDetail, { report: true }>
+type Range = 'm1' | 'm3' | 'y1' | 'all'
 const ENTRY: Record<string, string> = { continuous: '连续竞价判定（09:31 分钟线）', open: '开盘价成交（原口径）' }
 const num = (v: unknown, digits: number) => (typeof v === 'number' && Number.isFinite(v) ? v.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits }) : String(v ?? ''))
 const known = (v: number | null) => (v === null ? '未知' : v)
@@ -19,27 +20,53 @@ export function BacktestReport({ d }: { d: Report }) {
   const s = d.summary
   const last = d.series.at(-1)
   const entry = String(d.job?.config?.entry_fill ?? s.entry_fill ?? '')
-  const ret = useMemo<EChartsOption>(() => ({
-    grid: { left: 52, right: 16, top: 28, bottom: 24 }, legend: { top: 0, textStyle: { color: p.muted } },
-    xAxis: { type: 'category', data: d.series.map((x) => x.date) },
-    yAxis: { type: 'value', axisLabel: { formatter: (v: number) => `${(v * 100).toFixed(0)}%` }, splitLine: { lineStyle: { color: p.grid } } },
-    series: [
-      { name: '策略', type: 'line', showSymbol: false, connectNulls: false, data: d.series.map((x) => [x.date, x.strategy]), lineStyle: { color: p.line } },
-      { name: '基准', type: 'line', showSymbol: false, connectNulls: false, data: d.series.map((x) => [x.date, x.benchmark]), lineStyle: { color: p.muted } },
-      { name: '超额', type: 'line', showSymbol: false, connectNulls: false, data: d.series.map((x) => [x.date, x.excess]), lineStyle: { color: p.accent } },
-    ],
-  }), [d.series, p])
-  const dd = useMemo<EChartsOption>(() => ({
-    grid: { left: 52, right: 16, top: 12, bottom: 24 },
-    xAxis: { type: 'category', data: d.series.map((x) => x.date) },
-    yAxis: { type: 'value', max: 0, axisLabel: { formatter: (v: number) => `${(v * 100).toFixed(0)}%` }, splitLine: { lineStyle: { color: p.grid } } },
-    series: [{
-      name: '回撤', type: 'line', showSymbol: false, connectNulls: false, areaStyle: { color: `${p.down}33` }, lineStyle: { color: p.down },
-      data: d.series.map((x) => [x.date, x.drawdown]),
-      markArea: { silent: true, itemStyle: { color: `${p.warn}22` },
-        data: d.episodes.map((e) => [{ xAxis: e.peak_date }, { xAxis: e.recovery_date ?? d.series.at(-1)?.date }]) },
-    }],
-  }), [d.series, d.episodes, p])
+  const [range, setRange] = useState<Range>('all')
+  const [showBench, setShowBench] = useState(true)
+  /** 原型：收益与回撤上下两个子图共用横轴与缩放；基准缺某日时断开，不连线。 */
+  const chart = useMemo<EChartsOption>(() => {
+    const dates = d.series.map((x) => x.date)
+    const lastDate = dates.at(-1)
+    const back = { m1: 1, m3: 3, y1: 12 }[range as Exclude<Range, 'all'>]
+    let start = dates[0]
+    if (back && lastDate) {
+      const t = new Date(`${lastDate}T00:00:00Z`); t.setUTCMonth(t.getUTCMonth() - back)
+      const cut = t.toISOString().slice(0, 10)
+      start = dates.find((x) => x >= cut) ?? dates[0]
+    }
+    const pctAxis = (v: number) => `${(v * 100).toFixed(0)}%`
+    return {
+      animation: false,
+      legend: { top: 0, textStyle: { color: p.muted }, data: showBench ? ['策略', '基准', '超额', '回撤'] : ['策略', '回撤'] },
+      tooltip: { trigger: 'axis', axisPointer: { type: 'cross', link: [{ xAxisIndex: 'all' }] }, valueFormatter: (v) => typeof v === 'number' ? signedPct(v) ?? '—' : '—' },
+      axisPointer: { link: [{ xAxisIndex: 'all' }] },
+      grid: [{ left: 56, right: 16, top: 28, height: '52%' }, { left: 56, right: 16, top: '68%', height: '18%' }],
+      xAxis: [
+        { type: 'category', data: dates, gridIndex: 0, axisLabel: { show: false }, axisLine: { lineStyle: { color: p.border } } },
+        { type: 'category', data: dates, gridIndex: 1, axisLabel: { color: p.muted }, axisLine: { lineStyle: { color: p.border } } },
+      ],
+      yAxis: [
+        { type: 'value', gridIndex: 0, axisLabel: { color: p.muted, formatter: pctAxis }, splitLine: { lineStyle: { color: p.grid } } },
+        { type: 'value', gridIndex: 1, max: 0, axisLabel: { color: p.muted, formatter: pctAxis }, splitLine: { lineStyle: { color: p.grid } } },
+      ],
+      dataZoom: [
+        { type: 'inside', xAxisIndex: [0, 1], startValue: start, endValue: lastDate },
+        { type: 'slider', xAxisIndex: [0, 1], startValue: start, endValue: lastDate, height: 16, bottom: 4, borderColor: p.border, textStyle: { color: p.muted } },
+      ],
+      series: [
+        { name: '策略', type: 'line', showSymbol: false, connectNulls: false, data: d.series.map((x) => [x.date, x.strategy]), lineStyle: { color: p.line }, itemStyle: { color: p.line } },
+        ...(showBench ? [
+          { name: '基准', type: 'line' as const, showSymbol: false, connectNulls: false, data: d.series.map((x) => [x.date, x.benchmark]), lineStyle: { color: p.muted, type: 'dashed' as const }, itemStyle: { color: p.muted } },
+          { name: '超额', type: 'line' as const, showSymbol: false, connectNulls: false, data: d.series.map((x) => [x.date, x.excess]), lineStyle: { color: p.accent }, itemStyle: { color: p.accent } },
+        ] : []),
+        {
+          name: '回撤', type: 'line', xAxisIndex: 1, yAxisIndex: 1, showSymbol: false, connectNulls: false, areaStyle: { color: `${p.down}33` }, lineStyle: { color: p.down }, itemStyle: { color: p.down },
+          data: d.series.map((x) => [x.date, x.drawdown]),
+          markArea: { silent: true, itemStyle: { color: `${p.warn}22` },
+            data: d.episodes.map((e) => [{ xAxis: e.peak_date }, { xAxis: e.recovery_date ?? d.series.at(-1)?.date }]) },
+        },
+      ],
+    }
+  }, [d.series, d.episodes, p, range, showBench])
 
   return (
     <>
@@ -58,11 +85,12 @@ export function BacktestReport({ d }: { d: Report }) {
           { k: '买 / 卖', v: `${known(s.buys)} / ${known(s.sells)}` },
           { k: '被拒', v: known(s.rejects) },
         ]} />
-      <Panel title="跑赢基准了吗？" info="累计收益相对首日；基准缺某日时该日断开，不连线。">
-        <EChart option={ret} height={260} />
-      </Panel>
-      <Panel title="回撤有多深？" info="回撤 = 净值 ÷ 此前最高 − 1。阴影为最深 5 段：从前高到收复前高（未收复则到最后一天）。">
-        <EChart option={dd} height={180} />
+      <Panel title="跑赢基准了吗？" info="上：累计收益相对首日（基准缺某日时该日断开，不连线）；下：回撤 = 净值 ÷ 此前最高 − 1，阴影为最深 5 段。两图共用横轴，可拖动下方滑条或滚轮缩放。"
+        extra={<div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Checkbox checked={showBench} onChange={(e) => setShowBench(e.target.checked)}>显示基准</Checkbox>
+          <Segmented size="small" value={range} onChange={(v) => setRange(v as Range)} options={[{ label: '1月', value: 'm1' }, { label: '3月', value: 'm3' }, { label: '1年', value: 'y1' }, { label: '全部', value: 'all' }]} />
+        </div>}>
+        <EChart option={chart} height={420} />
         {d.episodes.length === 0 ? <div style={{ color: p.muted }}>没有回撤</div> : (
           <Table size="small" pagination={false} rowKey="peak_date" dataSource={d.episodes} scroll={{ x: 'max-content' }}
             columns={[
@@ -72,6 +100,7 @@ export function BacktestReport({ d }: { d: Report }) {
             ]} />
         )}
       </Panel>
+      <div className="qs-grid-12">
       <Panel title="每月表现如何？" info="来自 monthly_returns.csv。">
         {d.monthly.length === 0 ? <div style={{ color: p.muted }}>没有月度数据</div> : <MonthlyHeatmap months={d.monthly} />}
       </Panel>
@@ -94,6 +123,7 @@ export function BacktestReport({ d }: { d: Report }) {
           ) }]} />
         )}
       </Panel>
+      </div>
       <Panel title="报告文件">
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px', fontSize: 12 }}>
           {d.files.map((f) => <a key={f.name} href={backtestFileUrl(d.name, f.name)}>{f.name}</a>)}

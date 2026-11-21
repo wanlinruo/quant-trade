@@ -1,4 +1,5 @@
 import { act, render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import type { EChartsOption } from '../../page/EChart'
 import { ThemeProvider } from '../../shell/ThemeProvider'
 import { BacktestPage as Page } from './BacktestPage'
@@ -62,7 +63,8 @@ test('trade times are formatted to seconds without timezone reinterpretation', a
 test('underwater chart marks the 5 deepest episodes and lists them', async () => {
   mockApi()
   render(<BacktestPage />)
-  const panel = (await screen.findByText('回撤有多深？')).closest('section')!
+  // 原型：收益与回撤同一张图（上下子图），最深回撤段的表在同一面板
+  const panel = (await screen.findByText('跑赢基准了吗？')).closest('section')!
   const dd = series().find((s) => s.name === '回撤')!
   expect(dd.markArea!.data).toHaveLength(1)
   const row = within(panel).getByText('2024-01-03').closest('tr')!
@@ -131,4 +133,18 @@ test('null summary shows unknown, not zero', async () => {
   expect(kpi('被拒')).toContain('未知')
   expect(kpi('买 / 卖')).toContain('未知 / 未知')
   expect(kpi('被拒')).not.toContain('0')
+})
+
+test('benchmark toggle hides benchmark and excess, range buttons narrow the zoom window', async () => {
+  mockApi()
+  render(<BacktestPage />)
+  await screen.findByText('跑赢基准了吗？')
+  const latest = () => options.filter((o) => ((o.series as S[]) ?? []).some((x) => x.name === '回撤')).at(-1)!
+  expect(((latest().series as S[]).map((x) => x.name))).toEqual(['策略', '基准', '超额', '回撤'])
+  await userEvent.click(screen.getByLabelText('显示基准'))
+  expect(((latest().series as S[]).map((x) => x.name))).toEqual(['策略', '回撤'])
+  const zoom = () => (latest().dataZoom as { startValue: string }[])[0].startValue
+  const all = zoom()
+  await userEvent.click(screen.getByText('1月'))
+  expect(zoom() >= all).toBe(true)
 })

@@ -110,7 +110,9 @@ export function AlertsPage() {
   return (
     <>
       {hero}
-      <Panel title="近 14 日告警趋势">{option ? <EChart option={option} height={200} /> : <div style={{ color: p.muted }}>没有趋势数据</div>}</Panel>
+      {/* 原型：趋势在左、列表在右；窄屏改单栏 */}
+      <div className="qs-grid-12">
+      <Panel title="告警是在变多还是变少？" info="近 14 日按天堆叠：严重、警告、通知；已恢复单独一列。同一问题自动合并计数。">{option ? <EChart option={option} height={240} /> : <div style={{ color: p.muted }}>没有趋势数据</div>}</Panel>
       <Panel title="有哪些事要我处理？">
         <Tabs size="small" activeKey={current.key} onChange={setTab}
           items={TABS.map((t) => ({ key: t.key, label: `${t.label}（${c.items.filter(t.pick).length}）` }))} />
@@ -128,6 +130,7 @@ export function AlertsPage() {
             ]} />
         </div>
       </Panel>
+      </div>
       {picked && <AlertDrawer item={picked} rows={rows} day={day} onPick={setPicked} onClose={() => setPicked(null)} onAcked={poll.refresh} />}
     </>
   )

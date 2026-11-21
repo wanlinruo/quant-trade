@@ -12,7 +12,8 @@ import type { Status } from '../../theme/status'
 import { CompareView, EFFECT_INFO } from './CompareView'
 import { DayControls } from './DayControls'
 import { LadderMatrix } from './LadderMatrix'
-import { SentimentBar } from './SentimentBar'
+import { HeightLadder } from './HeightLadder'
+import { sentimentKpis, sentimentLine } from './SentimentBar'
 import { ConceptCurves, Timeline } from './SidePanels'
 import './board.css'
 import { StockDrawer } from './StockDrawer'
@@ -51,7 +52,9 @@ export function BoardPage() {
   const rawDay = q.get('day'), rawAt = q.get('at')
   const day = rawDay && DAY.test(rawDay) ? rawDay : null
   const at = day && rawAt && TIME.test(rawAt) ? rawAt : null
-  const view = q.get('view') === 'compare' ? 'compare' : 'ladder'
+  // 默认“高度梯队”（原型）；题材梯队与昨日涨停今日表现为切换项
+  const rawView = q.get('view')
+  const view = rawView === 'compare' ? 'compare' : rawView === 'concept' ? 'ladder' : 'height'
 
   const fetcher = useCallback((signal: AbortSignal) => fetchBoard(day, at, signal), [day, at])
   // 刷新节奏取决于最近一次数据：只有盘中实时视图续取；休市时 60 秒（§10）
@@ -85,16 +88,18 @@ export function BoardPage() {
         {d.available && <div style={{ flex: '1 1 320px', minWidth: 0 }}><DayControls data={d} urlDay={day} urlAt={at} /></div>}
         <div style={{ marginLeft: 'auto', marginBottom: 8 }}>{fresh}</div>
       </div>
-      <Hero {...h} />
-      {d.available && d.sentiment && <SentimentBar s={d.sentiment} provisional={!!d.provisional} />}
+      <Hero {...h} subtitle={d.available && d.sentiment ? <>{h.subtitle}<br />{sentimentLine(d.sentiment, !!d.provisional)}</> : h.subtitle}
+        kpis={d.available && d.sentiment ? sentimentKpis(d.sentiment, d.columns, !!d.provisional) : undefined} />
       {d.available && (
         <div className="qs-board-grid">
           <div style={{ minWidth: 0 }}>
-            <Panel title={view === 'ladder' ? '谁在封板、梯队如何？' : '昨日涨停今天怎样？'}
-              info={view === 'ladder' ? '列为同花顺概念（每只票只归一列：当日涨停家数最多的概念），行为今日连板高度；≈ 为 15 秒快照观测值。' : EFFECT_INFO}
-              extra={<Segmented size="small" style={{ maxWidth: '100%', overflowX: 'auto' }} value={view} onChange={(v) => setSearch({ view: v === 'ladder' ? null : String(v) })}
-                options={[{ value: 'ladder', label: '题材梯队' }, { value: 'compare', label: '昨日涨停今日表现' }]} />}>
-              {view === 'ladder' ? <LadderMatrix data={d} onPick={setPicked} /> : <CompareView data={d} onPick={setPicked} />}
+            <Panel title={view === 'compare' ? '昨日涨停今天怎样？' : '谁在封板、梯队如何？'}
+              info={view === 'height' ? '按今日连板高度分列，最高板在左、首板在右；炸板、触板、冲板单列在最后；列内按首封时间排序。≈ 为 15 秒快照观测值。'
+                : view === 'ladder' ? '列为同花顺概念（每只票只归一列：当日涨停家数最多的概念），行为今日连板高度；≈ 为 15 秒快照观测值。' : EFFECT_INFO}
+              extra={<Segmented size="small" style={{ maxWidth: '100%', overflowX: 'auto' }} value={view}
+                onChange={(v) => setSearch({ view: v === 'height' ? null : v === 'ladder' ? 'concept' : String(v) })}
+                options={[{ value: 'height', label: '高度梯队' }, { value: 'ladder', label: '题材梯队' }, { value: 'compare', label: '昨日涨停今日表现' }]} />}>
+              {view === 'height' ? <HeightLadder data={d} onPick={setPicked} /> : view === 'ladder' ? <LadderMatrix data={d} onPick={setPicked} /> : <CompareView data={d} onPick={setPicked} />}
             </Panel>
           </div>
           <div style={{ minWidth: 0 }}>

@@ -14,16 +14,40 @@ import { EChart, type EChartsOption } from '../../page/EChart'
 export function RunsPage() {
   const p = usePalette(); const day = useTradingDay(); const [copied, setCopied] = useState(false)
   const { data, error } = useFetch((s) => fetchRuns(day, s), [day])
-  const timing = useMemo<EChartsOption | null>(() => data?.enabled && data.runs.length ? ({
-    grid: { left: 100, right: 24, top: 18, bottom: 34 }, tooltip: { trigger: 'item' },
-    xAxis: { type: 'time', axisLabel: { formatter: (v: number) => axisHm(v) }, splitLine: { lineStyle: { color: p.grid } } },
-    yAxis: { type: 'category', data: data.runs.map((x) => x.phase) },
-    series: [
-      { name: '计划', type: 'scatter', symbolSize: 9, itemStyle: { color: 'transparent', borderColor: p.muted, borderWidth: 2 }, data: data.runs.flatMap((x, i) => x.scheduled_at ? [[new Date(x.scheduled_at).getTime(), i, x.event_key]] : []) },
-      { name: '实际', type: 'scatter', symbolSize: 9, itemStyle: { color: p.info }, data: data.runs.flatMap((x, i) => x.started_at ? [[new Date(x.started_at).getTime(), i, x.event_key]] : []) },
-      ...data.runs.flatMap((x, i) => x.scheduled_at && x.started_at ? [{ name: x.event_key, type: 'line' as const, showSymbol: false, lineStyle: { color: x.status === 'failed' ? p.bad : p.muted, width: 1 }, data: [[new Date(x.scheduled_at).getTime(), i], [new Date(x.started_at).getTime(), i]] }] : []),
-    ],
-  }) : null, [data, p])
+  /** 计划（空心）与实际（实心）分开画，连线表示偏差；午间休市以阴影带标出；没有计划时刻不补点。 */
+  const timing = useMemo<EChartsOption | null>(() => {
+    if (!data?.enabled || !data.runs.length || !data.day.selected) return null
+    const day = data.day.selected
+    const at = (hm: string) => Date.parse(`${day}T${hm}:00+08:00`)
+    const t = (iso: string | null) => iso ? Date.parse(iso) : null
+    const times = data.runs.flatMap((x) => [t(x.scheduled_at), t(x.started_at)]).filter((x): x is number => x != null)
+    const lo = Math.min(at('09:00'), ...times); const hi = Math.max(at('15:30'), ...times)
+    return {
+      animation: false,
+      grid: { left: 130, right: 24, top: 26, bottom: 30 },
+      legend: { top: 0, right: 0, textStyle: { color: p.muted }, data: ['计划', '实际'] },
+      tooltip: { trigger: 'item', formatter: (raw: unknown) => {
+        const x = raw as { seriesName: string; data: [number, number, string] }
+        const r = data.runs[x.data[1]]
+        if (!r) return ''
+        const lag = r.scheduled_at && r.started_at ? (Date.parse(r.started_at) - Date.parse(r.scheduled_at)) / 1000 : null
+        return `<b>${label(r.phase)}</b> <span style="opacity:.6">${r.event_key}</span><br/>计划 ${r.scheduled_at ? dateTime(r.scheduled_at).slice(11) : '未记录'}<br/>实际 ${r.started_at ? dateTime(r.started_at).slice(11) : '未记录'}${lag == null ? '' : `（${lag >= 0 ? '+' : ''}${lag.toFixed(1)}s）`}<br/>耗时 ${(r.duration_ms / 1000).toFixed(1)}s · ${r.status === 'failed' ? '失败' : '完成'}`
+      } },
+      xAxis: { type: 'time', min: lo, max: hi, axisLabel: { color: p.muted, formatter: (v: number) => axisHm(v) }, axisLine: { lineStyle: { color: p.border } }, splitLine: { lineStyle: { color: p.grid } } },
+      yAxis: { type: 'category', inverse: true, data: data.runs.map((x) => `${dateTime(x.scheduled_at ?? x.started_at).slice(11, 16)} ${label(x.phase)}`),
+        axisLabel: { color: p.text }, axisTick: { show: false }, axisLine: { show: false } },
+      series: [
+        { name: '计划', type: 'scatter', symbolSize: 10, itemStyle: { color: 'transparent', borderColor: p.muted, borderWidth: 2 },
+          data: data.runs.flatMap((x, i) => x.scheduled_at ? [[Date.parse(x.scheduled_at), i, x.event_key]] : []),
+          markArea: { silent: true, itemStyle: { color: p.panel2 }, label: { color: p.muted, fontSize: 11, position: 'insideTop' },
+            data: [[{ name: '午间休市', xAxis: at('11:30') }, { xAxis: at('13:00') }]] } },
+        { name: '实际', type: 'scatter', symbolSize: 10, z: 3,
+          data: data.runs.flatMap((x, i) => x.started_at ? [{ value: [Date.parse(x.started_at), i, x.event_key], itemStyle: { color: x.status === 'failed' ? p.bad : p.info } }] : []) },
+        ...data.runs.flatMap((x, i) => x.scheduled_at && x.started_at ? [{ name: x.event_key, type: 'line' as const, silent: true, showSymbol: false,
+          lineStyle: { color: x.status === 'failed' ? p.bad : p.muted, width: 1 }, data: [[Date.parse(x.scheduled_at), i], [Date.parse(x.started_at), i]] }] : []),
+      ],
+    }
+  }, [data, p])
   if (!data) return <Hero s={error ? 'bad' : 'running'} title={error ?? '加载中'} />
   if (!data.enabled) return <Result status="info" title="运行记录未启用" />
   const d = data; const failed = d.runs.filter((r) => r.status === 'failed').length

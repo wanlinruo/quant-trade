@@ -1,4 +1,4 @@
-import { Button, Input, Modal, Result, Select, Table, Tabs } from 'antd'
+import { Button, Input, Modal, Result, Table, Tabs } from 'antd'
 import { useMemo, useState } from 'react'
 import { fetchPaper, fetchPaperAccounts, paperAction, paperNotify, type PaperAccountDetail } from '../../api/trading'
 import { EChart, type EChartsOption } from '../../page/EChart'
@@ -10,6 +10,8 @@ import { setSearch, useSearch } from '../../shell/router'
 import { dateTime } from '../../shell/time'
 import { usePalette } from '../../theme/context'
 import { Missing } from '../../ui/Missing'
+import { Num } from '../../ui/Num'
+import { StatusTag } from '../../ui/StatusTag'
 import { dayNote, label, yuan } from './common'
 
 const text = (v: unknown) => v == null || v === '' ? '—' : String(v)
@@ -32,13 +34,11 @@ function Detail({ id, day, rev, refresh }: { id: string; day: string | null; rev
   const save = async () => { setBusy(true); try { await paperNotify(id, hook.trim()); setHook(''); refresh() } finally { setBusy(false) } }
   const table = (rows: Record<string, unknown>[], keys: [string, string][]) => <Table size="small" pagination={{ pageSize: 30, hideOnSinglePage: true }} rowKey={(_, i) => String(i)} dataSource={rows} scroll={{ x: 'max-content' }} columns={keys.map(([k, name]) => ({ title: name, dataIndex: k, render: k.endsWith('_at') || k === 'at' || k === 'created_at' || k === 'filled_at' ? dateTime : (v: unknown) => text(v) }))} />
   return <>
-    <Hero s={st[0] as 'ok' | 'bad' | 'warn' | 'closed'} statusText={st[1]} title={d.name} subtitle={`${d.strategy_name} · 版本 ${d.version_id} · ${dayNote(d.day)}`}
-      kpis={[{ k: '总资产', v: yuan(d.total_value) ?? <Missing why="无权益快照" /> }, { k: '累计收益', v: pct(d.return_ratio) ?? <Missing why="无权益快照" /> }, { k: '最大回撤', v: pct(d.max_drawdown_ratio) ?? <Missing why="无权益快照" /> }, { k: '持仓数', v: d.position_count ?? '—' }]} />
     {d.error && <div role="alert" style={{ border: `1px solid ${p.bad}`, padding: 10, color: p.bad, marginBottom: 12 }}><b>运行异常：</b>{d.error}<br /><small>{d.missing.recovery}</small></div>}
-    <Panel title="账户控制" info="只影响模拟账户；错误恢复不在页面直接改库。" extra={<div style={{ display: 'flex', gap: 6 }}>{['scheduled', 'running', 'error'].includes(d.status) && <Button size="small" onClick={() => act('pause')}>暂停</Button>}{d.status === 'paused' && <Button size="small" onClick={() => act('resume')}>恢复</Button>}{d.status !== 'ended' && <Button size="small" danger onClick={() => act('end')}>结束</Button>}</div>}>
+    <Panel title={<span><StatusTag s={st[0] as 'ok' | 'bad' | 'warn' | 'closed'} text={st[1]} /> {d.name} <span style={{ color: p.muted, fontWeight: 400, fontSize: 12 }}>{d.strategy_name} · 版本 {d.version_id.slice(0, 12)} · {dayNote(d.day)}</span></span>} info="只影响模拟账户；错误恢复不在页面直接改库。" extra={<div style={{ display: 'flex', gap: 6 }}>{['scheduled', 'running', 'error'].includes(d.status) && <Button size="small" onClick={() => act('pause')}>暂停</Button>}{d.status === 'paused' && <Button size="small" onClick={() => act('resume')}>恢复</Button>}{d.status !== 'ended' && <Button size="small" danger onClick={() => act('end')}>结束</Button>}</div>}>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}><Input.Password aria-label="通知 Webhook" value={hook} onChange={(e) => setHook(e.target.value)} placeholder={d.notify_mask ?? 'https://…；留空关闭'} style={{ maxWidth: 480 }} /><Button loading={busy} onClick={save}>保存通知</Button><span style={{ color: p.muted }}>{d.notify_mask ? `已配置 ${d.notify_mask}` : '未配置'}（原值不回显）</span></div>
     </Panel>
-    <Panel title="模拟收益与来源回测如何变化？" info="两条线使用各自初始资金；缺来源回测点保持断开。">{option ? <EChart option={option} height={220} /> : <Missing why="没有权益记录" />}</Panel>
+    <Panel title={`${d.name}：净值和来源回测对得上吗？`} info="两条线使用各自初始资金；缺来源回测点保持断开。">{option ? <EChart option={option} height={220} /> : <Missing why="没有权益记录" />}</Panel>
     <Panel title="账户明细">
       <Tabs items={[
         { key: 'positions', label: `持仓 ${d.positions.length}`, children: table(d.positions, [['symbol', '标的'], ['total_qty', '总量'], ['available_qty', '可卖'], ['last_price', '最新价'], ['updated_at', '更新']]) },
@@ -54,16 +54,40 @@ function Detail({ id, day, rev, refresh }: { id: string; day: string | null; rev
 }
 
 export function PaperPage() {
+  const p = usePalette()
   const q = useSearch(); const id = q.get('id'); const rawDay = q.get('day'); const day = rawDay && /^\d{4}-\d{2}-\d{2}$/.test(rawDay) ? rawDay : null; const [rev, setRev] = useState(0)
   const { data, error } = useFetch(fetchPaperAccounts, [rev])
   if (!data) return <Hero s={error ? 'bad' : 'running'} title={error ?? '加载中'} />
   if (!data.enabled) return <Result status="info" title="模拟账户未启用" />
   const selected = id && data.accounts.some((a) => a.id === id) ? id : data.accounts[0]?.id
   if (!selected) return <Hero s="idle" title="还没有模拟账户" />
+  const rows = data.accounts
+  const n = (k: string) => rows.filter((a) => a.status === k).length
+  const live = n('running') + n('scheduled')
+  const returns = rows.map((a) => a.return_ratio).filter((x): x is number => x != null)
   return <>
-    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 8 }}>
-      <Select aria-label="模拟账户" size="small" value={selected} style={{ minWidth: 210 }} options={data.accounts.map((a) => ({ value: a.id, label: `${a.name} · ${status(a.status)[1]}` }))} onChange={(v) => setSearch({ id: v })} />
-    </div>
+    <Hero s={n('error') ? 'bad' : live ? 'ok' : 'idle'} title={`${rows.length} 个模拟账户 · ${live} 个运行中${n('error') ? ` · ${n('error')} 个出错` : ''}`}
+      subtitle="模拟账户只影响自身，不影响实盘；收益与回撤取各账户最新权益快照。"
+      kpis={[
+        { k: '运行中', v: live, color: live ? p.ok : undefined, sub: n('scheduled') ? `含待生效 ${n('scheduled')}` : undefined },
+        { k: '已暂停 / 已结束', v: `${n('paused')} / ${n('ended')}` },
+        { k: '出错', v: n('error'), color: n('error') ? p.bad : p.ok },
+        { k: '最好 / 最差收益', v: returns.length ? `${pct(Math.max(...returns))} / ${pct(Math.min(...returns))}` : '—', sub: returns.length < rows.length ? `${rows.length - returns.length} 个无权益快照` : undefined },
+      ]} />
+    <Panel title="账户列表" info="点击一行查看该账户明细。">
+      <Table size="small" rowKey="id" pagination={false} dataSource={rows} scroll={{ x: 'max-content' }}
+        onRow={(r) => ({ onClick: () => setSearch({ id: r.id }), style: { cursor: 'pointer', background: r.id === selected ? p.panel2 : undefined } })}
+        columns={[
+          { title: '账户', dataIndex: 'name', render: (v, r) => <span style={{ color: p.head }}>{r.id === selected ? '▸ ' : ''}{v}</span> },
+          { title: '策略 / 版本', key: 'sv', render: (_, r) => <span style={{ color: p.muted }}>{r.strategy_name} · {r.version_id.slice(0, 8)}</span> },
+          { title: '状态', dataIndex: 'status', render: (v: string) => { const x = status(v); return <StatusTag s={x[0] as 'ok' | 'bad' | 'warn' | 'closed'} text={x[1]} /> } },
+          { title: '收益', dataIndex: 'return_ratio', align: 'right', render: (v) => v == null ? <Missing why="无权益快照" /> : <Num color={v > 0 ? p.up : v < 0 ? p.down : undefined}>{pct(v)}</Num> },
+          { title: '最大回撤', dataIndex: 'max_drawdown_ratio', align: 'right', render: (v) => v == null ? <Missing why="无权益快照" /> : <Num>{pct(v)}</Num> },
+          { title: '总资产', dataIndex: 'total_value', align: 'right', render: (v) => v == null ? <Missing why="无权益快照" /> : <Num>{yuan(v)}</Num> },
+          { title: '持仓', dataIndex: 'position_count', align: 'right', render: (v) => v ?? '—' },
+          { title: '启用日', dataIndex: 'activation_date', render: (v) => <Num color={p.muted}>{v}</Num> },
+        ]} />
+    </Panel>
     <Detail id={selected} day={day} rev={rev} refresh={() => setRev((x) => x + 1)} />
   </>
 }

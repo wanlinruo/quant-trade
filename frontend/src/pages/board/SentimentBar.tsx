@@ -1,4 +1,6 @@
 import type { BoardSentiment as Sentiment } from '../../api/board'
+import type { BoardColumn } from '../../api/contracts.gen'
+import type { Kpi } from '../../page/Hero'
 import { pct } from '../../page/format'
 import { usePalette } from '../../theme/context'
 import { Num } from '../../ui/Num'
@@ -29,4 +31,21 @@ export function SentimentBar({ s, provisional }: { s: Sentiment; provisional: bo
       ))}
     </div>
   )
+}
+
+/** 原型：晋级率、封板率、最强题材放进 Hero KPI；其余计数并入副行。“今 / 昨”任一侧未知整格写未知。 */
+export function sentimentKpis(s: Sentiment, columns: BoardColumn[], provisional: boolean): Kpi[] {
+  const tag = provisional ? ' · 暂计' : ''
+  const top = [...columns].filter((c) => c.sealed_count != null).sort((a, b) => (b.sealed_count ?? 0) - (a.sealed_count ?? 0))[0]
+  return [
+    { k: `晋级 1→2${tag}`, v: <span data-testid="promote-1_2">{pair(s.promote_1_2)}</span>, sub: '今日晋级 / 昨日首板' },
+    { k: `晋级 2→3${tag}`, v: <span data-testid="promote-2_3">{pair(s.promote_2_3)}</span> },
+    { k: `晋级 3→4+${tag}`, v: <span data-testid="promote-3_up">{pair(s.promote_3_up)}</span> },
+    { k: `封板率${tag}`, v: pct(s.seal_rate) ?? '未知', sub: `触板 ${s.touched} · 炸板 ${s.broken}` },
+    { k: '最强题材', v: top ? top.name : '未知', sub: top ? `涨停 ${top.sealed_count} 家` : '题材维度不可用' },
+  ]
+}
+
+export function sentimentLine(s: Sentiment, provisional: boolean): string {
+  return [`冲板中 ≥7% ${s.rushing}`, `缺涨停价 ${s.missing_limit}`, `封板未知 ${s.seal_unknown}（到价但买卖一档量为 0，不计入封板与晋级）`, provisional ? '盘中暂计' : null].filter(Boolean).join(' · ')
 }

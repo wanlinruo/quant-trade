@@ -32,7 +32,7 @@ function MetricDetail({ id }: { id: string }) {
   return (
     <>
       <Panel title={`指标「${r.id}」的口径`} info="来源：直取 = 数据源接口原值；纯派生 = 直取列的确定性算术（数据铁律）。">
-        <Descriptions size="small" bordered column={{ xs: 1, md: 2 }} items={[
+        <Descriptions size="small" bordered column={1} items={[
           { key: 'm', label: '含义', children: r.meaning ?? '含义待查' }, { key: 'k', label: '来源', children: `${KIND[r.kind] ?? r.kind} · ${lineageText(r)}` },
           { key: 'v', label: '有效性', children: r.validity }, { key: 's', label: '状态', children: `${METRIC_STATUS[r.status].label}${r.issues.length ? ` · ${r.issues.join('；')}` : ''}` },
           { key: 'f', label: '公式', children: d.formula ? <span style={{ fontFamily: MONO }}>{d.formula}</span> : '—' },
@@ -74,6 +74,8 @@ export function CatalogPage() {
   if (!d) return <Hero s="running" title="加载中" />
   if (!d.enabled) return <Result status="info" title="指标字典未启用" />
   const s = d.summary
+  // 原型：默认展开第一个指标（列表已按问题优先排序）；URL 指定 id 时以 URL 为准
+  const shown = id ?? d.rows[0]?.id ?? null
   return (
     <>
       <Hero s={!s.latest_run ? 'idle' : s.pending ? 'warn' : 'ok'} title={`${s.total} 个指标 · ${s.pending ? `${s.pending} 个待验证` : '全部已覆盖验证'}`}
@@ -82,6 +84,7 @@ export function CatalogPage() {
           ...Object.entries(s.by_kind).map(([k, n]) => ({ k: KIND[k] ?? k, v: n })),
           { k: '已覆盖 / 待验证', v: `${s.covered} / ${s.pending}`, color: s.pending ? p.warn : p.ok },
         ]} />
+      <div className="qs-master-detail">
       <Panel title="有哪些指标？" extra={
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, maxWidth: '100%', minWidth: 0 }}>
           <Select size="small" allowClear showSearch placeholder="按表" style={{ width: 180, maxWidth: '100%' }} value={f.dataset ?? undefined} onChange={(v) => setSearch({ dataset: v ?? null })} options={d.datasets.map((x) => ({ value: x, label: x }))} />
@@ -89,16 +92,19 @@ export function CatalogPage() {
           <Select size="small" allowClear placeholder="按状态" style={{ width: 120, maxWidth: '100%' }} value={f.status ?? undefined} onChange={(v) => setSearch({ status: v ?? null })} options={METRIC_STATUS_ORDER.map((v) => ({ value: v, label: METRIC_STATUS[v].label }))} />
         </div>}>
         <Table size="small" rowKey="id" dataSource={d.rows} scroll={{ x: 'max-content' }} pagination={{ pageSize: 30, hideOnSinglePage: true, showSizeChanger: false }}
-          rowClassName={(r) => (r.id === id ? 'ant-table-row-selected' : '')}
+          rowClassName={(r) => (r.id === shown ? 'ant-table-row-selected' : '')}
           onRow={(r) => ({ onClick: () => setSearch({ id: r.id }), style: { cursor: 'pointer' } })}
           columns={[
-            { title: '指标', dataIndex: 'id', render: (v: string) => <span style={{ fontFamily: MONO }}>{v}</span> },
-            { title: '含义', dataIndex: 'meaning', render: (v: string | null) => v ?? '含义待查' }, { title: '来源', key: 'k', render: (_, r) => `${KIND[r.kind] ?? r.kind} · ${lineageText(r)}` },
-            { title: '状态', dataIndex: 'status', render: (v: MetricRow['status']) => { const pill = METRIC_STATUS[v].pill; return <span style={{ color: pill === 'bad' ? p.bad : pill === 'warn' ? p.warn : pill === 'ok' ? p.ok : p.muted }}>{METRIC_STATUS[v].label}</span> } },
-            { title: '问题', dataIndex: 'issues', render: (v: string[]) => v.join('；') },
+            // 主从布局：列表只留指标、类型、状态；含义与问题在右侧详情
+            { title: '指标', dataIndex: 'id', render: (v: string, r) => <div style={{ minWidth: 0 }}>
+              <div style={{ fontFamily: MONO, color: p.head, fontSize: 12 }}>{v}</div>
+              <div style={{ color: p.muted, fontSize: 11, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.meaning ?? undefined}>{r.meaning ?? '含义待查'}</div></div> },
+            { title: '类型', key: 'k', render: (_, r) => <span title={lineageText(r)} style={{ fontSize: 12 }}>{KIND[r.kind] ?? r.kind}</span> },
+            { title: '状态', dataIndex: 'status', render: (v: MetricRow['status'], r) => { const pill = METRIC_STATUS[v].pill; return <span title={r.issues.join('；') || undefined} style={{ color: pill === 'bad' ? p.bad : pill === 'warn' ? p.warn : pill === 'ok' ? p.ok : p.muted, whiteSpace: 'nowrap' }}>{METRIC_STATUS[v].label}{r.issues.length ? ' ⓘ' : ''}</span> } },
           ]} />
       </Panel>
-      {id && <MetricDetail key={id} id={id} />}
+      <div className="qs-detail-pane" style={{ minWidth: 0 }}>{shown ? <MetricDetail key={shown} id={shown} /> : null}</div>
+      </div>
     </>
   )
 }
