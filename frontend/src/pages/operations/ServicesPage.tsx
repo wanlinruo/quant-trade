@@ -89,7 +89,12 @@ export function ServicesPage() {
     const timers = data.services.filter((x) => x.kind === 'timer')
     const residents = data.services.filter((x) => x.kind !== 'timer')
     const byRun = new Map(data.runs.map((x) => [x.run_id, x]))
-    const selectedRuns = data.runs.filter((x) => (x.session ?? x.started_at.slice(0, 10)) === data.selected_day)
+    const runDay = (x: ServiceRunItem) => x.session ?? x.started_at.slice(0, 10)
+    const selectedRuns = data.runs.filter((x) => runDay(x) === data.selected_day)
+    // 所选日没有完整运行（如周末）时，回退到此前最近一个有真实起止时间的运行日；只用 ServiceRun 事实，不推算交易日。
+    const completeRuns = data.runs.filter((x) => x.finished_at)
+    const timelineDay = completeRuns.map(runDay).filter((d) => d <= data.selected_day).sort().at(-1) ?? null
+    const timelineRuns = timelineDay == null ? [] : completeRuns.filter((x) => runDay(x) === timelineDay)
     const selectedCells = timers.map((row) => row.cells.find((x) => x.day === data.selected_day)).filter((x) => x !== undefined)
     const knownDue = selectedCells.filter((x) => x.state !== 'not_due' && x.state !== 'unknown')
     const finished = knownDue.filter((x) => !['running', 'paused'].includes(x.state)).length
@@ -101,9 +106,9 @@ export function ServicesPage() {
     const completed = observed.filter((x) => completedStates.has(x.state)).length
     const residentKnown = residents.filter((x) => !['unknown', 'not_due'].includes(x.latest_state))
     const residentOk = residentKnown.filter((x) => ['ok', 'fixed'].includes(x.latest_state)).length
-    const timed = selectedRuns.filter((x) => x.finished_at).map((x) => ({ run: x, seconds: (Date.parse(x.finished_at!) - Date.parse(x.started_at)) / 1000 })).filter((x) => x.seconds >= 0)
+    const timed = timelineRuns.map((x) => ({ run: x, seconds: (Date.parse(x.finished_at!) - Date.parse(x.started_at)) / 1000 })).filter((x) => x.seconds >= 0)
     const slowest = timed.sort((a, b) => b.seconds - a.seconds)[0]
-    return { timers, residents, byRun, selectedRuns, knownDue, finished, failed, warning, unknown,
+    return { timers, residents, byRun, selectedRuns, timelineDay, timelineRuns, knownDue, finished, failed, warning, unknown,
       ratio: observed.length ? completed / observed.length : null, residentKnown, residentOk, slowest }
   }, [data])
 
@@ -129,7 +134,7 @@ export function ServicesPage() {
 
   const timeline = useMemo<EChartsOption | null>(() => {
     if (!model) return null
-    const complete = model.selectedRuns.filter((x) => x.finished_at)
+    const complete = model.timelineRuns
     if (!complete.length) return null
     const minStart = Math.min(...complete.map((x) => Date.parse(x.started_at)))
     const maxEnd = Math.max(...complete.map((x) => Date.parse(x.finished_at!)))
@@ -198,18 +203,18 @@ export function ServicesPage() {
         { k: '当日计划进度', v: model.knownDue.length ? `${model.finished} / ${model.knownDue.length}` : '无可判定项', sub: model.unknown ? `${model.unknown} 项未知` : undefined },
         { k: '30 日成功率', v: model.ratio == null ? '缺失' : pct(model.ratio), sub: '只统计有运行事实的任务日' },
         { k: '常驻进程', v: `${model.residentOk} / ${model.residents.length}`, sub: `${model.residentKnown.length} 项有可信观测` },
-        { k: '最慢任务', v: model.slowest ? duration(model.slowest.seconds) : '缺失', sub: model.slowest?.run.service_id },
+        { k: '最慢任务', v: model.slowest ? duration(model.slowest.seconds) : '缺失', sub: model.slowest ? `${model.slowest.run.service_id} · ${model.timelineDay}` : undefined },
       ]} />
-    <Panel title={view === 'matrix' ? '近 30 天每个定时任务都跑成功了吗？' : `${data.selected_day} 的时间花在哪？`}
-      info={view === 'matrix' ? '每列一天、每行一个定时任务；未到期/休市只在有明确证据时标记，缺证据保持未知。点击有运行记录的格子查看步骤。' : '只画 ServiceRun 中具有真实开始和结束时间的区间；没有结束时间的运行不补值。'}
-      extra={<Segmented size="small" value={view} onChange={(v) => setView(v as View)} options={[{ label: '30 日矩阵', value: 'matrix' }, { label: '所选日时间线', value: 'timeline' }]} />}>
+    <Panel title={view === 'matrix' ? '近 30 天每个定时任务都跑成功了吗？' : model.timelineDay ? `${model.timelineDay} 的任务时间线` : '最近任务时间线'}
+      info={view === 'matrix' ? '每列一天、每行一个定时任务；未到期/休市只在有明确证据时标记，缺证据保持未知。点击有运行记录的格子查看步骤。' : '只画 ServiceRun 中具有真实开始和结束时间的区间；没有结束时间的运行不补值。所选日没有完整运行时（如周末），显示此前最近一个有完整运行的日期。'}
+      extra={<Segmented size="small" value={view} onChange={(v) => setView(v as View)} options={[{ label: '30 日矩阵', value: 'matrix' }, { label: '任务时间线', value: 'timeline' }]} />}>
       {view === 'matrix' ? <div data-testid="service-matrix" style={{ minWidth: 900 }}>
         <EChart option={matrix!} height={Math.max(310, model.timers.length * 30 + 70)} onClick={openChartRun} />
         <div aria-label="矩阵状态图例" style={{ display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 11, color: p.muted }}>
           {STATE_ORDER.map((state) => <span key={state}><i style={{ display: 'inline-block', width: 10, height: 10, marginRight: 4, background: color(p, state) }} />{STATE_LABEL[state]}</span>)}
         </div>
-      </div> : timeline ? <div data-testid="service-timeline" style={{ minWidth: 760 }}><EChart option={timeline} height={Math.max(220, model.selectedRuns.length * 30 + 55)} onClick={openChartRun} /></div>
-        : <Missing why="所选日没有具备真实开始、结束时间的 ServiceRun" />}
+      </div> : timeline ? <div data-testid="service-timeline" style={{ minWidth: 760 }}><EChart option={timeline} height={Math.max(220, model.timelineRuns.length * 30 + 55)} onClick={openChartRun} /></div>
+        : <Missing why="所选日及此前没有具备真实开始、结束时间的 ServiceRun" />}
     </Panel>
     <Panel title="服务清单" info="定时任务与常驻/守护进程分层展示；展开行查看最近 5 次运行。耗时趋势取近 20 次完整运行。">
       <Typography.Title level={5}>定时任务</Typography.Title>

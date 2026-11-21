@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from qsys.ops.health import DOWN, UNKNOWN, HealthObservation, HealthStore, SHANGHAI
+from qsys.ops.health import DOWN, HEALTHY, UNKNOWN, HealthObservation, HealthStore, SHANGHAI
 from qsys.ops.services import SERVICES
 from qsys.webapp.queries.operations import OperationsQuery
 from qsys.webapp.routes.operations import operations_router
@@ -65,6 +65,31 @@ def test_services_marks_only_proven_not_due_days(tmp_path):
     assert monthly.cells[-1].state == "not_due"
     assert monthly.cells[11].day == date(2026, 11, 1)
     assert monthly.cells[11].state == "unknown"
+
+
+def test_timer_schedule_ready_observation_is_not_run_evidence(tmp_path):
+    """#700: 周末 timer 只有“已就绪”观测、没有 ServiceRun 时不能画成正常或计入成功率。"""
+    store = HealthStore(tmp_path / "health.sqlite3")
+    saturday = datetime(2026, 11, 21, 12, tzinfo=TZ)
+    base = HealthObservation(
+        service_id="", observed_at_utc=saturday.astimezone(timezone.utc), phase="evening",
+        expected_interval_s=30, warn_after_s=60, down_after_s=90,
+        state=HEALTHY, process_state=HEALTHY, business_state=UNKNOWN,
+        reason_code="schedule_ready", source="systemd", last_beat_at_utc=None, details={},
+    )
+    for sid in ("tushare-sync", "auction-study", "paper"):
+        store.record(replace(base, service_id=sid))
+    store.record(replace(base, service_id="catalog-verify", state=DOWN, process_state=DOWN,
+                         reason_code="scheduled_task_failed"))
+    got = OperationsQuery(tmp_path / "runs", health_store=store,
+                          now=lambda: saturday).services(date(2026, 11, 21))
+    rows = {x.id: x for x in got.services}
+    daily = rows["tushare-sync"].cells[-1]
+    assert (daily.state, daily.run_id, daily.detail) == ("unknown", None, "schedule_ready")
+    assert rows["tushare-sync"].completion_ratio_30d is None
+    assert rows["auction-study"].cells[-1].state == "not_due"
+    assert rows["catalog-verify"].cells[-1].state == "failed"
+    assert rows["paper"].cells[-1].state == "ok"
 
 
 def test_later_skip_does_not_hide_same_day_failure(tmp_path):

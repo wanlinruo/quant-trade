@@ -160,7 +160,10 @@ class OperationsQuery:
                         successful += 1
                 run_id = str(chosen.get("run_id"))
                 detail = chosen.get("note") or chosen.get("error") or None
-            elif h:
+            elif h and not (spec.kind == "timer"
+                            and self._health_state(h[-1].get("state")) == "ok"):
+                # 健康观测的失败/警告是真实证据；timer 的“就绪”观测只说明调度器在线，
+                # 不是运行事实，不能画成正常或计入成功率（#700）。
                 observed += 1
                 state = self._health_state(h[-1].get("state"))
                 if state == "not_due":
@@ -170,6 +173,8 @@ class OperationsQuery:
                 detail = str(h[-1].get("reason_code", "")) or None
             elif spec.cadence == "monthly" and day.day != spec.run_day:
                 state = "not_due"
+            elif h:
+                detail = str(h[-1].get("reason_code", "")) or None
             cells.append(ServiceCell(day=day, state=state, run_id=run_id, detail=detail))
         latest_run = next((run for run in reversed(runs)
                            if effective_status(run, now=now.replace(tzinfo=None)) != "skipped"),

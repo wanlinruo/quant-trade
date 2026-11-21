@@ -181,7 +181,7 @@ for (const width of [390, 1280, 1600]) {
         await expect(page.getByTestId('service-matrix').locator('canvas').first()).toBeVisible()
         await expect(page.getByText('定时任务', { exact: true })).toBeVisible()
         await expect(page.getByText('常驻进程与守护任务', { exact: true })).toBeVisible()
-        await page.getByText('所选日时间线', { exact: true }).click()
+        await page.getByText('任务时间线', { exact: true }).click()
         await expect(page.getByTestId('service-timeline').locator('canvas').first()).toBeVisible()
       }
       await noOverflow(page)
