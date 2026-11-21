@@ -12,21 +12,32 @@ import { axisHm, dateTime } from '../../shell/time'
 import { usePalette } from '../../theme/context'
 import type { Palette } from '../../theme/palette'
 import { Missing } from '../../ui/Missing'
+import { Num } from '../../ui/Num'
 import { stateTag, type OpsState } from './common'
 
 type View = 'matrix' | 'timeline'
 
-const STATE_ORDER: OpsState[] = ['ok', 'warning', 'failed', 'fixed', 'running', 'not_due', 'paused', 'unknown']
+const STATE_ORDER: OpsState[] = ['ok', 'warning', 'failed', 'fixed', 'running', 'unknown', 'not_due', 'paused']
+/** 图例与提示用“符号 + 文字”，不单靠颜色（设计文档 §7）。 */
 const STATE_LABEL: Record<OpsState, string> = {
-  ok: '正常', warning: '警告', failed: '失败', fixed: '已修复', running: '运行中',
-  not_due: '未到期 / 休市', paused: '已暂停', unknown: '未知',
+  ok: '● 正常', warning: '▲ 警告', failed: '✕ 失败', fixed: '◆ 已修复', running: '◐ 运行中',
+  unknown: '○ 未知', not_due: '— 休市 / 未到期', paused: '— 已暂停',
 }
+const LEGEND: OpsState[] = ['ok', 'warning', 'failed', 'fixed', 'running', 'unknown', 'not_due']
+/** 矩阵只放每日任务；月度任务一个月只跑一次，放进矩阵整行空着，只在服务清单展示。 */
+const MATRIX_CADENCE = new Set(['daily', 'everyday'])
+const KIND_LABEL: Record<string, string> = { resident: '常驻', supervisor: '守护' }
+const CADENCE_LABEL: Record<string, string> = { monthly: '月度', monthly_closed: '月度', everyday: '含休市日' }
 
 function color(p: Palette, state: OpsState) {
   return state === 'ok' ? p.ok : state === 'warning' ? p.warn : state === 'failed' ? p.bad
     : state === 'fixed' ? p.info : state === 'running' ? p.running
-      : state === 'unknown' ? p.muted : p.idle
+      // 未知是“缺证据”，用中性暗灰；休市/未到期贴近背景，让交易日的结果一眼可见
+      : state === 'unknown' ? p.idle : p.panel2
 }
+
+const md = (day: string) => day.slice(5)
+const clip = (text: string, n = 48) => text.length > n ? `${text.slice(0, n)}…` : text
 
 function duration(value: number | null) {
   if (value == null) return null
@@ -86,48 +97,75 @@ export function ServicesPage() {
 
   const model = useMemo(() => {
     if (!data?.enabled) return null
+    const selected = data.selected_day
+    const tradingDays = data.trading_days ?? {}
+    const hasCalendar = Object.keys(tradingDays).length > 0
+    const selectedClosed = tradingDays[selected] === false
     const timers = data.services.filter((x) => x.kind === 'timer')
     const residents = data.services.filter((x) => x.kind !== 'timer')
+    const matrixRows = timers.filter((x) => MATRIX_CADENCE.has(x.cadence))
     const byRun = new Map(data.runs.map((x) => [x.run_id, x]))
     const runDay = (x: ServiceRunItem) => x.session ?? x.started_at.slice(0, 10)
-    const selectedRuns = data.runs.filter((x) => runDay(x) === data.selected_day)
-    // 所选日没有完整运行（如周末）时，回退到此前最近一个有真实起止时间的运行日；只用 ServiceRun 事实，不推算交易日。
     const completeRuns = data.runs.filter((x) => x.finished_at)
-    const timelineDay = completeRuns.map(runDay).filter((d) => d <= data.selected_day).sort().at(-1) ?? null
+    // 时间线：所选日是交易日且有完整运行就画当日，否则画上一交易日。交易日只认 trade_cal 直取；
+    // 拿不到日历时退回“此前最近一个有完整运行的日期”，不按星期推算。
+    const candidates = [...new Set(completeRuns.map(runDay))].filter((d) => d <= selected
+      && (!hasCalendar || tradingDays[d] === true)).sort()
+    const timelineDay = candidates.at(-1) ?? null
     const timelineRuns = timelineDay == null ? [] : completeRuns.filter((x) => runDay(x) === timelineDay)
-    const selectedCells = timers.map((row) => row.cells.find((x) => x.day === data.selected_day)).filter((x) => x !== undefined)
+    const timelineLabel = timelineDay === selected ? '当日时间线' : hasCalendar ? '上一交易日时间线' : '最近运行日时间线'
+
+    const cellOf = (row: ServiceRow, d: string) => row.cells.find((x) => x.day === d)
+    const selectedCells = timers.map((row) => cellOf(row, selected)).filter((x) => x !== undefined)
     const knownDue = selectedCells.filter((x) => x.state !== 'not_due' && x.state !== 'unknown')
     const finished = knownDue.filter((x) => !['running', 'paused'].includes(x.state)).length
-    const failed = selectedCells.filter((x) => x.state === 'failed').length
-    const warning = selectedCells.filter((x) => x.state === 'warning').length
+    const running = knownDue.filter((x) => x.state === 'running').length
     const unknown = selectedCells.filter((x) => x.state === 'unknown').length
-    const completedStates = new Set<OpsState>(['ok', 'warning', 'fixed'])
-    const observed = timers.flatMap((x) => x.cells).filter((x) => !['not_due', 'unknown'].includes(x.state))
-    const completed = observed.filter((x) => completedStates.has(x.state)).length
+
+    // 结论日：所选日有可判定的到期任务就说所选日；否则（休市或尚未运行）说上一交易日。
+    const conclusionDay = !selectedClosed && knownDue.length ? selected : (timelineDay ?? selected)
+    const conclusionLabel = conclusionDay === selected ? (selectedClosed ? `${selected} 休市日` : selected) : `上一交易日 ${md(conclusionDay)}`
+    const verdict = timers.map((row) => ({ row, cell: cellOf(row, conclusionDay) }))
+      .filter((x): x is { row: ServiceRow; cell: NonNullable<typeof x.cell> } => x.cell !== undefined)
+    const failedRows = verdict.filter((x) => x.cell.state === 'failed')
+    const warnRows = verdict.filter((x) => x.cell.state === 'warning')
+    const okRows = verdict.filter((x) => ['ok', 'fixed'].includes(x.cell.state))
+    const pendingRows = verdict.filter((x) => ['running', 'unknown'].includes(x.cell.state))
+
+    const allCells = timers.flatMap((x) => x.cells)
+    const observed = allCells.filter((x) => !['not_due', 'unknown', 'paused', 'running'].includes(x.state))
+    const completed = observed.filter((x) => ['ok', 'warning', 'fixed'].includes(x.state)).length
+    const failedDays = allCells.filter((x) => x.state === 'failed').length
+    const fixedDays = allCells.filter((x) => x.state === 'fixed').length
     const residentKnown = residents.filter((x) => !['unknown', 'not_due'].includes(x.latest_state))
     const residentOk = residentKnown.filter((x) => ['ok', 'fixed'].includes(x.latest_state)).length
+    const residentBad = residentKnown.filter((x) => x.latest_state === 'failed').length
     const timed = timelineRuns.map((x) => ({ run: x, seconds: (Date.parse(x.finished_at!) - Date.parse(x.started_at)) / 1000 })).filter((x) => x.seconds >= 0)
     const slowest = timed.sort((a, b) => b.seconds - a.seconds)[0]
-    return { timers, residents, byRun, selectedRuns, timelineDay, timelineRuns, knownDue, finished, failed, warning, unknown,
-      ratio: observed.length ? completed / observed.length : null, residentKnown, residentOk, slowest }
+    return { selected, selectedClosed, hasCalendar, timers, residents, matrixRows, byRun, timelineDay, timelineRuns, timelineLabel,
+      knownDue, finished, running, unknown, conclusionDay, conclusionLabel, failedRows, warnRows, okRows, pendingRows,
+      ratio: observed.length ? completed / observed.length : null, failedDays, fixedDays,
+      residentKnown, residentOk, residentBad, slowest }
   }, [data])
 
   const matrix = useMemo<EChartsOption | null>(() => {
     if (!data?.enabled || !model) return null
-    const cells = model.timers.flatMap((row, y) => row.cells.map((cell, x) => ({
+    const cells = model.matrixRows.flatMap((row, y) => row.cells.map((cell, x) => ({
       value: [x, y, STATE_ORDER.indexOf(cell.state)], state: cell.state, runId: cell.run_id,
-      service: row.name, day: cell.day,
-      itemStyle: { color: color(p, cell.state), borderColor: p.panel, borderWidth: 2 },
+      service: row.name, day: cell.day, detail: cell.detail,
+      itemStyle: { color: color(p, cell.state), borderColor: p.panel, borderWidth: 2, borderRadius: 2 },
     })))
     return {
       animation: false,
-      grid: { left: 150, right: 12, top: 8, bottom: 42 },
+      grid: { left: 150, right: 10, top: 4, bottom: 24 },
       tooltip: { trigger: 'item', formatter: (raw: unknown) => {
         const item = (raw as { data: typeof cells[number] }).data
-        return `<b>${item.service}</b><br/>${item.day} · ${STATE_LABEL[item.state]}`
+        const extra = item.detail ? `<br/><span style="opacity:.75">${clip(item.detail, 80)}</span>` : ''
+        const hint = item.runId ? '<br/><span style="opacity:.7">点击打开这次运行</span>' : ''
+        return `<b>${item.service}</b>　${item.day}<br/>${STATE_LABEL[item.state]}${extra}${hint}`
       } },
-      xAxis: { type: 'category', data: data.days.map((x) => x.slice(5)), axisLabel: { color: p.muted, interval: 2, rotate: 35 }, axisLine: { lineStyle: { color: p.border } }, splitArea: { show: false } },
-      yAxis: { type: 'category', inverse: true, data: model.timers.map((x) => x.name), axisLabel: { color: p.text, width: 138, overflow: 'truncate' }, axisLine: { lineStyle: { color: p.border } } },
+      xAxis: { type: 'category', data: data.days.map(md), axisLabel: { color: p.muted, interval: 2 }, axisTick: { show: false }, axisLine: { lineStyle: { color: p.border } }, splitArea: { show: false } },
+      yAxis: { type: 'category', inverse: true, data: model.matrixRows.map((x) => x.name), axisLabel: { color: p.text, fontSize: 12, width: 138, overflow: 'truncate' }, axisTick: { show: false }, axisLine: { show: false } },
       series: [{ type: 'heatmap', data: cells, emphasis: { itemStyle: { borderColor: p.head, borderWidth: 1 } } }],
     }
   }, [data, model, p])
@@ -174,53 +212,99 @@ export function ServicesPage() {
     const picked = item?.run ?? (item?.runId ? model.byRun.get(item.runId) : undefined)
     if (picked) setRun(picked)
   }
-  const table = (rows: ServiceRow[]) => <Table size="small" rowKey="id" pagination={false} dataSource={rows} scroll={{ x: 1080 }}
+
+  const m = model
+  const heroState = m.failedRows.length ? 'bad' : m.warnRows.length ? 'warn' : m.okRows.length ? 'ok' : 'idle'
+  const heroTitle = m.failedRows.length ? `${m.conclusionLabel} ${m.failedRows.length} 项失败`
+    : m.warnRows.length ? `${m.conclusionLabel} ${m.warnRows.length} 项警告`
+      : m.okRows.length ? `${m.conclusionLabel} 定时任务全部正常` : `${m.conclusionLabel} 还没有可判定的任务结论`
+  // 原因优先取这次运行里出问题的步骤（ServiceRun 的 note/error 常为空），取不到只列任务名，不编造
+  const reason = (x: { row: ServiceRow; cell: { run_id: string | null; detail: string | null } }) => {
+    const item = x.cell.run_id ? m.byRun.get(x.cell.run_id) : undefined
+    const step = item?.steps.find((st) => ['failed', 'warning', 'interrupted'].includes(st.state))
+    const why = step ? `${step.name}${step.detail ? `：${step.detail}` : ''}` : x.cell.detail
+    return why ? `${x.row.name}（${clip(why, 40)}）` : x.row.name
+  }
+  const issueRows = [...m.failedRows, ...m.warnRows]
+  // 只有一项问题时副行带原因；多项只列任务名保持一行，完整原因在悬停提示与运行抽屉
+  const names = (list: typeof issueRows) => issueRows.length === 1 ? list.map(reason).join('、') : list.map((x) => x.row.name).join('、')
+  const heroSub = [
+    m.selectedClosed && m.conclusionDay !== m.selected ? `${md(m.selected)} 休市` : null,
+    m.failedRows.length ? `失败：${names(m.failedRows)}` : null,
+    m.warnRows.length ? `警告：${names(m.warnRows)}` : null,
+    !m.failedRows.length && !m.warnRows.length && m.okRows.length
+      ? `${m.okRows.length} 项已完成${m.pendingRows.length ? `，${m.pendingRows.length} 项未知或运行中` : ''}` : null,
+  ].filter(Boolean).join(' · ') || '历史失败保留，后续成功显示已修复；网页不提供补跑'
+  const heroInfo = [...issueRows.map(reason), '历史失败保留，后续成功显示已修复；网页不提供补跑。'].join('\n')
+
+  const todayKpi = m.selectedClosed
+    ? { k: '所选日', v: '休市', sub: `休市日任务 ${m.finished} / ${m.knownDue.length}${m.timelineDay ? ` · 上一交易日 ${md(m.timelineDay)}` : ''}`, color: p.muted }
+    : { k: '所选日计划', v: m.knownDue.length ? `${m.finished} / ${m.knownDue.length}` : '—',
+      sub: [m.running ? `${m.running} 运行中` : null, m.unknown ? `${m.unknown} 项未知` : null].filter(Boolean).join(' · ') || undefined }
+  const kpis = [
+    todayKpi,
+    { k: '近 30 日成功率', v: m.ratio == null ? '缺失' : pct(m.ratio), color: m.ratio == null ? p.muted : m.ratio >= 0.95 ? p.ok : p.warn,
+      sub: `未修复失败 ${m.failedDays} 次 · 已补跑 ${m.fixedDays} 次` },
+    { k: '常驻进程', v: `${m.residentOk} / ${m.residents.length}`, color: m.residentBad ? p.bad : m.residentOk === m.residents.length ? p.ok : p.warn,
+      sub: m.residentOk === m.residents.length ? '全部正常' : `${m.residents.length - m.residentKnown.length} 项无可信观测${m.residentBad ? ` · ${m.residentBad} 项异常` : ''}` },
+    { k: '最慢任务', v: m.slowest ? duration(m.slowest.seconds) : '缺失',
+      sub: m.slowest ? `${m.slowest.run.service_id} · ${md(m.timelineDay!)}` : undefined },
+  ]
+
+  const rows = [...m.timers, ...m.residents]
+  // 常驻/守护进程不按次运行，耗时列不适用：显示“—”而不是告警色的“缺失”
+  const notApplicable = <span title="常驻进程不按次运行，不适用" style={{ color: p.muted }}>—</span>
+  const ratioOf = (r: ServiceRow) => r.completion_ratio_30d ?? -1
+  const kindNote = (r: ServiceRow) => KIND_LABEL[r.kind] ?? CADENCE_LABEL[r.cadence]
+  const table = <Table size="small" rowKey="id" pagination={false} dataSource={rows} scroll={{ x: 1080 }}
     expandable={{ expandedRowRender: (row) => row.recent_runs.length ? <Table size="small" pagination={false} rowKey="run_id" dataSource={row.recent_runs}
       onRow={(item) => ({ onClick: () => setRun(item), style: { cursor: 'pointer' } })} columns={[
-        { title: '运行日', dataIndex: 'session', render: (v, item) => v ?? item.started_at.slice(0, 10) },
-        { title: '结果', dataIndex: 'state' }, { title: '开始', dataIndex: 'started_at', render: dateTime },
-        { title: '耗时', key: 'duration', render: (_, item) => item.finished_at ? duration((Date.parse(item.finished_at) - Date.parse(item.started_at)) / 1000) : '运行中' },
+        { title: '运行日', dataIndex: 'session', width: 110, render: (v, item) => <Num>{v ?? item.started_at.slice(0, 10)}</Num> },
+        { title: '结果', dataIndex: 'state', width: 110, render: (v) => stateTag(runState(v)) },
+        { title: '开始', dataIndex: 'started_at', width: 170, render: (v) => <Num color={p.muted}>{dateTime(v)}</Num> },
+        { title: '耗时', key: 'duration', width: 100, align: 'right', render: (_, item) => <Num>{item.finished_at ? duration((Date.parse(item.finished_at) - Date.parse(item.started_at)) / 1000) : '运行中'}</Num> },
         { title: '说明', key: 'detail', render: (_, item) => item.error || item.note || '—' },
+        { title: '', key: 'open', width: 110, render: () => <a>打开这次运行</a> },
       ]} /> : <Missing why="近 30 日没有运行记录" /> }}
     columns={[
-      { title: '服务', dataIndex: 'name', fixed: 'left', width: 180 },
-      { title: '计划', dataIndex: 'schedule', width: 210 },
-      { title: '最近结果', dataIndex: 'latest_state', width: 150, render: (v, row) => <span>{stateTag(v)} <small>{row.latest_at ? dateTime(row.latest_at) : ''}</small></span> },
-      { title: '30 日完成率', dataIndex: 'completion_ratio_30d', width: 120, render: (v) => v == null ? <Missing why="没有可判定运行" /> : pct(v) },
-      { title: '耗时趋势', width: 145, render: (_, row) => <DurationSpark row={row} /> },
-      { title: '平均耗时', dataIndex: 'average_duration_seconds', width: 100, render: (v) => duration(v) ?? <Missing why="没有完整区间" /> },
+      { title: '服务', dataIndex: 'name', fixed: 'left', width: 220, sorter: (a, b) => a.name.localeCompare(b.name, 'zh'),
+        render: (v, row) => <span><span style={{ color: p.head }}>{v}</span>{kindNote(row) && <span style={{ marginLeft: 6, fontSize: 11, color: p.muted }}>{kindNote(row)}</span>}</span> },
+      { title: '计划', dataIndex: 'schedule', width: 220, render: (v) => <span style={{ color: p.muted, fontSize: 12 }}>{v}</span> },
+      { title: '最近结果', dataIndex: 'latest_state', width: 170,
+        filters: (['ok', 'warning', 'failed', 'fixed', 'unknown'] as OpsState[]).map((x) => ({ text: STATE_LABEL[x].slice(2), value: x })),
+        onFilter: (v, row) => row.latest_state === v,
+        render: (v, row) => <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>{stateTag(v)}{row.latest_at && <Num size={11} color={p.muted}>{dateTime(row.latest_at).slice(5, 16)}</Num>}</span> },
+      { title: '30 日完成率', dataIndex: 'completion_ratio_30d', width: 116, align: 'right', sorter: (a, b) => ratioOf(a) - ratioOf(b),
+        render: (v) => v == null ? <Missing why="没有可判定运行" /> : <Num color={v < 0.9 ? p.warn : p.text}>{pct(v)}</Num> },
+      { title: '耗时趋势', width: 145, render: (_, row) => row.kind === 'timer' ? <span style={{ color: p.line }}><DurationSpark row={row} /></span> : notApplicable },
+      { title: '平均耗时', dataIndex: 'average_duration_seconds', width: 100, align: 'right',
+        sorter: (a, b) => (a.average_duration_seconds ?? -1) - (b.average_duration_seconds ?? -1),
+        render: (v, row) => row.kind !== 'timer' ? notApplicable : v == null ? <Missing why="没有完整区间" /> : <Num>{duration(v)}</Num> },
       { title: '版本', dataIndex: 'version', width: 100, render: (v) => v ? <Tag style={{ fontFamily: 'monospace' }}>{v.slice(0, 7)}</Tag> : <Missing why={data.missing.versions ?? '没有可信版本记录'} /> },
     ]} />
 
-  const heroState = model.failed ? 'bad' : model.warning || model.unknown ? 'warn' : 'ok'
-  const heroTitle = model.failed ? `${data.selected_day} 有 ${model.failed} 个任务失败`
-    : model.warning ? `${data.selected_day} 有 ${model.warning} 个任务警告`
-      : model.knownDue.length ? `${data.selected_day} 已记录任务运行结论` : `${data.selected_day} 没有可判定的到期任务`
+  const legend = <div aria-label="矩阵状态图例" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: '4px 12px', fontSize: 11, color: p.muted, marginBottom: 4 }}>
+    {LEGEND.map((state) => <span key={state} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      <i style={{ display: 'inline-block', width: 12, height: 10, borderRadius: 2, background: color(p, state), outline: state === 'not_due' ? `1px solid ${p.border}` : undefined }} />{STATE_LABEL[state]}
+    </span>)}
+  </div>
+
   return <>
-    <Hero s={heroState} title={heroTitle}
-      subtitle={`历史失败保留；后续成功显示已修复。${model.unknown ? ` ${model.unknown} 个任务的到期性或结果未知。` : ''} 网页不提供补跑。`}
-      kpis={[
-        { k: '当日计划进度', v: model.knownDue.length ? `${model.finished} / ${model.knownDue.length}` : '无可判定项', sub: model.unknown ? `${model.unknown} 项未知` : undefined },
-        { k: '30 日成功率', v: model.ratio == null ? '缺失' : pct(model.ratio), sub: '只统计有运行事实的任务日' },
-        { k: '常驻进程', v: `${model.residentOk} / ${model.residents.length}`, sub: `${model.residentKnown.length} 项有可信观测` },
-        { k: '最慢任务', v: model.slowest ? duration(model.slowest.seconds) : '缺失', sub: model.slowest ? `${model.slowest.run.service_id} · ${model.timelineDay}` : undefined },
-      ]} />
-    <Panel title={view === 'matrix' ? '近 30 天每个定时任务都跑成功了吗？' : model.timelineDay ? `${model.timelineDay} 的任务时间线` : '最近任务时间线'}
-      info={view === 'matrix' ? '每列一天、每行一个定时任务；未到期/休市只在有明确证据时标记，缺证据保持未知。点击有运行记录的格子查看步骤。' : '只画 ServiceRun 中具有真实开始和结束时间的区间；没有结束时间的运行不补值。所选日没有完整运行时（如周末），显示此前最近一个有完整运行的日期。'}
-      extra={<Segmented size="small" value={view} onChange={(v) => setView(v as View)} options={[{ label: '30 日矩阵', value: 'matrix' }, { label: '任务时间线', value: 'timeline' }]} />}>
+    <Hero s={heroState} title={heroTitle} subtitle={<span title={heroInfo}>{heroSub}</span>} kpis={kpis} />
+    <Panel title={view === 'matrix' ? '近 30 天每个任务都跑成功了吗？' : m.timelineDay ? `${m.timelineDay} 的时间花在哪？` : '时间花在哪？'}
+      info={view === 'matrix'
+        ? '每列一天、每行一个每日任务；休市依据 warehouse 交易日历（Tushare trade_cal 直取），缺日历的日期保持未知。月度任务见服务清单。点击有运行记录的格子查看步骤与证据。'
+        : '只画 ServiceRun 中具有真实开始和结束时间的区间，没有结束时间的运行不补值。所选日是交易日且已有完整运行时画当日，否则画上一交易日。'}
+      extra={<Segmented size="small" value={view} onChange={(v) => setView(v as View)} options={[{ label: '30 日矩阵', value: 'matrix' }, { label: m.timelineLabel, value: 'timeline' }]} />}>
       {view === 'matrix' ? <div data-testid="service-matrix" style={{ minWidth: 900 }}>
-        <EChart option={matrix!} height={Math.max(310, model.timers.length * 30 + 70)} onClick={openChartRun} />
-        <div aria-label="矩阵状态图例" style={{ display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 11, color: p.muted }}>
-          {STATE_ORDER.map((state) => <span key={state}><i style={{ display: 'inline-block', width: 10, height: 10, marginRight: 4, background: color(p, state) }} />{STATE_LABEL[state]}</span>)}
-        </div>
-      </div> : timeline ? <div data-testid="service-timeline" style={{ minWidth: 760 }}><EChart option={timeline} height={Math.max(220, model.timelineRuns.length * 30 + 55)} onClick={openChartRun} /></div>
+        {legend}
+        <EChart option={matrix!} height={Math.max(220, m.matrixRows.length * 36 + 32)} onClick={openChartRun} />
+        {data.missing.calendar && <div style={{ fontSize: 11, color: p.muted }}><Missing why={data.missing.calendar} /> 交易日历</div>}
+      </div> : timeline ? <div data-testid="service-timeline" style={{ minWidth: 760 }}><EChart option={timeline} height={Math.max(220, m.timelineRuns.length * 30 + 55)} onClick={openChartRun} /></div>
         : <Missing why="所选日及此前没有具备真实开始、结束时间的 ServiceRun" />}
     </Panel>
-    <Panel title="服务清单" info="定时任务与常驻/守护进程分层展示；展开行查看最近 5 次运行。耗时趋势取近 20 次完整运行。">
-      <Typography.Title level={5}>定时任务</Typography.Title>
-      {table(model.timers)}
-      <Typography.Title level={5} style={{ marginTop: 20 }}>常驻进程与守护任务</Typography.Title>
-      {table(model.residents)}
+    <Panel flush title="服务清单" info="定时任务在前、常驻/守护进程在后；列头可排序，“最近结果”可筛选。展开行查看最近 5 次运行，点击打开步骤与证据。耗时趋势为近 20 次完整运行。">
+      {table}
     </Panel>
     {run && <RunDrawer run={run} runs={data.runs} onPick={setRun} onClose={() => setRun(null)} />}
   </>

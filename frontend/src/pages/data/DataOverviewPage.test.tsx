@@ -35,8 +35,8 @@ test('overview hero counts statuses and never shows gray as ok', async () => {
   const n = dfx.overview().tables.length
   expect(title.textContent).toContain(`核心表 ${n} 张`)
   expect(title.textContent).toContain(`灰 ${n}`)
-  expect(screen.getByText('○ 待运行')).toBeInTheDocument()
-  expect(screen.queryByText('● 正常')).toBeNull()
+  expect(screen.getByRole('img', { name: '待运行' })).toBeInTheDocument()
+  expect(screen.queryByRole('img', { name: '正常' })).toBeNull()
 })
 
 test('matrix rows sorted worst first and cells use symbol+text', async () => {
@@ -48,7 +48,7 @@ test('matrix rows sorted worst first and cells use symbol+text', async () => {
   expect(within(rows[0]).getAllByText('✕ 红').length).toBeGreaterThan(0)
   expect(within(rows[rows.length - 1]).getAllByText('● 绿').length).toBe(6)
   expect(within(rows[1]).getAllByText('○ 灰').length).toBe(6)
-  expect(screen.getByText('✕ 失败')).toBeInTheDocument()
+  expect(screen.getByRole('img', { name: '失败' })).toBeInTheDocument()
 })
 
 test('lineage graph option has adjacency focus and fixed columns', async () => {

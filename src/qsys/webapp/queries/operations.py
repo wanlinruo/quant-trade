@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import calendar as _calendar
 import json
 import threading
 from collections import OrderedDict
+from collections.abc import Callable
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
@@ -35,11 +37,30 @@ def _run_state(raw: str) -> OpsState:
     }.get(raw, "unknown")
 
 
+TradingDays = dict[date, bool]
+
+
+def _last_closed_day(open_days: TradingDays, year: int, month: int) -> date | None:
+    """当月最后一个休市日；从月末往回找，遇到日历缺行就返回 None，不按星期推算。"""
+    day = date(year, month, _calendar.monthrange(year, month)[1])
+    while day.month == month:
+        is_open = open_days.get(day)
+        if is_open is None:
+            return None
+        if not is_open:
+            return day
+        day -= timedelta(days=1)
+    return None
+
+
 class OperationsQuery:
     def __init__(self, runs_root: Path, health_store=None, snapshot_root: Path | None = None,
-                 *, now=lambda: datetime.now(SHANGHAI)) -> None:
+                 *, now=lambda: datetime.now(SHANGHAI),
+                 trading_days: Callable[[date, date], TradingDays] | None = None) -> None:
         self.runs_root = Path(runs_root)
         self.health_store = health_store
+        # 只读 warehouse 规范交易日历（直取 Tushare trade_cal）；请求路径不调用外部接口。
+        self.trading_days = trading_days
         self.snapshot_root = Path(snapshot_root) if snapshot_root is not None else None
         self.now = now
         self._services_caches: OrderedDict[date, SingleFlightCache[ServicesView]] = OrderedDict()
@@ -102,11 +123,27 @@ class OperationsQuery:
                 health = []
                 health_error = exc
         versions = self._service_versions()
+        open_days: TradingDays = {}
+        calendar_error: Exception | None = None
+        if self.trading_days is not None:
+            # 读到所选月月末，monthly_closed 才能确定当月最后一个休市日。
+            first = start.replace(day=1)
+            last = selected.replace(day=_calendar.monthrange(selected.year, selected.month)[1])
+            try:
+                open_days = dict(self.trading_days(first, last))
+            except Exception as exc:
+                calendar_error = exc
         rows = [self._service_row(spec, days, by_service.get(spec.id, []), health, now,
-                                  versions.get(spec.id))
+                                  versions.get(spec.id), open_days)
                 for spec in SERVICES]
         run_items = [self._run_item(run, now) for run in runs]
         missing = {}
+        if self.trading_days is None:
+            missing["calendar"] = "交易日历未配置，休市日保持未知"
+        elif calendar_error is not None:
+            missing["calendar"] = "交易日历读取失败，休市日保持未知"
+        elif any(day not in open_days for day in days):
+            missing["calendar"] = "交易日历缺少部分日期，缺行日期保持未知"
         if self.health_store is None:
             missing["health"] = "health-observer 本地只读库未配置"
         elif health_error is not None:
@@ -117,7 +154,8 @@ class OperationsQuery:
         if not versions:
             missing["versions"] = "受管发布快照缺失或已过期"
         return ServicesView(selected_day=selected, days=days, services=rows,
-                            runs=run_items, missing=missing)
+                            runs=run_items, missing=missing,
+                            trading_days={day: open_days[day] for day in days if day in open_days})
 
     @staticmethod
     def _health_state(state: object) -> OpsState:
@@ -132,7 +170,9 @@ class OperationsQuery:
         return self.health_store.daily_latest(begin, finish)
 
     def _service_row(self, spec, days: list[date], runs: list[dict], health: list[dict],
-                     now: datetime, version: str | None) -> ServiceRow:
+                     now: datetime, version: str | None,
+                     open_days: TradingDays | None = None) -> ServiceRow:
+        open_days = open_days or {}
         cells = []
         successful = observed = 0
         for day in days:
@@ -173,6 +213,12 @@ class OperationsQuery:
                 detail = str(h[-1].get("reason_code", "")) or None
             elif spec.cadence == "monthly" and day.day != spec.run_day:
                 state = "not_due"
+            elif spec.cadence == "daily" and open_days.get(day) is False:
+                state, detail = "not_due", "休市（trade_cal）"
+            elif (spec.cadence == "monthly_closed"
+                  and (expected := _last_closed_day(open_days, day.year, day.month)) is not None
+                  and day != expected):
+                state, detail = "not_due", f"非执行日（当月最后休市日 {expected.isoformat()}）"
             elif h:
                 detail = str(h[-1].get("reason_code", "")) or None
             cells.append(ServiceCell(day=day, state=state, run_id=run_id, detail=detail))
@@ -200,7 +246,7 @@ class OperationsQuery:
         trend = durations[-20:]
         average = (sum(point.duration_seconds for point in trend) / len(trend)
                    if trend else None)
-        return ServiceRow(id=spec.id, name=spec.name, kind=spec.kind, node=spec.host,
+        return ServiceRow(id=spec.id, name=spec.name, kind=spec.kind, cadence=spec.cadence, node=spec.host,
                           schedule=spec.schedule, latest_state=latest_state, latest_at=latest_at,
                           completion_ratio_30d=(successful / observed if observed else None),
                           duration_seconds=duration, average_duration_seconds=average,

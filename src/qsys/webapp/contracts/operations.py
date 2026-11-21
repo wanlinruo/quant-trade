@@ -53,6 +53,8 @@ class ServiceRow(Contract):
     id: str
     name: str
     kind: str
+    # 执行周期：daily＝交易日；everyday＝含休市日；monthly / monthly_closed＝月度
+    cadence: str
     node: str
     schedule: str
     latest_state: OpsState
@@ -74,6 +76,8 @@ class ServicesView(Contract):
     services: list[ServiceRow]
     runs: list[ServiceRunItem]
     missing: dict[str, str]
+    # 交易日历直取事实：只含规范表中存在的日期；缺行不出现，不按星期推算。
+    trading_days: dict[date, bool] = {}
 
 
 class MetricPoint(Contract):

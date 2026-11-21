@@ -36,7 +36,8 @@ test('ailu hero maps every view state', async () => {
     const snap = state === 'ready' || state === 'stale' ? base.snapshot : null
     mockFetch(shadow({ state, message: `msg-${state}`, snapshot: snap }))
     const { unmount } = render(<AiluPage />)
-    expect(await screen.findByText(tag)).toBeInTheDocument()
+    // 状态由 Hero 图标表达，可访问名称即状态文字
+    expect(await screen.findByRole('img', { name: tag.slice(2) })).toBeInTheDocument()
     expect(screen.getByText(`msg-${state}`)).toBeInTheDocument()
     unmount()
   }

@@ -3,7 +3,7 @@ import { Tooltip } from 'antd'
 import { usePalette } from '../theme/context'
 
 /** 面板标题写成一个问题（“近 60 日市场情绪怎样？”）；ⓘ 写口径与数据来源。 */
-export function Panel({ title, info, extra, children }: { title: ReactNode; info?: ReactNode; extra?: ReactNode; children: ReactNode }) {
+export function Panel({ title, info, extra, children, flush = false }: { title: ReactNode; info?: ReactNode; extra?: ReactNode; children: ReactNode; flush?: boolean }) {
   const p = usePalette()
   return (
     <section className="qs-panel" style={{ background: p.panel, border: `1px solid ${p.border}`, borderRadius: 4, marginBottom: 12, minWidth: 0 }}>
@@ -15,7 +15,7 @@ export function Panel({ title, info, extra, children }: { title: ReactNode; info
         <span style={{ flex: 1 }} />
         {extra}
       </header>
-      <div style={{ padding: 12, minWidth: 0, overflowX: 'auto' }}>{children}</div>
+      <div style={{ padding: flush ? '4px 0 0' : 12, minWidth: 0, overflowX: 'auto' }}>{children}</div>
     </section>
   )
 }
