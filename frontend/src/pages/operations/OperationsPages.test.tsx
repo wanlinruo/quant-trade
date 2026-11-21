@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { ThemeProvider } from '../../shell/ThemeProvider'
 import { ServicesPage } from './ServicesPage'
 import { NodesPage } from './NodesPage'
@@ -22,6 +22,21 @@ test('services keeps historical failure visible and has no rerun control', async
   expect(await screen.findAllByText(/已修复/)).not.toHaveLength(0)
   expect(screen.getAllByText(/失败/).length).toBeGreaterThan(0)
   expect(screen.queryByRole('button', { name: /补跑|重启|停用/ })).toBeNull()
+})
+
+test('services timeline falls back to the latest completed run day on a non-running day', async () => {
+  payload = { schema_version: 2, enabled: true, selected_day: '2026-11-21', days,
+    services: [{ id: 'sync', name: '同步', kind: 'timer', node: 'Linux', schedule: '17:00', latest_state: 'ok', latest_at: '2026-11-20T17:01:00+08:00', completion_ratio_30d: 1, duration_seconds: 60,
+      average_duration_seconds: 60, duration_history: [], recent_runs: [], version: null,
+      cells: days.map((day) => ({ day, state: 'unknown', run_id: null, detail: null })) }],
+    runs: [{ run_id: 'r1', service_id: 'sync', session: '2026-11-20', started_at: '2026-11-20T17:00:00+08:00', finished_at: '2026-11-20T17:01:00+08:00', state: 'succeeded', note: '', error: '', steps: [] }],
+    missing: { versions: '没有受管快照' } }
+  wrap(<ServicesPage />)
+  expect(await screen.findByText('sync · 2026-11-20')).toBeInTheDocument()
+  expect(screen.getByText('2026-11-21 没有可判定的到期任务')).toBeInTheDocument()
+  fireEvent.click(await screen.findByText('任务时间线'))
+  expect(await screen.findByText('2026-11-20 的任务时间线')).toBeInTheDocument()
+  expect(screen.queryByText(/没有具备真实开始、结束时间/)).toBeNull()
 })
 
 test('nodes keeps system and data disks separate and exposes only security counts', async () => {
