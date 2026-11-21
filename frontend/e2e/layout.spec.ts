@@ -60,6 +60,12 @@ test('history day shows a global read-only banner and can return to today', asyn
   await expect(page.getByRole('status')).toHaveCount(0)
 })
 
+test('invalid history day is ignored by global controls', async ({ page }) => {
+  await page.goto('/app/today?day=garbage')
+  await expect(page.locator('.qs-history-banner')).toHaveCount(0)
+  await expect(page.getByLabel('全局回看日期')).toHaveValue('')
+})
+
 test('global search opens a business object with its query params', async ({ page }) => {
   await page.goto('/app/today')
   await page.getByRole('button', { name: '搜索' }).click()

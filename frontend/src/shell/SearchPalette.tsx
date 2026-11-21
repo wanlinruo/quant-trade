@@ -15,7 +15,7 @@ export function SearchPalette({ open, recent, onClose, onPick }: { open: boolean
   const [missing, setMissing] = useState<string[]>([])
   useEffect(() => {
     if (!open) return
-    setQ(''); setI(0)
+    setQ(''); setI(0); setRemote([]); setMissing([])
     const ctl = new AbortController()
     fetchSearchIndex(ctl.signal).then((x) => { setRemote(x.items); setMissing(Object.values(x.missing)) }, () => setMissing(['业务索引不可访问']))
     return () => ctl.abort()

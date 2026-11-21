@@ -29,7 +29,8 @@ export function AppShell() {
   const p = usePalette()
   const theme = useTheme()
   const route = useRoute()
-  const day = useSearch().get('day')
+  const rawDay = useSearch().get('day')
+  const day = rawDay && /^\d{4}-\d{2}-\d{2}$/.test(rawDay) ? rawDay : null
   const page = pageByKey(route) ?? pageByKey(DEFAULT_PAGE)!
   const PageComponent = PAGE_COMPONENTS[page.key]
   const status = useShellStatus()

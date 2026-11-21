@@ -71,7 +71,8 @@ export function TopBar({ status, error, collapsed = false, onOpenSearch, onOpenH
 }) {
   const p = usePalette()
   const theme = useTheme()
-  const day = useSearch().get('day')
+  const rawDay = useSearch().get('day')
+  const day = rawDay && /^\d{4}-\d{2}-\d{2}$/.test(rawDay) ? rawDay : null
   const killState = status?.kill.state ?? 'unknown'
   const kill = KILL[killState] ?? KILL.unknown
   const liveState = status?.live.state ?? 'unknown'

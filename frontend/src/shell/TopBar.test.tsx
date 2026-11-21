@@ -44,6 +44,13 @@ test('TopBar exposes the global history date picker', () => {
   expect(screen.getByLabelText('全局回看日期')).toBeInTheDocument()
 })
 
+test('TopBar ignores an invalid global history date', () => {
+  history.pushState({}, '', '/app/today?day=garbage')
+  bar(shellStatus('clear'))
+  expect(screen.getByLabelText('全局回看日期')).toHaveValue('')
+  history.pushState({}, '', '/app/today')
+})
+
 test('KillBanner appears only when kill.state is stopped and cannot be dismissed', () => {
   const wrap = (s: ShellStatus | null) => <ThemeProvider><KillBanner status={s} /></ThemeProvider>
   const { rerender } = render(wrap(shellStatus('clear')))
