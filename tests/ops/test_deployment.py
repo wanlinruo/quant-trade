@@ -1700,13 +1700,13 @@ def test_test_failure_detail_keeps_captured_stderr_and_is_bounded() -> None:
         1,
         ["python", "-m", "qsys.data.snapshot_cli"],
         output="less useful stdout",
-        stderr="snapshot failed: " + "x" * 600,
+        stderr="Traceback start\n" + "x" * 600 + "\nOSError: snapshot failed",
     )
 
     detail = entrypoint._failure_detail(error)
 
-    assert "returned non-zero exit status 1" in detail
-    assert "snapshot failed" in detail
+    assert detail.startswith("command failed with exit status 1 | ...")
+    assert detail.endswith("OSError: snapshot failed")
     assert "less useful stdout" not in detail
     assert len(detail) == 500
 
