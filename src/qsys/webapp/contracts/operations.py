@@ -43,6 +43,12 @@ class ServiceRunItem(Contract):
     steps: list[ServiceStep]
 
 
+class ServiceDurationPoint(Contract):
+    run_id: str
+    started_at: Timestamp
+    duration_seconds: float
+
+
 class ServiceRow(Contract):
     id: str
     name: str
@@ -53,25 +59,19 @@ class ServiceRow(Contract):
     latest_at: Timestamp | None
     completion_ratio_30d: float | None
     duration_seconds: float | None
+    average_duration_seconds: float | None
+    duration_history: list[ServiceDurationPoint]
+    recent_runs: list[ServiceRunItem]
+    version: str | None
     cells: list[ServiceCell]
 
 
-class ServiceHealthItem(Contract):
-    service_id: str
-    observed_at: Timestamp
-    state: OpsState
-    process_state: str
-    business_state: str
-    reason_code: str
-
-
 class ServicesView(Contract):
-    schema_version: Literal[1] = 1
+    schema_version: Literal[2] = 2
     enabled: Literal[True] = True
     selected_day: date
     days: list[date]
     services: list[ServiceRow]
-    health: list[ServiceHealthItem]
     runs: list[ServiceRunItem]
     missing: dict[str, str]
 

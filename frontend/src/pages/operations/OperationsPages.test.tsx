@@ -4,6 +4,8 @@ import { ServicesPage } from './ServicesPage'
 import { NodesPage } from './NodesPage'
 import { ReleasesPage } from './ReleasesPage'
 
+vi.mock('../../page/EChart', () => ({ EChart: () => <div data-testid="echart" /> }))
+
 const wrap = (node: React.ReactNode) => render(<ThemeProvider>{node}</ThemeProvider>)
 const days = Array.from({ length: 30 }, (_, i) => `2026-10-${String(21 + i).padStart(2, '0')}`)
 let payload: unknown
@@ -11,10 +13,11 @@ beforeEach(() => { history.replaceState(null, '', '/app/services'); vi.stubGloba
 afterEach(() => vi.unstubAllGlobals())
 
 test('services keeps historical failure visible and has no rerun control', async () => {
-  payload = { schema_version: 1, enabled: true, selected_day: '2026-11-19', days,
+  payload = { schema_version: 2, enabled: true, selected_day: '2026-11-19', days,
     services: [{ id: 'sync', name: '同步', kind: 'timer', node: 'Linux', schedule: '17:00', latest_state: 'fixed', latest_at: '2026-11-19T17:01:00+08:00', completion_ratio_30d: 1, duration_seconds: 60,
+      average_duration_seconds: 60, duration_history: [{ run_id: 'r2', started_at: '2026-11-19T17:00:00+08:00', duration_seconds: 60 }], recent_runs: [], version: null,
       cells: days.map((day, i) => ({ day, state: i === 28 ? 'failed' : i === 29 ? 'fixed' : 'unknown', run_id: null, detail: null })) }],
-    health: [], runs: [], missing: {} }
+    runs: [], missing: { versions: '没有受管快照' } }
   wrap(<ServicesPage />)
   expect(await screen.findAllByText(/已修复/)).not.toHaveLength(0)
   expect(screen.getAllByText(/失败/).length).toBeGreaterThan(0)

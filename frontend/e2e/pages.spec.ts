@@ -172,12 +172,29 @@ for (const width of [390, 1280, 1600]) {
   test(`operations pages have no horizontal overflow at ${width}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
     const pages: [string, string][] = [
-      ['services', '服务运行正常'], ['nodes', '节点与链路正常'], ['releases', '1/1 个组件三方一致'],
+      ['services', '已记录任务运行结论'], ['nodes', '节点与链路正常'], ['releases', '1/1 个组件三方一致'],
     ]
     for (const [path, text] of pages) {
       await page.goto(`/app/${path}`)
       await expect(page.getByText(text, { exact: false }).first()).toBeVisible()
+      if (path === 'services') {
+        await expect(page.getByTestId('service-matrix').locator('canvas').first()).toBeVisible()
+        await expect(page.getByText('定时任务', { exact: true })).toBeVisible()
+        await expect(page.getByText('常驻进程与守护任务', { exact: true })).toBeVisible()
+        await page.getByText('所选日时间线', { exact: true }).click()
+        await expect(page.getByTestId('service-timeline').locator('canvas').first()).toBeVisible()
+      }
       await noOverflow(page)
     }
   })
 }
+
+test('service row expands recent runs and opens evidence drawer', async ({ page }) => {
+  await page.goto('/app/services')
+  await page.getByRole('button', { name: '展开行' }).first().click()
+  await page.getByText('补跑成功', { exact: true }).click()
+  await expect(page.locator('.ant-drawer-title')).toContainText('tushare-sync')
+  await expect(page.getByText('运行步骤与证据')).toBeVisible()
+  await expect(page.getByText('输入指纹已绑定')).toBeVisible()
+  await expect(page.getByRole('button', { name: /补跑|重启|停用/ })).toHaveCount(0)
+})

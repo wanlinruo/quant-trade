@@ -1268,13 +1268,10 @@ export interface ServiceCell {
   detail: string | null
 }
 
-export interface ServiceHealthItem {
-  service_id: string
-  observed_at: string
-  state: "ok" | "warning" | "failed" | "running" | "fixed" | "paused" | "unknown" | "not_due"
-  process_state: string
-  business_state: string
-  reason_code: string
+export interface ServiceDurationPoint {
+  run_id: string
+  started_at: string
+  duration_seconds: number
 }
 
 export interface ServiceRow {
@@ -1287,6 +1284,10 @@ export interface ServiceRow {
   latest_at: string | null
   completion_ratio_30d: number | null
   duration_seconds: number | null
+  average_duration_seconds: number | null
+  duration_history: ServiceDurationPoint[]
+  recent_runs: ServiceRunItem[]
+  version: string | null
   cells: ServiceCell[]
 }
 
@@ -1312,12 +1313,11 @@ export interface ServiceStep {
 }
 
 export interface ServicesView {
-  schema_version: 1
+  schema_version: 2
   enabled: true
   selected_day: string
   days: string[]
   services: ServiceRow[]
-  health: ServiceHealthItem[]
   runs: ServiceRunItem[]
   missing: Record<string, string>
 }

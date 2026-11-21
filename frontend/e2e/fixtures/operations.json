@@ -1,13 +1,17 @@
 {
   "services": {
-    "schema_version": 1, "enabled": true, "selected_day": "2026-11-19",
+    "schema_version": 2, "enabled": true, "selected_day": "2026-11-19",
     "days": ["2026-11-18", "2026-11-19"],
     "services": [{
       "id": "tushare-sync", "name": "Tushare 同步", "kind": "timer", "node": "Linux", "schedule": "17:00",
       "latest_state": "fixed", "latest_at": "2026-11-19T17:05:00+08:00", "completion_ratio_30d": 1, "duration_seconds": 120,
+      "average_duration_seconds": 150,
+      "duration_history": [{"run_id": "r1", "started_at": "2026-11-18T17:00:00+08:00", "duration_seconds": 180}, {"run_id": "r2", "started_at": "2026-11-19T17:00:00+08:00", "duration_seconds": 120}],
+      "recent_runs": [{"run_id": "r2", "service_id": "tushare-sync", "session": "2026-11-19", "started_at": "2026-11-19T17:00:00+08:00", "finished_at": "2026-11-19T17:02:00+08:00", "state": "succeeded", "note": "补跑成功", "error": "", "steps": [{"name": "同步", "state": "succeeded", "started_at": "2026-11-19T17:00:00+08:00", "finished_at": "2026-11-19T17:02:00+08:00", "detail": "输入指纹已绑定", "affects_run": true}]}, {"run_id": "r1", "service_id": "tushare-sync", "session": "2026-11-18", "started_at": "2026-11-18T17:00:00+08:00", "finished_at": "2026-11-18T17:03:00+08:00", "state": "failed", "note": "", "error": "源失败", "steps": []}],
+      "version": "1accba5",
       "cells": [{"day": "2026-11-18", "state": "failed", "run_id": "r1", "detail": "源失败"}, {"day": "2026-11-19", "state": "fixed", "run_id": "r2", "detail": "补跑成功"}]
     }],
-    "health": [], "runs": [], "missing": {}
+    "runs": [{"run_id": "r1", "service_id": "tushare-sync", "session": "2026-11-18", "started_at": "2026-11-18T17:00:00+08:00", "finished_at": "2026-11-18T17:03:00+08:00", "state": "failed", "note": "", "error": "源失败", "steps": []}, {"run_id": "r2", "service_id": "tushare-sync", "session": "2026-11-19", "started_at": "2026-11-19T17:00:00+08:00", "finished_at": "2026-11-19T17:02:00+08:00", "state": "succeeded", "note": "补跑成功", "error": "", "steps": [{"name": "同步", "state": "succeeded", "started_at": "2026-11-19T17:00:00+08:00", "finished_at": "2026-11-19T17:02:00+08:00", "detail": "输入指纹已绑定", "affects_run": true}]}], "missing": {}
   },
   "nodes": {
     "schema_version": 1, "enabled": true, "captured_at": "2026-11-19T17:30:00+08:00", "ttl_seconds": 300, "stale": false,
