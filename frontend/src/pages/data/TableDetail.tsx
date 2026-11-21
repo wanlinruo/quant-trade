@@ -36,7 +36,7 @@ export function TableDetail({ id, tab }: { id: string; tab: string | null }) {
   const health = (h: Health) => <StatusTag s={HEALTH_STATUS[h]} text={HEALTH_LABEL[h]} />
 
   const overview = (
-    <Descriptions size="small" column={{ xs: 1, md: 2 }} bordered items={[
+    <Descriptions size="small" column={1} bordered items={[
       { key: 'p', label: '用途', children: ds.purpose }, { key: 'g', label: '粒度', children: ds.grain },
       { key: 'k', label: '主键', children: list(ds.primary_key) }, { key: 't', label: '时间列', children: list(ds.time_columns) },
       { key: 'pk', label: '分区键', children: list(ds.partition_keys) },

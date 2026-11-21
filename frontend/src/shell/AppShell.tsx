@@ -14,6 +14,20 @@ import { createShortcutHandler, HELP } from './shortcuts'
 import { useTheme } from './ThemeProvider'
 import { TopBar } from './TopBar'
 import './shell.css'
+import {
+  AlertOutlined, BookOutlined, CheckSquareOutlined, CloudServerOutlined, ClusterOutlined, CodeOutlined, DashboardOutlined,
+  DatabaseOutlined, ExperimentOutlined, FileTextOutlined, FireOutlined, FundOutlined, HistoryOutlined, RobotOutlined,
+  RocketOutlined, SafetyOutlined, SwapOutlined, TableOutlined, WalletOutlined,
+} from '@ant-design/icons'
+
+/** 导航图标：与原型 App.tsx 一致。 */
+const NAV_ICON: Record<string, React.ReactNode> = {
+  today: <DashboardOutlined />, alerts: <AlertOutlined />, live: <WalletOutlined />, orders: <SwapOutlined />,
+  recon: <SafetyOutlined />, runs: <FileTextOutlined />, paper: <ExperimentOutlined />, market: <FundOutlined />,
+  board: <FireOutlined />, strategies: <CodeOutlined />, backtest: <HistoryOutlined />, ailu: <RobotOutlined />,
+  dataov: <DatabaseOutlined />, tables: <TableOutlined />, catalog: <BookOutlined />, quality: <CheckSquareOutlined />,
+  services: <CloudServerOutlined />, nodes: <ClusterOutlined />, releases: <RocketOutlined />,
+}
 
 const SIDER_KEY = 'qs-sider'
 const RECENT_KEY = 'qs-recent'
@@ -90,7 +104,7 @@ export function AppShell() {
         : bad || unknown
           ? <Tooltip title={bad ? '停机闸已触发' : status.data?.missing.qmt}><span>{x.label} <Badge status={bad ? 'error' : 'warning'} /></span></Tooltip>
           : x.label
-      return { key: x.key, label: mark }
+      return { key: x.key, icon: NAV_ICON[x.key], label: mark }
     }),
   })), [status.data])
 
