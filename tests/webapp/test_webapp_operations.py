@@ -42,6 +42,44 @@ def test_services_preserves_failure_then_marks_latest_fixed(tmp_path):
     assert row.cells[-1].state == "fixed"
     assert [x.state for x in got.runs] == ["failed", "succeeded"]
     assert got.runs[0].error == "源失败"
+    assert [x.duration_seconds for x in row.duration_history] == [60, 60]
+    assert row.average_duration_seconds == 60
+    assert [x.run_id for x in row.recent_runs] == ["r2", "r1"]
+    assert row.version is None
+
+
+def test_services_marks_only_proven_not_due_days(tmp_path):
+    root = tmp_path / "runs"
+    folder = root / "2026" / "11" / "19"
+    folder.mkdir(parents=True)
+    (folder / "closed.json").write_text(json.dumps({
+        "run_id": "closed", "service": "tushare-sync", "session": "2026-11-19",
+        "started_at": "2026-11-19T17:00:00", "finished_at": "2026-11-19T17:00:01",
+        "status": "skipped", "note": "不是交易日", "error": "", "steps": [],
+    }), encoding="utf-8")
+    got = OperationsQuery(root, now=lambda: NOW).services(date(2026, 11, 19))
+    daily = next(x for x in got.services if x.id == "tushare-sync")
+    monthly = next(x for x in got.services if x.id == "auction-study")
+    assert daily.cells[-1].state == "not_due"
+    assert daily.completion_ratio_30d is None
+    assert monthly.cells[-1].state == "not_due"
+    assert monthly.cells[11].day == date(2026, 11, 1)
+    assert monthly.cells[11].state == "unknown"
+
+
+def test_later_skip_does_not_hide_same_day_failure(tmp_path):
+    root = tmp_path / "runs"
+    _run(root, "failed", "failed-first", 10)
+    folder = root / "2026" / "11" / "19"
+    (folder / "skipped-last.json").write_text(json.dumps({
+        "run_id": "skipped-last", "service": "tushare-sync", "session": "2026-11-19",
+        "started_at": "2026-11-19T12:00:00", "finished_at": "2026-11-19T12:00:01",
+        "status": "skipped", "note": "没有新输入", "error": "", "steps": [],
+    }), encoding="utf-8")
+    row = next(x for x in OperationsQuery(root, now=lambda: NOW).services().services
+               if x.id == "tushare-sync")
+    assert row.cells[-1].state == "failed"
+    assert row.cells[-1].run_id == "failed-first"
 
 
 def _nodes(captured: datetime) -> dict:
@@ -149,7 +187,7 @@ def test_services_concurrent_requests_share_one_health_read(tmp_path):
             lambda _: query.services(date(2026, 11, 19)).model_dump(), range(16),
         ))
     assert all(result == results[0] for result in results)
-    assert (health.daily_calls, health.history_calls) == (1, 1)
+    assert (health.daily_calls, health.history_calls) == (1, 0)
 
 
 def test_services_refresh_error_returns_marked_stale_value(tmp_path, monkeypatch):

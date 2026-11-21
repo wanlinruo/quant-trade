@@ -13,7 +13,7 @@ from qsys.ops.services import SERVICES, effective_status, load_runs, run_session
 from qsys.webapp.cache import SingleFlightCache
 from qsys.webapp.contracts.operations import (
     NodesView, OperationsDisabled, OpsState, ReleasesView,
-    ServiceCell, ServiceHealthItem, ServiceRow, ServiceRunItem, ServicesView, ServiceStep,
+    ServiceCell, ServiceDurationPoint, ServiceRow, ServiceRunItem, ServicesView, ServiceStep,
 )
 
 SERVICES_TTL_SECONDS = 15.0
@@ -92,19 +92,20 @@ class OperationsQuery:
         for run in runs:
             by_service.setdefault(str(run.get("service", "")), []).append(run)
         if tolerate_health_error and health_error is not None:
-            health = selected_health = []
+            health = []
         else:
             try:
                 health = self._daily_health(start, selected, now)
-                selected_health = self._health(selected, selected, now)
             except Exception as exc:
                 if not tolerate_health_error:
                     raise
-                health = selected_health = []
+                health = []
                 health_error = exc
-        rows = [self._service_row(spec, days, by_service.get(spec.id, []), health, now)
+        versions = self._service_versions()
+        rows = [self._service_row(spec, days, by_service.get(spec.id, []), health, now,
+                                  versions.get(spec.id))
                 for spec in SERVICES]
-        selected_runs = [self._run_item(run, now) for run in runs if run_session(run) == selected.isoformat()]
+        run_items = [self._run_item(run, now) for run in runs]
         missing = {}
         if self.health_store is None:
             missing["health"] = "health-observer 本地只读库未配置"
@@ -113,27 +114,15 @@ class OperationsQuery:
             missing["cache_error"] = type(health_error).__name__
         elif not health:
             missing["health"] = "所选窗口没有健康观察记录"
-        return ServicesView(selected_day=selected, days=days, services=rows, health=[
-            ServiceHealthItem(service_id=r["service_id"], observed_at=r["observed_at_utc"],
-                              state=self._health_state(r.get("state")),
-                              process_state=str(r.get("process_state", "unknown")),
-                              business_state=str(r.get("business_state", "unknown")),
-                              reason_code=str(r.get("reason_code", "unknown")))
-            for r in selected_health
-            if r["observed_at_utc"].astimezone(SHANGHAI).date() == selected
-        ], runs=selected_runs, missing=missing)
+        if not versions:
+            missing["versions"] = "受管发布快照缺失或已过期"
+        return ServicesView(selected_day=selected, days=days, services=rows,
+                            runs=run_items, missing=missing)
 
     @staticmethod
     def _health_state(state: object) -> OpsState:
         return {"healthy": "ok", "degraded": "warning", "down": "failed",
-                "planned": "paused"}.get(str(state), "unknown")
-
-    def _health(self, start: date, end: date, now: datetime) -> list[dict]:
-        if self.health_store is None:
-            return []
-        begin = datetime.combine(start, time.min, tzinfo=SHANGHAI)
-        finish = min(now, datetime.combine(end + timedelta(days=1), time.min, tzinfo=SHANGHAI))
-        return self.health_store.history(begin, finish)
+                "planned": "not_due"}.get(str(state), "unknown")
 
     def _daily_health(self, start: date, end: date, now: datetime) -> list[dict]:
         if self.health_store is None:
@@ -143,7 +132,7 @@ class OperationsQuery:
         return self.health_store.daily_latest(begin, finish)
 
     def _service_row(self, spec, days: list[date], runs: list[dict], health: list[dict],
-                     now: datetime) -> ServiceRow:
+                     now: datetime, version: str | None) -> ServiceRow:
         cells = []
         successful = observed = 0
         for day in days:
@@ -155,34 +144,70 @@ class OperationsQuery:
             detail = None
             run_id = None
             if raw_states:
-                observed += 1
-                state = _run_state(raw_states[-1])
-                if state == "ok" and any(_run_state(s) == "failed" for s in raw_states[:-1]):
-                    state = "fixed"
-                if state in ("ok", "fixed"):
-                    successful += 1
-                run_id = str(mine[-1].get("run_id"))
-                detail = mine[-1].get("note") or mine[-1].get("error") or None
+                meaningful = [(run, raw) for run, raw in zip(mine, raw_states, strict=True)
+                              if raw != "skipped"]
+                if not meaningful:
+                    state = "not_due"
+                    chosen = mine[-1]
+                else:
+                    observed += 1
+                    chosen, raw = meaningful[-1]
+                    state = _run_state(raw)
+                    if state == "ok" and any(_run_state(s) == "failed"
+                                               for _, s in meaningful[:-1]):
+                        state = "fixed"
+                    if state in ("ok", "warning", "fixed"):
+                        successful += 1
+                run_id = str(chosen.get("run_id"))
+                detail = chosen.get("note") or chosen.get("error") or None
             elif h:
                 observed += 1
                 state = self._health_state(h[-1].get("state"))
+                if state == "not_due":
+                    observed -= 1
                 if state == "ok":
                     successful += 1
                 detail = str(h[-1].get("reason_code", "")) or None
+            elif spec.cadence == "monthly" and day.day != spec.run_day:
+                state = "not_due"
             cells.append(ServiceCell(day=day, state=state, run_id=run_id, detail=detail))
-        latest_run = runs[-1] if runs else None
+        latest_run = next((run for run in reversed(runs)
+                           if effective_status(run, now=now.replace(tzinfo=None)) != "skipped"),
+                          runs[-1] if runs else None)
         latest_h = next((r for r in reversed(health) if r.get("service_id") == spec.id), None)
         latest_at = _aware(latest_run.get("finished_at") or latest_run.get("started_at")) if latest_run else (
             latest_h.get("observed_at_utc") if latest_h else None)
-        latest_state = cells[-1].state
+        latest_state = next((cell.state for cell in reversed(cells)
+                             if cell.state not in ("unknown", "not_due")), cells[-1].state)
         duration = None
         if latest_run:
             a, b = _aware(latest_run.get("started_at")), _aware(latest_run.get("finished_at"))
             duration = (b - a).total_seconds() if a and b else None
+        durations: list[ServiceDurationPoint] = []
+        for run in runs:
+            a, b = _aware(run.get("started_at")), _aware(run.get("finished_at"))
+            if a is not None and b is not None and b >= a:
+                durations.append(ServiceDurationPoint(
+                    run_id=str(run.get("run_id", "")), started_at=a,
+                    duration_seconds=(b - a).total_seconds(),
+                ))
+        recent = [self._run_item(run, now) for run in reversed(runs[-5:])]
+        trend = durations[-20:]
+        average = (sum(point.duration_seconds for point in trend) / len(trend)
+                   if trend else None)
         return ServiceRow(id=spec.id, name=spec.name, kind=spec.kind, node=spec.host,
                           schedule=spec.schedule, latest_state=latest_state, latest_at=latest_at,
                           completion_ratio_30d=(successful / observed if observed else None),
-                          duration_seconds=duration, cells=cells)
+                          duration_seconds=duration, average_duration_seconds=average,
+                          duration_history=trend, recent_runs=recent, version=version,
+                          cells=cells)
+
+    def _service_versions(self) -> dict[str, str]:
+        snapshot = self.releases()
+        if not isinstance(snapshot, ReleasesView) or snapshot.stale:
+            return {}
+        return {component.id: component.current_sha for component in snapshot.components
+                if component.current_sha}
 
     @staticmethod
     def _run_item(run: dict, now: datetime) -> ServiceRunItem:
