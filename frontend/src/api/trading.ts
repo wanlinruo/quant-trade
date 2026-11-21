@@ -5,7 +5,7 @@ import type {
 } from './contracts.gen'
 
 export type { LiveTradingOverview, PaperAccountDetail, PaperAccountRow, PaperAccounts, RiskLimit,
-  StrategyRunInfo, TradingDisabled, TradingOrder, TradingOrders, TradingReconciliation, TradingRuns } from './contracts.gen'
+  StrategyRunInfo, TradingDisabled, TradingOrder, TradingOrders, TradingPosition, TradingReconciliation, TradingRuns } from './contracts.gen'
 
 const day = (d: string | null) => d ? `?day=${encodeURIComponent(d)}` : ''
 export const fetchLive = (d: string | null, s?: AbortSignal) => getJson<LiveTradingOverview | TradingDisabled>(`/api/app/trading/live${day(d)}`, s)

@@ -103,7 +103,8 @@ export function BoardPage() {
           </div>
         </div>
       )}
-      {d.available && d.day && <StockDrawer day={d.day} symbol={picked} card={picked ? d.cards?.[picked] : undefined} onClose={() => setPicked(null)} />}
+      {d.available && d.day && <StockDrawer day={d.day} symbol={picked} symbols={Object.keys(d.cards ?? {}).sort()}
+        card={picked ? d.cards?.[picked] : undefined} onPick={setPicked} onClose={() => setPicked(null)} />}
     </>
   )
 }

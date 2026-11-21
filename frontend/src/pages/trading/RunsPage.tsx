@@ -1,18 +1,29 @@
 import { Button, Result, Table } from 'antd'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { fetchRuns, reportUrl } from '../../api/trading'
 import { Hero } from '../../page/Hero'
 import { Panel } from '../../page/Panel'
 import { useFetch } from '../../page/useFetch'
-import { dateTime } from '../../shell/time'
+import { axisHm, dateTime } from '../../shell/time'
 import { usePalette } from '../../theme/context'
 import { Missing } from '../../ui/Missing'
 import { StatusTag } from '../../ui/StatusTag'
 import { DaySelect, label, useTradingDay } from './common'
+import { EChart, type EChartsOption } from '../../page/EChart'
 
 export function RunsPage() {
   const p = usePalette(); const day = useTradingDay(); const [copied, setCopied] = useState(false)
   const { data, error } = useFetch((s) => fetchRuns(day, s), [day])
+  const timing = useMemo<EChartsOption | null>(() => data?.enabled && data.runs.length ? ({
+    grid: { left: 100, right: 24, top: 18, bottom: 34 }, tooltip: { trigger: 'item' },
+    xAxis: { type: 'time', axisLabel: { formatter: (v: number) => axisHm(v) }, splitLine: { lineStyle: { color: p.grid } } },
+    yAxis: { type: 'category', data: data.runs.map((x) => x.phase) },
+    series: [
+      { name: '计划', type: 'scatter', symbolSize: 9, itemStyle: { color: 'transparent', borderColor: p.muted, borderWidth: 2 }, data: data.runs.flatMap((x, i) => x.scheduled_at ? [[new Date(x.scheduled_at).getTime(), i, x.event_key]] : []) },
+      { name: '实际', type: 'scatter', symbolSize: 9, itemStyle: { color: p.info }, data: data.runs.flatMap((x, i) => x.started_at ? [[new Date(x.started_at).getTime(), i, x.event_key]] : []) },
+      ...data.runs.flatMap((x, i) => x.scheduled_at && x.started_at ? [{ name: x.event_key, type: 'line' as const, showSymbol: false, lineStyle: { color: x.status === 'failed' ? p.bad : p.muted, width: 1 }, data: [[new Date(x.scheduled_at).getTime(), i], [new Date(x.started_at).getTime(), i]] }] : []),
+    ],
+  }) : null, [data, p])
   if (!data) return <Hero s={error ? 'bad' : 'running'} title={error ?? '加载中'} />
   if (!data.enabled) return <Result status="info" title="运行记录未启用" />
   const d = data; const failed = d.runs.filter((r) => r.status === 'failed').length
@@ -21,6 +32,9 @@ export function RunsPage() {
     <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}><DaySelect value={d.day} /></div>
     <Hero s={failed ? 'bad' : d.runs.length ? 'ok' : 'idle'} title={failed ? `${failed} 个策略事件失败` : d.runs.length ? `${d.runs.length} 个策略事件已记录` : '当日没有运行记录'}
       subtitle="计划时刻与实际开始分别展示；缺计划记录时不推算。" />
+    <Panel title="策略事件是否按时触发？" info="空心点是计划、实心点是实际；连线表示迟到或提前。没有计划时刻不补点。">
+      {timing ? <EChart option={timing} height={Math.max(220, d.runs.length * 38)} /> : <Missing why="当日没有可绘制的计划/实际时点" />}
+    </Panel>
     <Panel title="策略事件是否按时完成？" info="计划空心点/实际实心点的事实先以表格精确展示；计划时刻缺失不补。">
       <Table size="small" pagination={false} rowKey="event_key" dataSource={d.runs} scroll={{ x: 'max-content' }} columns={[
         { title: '事件', dataIndex: 'event_key' }, { title: '阶段', dataIndex: 'phase', render: label },

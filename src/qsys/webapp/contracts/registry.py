@@ -21,6 +21,7 @@ from qsys.webapp.contracts.research import (
     Resubmitted, StrategyDetail, StrategyList,
 )
 from qsys.webapp.contracts.shell import ShellStatus
+from qsys.webapp.contracts.search import SearchIndex
 from qsys.webapp.contracts.today import TodayDisabled, TodayView
 from qsys.webapp.contracts.trading import (
     LiveTradingOverview, PaperAccountDetail, PaperAccounts, PaperActionResult,
@@ -30,6 +31,7 @@ from qsys.webapp.contracts.trading import (
 EXPORTED: tuple[type[Contract], ...] = (
     ErrorBody,
     ShellStatus,
+    SearchIndex,
     MarketOverview,
     MarketDisabled,
     ShadowBoard,

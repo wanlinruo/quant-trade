@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Drawer } from 'antd'
 import { fetchBoardSeries, type BoardCard, type BoardSeries } from '../../api/board'
 import { EChart, type EChartsOption } from '../../page/EChart'
+import { DrawerNav } from '../../page/DrawerNav'
 import { axisHm, hms, parseLocal } from '../../shell/time'
 import { usePalette } from '../../theme/context'
 import { Missing } from '../../ui/Missing'
@@ -15,7 +16,9 @@ function heightText(card?: BoardCard): string {
 }
 
 /** 个股分时（按涨跌幅 = 价 ÷ 昨收 − 1），标涨停价线与首封、开板、回封；缺的不补。 */
-export function StockDrawer({ day, symbol, card, onClose }: { day: string; symbol: string | null; card?: BoardCard; onClose(): void }) {
+export function StockDrawer({ day, symbol, symbols = [], card, onPick = () => {}, onClose }: {
+  day: string; symbol: string | null; symbols?: string[]; card?: BoardCard; onPick?(symbol: string): void; onClose(): void
+}) {
   const p = usePalette()
   const [s, setS] = useState<{ data: BoardSeries | null; error: string | null }>({ data: null, error: null })
   useEffect(() => {
@@ -55,7 +58,9 @@ export function StockDrawer({ day, symbol, card, onClose }: { day: string; symbo
   const name = d?.name || card?.name || ''
   return (
     <Drawer open={!!symbol} onClose={onClose} size="large" destroyOnHidden
-      title={symbol ? `${name} ${symbol} · ${heightText(card)}` : ''}>
+      title={symbol ? `${name} ${symbol} · ${heightText(card)}` : ''}
+      extra={symbol && symbols.includes(symbol)
+        ? <DrawerNav rows={symbols} current={symbol} identify={(x) => x} onPick={onPick} copyText={symbol} /> : null}>
       {s.error && <div style={{ color: p.bad }}>{s.error}</div>}
       {!d && !s.error && <div style={{ color: p.muted }}>加载中</div>}
       {d && !d.available && <div style={{ color: p.muted }}>{d.message}</div>}

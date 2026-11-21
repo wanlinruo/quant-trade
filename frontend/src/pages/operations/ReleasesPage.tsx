@@ -7,6 +7,7 @@ import { useFetch } from '../../page/useFetch'
 import { dateTime } from '../../shell/time'
 import { Missing } from '../../ui/Missing'
 import { stateTag } from './common'
+import { DrawerNav } from '../../page/DrawerNav'
 
 export function ReleasesPage() {
   const { data, error } = useFetch(fetchReleases, []); const [component, setComponent] = useState<ComponentRelease | null>(null)
@@ -23,8 +24,8 @@ export function ReleasesPage() {
     <Panel title="近 30 日发布发生了什么？"><Table size="small" pagination={false} rowKey="id" dataSource={data.events} columns={[
       { title: '时间', dataIndex: 'at', render: dateTime }, { title: '组件', dataIndex: 'component_id' }, { title: '版本', dataIndex: 'sha', render: (v) => v ?? '—' }, { title: '结果', dataIndex: 'state', render: stateTag }, { title: '当前', dataIndex: 'current', render: (v) => v ? '是' : '否' }, { title: '说明', dataIndex: 'detail', render: (v) => v ?? '—' },
     ]} /></Panel>
-    <Drawer open={!!component} onClose={() => setComponent(null)} title={`${component?.label ?? ''} 发布证据`} width={640}><Table size="small" pagination={false} rowKey="id" dataSource={component?.steps ?? []} columns={[
+    {component && <Drawer open onClose={() => setComponent(null)} title={`${component.label} 发布证据`} width={640} extra={<DrawerNav rows={data.components} current={component} identify={(x) => x.id} onPick={(x) => setComponent(x)} copyText={component.id} />}><Table size="small" pagination={false} rowKey="id" dataSource={component.steps} columns={[
       { title: '步骤', dataIndex: 'label' }, { title: '状态', dataIndex: 'state', render: stateTag }, { title: '时间', dataIndex: 'at', render: dateTime }, { title: '说明', dataIndex: 'detail', render: (v) => v ?? '—' },
-    ]} /></Drawer>
+    ]} /></Drawer>}
   </>
 }

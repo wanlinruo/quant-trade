@@ -8,6 +8,7 @@ import { pct } from '../../page/format'
 import { dateTime } from '../../shell/time'
 import { Missing } from '../../ui/Missing'
 import { stateTag } from './common'
+import { DrawerNav } from '../../page/DrawerNav'
 
 export function ServicesPage() {
   const day = new URLSearchParams(location.search).get('day')
@@ -45,8 +46,8 @@ export function ServicesPage() {
         { title: '结果', dataIndex: 'state' }, { title: '说明', key: 'detail', render: (_, x) => x.error || x.note || '—' },
       ]} />
     </Panel>
-    <Drawer open={!!run} onClose={() => setRun(null)} title={run?.run_id} width={620}><Table size="small" pagination={false} rowKey={(x) => `${x.name}-${x.started_at}`} dataSource={run?.steps ?? []} columns={[
+    {run && <Drawer open onClose={() => setRun(null)} title={run.run_id} width={620} extra={<DrawerNav rows={data.runs} current={run} identify={(x) => x.run_id} onPick={(x) => setRun(x)} copyText={run.run_id} />}><Table size="small" pagination={false} rowKey={(x) => `${x.name}-${x.started_at}`} dataSource={run.steps} columns={[
       { title: '步骤', dataIndex: 'name' }, { title: '状态', dataIndex: 'state' }, { title: '影响总结果', dataIndex: 'affects_run', render: (v) => v ? '是' : '否' }, { title: '说明', dataIndex: 'detail' },
-    ]} /></Drawer>
+    ]} /></Drawer>}
   </>
 }

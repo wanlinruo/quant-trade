@@ -1,12 +1,12 @@
 import { useEffect, useRef } from 'react'
 import * as echarts from 'echarts/core'
-import { BarChart, GraphChart, LineChart } from 'echarts/charts'
+import { BarChart, GraphChart, LineChart, ScatterChart } from 'echarts/charts'
 import { DataZoomComponent, GridComponent, LegendComponent, MarkLineComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import type { EChartsOption } from 'echarts'
 import { usePalette } from '../theme/context'
 
-echarts.use([LineChart, BarChart, GraphChart, GridComponent, TooltipComponent, LegendComponent, MarkLineComponent, DataZoomComponent, CanvasRenderer])
+echarts.use([LineChart, BarChart, GraphChart, ScatterChart, GridComponent, TooltipComponent, LegendComponent, MarkLineComponent, DataZoomComponent, CanvasRenderer])
 
 export type { EChartsOption }
 

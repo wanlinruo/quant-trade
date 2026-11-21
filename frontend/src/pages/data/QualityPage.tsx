@@ -4,6 +4,7 @@ import { WARNING_SOURCE_LABEL } from './labels'
 import { Descriptions, Drawer, Result, Table } from 'antd'
 import { fetchQuality, fetchRule, qualitySampleUrl, type QualitySummary, type RuleRow } from '../../api/data'
 import { EChart, type EChartsOption } from '../../page/EChart'
+import { DrawerNav } from '../../page/DrawerNav'
 import { Hero } from '../../page/Hero'
 import { Panel } from '../../page/Panel'
 import { useFetch } from '../../page/useFetch'
@@ -18,11 +19,13 @@ export const ISSUE_BASE = 'https://github.com/wanlinruo/quant-trade/issues/'
 const RULE_STATUS: Record<RuleRow['latest_status'], [Status, string]> = { blocking: ['bad', '阻断'], warning: ['warn', '警告'], unknown: ['idle', '无结果'], passed: ['ok', '通过'] }
 const RANK: Record<RuleRow['latest_status'], number> = { blocking: 0, warning: 1, unknown: 2, passed: 3 }
 
-function RuleDrawer({ id, onClose }: { id: string; onClose(): void }) {
+function RuleDrawer({ id, rows, onPick, onClose }: { id: string; rows: RuleRow[]; onPick(id: string): void; onClose(): void }) {
   const p = usePalette()
   const { data: d, error } = useFetch((s) => fetchRule(id, s), [id])
+  const current = rows.find((x) => x.id === id)
   return (
-    <Drawer open onClose={onClose} size="large" title={`规则 ${id}`} destroyOnHidden>
+    <Drawer open onClose={onClose} size="large" title={`规则 ${id}`} destroyOnHidden
+      extra={current ? <DrawerNav rows={rows} current={current} identify={(x) => x.id} onPick={(x) => onPick(x.id)} copyText={id} /> : null}>
       {error && <div style={{ color: p.bad }}>{error}</div>}
       {!d && !error && <div style={{ color: p.muted }}>加载中</div>}
       {d && d.enabled && (
@@ -112,7 +115,7 @@ export function QualityPage() {
             { title: '已登记问题', dataIndex: 'known_issues', render: (v: string[]) => v.join('；') || '—' },
           ]} />
       </Panel>
-      {rule && <RuleDrawer key={rule} id={rule} onClose={() => setSearch({ rule: null })} />}
+      {rule && <RuleDrawer key={rule} id={rule} rows={rules} onPick={(id) => setSearch({ rule: id })} onClose={() => setSearch({ rule: null })} />}
     </>
   )
 }

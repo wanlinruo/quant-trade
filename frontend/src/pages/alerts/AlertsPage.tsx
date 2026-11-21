@@ -3,6 +3,7 @@ import { Button, DatePicker, Descriptions, Drawer, Result, Table, Tabs, Tag } fr
 import dayjs from 'dayjs'
 import { ackAlert, fetchAlertDetail, fetchAlerts, type AlertCenter, type AlertItem } from '../../api/alerts'
 import { EChart, type EChartsOption } from '../../page/EChart'
+import { DrawerNav } from '../../page/DrawerNav'
 import { Hero } from '../../page/Hero'
 import { Panel } from '../../page/Panel'
 import { useFetch } from '../../page/useFetch'
@@ -27,7 +28,9 @@ const TABS = [
 ] as const
 export const ACK_NOTE = '只记录已知悉，不改变任何交易状态'
 
-function AlertDrawer({ item, day, onClose, onAcked }: { item: AlertItem; day: string | null; onClose(): void; onAcked(): void }) {
+function AlertDrawer({ item, rows, day, onPick, onClose, onAcked }: {
+  item: AlertItem; rows: AlertItem[]; day: string | null; onPick(item: AlertItem): void; onClose(): void; onAcked(): void
+}) {
   const p = usePalette()
   const { data: d, error } = useFetch((s) => fetchAlertDetail(item.key, item.subject, day, s), [item.key, item.subject, day])
   const [busy, setBusy] = useState(false)
@@ -38,7 +41,8 @@ function AlertDrawer({ item, day, onClose, onAcked }: { item: AlertItem; day: st
   }
   const canAck = !day && (item.status === 'unhandled')
   return (
-    <Drawer open onClose={onClose} size="large" title={item.title} destroyOnHidden>
+    <Drawer open onClose={onClose} size="large" title={item.title} destroyOnHidden
+      extra={<DrawerNav rows={rows} current={item} identify={(x) => `${x.key}|${x.subject}`} onPick={onPick} copyText={item.key} />}>
       <Descriptions size="small" bordered column={1} items={[
         { key: 'k', label: '告警键', children: <span style={{ fontFamily: MONO }}>{item.key}</span> },
         { key: 'd', label: '说明', children: item.description ?? '未登记键：受管清单中没有说明' },
@@ -122,7 +126,7 @@ export function AlertsPage() {
             ]} />
         </div>
       </Panel>
-      {picked && <AlertDrawer item={picked} day={day} onClose={() => setPicked(null)} onAcked={poll.refresh} />}
+      {picked && <AlertDrawer item={picked} rows={rows} day={day} onPick={setPicked} onClose={() => setPicked(null)} onAcked={poll.refresh} />}
     </>
   )
 }

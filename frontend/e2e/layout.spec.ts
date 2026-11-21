@@ -19,6 +19,9 @@ const STOPPED = {
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/app/shell/status', (r) => r.fulfill({ json: STOPPED }))
+  await page.route('**/api/app/search', (r) => r.fulfill({ json: { schema_version: 1, missing: {}, items: [
+    { kind: '指标', key: 'daily.close', label: 'daily.close', hint: '收盘价', page: 'catalog', params: { id: 'daily.close' } },
+  ] } }))
 })
 
 for (const width of [390, 1280, 1600]) {
@@ -47,6 +50,28 @@ test('deep link renders the page and nav switches routes', async ({ page }) => {
   await page.getByRole('menuitem', { name: '对账与风控' }).click()
   await expect(page).toHaveURL(/\/app\/recon$/)
   await expect(page.getByRole('heading', { name: '对账与风控' })).toBeVisible()
+})
+
+test('history day shows a global read-only banner and can return to today', async ({ page }) => {
+  await page.goto('/app/today?day=2026-11-17')
+  await expect(page.getByRole('status')).toContainText('正在回看 2026-11-17 · 只读')
+  await page.getByRole('button', { name: '回到今天' }).click()
+  await expect(page).not.toHaveURL(/day=/)
+  await expect(page.getByRole('status')).toHaveCount(0)
+})
+
+test('invalid history day is ignored by global controls', async ({ page }) => {
+  await page.goto('/app/today?day=garbage')
+  await expect(page.locator('.qs-history-banner')).toHaveCount(0)
+  await expect(page.getByLabel('全局回看日期')).toHaveValue('')
+})
+
+test('global search opens a business object with its query params', async ({ page }) => {
+  await page.goto('/app/today')
+  await page.getByRole('button', { name: '搜索' }).click()
+  await page.getByPlaceholder('搜索页面…').fill('daily.close')
+  await page.getByRole('option').filter({ hasText: 'daily.close' }).click()
+  await expect(page).toHaveURL('/app/catalog?id=daily.close')
 })
 
 test('kill banner never covers the side navigation after scrolling', async ({ page }) => {
