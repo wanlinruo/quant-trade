@@ -61,7 +61,7 @@ test('history mode is read-only with back-to-today', async () => {
 test('unavailable board shows message', async () => {
   mockFetch({ available: false, message: '打板看板采集器尚未产生数据' })
   render(<BoardPage />)
-  expect(await screen.findByText('○ 待运行')).toBeInTheDocument()
+  expect(await screen.findByRole('img', { name: '待运行' })).toBeInTheDocument()
   expect(screen.getByTestId('hero-title').textContent).toBe('打板看板采集器尚未产生数据')
 })
 

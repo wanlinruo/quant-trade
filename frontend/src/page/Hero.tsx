@@ -1,35 +1,52 @@
-import type { ReactNode } from 'react'
+import type { KeyboardEvent, ReactNode } from 'react'
+import {
+  CheckCircleFilled, CloseCircleFilled, ClockCircleOutlined, MinusCircleOutlined, SyncOutlined, WarningFilled,
+} from '@ant-design/icons'
 import { usePalette } from '../theme/context'
-import type { Status } from '../theme/status'
+import { statusText as STATUS_TEXT, type Status } from '../theme/status'
+import { Num } from '../ui/Num'
 import { StatusTag } from '../ui/StatusTag'
 
 export interface Kpi { k: string; v: ReactNode; sub?: ReactNode; color?: string; onClick?: () => void }
 
-/** 结论条：先给结论（状态 + 一句话），再给几个关键数（设计文档 §6.1）。 */
-export function Hero({ s, statusText, title, subtitle, kpis = [] }: { s: Status; statusText?: string; title: ReactNode; subtitle?: ReactNode; kpis?: Kpi[] }) {
+const ICON: Record<Status, ReactNode> = {
+  ok: <CheckCircleFilled />, warn: <WarningFilled />, bad: <CloseCircleFilled />,
+  running: <SyncOutlined />, idle: <ClockCircleOutlined />, closed: <MinusCircleOutlined />,
+}
+
+/** 结论条：左边状态图标 + 一句话结论，右边 3–5 个关键数分栏（设计文档 §6.1，原型 common.tsx）。
+ *  状态由不同形状的图标表达（并带可读标签），不单靠颜色（§7）。 */
+export function Hero({ s, statusText, title, subtitle, kpis = [] }: {
+  s: Status; statusText?: string; title: ReactNode; subtitle?: ReactNode; kpis?: Kpi[]
+}) {
   const p = usePalette()
+  const accent = s === 'idle' || s === 'closed' ? p.muted : (s === 'ok' ? p.ok : s === 'warn' ? p.warn : s === 'bad' ? p.bad : p.running)
+  const label = statusText ?? STATUS_TEXT[s]
   return (
-    <section className="qs-hero" style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center', padding: '12px 14px', marginBottom: 12, background: p.panel, border: `1px solid ${p.border}`, borderLeft: `3px solid ${s === 'idle' || s === 'closed' ? p.muted : (s === 'ok' ? p.ok : s === 'warn' ? p.warn : s === 'bad' ? p.bad : p.running)}`, borderRadius: 4 }}>
-      <div style={{ flex: '1 1 280px', minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <StatusTag s={s} text={statusText} />
-          <h2 data-testid="hero-title" style={{ margin: 0, fontSize: 16, fontWeight: 600, color: p.head }}>{title}</h2>
+    <section className="qs-hero" style={{ display: 'flex', flexWrap: 'wrap', marginBottom: 12, background: p.panel, border: `1px solid ${p.border}`, borderLeft: `3px solid ${accent}`, borderRadius: 4 }}>
+      <div style={{ flex: kpis.length ? '1 1 320px' : '1 1 auto', maxWidth: kpis.length ? 560 : undefined, minWidth: 0, padding: '12px 18px', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span role="img" aria-label={label} title={label} data-testid="hero-status" style={{ color: accent, fontSize: 24, display: 'flex', flex: 'none' }}>{ICON[s]}</span>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <h2 data-testid="hero-title" style={{ margin: 0, fontSize: 20, fontWeight: 600, lineHeight: 1.35, color: p.head }}>{title}</h2>
+            {/* 自定义状态文字（如“盘中 · 暂计”“历史 · 只读”）带有图标表达不了的信息，保持可见 */}
+            {statusText !== undefined && <StatusTag s={s} text={statusText} />}
+          </div>
+          {subtitle !== undefined && <div data-testid="hero-subtitle" style={{ marginTop: 2, fontSize: 12, color: p.muted }}>{subtitle}</div>}
         </div>
-        {subtitle !== undefined && <div data-testid="hero-subtitle" style={{ marginTop: 4, fontSize: 12, color: p.muted }}>{subtitle}</div>}
       </div>
-      {kpis.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 20px', minWidth: 0 }}>
-          {kpis.map((x) => (
-            <div key={x.k} role={x.onClick ? 'button' : undefined} tabIndex={x.onClick ? 0 : undefined}
-              onClick={x.onClick} onKeyDown={(e) => { if (x.onClick && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); x.onClick() } }}
-              style={{ minWidth: 72, cursor: x.onClick ? 'pointer' : undefined, borderBottom: x.onClick ? `1px dashed ${p.muted}` : undefined }}>
-              <div style={{ fontSize: 11, color: p.muted }}>{x.k}</div>
-              <div style={{ fontSize: 15, color: x.color ?? p.text }}>{x.v}</div>
-              {x.sub !== undefined && <div style={{ fontSize: 11, color: p.muted }}>{x.sub}</div>}
-            </div>
-          ))}
+      {kpis.map((x) => (
+        <div key={x.k} data-testid="hero-kpi" className={x.onClick ? 'qs-kpi-link' : undefined}
+          role={x.onClick ? 'button' : undefined} tabIndex={x.onClick ? 0 : undefined} onClick={x.onClick}
+          onKeyDown={(e: KeyboardEvent) => { if (x.onClick && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); x.onClick() } }}
+          style={{ flex: '1 1 140px', minWidth: 0, padding: '10px 14px', borderLeft: `1px solid ${p.border}`, cursor: x.onClick ? 'pointer' : undefined }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: p.muted }}>
+            {x.k}{x.onClick && <span aria-hidden style={{ opacity: 0.6 }}>›</span>}
+          </div>
+          <Num size={18} weight={600} color={x.color ?? p.head}>{x.v}</Num>
+          {x.sub !== undefined && <div style={{ fontSize: 11, color: p.muted }}>{x.sub}</div>}
         </div>
-      )}
+      ))}
     </section>
   )
 }

@@ -183,6 +183,7 @@ def build_app(
             service_runs_dir or Path("var/service-runs"),
             health_reader,
             ops_snapshot_root,
+            trading_days=_warehouse_trading_days(warehouse),
         ),
         health=health_reader,
         spa_root=spa_root,
@@ -215,6 +216,21 @@ def _daily_trading_calendar(config_path: str | None):
         return cache[today]
 
     return get
+
+
+def _warehouse_trading_days(warehouse: Warehouse):
+    """服务看板用的只读交易日历：读 warehouse 规范表，不在请求路径调用 Tushare。
+
+    每次新建短连接，不与数据页共用 DuckDB 连接；只返回表中真实存在的日期。
+    """
+    from qsys.data.query import WarehouseQuery
+
+    def read(start: date, end: date) -> dict[date, bool]:
+        frame = WarehouseQuery(warehouse).trading_calendar(start, end)
+        return {row["dt"]: bool(row["is_open"]) for row in frame.iter_rows(named=True)
+                if row["is_open"] is not None}
+
+    return read
 
 
 def _shadow_lineage(strategy_cfg):

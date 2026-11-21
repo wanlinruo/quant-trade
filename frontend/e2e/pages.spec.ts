@@ -172,16 +172,17 @@ for (const width of [390, 1280, 1600]) {
   test(`operations pages have no horizontal overflow at ${width}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
     const pages: [string, string][] = [
-      ['services', '已记录任务运行结论'], ['nodes', '节点与链路正常'], ['releases', '1/1 个组件三方一致'],
+      ['services', '定时任务全部正常'], ['nodes', '节点与链路正常'], ['releases', '1/1 个组件三方一致'],
     ]
     for (const [path, text] of pages) {
       await page.goto(`/app/${path}`)
       await expect(page.getByText(text, { exact: false }).first()).toBeVisible()
       if (path === 'services') {
         await expect(page.getByTestId('service-matrix').locator('canvas').first()).toBeVisible()
-        await expect(page.getByText('定时任务', { exact: true })).toBeVisible()
-        await expect(page.getByText('常驻进程与守护任务', { exact: true })).toBeVisible()
-        await page.getByText('任务时间线', { exact: true }).click()
+        await expect(page.getByLabel('矩阵状态图例')).toContainText('— 休市 / 未到期')
+        await expect(page.getByTestId('hero-kpi')).toHaveCount(4)
+        await expect(page.getByText('服务清单', { exact: true })).toBeVisible()
+        await page.getByText('当日时间线', { exact: true }).click()
         await expect(page.getByTestId('service-timeline').locator('canvas').first()).toBeVisible()
       }
       await noOverflow(page)

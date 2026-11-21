@@ -26,7 +26,7 @@ test('market hero shows counts, coverage and snapshot time', async () => {
   const sub = screen.getByTestId('hero-subtitle').textContent!
   expect(sub).toContain('有效 5,438 / 应有 5,441')
   expect(sub).toContain('10:42:00')
-  expect(screen.getByText('● 正常')).toBeInTheDocument()
+  expect(screen.getByRole('img', { name: '正常' })).toBeInTheDocument()
   expect(screen.getByText('上证指数')).toBeInTheDocument()
   expect(screen.getAllByText('+0.81%').length).toBe(2) // 上证涨幅与中位涨幅恰好相同
 })
@@ -35,7 +35,7 @@ test('market page renders history without live snapshot', async () => {
   mockFetch(payload({ live: { available: false, stale: true, snapshot: null } }))
   render(<MarketPage />)
   expect((await screen.findByTestId('hero-title')).textContent).toBe('无实时快照')
-  expect(screen.getByText('○ 待运行')).toBeInTheDocument()
+  expect(screen.getByRole('img', { name: '待运行' })).toBeInTheDocument()
   expect(screen.getByText('近 60 日市场情绪怎样？')).toBeInTheDocument()
   expect(options.length).toBeGreaterThan(0)
 })

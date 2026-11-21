@@ -92,6 +92,78 @@ def test_timer_schedule_ready_observation_is_not_run_evidence(tmp_path):
     assert rows["paper"].cells[-1].state == "ok"
 
 
+def _weekday_calendar(start: date, end: date) -> dict[date, bool]:
+    """测试夹具：显式给出每一天的开闭市事实（夹具内按星期构造，生产只读 trade_cal）。"""
+    return {start + timedelta(days=i): (start + timedelta(days=i)).weekday() < 5
+            for i in range((end - start).days + 1)}
+
+
+def test_trading_calendar_marks_closed_days_not_due(tmp_path):
+    saturday = datetime(2026, 11, 21, 21, tzinfo=TZ)
+    got = OperationsQuery(tmp_path / "runs", now=lambda: saturday,
+                          trading_days=_weekday_calendar).services(date(2026, 11, 21))
+    rows = {x.id: x for x in got.services}
+    cells = {c.day: c for c in rows["tushare-sync"].cells}
+    assert (cells[date(2026, 11, 21)].state, cells[date(2026, 11, 21)].detail) == (
+        "not_due", "休市（trade_cal）")
+    # 交易日没有运行记录：不由日历推断成功或失败，保持未知
+    assert cells[date(2026, 11, 20)].state == "unknown"
+    # everyday 任务休市日也该运行，日历不能把它标成未到期
+    assert rows["daily-digest"].cells[-1].state == "unknown"
+    # monthly_closed：11 月最后一个休市日是 11-29，其余日子未到期；10-31 是 10 月执行日
+    drill = {c.day: c for c in rows["reboot-drill"].cells}
+    assert drill[date(2026, 11, 21)].state == "not_due"
+    assert drill[date(2026, 10, 31)].state == "unknown"
+    assert got.trading_days[date(2026, 11, 21)] is False
+    assert got.trading_days[date(2026, 11, 20)] is True
+    assert "calendar" not in got.missing
+
+
+def test_trading_calendar_gaps_and_errors_stay_unknown(tmp_path):
+    saturday = datetime(2026, 11, 21, 21, tzinfo=TZ)
+
+    def gappy(start, end):
+        full = _weekday_calendar(start, end)
+        full.pop(date(2026, 11, 21))
+        full.pop(date(2026, 11, 30))  # 月末缺行：无法确定 11 月最后休市日
+        return full
+
+    got = OperationsQuery(tmp_path / "runs", now=lambda: saturday,
+                          trading_days=gappy).services(date(2026, 11, 21))
+    rows = {x.id: x for x in got.services}
+    assert rows["tushare-sync"].cells[-1].state == "unknown"
+    assert rows["tushare-sync"].cells[-2].state == "unknown"  # 11-20 交易日，无运行
+    assert next(c for c in rows["tushare-sync"].cells
+                if c.day == date(2026, 11, 15)).state == "not_due"
+    assert rows["reboot-drill"].cells[-1].state == "unknown"
+    assert date(2026, 11, 21) not in got.trading_days
+    assert got.missing["calendar"] == "交易日历缺少部分日期，缺行日期保持未知"
+
+    def broken(start, end):
+        raise OSError("warehouse unavailable")
+
+    failed = OperationsQuery(tmp_path / "runs", now=lambda: saturday,
+                             trading_days=broken).services(date(2026, 11, 21))
+    assert next(x for x in failed.services if x.id == "tushare-sync").cells[-1].state == "unknown"
+    assert failed.trading_days == {}
+    assert failed.missing["calendar"] == "交易日历读取失败，休市日保持未知"
+
+
+def test_closed_day_run_still_wins_over_calendar(tmp_path):
+    root = tmp_path / "runs"
+    folder = root / "2026" / "11" / "21"
+    folder.mkdir(parents=True)
+    (folder / "weekend.json").write_text(json.dumps({
+        "run_id": "weekend", "service": "tushare-sync", "session": "2026-11-21",
+        "started_at": "2026-11-21T10:00:00", "finished_at": "2026-11-21T10:01:00",
+        "status": "failed", "note": "", "error": "手工补跑失败", "steps": [],
+    }), encoding="utf-8")
+    got = OperationsQuery(root, now=lambda: datetime(2026, 11, 21, 21, tzinfo=TZ),
+                          trading_days=_weekday_calendar).services(date(2026, 11, 21))
+    cell = next(x for x in got.services if x.id == "tushare-sync").cells[-1]
+    assert (cell.state, cell.run_id) == ("failed", "weekend")
+
+
 def test_later_skip_does_not_hide_same_day_failure(tmp_path):
     root = tmp_path / "runs"
     _run(root, "failed", "failed-first", 10)

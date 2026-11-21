@@ -1278,6 +1278,7 @@ export interface ServiceRow {
   id: string
   name: string
   kind: string
+  cadence: string
   node: string
   schedule: string
   latest_state: "ok" | "warning" | "failed" | "running" | "fixed" | "paused" | "unknown" | "not_due"
@@ -1320,6 +1321,7 @@ export interface ServicesView {
   services: ServiceRow[]
   runs: ServiceRunItem[]
   missing: Record<string, string>
+  trading_days: Record<string, boolean>
 }
 
 export interface ShadowBoard {
