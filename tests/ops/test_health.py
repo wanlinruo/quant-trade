@@ -181,6 +181,26 @@ def test_migration_reader_deduplicates_copied_records_and_never_writes(tmp_path)
         reader.record(observation(start + timedelta(seconds=1)))
 
 
+def test_daily_latest_keeps_last_shanghai_observation_and_deduplicates_migration(tmp_path):
+    first = tmp_path / "new.sqlite3"
+    second = tmp_path / "legacy.sqlite3"
+    # UTC 15:59 and 16:01 straddle Shanghai midnight.
+    first_day = datetime(2026, 9, 17, 15, 55, tzinfo=timezone.utc)
+    latest_first_day = first_day + timedelta(minutes=4)
+    second_day = first_day + timedelta(minutes=6)
+    for path in (first, second):
+        store = HealthStore(path)
+        store.record(observation(first_day, DOWN))
+        store.record(observation(latest_first_day, UNKNOWN))
+        store.record(observation(second_day, DOWN))
+
+    reader = HealthStoreReader((first, second))
+    rows = reader.daily_latest(first_day, second_day + timedelta(minutes=1))
+    assert [(row["observed_at_utc"], row["state"]) for row in rows] == [
+        (latest_first_day, UNKNOWN), (second_day, DOWN),
+    ]
+
+
 def test_producer_pins_wal_sidecars_for_readers_without_directory_write_permission(tmp_path):
     import gc
 

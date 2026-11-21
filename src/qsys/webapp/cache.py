@@ -24,10 +24,15 @@ class SingleFlightCache(Generic[T]):
         self._value: T | None = None
         self._at: float | None = None
 
-    def get(self) -> T:
+    def get(self, *, stale_on_error: Callable[[T, Exception], T] | None = None) -> T:
         with self._lock:
             if self._at is not None and self._clock() - self._at < self._ttl:
                 return self._value  # type: ignore[return-value]
-            value = self._fn()
+            try:
+                value = self._fn()
+            except Exception as exc:
+                if self._at is None or stale_on_error is None:
+                    raise
+                return stale_on_error(self._value, exc)  # type: ignore[arg-type]
             self._value, self._at = value, self._clock()
             return value
