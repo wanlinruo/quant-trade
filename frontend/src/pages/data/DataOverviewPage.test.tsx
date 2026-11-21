@@ -1,5 +1,4 @@
 import { render, screen, within } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import type { EChartsOption } from '../../page/EChart'
 import { ThemeProvider } from '../../shell/ThemeProvider'
 import { DataOverviewPage as Page } from './DataOverviewPage'
@@ -9,14 +8,21 @@ import { domainLabel } from './labels'
 const DataOverviewPage = () => <ThemeProvider><Page /></ThemeProvider>
 const options: EChartsOption[] = []
 let clickHandler: ((p: { dataType?: string; data?: unknown }) => void) | undefined
+const handlers: (((p: unknown) => void) | undefined)[] = []
 vi.mock('../../page/EChart', () => ({
   EChart: ({ option, onClick }: { option: EChartsOption; onClick?: (p: unknown) => void }) => {
-    options.push(option); clickHandler = onClick as typeof clickHandler; return <div data-testid="echart" />
+    options.push(option); handlers.push(onClick); clickHandler = onClick as typeof clickHandler; return <div data-testid="echart" />
   },
 }))
+type Cell = { value: [number, number, number]; id: string; label: { formatter: string } }
+const heatmap = () => {
+  const i = options.map((o, k) => ((o.series as { type?: string }[]) ?? []).some((x) => x.type === 'heatmap') ? k : -1).reduce((a, b) => Math.max(a, b), -1)
+  const o = options[i]
+  return { rows: (o.yAxis as { data: string[] }).data, cells: ((o.series as { data: Cell[] }[])[0]).data, click: handlers[i]! }
+}
 let body: () => unknown
 beforeEach(() => {
-  options.length = 0; history.replaceState(null, '', '/app/dataov')
+  options.length = 0; handlers.length = 0; history.replaceState(null, '', '/app/dataov')
   body = () => dfx.overview()
   vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(body()), { status: 200 })))
 })
@@ -44,12 +50,15 @@ test('overview hero counts statuses and never shows gray as ok', async () => {
 test('matrix rows sorted worst first and cells use symbol+text', async () => {
   body = () => mixed()
   render(<DataOverviewPage />)
-  const panel = (await screen.findByText('核心表健康吗？')).closest('section')!
-  const rows = within(panel).getAllByRole('row').slice(1)
-  expect(rows[0].textContent).toContain(mixed().tables[0].name)
-  expect(within(rows[0]).getAllByText('✕ 红').length).toBeGreaterThan(0)
-  expect(within(rows[rows.length - 1]).getAllByText('● 绿').length).toBe(6)
-  expect(within(rows[1]).getAllByText('○ 灰').length).toBe(6)
+  await screen.findByText('每张表在五个维度上都健康吗？')
+  const { rows, cells } = heatmap()
+  const n = mixed().tables.length
+  expect(rows[0]).toBe(mixed().tables[0].name)           // 红表排最前
+  expect(rows[n - 1]).toBe(mixed().tables[1].name)       // 绿表排最后
+  const rowCells = (y: number) => cells.filter((c) => c.value[1] === y).map((c) => c.label.formatter)
+  expect(rowCells(0)[0]).toBe('✕')
+  expect(rowCells(n - 1)).toEqual(['●', '●', '●', '●', '●', '●'])
+  expect(rowCells(1)).toEqual(['○', '○', '○', '○', '○', '○'])  // 缺证据是灰○，不算健康
   expect(screen.getByRole('img', { name: '失败' })).toBeInTheDocument()
 })
 
@@ -67,7 +76,8 @@ test('lineage graph option has adjacency focus and fixed columns', async () => {
 test('clicking a matrix row opens table detail', async () => {
   render(<DataOverviewPage />)
   const first = dfx.overview().tables[0]
-  await userEvent.click(await screen.findByText(first.name))
+  await screen.findByText('每张表在五个维度上都健康吗？')
+  heatmap().click({ data: { id: first.id } })
   expect(location.pathname + location.search).toBe(`/app/tables?id=${first.id}`)
 })
 

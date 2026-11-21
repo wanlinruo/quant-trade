@@ -19,3 +19,7 @@ html[data-mode="dark"] ::-webkit-scrollbar-thumb { background: #2c3235; border-r
 @media (max-width: 1560px) { .qs-h-opt { display: none !important; } }
 @media (max-width: 1400px) { .qs-h-search { width: auto; } .qs-h-long { display: none; } }
 @media (max-width: 760px) { .qs-h-date { width: 40px; overflow: hidden; } }
+
+/* 页面主体 2:1 两栏（原型：主图 + 侧栏）；窄屏改单栏 */
+.qs-grid-21 { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 12px; }
+@media (max-width: 1100px) { .qs-grid-21 { grid-template-columns: minmax(0, 1fr); } }

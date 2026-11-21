@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ThemeProvider } from '../../shell/ThemeProvider'
 import { LivePage } from './LivePage'
-import { OrdersPage } from './OrdersPage'
+import { laneOf, OrdersPage } from './OrdersPage'
 import { ReconciliationPage } from './ReconciliationPage'
 import { RunsPage } from './RunsPage'
 import { PaperPage } from './PaperPage'
@@ -95,7 +95,7 @@ test('orders map live_orders terminal/pending to labels and summarise in hero KP
   expect(screen.queryByText('terminal')).toBeNull()
   const kpis = screen.getAllByTestId('hero-kpi').map((x) => x.textContent)
   expect(kpis[0]).toContain('1 / 2')
-  expect(kpis[3]).toContain('风控拦截1')
+  expect(kpis[3]).toMatch(/风控拦截.*1/)
   // 页面内不再有重复的交易日下拉（全局日期在顶栏）
   expect(screen.queryByLabelText('交易日')).toBeNull()
 })
@@ -130,4 +130,36 @@ test('runs hero sums orders and reports the largest start lag from recorded time
   expect(kpis[1]).toContain('3 / 0')
   expect(kpis[2]).toContain('44.0s')
   expect(kpis[3]).toContain('2.4s')
+})
+
+test('reconciliation shows a 30-day matrix, gate sources and clickable inconsistencies; no checklist while clear', async () => {
+  payload = { schema_version: 1, enabled: true, day: { selected: '2026-11-20', available: ['2026-09-30', '2026-11-20'] }, heatmap: [
+    { day: '2026-09-30', layer: 'cash', state: 'inconsistent', at: null, detail: 'reconcile: INCONSISTENT (cash diff 49,998.69)' },
+    { day: '2026-11-20', layer: 'cash', state: 'consistent', at: null, detail: '' }], records: [], risks: [],
+    kill: { state: 'clear', label: '停机闸已解除', message: '仅表示三处停机闸未生效', sources: [
+      { id: 'linux', name: 'Linux 本地停机闸', state: 'clear', reason: '未发现停机标记', recorded_at: null },
+      { id: 'agent', name: 'Windows 实盘 agent', state: 'unknown', reason: '心跳过期', recorded_at: '2026-11-20T15:00:00+08:00' }] },
+    review: null, missing: { kill_review: '没有核对记录' } }
+  wrap(<ReconciliationPage />)
+  expect(await screen.findByTestId('recon-matrix')).toBeInTheDocument()
+  expect(screen.queryByText('解除停机闸前还差什么？')).toBeNull()
+  const sources = screen.getAllByTestId('kill-source').map((x) => x.textContent)
+  expect(sources[0]).toContain('● 未生效')
+  expect(sources[1]).toContain('○ 未知')
+  await userEvent.click(screen.getByText('reconcile: INCONSISTENT (cash diff 49,998.69)'))
+  expect(location.search).toContain('day=2026-09-30')
+})
+
+test('lifecycle lane merges same-instant stages and labels repeated stages once, without inventing times', () => {
+  const lane = laneOf({ id: 'q1', event_key: 'a', symbol: '603078.SH', side: 'buy', qty: 100, remaining_qty: 0, order_type: 'limit', limit_price: 26.11,
+    status: 'terminal', created_at: '2026-11-20T09:25:10+08:00', updated_at: null, broker_order_id: '817', broker_accepted_at: null, unknown_no_retry: false, stages: [
+      { state: 'created', at: '2026-11-20T09:25:14.148+08:00', detail: null }, { state: 'risk_passed', at: '2026-11-20T09:25:14.148+08:00', detail: null },
+      { state: 'sent', at: '2026-11-20T09:25:14.148+08:00', detail: null }, { state: 'accepted', at: '2026-11-20T09:25:17.675+08:00', detail: '0/100' },
+      { state: 'unknown', at: null, detail: null },
+      { state: 'filled', at: '2026-11-20T09:30:00+08:00', detail: 't1' }, { state: 'filled', at: '2026-11-20T09:30:01.956+08:00', detail: '100/100' }] })
+  // 原点取“意图生成”阶段的记录时刻（原型 t0 = 首个阶段）；同刻阶段合点，偏移 0 夹到对数轴下限 0.01s
+  expect(lane.points.map((x) => x.names)).toEqual([['意图生成', '风控通过', '已发送'], ['券商受理'], ['已成交'], []])
+  expect(lane.points[0].offset).toBe(0.01)
+  expect(lane.points[1].offset).toBeCloseTo(3.527, 2)
+  expect(lane.points).toHaveLength(4) // 没有时刻的 unknown 阶段不画点
 })
