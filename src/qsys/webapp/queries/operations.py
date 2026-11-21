@@ -3,15 +3,21 @@
 from __future__ import annotations
 
 import json
+import threading
+from collections import OrderedDict
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
 from qsys.ops.health import SHANGHAI
 from qsys.ops.services import SERVICES, effective_status, load_runs, run_session
+from qsys.webapp.cache import SingleFlightCache
 from qsys.webapp.contracts.operations import (
     NodesView, OperationsDisabled, OpsState, ReleasesView,
     ServiceCell, ServiceHealthItem, ServiceRow, ServiceRunItem, ServicesView, ServiceStep,
 )
+
+SERVICES_TTL_SECONDS = 15.0
+SERVICES_CACHE_KEYS = 8
 
 
 def _aware(value: str | datetime | None) -> datetime | None:
@@ -36,25 +42,75 @@ class OperationsQuery:
         self.health_store = health_store
         self.snapshot_root = Path(snapshot_root) if snapshot_root is not None else None
         self.now = now
+        self._services_caches: OrderedDict[date, SingleFlightCache[ServicesView]] = OrderedDict()
+        self._services_caches_lock = threading.Lock()
 
     def services(self, selected: date | None = None) -> ServicesView:
+        now = self._now()
+        selected = selected or now.date()
+        with self._services_caches_lock:
+            cache = self._services_caches.get(selected)
+            if cache is None:
+                cache = SingleFlightCache(
+                    lambda: self._build_services(selected), SERVICES_TTL_SECONDS
+                )
+                self._services_caches[selected] = cache
+                while len(self._services_caches) > SERVICES_CACHE_KEYS:
+                    self._services_caches.popitem(last=False)
+            else:
+                self._services_caches.move_to_end(selected)
+        try:
+            return cache.get(stale_on_error=self._stale_services)
+        except Exception as exc:
+            # There is no previous successful value on the first failed read.
+            # Preserve the page contract with an explicit missing/error marker;
+            # later refresh failures are handled by _stale_services above.
+            return self._build_services(selected, tolerate_health_error=True, health_error=exc)
+
+    def _now(self) -> datetime:
         now = self.now()
         if now.tzinfo is None:
             now = now.replace(tzinfo=SHANGHAI)
-        selected = selected or now.date()
+        return now
+
+    @staticmethod
+    def _stale_services(value: ServicesView, exc: Exception) -> ServicesView:
+        missing = dict(value.missing)
+        missing["cache_stale"] = "服务看板刷新失败，当前为上一份成功结果"
+        missing["cache_error"] = type(exc).__name__
+        return value.model_copy(update={"missing": missing})
+
+    def _build_services(
+        self, selected: date, *, tolerate_health_error: bool = False,
+        health_error: Exception | None = None,
+    ) -> ServicesView:
+        now = self._now()
         start = selected - timedelta(days=29)
         days = [start + timedelta(days=i) for i in range(30)]
         runs = load_runs(self.runs_root, start, selected)
         by_service: dict[str, list[dict]] = {}
         for run in runs:
             by_service.setdefault(str(run.get("service", "")), []).append(run)
-        health = self._health(start, selected, now)
+        if tolerate_health_error and health_error is not None:
+            health = selected_health = []
+        else:
+            try:
+                health = self._daily_health(start, selected, now)
+                selected_health = self._health(selected, selected, now)
+            except Exception as exc:
+                if not tolerate_health_error:
+                    raise
+                health = selected_health = []
+                health_error = exc
         rows = [self._service_row(spec, days, by_service.get(spec.id, []), health, now)
                 for spec in SERVICES]
         selected_runs = [self._run_item(run, now) for run in runs if run_session(run) == selected.isoformat()]
         missing = {}
         if self.health_store is None:
             missing["health"] = "health-observer 本地只读库未配置"
+        elif health_error is not None:
+            missing["health"] = "health-observer 本地只读库读取失败"
+            missing["cache_error"] = type(health_error).__name__
         elif not health:
             missing["health"] = "所选窗口没有健康观察记录"
         return ServicesView(selected_day=selected, days=days, services=rows, health=[
@@ -63,7 +119,8 @@ class OperationsQuery:
                               process_state=str(r.get("process_state", "unknown")),
                               business_state=str(r.get("business_state", "unknown")),
                               reason_code=str(r.get("reason_code", "unknown")))
-            for r in health if r["observed_at_utc"].astimezone(SHANGHAI).date() == selected
+            for r in selected_health
+            if r["observed_at_utc"].astimezone(SHANGHAI).date() == selected
         ], runs=selected_runs, missing=missing)
 
     @staticmethod
@@ -76,10 +133,14 @@ class OperationsQuery:
             return []
         begin = datetime.combine(start, time.min, tzinfo=SHANGHAI)
         finish = min(now, datetime.combine(end + timedelta(days=1), time.min, tzinfo=SHANGHAI))
-        try:
-            return self.health_store.history(begin, finish)
-        except Exception:
+        return self.health_store.history(begin, finish)
+
+    def _daily_health(self, start: date, end: date, now: datetime) -> list[dict]:
+        if self.health_store is None:
             return []
+        begin = datetime.combine(start, time.min, tzinfo=SHANGHAI)
+        finish = min(now, datetime.combine(end + timedelta(days=1), time.min, tzinfo=SHANGHAI))
+        return self.health_store.daily_latest(begin, finish)
 
     def _service_row(self, spec, days: list[date], runs: list[dict], health: list[dict],
                      now: datetime) -> ServiceRow:

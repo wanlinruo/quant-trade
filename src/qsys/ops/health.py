@@ -399,16 +399,56 @@ class HealthStore:
         return [self._row(row) for row in rows]
 
     def history(self, start: datetime, end: datetime, service_id: str | None = None) -> list[dict]:
-        clauses = ["observed_at_utc BETWEEN ? AND ?"]
-        params: list[object] = [_utc(start).isoformat(), _utc(end).isoformat()]
-        if service_id is not None:
-            clauses.append("service_id=?")
-            params.append(service_id)
+        bounds = (_utc(start).isoformat(), _utc(end).isoformat())
         with self._connect() as con:
-            rows = con.execute(
-                "SELECT * FROM health_observations WHERE " + " AND ".join(clauses)
-                + " ORDER BY service_id, observed_at_utc, id", params,
-            ).fetchall()
+            service_ids = [service_id] if service_id is not None else [
+                row[0] for row in con.execute(
+                    "SELECT DISTINCT service_id FROM health_observations ORDER BY service_id"
+                )
+            ]
+            # The production index is (service_id, observed_at_utc). A global
+            # time-range query scans the complete index; one bounded lookup per
+            # service uses both columns and keeps the result order unchanged.
+            rows = [
+                row
+                for name in service_ids
+                for row in con.execute(
+                    "SELECT * FROM health_observations WHERE service_id=? "
+                    "AND observed_at_utc BETWEEN ? AND ? "
+                    "ORDER BY observed_at_utc, id",
+                    (name, *bounds),
+                ).fetchall()
+            ]
+        return [self._row(row) for row in rows]
+
+    def daily_latest(self, start: datetime, end: datetime) -> list[dict]:
+        """Return each service's last observation per Shanghai calendar day.
+
+        The services dashboard only consumes the last observation for old-day
+        cells. Keeping the reduction in SQLite avoids decoding roughly 160k
+        production checkpoint payloads merely to discard them in Python.
+        """
+        bounds = (_utc(start).isoformat(), _utc(end).isoformat())
+        with self._connect() as con:
+            service_ids = [
+                row[0] for row in con.execute(
+                    "SELECT DISTINCT service_id FROM health_observations ORDER BY service_id"
+                )
+            ]
+            rows = [
+                row
+                for name in service_ids
+                for row in con.execute(
+                    "SELECT * FROM ("
+                    "SELECT h.*, ROW_NUMBER() OVER ("
+                    "PARTITION BY date(observed_at_utc, '+8 hours') "
+                    "ORDER BY observed_at_utc DESC, id DESC) AS rank "
+                    "FROM health_observations h WHERE service_id=? "
+                    "AND observed_at_utc BETWEEN ? AND ?) "
+                    "WHERE rank=1 ORDER BY observed_at_utc, id",
+                    (name, *bounds),
+                ).fetchall()
+            ]
         return [self._row(row) for row in rows]
 
     def timeline(
@@ -532,8 +572,12 @@ class HealthStoreReader(HealthStore):
     def history(
         self, start: datetime, end: datetime, service_id: str | None = None,
     ) -> list[dict]:
+        return self._merge_history(self._read_rows("history", start, end, service_id))
+
+    @staticmethod
+    def _merge_history(rows: list[dict]) -> list[dict]:
         unique: dict[tuple[object, ...], dict] = {}
-        for row in self._read_rows("history", start, end, service_id):
+        for row in rows:
             identity = (
                 row["service_id"], row["observed_at_utc"], row["phase"],
                 row["expected_interval_s"], row["warn_after_s"],
@@ -548,3 +592,11 @@ class HealthStoreReader(HealthStore):
             unique.values(),
             key=lambda row: (row["service_id"], row["observed_at_utc"], row["id"]),
         )
+
+    def daily_latest(self, start: datetime, end: datetime) -> list[dict]:
+        rows = self._merge_history(self._read_rows("daily_latest", start, end))
+        latest: dict[tuple[str, date], dict] = {}
+        for row in rows:
+            key = (row["service_id"], row["observed_at_utc"].astimezone(SHANGHAI).date())
+            latest[key] = row
+        return list(latest.values())

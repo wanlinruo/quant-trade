@@ -53,3 +53,24 @@ def test_single_flight_cache_does_not_cache_errors() -> None:
     state["fail"] = False
     assert cache.get() == "ok"
     assert state["calls"] == 2
+
+
+def test_single_flight_cache_can_return_explicit_stale_value_after_refresh_error() -> None:
+    state = {"fail": False, "calls": 0}
+    clock = Clock()
+
+    def fn() -> dict[str, object]:
+        state["calls"] += 1
+        if state["fail"]:
+            raise RuntimeError("boom")
+        return {"value": "ok", "stale": False}
+
+    cache = SingleFlightCache(fn, ttl_seconds=15, clock=clock)
+    assert cache.get() == {"value": "ok", "stale": False}
+    clock.t += 15.01
+    state["fail"] = True
+    got = cache.get(stale_on_error=lambda old, exc: {
+        **old, "stale": True, "error": type(exc).__name__,
+    })
+    assert got == {"value": "ok", "stale": True, "error": "RuntimeError"}
+    assert state["calls"] == 2
