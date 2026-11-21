@@ -5,9 +5,14 @@ import {
 import { usePalette } from '../theme/context'
 import { statusText as STATUS_TEXT, type Status } from '../theme/status'
 import { Num } from '../ui/Num'
+import { Spark } from '../ui/Spark'
 import { StatusTag } from '../ui/StatusTag'
 
-export interface Kpi { k: string; v: ReactNode; sub?: ReactNode; color?: string; onClick?: () => void }
+export interface Kpi {
+  k: string; v: ReactNode; sub?: ReactNode; color?: string; onClick?: () => void
+  /** 可选迷你走势：只放真实序列，null 处断开 */
+  spark?: (number | null)[]; sparkColor?: string
+}
 
 const ICON: Record<Status, ReactNode> = {
   ok: <CheckCircleFilled />, warn: <WarningFilled />, bad: <CloseCircleFilled />,
@@ -48,6 +53,7 @@ export function Hero({ s, statusText, title, subtitle, kpis = [] }: {
             ? <div title={x.v} style={{ fontSize: 12, color: x.color ?? p.head, overflowWrap: 'anywhere', lineHeight: 1.4 }}>{x.v}</div>
             : <Num size={18} weight={600} color={x.color ?? p.head}>{x.v}</Num>}
           {x.sub !== undefined && <div style={{ fontSize: 11, color: p.muted }}>{x.sub}</div>}
+          {x.spark && <div style={{ marginTop: 4 }}><Spark data={x.spark} color={x.sparkColor ?? p.line} label={`${x.k}走势`} /></div>}
         </div>
       ))}
     </section>
