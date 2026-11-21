@@ -1,6 +1,29 @@
 # 项目交接入口
 
-## 11-20：页面改版与测试数据快照（#662 / #683）——等待 PR #684 自审（以本节为准）
+## 11-21：页面原型一致性增量已发布生产（#662 / #694）——Web `699791b`（以本节为准）
+
+- **生产 Web 已升级**：维护者明确授权 Web-only 发布后，生产 `qsys-monitor` 已从
+  `998dc8b` 升级至 main `699791b`（PR #694）；生产仓库 checkout 没有整体切换，live-core、
+  Paper、backtest-worker、Redis、Windows/QMT、急停和账户配置均不在发布范围。
+- **发布证据**：dry-run `44877391351`、正式发布 `44877835168`、GitHub Deployment
+  `7959950145` 均成功；release `issue662-web-fidelity-20261121-r1`，节点 record 为
+  `github/issue662-web-fidelity-20261121-r1-web`，制品 SHA-256
+  `4d478f1a2ec98d1b29c8fde13906482f4351ca549a2dc1c219301bfb21d7b9c7`。上一成功 Web
+  `998dc8b` 是本次代码回滚目标。
+- **生产验收**：19/19 页面及各自主 API 为 HTTP 200；真实 Chrome 已验证搜索、历史回看、
+  数据质量抽屉、Live 链路拓扑、委托生命周期泳道和运行计划/实绩图。遍历期间没有
+  POST/PUT/PATCH/DELETE。`qsys-monitor`、live-core、Paper、backtest-worker 均 active/running、
+  NRestarts=0；三条非 Web 进程在本次发布前后 PID 与 `ExecMainStartTimestampMonotonic` 相同，
+  停机闸保持 clear、实盘姿态保持 trading。该证据证明发布期间未观察到进程或姿态变化，
+  **不等同于交易日自然事件、委托、回报和对账链路复验**。
+- **结案边界**：#662 已关闭，范围限于页面原型一致性第一批、Web-only 发布和生产只读验收。
+  未完成项独立承接：#693 服务页慢查询；#695 favicon；#696 委托泳道标签防碰撞；#675 市场
+  分时/分布；#676 AI 校准/漂移；#697 生产只读运维快照（nodes/releases、QMT/节点/链路摘要）。
+  `nodes/releases` 当前仍可能显示 disabled，不得以页面/API 200 表述为该数据能力已完成。
+- **交接注意**：Web 自正式切换后的短时观察未见 warning；这不是长期稳定性或交易日验证。
+  后续 Web 发布继续走标准组件入口并另行取得生产授权，不因 #662 关闭夹带上述独立 Issue。
+
+## 11-20：页面改版与测试数据快照（#662 / #683）——历史，现状见上节
 
 - **生产状态未变**：03–05、03b 和 19 个新页面都**没有发布到任何生产组件**；生产现状仍以
   下方 11-17 一节及 #137 / #670 / #677 / #666 最新评论为准。生产发布仍逐组件另行请示。
