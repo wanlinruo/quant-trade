@@ -32,7 +32,7 @@ test('strategy table shows stage steps and latest backtest from the shared row',
   const draft = screen.getByText('草稿策略').closest('tr') as HTMLElement
   expect(within(draft).getByText('无回测')).toBeInTheDocument()
   expect(within(draft).getByText('草稿').getAttribute('aria-current')).toBe('step')
-  expect(screen.getByTestId('hero-title').textContent).toContain('共 2 个策略')
+  expect(screen.getByTestId('hero-title').textContent).toContain('2 个策略')
 })
 
 test('in-use strategy is read-only and offers save-as', async () => {

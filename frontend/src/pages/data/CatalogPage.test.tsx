@@ -22,7 +22,7 @@ afterEach(() => { vi.unstubAllGlobals() })
 test('catalog filters write url and detail shows evidence table', async () => {
   history.replaceState(null, '', `/app/catalog?kind=derived&id=${encodeURIComponent(MID)}`)
   render(<CatalogPage />)
-  expect((await screen.findByTestId('hero-title')).textContent).toContain(`共 ${dfx.catalog().summary.total} 个指标`)
+  expect((await screen.findByTestId('hero-title')).textContent).toContain(`${dfx.catalog().summary.total} 个指标`)
   await waitFor(() => expect(urls.some((u) => u === '/api/app/data/catalog?kind=derived')).toBe(true))
   const ev = (await screen.findByText('人工抽样验真')).closest('section')!
   const row = within(ev).getByText('600000.SH').closest('tr')!

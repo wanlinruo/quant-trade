@@ -59,9 +59,8 @@ export function ShadowView({ day, onPickDay }: { day: string | null; onPickDay(d
     <>
       {head}
       {showTable
-        ? <Hero s={st.s} statusText={st.text} title={`预测 ${snap!.prediction_date} → 目标 ${snap!.target_session}`} subtitle={v.message}
+        ? <Hero s={st.s} statusText={st.text} title={`预测 ${snap!.prediction_date} → 目标 ${snap!.target_session}`} subtitle={`${v.message} · 模型 ${snap!.model_version}`}
             kpis={[
-              { k: '模型', v: snap!.model_version },
               { k: '可选股票', v: snap!.eligible_count },
               { k: '滚动 P@20', v: <Value v={pct(snap!.rolling_precision_at_20)} why="该快照没有滚动 P@20" /> },
               { k: '校准误差', v: <Value v={snap!.calibration_error?.toFixed(3) ?? null} why="该快照没有校准误差" /> },

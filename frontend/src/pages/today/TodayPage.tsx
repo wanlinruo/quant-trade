@@ -11,7 +11,7 @@ import { navigate } from '../../shell/router'
 import { usePalette } from '../../theme/context'
 import { Missing } from '../../ui/Missing'
 import { StatusTag } from '../../ui/StatusTag'
-import { DaySelect, useTradingDay, yuan } from '../trading/common'
+import { dayNote, useTradingDay, yuan } from '../trading/common'
 
 const phaseTag = (s: string) => <StatusTag s={s === 'ok' ? 'ok' : s === 'warning' ? 'warn' : s === 'failed' ? 'bad' : s === 'running' ? 'running' : 'idle'} text={{ ok: '完成', warning: '警告', failed: '失败', running: '进行中', not_started: '未到', unknown: '未知' }[s] ?? s} />
 
@@ -29,9 +29,8 @@ export function TodayPage() {
   const allLinkTimes = d.links.flatMap((x) => x.points.map((v) => new Date(v.sampled_at).getTime())).filter(Number.isFinite)
   const linkMin = Math.min(...allLinkTimes); const linkMax = Math.max(...allLinkTimes)
   return <>
-    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}><DaySelect value={{ selected: d.day, available: d.days }} /></div>
     <Hero s={hero} title={`${d.title}${d.concerns.length ? ` · ${d.concerns.length} 项需要留意` : ''}`}
-      subtitle="账户总资产为原始观测；页面只组合已有事实，不提供交易或运维控制。"
+      subtitle={`${dayNote({ selected: d.day, available: d.days })} · 账户总资产为原始观测；页面只组合已有事实，不提供交易或运维控制。`}
       kpis={[{ k: '账户总资产', v: d.kpis.account_total == null ? <Missing why={d.missing.live ?? '未记录'} /> : yuan(d.kpis.account_total), onClick: () => navigate('live') },
         { k: d.kpis.index_name ?? '上证指数', v: d.kpis.index_price ?? <Missing why={d.missing.market ?? '未记录'} />, sub: d.kpis.index_change_ratio == null ? undefined : pct(d.kpis.index_change_ratio), onClick: () => navigate('market') },
         { k: '涨停 / 跌停', v: d.kpis.limit_up == null || d.kpis.limit_down == null ? <Missing why="市场快照缺失" /> : `${d.kpis.limit_up} / ${d.kpis.limit_down}`, sub: d.kpis.seal_ratio == null ? undefined : `封板率 ${pct(d.kpis.seal_ratio)}`, onClick: () => navigate('board') },

@@ -80,13 +80,20 @@ export function QualityPage() {
   if (!d) return poll.error ? <Hero s="bad" title="数据质量接口无法访问" subtitle={poll.error} /> : <Hero s="running" title="加载中" />
   if (!d.enabled) return <Result status="info" title="数据资产未启用" />
   const last = d.runs[0]
+  const unclassified = d.warning_sources.find((w) => w.key === 'unclassified')?.count ?? 0
   const missingTables = d.runs.filter((r) => r.tables === null).length
   const rules = [...d.rules].sort((a, b) => RANK[a.latest_status] - RANK[b.latest_status] || a.id.localeCompare(b.id))
   return (
     <>
       <Hero s={!last ? 'idle' : last.fields.blocking ? 'bad' : last.fields.warning ? 'warn' : 'ok'}
         title={last ? `最近一次质检：阻断 ${last.fields.blocking} · 警告 ${last.fields.warning} · 通过 ${last.fields.passed}` : '还没有质检记录'}
-        subtitle={last ? `${String(last.checked_at).replace('T', ' ')} · ${last.run_id} · ${last.tables ? `表级 红 ${last.tables.red} · 黄 ${last.tables.yellow}` : '无表级记录'}` : ''} />
+        subtitle={last ? `${last.checked_at ? dateTime(last.checked_at) : '时间未记录'} · ${last.run_id}` : ''}
+        kpis={last ? [
+          { k: '字段级 阻断 / 警告', v: `${last.fields.blocking} / ${last.fields.warning}`, color: last.fields.blocking ? p.bad : last.fields.warning ? p.warn : p.ok, sub: `共 ${last.fields.total} 条` },
+          { k: '表级 红 / 黄', v: last.tables ? `${last.tables.red ?? 0} / ${last.tables.yellow ?? 0}` : '—', sub: last.tables ? undefined : '本次没有表级记录' },
+          { k: `近 ${d.runs.length} 次有阻断`, v: `${d.runs.filter((r) => r.fields.blocking > 0).length} 次`, color: d.runs.some((r) => r.fields.blocking > 0) ? p.bad : p.ok },
+          { k: '待归类警告', v: unclassified, color: unclassified ? p.warn : p.ok, sub: unclassified ? '未登记 Issue 或已知问题' : '均已归类' },
+        ] : []} />
       <Panel title="近 30 次质检结构" info="按 metric_checks.run_id 汇总：通过、警告（未通过且非阻断）、阻断；表级按同一 run 的 dataset_checks 统计。">
         {option ? <EChart option={option} height={220} /> : <div style={{ color: p.muted }}>还没有质检记录</div>}
         {missingTables > 0 && <div style={{ fontSize: 12, color: p.muted }}>其中 {missingTables} 次质检没有表级记录（不按 0 计）。</div>}

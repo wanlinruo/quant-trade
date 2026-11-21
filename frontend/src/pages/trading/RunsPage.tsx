@@ -8,7 +8,7 @@ import { axisHm, dateTime } from '../../shell/time'
 import { usePalette } from '../../theme/context'
 import { Missing } from '../../ui/Missing'
 import { StatusTag } from '../../ui/StatusTag'
-import { DaySelect, label, useTradingDay } from './common'
+import { dayNote, label, useTradingDay } from './common'
 import { EChart, type EChartsOption } from '../../page/EChart'
 
 export function RunsPage() {
@@ -27,11 +27,21 @@ export function RunsPage() {
   if (!data) return <Hero s={error ? 'bad' : 'running'} title={error ?? '加载中'} />
   if (!data.enabled) return <Result status="info" title="运行记录未启用" />
   const d = data; const failed = d.runs.filter((r) => r.status === 'failed').length
+  const auction = d.runs.find((r) => r.phase === 'auction')
+  const orders = d.runs.reduce((n, r) => n + r.orders, 0); const rejects = d.runs.reduce((n, r) => n + r.rejects, 0)
+  const lags = d.runs.flatMap((r) => r.scheduled_at && r.started_at ? [{ run: r, seconds: (Date.parse(r.started_at) - Date.parse(r.scheduled_at)) / 1000 }] : [])
+  const maxLag = lags.length ? lags.reduce((a, b) => (b.seconds > a.seconds ? b : a)) : null
+  const slowest = d.runs.length ? d.runs.reduce((a, b) => (b.duration_ms > a.duration_ms ? b : a)) : null
   const copy = async () => { if (!d.report_text) return; await navigator.clipboard.writeText(d.report_text); setCopied(true) }
   return <>
-    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}><DaySelect value={d.day} /></div>
-    <Hero s={failed ? 'bad' : d.runs.length ? 'ok' : 'idle'} title={failed ? `${failed} 个策略事件失败` : d.runs.length ? `${d.runs.length} 个策略事件已记录` : '当日没有运行记录'}
-      subtitle="计划时刻与实际开始分别展示；缺计划记录时不推算。" />
+    <Hero s={failed ? 'bad' : d.runs.length ? 'ok' : 'idle'} title={failed ? `${failed} 个策略事件失败` : d.runs.length ? `${d.runs.length} 个策略事件全部完成` : '当日没有运行记录'}
+      subtitle={`${dayNote(d.day)} · 计划时刻与实际开始分别展示；缺计划记录时不推算。`}
+      kpis={[
+        { k: '候选（竞价）', v: auction?.candidates ?? '—', sub: auction ? `入档 ${auction.routed ?? '—'} · 闸门通过 ${auction.passed ?? '—'}` : '当日没有竞价事件' },
+        { k: '发出委托 / 被拒', v: `${orders} / ${rejects}`, color: rejects ? p.warn : undefined },
+        { k: '最大开始偏差', v: maxLag == null ? '—' : `${maxLag.seconds.toFixed(1)}s`, sub: maxLag ? `${label(maxLag.run.phase)}（实际 − 计划）` : '缺计划时刻' },
+        { k: '最慢一步', v: slowest ? `${(slowest.duration_ms / 1000).toFixed(1)}s` : '—', sub: slowest ? label(slowest.phase) : undefined },
+      ]} />
     <Panel title="策略事件是否按时触发？" info="空心点是计划、实心点是实际；连线表示迟到或提前。没有计划时刻不补点。">
       {timing ? <EChart option={timing} height={Math.max(220, d.runs.length * 38)} /> : <Missing why="当日没有可绘制的计划/实际时点" />}
     </Panel>

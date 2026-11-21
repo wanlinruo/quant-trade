@@ -38,7 +38,8 @@ test('ailu hero maps every view state', async () => {
     const { unmount } = render(<AiluPage />)
     // 状态由 Hero 图标表达，可访问名称即状态文字
     expect(await screen.findByRole('img', { name: tag.slice(2) })).toBeInTheDocument()
-    expect(screen.getByText(`msg-${state}`)).toBeInTheDocument()
+    // 有榜单时消息与模型 ID 同在副行，其余状态消息即标题
+    expect(document.body.textContent).toContain(`msg-${state}`)
     unmount()
   }
 })

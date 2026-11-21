@@ -25,7 +25,10 @@ afterEach(() => { vi.unstubAllGlobals() })
 
 test('alerts page shows unhandled conclusion and unknown state', async () => {
   render(<AlertsPage />)
-  expect(await screen.findByText('未处理 2 条（其中严重 2 条）')).toBeInTheDocument()
+  expect((await screen.findByTestId('hero-title')).textContent).toBe('2 条未处理 · 2 条严重')
+  const kpis = screen.getAllByTestId('hero-kpi').map((x) => x.textContent)
+  expect(kpis[0]).toContain('未处理')
+  expect(kpis[0]).toContain('2')
 }, 10_000)
 
 test('unknown state never shows zero', async () => {
