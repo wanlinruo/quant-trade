@@ -33,8 +33,10 @@ test('overview hero counts statuses and never shows gray as ok', async () => {
   render(<DataOverviewPage />)
   const title = await screen.findByTestId('hero-title')
   const n = dfx.overview().tables.length
-  expect(title.textContent).toContain(`核心表 ${n} 张`)
-  expect(title.textContent).toContain(`灰 ${n}`)
+  expect(title.textContent).toContain(`${n} 张核心表 · 0 健康`)
+  // 灰（缺证据）单独计数，不算健康
+  const gray = screen.getAllByTestId('hero-kpi').find((x) => x.textContent!.startsWith('缺证据（灰）'))!
+  expect(gray.textContent).toContain(String(n))
   expect(screen.getByRole('img', { name: '待运行' })).toBeInTheDocument()
   expect(screen.queryByRole('img', { name: '正常' })).toBeNull()
 })
@@ -57,7 +59,7 @@ test('lineage graph option has adjacency focus and fixed columns', async () => {
   const g = options.flatMap((o) => (o.series as { type?: string; data?: { id: string; x: number; y: number; category: number }[]; links?: unknown[]; emphasis?: { focus?: string } }[]) ?? []).find((s) => s.type === 'graph')!
   expect(g.emphasis?.focus).toBe('adjacency')
   expect(g.links!.length).toBe(dfx.overview().lineage.edges.length)
-  const xOf = (kind: string) => new Set(g.data!.filter((n) => dfx.overview().lineage.nodes.find((x) => x.id === n.id)!.kind === kind).map((n) => n.x))
+  const xOf = (kind: string) => new Set(g.data!.filter((n) => dfx.overview().lineage.nodes.find((x) => x.id === n.id)?.kind === kind).map((n) => n.x))
   expect(xOf('source').size).toBe(1)
   expect([...xOf('source')][0]).toBeLessThan([...xOf('consumer')][0])
 })

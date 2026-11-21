@@ -11,7 +11,7 @@ import { usePalette } from '../../theme/context'
 import { Missing } from '../../ui/Missing'
 import { Num } from '../../ui/Num'
 import { StatusTag } from '../../ui/StatusTag'
-import { DaySelect, useTradingDay, yuan } from './common'
+import { dayNote, useTradingDay, yuan } from './common'
 import { DrawerNav } from '../../page/DrawerNav'
 import { navigate } from '../../shell/router'
 
@@ -32,9 +32,8 @@ export function LivePage() {
   const d = data
   const posture = d.posture === 'trading' ? 'ok' : d.posture === 'reduce_only' ? 'bad' : 'idle'
   return <>
-    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}><DaySelect value={d.day} /></div>
     <Hero s={posture} statusText={d.posture_label} title={d.posture_label}
-      subtitle="总资产为券商原始观测；缺完整资金流水时不计算收益。"
+      subtitle={`${dayNote(d.day)} · 总资产为券商原始观测；缺完整资金流水时不计算收益。`}
       kpis={[{ k: '总资产', v: d.observation.total_value == null ? <Missing why={d.missing.account ?? '缺失'} /> : <Num>{yuan(d.observation.total_value)}</Num> },
         { k: '持仓市值', v: d.observation.market_value == null ? <Missing why="券商未上报" /> : yuan(d.observation.market_value) },
         { k: '收益率', v: <Missing why={d.missing.return_ratio} /> }, { k: '今日委托', v: d.order_count ?? <Missing why="券商未上报" />, onClick: () => navigate('orders') },

@@ -32,6 +32,7 @@ export function StrategiesPage() {
   if (!d.enabled) return <Result status="info" title="策略工作台未启用" subTitle="当前部署没有接入策略工作台。" />
 
   const count = (k: string) => d.strategies.filter((s) => s.stage === k).length
+  const live = d.strategies.filter((s) => s.stage === 'live')
   const create = async () => {
     if (!newName.trim()) { setErr('名称不能为空'); return }
     if (!(await confirm('新建策略', `新建空白策略「${newName.trim()}」。`))) return
@@ -46,8 +47,14 @@ export function StrategiesPage() {
   return (
     <>
       <Hero s={d.strategies.length ? 'ok' : 'idle'}
-        title={`共 ${d.strategies.length} 个策略 · ${d.core_label} ${count('live')} · 模拟 ${count('paper')} · 回测 ${count('backtest')} · 草稿 ${count('draft')}`}
-        subtitle="推进位置：部署承袭 → 未结束的模拟账户 → 成功回测 → 草稿，命中即停（设计者决定）。" />
+        title={`${d.strategies.length} 个策略 · ${count('live')} 个在${d.core_label}`}
+        subtitle={live.length ? `${d.core_label}：${live.map((s) => `${s.name}（${s.version_id.slice(0, 8)}）`).join('、')}` : '推进位置：部署承袭 → 未结束的模拟账户 → 成功回测 → 草稿，命中即停。'}
+        kpis={[
+          { k: `在${d.core_label}`, v: count('live'), color: count('live') ? p.ok : undefined },
+          { k: '模拟中', v: count('paper') },
+          { k: '仅回测', v: count('backtest') },
+          { k: '草稿', v: count('draft') },
+        ]} />
       <Panel title="有哪些策略、走到哪一步？" info="最近回测指标与回测页同一行数据（§9.5）。实盘或模拟正在使用的版本只读。"
         extra={<div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, maxWidth: '100%', minWidth: 0 }}>
           <Button size="small" onClick={() => { setCreating(true); setErr(null) }}>新建策略</Button>

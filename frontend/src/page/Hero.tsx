@@ -24,7 +24,7 @@ export function Hero({ s, statusText, title, subtitle, kpis = [] }: {
   const label = statusText ?? STATUS_TEXT[s]
   return (
     <section className="qs-hero" style={{ display: 'flex', flexWrap: 'wrap', marginBottom: 12, background: p.panel, border: `1px solid ${p.border}`, borderLeft: `3px solid ${accent}`, borderRadius: 4 }}>
-      <div style={{ flex: kpis.length ? '1 1 320px' : '1 1 auto', maxWidth: kpis.length ? 560 : undefined, minWidth: 0, padding: '12px 18px', display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={{ flex: kpis.length ? '1 1 360px' : '1 1 auto', maxWidth: kpis.length ? 560 : undefined, minWidth: 0, padding: '12px 18px', display: 'flex', alignItems: 'center', gap: 10 }}>
         <span role="img" aria-label={label} title={label} data-testid="hero-status" style={{ color: accent, fontSize: 24, display: 'flex', flex: 'none' }}>{ICON[s]}</span>
         <div style={{ minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -43,7 +43,10 @@ export function Hero({ s, statusText, title, subtitle, kpis = [] }: {
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: p.muted }}>
             {x.k}{x.onClick && <span aria-hidden style={{ opacity: 0.6 }}>›</span>}
           </div>
-          <Num size={18} weight={600} color={x.color ?? p.head}>{x.v}</Num>
+          {/* 长文本值（如模型 ID、费用说明）不按大号数字排，避免把格子撑高 */}
+          {typeof x.v === 'string' && x.v.length > 14
+            ? <div title={x.v} style={{ fontSize: 12, color: x.color ?? p.head, overflowWrap: 'anywhere', lineHeight: 1.4 }}>{x.v}</div>
+            : <Num size={18} weight={600} color={x.color ?? p.head}>{x.v}</Num>}
           {x.sub !== undefined && <div style={{ fontSize: 11, color: p.muted }}>{x.sub}</div>}
         </div>
       ))}

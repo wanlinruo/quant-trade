@@ -79,3 +79,55 @@ test('paper page only displays masked webhook', async () => {
   expect(await screen.findByText(/已配置 ••••••abcdef/)).toBeInTheDocument()
   expect(screen.queryByText(/qyapi\.weixin/)).toBeNull()
 })
+
+test('orders map live_orders terminal/pending to labels and summarise in hero KPIs', async () => {
+  const order = (id: string, status: string, remaining: number) => ({ id, event_key: 'auction', symbol: '600000.SH', side: 'buy', qty: 100, remaining_qty: remaining,
+    order_type: 'limit', limit_price: 10, status, created_at: '2026-11-19T09:25:00+08:00', updated_at: null,
+    broker_order_id: 'b1', broker_accepted_at: null, unknown_no_retry: false, stages: [] })
+  payload = { schema_version: 1, enabled: true, day, missing: {}, orders: [order('o1', 'terminal', 0), order('o2', 'pending', 100)],
+    fills: [{ order_id: 'o1', symbol: '600000.SH', side: 'buy', qty: 100, price: 10, fee: 5, filled_at: '2026-11-19T09:30:00+08:00', broker_trade_id: 't1' }],
+    rejects: [{ order_id: 'r1', symbol: '920001.BJ', side: 'buy', qty: 100, reason: '北交所禁开仓', at: '2026-11-19T09:25:00+08:00' }] }
+  wrap(<OrdersPage />)
+  expect((await screen.findByTestId('hero-title')).textContent).toBe('2 笔委托，1 笔未终结')
+  expect(screen.getByTestId('hero-subtitle').textContent).toContain('交易日 2026-11-19')
+  expect(screen.getByText('● 已终结')).toBeInTheDocument()
+  expect(screen.getByText('◐ 未终结')).toBeInTheDocument()
+  expect(screen.queryByText('terminal')).toBeNull()
+  const kpis = screen.getAllByTestId('hero-kpi').map((x) => x.textContent)
+  expect(kpis[0]).toContain('1 / 2')
+  expect(kpis[3]).toContain('风控拦截1')
+  // 页面内不再有重复的交易日下拉（全局日期在顶栏）
+  expect(screen.queryByLabelText('交易日')).toBeNull()
+})
+
+test('reconciliation hero shows each layer of the selected day and never counts unknown as consistent', async () => {
+  payload = { schema_version: 1, enabled: true, day: { selected: '2026-11-19', available: ['2026-11-18', '2026-11-19'] }, heatmap: [
+    { day: '2026-11-18', layer: 'cash', state: 'inconsistent', at: null, detail: '现金差' },
+    { day: '2026-11-19', layer: 'cash', state: 'consistent', at: null, detail: '' },
+    { day: '2026-11-19', layer: 'positions', state: 'consistent', at: null, detail: '' },
+    { day: '2026-11-19', layer: 'orders', state: 'unknown', at: null, detail: null }], records: [], risks: [], kill, review: null, missing: {} }
+  wrap(<ReconciliationPage />)
+  expect((await screen.findByTestId('hero-title')).textContent).toBe('11-19 资金、持仓对账一致，委托 / 成交未对账')
+  const kpis = screen.getAllByTestId('hero-kpi').map((x) => x.textContent)
+  expect(kpis[0]).toContain('✓ 一致')
+  expect(kpis[2]).toContain('○ 未对账')
+  expect(kpis[3]).toContain('1 天')
+  expect(kpis[4]).toContain('停机闸已解除')
+})
+
+test('runs hero sums orders and reports the largest start lag from recorded times only', async () => {
+  const run = (key: string, phase: string, sched: string | null, start: string, ms: number, orders: number) => ({ event_key: key, phase, scheduled_at: sched, started_at: start,
+    finished_at: start, duration_ms: ms, status: 'completed', candidates: phase === 'auction' ? 12 : null, routed: phase === 'auction' ? 3 : null, passed: phase === 'auction' ? 1 : null,
+    orders, rejects: 0, summary: '', reasons: {}, note: '', error: '', event_status: null, event_detail: null })
+  payload = { schema_version: 1, enabled: true, day, report_text: null, missing: {}, runs: [
+    run('a', 'auction', '2026-11-19T09:25:00+08:00', '2026-11-19T09:25:10+08:00', 2100, 2),
+    run('b', 'checkpoint', '2026-11-19T10:05:00+08:00', '2026-11-19T10:05:44+08:00', 2400, 1),
+    run('c', 'bar', null, '2026-11-19T15:00:01+08:00', 700, 0)] }
+  wrap(<RunsPage />)
+  expect((await screen.findByTestId('hero-title')).textContent).toBe('3 个策略事件全部完成')
+  const kpis = screen.getAllByTestId('hero-kpi').map((x) => x.textContent)
+  expect(kpis[0]).toContain('12')
+  expect(kpis[1]).toContain('3 / 0')
+  expect(kpis[2]).toContain('44.0s')
+  expect(kpis[3]).toContain('2.4s')
+})

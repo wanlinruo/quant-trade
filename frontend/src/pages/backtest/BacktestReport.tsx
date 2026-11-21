@@ -48,7 +48,8 @@ export function BacktestReport({ d }: { d: Report }) {
           description={<ul style={{ margin: 0, paddingLeft: 18 }}>{d.warnings.map((w) => <li key={w}>{w}</li>)}</ul>} />
       )}
       <Hero s={d.warnings.length ? 'warn' : 'ok'} statusText={d.warnings.length ? `${d.warnings.length} 条警告` : '已完成'}
-        title={`${s.strategy} · ${s.start} ~ ${s.end}`} subtitle={`回测 ${d.name}`}
+        title={`${s.strategy} · ${s.start} ~ ${s.end}`}
+        subtitle={`回测 ${d.name} · 入场口径 ${ENTRY[entry] ?? '未记录'} · 费用模型 ${s.cost_model || '未知'}`}
         kpis={[
           { k: '区间收益', v: <Value v={signedPct(s.cumulative_return)} why="报告没有累计收益" /> },
           { k: '基准收益', v: <Value v={signedPct(d.metrics.benchmark_return)} why="报告没有基准收益" /> },
@@ -56,8 +57,6 @@ export function BacktestReport({ d }: { d: Report }) {
           { k: '最大回撤', v: <Value v={signedPct(d.metrics.max_drawdown)} why="报告没有最大回撤" /> },
           { k: '买 / 卖', v: `${known(s.buys)} / ${known(s.sells)}` },
           { k: '被拒', v: known(s.rejects) },
-          { k: '费用模型', v: s.cost_model || '未知' },
-          { k: '入场口径', v: ENTRY[entry] ?? '未记录' },
         ]} />
       <Panel title="跑赢基准了吗？" info="累计收益相对首日；基准缺某日时该日断开，不连线。">
         <EChart option={ret} height={260} />
@@ -79,7 +78,8 @@ export function BacktestReport({ d }: { d: Report }) {
       <Panel title="交易明细" extra={<span style={{ fontSize: 12, color: p.muted }}>共 {d.fills_total} 笔，显示最后 {d.fills.length} 笔</span>}>
         <Table size="small" rowKey={(r, i) => `${String(r.filled_at)}-${i}`} dataSource={d.fills} scroll={{ x: 'max-content' }} pagination={{ pageSize: 20, hideOnSinglePage: true }}
           columns={[
-            { title: '时间', dataIndex: 'filled_at', render: (v) => String(v).replace('T', ' ') },
+            // 回测成交时刻是无时区的市场本地时间：只格式化到秒，不按浏览器时区重新解释
+            { title: '时间', dataIndex: 'filled_at', render: (v) => String(v).replace('T', ' ').slice(0, 19) },
             { title: '代码', dataIndex: 'symbol' },
             { title: '方向', dataIndex: 'side', render: (v) => <span style={{ color: v === 'buy' ? p.up : p.down }}>{v === 'buy' ? '买' : v === 'sell' ? '卖' : String(v)}</span> },
             { title: '数量', dataIndex: 'qty', align: 'right', render: (v) => num(v, 0) },

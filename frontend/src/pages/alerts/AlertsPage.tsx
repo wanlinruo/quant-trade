@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import { Button, DatePicker, Descriptions, Drawer, Result, Table, Tabs, Tag } from 'antd'
-import dayjs from 'dayjs'
+import { Button, Descriptions, Drawer, Result, Table, Tabs, Tag } from 'antd'
 import { ackAlert, fetchAlertDetail, fetchAlerts, type AlertCenter, type AlertItem } from '../../api/alerts'
 import { EChart, type EChartsOption } from '../../page/EChart'
 import { DrawerNav } from '../../page/DrawerNav'
@@ -8,7 +7,7 @@ import { Hero } from '../../page/Hero'
 import { Panel } from '../../page/Panel'
 import { useFetch } from '../../page/useFetch'
 import { usePolling } from '../../page/usePolling'
-import { setSearch, useSearch } from '../../shell/router'
+import { useSearch } from '../../shell/router'
 import { dateTime } from '../../shell/time'
 import { usePalette } from '../../theme/context'
 import type { Status } from '../../theme/status'
@@ -97,16 +96,19 @@ export function AlertsPage() {
   const c = d as AlertCenter
   const hero = c.state === 'unknown'
     ? <Hero s="idle" title="告警存储不可读" subtitle={Object.values(c.missing).join('；')} />
-    : <Hero s={c.unhandled_critical ? 'bad' : c.unhandled ? 'warn' : 'ok'} title={`未处理 ${c.unhandled} 条（其中严重 ${c.unhandled_critical} 条）`}
-        subtitle={`已确认 ${c.acknowledged} 条 · 通知 ${c.notices} 条 · 窗口 ${c.window_start} ~ ${c.window_end}${day ? ' · 回看只读' : ''}`} />
+    : <Hero s={c.unhandled_critical ? 'bad' : c.unhandled ? 'warn' : 'ok'}
+        title={`${c.unhandled} 条未处理 · ${c.unhandled_critical ? `${c.unhandled_critical} 条严重` : '无严重告警'}`}
+        subtitle={`窗口 ${c.window_start} ~ ${c.window_end} · 同一问题自动合并计数${day ? ' · 回看只读' : ''}`}
+        kpis={[
+          { k: '未处理', v: c.unhandled ?? '—', color: c.unhandled_critical ? p.bad : c.unhandled ? p.warn : p.ok, onClick: () => setTab('unhandled') },
+          { k: '已确认', v: c.acknowledged ?? '—', onClick: () => setTab('acknowledged') },
+          { k: '窗口内已恢复', v: c.trend.reduce((n, t) => n + t.resolved, 0), color: p.ok, onClick: () => setTab('resolved') },
+          { k: '窗口内严重', v: c.trend.reduce((n, t) => n + t.critical, 0), color: c.trend.some((t) => t.critical) ? p.bad : undefined, sub: `通知 ${c.notices ?? '—'} 条` },
+        ]} />
   const current = TABS.find((t) => t.key === tab) ?? TABS[0]
   const rows = c.items.filter(current.pick)
   return (
     <>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 8 }}>
-        <DatePicker size="small" allowClear placeholder="回看某日" value={day ? dayjs(day) : null}
-          onChange={(v) => setSearch({ day: v ? v.format('YYYY-MM-DD') : null })} />
-      </div>
       {hero}
       <Panel title="近 14 日告警趋势">{option ? <EChart option={option} height={200} /> : <div style={{ color: p.muted }}>没有趋势数据</div>}</Panel>
       <Panel title="有哪些事要我处理？">

@@ -76,8 +76,12 @@ export function CatalogPage() {
   const s = d.summary
   return (
     <>
-      <Hero s={s.latest_run ? 'ok' : 'idle'} title={`共 ${s.total} 个指标 · 已覆盖 ${s.covered} · 待验证 ${s.pending}`}
-        subtitle={`最近一次质检 ${s.latest_run ? dateTime(s.latest_run) : '无记录'} · ${Object.entries(s.by_kind).map(([k, n]) => `${KIND[k] ?? k} ${n}`).join(' · ')}`} />
+      <Hero s={!s.latest_run ? 'idle' : s.pending ? 'warn' : 'ok'} title={`${s.total} 个指标 · ${s.pending ? `${s.pending} 个待验证` : '全部已覆盖验证'}`}
+        subtitle={`每个指标标明直取或纯派生及来源字段 · 最近一次质检 ${s.latest_run ? dateTime(s.latest_run) : '无记录'}`}
+        kpis={[
+          ...Object.entries(s.by_kind).map(([k, n]) => ({ k: KIND[k] ?? k, v: n })),
+          { k: '已覆盖 / 待验证', v: `${s.covered} / ${s.pending}`, color: s.pending ? p.warn : p.ok },
+        ]} />
       <Panel title="有哪些指标？" extra={
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, maxWidth: '100%', minWidth: 0 }}>
           <Select size="small" allowClear showSearch placeholder="按表" style={{ width: 180, maxWidth: '100%' }} value={f.dataset ?? undefined} onChange={(v) => setSearch({ dataset: v ?? null })} options={d.datasets.map((x) => ({ value: x, label: x }))} />

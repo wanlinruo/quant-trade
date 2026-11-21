@@ -1,4 +1,4 @@
-import { Drawer, Result, Table, Tag } from 'antd'
+import { Drawer, Result, Table } from 'antd'
 import { useState } from 'react'
 import { fetchOrders, type TradingOrder } from '../../api/trading'
 import { Hero } from '../../page/Hero'
@@ -8,7 +8,7 @@ import { dateTime } from '../../shell/time'
 import { usePalette } from '../../theme/context'
 import { Missing } from '../../ui/Missing'
 import { StatusTag } from '../../ui/StatusTag'
-import { DaySelect, label, useTradingDay, yuan } from './common'
+import { dayNote, label, useTradingDay, yuan } from './common'
 import { DrawerNav } from '../../page/DrawerNav'
 
 function Lifecycle({ order, rows, close, onPick }: { order: TradingOrder; rows: TradingOrder[]; close(): void; onPick(row: TradingOrder): void }) {
@@ -51,15 +51,26 @@ function LifecycleLanes({ rows, onPick }: { rows: TradingOrder[]; onPick(row: Tr
 }
 
 export function OrdersPage() {
+  const p = usePalette()
   const day = useTradingDay(); const [picked, setPicked] = useState<TradingOrder | null>(null)
   const { data, error } = useFetch((s) => fetchOrders(day, s), [day])
   if (!data) return <Hero s={error ? 'bad' : 'running'} title={error ?? '加载中'} />
   if (!data.enabled) return <Result status="info" title="委托查询未启用" />
   const d = data; const unknown = d.orders.filter((o) => o.unknown_no_retry).length
+  const pending = d.orders.filter((o) => !o.unknown_no_retry && o.status !== 'terminal' && o.remaining_qty > 0).length
+  const filled = d.orders.filter((o) => o.status === 'terminal' && o.remaining_qty === 0 && d.fills.some((f) => f.order_id === o.id)).length
+  const title = !d.orders.length ? '当日没有委托'
+    : unknown ? `${d.orders.length} 笔委托，${unknown} 笔状态未知`
+      : pending ? `${d.orders.length} 笔委托，${pending} 笔未终结` : `${d.orders.length} 笔委托，全部终态`
   return <>
-    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}><DaySelect value={d.day} /></div>
-    <Hero s={unknown ? 'bad' : 'ok'} title={`${d.orders.length} 笔委托 · ${d.fills.length} 笔成交 · ${d.rejects.length} 笔拒单`}
-      subtitle={unknown ? `${unknown} 笔状态未知，均不自动重发` : '生命周期只画真实记录节点；未记录的券商事实保持缺失。'} />
+    <Hero s={unknown ? 'bad' : pending ? 'running' : d.orders.length ? 'ok' : 'idle'} title={title}
+      subtitle={`${dayNote(d.day)} · ${unknown ? `${unknown} 笔状态未知，均不自动重发` : '生命周期只画真实记录节点；未记录的券商事实保持缺失。'}`}
+      kpis={[
+        { k: '有成交的委托', v: `${filled} / ${d.orders.length}`, sub: `成交记录 ${d.fills.length} 笔` },
+        { k: '未终结', v: pending, color: pending ? p.running : undefined },
+        { k: '状态未知', v: unknown, color: unknown ? p.bad : undefined, sub: '不自动重发' },
+        { k: '风控拦截', v: d.rejects.length, color: d.rejects.length ? p.warn : undefined, sub: '不计入委托' },
+      ]} />
     <Panel title="每笔委托走到哪一步？" info="横轴为距意图的对数耗时；未记录环节不画点，未知状态以虚线延伸并明确不重发。">
       <LifecycleLanes rows={d.orders} onPick={setPicked} />
     </Panel>
@@ -68,7 +79,8 @@ export function OrdersPage() {
         { title: '时间', dataIndex: 'created_at', render: dateTime }, { title: '指令号', dataIndex: 'id' }, { title: '标的', dataIndex: 'symbol' },
         { title: '方向', dataIndex: 'side', render: label }, { title: '数量', dataIndex: 'qty', align: 'right' }, { title: '剩余', dataIndex: 'remaining_qty', align: 'right' },
         { title: '类型', dataIndex: 'order_type', render: label }, { title: '限价', dataIndex: 'limit_price', align: 'right', render: (v) => v ?? '—' },
-        { title: '状态', dataIndex: 'status', render: (v, r) => <>{r.unknown_no_retry ? <StatusTag s="bad" text="未知·不重发" /> : <Tag>{label(v)}</Tag>}</> },
+        { title: '状态', dataIndex: 'status', render: (v, r) => r.unknown_no_retry ? <StatusTag s="bad" text="未知·不重发" />
+          : <StatusTag s={v === 'terminal' || v === 'filled' ? 'ok' : v === 'rejected' || v === 'failed' ? 'bad' : v === 'cancelled' ? 'idle' : 'running'} text={label(v)} /> },
         { title: '券商单号', dataIndex: 'broker_order_id', render: (v) => v ?? <Missing why={d.missing.broker_accepted_at} /> },
       ]} />
     </Panel>

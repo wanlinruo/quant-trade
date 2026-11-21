@@ -9,9 +9,10 @@ import { dateTime } from '../../shell/time'
 import { usePalette } from '../../theme/context'
 import { Missing } from '../../ui/Missing'
 import { StatusTag } from '../../ui/StatusTag'
-import { DaySelect, useTradingDay, yuan } from './common'
+import { dayNote, useTradingDay, yuan } from './common'
 
 const REVIEW = { pass: ['ok', '通过'], fail: ['bad', '失败'], unknown: ['idle', '未知'], confirm: ['warn', '待确认'], info: ['idle', '信息'] } as const
+const LAYER_NAME = { cash: '资金', positions: '持仓', orders: '委托 / 成交' } as const
 const CELL = { consistent: ['ok', '一致'], inconsistent: ['bad', '不一致'], unknown: ['idle', '未对账'], not_started: ['closed', '未启动'] } as const
 
 export function ReconciliationPage() {
@@ -21,11 +22,26 @@ export function ReconciliationPage() {
   const d = data; const failed = d.records.filter((x) => !x.consistent).length
   const days = [...new Set(d.heatmap.map((x) => x.day))]
   const cell = (dt: string, layer: ReconCell['layer']) => d.heatmap.find((x) => x.day === dt && x.layer === layer)
+  // 标题只讲所选交易日：逐层写出一致 / 未对账，不把未对账算成一致
+  const selectedLayers = (['cash', 'positions', 'orders'] as const).map((layer) => ({ layer, state: d.day.selected ? cell(d.day.selected, layer)?.state ?? 'unknown' : 'unknown' }))
+  const okLayers = selectedLayers.filter((x) => x.state === 'consistent').map((x) => LAYER_NAME[x.layer])
+  const openLayers = selectedLayers.filter((x) => x.state === 'unknown' || x.state === 'not_started').map((x) => LAYER_NAME[x.layer])
+  const dayTitle = !d.day.selected ? '没有对账记录'
+    : `${d.day.selected.slice(5)} ${okLayers.length ? `${okLayers.join('、')}对账一致` : '没有一致的对账层'}${openLayers.length ? `，${openLayers.join('、')}未对账` : ''}`
+  const badDays = days.filter((dt) => d.heatmap.some((x) => x.day === dt && x.state === 'inconsistent')).length
   const reviewState = !d.review ? 'idle' : d.review.stale || d.review.overall === 'blocked' ? 'bad' : d.review.overall === 'needs_confirmation' ? 'warn' : 'ok'
   return <>
-    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}><DaySelect value={d.day} /></div>
-    <Hero s={failed ? 'bad' : reviewState} title={failed ? `${failed} 次对账不一致` : '当前记录没有对账不一致'}
-      subtitle={`停机闸：${d.kill.label}。页面只读，不提供解除入口；解除必须走受管入口。`} />
+    <Hero s={failed ? 'bad' : reviewState} title={failed ? `${failed} 次对账不一致` : dayTitle}
+      subtitle={`${dayNote(d.day)} · 页面只读，不提供解除入口；解除必须走受管入口。`}
+      kpis={[
+        ...(['cash', 'positions', 'orders'] as const).map((layer) => {
+          const c = d.day.selected ? cell(d.day.selected, layer) : undefined
+          const v = c ? CELL[c.state] : CELL.unknown
+          return { k: LAYER_NAME[layer], v: `${v[0] === 'ok' ? '✓' : v[0] === 'bad' ? '✕' : '○'} ${v[1]}`, color: v[0] === 'ok' ? p.ok : v[0] === 'bad' ? p.bad : p.muted }
+        }),
+        { k: '近 30 日不一致', v: `${badDays} 天`, color: badDays ? p.warn : p.ok, sub: `共 ${days.length} 个有记录交易日` },
+        { k: '停机闸', v: d.kill.label, color: d.kill.state === 'stopped' ? p.bad : d.kill.state === 'clear' ? p.ok : p.muted },
+      ]} />
     <Panel title="近 30 个有记录交易日的三层对账" info="资金与持仓来自同一现有对账事实；委托/成交尚无独立层时明确显示未对账。">
       <div style={{ overflowX: 'auto' }}><table style={{ borderCollapse: 'separate', borderSpacing: 3, width: '100%', minWidth: 520 }}><thead><tr><th>交易日</th><th>资金</th><th>持仓</th><th>委托/成交</th></tr></thead><tbody>
         {days.map((dt) => <tr key={dt}><td>{dt}</td>{(['cash', 'positions', 'orders'] as const).map((layer) => { const c = cell(dt, layer); const v = c ? CELL[c.state] : CELL.unknown; return <td key={layer}><Tooltip title={c?.detail || (c?.at ? dateTime(c.at) : '没有独立记录')}><span style={{ display: 'block', padding: 5, textAlign: 'center', background: v[0] === 'ok' ? `${p.ok}22` : v[0] === 'bad' ? `${p.bad}22` : p.bg }}><StatusTag s={v[0]} text={v[1]} /></span></Tooltip></td> })}</tr>)}

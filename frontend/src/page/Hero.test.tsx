@@ -21,3 +21,10 @@ test('status is a distinct icon with an accessible name; custom status text stay
   expect(screen.getByRole('img', { name: '历史 · 只读' })).toBeInTheDocument()
   expect(screen.getByText('○ 历史 · 只读')).toBeInTheDocument()
 })
+
+test('long text KPI values are not rendered as big numbers', () => {
+  render(<ThemeProvider><Hero s="ok" title="t" kpis={[{ k: '模型', v: 'limit-up-lgbm-90fa3c17-3ac9496f' }, { k: '数', v: '12' }]} /></ThemeProvider>)
+  const [model, num] = screen.getAllByTestId('hero-kpi')
+  expect(model.querySelector('span[style*="font-size: 18px"]')).toBeNull()
+  expect(num.querySelector('span[style*="font-size: 18px"]')).not.toBeNull()
+})

@@ -10,7 +10,7 @@ import { setSearch, useSearch } from '../../shell/router'
 import { dateTime } from '../../shell/time'
 import { usePalette } from '../../theme/context'
 import { Missing } from '../../ui/Missing'
-import { DaySelect, label, yuan } from './common'
+import { dayNote, label, yuan } from './common'
 
 const text = (v: unknown) => v == null || v === '' ? '—' : String(v)
 const status = (v: string) => v === 'running' ? ['ok', '运行中'] : v === 'error' ? ['bad', '出错'] : v === 'ended' ? ['closed', '已结束'] : ['warn', ({ scheduled: '待生效', paused: '已暂停' } as Record<string, string>)[v] ?? v]
@@ -32,8 +32,7 @@ function Detail({ id, day, rev, refresh }: { id: string; day: string | null; rev
   const save = async () => { setBusy(true); try { await paperNotify(id, hook.trim()); setHook(''); refresh() } finally { setBusy(false) } }
   const table = (rows: Record<string, unknown>[], keys: [string, string][]) => <Table size="small" pagination={{ pageSize: 30, hideOnSinglePage: true }} rowKey={(_, i) => String(i)} dataSource={rows} scroll={{ x: 'max-content' }} columns={keys.map(([k, name]) => ({ title: name, dataIndex: k, render: k.endsWith('_at') || k === 'at' || k === 'created_at' || k === 'filled_at' ? dateTime : (v: unknown) => text(v) }))} />
   return <>
-    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}><DaySelect value={d.day} /></div>
-    <Hero s={st[0] as 'ok' | 'bad' | 'warn' | 'closed'} statusText={st[1]} title={d.name} subtitle={`${d.strategy_name} · 版本 ${d.version_id}`}
+    <Hero s={st[0] as 'ok' | 'bad' | 'warn' | 'closed'} statusText={st[1]} title={d.name} subtitle={`${d.strategy_name} · 版本 ${d.version_id} · ${dayNote(d.day)}`}
       kpis={[{ k: '总资产', v: yuan(d.total_value) ?? <Missing why="无权益快照" /> }, { k: '累计收益', v: pct(d.return_ratio) ?? <Missing why="无权益快照" /> }, { k: '最大回撤', v: pct(d.max_drawdown_ratio) ?? <Missing why="无权益快照" /> }, { k: '持仓数', v: d.position_count ?? '—' }]} />
     {d.error && <div role="alert" style={{ border: `1px solid ${p.bad}`, padding: 10, color: p.bad, marginBottom: 12 }}><b>运行异常：</b>{d.error}<br /><small>{d.missing.recovery}</small></div>}
     <Panel title="账户控制" info="只影响模拟账户；错误恢复不在页面直接改库。" extra={<div style={{ display: 'flex', gap: 6 }}>{['scheduled', 'running', 'error'].includes(d.status) && <Button size="small" onClick={() => act('pause')}>暂停</Button>}{d.status === 'paused' && <Button size="small" onClick={() => act('resume')}>恢复</Button>}{d.status !== 'ended' && <Button size="small" danger onClick={() => act('end')}>结束</Button>}</div>}>

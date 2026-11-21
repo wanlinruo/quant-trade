@@ -100,7 +100,7 @@ for (const width of [390, 1280, 1600]) {
   test(`alerts page has no horizontal overflow at ${width}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
     await page.goto('/app/alerts')
-    await expect(page.getByTestId('hero-title')).toContainText('未处理 2 条')
+    await expect(page.getByTestId('hero-title')).toContainText('2 条未处理')
     await expect(page.getByText('有哪些事要我处理？')).toBeVisible()
     await noOverflow(page)
   })
@@ -158,7 +158,7 @@ for (const width of [390, 1280, 1600]) {
     page.on('console', (message) => { if (message.type() === 'error') pageErrors.push(message.text()) })
     const pages: [string, string][] = [
       ['live', '可下单'], ['orders', '1 笔委托'], ['recon', '解除停机闸前还差什么？'],
-      ['runs', '1 个策略事件已记录'], ['paper', '模拟一号'],
+      ['runs', '1 个策略事件全部完成'], ['paper', '模拟一号'],
     ]
     for (const [path, text] of pages) {
       await page.goto(`/app/${path}`)

@@ -46,6 +46,17 @@ test('report shows kpis, warnings and charts with null benchmark gaps', async ()
   expect(screen.getByText('2 笔，显示最后 2 笔', { exact: false })).toBeInTheDocument()
   expect(screen.getByText('1,000.00')).toBeInTheDocument()
   expect(screen.getByText('990.00')).toBeInTheDocument()
+  // 入场口径与费用模型是说明性字段，在副行，不占 KPI 格
+  expect(screen.getByTestId('hero-subtitle').textContent).toContain('入场口径 连续竞价判定')
+  expect(screen.getAllByTestId('hero-kpi').map((x) => x.textContent).join()).not.toContain('费用模型')
+})
+
+test('trade times are formatted to seconds without timezone reinterpretation', async () => {
+  detail = () => ({ ...fx.backtest(), fills: [{ ...(fx.backtest() as Report).fills[0], filled_at: '2025-01-08T09:31:00.000000' }] })
+  mockApi()
+  render(<BacktestPage />)
+  expect(await screen.findByText('2025-01-08 09:31:00')).toBeInTheDocument()
+  expect(screen.queryByText(/09:31:00\.000000/)).toBeNull()
 })
 
 test('underwater chart marks the 5 deepest episodes and lists them', async () => {
