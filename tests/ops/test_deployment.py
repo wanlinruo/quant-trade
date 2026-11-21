@@ -509,6 +509,10 @@ def test_web_component_has_an_isolated_release_and_minimal_write_boundary() -> N
             "path": "/home/ubuntu/qsys/var/workbench/strategies",
             "owner": "qsys-web", "group": "qsys-workbench", "mode": "0770",
         },
+        {
+            "path": "/home/ubuntu/qsys/var/web",
+            "owner": "qsys-web", "group": "qsys-web", "mode": "0750",
+        },
     ]
     dropin = "\n".join(web["dropin_lines"])
     assert "User=qsys-web" in dropin
@@ -521,7 +525,14 @@ def test_web_component_has_an_isolated_release_and_minimal_write_boundary() -> N
     assert "QSYS_WINDOWS_SSH_KEY" not in dropin
     assert "ExecStart=/opt/qsys/components/web/current/venv/bin/qsys-web" in dropin
     assert "--strategies /home/ubuntu/qsys/var/workbench/strategies" in dropin
-    assert dropin.count("ReadWritePaths=") == 2  # reset plus one explicit namespace
+    assert dropin.count("ReadWritePaths=") == 3  # reset plus two explicit namespaces
+    assert "ReadWritePaths=/home/ubuntu/qsys/var/web" in web["dropin_lines"]
+    assert "ReadOnlyPaths=/home/ubuntu/qsys/var/alerts" in web["dropin_lines"]
+    assert "ReadOnlyPaths=-/home/ubuntu/qsys/var/ops-snapshots" in web["dropin_lines"]
+    assert "--alert-root /home/ubuntu/qsys/var/alerts" in dropin
+    assert "--alert-acks /home/ubuntu/qsys/var/web/alert-acks.sqlite3" in dropin
+    assert "--kill-review-record /home/ubuntu/qsys/var/web/live-kill-review.json" in dropin
+    assert "--ops-snapshot-root /home/ubuntu/qsys/var/ops-snapshots" in dropin
     assert "ReadWritePaths=/home/ubuntu/qsys" not in web["dropin_lines"]
     assert "ReadWritePaths=/data/qsys" not in web["dropin_lines"]
     assert "/home/ubuntu/qsys/.venv" not in dropin
