@@ -1,11 +1,13 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Button, Dropdown, Tooltip } from 'antd'
+import { Button, DatePicker, Dropdown, Tooltip } from 'antd'
 import { DesktopOutlined, MoonOutlined, SearchOutlined, SunOutlined } from '@ant-design/icons'
+import dayjs from 'dayjs'
 import type { ShellStatus } from '../api/shell'
 import { usePalette } from '../theme/context'
 import { Missing } from '../ui/Missing'
 import { Num } from '../ui/Num'
 import { Link } from './router'
+import { setSearch, useSearch } from './router'
 import { useTheme, type ThemePref } from './ThemeProvider'
 import { dayLabel, hms, parseLocal, phaseOf } from './time'
 
@@ -69,6 +71,7 @@ export function TopBar({ status, error, collapsed = false, onOpenSearch, onOpenH
 }) {
   const p = usePalette()
   const theme = useTheme()
+  const day = useSearch().get('day')
   const killState = status?.kill.state ?? 'unknown'
   const kill = KILL[killState] ?? KILL.unknown
   const liveState = status?.live.state ?? 'unknown'
@@ -101,6 +104,8 @@ export function TopBar({ status, error, collapsed = false, onOpenSearch, onOpenH
         style={{ color: p.muted, display: 'flex', justifyContent: 'flex-start' }}>
         <span className="qs-h-long">搜索</span><span className="qs-h-long" style={{ marginLeft: 'auto', opacity: 0.6 }}>⌘K</span>
       </Button>
+      <DatePicker className="qs-h-date" size="small" allowClear aria-label="全局回看日期" value={day ? dayjs(day) : null}
+        onChange={(v) => setSearch({ day: v?.format('YYYY-MM-DD') ?? null })} />
       <Clock />
       <Dropdown trigger={['click']} menu={{ items: themeItems, selectable: true, selectedKeys: [theme.pref], onClick: (e) => theme.setPref(e.key as ThemePref) }}>
         <Tooltip title="明暗主题（T）" placement="bottomRight">

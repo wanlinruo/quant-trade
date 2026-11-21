@@ -15,5 +15,7 @@ html[data-mode="dark"] ::-webkit-scrollbar-thumb { background: #2c3235; border-r
 .ant-layout-header { overflow: hidden; }
 .qs-topbar > * { white-space: nowrap; flex-shrink: 0; }
 .qs-h-search { width: 150px; }
+.qs-h-date { width: 126px; }
 @media (max-width: 1560px) { .qs-h-opt { display: none !important; } }
 @media (max-width: 1400px) { .qs-h-search { width: auto; } .qs-h-long { display: none; } }
+@media (max-width: 760px) { .qs-h-date { width: 40px; overflow: hidden; } }

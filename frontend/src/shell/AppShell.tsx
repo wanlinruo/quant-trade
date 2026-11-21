@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Layout, Menu, Modal } from 'antd'
+import { Badge, Layout, Menu, Modal, Tooltip } from 'antd'
 import { useShellStatus } from '../api/shell'
 import { usePalette } from '../theme/context'
 import { KillBanner } from './KillBanner'
@@ -7,7 +7,8 @@ import { NAV, pageByKey, DEFAULT_PAGE } from './nav'
 import { PAGE_COMPONENTS } from '../pages/registry'
 import { Placeholder } from './Placeholder'
 import { refreshPage } from './refresh'
-import { navigate, useRoute } from './router'
+import { goTo, navigate, setSearch as setQuery, useRoute, useSearch } from './router'
+import { hms } from './time'
 import { SearchPalette } from './SearchPalette'
 import { createShortcutHandler, HELP } from './shortcuts'
 import { useTheme } from './ThemeProvider'
@@ -28,6 +29,7 @@ export function AppShell() {
   const p = usePalette()
   const theme = useTheme()
   const route = useRoute()
+  const day = useSearch().get('day')
   const page = pageByKey(route) ?? pageByKey(DEFAULT_PAGE)!
   const PageComponent = PAGE_COMPONENTS[page.key]
   const status = useShellStatus()
@@ -78,8 +80,18 @@ export function AppShell() {
 
   const items = useMemo(() => NAV.map((g) => ({
     type: 'group' as const, label: g.group,
-    children: g.pages.map((x) => ({ key: x.key, label: x.label })),
-  })), [])
+    children: g.pages.map((x) => {
+      const count = x.key === 'alerts' ? status.data?.alerts_open : null
+      const bad = status.data?.kill.state === 'stopped' && (x.key === 'live' || x.key === 'recon')
+      const unknown = x.key === 'nodes' && !!status.data?.missing.qmt
+      const mark = count != null && count > 0
+        ? <Badge count={count} size="small" overflowCount={99}><span>{x.label}</span></Badge>
+        : bad || unknown
+          ? <Tooltip title={bad ? '停机闸已触发' : status.data?.missing.qmt}><span>{x.label} <Badge status={bad ? 'error' : 'warning'} /></span></Tooltip>
+          : x.label
+      return { key: x.key, label: mark }
+    }),
+  })), [status.data])
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -88,6 +100,10 @@ export function AppShell() {
           <TopBar status={status.data} error={status.error} collapsed={collapsed} onOpenSearch={() => setSearch(true)} onOpenHelp={() => setHelp(true)} />
         </Layout.Header>
         <KillBanner status={status.data} />
+        {day && <div role="status" className="qs-history-banner" style={{ background: `${p.warn}20`, borderBottom: `1px solid ${p.warn}66`, color: p.warn, padding: '6px 16px', fontSize: 12 }}>
+        <b>正在回看 {day} · 只读</b><span style={{ color: p.muted, marginLeft: 8 }}>页面不改变任何实时或交易状态。</span>
+          <button onClick={() => setQuery({ day: null })} style={{ marginLeft: 12, color: p.warn, background: 'transparent', border: `1px solid ${p.warn}66`, cursor: 'pointer' }}>回到今天</button>
+        </div>}
       </div>
       <Layout>
         <Layout.Sider width={196} collapsible collapsed={collapsed} onCollapse={(c, type) => { if (type !== 'responsive') setCollapsed(c) }} collapsedWidth={56}
@@ -99,11 +115,13 @@ export function AppShell() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, minHeight: 28 }}>
             <span style={{ color: p.muted, fontSize: 12 }}>{page.group} /</span>
             <h1 style={{ color: p.head, fontSize: 18, fontWeight: 600, margin: 0 }}>{page.label}</h1>
+            <span style={{ flex: 1 }} />
+            <span style={{ color: p.muted, fontSize: 11 }}>{status.data?.checked_at ? `状态截至 ${hms(new Date(status.data.checked_at))} · R 刷新` : '状态时间未知'}</span>
           </div>
           <div key={page.key} className="qs-page">{PageComponent ? <PageComponent /> : <Placeholder page={page} />}</div>
         </Layout.Content>
       </Layout>
-      <SearchPalette open={search} recent={recent} onClose={() => setSearch(false)} onPick={navigate} />
+      <SearchPalette open={search} recent={recent} onClose={() => setSearch(false)} onPick={(key, params) => params && Object.keys(params).length ? goTo(key, params) : navigate(key)} />
       <Modal open={help} onCancel={() => setHelp(false)} footer={null} title="快捷键" width={420}>
         {HELP.map(([k, v]) => (
           <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${p.border}` }}>

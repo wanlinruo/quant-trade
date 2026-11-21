@@ -3,7 +3,7 @@ import { usePalette } from '../theme/context'
 import type { Status } from '../theme/status'
 import { StatusTag } from '../ui/StatusTag'
 
-export interface Kpi { k: string; v: ReactNode; sub?: ReactNode; color?: string }
+export interface Kpi { k: string; v: ReactNode; sub?: ReactNode; color?: string; onClick?: () => void }
 
 /** 结论条：先给结论（状态 + 一句话），再给几个关键数（设计文档 §6.1）。 */
 export function Hero({ s, statusText, title, subtitle, kpis = [] }: { s: Status; statusText?: string; title: ReactNode; subtitle?: ReactNode; kpis?: Kpi[] }) {
@@ -20,7 +20,9 @@ export function Hero({ s, statusText, title, subtitle, kpis = [] }: { s: Status;
       {kpis.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 20px', minWidth: 0 }}>
           {kpis.map((x) => (
-            <div key={x.k} style={{ minWidth: 72 }}>
+            <div key={x.k} role={x.onClick ? 'button' : undefined} tabIndex={x.onClick ? 0 : undefined}
+              onClick={x.onClick} onKeyDown={(e) => { if (x.onClick && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); x.onClick() } }}
+              style={{ minWidth: 72, cursor: x.onClick ? 'pointer' : undefined, borderBottom: x.onClick ? `1px dashed ${p.muted}` : undefined }}>
               <div style={{ fontSize: 11, color: p.muted }}>{x.k}</div>
               <div style={{ fontSize: 15, color: x.color ?? p.text }}>{x.v}</div>
               {x.sub !== undefined && <div style={{ fontSize: 11, color: p.muted }}>{x.sub}</div>}

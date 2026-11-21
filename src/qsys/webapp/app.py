@@ -97,14 +97,19 @@ def mount_webapp(app: FastAPI, deps: WebappDeps) -> None:
     app.include_router(market_router(deps.market))
     app.include_router(ailu_router(deps.shadow, deps.research))
     app.include_router(board_router(BoardQuery(deps.board, deps.market)))
-    app.include_router(research_router(ResearchQuery(
+    research_query = ResearchQuery(
         workbench=deps.workbench, runs=deps.runs, paper=deps.paper, research_jobs=deps.research_jobs,
         strategy_templates=deps.strategy_templates, shadow_lineage=deps.shadow_lineage,
-        core_label=deps.core_label)))
+        core_label=deps.core_label)
+    app.include_router(research_router(research_query))
     from qsys.webapp.routes.trading import trading_router
     app.include_router(trading_router(deps.trading, activation=deps.paper_activation))
     from qsys.webapp.routes.operations import operations_router
     app.include_router(operations_router(deps.operations))
+    from qsys.webapp.queries.search import SearchQuery
+    from qsys.webapp.routes.search import search_router
+    app.include_router(search_router(SearchQuery(research=research_query, trading=deps.trading,
+                                                  alerts=alerts, operations=deps.operations)))
     data = data_router(deps.data_assets, deps.data_catalog, deps.data_quality)
     app.state.webapp_routers = [data]
     app.include_router(data)

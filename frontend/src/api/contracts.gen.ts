@@ -1237,6 +1237,21 @@ export interface RunSummary {
   source: "web" | "cli"
 }
 
+export interface SearchIndex {
+  schema_version: 1
+  items: SearchItem[]
+  missing: Record<string, string>
+}
+
+export interface SearchItem {
+  kind: "委托" | "服务" | "策略" | "数据表" | "指标" | "告警" | "节点"
+  key: string
+  label: string
+  hint: string
+  page: string
+  params: Record<string, string>
+}
+
 export interface SecurityCheck {
   id: string
   label: string

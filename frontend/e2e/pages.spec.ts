@@ -153,12 +153,17 @@ for (const width of [390, 1280, 1600]) {
 
   test(`trading pages have no horizontal overflow at ${width}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
+    const pageErrors: string[] = []
+    page.on('pageerror', (error) => pageErrors.push(error.stack ?? error.message))
+    page.on('console', (message) => { if (message.type() === 'error') pageErrors.push(message.text()) })
     const pages: [string, string][] = [
       ['live', '可下单'], ['orders', '1 笔委托'], ['recon', '解除停机闸前还差什么？'],
       ['runs', '1 个策略事件已记录'], ['paper', '模拟一号'],
     ]
     for (const [path, text] of pages) {
       await page.goto(`/app/${path}`)
+      await page.waitForTimeout(50)
+      expect(pageErrors, `browser errors on /app/${path}`).toEqual([])
       await expect(page.getByText(text, { exact: false }).first()).toBeVisible()
       await noOverflow(page)
     }
